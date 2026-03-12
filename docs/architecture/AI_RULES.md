@@ -1,0 +1,4 @@
+- Never implement crypto in Typescript
+- Always use rust/crypto-engine
+- Vault data must be encrypted client-side
+- Backend must not access plaintext
