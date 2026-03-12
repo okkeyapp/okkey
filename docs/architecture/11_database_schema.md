@@ -1,6 +1,6 @@
-# Database Schema
+# Database Schema (Core)
 
-This document describes the main database schema of Okkey.
+This document describes the **core** database schema of Okkey.
 
 Backend stores only:
 - metadata
@@ -172,6 +172,22 @@ Files are stored in object storage, e.g. S3, MinIO
 
 ---
 
+## Enterprise Extensions
+
+Enterprise **never modifies** core tables. It only adds new tables and migrations.
+Enterprise schema docs live in `okkey-enterprise/docs/architecture/05_database_extensions.md`.
+
+Example enterprise tables:
+```text
+audit_logs
+sso_configs
+scim_directory
+organization_policies
+enterprise_settings
+```
+
+---
+
 ## Relationships
 ```text
 User
@@ -198,34 +214,4 @@ Critically important indexes:
 users.email
 devices.user_id
 sessions.user_id
-vault_members.vault_id
-vault_keys.user_id
-items.vault_id
-events.vault_id
 ```
-
----
-
-## Security Considerations
-
-Database stores only:
-- encrypted vault data
-- encrypted vault keys
-- encrypted events
-
-Server cannot:
-- decrypt vault
-- read passwords
-- read secrets
-
----
-
-## Data Integrity
-
-Each item has:
-- version
-- timestamp
-
-This is used for:
-- conflict resolution
-- event ordering

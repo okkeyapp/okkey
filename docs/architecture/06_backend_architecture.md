@@ -1,4 +1,4 @@
-# Backend Architecture
+# Backend Architecture (Core)
 
 Okkey backend is implemented as a **stateless API**.
 
@@ -31,7 +31,7 @@ Storage:
 
 ---
 
-## Services
+## Core Services
 
 Main backend services:
 - Auth Service
@@ -78,7 +78,35 @@ Manages user devices.
 - authorize device
 - revoke device
 
-### Storage
+---
+
+## Plugin / Extension Layer
+
+Core backend exposes:
+- Plugin Registry
+- Feature Interfaces
+- feature-flag hooks
+
+Enterprise modules (from `okkey-enterprise/`) implement these interfaces.
+Core must run fully without any enterprise plugins.
+
+Example load order:
+
+```
+loadCorePlugins()
+
+if enterprise_enabled:
+    loadEnterprisePlugins()
+```
+
+Enterprise features are gated by:
+- license key validation
+- feature flags
+- deployment mode
+
+---
+
+## Storage
 
 PostgreSQL:
 - users

@@ -231,3 +231,7 @@ Main rules:
 3. device authorization is mandatory
 4. new devices require confirmation
 5. private keys are always stored encrypted
+## Enterprise Authentication Extensions
+
+Enterprise authentication (SAML, OIDC, LDAP, SCIM provisioning) is implemented in the private `okkey-enterprise/` repo.
+Core auth flows remain fully functional without enterprise modules.

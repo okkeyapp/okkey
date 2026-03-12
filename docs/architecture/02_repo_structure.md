@@ -1,7 +1,11 @@
-# Okkey Repository Structure
+# Okkey Repository Structure (Open-Source Core)
 
-Okkey uses a **monorepo architecture**.
-This allows all applications to use shared libraries, cryptography, and SDKs.
+Okkey uses an **open-core** model with **two repositories**:
+
+- `okkey/` — open-source core (this repository)
+- `okkey-enterprise/` — private enterprise extensions
+
+This document describes **only the open-source core**.
 
 Main goals of the structure:
 
@@ -10,10 +14,11 @@ Main goals of the structure:
 - separation of backend and clients
 - convenient development and CI/CD
 - support for self-hosted infrastructure
+- clear enterprise extension boundary
 
 ---
 
-# Root Structure
+# Root Structure (okkey/)
 
 ```
 okkey
@@ -23,10 +28,7 @@ okkey
  ├ services/
  ├ rust/
  ├ infrastructure/
- ├ docs/
- │
- ├ CONTEXT.md
- └ README.md
+ └ docs/
 ```
 
 ---
@@ -198,12 +200,11 @@ Contains:
 - API types
 - vault types
 - event types
-- crypto types
 
 ---
 
 ## services
-Okkey backend services.
+Backend services.
 
 ```
 services/
@@ -211,76 +212,23 @@ services/
  └ worker/
 ```
 
-### services/api
-Main backend server.
-
-Technologies:
-- Node.js
-- Typescript
-- Fastify / NestJS
-- PostgreSQL
-- Redis
-
-Main services:
-- Auth Service
-- Vault Service
-- Sharing Service
-- Sync Service
-- Device Service
-
-Backend performs only:
-- authentication
-- sync
-- sharing metadata
-- device management
-- event storage
-
-Backend **never has access to decrypted vault data**.
-
-### services/worker
-Background processes.
-
-Performs:
-- key rotation tasks
-- cleanup
-- email notifications
-- background sync jobs
+The Core backend exposes the **Plugin Registry** and **Feature Interfaces**.
+Enterprise modules implement these interfaces in the `okkey-enterprise/` repo.
 
 ---
 
 ## rust
-Rust components of the system.
+Crypto engine (Rust + WASM).
 
 ```
 rust/
  └ crypto-engine/
 ```
 
-### rust/crypto-engine
-Cryptographic core of Okkey.
-
-Contains:
-- Argon2id
-- XChaCha20-Poly1305
-- Ed25519
-- X25519
-- HKDF
-- secure random
-
-Compiles to:
-- WASM
-
-Used by:
-- packages/crypto
-- apps/web
-- apps/mobile
-- apps/desktop
-- apps/extension
-
 ---
 
 ## infrastructure
-Deployment infrastructure.
+Self-hosting and deployment artifacts.
 
 ```
 infrastructure/
@@ -289,37 +237,9 @@ infrastructure/
  └ kubernetes/
 ```
 
-### infrastructure/docker
-Docker configuration.
-
-Contains:
-- docker-compose.yml
-- Dockerfiles
-
-For running self-hosted:
-```
-docker compose up
-```
-
-### infrastructure/terraform
-Infrastructure as Code.
-
-Used for SaaS deployment.
-
-### infrastructure/kubernetes
-Kubernetes deployment manifests.
-
-For enterprise and cloud clusters.
-
 ---
 
-## docs
-Project documentation.
+# Enterprise Repository (Separate)
 
-```
-docs/
- └ architecture/
-```
-
-### docs/architecture
-Architectural documents.
+Enterprise code lives in `okkey-enterprise/` and contains only extensions.
+See `okkey-enterprise/docs/architecture/` for details.

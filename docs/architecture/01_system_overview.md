@@ -8,9 +8,23 @@ Okkey is an end-to-end encrypted password manager with support for:
 - Browser extensions
 - SaaS and Self-Hosted deployments
 
-Main goal of the architecture — security, scalability, and a single codebase for all clients.
+Main goal of the architecture is security, scalability, and a single codebase for all clients.
+Terminology is defined in `docs/glossary.md`.
 
-## Okkey General Architecture
+---
+
+## Open-Core Separation
+
+Okkey uses an **open-core** model:
+
+- `okkey/` contains the full open-source core
+- `okkey-enterprise/` contains private enterprise extensions
+
+Enterprise modules are **extensions over Core** (Plugins + Feature Interfaces) and never required for Core to run.
+
+---
+
+## Okkey General Architecture (Core)
 
                         ┌────────────────────────────┐
                         │           Clients          │
@@ -24,7 +38,7 @@ Main goal of the architecture — security, scalability, and a single codebase f
                                       │ HTTPS / WebSocket
                                       │
                         ┌─────────────▼──────────────┐
-                        │         Okkey API          │
+                        │       Okkey Core API       │
                         │                            │
                         │ Auth Service               │
                         │ Vault Service              │
@@ -44,6 +58,28 @@ Main goal of the architecture — security, scalability, and a single codebase f
         │ vault meta   │      │ cache        │      │ files        │
         │ sharing meta │      │ locks        │      │ backups      │
         └──────────────┘      └──────────────┘      └──────────────┘
+
+---
+
+## Optional Enterprise Extension (Separate Repo)
+
+Enterprise modules plug into the Core API via Feature Interfaces and the Plugin Registry.
+
+                        ┌────────────────────────────┐
+                        │   Enterprise Extensions    │
+                        │  (okkey-enterprise repo)   │
+                        │                            │
+                        │  SSO / SCIM / Audit        │
+                        │  Org Policies / Admin      │
+                        └─────────────┬──────────────┘
+                                      │
+                                      │ Feature Interfaces
+                                      ▼
+                        ┌────────────────────────────┐
+                        │       Okkey Core API       │
+                        └────────────────────────────┘
+
+---
 
 ## Cryptography (Rust Crypto Engine)
 
@@ -123,7 +159,7 @@ Clients
 │
 │ HTTPS / WebSocket
 ▼
-Okkey API
+Okkey Core API
 │
 ├ PostgreSQL
 ├ Redis
@@ -145,7 +181,7 @@ Okkey API
 
 ### Backend
 
-Okkey API is responsible for:
+Okkey Core API is responsible for:
 
 - authentication
 - synchronization
