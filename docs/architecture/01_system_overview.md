@@ -24,6 +24,18 @@ Enterprise modules are **extensions over Core** (Plugins + Feature Interfaces) a
 
 ---
 
+## Core Domain Model
+
+Key product concepts (see `docs/glossary.md`):
+
+- User and trusted Device
+- Storage / Account (user data container)
+- Workspace (group of vaults and members)
+- Vault (secure container with its own key)
+- Item (record inside a vault)
+
+---
+
 ## Okkey General Architecture (Core)
 
                         ┌────────────────────────────┐

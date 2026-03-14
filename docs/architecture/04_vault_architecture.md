@@ -35,6 +35,8 @@ Examples:
 
 Each vault has its own key (VaultKey)
 
+Vaults can be personal or shared. A personal vault is created for every member by default, cannot be deleted, and remains in the workspace even if the member is removed. If the member is re-invited, their personal vault and items become available again.
+
 ### Item
 
 Item is a record inside vault.
@@ -59,6 +61,19 @@ tags
 created_at
 updated_at
 ```
+
+---
+
+## Fields and Sections
+
+Items consist of typed fields (text, password, TOTP, URL, note, file, etc.). Fields are grouped into named sections. Preset sections and fields appear first, while custom sections and fields can be reordered by the user.
+
+---
+
+## Folders
+
+Folders are personal, user-only groupings of items. Folders can be nested. Deleting a folder does not delete items inside it.
+Folder definitions and assignments are synchronized as encrypted metadata.
 
 ---
 
@@ -95,10 +110,16 @@ Server stores only:
 
 ---
 
+## Capsules (Secure Sharing)
+
+Capsules allow secure sharing of an entire item, a specific field, or a file. Capsules support controls such as expiration time, view limits, password access, and recipient restrictions. The shared content is decrypted only on the recipient side.
+
+---
+
 ## Access Roles
 
-Workspace supports roles. By default there are 3 roles: owner, admin, user with their own permissions.
-Also owner and admin can create additional roles with various access rights to workspace settings sections, as well as to functional parts of these sections.
+Workspace supports roles. By default there are 3 roles: Owner, Admin, User, each with specific permissions.
+Owners and Admins can create custom roles with access rights to workspace settings sections and functional parts of those sections.
 
 ---
 
@@ -108,8 +129,8 @@ Vault supports customizable profiles.
 Profiles are needed for distributing access to records in vaults, record fields, and functional parts of records.
 
 There are 2 built-in profiles that cannot be changed or deleted:
-- Extended - Automatically applied to owners and admins
-- Simple - Rights to read records and save to personal vault
+- Extended - automatically applied to Owners and Admins
+- Simple - rights to read records and save to personal vault
 
 You can also create additional profiles with flexible permissions, for example:
 - Freelancer 1 - access to 3 categories of records, to selected record fields, only Mon-Fri 9:00-18:00

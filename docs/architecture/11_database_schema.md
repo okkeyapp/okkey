@@ -19,10 +19,15 @@ users
 devices
 sessions
 workspaces
+workspace_members
+roles
+profiles
 vaults
 vault_members
+vault_profiles
 vault_keys
 items
+capsules
 events
 attachments
 ```
@@ -72,7 +77,45 @@ Logical vault group.
 id (uuid)
 name
 owner_id
+plan_tier
 created_at
+```
+
+### workspace_members
+
+Members of a workspace with assigned roles.
+```text
+id (uuid)
+workspace_id
+user_id
+role_id
+created_at
+```
+
+### roles
+
+Workspace roles and their permissions.
+```text
+id (uuid)
+workspace_id
+name
+permissions_json
+is_system
+created_at
+updated_at
+```
+
+### profiles
+
+Vault access profiles for items, fields, and actions.
+```text
+id (uuid)
+workspace_id
+name
+permissions_json
+is_system
+created_at
+updated_at
 ```
 
 ### vaults
@@ -94,6 +137,17 @@ id (uuid)
 vault_id
 user_id
 role
+created_at
+```
+
+### vault_profiles
+
+Profile assignments per user per vault.
+```text
+id (uuid)
+vault_id
+user_id
+profile_id
 created_at
 ```
 
@@ -126,8 +180,26 @@ encrypted_data contains:
 ```text
 title
 fields
+sections
+folder_ids
 notes
 tags
+```
+
+### capsules
+
+Secure share links and their encrypted payloads.
+```text
+id (uuid)
+workspace_id
+creator_id
+type
+encrypted_payload
+access_policy
+expires_at
+view_limit
+view_count
+created_at
 ```
 
 ### events
@@ -193,16 +265,24 @@ enterprise_settings
 User
 └ Devices
 └ Sessions
+└ WorkspaceMembers
 └ VaultMembers
+└ VaultProfiles
 
 Workspace
+└ WorkspaceMembers
+└ Roles
+└ Profiles
 └ Vaults
+└ Capsules
 
 Vault
 └ VaultMembers
+└ VaultProfiles
 └ VaultKeys
 └ Items
 └ Events
+└ Attachments
 ```
 
 ---

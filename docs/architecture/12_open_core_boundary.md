@@ -15,6 +15,38 @@ The open-source core must:
 
 ---
 
+## Free (Open-Source) Functionality
+
+The open-source Core provides the FREE plan baseline:
+
+- Upgrade to paid tiers is available only in SaaS or self-hosted deployments with a license.
+- Authentication via email + email code.
+- 2FA: authenticator app and backup codes.
+- Self-hosted: only one workspace; enterprise features unavailable.
+- SaaS: users can create FREE workspaces and upgrade to higher tiers.
+- One personal vault per workspace; shared vaults are unavailable.
+- Files are unavailable.
+- Folders are available.
+- Capsules are unavailable.
+- Monitoring is unavailable.
+- Tools are available: generator, import, export.
+- Workspace settings: main settings available.
+- Workspace settings: roles view-only for default roles.
+- Workspace settings: profiles view-only for default profiles.
+- Workspace settings: members view-only, owner only.
+- Workspace settings: vaults view-only, personal vault only.
+- Workspace settings: change plan available.
+- Workspace settings: payments and billing available.
+- Workspace settings: license available.
+- Personal settings: main settings available.
+- Personal settings: storage available except confidential sections, biometrics, and PIN.
+- Personal settings: login methods only email confirmation.
+- Personal settings: 2FA only authenticator app and backup codes.
+- Personal settings: recovery unavailable.
+- Personal settings: devices available.
+
+---
+
 ## Enterprise Rules
 
 Enterprise code:
