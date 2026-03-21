@@ -5,8 +5,13 @@ import { createCorsMiddleware } from "./middleware/cors.ts";
 import { createErrorHandlerMiddleware } from "./middleware/error-handler.ts";
 import { createRequestLoggerMiddleware } from "./middleware/request-logger.ts";
 import { healthRouteHandler } from "./routes/health.ts";
+import { createReadyRouteHandler } from "./routes/ready.ts";
 
-export function createApiApp(config: ApiConfig, logger: Logger): HttpApp {
+export function createApiApp(
+  config: ApiConfig,
+  logger: Logger,
+  readyCheck: () => Promise<void> = async () => {},
+): HttpApp {
   const app = new HttpApp();
 
   app.use(createErrorHandlerMiddleware(logger));
@@ -14,7 +19,7 @@ export function createApiApp(config: ApiConfig, logger: Logger): HttpApp {
   app.use(createRequestLoggerMiddleware(logger));
 
   app.route("GET", "/health", healthRouteHandler);
-  app.route("GET", "/ready", healthRouteHandler);
+  app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
 
   return app;
 }

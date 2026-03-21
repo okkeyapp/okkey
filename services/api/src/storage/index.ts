@@ -1,0 +1,59 @@
+import type { ApiConfig } from "../config.ts";
+import type { Logger } from "../logger.ts";
+import { PostgresDatabase } from "./postgres.ts";
+import { RedisCache } from "./redis.ts";
+import {
+  EventsRepository,
+  ItemsRepository,
+  UsersRepository,
+  VaultsRepository,
+  WorkspacesRepository,
+} from "./repositories.ts";
+
+export interface StorageLayer {
+  postgres: PostgresDatabase;
+  redis: RedisCache;
+  repositories: {
+    users: UsersRepository;
+    workspaces: WorkspacesRepository;
+    vaults: VaultsRepository;
+    items: ItemsRepository;
+    events: EventsRepository;
+  };
+  ping(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export async function createStorageLayer(
+  config: ApiConfig,
+  logger: Logger,
+): Promise<StorageLayer> {
+  const postgres = await PostgresDatabase.connect(config.databaseUrl);
+  const redis = await RedisCache.connect(config.redisUrl);
+
+  const repositories = {
+    users: new UsersRepository(postgres),
+    workspaces: new WorkspacesRepository(postgres),
+    vaults: new VaultsRepository(postgres),
+    items: new ItemsRepository(postgres),
+    events: new EventsRepository(postgres),
+  };
+
+  logger.info("storage initialized", {
+    postgres: "connected",
+    redis: "connected",
+  });
+
+  return {
+    postgres,
+    redis,
+    repositories,
+    async ping() {
+      await postgres.ping();
+      await redis.ping();
+    },
+    async close() {
+      await Promise.all([postgres.close(), redis.close()]);
+    },
+  };
+}

@@ -125,6 +125,15 @@ Object Storage:
 - attachments
 - backups
 
+### Storage Layer
+
+Core backend uses a dedicated storage layer (`services/api/src/storage`) with:
+- Postgres connection and transaction wrapper
+- Redis connection and cache/session helpers
+- Base repositories for `users`, `workspaces`, `vaults`, `items`, `events`
+
+Repositories are the only access point to persistent storage for service handlers.
+
 ---
 
 ## Security Principle

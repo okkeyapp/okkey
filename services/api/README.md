@@ -7,6 +7,10 @@
 - единая точка входа: `src/index.ts`
 - загрузка env из `services/api/.env` и `services/api/.env.local`
 - базовый роутинг
+- storage layer:
+  - Postgres клиент + транзакции
+  - Redis клиент
+  - репозитории `users/workspaces/vaults/items/events`
 - middleware:
   - обработка ошибок
   - CORS
@@ -31,10 +35,18 @@ yarn dev:api
 
 По умолчанию API стартует на `http://localhost:4000`.
 
+Важно: для запуска storage layer нужны зависимости `pg` и `redis`.
+
 ## Тесты каркаса
 
 Из корня репозитория:
 
 ```bash
 yarn test:api
+```
+
+Для integration-тестов storage должны быть подняты Postgres/Redis:
+
+```bash
+yarn infra:up
 ```

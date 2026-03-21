@@ -50,8 +50,9 @@ async function dispatch(
   method: string,
   url: string,
   logger = createLoggerStub(),
+  readyCheck: () => Promise<void> = async () => {},
 ): Promise<{ res: MockResponse; logger: ReturnType<typeof createLoggerStub> }> {
-  const app = createApiApp(testConfig, logger);
+  const app = createApiApp(testConfig, logger, readyCheck);
   const handler = app.handler();
   const req = { method, url } as IncomingMessage;
   const res = new MockResponse();
@@ -106,4 +107,25 @@ test("error middleware catches thrown handler error and returns 500", async () =
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "INTERNAL_SERVER_ERROR");
   assert.equal(logger.errorCalls.length, 1);
+});
+
+test("GET /ready returns 200 when readiness check is successful", async () => {
+  const { res } = await dispatch("GET", "/ready", createLoggerStub(), async () => {});
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { status: string };
+  assert.equal(payload.status, "ready");
+});
+
+test("GET /ready returns 503 when readiness check fails", async () => {
+  const { res } = await dispatch(
+    "GET",
+    "/ready",
+    createLoggerStub(),
+    async () => {
+      throw new Error("storage unavailable");
+    },
+  );
+  assert.equal(res.statusCode, 503);
+  const payload = JSON.parse(res.body) as { status: string };
+  assert.equal(payload.status, "not_ready");
 });

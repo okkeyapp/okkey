@@ -1,0 +1,159 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  EventsRepository,
+  ItemsRepository,
+  UsersRepository,
+  VaultsRepository,
+  WorkspacesRepository,
+} from "../src/storage/repositories.ts";
+import { VersionConflictError } from "../src/storage/errors.ts";
+
+class FakeDb {
+  readonly queries: Array<{ sql: string; params: unknown[] }> = [];
+  readonly queue: unknown[][] = [];
+
+  enqueueResult(rows: unknown[]): void {
+    this.queue.push(rows);
+  }
+
+  async query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+    this.queries.push({ sql, params });
+    const next = this.queue.shift();
+    return (next ?? []) as T[];
+  }
+
+  async transaction<T>(fn: (tx: FakeDb) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
+}
+
+test("UsersRepository.create maps inserted row", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "u1",
+      email: "dev@okkey.local",
+      public_key: "pk",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const repo = new UsersRepository(db);
+  const user = await repo.create({
+    email: "dev@okkey.local",
+    publicKey: "pk",
+    encryptedPrivateKey: new Uint8Array([1, 2, 3]),
+    serverKeyShare: new Uint8Array([4, 5]),
+  });
+
+  assert.equal(user.id, "u1");
+  assert.equal(user.publicKey, "pk");
+  assert.equal(db.queries.length, 1);
+  assert.match(db.queries[0].sql, /INSERT INTO users/);
+});
+
+test("WorkspacesRepository.listByOwner returns mapped workspaces", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "w1",
+      name: "Acme",
+      owner_id: "u1",
+      plan_tier: "FREE",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const repo = new WorkspacesRepository(db);
+  const items = await repo.listByOwner("u1");
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].ownerId, "u1");
+  assert.match(db.queries[0].sql, /FROM workspaces/);
+});
+
+test("VaultsRepository.findById returns null for absent row", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([]);
+
+  const repo = new VaultsRepository(db);
+  const result = await repo.findById("missing");
+
+  assert.equal(result, null);
+});
+
+test("ItemsRepository.listByVault maps encrypted data", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "i1",
+      vault_id: "v1",
+      encrypted_data: Buffer.from([7, 8, 9]),
+      version: 3,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const repo = new ItemsRepository(db);
+  const rows = await repo.listByVault("v1");
+
+  assert.equal(rows[0].vaultId, "v1");
+  assert.deepEqual(Array.from(rows[0].encryptedData), [7, 8, 9]);
+});
+
+test("EventsRepository.append increments version in transaction", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([{ id: "v1" }]); // lock vault
+  db.enqueueResult([{ current_version: 4 }]); // get current version
+  db.enqueueResult([
+    {
+      id: "e1",
+      vault_id: "v1",
+      actor_id: "u1",
+      event_type: "ITEM_UPDATE",
+      encrypted_payload: Buffer.from([10]),
+      version: 5,
+      created_at: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const repo = new EventsRepository(db);
+  const event = await repo.append({
+    vaultId: "v1",
+    actorId: "u1",
+    eventType: "ITEM_UPDATE",
+    encryptedPayload: new Uint8Array([10]),
+    baseVersion: 4,
+  });
+
+  assert.equal(event.version, 5);
+  assert.equal(db.queries.length, 3);
+  assert.match(db.queries[0].sql, /FOR UPDATE/);
+});
+
+test("EventsRepository.append throws VersionConflictError", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([{ id: "v1" }]); // lock vault
+  db.enqueueResult([{ current_version: 7 }]); // current version
+
+  const repo = new EventsRepository(db);
+
+  await assert.rejects(
+    () =>
+      repo.append({
+        vaultId: "v1",
+        actorId: "u1",
+        eventType: "ITEM_UPDATE",
+        encryptedPayload: new Uint8Array([10]),
+        baseVersion: 2,
+      }),
+    (error: unknown) =>
+      error instanceof VersionConflictError &&
+      error.expectedVersion === 2 &&
+      error.actualVersion === 7,
+  );
+});

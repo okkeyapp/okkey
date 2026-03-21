@@ -9,6 +9,8 @@ export interface ApiConfig {
   port: number;
   logLevel: string;
   corsOrigin: string;
+  databaseUrl: string;
+  redisUrl: string;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,5 +76,8 @@ export function loadConfig(): ApiConfig {
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
     corsOrigin: process.env.CORS_ORIGIN ?? "*",
+    databaseUrl:
+      process.env.DATABASE_URL ?? "postgresql://okkey:okkey@localhost:5432/okkey",
+    redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
   };
 }
