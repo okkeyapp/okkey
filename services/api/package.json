@@ -1,0 +1,5 @@
+{
+  "name": "@okkey/service-api",
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,20 @@
+import type { ApiConfig } from "./config.ts";
+import { HttpApp } from "./http.ts";
+import type { Logger } from "./logger.ts";
+import { createCorsMiddleware } from "./middleware/cors.ts";
+import { createErrorHandlerMiddleware } from "./middleware/error-handler.ts";
+import { createRequestLoggerMiddleware } from "./middleware/request-logger.ts";
+import { healthRouteHandler } from "./routes/health.ts";
+
+export function createApiApp(config: ApiConfig, logger: Logger): HttpApp {
+  const app = new HttpApp();
+
+  app.use(createErrorHandlerMiddleware(logger));
+  app.use(createCorsMiddleware(config.corsOrigin));
+  app.use(createRequestLoggerMiddleware(logger));
+
+  app.route("GET", "/health", healthRouteHandler);
+  app.route("GET", "/ready", healthRouteHandler);
+
+  return app;
+}
