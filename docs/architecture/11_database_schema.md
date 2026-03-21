@@ -51,11 +51,26 @@ Registered devices.
 ```text
 id (uuid)
 user_id
+device_fingerprint
 device_name
 device_public_key
 device_share
+platform
+os_name
+os_version
+app_version
+client_type
+user_agent
+ip_first
+ip_last
+status (trusted|pending|revoked)
 created_at
 last_seen_at
+revoked_at
+```
+Unique key:
+```text
+(user_id, device_fingerprint, device_public_key)
 ```
 
 ### sessions

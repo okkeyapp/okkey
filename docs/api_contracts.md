@@ -164,3 +164,44 @@ Sync errors:
 - `SYNC_INVALID_EVENT_TYPE` (400)
 - `SYNC_INVALID_PAYLOAD` (400)
 - `VERSION_MISMATCH` (409)
+
+## Devices
+
+### POST /devices/register
+Headers:
+```text
+X-User-Id: <user-id>
+X-Forwarded-For: <ip>
+```
+Request:
+```json
+{
+  "device_public_key": "base64-public-key",
+  "device_share": "base64-device-share",
+  "device_fingerprint": "0123abcd...",
+  "device_name": "MacBook Pro",
+  "platform": "desktop",
+  "os_name": "macOS",
+  "os_version": "14.5",
+  "app_version": "1.0.0",
+  "client_type": "desktop",
+  "user_agent": "okkey-desktop/1.0.0"
+}
+```
+Response:
+```json
+{
+  "device_id": "device-id",
+  "status": "trusted"
+}
+```
+Possible `status` values:
+- `trusted`
+- `pending_approval`
+
+Device errors:
+- `AUTH_REQUIRED` (401)
+- `DEVICE_BAD_REQUEST` (400)
+- `DEVICE_INVALID_FINGERPRINT` (400)
+- `DEVICE_INVALID_PUBLIC_KEY` (400)
+- `DEVICE_DUPLICATE_CONFLICT` (409)

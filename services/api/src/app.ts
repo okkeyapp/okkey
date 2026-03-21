@@ -1,5 +1,6 @@
 import type { AuthService } from "./auth/service.ts";
 import type { ApiConfig } from "./config.ts";
+import type { DeviceService } from "./device/service.ts";
 import { HttpApp } from "./http.ts";
 import type { Logger } from "./logger.ts";
 import { createCorsMiddleware } from "./middleware/cors.ts";
@@ -12,6 +13,7 @@ import {
 } from "./routes/auth-email.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
+import { createRegisterDeviceRoute } from "./routes/devices.ts";
 import {
   createSyncEventsAppendRoute,
   createSyncEventsListRoute,
@@ -28,6 +30,7 @@ export interface AppDeps {
   authService?: AuthService;
   vaultService?: VaultService;
   syncService?: SyncService;
+  deviceService?: DeviceService;
 }
 
 export function createApiApp(
@@ -68,6 +71,9 @@ export function createApiApp(
       "/vaults/:vaultId/events",
       createSyncEventsAppendRoute(deps.syncService),
     );
+  }
+  if (deps.deviceService) {
+    app.route("POST", "/devices/register", createRegisterDeviceRoute(deps.deviceService));
   }
 
   return app;

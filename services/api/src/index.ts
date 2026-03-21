@@ -2,6 +2,7 @@ import { AuthService } from "./auth/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { DeviceService } from "./device/service.ts";
 import { createEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { createStorageLayer } from "./storage/index.ts";
@@ -32,11 +33,15 @@ async function main(): Promise<void> {
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
   });
+  const deviceService = new DeviceService({
+    devices: storage.repositories.devices,
+  });
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),
     authService,
     vaultService,
     syncService,
+    deviceService,
   });
 
   const server = createServer(app.handler());

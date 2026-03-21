@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  DevicesRepository,
   EventsRepository,
   ItemsRepository,
   UsersRepository,
@@ -103,6 +104,55 @@ test("ItemsRepository.listByVault maps encrypted data", async () => {
 
   assert.equal(rows[0].vaultId, "v1");
   assert.deepEqual(Array.from(rows[0].encryptedData), [7, 8, 9]);
+});
+
+test("DevicesRepository.registerOrUpdate returns mapped device row", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    {
+      id: "d1",
+      user_id: "u1",
+      device_fingerprint: "a".repeat(64),
+      device_name: "MacBook Pro",
+      device_public_key: Buffer.from("pk").toString("base64"),
+      device_share: Buffer.from([1, 2, 3]),
+      platform: "desktop",
+      os_name: "macOS",
+      os_version: "14.5",
+      app_version: "1.0.0",
+      client_type: "desktop",
+      user_agent: "ua",
+      ip_first: "10.0.0.1",
+      ip_last: "10.0.0.1",
+      status: "pending",
+      created_at: "2026-01-01T00:00:00.000Z",
+      last_seen_at: null,
+      revoked_at: null,
+    },
+  ]);
+
+  const repo = new DevicesRepository(db);
+  const result = await repo.registerOrUpdate({
+    userId: "u1",
+    deviceFingerprint: "a".repeat(64),
+    deviceName: "MacBook Pro",
+    devicePublicKey: Buffer.from("pk").toString("base64"),
+    deviceShare: new Uint8Array([1, 2, 3]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "ua",
+    requestIp: "10.0.0.1",
+    now: "2026-01-01T00:00:00.000Z",
+  });
+
+  assert.equal(result.id, "d1");
+  assert.equal(result.status, "pending");
+  assert.equal(result.ipFirst, "10.0.0.1");
+  assert.equal(db.queries.length, 1);
+  assert.match(db.queries[0].sql, /INSERT INTO devices/);
 });
 
 test("EventsRepository.append increments version in transaction", async () => {

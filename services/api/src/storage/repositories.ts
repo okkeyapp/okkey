@@ -316,6 +316,177 @@ export interface ItemRecord {
   updatedAt: string;
 }
 
+export interface DeviceRecord {
+  id: string;
+  userId: string;
+  deviceFingerprint: string;
+  deviceName: string;
+  devicePublicKey: string;
+  deviceShare: Uint8Array;
+  platform: string;
+  osName: string;
+  osVersion: string;
+  appVersion: string;
+  clientType: string;
+  userAgent: string;
+  ipFirst: string;
+  ipLast: string;
+  status: "trusted" | "pending" | "revoked";
+  createdAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+export class DevicesRepository {
+  private readonly db: QueryExecutor;
+
+  constructor(db: QueryExecutor) {
+    this.db = db;
+  }
+
+  async registerOrUpdate(input: {
+    userId: string;
+    deviceFingerprint: string;
+    deviceName: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    platform: string;
+    osName: string;
+    osVersion: string;
+    appVersion: string;
+    clientType: string;
+    userAgent: string;
+    requestIp: string;
+    now: string;
+  }): Promise<DeviceRecord> {
+    try {
+      const rows = await this.db.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        revoked_at: string | Date | null;
+      }>(
+        `
+          INSERT INTO devices (
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            last_seen_at,
+            revoked_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            $12,
+            'pending',
+            NULL,
+            NULL
+          )
+          ON CONFLICT (user_id, device_fingerprint, device_public_key)
+          DO UPDATE SET
+            device_share = EXCLUDED.device_share,
+            device_name = EXCLUDED.device_name,
+            platform = EXCLUDED.platform,
+            os_name = EXCLUDED.os_name,
+            os_version = EXCLUDED.os_version,
+            app_version = EXCLUDED.app_version,
+            client_type = EXCLUDED.client_type,
+            user_agent = EXCLUDED.user_agent,
+            status = CASE
+              WHEN devices.status = 'trusted' THEN 'trusted'
+              ELSE 'pending'
+            END,
+            revoked_at = CASE
+              WHEN devices.status = 'trusted' THEN devices.revoked_at
+              ELSE NULL
+            END,
+            last_seen_at = CASE
+              WHEN devices.status = 'trusted' THEN $13::timestamptz
+              ELSE devices.last_seen_at
+            END,
+            ip_last = CASE
+              WHEN devices.status = 'trusted' THEN EXCLUDED.ip_last
+              ELSE devices.ip_last
+            END
+          RETURNING
+            id,
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            created_at,
+            last_seen_at,
+            revoked_at
+        `,
+        [
+          input.userId,
+          input.deviceFingerprint,
+          input.deviceName,
+          input.devicePublicKey,
+          Buffer.from(input.deviceShare),
+          input.platform,
+          input.osName,
+          input.osVersion,
+          input.appVersion,
+          input.clientType,
+          input.userAgent,
+          input.requestIp,
+          input.now,
+        ],
+      );
+
+      return mapDevice(rows[0]);
+    } catch (error) {
+      throw toUniqueError(error);
+    }
+  }
+}
+
 export class ItemsRepository {
   private readonly db: QueryExecutor;
 
@@ -518,6 +689,58 @@ function mapItem(
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
+}
+
+function mapDevice(row: {
+  id: string;
+  user_id: string;
+  device_fingerprint: string;
+  device_name: string;
+  device_public_key: string;
+  device_share: Buffer;
+  platform: string;
+  os_name: string;
+  os_version: string;
+  app_version: string;
+  client_type: string;
+  user_agent: string;
+  ip_first: string;
+  ip_last: string;
+  status: "trusted" | "pending" | "revoked";
+  created_at: string | Date;
+  last_seen_at: string | Date | null;
+  revoked_at: string | Date | null;
+}): DeviceRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    deviceFingerprint: row.device_fingerprint,
+    deviceName: row.device_name,
+    devicePublicKey: row.device_public_key,
+    deviceShare: Uint8Array.from(row.device_share),
+    platform: row.platform,
+    osName: row.os_name,
+    osVersion: row.os_version,
+    appVersion: row.app_version,
+    clientType: row.client_type,
+    userAgent: row.user_agent,
+    ipFirst: row.ip_first,
+    ipLast: row.ip_last,
+    status: row.status,
+    createdAt: toIsoString(row.created_at) ?? new Date(0).toISOString(),
+    lastSeenAt: toIsoString(row.last_seen_at),
+    revokedAt: toIsoString(row.revoked_at),
+  };
+}
+
+function toIsoString(value: string | Date | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return value;
 }
 
 function mapEvent(row: {

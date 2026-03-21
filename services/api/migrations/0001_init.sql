@@ -55,11 +55,23 @@ CREATE TABLE workspace_members (
 CREATE TABLE devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_fingerprint text NOT NULL,
   device_name text NOT NULL,
   device_public_key text NOT NULL,
   device_share bytea NOT NULL,
+  platform text NOT NULL,
+  os_name text NOT NULL,
+  os_version text NOT NULL,
+  app_version text NOT NULL,
+  client_type text NOT NULL,
+  user_agent text NOT NULL,
+  ip_first text NOT NULL,
+  ip_last text NOT NULL,
+  status text NOT NULL CHECK (status IN ('trusted', 'pending', 'revoked')),
   created_at timestamptz NOT NULL DEFAULT now(),
-  last_seen_at timestamptz
+  last_seen_at timestamptz,
+  revoked_at timestamptz,
+  UNIQUE (user_id, device_fingerprint, device_public_key)
 );
 
 CREATE TABLE sessions (
@@ -153,6 +165,7 @@ CREATE TABLE attachments (
 
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_devices_user_id ON devices(user_id);
+CREATE INDEX idx_devices_user_id_status ON devices(user_id, status);
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);

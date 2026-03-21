@@ -3,6 +3,7 @@ import type { Logger } from "../logger.ts";
 import { PostgresDatabase } from "./postgres.ts";
 import { RedisCache } from "./redis.ts";
 import {
+  DevicesRepository,
   EventsRepository,
   ItemsRepository,
   UsersRepository,
@@ -19,6 +20,7 @@ export interface StorageLayer {
     vaults: VaultsRepository;
     items: ItemsRepository;
     events: EventsRepository;
+    devices: DevicesRepository;
   };
   ping(): Promise<void>;
   close(): Promise<void>;
@@ -37,6 +39,7 @@ export async function createStorageLayer(
     vaults: new VaultsRepository(postgres),
     items: new ItemsRepository(postgres),
     events: new EventsRepository(postgres),
+    devices: new DevicesRepository(postgres),
   };
 
   logger.info("storage initialized", {

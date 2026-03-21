@@ -1,0 +1,186 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { createApiApp } from "../src/app.ts";
+import type { ApiConfig } from "../src/config.ts";
+import { DeviceServiceError, type DeviceService } from "../src/device/service.ts";
+
+class MockResponse {
+  statusCode = 200;
+  writableEnded = false;
+  body = "";
+  private readonly headers = new Map<string, string>();
+
+  setHeader(name: string, value: string): void {
+    this.headers.set(name.toLowerCase(), value);
+  }
+
+  end(chunk?: string): void {
+    if (chunk) {
+      this.body += chunk;
+    }
+    this.writableEnded = true;
+  }
+}
+
+function loggerStub() {
+  return {
+    info(_message: string, _extra?: Record<string, unknown>) {},
+    error(_message: string, _extra?: Record<string, unknown>) {},
+  };
+}
+
+const config: ApiConfig = {
+  nodeEnv: "test",
+  port: 4000,
+  logLevel: "debug",
+  corsOrigin: "*",
+  databaseUrl: "",
+  redisUrl: "",
+  authCodeTtlSeconds: 300,
+  authResendCooldownSeconds: 60,
+  authCodeMaxAttempts: 5,
+  authRateLimitWindowSeconds: 600,
+  authRateLimitStartPerEmail: 5,
+  authRateLimitStartPerIp: 10,
+  authRateLimitConfirmPerIp: 30,
+  authRateLimitResendPerIp: 10,
+  defaultEmailLocale: "en",
+  emailFrom: "no-reply@okkey.local",
+  emailProvider: "logger",
+  smtpHost: "localhost",
+  smtpPort: 1025,
+  smtpSecure: false,
+  smtpUser: "",
+  smtpPassword: "",
+  emailApiEndpoint: "",
+  emailApiKey: "",
+  emailApiTimeoutMs: 10000,
+};
+
+function createDeviceServiceStub(overrides?: Partial<DeviceService>): DeviceService {
+  return {
+    registerDevice: async () => ({
+      deviceId: "d1",
+      status: "pending_approval",
+    }),
+    ...(overrides ?? {}),
+  } as unknown as DeviceService;
+}
+
+async function dispatch(input: {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  deviceService?: DeviceService;
+}) {
+  const app = createApiApp(config, loggerStub(), {
+    deviceService: input.deviceService ?? createDeviceServiceStub(),
+  });
+  const req = {
+    method: input.method,
+    url: input.url,
+    headers: input.headers ?? {},
+    body: input.body,
+  } as IncomingMessage;
+  const res = new MockResponse();
+
+  await app.handler()(req, res as unknown as ServerResponse);
+  return res;
+}
+
+function registerBody() {
+  return {
+    device_public_key: Buffer.from("pk").toString("base64"),
+    device_share: Buffer.from("share").toString("base64"),
+    device_fingerprint: "a".repeat(64),
+    device_name: "MacBook Pro",
+    platform: "desktop",
+    os_name: "macOS",
+    os_version: "14.5",
+    app_version: "1.0.0",
+    client_type: "desktop",
+  };
+}
+
+test("POST /devices/register requires x-user-id", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    body: registerBody(),
+  });
+
+  assert.equal(res.statusCode, 401);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "AUTH_REQUIRED");
+});
+
+test("POST /devices/register validates required fields", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { "x-user-id": "u1" },
+    body: { device_name: "Device" },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_BAD_REQUEST");
+});
+
+test("POST /devices/register returns trusted", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { "x-user-id": "u1", "x-forwarded-for": "10.0.0.1" },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => ({ deviceId: "d1", status: "trusted" }),
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { status: string; device_id: string };
+  assert.equal(payload.status, "trusted");
+  assert.equal(payload.device_id, "d1");
+});
+
+test("POST /devices/register returns pending_approval", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { "x-user-id": "u1", "x-forwarded-for": "10.0.0.1" },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => ({ deviceId: "d2", status: "pending_approval" }),
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { status: string; device_id: string };
+  assert.equal(payload.status, "pending_approval");
+  assert.equal(payload.device_id, "d2");
+});
+
+test("POST /devices/register maps service error codes", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/register",
+    headers: { "x-user-id": "u1", "x-forwarded-for": "10.0.0.1" },
+    body: registerBody(),
+    deviceService: createDeviceServiceStub({
+      registerDevice: async () => {
+        throw new DeviceServiceError(
+          "DEVICE_INVALID_PUBLIC_KEY",
+          400,
+          "invalid device_public_key",
+        );
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_INVALID_PUBLIC_KEY");
+});
