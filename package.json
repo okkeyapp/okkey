@@ -1,0 +1,36 @@
+{
+  "name": "okkey",
+  "version": "0.0.1",
+  "description": "Okkey Core",
+  "homepage": "https://github.com/okkeyapp/okkey#readme",
+  "bugs": {
+    "url": "https://github.com/okkeyapp/okkey/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/okkeyapp/okkey.git"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "okkey",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "engines": {
+    "node": ">=25 <26",
+    "yarn": "^1.22.0"
+  },
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "infra:up": "./scripts/infra.sh up",
+    "infra:down": "./scripts/infra.sh down",
+    "infra:ps": "./scripts/infra.sh ps",
+    "infra:logs": "./scripts/infra.sh logs",
+    "dev:web": "echo 'TODO: add web dev command' && exit 1",
+    "dev:api": "echo 'TODO: add API dev command' && exit 1",
+    "dev:worker": "echo 'TODO: add worker dev command' && exit 1",
+    "test": "echo 'TODO: add unit/integration tests' && exit 1",
+    "test:e2e": "echo 'TODO: add E2E tests' && exit 1"
+  }
+}
