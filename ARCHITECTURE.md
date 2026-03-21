@@ -80,4 +80,5 @@ The **database schema is compatible**: enterprise only adds new tables.
 - docs/architecture/11_database_schema.md
 - docs/architecture/12_open_core_boundary.md
 - docs/architecture/13_domain_model_access.md
+- docs/storage_and_infrastructure.md
 - docs/glossary.md
