@@ -13,15 +13,21 @@ import {
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
+  createSyncEventsAppendRoute,
+  createSyncEventsListRoute,
+} from "./routes/sync.ts";
+import {
   createVaultGetRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
+import type { SyncService } from "./sync/service.ts";
 import type { VaultService } from "./vault/service.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
   authService?: AuthService;
   vaultService?: VaultService;
+  syncService?: SyncService;
 }
 
 export function createApiApp(
@@ -54,6 +60,14 @@ export function createApiApp(
       createWorkspaceVaultsListRoute(deps.vaultService),
     );
     app.route("GET", "/vaults/:vaultId", createVaultGetRoute(deps.vaultService));
+  }
+  if (deps.syncService) {
+    app.route("GET", "/vaults/:vaultId/events", createSyncEventsListRoute(deps.syncService));
+    app.route(
+      "POST",
+      "/vaults/:vaultId/events",
+      createSyncEventsAppendRoute(deps.syncService),
+    );
   }
 
   return app;

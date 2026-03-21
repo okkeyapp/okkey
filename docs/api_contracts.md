@@ -103,3 +103,64 @@ Response:
 ```json
 [{ "id": "item-id", "vaultId": "vault-id", "encryptedData": "...", "version": 1, "createdAt": "...", "updatedAt": "..." }]
 ```
+
+## Sync
+
+### GET /vaults/:vaultId/events?afterVersion=0
+Headers:
+```text
+X-User-Id: <user-id>
+```
+Response:
+```json
+{
+  "vaultId": "vault-id",
+  "afterVersion": 0,
+  "events": [
+    {
+      "id": "event-id",
+      "vaultId": "vault-id",
+      "actorId": "user-id",
+      "eventType": "ITEM_CREATE",
+      "encryptedPayload": "base64...",
+      "version": 1,
+      "createdAt": "..."
+    }
+  ]
+}
+```
+
+### POST /vaults/:vaultId/events
+Headers:
+```text
+X-User-Id: <user-id>
+```
+Request:
+```json
+{
+  "eventType": "ITEM_UPDATE",
+  "encryptedPayload": "base64...",
+  "baseVersion": 1
+}
+```
+Response:
+```json
+{
+  "id": "event-id",
+  "vaultId": "vault-id",
+  "actorId": "user-id",
+  "eventType": "ITEM_UPDATE",
+  "encryptedPayload": "base64...",
+  "version": 2,
+  "createdAt": "..."
+}
+```
+
+Sync errors:
+- `AUTH_REQUIRED` (401)
+- `ACCESS_DENIED` (403)
+- `VAULT_NOT_FOUND` (404)
+- `SYNC_BAD_REQUEST` (400)
+- `SYNC_INVALID_EVENT_TYPE` (400)
+- `SYNC_INVALID_PAYLOAD` (400)
+- `VERSION_MISMATCH` (409)

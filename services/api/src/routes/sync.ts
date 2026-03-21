@@ -1,0 +1,110 @@
+import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import { SyncService, SyncServiceError } from "../sync/service.ts";
+
+interface AppendEventBody {
+  eventType?: string;
+  encryptedPayload?: string;
+  baseVersion?: number;
+}
+
+function getUserId(ctx: Parameters<RouteHandler>[0]): string {
+  const userId = getHeader(ctx.req, "x-user-id");
+  if (!userId) {
+    throw new SyncServiceError("AUTH_REQUIRED", 401, "auth required");
+  }
+  return userId;
+}
+
+export function createSyncEventsListRoute(syncService: SyncService): RouteHandler {
+  return async (ctx) => {
+    const vaultId = ctx.params.vaultId;
+    if (!vaultId) {
+      json(ctx.res, 400, errorPayload("SYNC_BAD_REQUEST", "vaultId is required", ctx.requestId));
+      return;
+    }
+
+    try {
+      const userId = getUserId(ctx);
+      const url = new URL(ctx.req.url ?? "", "http://localhost");
+      const afterVersionRaw = url.searchParams.get("afterVersion") ?? "0";
+      const afterVersion = Number(afterVersionRaw);
+      const events = await syncService.listEvents(vaultId, userId, afterVersion);
+      json(ctx.res, 200, {
+        vaultId,
+        afterVersion,
+        events,
+      });
+    } catch (error) {
+      handleSyncError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createSyncEventsAppendRoute(syncService: SyncService): RouteHandler {
+  return async (ctx) => {
+    const vaultId = ctx.params.vaultId;
+    if (!vaultId) {
+      json(ctx.res, 400, errorPayload("SYNC_BAD_REQUEST", "vaultId is required", ctx.requestId));
+      return;
+    }
+
+    let body: AppendEventBody;
+    try {
+      body = await readJsonBody<AppendEventBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("SYNC_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+
+    if (!body.eventType || !body.encryptedPayload || body.baseVersion === undefined) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "SYNC_BAD_REQUEST",
+          "eventType, encryptedPayload and baseVersion are required",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    try {
+      const userId = getUserId(ctx);
+      const created = await syncService.appendEvent(vaultId, userId, {
+        eventType: body.eventType,
+        encryptedPayload: body.encryptedPayload,
+        baseVersion: body.baseVersion,
+      });
+      json(ctx.res, 201, created);
+    } catch (error) {
+      handleSyncError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+function handleSyncError(
+  requestId: string,
+  res: Parameters<typeof json>[0],
+  error: unknown,
+): void {
+  if (error instanceof SyncServiceError) {
+    json(res, error.statusCode, {
+      error: error.code,
+      message: error.message,
+      requestId,
+      ...(error.details ? { details: error.details } : {}),
+    });
+    return;
+  }
+
+  json(res, 500, errorPayload("INTERNAL_SERVER_ERROR", "internal server error", requestId));
+}
+
+function errorPayload(code: string, message: string, requestId: string) {
+  return {
+    error: code,
+    message,
+    requestId,
+  };
+}

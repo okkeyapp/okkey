@@ -25,6 +25,9 @@
 - vault endpoints:
   - `GET /workspaces/:workspaceId/vaults` (requires `X-User-Id`)
   - `GET /vaults/:vaultId` (requires `X-User-Id`)
+- sync endpoints:
+  - `GET /vaults/:vaultId/events?afterVersion=0` (requires `X-User-Id`)
+  - `POST /vaults/:vaultId/events` (requires `X-User-Id`)
 
 ## Локальный запуск
 

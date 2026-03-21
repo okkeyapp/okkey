@@ -5,6 +5,7 @@ import { loadConfig } from "./config.ts";
 import { createEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { createStorageLayer } from "./storage/index.ts";
+import { SyncService } from "./sync/service.ts";
 import { VaultService } from "./vault/service.ts";
 
 async function main(): Promise<void> {
@@ -27,10 +28,15 @@ async function main(): Promise<void> {
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
   });
+  const syncService = new SyncService({
+    vaults: storage.repositories.vaults,
+    events: storage.repositories.events,
+  });
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),
     authService,
     vaultService,
+    syncService,
   });
 
   const server = createServer(app.handler());
