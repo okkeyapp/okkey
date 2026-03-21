@@ -5,6 +5,7 @@ export interface RequestContext {
   requestId: string;
   req: IncomingMessage;
   res: ServerResponse;
+  params: Record<string, string>;
 }
 
 export type Middleware = (
@@ -16,7 +17,7 @@ export type RouteHandler = (ctx: RequestContext) => Promise<void>;
 
 interface RouteRecord {
   method: string;
-  path: string;
+  pathPattern: string;
   handler: RouteHandler;
 }
 
@@ -31,7 +32,7 @@ export class HttpApp {
   route(method: string, path: string, handler: RouteHandler): void {
     this.routes.push({
       method: method.toUpperCase(),
-      path,
+      pathPattern: path,
       handler,
     });
   }
@@ -42,9 +43,13 @@ export class HttpApp {
         requestId: randomUUID(),
         req,
         res,
+        params: {},
       };
 
       const route = this.matchRoute(req.method, req.url);
+      if (route) {
+        ctx.params = route.params;
+      }
 
       const chain = [...this.middlewares];
       chain.push(async (innerCtx) => {
@@ -64,13 +69,25 @@ export class HttpApp {
     };
   }
 
-  private matchRoute(method: string | undefined, url: string | undefined) {
+  private matchRoute(method: string | undefined, url: string | undefined):
+    | { handler: RouteHandler; params: Record<string, string> }
+    | null {
     const normalizedMethod = (method ?? "GET").toUpperCase();
     const pathname = new URL(url ?? "/", "http://localhost").pathname;
 
-    return this.routes.find(
-      (route) => route.method === normalizedMethod && route.path === pathname,
-    );
+    for (const route of this.routes) {
+      if (route.method !== normalizedMethod) {
+        continue;
+      }
+      const params = matchPath(route.pathPattern, pathname);
+      if (params) {
+        return {
+          handler: route.handler,
+          params,
+        };
+      }
+    }
+    return null;
   }
 
   private async runMiddlewares(
@@ -87,6 +104,32 @@ export class HttpApp {
       await this.runMiddlewares(ctx, middlewares, index + 1);
     });
   }
+}
+
+function matchPath(
+  pattern: string,
+  pathname: string,
+): Record<string, string> | null {
+  const patternParts = pattern.split("/").filter(Boolean);
+  const pathParts = pathname.split("/").filter(Boolean);
+  if (patternParts.length !== pathParts.length) {
+    return null;
+  }
+
+  const params: Record<string, string> = {};
+  for (let i = 0; i < patternParts.length; i += 1) {
+    const patternPart = patternParts[i];
+    const pathPart = pathParts[i];
+    if (patternPart.startsWith(":")) {
+      params[patternPart.slice(1)] = decodeURIComponent(pathPart);
+      continue;
+    }
+    if (patternPart !== pathPart) {
+      return null;
+    }
+  }
+
+  return params;
 }
 
 export function json(

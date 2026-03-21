@@ -67,10 +67,34 @@ Response:
 ## Vaults
 
 ### GET /workspaces/:workspaceId/vaults
+Headers:
+```text
+X-User-Id: <user-id>
+```
 Response:
 ```json
 [{ "id": "vault-id", "workspaceId": "workspace-id", "name": "Personal", "isPersonal": true, "ownerId": "user-id", "createdAt": "...", "updatedAt": "..." }]
 ```
+
+Errors:
+- `AUTH_REQUIRED` (401)
+- `WORKSPACE_NOT_FOUND` (404)
+- `ACCESS_DENIED` (403)
+
+### GET /vaults/:vaultId
+Headers:
+```text
+X-User-Id: <user-id>
+```
+Response:
+```json
+{ "id": "vault-id", "workspaceId": "workspace-id", "name": "Personal", "isPersonal": true, "ownerId": "user-id", "createdAt": "...", "updatedAt": "..." }
+```
+
+Errors:
+- `AUTH_REQUIRED` (401)
+- `VAULT_NOT_FOUND` (404)
+- `ACCESS_DENIED` (403)
 
 ## Items
 

@@ -12,10 +12,16 @@ import {
 } from "./routes/auth-email.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
+import {
+  createVaultGetRoute,
+  createWorkspaceVaultsListRoute,
+} from "./routes/vault.ts";
+import type { VaultService } from "./vault/service.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
   authService?: AuthService;
+  vaultService?: VaultService;
 }
 
 export function createApiApp(
@@ -40,6 +46,14 @@ export function createApiApp(
       "/auth/email/confirm",
       createAuthEmailConfirmRoute(deps.authService),
     );
+  }
+  if (deps.vaultService) {
+    app.route(
+      "GET",
+      "/workspaces/:workspaceId/vaults",
+      createWorkspaceVaultsListRoute(deps.vaultService),
+    );
+    app.route("GET", "/vaults/:vaultId", createVaultGetRoute(deps.vaultService));
   }
 
   return app;

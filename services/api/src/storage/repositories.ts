@@ -142,6 +142,24 @@ export class WorkspacesRepository {
     );
     return rows.map(mapWorkspace);
   }
+
+  async hasAccess(workspaceId: string, userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ can_access: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM workspaces w
+          LEFT JOIN workspace_members wm
+            ON wm.workspace_id = w.id
+           AND wm.user_id = $2
+          WHERE w.id = $1
+            AND (w.owner_id = $2 OR wm.user_id IS NOT NULL)
+        ) AS can_access
+      `,
+      [workspaceId, userId],
+    );
+    return Boolean(rows[0]?.can_access);
+  }
 }
 
 export interface VaultRecord {
@@ -222,6 +240,70 @@ export class VaultsRepository {
       [workspaceId],
     );
     return rows.map(mapVault);
+  }
+
+  async listAccessibleByWorkspace(
+    workspaceId: string,
+    userId: string,
+  ): Promise<VaultRecord[]> {
+    const rows = await this.db.query<
+      BaseRow & {
+        workspace_id: string;
+        name: string;
+        is_personal: boolean;
+        owner_id: string | null;
+      }
+    >(
+      `
+        SELECT DISTINCT
+          v.id,
+          v.workspace_id,
+          v.name,
+          v.is_personal,
+          v.owner_id,
+          v.created_at,
+          v.updated_at
+        FROM vaults v
+        LEFT JOIN vault_members vm
+          ON vm.vault_id = v.id
+         AND vm.user_id = $2
+        LEFT JOIN workspaces w
+          ON w.id = v.workspace_id
+        WHERE v.workspace_id = $1
+          AND (
+            w.owner_id = $2
+            OR vm.user_id IS NOT NULL
+            OR v.owner_id = $2
+          )
+        ORDER BY v.created_at ASC
+      `,
+      [workspaceId, userId],
+    );
+    return rows.map(mapVault);
+  }
+
+  async canReadVault(vaultId: string, userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ can_read: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM vaults v
+          LEFT JOIN vault_members vm
+            ON vm.vault_id = v.id
+           AND vm.user_id = $2
+          LEFT JOIN workspaces w
+            ON w.id = v.workspace_id
+          WHERE v.id = $1
+            AND (
+              w.owner_id = $2
+              OR vm.user_id IS NOT NULL
+              OR v.owner_id = $2
+            )
+        ) AS can_read
+      `,
+      [vaultId, userId],
+    );
+    return Boolean(rows[0]?.can_read);
   }
 }
 

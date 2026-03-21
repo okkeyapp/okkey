@@ -22,6 +22,9 @@
   - `POST /auth/email/start`
   - `POST /auth/email/resend`
   - `POST /auth/email/confirm`
+- vault endpoints:
+  - `GET /workspaces/:workspaceId/vaults` (requires `X-User-Id`)
+  - `GET /vaults/:vaultId` (requires `X-User-Id`)
 
 ## Локальный запуск
 
