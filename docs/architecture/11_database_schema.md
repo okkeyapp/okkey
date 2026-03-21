@@ -294,4 +294,31 @@ Critically important indexes:
 users.email
 devices.user_id
 sessions.user_id
+sessions.expires_at
+workspaces.owner_id
+workspace_members.workspace_id
+workspace_members.user_id
+vaults.workspace_id
+vault_members.vault_id
+vault_members.user_id
+vault_profiles.vault_id
+vault_profiles.user_id
+vault_keys.vault_id
+vault_keys.user_id
+items.vault_id
+events.vault_id
+events.created_at
+attachments.vault_id
 ```
+
+---
+
+## Migrations (Core)
+
+Core migrations live in:
+`services/api/migrations/`
+
+Initial schema migration:
+`services/api/migrations/0001_init.sql`
+
+Enterprise extensions must add their own migrations without modifying Core tables.
