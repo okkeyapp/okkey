@@ -45,6 +45,7 @@ const config: ApiConfig = {
   authRateLimitStartPerIp: 10,
   authRateLimitConfirmPerIp: 30,
   authRateLimitResendPerIp: 10,
+  deviceApprovalTtlSeconds: 600,
   defaultEmailLocale: "en",
   emailFrom: "no-reply@okkey.local",
   emailProvider: "logger",
@@ -63,6 +64,14 @@ function createDeviceServiceStub(overrides?: Partial<DeviceService>): DeviceServ
     registerDevice: async () => ({
       deviceId: "d1",
       status: "pending_approval",
+    }),
+    approveDevice: async () => ({
+      deviceId: "d1",
+      status: "trusted",
+    }),
+    rejectDevice: async () => ({
+      deviceId: "d1",
+      status: "revoked",
     }),
     ...(overrides ?? {}),
   } as unknown as DeviceService;
@@ -183,4 +192,70 @@ test("POST /devices/register maps service error codes", async () => {
   assert.equal(res.statusCode, 400);
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "DEVICE_INVALID_PUBLIC_KEY");
+});
+
+test("POST /devices/:id/approve requires trusted approver headers", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/d-pending/approve",
+    headers: { "x-user-id": "u1" },
+  });
+
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_APPROVAL_ACCESS_DENIED");
+});
+
+test("POST /devices/:id/approve returns trusted status", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/d-pending/approve",
+    headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
+    deviceService: createDeviceServiceStub({
+      approveDevice: async () => ({ deviceId: "d-pending", status: "trusted" }),
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { status: string; device_id: string };
+  assert.equal(payload.status, "trusted");
+  assert.equal(payload.device_id, "d-pending");
+});
+
+test("POST /devices/:id/reject returns revoked status", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/d-pending/reject",
+    headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
+    body: { reason: "unknown login" },
+    deviceService: createDeviceServiceStub({
+      rejectDevice: async () => ({ deviceId: "d-pending", status: "revoked" }),
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { status: string; device_id: string };
+  assert.equal(payload.status, "revoked");
+  assert.equal(payload.device_id, "d-pending");
+});
+
+test("device approval routes map DEVICE_APPROVAL_EXPIRED", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/d-pending/approve",
+    headers: { "x-user-id": "u1", "x-device-id": "d-trusted" },
+    deviceService: createDeviceServiceStub({
+      approveDevice: async () => {
+        throw new DeviceServiceError(
+          "DEVICE_APPROVAL_EXPIRED",
+          410,
+          "device approval challenge expired",
+        );
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 410);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_APPROVAL_EXPIRED");
 });

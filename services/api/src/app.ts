@@ -13,7 +13,11 @@ import {
 } from "./routes/auth-email.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
-import { createRegisterDeviceRoute } from "./routes/devices.ts";
+import {
+  createApproveDeviceRoute,
+  createRegisterDeviceRoute,
+  createRejectDeviceRoute,
+} from "./routes/devices.ts";
 import {
   createSyncEventsAppendRoute,
   createSyncEventsListRoute,
@@ -74,6 +78,16 @@ export function createApiApp(
   }
   if (deps.deviceService) {
     app.route("POST", "/devices/register", createRegisterDeviceRoute(deps.deviceService));
+    app.route(
+      "POST",
+      "/devices/:deviceId/approve",
+      createApproveDeviceRoute(deps.deviceService),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/reject",
+      createRejectDeviceRoute(deps.deviceService),
+    );
   }
 
   return app;

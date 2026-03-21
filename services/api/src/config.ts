@@ -20,6 +20,7 @@ export interface ApiConfig {
   authRateLimitStartPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  deviceApprovalTtlSeconds: number;
   defaultEmailLocale: string;
   emailFrom: string;
   emailProvider: EmailProvider;
@@ -147,6 +148,10 @@ export function loadConfig(): ApiConfig {
     authRateLimitResendPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
+    ),
+    deviceApprovalTtlSeconds: parsePositiveInt(
+      process.env.DEVICE_APPROVAL_TTL_SECONDS,
+      600,
     ),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",

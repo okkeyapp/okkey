@@ -18,6 +18,10 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
   metadata?: RegisterDeviceMetadataBody;
 }
 
+interface RejectDeviceBody {
+  reason?: string;
+}
+
 function requestIpFromHeaders(forwardedFor: string | undefined): string {
   if (!forwardedFor) {
     return "unknown";
@@ -48,6 +52,18 @@ function getUserId(ctx: Parameters<RouteHandler>[0]): string {
     throw new DeviceServiceError("AUTH_REQUIRED", 401, "auth required");
   }
   return userId;
+}
+
+function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
+  const deviceId = getHeader(ctx.req, "x-device-id");
+  if (!deviceId) {
+    throw new DeviceServiceError(
+      "DEVICE_APPROVAL_ACCESS_DENIED",
+      403,
+      "trusted approver device required",
+    );
+  }
+  return deviceId;
 }
 
 export function createRegisterDeviceRoute(deviceService: DeviceService): RouteHandler {
@@ -94,6 +110,71 @@ export function createRegisterDeviceRoute(deviceService: DeviceService): RouteHa
         userAgent: metadata.user_agent ?? getHeader(ctx.req, "user-agent") ?? "unknown",
       });
 
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createApproveDeviceRoute(deviceService: DeviceService): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+
+    try {
+      const userId = getUserId(ctx);
+      const approverDeviceId = getApproverDeviceId(ctx);
+      const result = await deviceService.approveDevice(userId, approverDeviceId, deviceId);
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createRejectDeviceRoute(deviceService: DeviceService): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+
+    let body: RejectDeviceBody;
+    try {
+      body = await readJsonBody<RejectDeviceBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+
+    try {
+      const userId = getUserId(ctx);
+      const approverDeviceId = getApproverDeviceId(ctx);
+      const result = await deviceService.rejectDevice(
+        userId,
+        approverDeviceId,
+        deviceId,
+        body.reason,
+      );
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,

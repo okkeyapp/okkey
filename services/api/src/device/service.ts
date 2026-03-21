@@ -1,5 +1,6 @@
+import type { ApiConfig } from "../config.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
-import type { DevicesRepository } from "../storage/repositories.ts";
+import type { DeviceApprovalState, DevicesRepository } from "../storage/repositories.ts";
 
 export class DeviceServiceError extends Error {
   readonly code: string;
@@ -20,7 +21,8 @@ export class DeviceServiceError extends Error {
 }
 
 export interface DeviceServiceDeps {
-  devices: Pick<DevicesRepository, "registerOrUpdate">;
+  devices: Pick<DevicesRepository, "registerOrUpdate" | "isTrustedDevice" | "resolveApproval">;
+  config: Pick<ApiConfig, "deviceApprovalTtlSeconds">;
   now?: () => Date;
 }
 
@@ -42,12 +44,19 @@ export interface RegisterDeviceResult {
   status: "trusted" | "pending_approval";
 }
 
+export interface ResolveDeviceApprovalResult {
+  deviceId: string;
+  status: "trusted" | "revoked";
+}
+
 export class DeviceService {
   private readonly devices: DeviceServiceDeps["devices"];
+  private readonly config: DeviceServiceDeps["config"];
   private readonly now: () => Date;
 
   constructor(deps: DeviceServiceDeps) {
     this.devices = deps.devices;
+    this.config = deps.config;
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -110,6 +119,134 @@ export class DeviceService {
       }
       throw error;
     }
+  }
+
+  async approveDevice(
+    userId: string,
+    approverDeviceId: string,
+    pendingDeviceId: string,
+  ): Promise<ResolveDeviceApprovalResult> {
+    return this.resolveDeviceApproval({
+      userId,
+      approverDeviceId,
+      pendingDeviceId,
+      action: "approve",
+    });
+  }
+
+  async rejectDevice(
+    userId: string,
+    approverDeviceId: string,
+    pendingDeviceId: string,
+    reason?: string,
+  ): Promise<ResolveDeviceApprovalResult> {
+    return this.resolveDeviceApproval({
+      userId,
+      approverDeviceId,
+      pendingDeviceId,
+      action: "reject",
+      reason,
+    });
+  }
+
+  private async resolveDeviceApproval(input: {
+    userId: string;
+    approverDeviceId: string;
+    pendingDeviceId: string;
+    action: "approve" | "reject";
+    reason?: string;
+  }): Promise<ResolveDeviceApprovalResult> {
+    const trustedApprover = await this.devices.isTrustedDevice(
+      input.userId,
+      input.approverDeviceId,
+    );
+    if (!trustedApprover) {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ACCESS_DENIED",
+        403,
+        "trusted approver device required",
+      );
+    }
+
+    const now = this.now();
+    const expiresAt = new Date(
+      now.getTime() - this.config.deviceApprovalTtlSeconds * 1000,
+    ).toISOString();
+
+    const result = await this.devices.resolveApproval({
+      deviceId: input.pendingDeviceId,
+      userId: input.userId,
+      action: input.action,
+      now: now.toISOString(),
+      expiresAt,
+      approvedBy: input.userId,
+      rejectReason: input.reason ? cleanString(input.reason, "rejected by user") : undefined,
+    });
+
+    return this.mapApprovalResult(input.action, result);
+  }
+
+  private mapApprovalResult(
+    action: "approve" | "reject",
+    result: DeviceApprovalState,
+  ): ResolveDeviceApprovalResult {
+    if (result.kind === "not_found") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_NOT_FOUND",
+        404,
+        "pending device approval not found",
+      );
+    }
+
+    if (result.kind === "access_denied") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ACCESS_DENIED",
+        403,
+        "device approval access denied",
+      );
+    }
+
+    if (result.kind === "expired") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_EXPIRED",
+        410,
+        "device approval challenge expired",
+      );
+    }
+
+    if (!result.device) {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_NOT_FOUND",
+        404,
+        "pending device approval not found",
+      );
+    }
+
+    if (action === "approve" && result.kind === "already_trusted") {
+      return {
+        deviceId: result.device.id,
+        status: "trusted",
+      };
+    }
+    if (action === "reject" && result.kind === "already_revoked") {
+      return {
+        deviceId: result.device.id,
+        status: "revoked",
+      };
+    }
+
+    if (result.kind === "already_trusted" || result.kind === "already_revoked") {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ALREADY_RESOLVED",
+        409,
+        "device approval already resolved",
+      );
+    }
+
+    return {
+      deviceId: result.device.id,
+      status: result.device.status === "trusted" ? "trusted" : "revoked",
+    };
   }
 }
 

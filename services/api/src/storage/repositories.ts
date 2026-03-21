@@ -334,13 +334,35 @@ export interface DeviceRecord {
   status: "trusted" | "pending" | "revoked";
   createdAt: string;
   lastSeenAt: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
   revokedAt: string | null;
 }
 
-export class DevicesRepository {
-  private readonly db: QueryExecutor;
+export interface DeviceApprovalState {
+  kind:
+    | "approved"
+    | "rejected"
+    | "expired"
+    | "already_trusted"
+    | "already_revoked"
+    | "not_found"
+    | "access_denied";
+  device: DeviceRecord | null;
+}
 
-  constructor(db: QueryExecutor) {
+export class DevicesRepository {
+  private readonly db: QueryExecutor & {
+    transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+  };
+
+  constructor(
+    db: QueryExecutor & {
+      transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+    },
+  ) {
     this.db = db;
   }
 
@@ -378,6 +400,10 @@ export class DevicesRepository {
         status: "trusted" | "pending" | "revoked";
         created_at: string | Date;
         last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
         revoked_at: string | Date | null;
       }>(
         `
@@ -431,6 +457,22 @@ export class DevicesRepository {
               WHEN devices.status = 'trusted' THEN 'trusted'
               ELSE 'pending'
             END,
+            approved_by = CASE
+              WHEN devices.status = 'trusted' THEN devices.approved_by
+              ELSE NULL
+            END,
+            approved_at = CASE
+              WHEN devices.status = 'trusted' THEN devices.approved_at
+              ELSE NULL
+            END,
+            rejected_at = CASE
+              WHEN devices.status = 'trusted' THEN devices.rejected_at
+              ELSE NULL
+            END,
+            rejection_reason = CASE
+              WHEN devices.status = 'trusted' THEN devices.rejection_reason
+              ELSE NULL
+            END,
             revoked_at = CASE
               WHEN devices.status = 'trusted' THEN devices.revoked_at
               ELSE NULL
@@ -461,6 +503,10 @@ export class DevicesRepository {
             status,
             created_at,
             last_seen_at,
+            approved_by,
+            approved_at,
+            rejected_at,
+            rejection_reason,
             revoked_at
         `,
         [
@@ -484,6 +530,291 @@ export class DevicesRepository {
     } catch (error) {
       throw toUniqueError(error);
     }
+  }
+
+  async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {
+    const rows = await this.db.query<{ is_trusted: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM devices
+          WHERE id = $1
+            AND user_id = $2
+            AND status = 'trusted'
+        ) AS is_trusted
+      `,
+      [deviceId, userId],
+    );
+    return Boolean(rows[0]?.is_trusted);
+  }
+
+  async resolveApproval(input: {
+    deviceId: string;
+    userId: string;
+    action: "approve" | "reject";
+    now: string;
+    expiresAt: string;
+    approvedBy: string;
+    rejectReason?: string;
+  }): Promise<DeviceApprovalState> {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+      }>(
+        `
+          SELECT
+            id,
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            created_at,
+            last_seen_at,
+            approved_by,
+            approved_at,
+            rejected_at,
+            rejection_reason,
+            revoked_at
+          FROM devices
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [input.deviceId],
+      );
+
+      const current = rows[0];
+      if (!current) {
+        return { kind: "not_found", device: null };
+      }
+      if (current.user_id !== input.userId) {
+        return { kind: "access_denied", device: mapDevice(current) };
+      }
+      if (current.status === "trusted") {
+        return { kind: "already_trusted", device: mapDevice(current) };
+      }
+      if (current.status === "revoked") {
+        return { kind: "already_revoked", device: mapDevice(current) };
+      }
+
+      const createdAt = new Date(current.created_at);
+      if (createdAt.getTime() < new Date(input.expiresAt).getTime()) {
+        const expiredRows = await tx.query<{
+          id: string;
+          user_id: string;
+          device_fingerprint: string;
+          device_name: string;
+          device_public_key: string;
+          device_share: Buffer;
+          platform: string;
+          os_name: string;
+          os_version: string;
+          app_version: string;
+          client_type: string;
+          user_agent: string;
+          ip_first: string;
+          ip_last: string;
+          status: "trusted" | "pending" | "revoked";
+          created_at: string | Date;
+          last_seen_at: string | Date | null;
+          approved_by: string | null;
+          approved_at: string | Date | null;
+          rejected_at: string | Date | null;
+          rejection_reason: string | null;
+          revoked_at: string | Date | null;
+        }>(
+          `
+            UPDATE devices
+            SET
+              status = 'revoked',
+              rejected_at = COALESCE(rejected_at, $2::timestamptz),
+              rejection_reason = COALESCE(rejection_reason, 'approval expired'),
+              revoked_at = COALESCE(revoked_at, $2::timestamptz)
+            WHERE id = $1
+            RETURNING
+              id,
+              user_id,
+              device_fingerprint,
+              device_name,
+              device_public_key,
+              device_share,
+              platform,
+              os_name,
+              os_version,
+              app_version,
+              client_type,
+              user_agent,
+              ip_first,
+              ip_last,
+              status,
+              created_at,
+              last_seen_at,
+              approved_by,
+              approved_at,
+              rejected_at,
+              rejection_reason,
+              revoked_at
+          `,
+          [input.deviceId, input.now],
+        );
+        return { kind: "expired", device: mapDevice(expiredRows[0]) };
+      }
+
+      if (input.action === "approve") {
+        const approvedRows = await tx.query<{
+          id: string;
+          user_id: string;
+          device_fingerprint: string;
+          device_name: string;
+          device_public_key: string;
+          device_share: Buffer;
+          platform: string;
+          os_name: string;
+          os_version: string;
+          app_version: string;
+          client_type: string;
+          user_agent: string;
+          ip_first: string;
+          ip_last: string;
+          status: "trusted" | "pending" | "revoked";
+          created_at: string | Date;
+          last_seen_at: string | Date | null;
+          approved_by: string | null;
+          approved_at: string | Date | null;
+          rejected_at: string | Date | null;
+          rejection_reason: string | null;
+          revoked_at: string | Date | null;
+        }>(
+          `
+            UPDATE devices
+            SET
+              status = 'trusted',
+              approved_by = $2,
+              approved_at = $3::timestamptz,
+              last_seen_at = $3::timestamptz,
+              rejected_at = NULL,
+              rejection_reason = NULL,
+              revoked_at = NULL
+            WHERE id = $1
+            RETURNING
+              id,
+              user_id,
+              device_fingerprint,
+              device_name,
+              device_public_key,
+              device_share,
+              platform,
+              os_name,
+              os_version,
+              app_version,
+              client_type,
+              user_agent,
+              ip_first,
+              ip_last,
+              status,
+              created_at,
+              last_seen_at,
+              approved_by,
+              approved_at,
+              rejected_at,
+              rejection_reason,
+              revoked_at
+          `,
+          [input.deviceId, input.approvedBy, input.now],
+        );
+        return { kind: "approved", device: mapDevice(approvedRows[0]) };
+      }
+
+      const rejectedRows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            status = 'revoked',
+            rejected_at = $2::timestamptz,
+            rejection_reason = $3,
+            revoked_at = $2::timestamptz
+          WHERE id = $1
+          RETURNING
+            id,
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            created_at,
+            last_seen_at,
+            approved_by,
+            approved_at,
+            rejected_at,
+            rejection_reason,
+            revoked_at
+        `,
+        [input.deviceId, input.now, input.rejectReason ?? "rejected by user"],
+      );
+      return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
+    });
   }
 }
 
@@ -709,6 +1040,10 @@ function mapDevice(row: {
   status: "trusted" | "pending" | "revoked";
   created_at: string | Date;
   last_seen_at: string | Date | null;
+  approved_by: string | null;
+  approved_at: string | Date | null;
+  rejected_at: string | Date | null;
+  rejection_reason: string | null;
   revoked_at: string | Date | null;
 }): DeviceRecord {
   return {
@@ -729,6 +1064,10 @@ function mapDevice(row: {
     status: row.status,
     createdAt: toIsoString(row.created_at) ?? new Date(0).toISOString(),
     lastSeenAt: toIsoString(row.last_seen_at),
+    approvedBy: row.approved_by,
+    approvedAt: toIsoString(row.approved_at),
+    rejectedAt: toIsoString(row.rejected_at),
+    rejectionReason: row.rejection_reason,
     revokedAt: toIsoString(row.revoked_at),
   };
 }

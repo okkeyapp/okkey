@@ -101,6 +101,18 @@ async function ensureDevicesSchema(db: PostgresDatabase): Promise<void> {
   if (!names.has("revoked_at")) {
     await db.query("ALTER TABLE devices ADD COLUMN revoked_at timestamptz");
   }
+  if (!names.has("approved_by")) {
+    await db.query("ALTER TABLE devices ADD COLUMN approved_by uuid");
+  }
+  if (!names.has("approved_at")) {
+    await db.query("ALTER TABLE devices ADD COLUMN approved_at timestamptz");
+  }
+  if (!names.has("rejected_at")) {
+    await db.query("ALTER TABLE devices ADD COLUMN rejected_at timestamptz");
+  }
+  if (!names.has("rejection_reason")) {
+    await db.query("ALTER TABLE devices ADD COLUMN rejection_reason text");
+  }
 
   await db.query(
     `
@@ -322,4 +334,129 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
   assert.equal(trusted.appVersion, "1.1.0");
   assert.equal(trusted.ipLast, "10.0.0.3");
   assert.equal(trusted.lastSeenAt, "2026-01-01T00:02:00.000Z");
+});
+
+test("integration: DevicesRepository approval transitions are consistent", async (t) => {
+  const config = loadConfig();
+  const db = await PostgresDatabase.connect(config.databaseUrl);
+  let userId: string | null = null;
+  t.after(async () => {
+    if (userId) {
+      await db.query("DELETE FROM users WHERE id = $1", [userId]);
+    }
+    await db.close();
+  });
+
+  await ensureCoreSchema(db);
+
+  const users = new UsersRepository(db);
+  const devices = new DevicesRepository(db);
+
+  const suffix = randomUUID();
+  const user = await users.create({
+    email: `approval-${suffix}@okkey.local`,
+    publicKey: `pk-${suffix}`,
+    encryptedPrivateKey: new Uint8Array([1, 2]),
+    serverKeyShare: new Uint8Array([3, 4]),
+  });
+  userId = user.id;
+
+  const trustedApprover = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: "b".repeat(64),
+    deviceName: "Trusted device",
+    devicePublicKey: Buffer.from("trusted-device").toString("base64"),
+    deviceShare: new Uint8Array([7, 8, 9]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "okkey-desktop/1.0.0",
+    requestIp: "10.0.1.1",
+    now: "2026-01-01T00:00:00.000Z",
+  });
+  await db.query("UPDATE devices SET status = 'trusted' WHERE id = $1", [trustedApprover.id]);
+
+  const pending = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: "c".repeat(64),
+    deviceName: "Pending device",
+    devicePublicKey: Buffer.from("pending-device").toString("base64"),
+    deviceShare: new Uint8Array([1, 2, 3]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "okkey-desktop/1.0.0",
+    requestIp: "10.0.1.2",
+    now: "2026-01-01T00:00:10.000Z",
+  });
+
+  const approved = await devices.resolveApproval({
+    deviceId: pending.id,
+    userId: user.id,
+    action: "approve",
+    now: "2026-01-01T00:00:20.000Z",
+    expiresAt: "2026-01-01T00:00:00.000Z",
+    approvedBy: user.id,
+  });
+
+  assert.equal(approved.kind, "approved");
+  assert.equal(approved.device?.status, "trusted");
+  assert.equal(approved.device?.approvedBy, user.id);
+  assert.equal(approved.device?.approvedAt, "2026-01-01T00:00:20.000Z");
+
+  const approveAgain = await devices.resolveApproval({
+    deviceId: pending.id,
+    userId: user.id,
+    action: "approve",
+    now: "2026-01-01T00:00:25.000Z",
+    expiresAt: "2026-01-01T00:00:00.000Z",
+    approvedBy: user.id,
+  });
+  assert.equal(approveAgain.kind, "already_trusted");
+
+  const rejectConflict = await devices.resolveApproval({
+    deviceId: pending.id,
+    userId: user.id,
+    action: "reject",
+    now: "2026-01-01T00:00:26.000Z",
+    expiresAt: "2026-01-01T00:00:00.000Z",
+    approvedBy: user.id,
+  });
+  assert.equal(rejectConflict.kind, "already_trusted");
+
+  const pendingExpired = await devices.registerOrUpdate({
+    userId: user.id,
+    deviceFingerprint: "d".repeat(64),
+    deviceName: "Expired pending",
+    devicePublicKey: Buffer.from("pending-expired").toString("base64"),
+    deviceShare: new Uint8Array([1, 2, 3]),
+    platform: "desktop",
+    osName: "macOS",
+    osVersion: "14.5",
+    appVersion: "1.0.0",
+    clientType: "desktop",
+    userAgent: "okkey-desktop/1.0.0",
+    requestIp: "10.0.1.3",
+    now: "2026-01-01T00:01:00.000Z",
+  });
+  await db.query("UPDATE devices SET created_at = $2::timestamptz WHERE id = $1", [
+    pendingExpired.id,
+    "2026-01-01T00:01:00.000Z",
+  ]);
+
+  const expired = await devices.resolveApproval({
+    deviceId: pendingExpired.id,
+    userId: user.id,
+    action: "approve",
+    now: "2026-01-01T00:10:00.000Z",
+    expiresAt: "2026-01-01T00:05:00.000Z",
+    approvedBy: user.id,
+  });
+  assert.equal(expired.kind, "expired");
+  assert.equal(expired.device?.status, "revoked");
+  assert.equal(expired.device?.rejectedAt, "2026-01-01T00:10:00.000Z");
 });

@@ -66,6 +66,10 @@ ip_last
 status (trusted|pending|revoked)
 created_at
 last_seen_at
+approved_by
+approved_at
+rejected_at
+rejection_reason
 revoked_at
 ```
 Unique key:

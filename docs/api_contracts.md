@@ -205,3 +205,47 @@ Device errors:
 - `DEVICE_INVALID_FINGERPRINT` (400)
 - `DEVICE_INVALID_PUBLIC_KEY` (400)
 - `DEVICE_DUPLICATE_CONFLICT` (409)
+
+### POST /devices/:deviceId/approve
+Headers:
+```text
+X-User-Id: <user-id>
+X-Device-Id: <trusted-device-id>
+```
+Response:
+```json
+{
+  "device_id": "device-id",
+  "status": "trusted"
+}
+```
+Notes:
+- Approval requires a trusted approver device (`X-Device-Id`).
+- Pending approval challenge window is controlled by `DEVICE_APPROVAL_TTL_SECONDS` (default: `600`).
+
+### POST /devices/:deviceId/reject
+Headers:
+```text
+X-User-Id: <user-id>
+X-Device-Id: <trusted-device-id>
+```
+Request:
+```json
+{
+  "reason": "unknown login"
+}
+```
+Response:
+```json
+{
+  "device_id": "device-id",
+  "status": "revoked"
+}
+```
+
+Device approval errors:
+- `AUTH_REQUIRED` (401)
+- `DEVICE_APPROVAL_NOT_FOUND` (404)
+- `DEVICE_APPROVAL_EXPIRED` (410)
+- `DEVICE_APPROVAL_ALREADY_RESOLVED` (409)
+- `DEVICE_APPROVAL_ACCESS_DENIED` (403)

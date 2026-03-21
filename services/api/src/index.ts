@@ -35,6 +35,7 @@ async function main(): Promise<void> {
   });
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,
+    config,
   });
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),

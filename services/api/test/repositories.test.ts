@@ -29,6 +29,36 @@ class FakeDb {
   }
 }
 
+function makeDeviceRow(
+  overrides?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    id: "d1",
+    user_id: "u1",
+    device_fingerprint: "a".repeat(64),
+    device_name: "MacBook Pro",
+    device_public_key: Buffer.from("pk").toString("base64"),
+    device_share: Buffer.from([1, 2, 3]),
+    platform: "desktop",
+    os_name: "macOS",
+    os_version: "14.5",
+    app_version: "1.0.0",
+    client_type: "desktop",
+    user_agent: "ua",
+    ip_first: "10.0.0.1",
+    ip_last: "10.0.0.1",
+    status: "pending",
+    created_at: "2026-01-01T00:00:00.000Z",
+    last_seen_at: null,
+    approved_by: null,
+    approved_at: null,
+    rejected_at: null,
+    rejection_reason: null,
+    revoked_at: null,
+    ...(overrides ?? {}),
+  };
+}
+
 test("UsersRepository.create maps inserted row", async () => {
   const db = new FakeDb();
   db.enqueueResult([
@@ -108,28 +138,7 @@ test("ItemsRepository.listByVault maps encrypted data", async () => {
 
 test("DevicesRepository.registerOrUpdate returns mapped device row", async () => {
   const db = new FakeDb();
-  db.enqueueResult([
-    {
-      id: "d1",
-      user_id: "u1",
-      device_fingerprint: "a".repeat(64),
-      device_name: "MacBook Pro",
-      device_public_key: Buffer.from("pk").toString("base64"),
-      device_share: Buffer.from([1, 2, 3]),
-      platform: "desktop",
-      os_name: "macOS",
-      os_version: "14.5",
-      app_version: "1.0.0",
-      client_type: "desktop",
-      user_agent: "ua",
-      ip_first: "10.0.0.1",
-      ip_last: "10.0.0.1",
-      status: "pending",
-      created_at: "2026-01-01T00:00:00.000Z",
-      last_seen_at: null,
-      revoked_at: null,
-    },
-  ]);
+  db.enqueueResult([makeDeviceRow()]);
 
   const repo = new DevicesRepository(db);
   const result = await repo.registerOrUpdate({
@@ -151,8 +160,48 @@ test("DevicesRepository.registerOrUpdate returns mapped device row", async () =>
   assert.equal(result.id, "d1");
   assert.equal(result.status, "pending");
   assert.equal(result.ipFirst, "10.0.0.1");
+  assert.equal(result.approvedBy, null);
   assert.equal(db.queries.length, 1);
   assert.match(db.queries[0].sql, /INSERT INTO devices/);
+});
+
+test("DevicesRepository.isTrustedDevice checks trusted status", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([{ is_trusted: true }]);
+
+  const repo = new DevicesRepository(db);
+  const trusted = await repo.isTrustedDevice("u1", "d1");
+
+  assert.equal(trusted, true);
+  assert.match(db.queries[0].sql, /status = 'trusted'/);
+});
+
+test("DevicesRepository.resolveApproval approves pending device", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([makeDeviceRow({ status: "pending" })]); // SELECT FOR UPDATE
+  db.enqueueResult([
+    makeDeviceRow({
+      status: "trusted",
+      approved_by: "u1",
+      approved_at: "2026-01-01T00:02:00.000Z",
+      last_seen_at: "2026-01-01T00:02:00.000Z",
+    }),
+  ]); // UPDATE approve
+
+  const repo = new DevicesRepository(db);
+  const result = await repo.resolveApproval({
+    deviceId: "d1",
+    userId: "u1",
+    action: "approve",
+    now: "2026-01-01T00:02:00.000Z",
+    expiresAt: "2025-12-31T23:59:00.000Z",
+    approvedBy: "u1",
+  });
+
+  assert.equal(result.kind, "approved");
+  assert.equal(result.device?.status, "trusted");
+  assert.equal(result.device?.approvedBy, "u1");
+  assert.equal(result.device?.approvedAt, "2026-01-01T00:02:00.000Z");
 });
 
 test("EventsRepository.append increments version in transaction", async () => {

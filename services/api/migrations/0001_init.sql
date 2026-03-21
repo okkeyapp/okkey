@@ -70,6 +70,10 @@ CREATE TABLE devices (
   status text NOT NULL CHECK (status IN ('trusted', 'pending', 'revoked')),
   created_at timestamptz NOT NULL DEFAULT now(),
   last_seen_at timestamptz,
+  approved_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  approved_at timestamptz,
+  rejected_at timestamptz,
+  rejection_reason text,
   revoked_at timestamptz,
   UNIQUE (user_id, device_fingerprint, device_public_key)
 );
