@@ -1,0 +1,16 @@
+{
+  "name": "@okkey/crypto",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "files": ["dist"],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "clean": "node ./scripts/clean.mjs"
+  },
+  "dependencies": {
+    "@okkey/crypto-wasm": "file:./dist"
+  }
+}
