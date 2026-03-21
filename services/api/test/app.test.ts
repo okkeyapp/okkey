@@ -44,6 +44,18 @@ const testConfig: ApiConfig = {
   port: 4000,
   logLevel: "debug",
   corsOrigin: "http://localhost:3000",
+  databaseUrl: "postgresql://okkey:okkey@localhost:5432/okkey",
+  redisUrl: "redis://localhost:6379",
+  authCodeTtlSeconds: 300,
+  authResendCooldownSeconds: 60,
+  authCodeMaxAttempts: 5,
+  authRateLimitWindowSeconds: 600,
+  authRateLimitStartPerEmail: 5,
+  authRateLimitStartPerIp: 10,
+  authRateLimitConfirmPerIp: 30,
+  authRateLimitResendPerIp: 10,
+  defaultEmailLocale: "en",
+  emailFrom: "no-reply@okkey.local",
 };
 
 async function dispatch(
@@ -52,7 +64,7 @@ async function dispatch(
   logger = createLoggerStub(),
   readyCheck: () => Promise<void> = async () => {},
 ): Promise<{ res: MockResponse; logger: ReturnType<typeof createLoggerStub> }> {
-  const app = createApiApp(testConfig, logger, readyCheck);
+  const app = createApiApp(testConfig, logger, { readyCheck });
   const handler = app.handler();
   const req = { method, url } as IncomingMessage;
   const res = new MockResponse();

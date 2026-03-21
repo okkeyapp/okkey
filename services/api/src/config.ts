@@ -11,6 +11,16 @@ export interface ApiConfig {
   corsOrigin: string;
   databaseUrl: string;
   redisUrl: string;
+  authCodeTtlSeconds: number;
+  authResendCooldownSeconds: number;
+  authCodeMaxAttempts: number;
+  authRateLimitWindowSeconds: number;
+  authRateLimitStartPerEmail: number;
+  authRateLimitStartPerIp: number;
+  authRateLimitConfirmPerIp: number;
+  authRateLimitResendPerIp: number;
+  defaultEmailLocale: string;
+  emailFrom: string;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +76,14 @@ function parsePort(value: string | undefined): number {
   return parsed;
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -79,5 +97,33 @@ export function loadConfig(): ApiConfig {
     databaseUrl:
       process.env.DATABASE_URL ?? "postgresql://okkey:okkey@localhost:5432/okkey",
     redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+    authCodeTtlSeconds: parsePositiveInt(process.env.AUTH_CODE_TTL_SECONDS, 300),
+    authResendCooldownSeconds: parsePositiveInt(
+      process.env.AUTH_RESEND_COOLDOWN_SECONDS,
+      60,
+    ),
+    authCodeMaxAttempts: parsePositiveInt(process.env.AUTH_CODE_MAX_ATTEMPTS, 5),
+    authRateLimitWindowSeconds: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+      600,
+    ),
+    authRateLimitStartPerEmail: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_START_PER_EMAIL,
+      5,
+    ),
+    authRateLimitStartPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_START_PER_IP,
+      10,
+    ),
+    authRateLimitConfirmPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_CONFIRM_PER_IP,
+      30,
+    ),
+    authRateLimitResendPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
+      10,
+    ),
+    defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
+    emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
   };
 }

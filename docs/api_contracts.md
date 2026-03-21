@@ -7,19 +7,54 @@ This document defines minimal API contracts used by the SDKs.
 ### POST /auth/email/start
 Request:
 ```json
-{ "email": "user@example.com" }
+{ "email": "user@example.com", "locale": "en" }
 ```
-Response: `204 No Content`
+Response:
+```json
+{
+  "challengeId": "challenge-id",
+  "expiresAt": "2026-01-01T12:05:00.000Z",
+  "resendAvailableAt": "2026-01-01T12:01:00.000Z"
+}
+```
+
+### POST /auth/email/resend
+Request:
+```json
+{ "challengeId": "challenge-id", "locale": "en" }
+```
+Response:
+```json
+{
+  "challengeId": "challenge-id",
+  "expiresAt": "2026-01-01T12:05:00.000Z",
+  "resendAvailableAt": "2026-01-01T12:01:00.000Z"
+}
+```
 
 ### POST /auth/email/confirm
 Request:
 ```json
-{ "email": "user@example.com", "code": "123456" }
+{ "challengeId": "challenge-id", "code": "123456" }
 ```
 Response:
 ```json
-{ "id": "session-id", "userId": "user-id", "deviceId": "device-id", "expiresAt": "...", "createdAt": "..." }
+{
+  "authStateId": "auth-state-id",
+  "userExists": true,
+  "nextStep": "device_check"
+}
 ```
+
+### Auth error codes
+
+- `AUTH_BAD_REQUEST`
+- `AUTH_EMAIL_INVALID`
+- `AUTH_CODE_INVALID`
+- `AUTH_CODE_EXPIRED`
+- `AUTH_CODE_ATTEMPTS_EXCEEDED`
+- `AUTH_RESEND_TOO_EARLY`
+- `AUTH_RATE_LIMITED`
 
 ## User
 

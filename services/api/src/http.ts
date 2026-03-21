@@ -102,3 +102,31 @@ export function json(
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
 }
+
+export async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
+  const mockedBody = (req as IncomingMessage & { body?: unknown }).body;
+  if (mockedBody !== undefined) {
+    if (typeof mockedBody === "string") {
+      return JSON.parse(mockedBody) as T;
+    }
+    return mockedBody as T;
+  }
+
+  let raw = "";
+  for await (const chunk of req) {
+    raw += chunk.toString();
+  }
+
+  if (!raw) {
+    return {} as T;
+  }
+  return JSON.parse(raw) as T;
+}
+
+export function getHeader(req: IncomingMessage, name: string): string | undefined {
+  const value = req.headers[name.toLowerCase()];
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}

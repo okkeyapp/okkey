@@ -18,6 +18,10 @@
 - health endpoints:
   - `GET /health`
   - `GET /ready`
+- auth endpoints:
+  - `POST /auth/email/start`
+  - `POST /auth/email/resend`
+  - `POST /auth/email/confirm`
 
 ## Локальный запуск
 
@@ -50,3 +54,10 @@ yarn test:api
 ```bash
 yarn infra:up
 ```
+
+## Email login flow (v1)
+
+- код входа: 6 цифр
+- TTL кода: 5 минут (настраивается через env)
+- повторная отправка: не чаще 1 раза в 60 секунд
+- лимит неверных попыток confirm: 5

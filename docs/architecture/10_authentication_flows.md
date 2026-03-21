@@ -89,6 +89,23 @@ Server receives only:
 - authentication proof
 - session request
 
+### Email Code Challenge (Core v1)
+
+Core login uses explicit challenge endpoints:
+- `POST /auth/email/start`
+- `POST /auth/email/resend`
+- `POST /auth/email/confirm`
+
+Security defaults:
+- one-time code: 6 digits
+- code TTL: 5 minutes
+- resend cooldown: 60 seconds
+- max invalid attempts per challenge: 5
+- rate limiting on start/resend/confirm
+
+After successful `confirm`, backend returns an intermediate auth state.
+Device registration/approval is handled by dedicated device flows.
+
 ---
 
 ## Passkey Login

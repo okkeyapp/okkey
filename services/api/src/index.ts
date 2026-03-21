@@ -1,6 +1,8 @@
+import { AuthService } from "./auth/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { EmailTemplateService, LoggerEmailSender } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { createStorageLayer } from "./storage/index.ts";
 
@@ -8,7 +10,21 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
-  const app = createApiApp(config, logger, () => storage.ping());
+  const emailTemplates = new EmailTemplateService(
+    new LoggerEmailSender(logger),
+    config.emailFrom,
+    config.defaultEmailLocale,
+  );
+  const authService = new AuthService({
+    redis: storage.redis,
+    users: storage.repositories.users,
+    emailTemplates,
+    config,
+  });
+  const app = createApiApp(config, logger, {
+    readyCheck: () => storage.ping(),
+    authService,
+  });
 
   const server = createServer(app.handler());
   server.listen(config.port, () => {

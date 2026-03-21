@@ -5,8 +5,14 @@ type RedisClientLike = {
   disconnect(): Promise<void>;
   ping(): Promise<string>;
   get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<unknown>;
+  set(
+    key: string,
+    value: string,
+    options?: { EX?: number; NX?: boolean },
+  ): Promise<unknown>;
   del(key: string): Promise<number>;
+  incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<boolean>;
 };
 
 export class RedisCache {
@@ -64,6 +70,46 @@ export class RedisCache {
       return await this.client.del(key);
     } catch (error) {
       throw new StorageQueryError("redis del failed", error);
+    }
+  }
+
+  async setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void> {
+    try {
+      await this.client.set(key, value, { EX: ttlSeconds });
+    } catch (error) {
+      throw new StorageQueryError("redis set with ttl failed", error);
+    }
+  }
+
+  async setIfNotExistsWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    try {
+      const result = await this.client.set(key, value, {
+        EX: ttlSeconds,
+        NX: true,
+      });
+      return result === "OK";
+    } catch (error) {
+      throw new StorageQueryError("redis set if not exists failed", error);
+    }
+  }
+
+  async incr(key: string): Promise<number> {
+    try {
+      return await this.client.incr(key);
+    } catch (error) {
+      throw new StorageQueryError("redis incr failed", error);
+    }
+  }
+
+  async expire(key: string, seconds: number): Promise<boolean> {
+    try {
+      return await this.client.expire(key, seconds);
+    } catch (error) {
+      throw new StorageQueryError("redis expire failed", error);
     }
   }
 
