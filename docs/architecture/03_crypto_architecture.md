@@ -31,6 +31,13 @@ Crypto engine compiles to:
 and is used via:
 - packages/crypto
 
+Crypto engine primitives (Core):
+- Argon2id (KDF)
+- AES-256-GCM (AEAD)
+- XChaCha20-Poly1305 (AEAD)
+- Ed25519 (signing)
+- X25519 (key exchange)
+
 ---
 
 ## Supported Algorithms
