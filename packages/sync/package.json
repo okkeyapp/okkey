@@ -1,0 +1,15 @@
+{
+  "name": "@okkey/sync",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "dependencies": {
+    "@okkey/types": "file:../types"
+  },
+  "scripts": {
+    "build": "npx --yes -p typescript tsc -p tsconfig.json"
+  }
+}
