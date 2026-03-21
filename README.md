@@ -2,38 +2,55 @@
 
 ## Quickstart (Hybrid dev)
 
-1. Copy environment file.
+1. Copy root environment file for infrastructure.
 
 ```bash
 cp .env.example .env
 ```
 
-2. Start local infrastructure.
+2. Copy service/app environment files you run locally.
+
+```bash
+cp services/api/.env.example services/api/.env
+cp services/worker/.env.example services/worker/.env
+cp apps/web/.env.example apps/web/.env
+```
+
+3. Start local infrastructure.
 
 ```bash
 yarn infra:up
 ```
 
-3. Verify containers are healthy.
+4. Verify containers are healthy.
 
 ```bash
 yarn infra:ps
 ```
 
-4. Use local wrappers for DB/Redis if you do not have native CLIs.
+5. Use local wrappers for DB/Redis if you do not have native CLIs.
 
 ```bash
 ./scripts/psql --help
 ./scripts/redis-cli --help
 ```
 
-5. Start apps locally (Node/Rust on host).
+6. Start apps locally (Node/Rust on host).
 
 ```bash
 yarn dev:web
 yarn dev:api
 yarn dev:worker
 ```
+
+## Env policy
+
+- Root `.env` is for infrastructure only (`docker-compose` ports/credentials).
+- Runtime configs must live in service/app folders:
+  - `services/api/.env`
+  - `services/worker/.env`
+  - `apps/*/.env`
+- Do not duplicate runtime variables in root `.env`.
 
 ## Local services
 

@@ -31,6 +31,9 @@
 cp services/api/.env.example services/api/.env
 ```
 
+Root `.env` не используется для runtime API-конфига.  
+API читает только `services/api/.env` и `services/api/.env.local`.
+
 2. Запустить API из корня репозитория:
 
 ```bash
@@ -40,6 +43,25 @@ yarn dev:api
 По умолчанию API стартует на `http://localhost:4000`.
 
 Важно: для запуска storage layer нужны зависимости `pg` и `redis`.
+
+## Email providers
+
+Поддерживаются 3 режима:
+- `EMAIL_PROVIDER=logger` — только логирование отправки (dev по умолчанию)
+- `EMAIL_PROVIDER=smtp` — отправка через SMTP
+- `EMAIL_PROVIDER=http-api` — отправка через внешний HTTP API провайдера
+
+Для SMTP задаются:
+- `EMAIL_SMTP_HOST`
+- `EMAIL_SMTP_PORT`
+- `EMAIL_SMTP_SECURE`
+- `EMAIL_SMTP_USER`
+- `EMAIL_SMTP_PASSWORD`
+
+Для HTTP API задаются:
+- `EMAIL_API_ENDPOINT`
+- `EMAIL_API_KEY`
+- `EMAIL_API_TIMEOUT_MS`
 
 ## Тесты каркаса
 

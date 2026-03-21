@@ -2,7 +2,7 @@ import { AuthService } from "./auth/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
-import { EmailTemplateService, LoggerEmailSender } from "./email/service.ts";
+import { createEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { createStorageLayer } from "./storage/index.ts";
 
@@ -10,8 +10,9 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
+  const emailSender = await createEmailSender(config, logger);
   const emailTemplates = new EmailTemplateService(
-    new LoggerEmailSender(logger),
+    emailSender,
     config.emailFrom,
     config.defaultEmailLocale,
   );

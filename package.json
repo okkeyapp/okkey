@@ -23,8 +23,10 @@
   },
   "packageManager": "yarn@1.22.22",
   "dependencies": {
+    "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
-    "redis": "^5.9.0"
+    "redis": "^5.9.0",
+    "smtp-server": "^3.14.0"
   },
   "scripts": {
     "build:wasm": "RUSTUP_TOOLCHAIN=stable wasm-pack build --target web --out-dir packages/crypto/dist --features wasm rust/crypto-engine",
@@ -46,6 +48,6 @@
     "infra:up": "./scripts/infra.sh up",
     "test": "echo 'TODO: add unit/integration tests' && exit 1",
     "test:api": "node --experimental-strip-types --test services/api/test/*.test.ts",
-    "test:e2e": "echo 'TODO: add E2E tests' && exit 1"
+    "test:e2e": "node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }
 }

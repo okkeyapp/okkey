@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 type NodeEnv = "development" | "test" | "production";
+type EmailProvider = "logger" | "smtp" | "http-api";
 
 export interface ApiConfig {
   nodeEnv: NodeEnv;
@@ -21,6 +22,15 @@ export interface ApiConfig {
   authRateLimitResendPerIp: number;
   defaultEmailLocale: string;
   emailFrom: string;
+  emailProvider: EmailProvider;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  smtpPassword: string;
+  emailApiEndpoint: string;
+  emailApiKey: string;
+  emailApiTimeoutMs: number;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,6 +94,21 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = value.toLowerCase().trim();
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+  return fallback;
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -125,5 +150,14 @@ export function loadConfig(): ApiConfig {
     ),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
+    emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
+    smtpHost: process.env.EMAIL_SMTP_HOST ?? "localhost",
+    smtpPort: parsePositiveInt(process.env.EMAIL_SMTP_PORT, 1025),
+    smtpSecure: parseBoolean(process.env.EMAIL_SMTP_SECURE, false),
+    smtpUser: process.env.EMAIL_SMTP_USER ?? "",
+    smtpPassword: process.env.EMAIL_SMTP_PASSWORD ?? "",
+    emailApiEndpoint: process.env.EMAIL_API_ENDPOINT ?? "",
+    emailApiKey: process.env.EMAIL_API_KEY ?? "",
+    emailApiTimeoutMs: parsePositiveInt(process.env.EMAIL_API_TIMEOUT_MS, 10000),
   };
 }
