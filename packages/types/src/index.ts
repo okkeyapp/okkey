@@ -53,27 +53,84 @@ export interface Session {
   createdAt: string;
 }
 
-export type EventType =
-  | "ITEM_CREATE"
-  | "ITEM_UPDATE"
-  | "ITEM_DELETE"
-  | "VAULT_CREATE"
-  | "VAULT_SHARE"
-  | "VAULT_KEY_ROTATION"
-  | "DEVICE_ADD"
-  | "DEVICE_REMOVE";
+export const EVENT_TYPES = [
+  "ITEM_CREATE",
+  "ITEM_UPDATE",
+  "ITEM_DELETE",
+  "VAULT_CREATE",
+  "VAULT_SHARE",
+  "VAULT_KEY_ROTATION",
+  "DEVICE_ADD",
+  "DEVICE_REMOVE",
+] as const;
 
-export interface EventLogEntry {
+export type EventType = (typeof EVENT_TYPES)[number];
+
+export type EventPayloadEncoding = "base64";
+
+export type SyncConflictCode = "VERSION_MISMATCH" | "EVENT_GAP";
+
+export interface EventActor {
+  userId: UUID;
+  deviceId?: UUID | null;
+}
+
+export interface SyncEvent {
   id: UUID;
+  workspaceId: UUID;
   vaultId: UUID;
-  actorId?: UUID | null;
   eventType: EventType;
-  encryptedPayload: string;
+  actor: EventActor;
+  payloadCiphertext: string;
+  payloadEncoding: EventPayloadEncoding;
+  payloadSchemaVersion: number;
+  idempotencyKey: UUID;
+  baseVersion: number;
   version: number;
   createdAt: string;
+  clientCreatedAt?: string | null;
+}
+
+export type EventLogEntry = SyncEvent;
+
+export interface FetchEventsQuery {
+  vaultId: UUID;
+  afterVersion: number;
+  limit?: number;
+}
+
+export interface FetchEventsResult {
+  vaultId: UUID;
+  events: SyncEvent[];
+  latestVersion: number;
+  hasMore: boolean;
+}
+
+export interface AppendEventRequest {
+  vaultId: UUID;
+  eventType: EventType;
+  payloadCiphertext: string;
+  payloadEncoding: EventPayloadEncoding;
+  payloadSchemaVersion: number;
+  idempotencyKey: UUID;
+  baseVersion: number;
+  clientCreatedAt?: string | null;
+}
+
+export interface AppendEventResult {
+  event: SyncEvent;
+  latestVersion: number;
+}
+
+export interface SyncConflictErrorDetails {
+  code: SyncConflictCode;
+  vaultId: UUID;
+  expectedBaseVersion: number;
+  latestVersion: number;
 }
 
 export interface ApiError {
   code: string;
   message: string;
+  details?: unknown;
 }
