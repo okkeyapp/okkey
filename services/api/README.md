@@ -2,6 +2,8 @@
 
 Минимальный backend-каркас для Okkey Core.
 
+**Контракты HTTP API:** [`docs/api_contracts.md`](../../docs/api_contracts.md), OpenAPI: [`docs/openapi/core-api.yaml`](../../docs/openapi/core-api.yaml).
+
 ## Что есть в каркасе
 
 - единая точка входа: `src/index.ts`

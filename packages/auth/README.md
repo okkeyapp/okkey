@@ -8,6 +8,12 @@ Authentication SDK for Okkey Core.
 import { ApiClient } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 
-const auth = new AuthClient(new ApiClient({ baseUrl: "https://api.example.com" }));
-await auth.startEmailLogin("user@example.com");
+const api = new ApiClient({ baseUrl: "https://api.example.com" });
+const auth = new AuthClient(api);
+
+const { challengeId, expiresAt } = await auth.startEmailLogin("user@example.com");
+// await auth.resendEmailCode(challengeId);
+const { authStateId, nextStep } = await auth.confirmEmailCode(challengeId, "123456");
 ```
+
+Wire contracts: `docs/api_contracts.md` and `docs/openapi/core-api.yaml` in the `okkey` repo.

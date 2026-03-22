@@ -2,6 +2,8 @@
 
 Okkey backend is implemented as a **stateless API**.
 
+**Core HTTP API contracts:** [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml).
+
 Backend does not perform cryptography and does not have access to decrypted data.
 
 ---

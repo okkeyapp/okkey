@@ -129,8 +129,64 @@ export interface SyncConflictErrorDetails {
   latestVersion: number;
 }
 
-export interface ApiError {
-  code: string;
+/** JSON body returned by Core API on non-2xx responses (`services/api`). */
+export interface CoreApiErrorBody {
+  error: string;
   message: string;
-  details?: unknown;
+  requestId: string;
+  details?: Record<string, unknown>;
+}
+
+/** @deprecated Use {@link CoreApiErrorBody}; the wire field is `error`, not `code`. */
+export type ApiError = CoreApiErrorBody;
+
+/** `POST /auth/email/start` and `POST /auth/email/resend` success body. */
+export interface EmailAuthStartResponse {
+  challengeId: string;
+  expiresAt: string;
+  resendAvailableAt: string;
+}
+
+/** `POST /auth/email/confirm` success body. */
+export interface EmailAuthConfirmResponse {
+  authStateId: string;
+  userExists: boolean;
+  nextStep: "registration" | "device_check";
+}
+
+/** One event as returned by sync HTTP API (opaque base64 payload). */
+export interface SyncEventWireDto {
+  id: UUID;
+  vaultId: UUID;
+  actorId: UUID | null;
+  eventType: string;
+  encryptedPayload: string;
+  version: number;
+  createdAt: string;
+}
+
+/** `GET /vaults/:vaultId/events` success body. */
+export interface SyncEventsListResponseDto {
+  vaultId: UUID;
+  afterVersion: number;
+  events: SyncEventWireDto[];
+}
+
+/** `POST /vaults/:vaultId/events` request body. */
+export interface SyncAppendEventRequestDto {
+  eventType: string;
+  encryptedPayload: string;
+  baseVersion: number;
+}
+
+/** `POST /devices/register` success body (snake_case on wire). */
+export interface DeviceRegisterResponseDto {
+  device_id: UUID;
+  status: "trusted" | "pending_approval";
+}
+
+/** `POST /devices/:deviceId/reject` success body. */
+export interface DeviceRejectResponseDto {
+  device_id: UUID;
+  status: "revoked";
 }

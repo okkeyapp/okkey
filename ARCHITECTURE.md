@@ -67,6 +67,7 @@ The **database schema is compatible**: enterprise only adds new tables.
 
 ## Architecture Documents (Open-Source)
 
+- docs/api_contracts.md (Core HTTP API — canonical with `docs/openapi/core-api.yaml`)
 - docs/architecture/01_system_overview.md
 - docs/architecture/02_repo_structure.md
 - docs/architecture/03_crypto_architecture.md

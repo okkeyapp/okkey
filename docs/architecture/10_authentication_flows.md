@@ -2,6 +2,8 @@
 
 This document describes all authentication processes in Okkey.
 
+**Implemented HTTP email challenge API:** [`docs/api_contracts.md`](../api_contracts.md) (Auth section) and OpenAPI [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml).
+
 Architecture goals:
 
 - secure authentication

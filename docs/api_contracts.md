@@ -1,251 +1,384 @@
-# Core API Contracts (Draft)
+# Okkey Core HTTP API contracts
 
-This document defines minimal API contracts used by the SDKs.
+This document is the **canonical human-readable contract** for the Core HTTP API implemented in `services/api`. It must match handler behavior; when behavior changes, update this file, [`docs/openapi/core-api.yaml`](openapi/core-api.yaml), and shared TypeScript DTOs in the same change.
 
-## Auth
+## Machine-readable spec
 
-### POST /auth/email/start
-Request:
-```json
-{ "email": "user@example.com", "locale": "en" }
-```
-Response:
+- **OpenAPI 3.0:** [`docs/openapi/core-api.yaml`](openapi/core-api.yaml) — same endpoints and shapes as here; use for codegen and tooling.
+
+## Shared TypeScript types
+
+Wire-aligned DTOs and the error body type live in `@okkey/types` (e.g. `CoreApiErrorBody`, `EmailAuthStartResponse`, `SyncEventsListResponseDto`). The thin HTTP client is `@okkey/api`; email login helpers are `@okkey/auth`. **Policy:** any contract change updates these packages in the same PR as the backend and this documentation.
+
+## Versioning and compatibility
+
+- **Pre-stable:** paths and payloads may evolve; clients should not assume frozen behavior until an explicit API version prefix (e.g. `/v1/...`) is introduced.
+- **Additive changes** (new optional JSON fields, new error codes) are preferred; document them here and in OpenAPI.
+- **Breaking changes** (removing fields, changing types, repurposing status codes) require a version bump or a new route namespace and a migration note in this file.
+- **Error codes** (`error` string) are part of the contract; clients may branch on them for recovery flows.
+
+## Global conventions
+
+| Topic | Rule |
+|--------|------|
+| Base URL | Deployment-specific; default local dev is `http://localhost:4000`. |
+| Content-Type | Request bodies: `application/json`. Responses: JSON unless noted. |
+| Identifiers | UUIDs as lowercase string (8-4-4-4-12), unless otherwise specified. |
+| Time | ISO-8601 UTC with millisecond precision where emitted by the server, e.g. `2026-01-01T12:05:00.000Z`. |
+| Client IP (rate limits) | First hop in `X-Forwarded-For` when present; otherwise internal logic may treat IP as `unknown`. |
+| Authentication (current) | Protected routes require header `X-User-Id: <user uuid>`. This is a **development placeholder** until session/JWT auth lands; do not rely on it for production security. |
+| Device approval | `POST /devices/:deviceId/approve` and `POST /devices/:deviceId/reject` additionally require `X-Device-Id: <trusted approver device uuid>`. |
+
+## Error model
+
+Failed requests return JSON with:
+
+| Field | Type | Required |
+|--------|------|----------|
+| `error` | string | Yes — domain error code (see per-route tables). |
+| `message` | string | Yes — human-readable description (not for i18n keys). |
+| `requestId` | string | Yes — correlates with server logs. |
+| `details` | object | No — structured hints (e.g. version conflict metadata). |
+
+Example:
+
 ```json
 {
-  "challengeId": "challenge-id",
-  "expiresAt": "2026-01-01T12:05:00.000Z",
-  "resendAvailableAt": "2026-01-01T12:01:00.000Z"
+  "error": "VERSION_MISMATCH",
+  "message": "baseVersion is stale",
+  "requestId": "req_01HZZZZ",
+  "details": {
+    "expectedBaseVersion": 3,
+    "latestVersion": 5
+  }
 }
 ```
 
-### POST /auth/email/resend
-Request:
-```json
-{ "challengeId": "challenge-id", "locale": "en" }
-```
-Response:
+Unrecoverable failures may return `500` with `error: "INTERNAL_SERVER_ERROR"`.
+
+Malformed route parameters (missing `workspaceId` / `vaultId` in path) may return `400` with `error: "BAD_REQUEST"` (vault routes) or the domain-specific `*_BAD_REQUEST` code on other routes.
+
+---
+
+## Auth (email challenge)
+
+Flow: **start** → (optional **resend**) → **confirm** → receive `authStateId` and `nextStep`.
+
+### `POST /auth/email/start`
+
+Starts login: creates a short-lived challenge, sends code to email (provider-dependent).
+
+**Auth:** none.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `email` | string | Yes | Trimmed; normalized to lower case server-side. |
+| `locale` | string | No | Passed to email template layer when supported. |
+
+**Response `200`:**
+
+| Field | Type | Description |
+|--------|------|-------------|
+| `challengeId` | string | Opaque id for resend/confirm. |
+| `expiresAt` | string | Challenge expiry (ISO-8601 UTC). |
+| `resendAvailableAt` | string | Earliest time resend is allowed (ISO-8601 UTC). |
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_BAD_REQUEST` | 400 | Invalid JSON or missing `email`. |
+| `AUTH_EMAIL_INVALID` | 400 | Email fails validation. |
+| `AUTH_RATE_LIMITED` | 429 | Start/resend rate limit exceeded. |
+
+### `POST /auth/email/resend`
+
+Resends the code for an existing challenge.
+
+**Auth:** none.
+
+**Request body:**
+
+| Field | Type | Required |
+|--------|------|----------|
+| `challengeId` | string | Yes |
+| `locale` | string | No |
+
+**Response `200`:** Same shape as start.
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_BAD_REQUEST` | 400 | Invalid JSON or missing `challengeId`. |
+| `AUTH_RESEND_TOO_EARLY` | 400 | Before `resendAvailableAt`. |
+| `AUTH_CODE_EXPIRED` | 400 | Challenge no longer valid. |
+| `AUTH_RATE_LIMITED` | 429 | Rate limit. |
+
+### `POST /auth/email/confirm`
+
+Validates the code and returns an auth state handle for the next onboarding step.
+
+**Auth:** none.
+
+**Request body:**
+
+| Field | Type | Required |
+|--------|------|----------|
+| `challengeId` | string | Yes |
+| `code` | string | Yes | Typically 6 digits; server compares hashed value. |
+
+**Response `200`:**
+
+| Field | Type | Description |
+|--------|------|-------------|
+| `authStateId` | string | Opaque; used by future registration/device flows. |
+| `userExists` | boolean | Whether a user row exists for this email. |
+| `nextStep` | string | `"registration"` if new user, `"device_check"` if existing. |
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_BAD_REQUEST` | 400 | Invalid JSON or missing `challengeId` / `code`. |
+| `AUTH_CODE_INVALID` | 400 | Wrong code (and attempts may decrement). |
+| `AUTH_CODE_ATTEMPTS_EXCEEDED` | 400 | Too many failed attempts. |
+| `AUTH_CODE_EXPIRED` | 400 | Challenge expired. |
+| `AUTH_RATE_LIMITED` | 429 | Confirm rate limit. |
+
+**Idempotency:** confirm is **not** idempotent; repeating with the same code after success may fail.
+
+---
+
+## Vault metadata
+
+Returns **non-secret** vault rows. No ciphertext.
+
+### `GET /workspaces/:workspaceId/vaults`
+
+Lists vaults in a workspace the user may access.
+
+**Auth:** `X-User-Id`.
+
+**Response `200`:** JSON array of vault objects:
+
+| Field | Type | Notes |
+|--------|------|--------|
+| `id` | string | UUID |
+| `workspaceId` | string | UUID |
+| `name` | string | |
+| `isPersonal` | boolean | |
+| `ownerId` | string \| null | UUID or null |
+| `createdAt` | string | ISO-8601 UTC |
+| `updatedAt` | string | ISO-8601 UTC |
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `BAD_REQUEST` | 400 | Missing `workspaceId` in path. |
+| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `WORKSPACE_NOT_FOUND` | 404 | Unknown workspace id. |
+| `ACCESS_DENIED` | 403 | User not a member of the workspace. |
+
+### `GET /vaults/:vaultId`
+
+Returns a single vault if the user can read it.
+
+**Auth:** `X-User-Id`.
+
+**Response `200`:** Single vault object (same fields as list item).
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `BAD_REQUEST` | 400 | Missing `vaultId` in path. |
+| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `VAULT_NOT_FOUND` | 404 | Unknown vault. |
+| `ACCESS_DENIED` | 403 | User cannot read this vault. |
+
+---
+
+## Sync (event log)
+
+Per-vault encrypted event stream. Server stores **opaque** base64 payloads only.
+
+Allowed `eventType` values (must match exactly):
+
+`ITEM_CREATE`, `ITEM_UPDATE`, `ITEM_DELETE`, `VAULT_CREATE`, `VAULT_SHARE`, `VAULT_KEY_ROTATION`, `DEVICE_ADD`, `DEVICE_REMOVE`
+
+### `GET /vaults/:vaultId/events?afterVersion=<n>`
+
+**Auth:** `X-User-Id`.
+
+**Query:**
+
+| Param | Type | Default | Notes |
+|--------|------|---------|--------|
+| `afterVersion` | integer | `0` | Non-negative; return events with `version > afterVersion`. |
+
+**Response `200`:**
+
 ```json
 {
-  "challengeId": "challenge-id",
-  "expiresAt": "2026-01-01T12:05:00.000Z",
-  "resendAvailableAt": "2026-01-01T12:01:00.000Z"
-}
-```
-
-### POST /auth/email/confirm
-Request:
-```json
-{ "challengeId": "challenge-id", "code": "123456" }
-```
-Response:
-```json
-{
-  "authStateId": "auth-state-id",
-  "userExists": true,
-  "nextStep": "device_check"
-}
-```
-
-### Auth error codes
-
-- `AUTH_BAD_REQUEST`
-- `AUTH_EMAIL_INVALID`
-- `AUTH_CODE_INVALID`
-- `AUTH_CODE_EXPIRED`
-- `AUTH_CODE_ATTEMPTS_EXCEEDED`
-- `AUTH_RESEND_TOO_EARLY`
-- `AUTH_RATE_LIMITED`
-
-## User
-
-### GET /me
-Response:
-```json
-{ "id": "user-id", "email": "user@example.com", "publicKey": "...", "createdAt": "...", "updatedAt": "..." }
-```
-
-## Vaults
-
-### GET /workspaces/:workspaceId/vaults
-Headers:
-```text
-X-User-Id: <user-id>
-```
-Response:
-```json
-[{ "id": "vault-id", "workspaceId": "workspace-id", "name": "Personal", "isPersonal": true, "ownerId": "user-id", "createdAt": "...", "updatedAt": "..." }]
-```
-
-Errors:
-- `AUTH_REQUIRED` (401)
-- `WORKSPACE_NOT_FOUND` (404)
-- `ACCESS_DENIED` (403)
-
-### GET /vaults/:vaultId
-Headers:
-```text
-X-User-Id: <user-id>
-```
-Response:
-```json
-{ "id": "vault-id", "workspaceId": "workspace-id", "name": "Personal", "isPersonal": true, "ownerId": "user-id", "createdAt": "...", "updatedAt": "..." }
-```
-
-Errors:
-- `AUTH_REQUIRED` (401)
-- `VAULT_NOT_FOUND` (404)
-- `ACCESS_DENIED` (403)
-
-## Items
-
-### GET /vaults/:vaultId/items
-Response:
-```json
-[{ "id": "item-id", "vaultId": "vault-id", "encryptedData": "...", "version": 1, "createdAt": "...", "updatedAt": "..." }]
-```
-
-## Sync
-
-### GET /vaults/:vaultId/events?afterVersion=0
-Headers:
-```text
-X-User-Id: <user-id>
-```
-Response:
-```json
-{
-  "vaultId": "vault-id",
+  "vaultId": "uuid",
   "afterVersion": 0,
   "events": [
     {
-      "id": "event-id",
-      "vaultId": "vault-id",
-      "actorId": "user-id",
+      "id": "uuid",
+      "vaultId": "uuid",
+      "actorId": "uuid-or-null",
       "eventType": "ITEM_CREATE",
-      "encryptedPayload": "base64...",
+      "encryptedPayload": "base64",
       "version": 1,
-      "createdAt": "..."
+      "createdAt": "2026-01-01T12:00:00.000Z"
     }
   ]
 }
 ```
 
-### POST /vaults/:vaultId/events
-Headers:
-```text
-X-User-Id: <user-id>
-```
-Request:
-```json
-{
-  "eventType": "ITEM_UPDATE",
-  "encryptedPayload": "base64...",
-  "baseVersion": 1
-}
-```
-Response:
-```json
-{
-  "id": "event-id",
-  "vaultId": "vault-id",
-  "actorId": "user-id",
-  "eventType": "ITEM_UPDATE",
-  "encryptedPayload": "base64...",
-  "version": 2,
-  "createdAt": "..."
-}
-```
+**Errors:**
 
-Sync errors:
-- `AUTH_REQUIRED` (401)
-- `ACCESS_DENIED` (403)
-- `VAULT_NOT_FOUND` (404)
-- `SYNC_BAD_REQUEST` (400)
-- `SYNC_INVALID_EVENT_TYPE` (400)
-- `SYNC_INVALID_PAYLOAD` (400)
-- `VERSION_MISMATCH` (409)
+| `error` | HTTP | When |
+|---------|------|------|
+| `SYNC_BAD_REQUEST` | 400 | Missing `vaultId`, invalid `afterVersion`, or invalid JSON on POST sibling. |
+| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `VAULT_NOT_FOUND` | 404 | Unknown vault. |
+| `ACCESS_DENIED` | 403 | User cannot read vault. |
+
+### `POST /vaults/:vaultId/events`
+
+Appends one event if `baseVersion` matches current stream head.
+
+**Auth:** `X-User-Id`.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `eventType` | string | Yes | One of allowed types. |
+| `encryptedPayload` | string | Yes | Standard base64; decoded length must be &gt; 0. |
+| `baseVersion` | integer | Yes | Non-negative; must equal current latest version for append. |
+
+**Response `201`:** Single event object (same shape as an element of `events` in the GET response).
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `SYNC_BAD_REQUEST` | 400 | Invalid JSON; missing fields; invalid `baseVersion` type/range. |
+| `SYNC_INVALID_EVENT_TYPE` | 400 | Unknown `eventType`. |
+| `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
+| `VERSION_MISMATCH` | 409 | `baseVersion` stale; `details` may include `expectedBaseVersion` and `latestVersion`. |
+| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `VAULT_NOT_FOUND` | 404 | Unknown vault. |
+| `ACCESS_DENIED` | 403 | User cannot read vault. |
+
+**Idempotency:** append is **not** idempotent; retries with the same payload may create duplicates unless a future idempotency key is added.
+
+---
 
 ## Devices
 
-### POST /devices/register
-Headers:
-```text
-X-User-Id: <user-id>
-X-Forwarded-For: <ip>
-```
-Request:
-```json
-{
-  "device_public_key": "base64-public-key",
-  "device_share": "base64-device-share",
-  "device_fingerprint": "0123abcd...",
-  "device_name": "MacBook Pro",
-  "platform": "desktop",
-  "os_name": "macOS",
-  "os_version": "14.5",
-  "app_version": "1.0.0",
-  "client_type": "desktop",
-  "user_agent": "okkey-desktop/1.0.0"
-}
-```
-Response:
-```json
-{
-  "device_id": "device-id",
-  "status": "trusted"
-}
-```
-Possible `status` values:
-- `trusted`
-- `pending_approval`
+JSON field names use **snake_case** on the wire for device registration (matches implemented handlers).
 
-Device errors:
-- `AUTH_REQUIRED` (401)
-- `DEVICE_BAD_REQUEST` (400)
-- `DEVICE_INVALID_FINGERPRINT` (400)
-- `DEVICE_INVALID_PUBLIC_KEY` (400)
-- `DEVICE_DUPLICATE_CONFLICT` (409)
+### `POST /devices/register`
 
-### POST /devices/:deviceId/approve
-Headers:
-```text
-X-User-Id: <user-id>
-X-Device-Id: <trusted-device-id>
-```
-Response:
-```json
-{
-  "device_id": "device-id",
-  "status": "trusted"
-}
-```
-Notes:
-- Approval requires a trusted approver device (`X-Device-Id`).
-- Pending approval challenge window is controlled by `DEVICE_APPROVAL_TTL_SECONDS` (default: `600`).
+Registers or updates a device for `X-User-Id`. May return `pending_approval` when the user already has trusted devices.
 
-### POST /devices/:deviceId/reject
-Headers:
-```text
-X-User-Id: <user-id>
-X-Device-Id: <trusted-device-id>
-```
-Request:
-```json
-{
-  "reason": "unknown login"
-}
-```
-Response:
-```json
-{
-  "device_id": "device-id",
-  "status": "revoked"
-}
-```
+**Auth:** `X-User-Id`.
 
-Device approval errors:
-- `AUTH_REQUIRED` (401)
-- `DEVICE_APPROVAL_NOT_FOUND` (404)
-- `DEVICE_APPROVAL_EXPIRED` (410)
-- `DEVICE_APPROVAL_ALREADY_RESOLVED` (409)
-- `DEVICE_APPROVAL_ACCESS_DENIED` (403)
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `device_public_key` | string | Yes | Non-empty standard base64 after decode. |
+| `device_share` | string | Yes | Non-empty base64 device share blob. |
+| `device_fingerprint` | string | Yes | Hex, length 32–128 (case-insensitive), trimmed. |
+| `device_name` | string | Yes | Display name. |
+| `platform` | string | No | Default `unknown` if omitted and no `metadata`. |
+| `os_name` | string | No | Same |
+| `os_version` | string | No | Same |
+| `app_version` | string | No | Same |
+| `client_type` | string | No | Same |
+| `user_agent` | string | No | Falls back to HTTP `User-Agent` or `unknown`. |
+| `metadata` | object | No | Optional nested object with the same optional string fields; overrides top-level when both present (per-field). |
+
+**Response `200`:**
+
+| Field | Type | Values |
+|--------|------|--------|
+| `device_id` | string | UUID |
+| `status` | string | `trusted` \| `pending_approval` |
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `DEVICE_BAD_REQUEST` | 400 | Invalid JSON; missing required fields; invalid `device_share`. |
+| `DEVICE_INVALID_FINGERPRINT` | 400 | Fingerprint format invalid. |
+| `DEVICE_INVALID_PUBLIC_KEY` | 400 | Public key not valid base64. |
+| `DEVICE_DUPLICATE_CONFLICT` | 409 | Unique constraint / duplicate registration conflict. |
+| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+
+### `POST /devices/:deviceId/approve`
+
+**Auth:** `X-User-Id` and `X-Device-Id` (approver must be a trusted device for this user).
+
+**Response `200`:** `{ "device_id": "uuid", "status": "trusted" }`
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `DEVICE_BAD_REQUEST` | 400 | Missing `deviceId` in path. |
+| `DEVICE_APPROVAL_ACCESS_DENIED` | 403 | Approver missing or not allowed. |
+| `DEVICE_APPROVAL_NOT_FOUND` | 404 | No pending approval for this device. |
+| `DEVICE_APPROVAL_EXPIRED` | 410 | Approval window elapsed (`DEVICE_APPROVAL_TTL_SECONDS`, default 600). |
+| `DEVICE_APPROVAL_ALREADY_RESOLVED` | 409 | Already approved or rejected. |
+| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+
+### `POST /devices/:deviceId/reject`
+
+**Auth:** `X-User-Id` and `X-Device-Id`.
+
+**Request body:** optional `{ "reason": "string" }` (invalid JSON → `DEVICE_BAD_REQUEST`).
+
+**Response `200`:** `{ "device_id": "uuid", "status": "revoked" }`
+
+**Errors:** Same family as approve.
+
+---
+
+## Not yet exposed over HTTP (Core)
+
+The following are **not** implemented as public routes in the current `services/api` router; they may appear in SDK/domain types for future use:
+
+- `GET /me`
+- `GET /vaults/:vaultId/items`
+
+Document them when routes are added.
+
+---
+
+## Related tasks
+
+- **4.4** — email challenge model (this doc).
+- **4.7** — device registration + metadata (snake_case wire fields).
+- **4.10** — approve / reject and approval errors.
+- **4.9** — registration split-key: will extend request/response shapes when implemented.
+
+---
+
+## Operational configuration (reference)
+
+Auth and device flows depend on env-tunable limits (see `services/api/.env.example`), including:
+
+- `AUTH_CODE_TTL_SECONDS`, `AUTH_RESEND_COOLDOWN_SECONDS`, `AUTH_CODE_MAX_ATTEMPTS`
+- Rate limit windows / thresholds for start, confirm, resend
+- `DEVICE_APPROVAL_TTL_SECONDS`
+
+These affect **when** errors such as `AUTH_CODE_EXPIRED` or `DEVICE_APPROVAL_EXPIRED` occur, not the error wire shape.

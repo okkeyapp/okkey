@@ -1,10 +1,8 @@
-import type { Session, User } from "../../types/src/index.js";
 import { ApiClient } from "../../api/src/index.js";
-
-export interface AuthState {
-  user: User | null;
-  session: Session | null;
-}
+import type {
+  EmailAuthConfirmResponse,
+  EmailAuthStartResponse,
+} from "../../types/src/index.js";
 
 export class AuthClient {
   private api: ApiClient;
@@ -13,11 +11,27 @@ export class AuthClient {
     this.api = api;
   }
 
-  async startEmailLogin(email: string): Promise<void> {
-    await this.api.post<void>("/auth/email/start", { email });
+  async startEmailLogin(email: string, locale?: string): Promise<EmailAuthStartResponse> {
+    return this.api.post<EmailAuthStartResponse>("/auth/email/start", {
+      email,
+      ...(locale !== undefined ? { locale } : {}),
+    });
   }
 
-  async confirmEmailCode(email: string, code: string): Promise<Session> {
-    return this.api.post<Session>("/auth/email/confirm", { email, code });
+  async resendEmailCode(challengeId: string, locale?: string): Promise<EmailAuthStartResponse> {
+    return this.api.post<EmailAuthStartResponse>("/auth/email/resend", {
+      challengeId,
+      ...(locale !== undefined ? { locale } : {}),
+    });
+  }
+
+  async confirmEmailCode(
+    challengeId: string,
+    code: string,
+  ): Promise<EmailAuthConfirmResponse> {
+    return this.api.post<EmailAuthConfirmResponse>("/auth/email/confirm", {
+      challengeId,
+      code,
+    });
   }
 }

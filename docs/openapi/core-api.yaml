@@ -1,0 +1,672 @@
+openapi: 3.0.3
+info:
+  title: Okkey Core API
+  description: |
+    Machine-readable contract for the Core HTTP API (`services/api`).
+    Human-readable narrative and policies: `docs/api_contracts.md`.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:4000
+    description: Local development
+
+tags:
+  - name: Auth
+  - name: Vaults
+  - name: Sync
+  - name: Devices
+  - name: System
+
+components:
+  schemas:
+    ErrorBody:
+      type: object
+      required: [error, message, requestId]
+      properties:
+        error:
+          type: string
+          description: Domain error code
+        message:
+          type: string
+        requestId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    EmailStartRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        locale:
+          type: string
+
+    EmailChallengeResponse:
+      type: object
+      required: [challengeId, expiresAt, resendAvailableAt]
+      properties:
+        challengeId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        resendAvailableAt:
+          type: string
+          format: date-time
+
+    EmailResendRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId:
+          type: string
+        locale:
+          type: string
+
+    EmailConfirmRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId:
+          type: string
+        code:
+          type: string
+
+    EmailConfirmResponse:
+      type: object
+      required: [authStateId, userExists, nextStep]
+      properties:
+        authStateId:
+          type: string
+        userExists:
+          type: boolean
+        nextStep:
+          type: string
+          enum: [registration, device_check]
+
+    Vault:
+      type: object
+      required: [id, workspaceId, name, isPersonal, ownerId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        isPersonal:
+          type: boolean
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SyncEvent:
+      type: object
+      required:
+        [id, vaultId, actorId, eventType, encryptedPayload, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        vaultId:
+          type: string
+          format: uuid
+        actorId:
+          type: string
+          format: uuid
+          nullable: true
+        eventType:
+          type: string
+          enum:
+            - ITEM_CREATE
+            - ITEM_UPDATE
+            - ITEM_DELETE
+            - VAULT_CREATE
+            - VAULT_SHARE
+            - VAULT_KEY_ROTATION
+            - DEVICE_ADD
+            - DEVICE_REMOVE
+        encryptedPayload:
+          type: string
+          description: Standard base64 ciphertext
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    SyncEventsListResponse:
+      type: object
+      required: [vaultId, afterVersion, events]
+      properties:
+        vaultId:
+          type: string
+          format: uuid
+        afterVersion:
+          type: integer
+          minimum: 0
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncEvent"
+
+    SyncAppendRequest:
+      type: object
+      required: [eventType, encryptedPayload, baseVersion]
+      properties:
+        eventType:
+          type: string
+        encryptedPayload:
+          type: string
+        baseVersion:
+          type: integer
+          minimum: 0
+
+    DeviceRegisterRequest:
+      type: object
+      required:
+        - device_public_key
+        - device_share
+        - device_fingerprint
+        - device_name
+      properties:
+        device_public_key:
+          type: string
+        device_share:
+          type: string
+        device_fingerprint:
+          type: string
+        device_name:
+          type: string
+        platform:
+          type: string
+        os_name:
+          type: string
+        os_version:
+          type: string
+        app_version:
+          type: string
+        client_type:
+          type: string
+        user_agent:
+          type: string
+        metadata:
+          type: object
+          properties:
+            platform:
+              type: string
+            os_name:
+              type: string
+            os_version:
+              type: string
+            app_version:
+              type: string
+            client_type:
+              type: string
+            user_agent:
+              type: string
+
+    DeviceRegisterResponse:
+      type: object
+      required: [device_id, status]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [trusted, pending_approval]
+
+    DeviceResolveResponse:
+      type: object
+      required: [device_id, status]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [trusted, revoked]
+
+    DeviceRejectRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+
+  parameters:
+    HeaderUserId:
+      name: X-User-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+    HeaderDeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness
+      responses:
+        "200":
+          description: OK
+
+  /ready:
+    get:
+      tags: [System]
+      summary: Readiness
+      responses:
+        "200":
+          description: Ready
+        "503":
+          description: Not ready
+
+  /auth/email/start:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailStartRequest"
+      responses:
+        "200":
+          description: Challenge created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailChallengeResponse"
+        "400":
+          description: Validation / bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/email/resend:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailResendRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailChallengeResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/email/confirm:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailConfirmRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailConfirmResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /workspaces/{workspaceId}/vaults:
+    get:
+      tags: [Vaults]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vault"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}:
+    get:
+      tags: [Vaults]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vault"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}/events:
+    get:
+      tags: [Sync]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: afterVersion
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncEventsListResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+    post:
+      tags: [Sync]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncAppendRequest"
+      responses:
+        "201":
+          description: Event appended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncEvent"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          description: Version mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /devices/register:
+    post:
+      tags: [Devices]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRegisterRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRegisterResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /devices/{deviceId}/approve:
+    post:
+      tags: [Devices]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - $ref: "#/components/parameters/HeaderDeviceId"
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRegisterResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /devices/{deviceId}/reject:
+    post:
+      tags: [Devices]
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - $ref: "#/components/parameters/HeaderDeviceId"
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRejectRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceResolveResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
