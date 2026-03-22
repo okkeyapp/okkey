@@ -31,6 +31,7 @@ class MockResponse {
 function loggerStub() {
   return {
     info(_message: string, _extra?: Record<string, unknown>) {},
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, _extra?: Record<string, unknown>) {},
   };
 }
@@ -156,6 +157,7 @@ test("request logger does not include registration body fields", async () => {
     info(_message: string, extra?: Record<string, unknown>) {
       logExtras.push(extra);
     },
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, extra?: Record<string, unknown>) {
       logExtras.push(extra);
     },

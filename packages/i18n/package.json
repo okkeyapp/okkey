@@ -1,0 +1,15 @@
+{
+  "name": "@okkey/i18n",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "dependencies": {
+    "intl-messageformat": "^10.7.0"
+  },
+  "scripts": {
+    "build": "npx --yes -p typescript tsc -p tsconfig.json && node scripts/copy-email-locale-json.mjs"
+  }
+}

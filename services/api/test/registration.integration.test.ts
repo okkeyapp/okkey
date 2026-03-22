@@ -13,6 +13,7 @@ import { createStorageLayer } from "../src/storage/index.ts";
 function createLoggerStub() {
   return {
     info(_message: string, _extra?: Record<string, unknown>) {},
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, _extra?: Record<string, unknown>) {},
   };
 }
@@ -32,15 +33,20 @@ test("integration: registration completes user, workspace, vault, trusted device
     "utf8",
   );
   await storage.postgres.query(migration0003);
+  const migration0004 = readFileSync(
+    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0004);
   const suffix = randomUUID();
   const email = `reg-${suffix}@okkey.local`;
   const authStateId = randomUUID();
 
-  const emailTemplates = new EmailTemplateService(
-    { send: async () => {} },
-    config.emailFrom,
-    config.defaultEmailLocale,
-  );
+  const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
 
   const authService = new AuthService({
     redis: storage.redis,
@@ -160,15 +166,20 @@ test("integration: parallel completeRegistration creates single user", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0003);
+  const migration0004b = readFileSync(
+    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0004b);
   const suffix = randomUUID();
   const email = `reg-parallel-${suffix}@okkey.local`;
   const authStateId = randomUUID();
 
-  const emailTemplates = new EmailTemplateService(
-    { send: async () => {} },
-    config.emailFrom,
-    config.defaultEmailLocale,
-  );
+  const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
 
   const authService = new AuthService({
     redis: storage.redis,
@@ -281,12 +292,17 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0003);
-
-  const emailTemplates = new EmailTemplateService(
-    { send: async () => {} },
-    config.emailFrom,
-    config.defaultEmailLocale,
+  const migration0004c = readFileSync(
+    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
+    "utf8",
   );
+  await storage.postgres.query(migration0004c);
+
+  const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
 
   const authService = new AuthService({
     redis: storage.redis,

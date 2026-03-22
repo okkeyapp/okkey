@@ -27,6 +27,7 @@ class MockResponse {
 function loggerStub() {
   return {
     info(_message: string, _extra?: Record<string, unknown>) {},
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, _extra?: Record<string, unknown>) {},
   };
 }

@@ -27,6 +27,8 @@ export interface UserRecord {
   id: string;
   email: string;
   publicKey: string;
+  /** Preferred language for email (`en` | `ru`); null if unset */
+  locale: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,7 +62,7 @@ export class UsersRepository {
             password_kdf_params_version
           )
           VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id, email, public_key, created_at, updated_at
+          RETURNING id, email, public_key, locale, created_at, updated_at
         `,
         [
           input.email,
@@ -79,16 +81,20 @@ export class UsersRepository {
   }
 
   async findById(id: string): Promise<UserRecord | null> {
-    const rows = await this.db.query<BaseRow & { email: string; public_key: string }>(
-      "SELECT id, email, public_key, created_at, updated_at FROM users WHERE id = $1",
+    const rows = await this.db.query<
+      BaseRow & { email: string; public_key: string; locale: string | null }
+    >(
+      "SELECT id, email, public_key, locale, created_at, updated_at FROM users WHERE id = $1",
       [id],
     );
     return rows[0] ? mapUser(rows[0]) : null;
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
-    const rows = await this.db.query<BaseRow & { email: string; public_key: string }>(
-      "SELECT id, email, public_key, created_at, updated_at FROM users WHERE email = $1",
+    const rows = await this.db.query<
+      BaseRow & { email: string; public_key: string; locale: string | null }
+    >(
+      "SELECT id, email, public_key, locale, created_at, updated_at FROM users WHERE email = $1",
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -1167,11 +1173,14 @@ export class SessionsRepository {
   }
 }
 
-function mapUser(row: BaseRow & { email: string; public_key: string }): UserRecord {
+function mapUser(
+  row: BaseRow & { email: string; public_key: string; locale?: string | null },
+): UserRecord {
   return {
     id: row.id,
     email: row.email,
     publicKey: row.public_key,
+    locale: row.locale ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };

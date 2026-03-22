@@ -168,10 +168,14 @@ export function createTotpEnrollConfirmRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const result = await twoFactorService.enrollTotpConfirm(userId, {
-        enrollmentId: body.enrollmentId.trim(),
-        code: body.code.trim(),
-      });
+      const result = await twoFactorService.enrollTotpConfirm(
+        userId,
+        {
+          enrollmentId: body.enrollmentId.trim(),
+          code: body.code.trim(),
+        },
+        { acceptLanguage: getHeader(ctx.req, "accept-language") },
+      );
       json(ctx.res, 200, { backupCodes: result.backupCodes });
     } catch (error) {
       handleTwoFactorError(ctx.requestId, ctx.res, error);
@@ -211,7 +215,9 @@ export function createBackupCodesRegenerateRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const result = await twoFactorService.regenerateBackupCodes(userId, totpCode);
+      const result = await twoFactorService.regenerateBackupCodes(userId, totpCode, {
+        acceptLanguage: getHeader(ctx.req, "accept-language"),
+      });
       json(ctx.res, 200, { backupCodes: result.backupCodes });
     } catch (error) {
       handleTwoFactorError(ctx.requestId, ctx.res, error);

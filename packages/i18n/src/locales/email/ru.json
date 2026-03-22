@@ -1,0 +1,35 @@
+{
+  "email.auth.signInCode.subject": "Код входа в Okkey",
+  "email.auth.signInCode.beforeCode": "Ваш код входа:",
+  "email.auth.signInCode.line2": "Код действует {minutes, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}}.",
+  "email.auth.signInCode.plain": "Ваш код входа: {code}. Код действует {minutes, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}}.",
+
+  "email.device.approval.subject": "Новый вход с устройства — требуется подтверждение",
+  "email.device.approval.lead": "Запрошен вход с нового устройства.",
+  "email.device.approval.deviceLine": "Устройство: {deviceName}",
+  "email.device.approval.platformLine": "Платформа: {platformOs}",
+  "email.device.approval.ipLine": "IP: {ip}",
+  "email.device.approval.ctaOpenSettings": "Открыть настройки устройств",
+  "email.device.approval.noteNoUrl": "Откройте Okkey на доверенном устройстве для подтверждения.",
+  "email.device.approval.textFooterWithUrl": "Подробнее: {helpUrl}",
+  "email.device.approval.plain": "{lead}\n{deviceLine}\n{platformLine}\n{ipLine}\n{footer}",
+
+  "email.workspaceInvite.subject": "Приглашение в пространство «{workspaceName}»",
+  "email.workspaceInvite.intro": "{inviter} приглашает вас в пространство «{workspaceName}».",
+  "email.workspaceInvite.ctaAccept": "Принять приглашение",
+  "email.workspaceInvite.plain": "{inviter} приглашает вас в пространство «{workspaceName}». Принять: {inviteUrl}",
+
+  "email.twoFactor.enabled.subject": "В Okkey включена двухфакторная аутентификация",
+  "email.twoFactor.enabled.line1": "Двухфакторная аутентификация включена ({whenUtc} UTC).",
+  "email.twoFactor.enabled.line2": "Если это были не вы, срочно свяжитесь с поддержкой и смените пароль.",
+  "email.twoFactor.enabled.ctaSecurity": "Открыть настройки безопасности",
+  "email.twoFactor.enabled.plain": "{line1}\n{line2}\n{footer}",
+  "email.twoFactor.enabled.plainFooterUrl": "Настройки: {url}",
+
+  "email.twoFactor.backupRegen.subject": "Резервные коды Okkey перевыпущены",
+  "email.twoFactor.backupRegen.line1": "Резервные коды восстановления перевыпущены ({whenUtc} UTC).",
+  "email.twoFactor.backupRegen.line2": "Старые коды больше не действуют. Новые коды доступны только в ответе приложения — мы не отправляем их по email.",
+  "email.twoFactor.backupRegen.ctaSecurity": "Открыть настройки безопасности",
+  "email.twoFactor.backupRegen.plain": "{line1}\n{line2}\n{footer}",
+  "email.twoFactor.backupRegen.plainFooterUrl": "Настройки: {url}"
+}

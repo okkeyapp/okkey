@@ -30,6 +30,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     twoFactorBackupCodesCount: 10,
     allowHeaderUserIdAuth: true,
     defaultEmailLocale: "en",
+    publicAppBaseUrl: "https://app.okkey.test",
     emailFrom: "no-reply@okkey.local",
     emailProvider: "logger",
     smtpHost: "localhost",

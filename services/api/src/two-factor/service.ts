@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuthService, AuthStatePayload } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
+import type { EmailTemplateService } from "../email/service.ts";
+import { buildEmailAppPathUrl } from "../email/service.ts";
 import {
   generateBackupCodePlaintext,
   hashBackupCode,
@@ -42,6 +44,11 @@ export interface TwoFactorServiceDeps {
   authService: Pick<AuthService, "readAuthState" | "removeAuthState">;
   sessionService: SessionService;
   config: ApiConfig;
+  emailTemplates?: Pick<
+    EmailTemplateService,
+    | "sendTwoFactorEnabledBestEffort"
+    | "sendTwoFactorBackupCodesRegeneratedBestEffort"
+  >;
   now?: () => Date;
 }
 
@@ -69,6 +76,11 @@ export class TwoFactorService {
   private readonly authService: TwoFactorServiceDeps["authService"];
   private readonly sessionService: SessionService;
   private readonly config: ApiConfig;
+  private readonly emailTemplates?: Pick<
+    EmailTemplateService,
+    | "sendTwoFactorEnabledBestEffort"
+    | "sendTwoFactorBackupCodesRegeneratedBestEffort"
+  >;
   private readonly now: () => Date;
 
   constructor(deps: TwoFactorServiceDeps) {
@@ -78,6 +90,7 @@ export class TwoFactorService {
     this.authService = deps.authService;
     this.sessionService = deps.sessionService;
     this.config = deps.config;
+    this.emailTemplates = deps.emailTemplates;
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -321,7 +334,11 @@ export class TwoFactorService {
     };
   }
 
-  async enrollTotpConfirm(userId: string, input: { enrollmentId: string; code: string }): Promise<{
+  async enrollTotpConfirm(
+    userId: string,
+    input: { enrollmentId: string; code: string },
+    context?: { acceptLanguage?: string },
+  ): Promise<{
     backupCodes: string[];
   }> {
     if (await this.users.isTwoFactorEnabled(userId)) {
@@ -389,10 +406,32 @@ export class TwoFactorService {
     await this.redis.del(enrollRedisKey(input.enrollmentId));
     await this.redis.del(enrollActiveUserKey(userId));
 
+    const user = await this.users.findById(userId);
+    if (user && this.emailTemplates) {
+      void this.emailTemplates.sendTwoFactorEnabledBestEffort({
+        to: user.email,
+        localeHints: {
+          userLocale: user.locale,
+          acceptLanguage: context?.acceptLanguage,
+        },
+        variables: {
+          occurredAtIso: this.now().toISOString(),
+          securitySettingsUrl: buildEmailAppPathUrl(
+            this.config.publicAppBaseUrl,
+            "/settings/security",
+          ),
+        },
+      });
+    }
+
     return { backupCodes };
   }
 
-  async regenerateBackupCodes(userId: string, totpCode: string): Promise<{ backupCodes: string[] }> {
+  async regenerateBackupCodes(
+    userId: string,
+    totpCode: string,
+    context?: { acceptLanguage?: string },
+  ): Promise<{ backupCodes: string[] }> {
     if (!(await this.users.isTwoFactorEnabled(userId))) {
       throw new TwoFactorError("TWO_FACTOR_NOT_ENABLED", 400, "two-factor not enabled");
     }
@@ -422,6 +461,25 @@ export class TwoFactorService {
       backupHashes.push(hashBackupCode(plain, this.config.sessionSecret));
     }
     await this.twoFactorRepo.replaceBackupCodesOnly(userId, backupHashes);
+
+    const user = await this.users.findById(userId);
+    if (user && this.emailTemplates) {
+      void this.emailTemplates.sendTwoFactorBackupCodesRegeneratedBestEffort({
+        to: user.email,
+        localeHints: {
+          userLocale: user.locale,
+          acceptLanguage: context?.acceptLanguage,
+        },
+        variables: {
+          occurredAtIso: this.now().toISOString(),
+          securitySettingsUrl: buildEmailAppPathUrl(
+            this.config.publicAppBaseUrl,
+            "/settings/security",
+          ),
+        },
+      });
+    }
+
     return { backupCodes };
   }
 

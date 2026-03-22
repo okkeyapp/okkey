@@ -1,4 +1,8 @@
 import type { ApiConfig } from "../config.ts";
+import type { EmailTemplateService } from "../email/service.ts";
+import { buildEmailAppPathUrl } from "../email/service.ts";
+import type { Logger } from "../logger.ts";
+import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
 import type { DeviceApprovalState, DevicesRepository } from "../storage/repositories.ts";
 
@@ -22,7 +26,10 @@ export class DeviceServiceError extends Error {
 
 export interface DeviceServiceDeps {
   devices: Pick<DevicesRepository, "registerOrUpdate" | "isTrustedDevice" | "resolveApproval">;
-  config: Pick<ApiConfig, "deviceApprovalTtlSeconds">;
+  config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
+  users?: Pick<UsersRepository, "findById">;
+  emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
+  log?: Pick<Logger, "warn">;
   now?: () => Date;
 }
 
@@ -37,6 +44,8 @@ export interface RegisterDeviceInput {
   appVersion: string;
   clientType: string;
   userAgent: string;
+  /** For email template locale resolution */
+  acceptLanguage?: string;
 }
 
 export interface RegisterDeviceResult {
@@ -52,11 +61,17 @@ export interface ResolveDeviceApprovalResult {
 export class DeviceService {
   private readonly devices: DeviceServiceDeps["devices"];
   private readonly config: DeviceServiceDeps["config"];
+  private readonly users?: Pick<UsersRepository, "findById">;
+  private readonly emailTemplates?: Pick<EmailTemplateService, "sendDeviceApprovalRequest">;
+  private readonly log?: Pick<Logger, "warn">;
   private readonly now: () => Date;
 
   constructor(deps: DeviceServiceDeps) {
     this.devices = deps.devices;
     this.config = deps.config;
+    this.users = deps.users;
+    this.emailTemplates = deps.emailTemplates;
+    this.log = deps.log;
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -105,10 +120,20 @@ export class DeviceService {
         now: this.now().toISOString(),
       });
 
-      return {
+      const result: RegisterDeviceResult = {
         deviceId: record.id,
         status: record.status === "trusted" ? "trusted" : "pending_approval",
       };
+
+      if (result.status === "pending_approval") {
+        void this.notifyDeviceApprovalEmail(userId, requestIp, input).catch((error: unknown) => {
+          this.log?.warn("[device] approval request email failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
+
+      return result;
     } catch (error) {
       if (error instanceof UniqueConstraintError) {
         throw new DeviceServiceError(
@@ -119,6 +144,35 @@ export class DeviceService {
       }
       throw error;
     }
+  }
+
+  private async notifyDeviceApprovalEmail(
+    userId: string,
+    requestIp: string,
+    input: RegisterDeviceInput,
+  ): Promise<void> {
+    if (!this.emailTemplates || !this.users) {
+      return;
+    }
+    const user: UserRecord | null = await this.users.findById(userId);
+    if (!user) {
+      return;
+    }
+
+    await this.emailTemplates.sendDeviceApprovalRequest({
+      to: user.email,
+      localeHints: {
+        userLocale: user.locale,
+        acceptLanguage: input.acceptLanguage,
+      },
+      variables: {
+        deviceName: input.deviceName,
+        platform: input.platform,
+        osName: input.osName,
+        requestIp: cleanString(requestIp, "unknown"),
+        helpUrl: buildEmailAppPathUrl(this.config.publicAppBaseUrl, "/settings/devices"),
+      },
+    });
   }
 
   async approveDevice(

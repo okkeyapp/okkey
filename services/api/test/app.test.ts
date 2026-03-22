@@ -34,6 +34,7 @@ function createLoggerStub() {
     info(_message: string, extra?: Record<string, unknown>) {
       this.infoCalls.push(extra);
     },
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, extra?: Record<string, unknown>) {
       this.errorCalls.push(extra);
     },

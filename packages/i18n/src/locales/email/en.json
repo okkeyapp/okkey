@@ -1,0 +1,37 @@
+{
+  "email.auth.signInCode.subject": "Your Okkey sign-in code",
+  "email.auth.signInCode.beforeCode": "Your sign-in code is",
+  "email.auth.signInCode.line2": "This code expires in {minutes, plural, one {# minute} other {# minutes}}.",
+  "email.auth.signInCode.plain": "Your sign-in code is {code}. This code expires in {minutes, plural, one {# minute} other {# minutes}}.",
+
+  "email.device.approval.subject": "New device sign-in — approval required",
+  "email.device.approval.lead": "A new device is requesting access to your Okkey account.",
+  "email.device.approval.deviceLine": "Device: {deviceName}",
+  "email.device.approval.platformLine": "Platform: {platformOs}",
+  "email.device.approval.ipLine": "IP: {ip}",
+  "email.device.approval.ctaOpenSettings": "Open device settings",
+  "email.device.approval.noteNoUrl": "Open Okkey on a trusted device to approve.",
+  "email.device.approval.textFooterWithUrl": "Learn more: {helpUrl}",
+  "email.device.approval.plain": "{lead}\n{deviceLine}\n{platformLine}\n{ipLine}\n{footer}",
+
+  "email.workspaceInvite.subject": "Invitation to workspace “{workspaceName}”",
+  "email.workspaceInvite.intro": "{inviter} invited you to workspace “{workspaceName}”.",
+  "email.workspaceInvite.ctaAccept": "Accept invitation",
+  "email.workspaceInvite.plain": "{inviter} invited you to workspace “{workspaceName}”. Accept: {inviteUrl}",
+
+  "email.twoFactor.enabled.subject": "Two-factor authentication enabled on Okkey",
+  "email.twoFactor.enabled.line1": "Two-factor authentication was enabled ({whenUtc} UTC).",
+  "email.twoFactor.enabled.line2": "If this was not you, contact support and change your password immediately.",
+  "email.twoFactor.enabled.ctaSecurity": "Open security settings",
+  "email.twoFactor.enabled.plain": "{line1}\n{line2}\n{footer}",
+  "email.twoFactor.enabled.plainFooterUrl": "Settings: {url}",
+
+  "email.twoFactor.backupRegen.subject": "Okkey backup codes were regenerated",
+  "email.twoFactor.backupRegen.line1": "Your backup codes were regenerated ({whenUtc} UTC).",
+  "email.twoFactor.backupRegen.line2": "Previous codes are no longer valid. New codes are only shown in the app — we never list them in email.",
+  "email.twoFactor.backupRegen.ctaSecurity": "Open security settings",
+  "email.twoFactor.backupRegen.plain": "{line1}\n{line2}\n{footer}",
+  "email.twoFactor.backupRegen.plainFooterUrl": "Settings: {url}",
+
+  "email.qa.fallbackProbeOnlyInEn": "QA_FALLBACK_EN_ONLY"
+}

@@ -1,6 +1,7 @@
 {
   "name": "okkey",
   "version": "0.0.1",
+  "private": true,
   "description": "Okkey Core",
   "homepage": "https://github.com/okkeyapp/okkey#readme",
   "bugs": {
@@ -22,7 +23,12 @@
     "yarn": "^1.22.0"
   },
   "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "packages/*"
+  ],
   "dependencies": {
+    "@okkey/email-templates": "0.0.1",
+    "@okkey/i18n": "0.0.1",
     "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
     "redis": "^5.9.0",
@@ -30,7 +36,7 @@
   },
   "scripts": {
     "build:wasm": "PATH=\"$HOME/.cargo/bin:$PATH\" RUSTUP_TOOLCHAIN=stable wasm-pack build rust/crypto-engine --target web --out-dir packages/crypto/dist --features wasm",
-    "check:all": "yarn check:crypto && yarn build:wasm && yarn check:sdk",
+    "check:all": "yarn check:crypto && yarn build:wasm && yarn check:sdk && yarn check:i18n && yarn check:email-templates",
     "check:crypto": "cargo test --manifest-path rust/crypto-engine/Cargo.toml",
     "check:sdk": "yarn check:sdk:types && yarn check:sdk:api && yarn check:sdk:auth && yarn check:sdk:vault && yarn check:sdk:sync && yarn check:sdk:ui",
     "check:sdk:api": "npx --yes -p typescript tsc -p packages/api/tsconfig.json",
@@ -39,7 +45,13 @@
     "check:sdk:types": "npx --yes -p typescript tsc -p packages/types/tsconfig.json",
     "check:sdk:ui": "npx --yes -p typescript tsc -p packages/ui/tsconfig.json",
     "check:sdk:vault": "npx --yes -p typescript tsc -p packages/vault/tsconfig.json",
-    "dev:api": "node --experimental-strip-types services/api/src/index.ts",
+    "check:i18n": "yarn --cwd packages/i18n build",
+    "check:email-templates": "npx --yes -p typescript tsc -p packages/email-templates/tsconfig.json",
+    "build:i18n": "yarn --cwd packages/i18n build",
+    "build:email-templates": "yarn --cwd packages/email-templates build",
+    "build:email": "yarn build:i18n && yarn build:email-templates",
+    "dev:email": "yarn --cwd packages/email-templates dev",
+    "dev:api": "yarn build:email && node --experimental-strip-types services/api/src/index.ts",
     "dev:web": "echo 'TODO: add web dev command' && exit 1",
     "dev:worker": "echo 'TODO: add worker dev command' && exit 1",
     "infra:down": "./scripts/infra.sh down",
@@ -47,7 +59,7 @@
     "infra:ps": "./scripts/infra.sh ps",
     "infra:up": "./scripts/infra.sh up",
     "test": "echo 'TODO: add unit/integration tests' && exit 1",
-    "test:api": "node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
-    "test:e2e": "node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
+    "test:api": "yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
+    "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }
 }

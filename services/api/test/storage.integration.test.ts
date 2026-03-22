@@ -19,6 +19,7 @@ import { VersionConflictError } from "../src/storage/errors.ts";
 function createLoggerStub() {
   return {
     info(_message: string, _extra?: Record<string, unknown>) {},
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, _extra?: Record<string, unknown>) {},
   };
 }
@@ -37,6 +38,7 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
 
   await ensureDevicesSchema(db);
   await ensureUserKdfColumns(db);
+  await ensureUserLocaleColumn(db);
 }
 
 async function ensureUserKdfColumns(db: PostgresDatabase): Promise<void> {
@@ -52,6 +54,22 @@ async function ensureUserKdfColumns(db: PostgresDatabase): Promise<void> {
   if (!names.has("password_kdf_salt")) {
     const migration0002 = path.resolve(__dirname, "../migrations/0002_user_password_kdf.sql");
     await db.query(readFileSync(migration0002, "utf8"));
+  }
+}
+
+async function ensureUserLocaleColumn(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("locale")) {
+    const migration0004 = path.resolve(__dirname, "../migrations/0004_user_locale.sql");
+    await db.query(readFileSync(migration0004, "utf8"));
   }
 }
 

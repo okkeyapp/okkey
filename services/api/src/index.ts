@@ -17,11 +17,12 @@ async function main(): Promise<void> {
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
   const emailSender = await createEmailSender(config, logger);
-  const emailTemplates = new EmailTemplateService(
-    emailSender,
-    config.emailFrom,
-    config.defaultEmailLocale,
-  );
+  const emailTemplates = new EmailTemplateService(emailSender, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+    logger,
+  });
   const authService = new AuthService({
     redis: storage.redis,
     users: storage.repositories.users,
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     authService,
     sessionService,
     config,
+    emailTemplates,
   });
   const registrationService = new RegistrationService({
     authService,
@@ -58,6 +60,9 @@ async function main(): Promise<void> {
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,
     config,
+    users: storage.repositories.users,
+    emailTemplates,
+    log: logger,
   });
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),

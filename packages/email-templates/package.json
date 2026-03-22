@@ -1,0 +1,27 @@
+{
+  "name": "@okkey/email-templates",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@okkey/i18n": "0.0.1",
+    "@react-email/components": "^1.0.10",
+    "@react-email/render": "^2.0.4",
+    "react": "18",
+    "react-dom": "18"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "react-email": "^3.0.7"
+  },
+  "scripts": {
+    "build": "npx --yes -p typescript tsc -p tsconfig.json",
+    "dev": "email dev --dir emails --port 3030"
+  }
+}

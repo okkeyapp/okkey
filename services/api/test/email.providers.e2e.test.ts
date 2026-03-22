@@ -60,14 +60,15 @@ async function startApiForEmailProvider(config: ApiConfig): Promise<{
 }> {
   const logger = {
     info(_message: string, _extra?: Record<string, unknown>) {},
+    warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, _extra?: Record<string, unknown>) {},
   };
   const sender = await createEmailSender(config, logger);
-  const templateService = new EmailTemplateService(
-    sender,
-    config.emailFrom,
-    config.defaultEmailLocale,
-  );
+  const templateService = new EmailTemplateService(sender, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
 
   const authService = new AuthService({
     redis: new InMemoryRedis(),

@@ -59,6 +59,8 @@ export interface AuthServiceDeps {
 export interface EmailStartInput {
   email: string;
   locale?: string;
+  /** Raw `Accept-Language` request header */
+  acceptLanguage?: string;
   requestIp: string;
 }
 
@@ -71,6 +73,7 @@ export interface EmailStartResult {
 export interface EmailResendInput {
   challengeId: string;
   locale?: string;
+  acceptLanguage?: string;
   requestIp: string;
 }
 
@@ -158,9 +161,14 @@ export class AuthService {
       this.config.authCodeTtlSeconds,
     );
 
+    const account = await this.users.findByEmail(email);
     await this.emailTemplates.sendAuthEmailCode({
       to: email,
-      locale: input.locale,
+      localeHints: {
+        userLocale: account?.locale ?? null,
+        explicitLocale: input.locale,
+        acceptLanguage: input.acceptLanguage,
+      },
       variables: {
         code,
         ttlSeconds: this.config.authCodeTtlSeconds,
@@ -214,9 +222,14 @@ export class AuthService {
       this.config.authCodeTtlSeconds,
     );
 
+    const account = await this.users.findByEmail(updated.email);
     await this.emailTemplates.sendAuthEmailCode({
       to: updated.email,
-      locale: input.locale,
+      localeHints: {
+        userLocale: account?.locale ?? null,
+        explicitLocale: input.locale,
+        acceptLanguage: input.acceptLanguage,
+      },
       variables: {
         code,
         ttlSeconds: this.config.authCodeTtlSeconds,

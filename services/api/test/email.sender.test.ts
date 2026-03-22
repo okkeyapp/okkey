@@ -4,15 +4,43 @@ import {
   createEmailSender,
   HttpApiEmailSender,
   LoggerEmailSender,
+  type EmailMessage,
 } from "../src/email/service.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig({ emailApiTimeoutMs: 1000 });
 
+test("LoggerEmailSender info log omits text and html bodies (no secret leakage)", async () => {
+  const entries: Array<{ message: string; extra: Record<string, unknown> }> = [];
+  const logger = {
+    info(message: string, extra?: Record<string, unknown>) {
+      entries.push({ message, extra: extra ?? {} });
+    },
+    warn() {},
+    error() {},
+  };
+  const sender = new LoggerEmailSender(logger);
+  const payload: EmailMessage = {
+    to: "user@example.com",
+    from: "no-reply@okkey.local",
+    subject: "Your code",
+    text: "SECRET_PLAIN_BODY_123456",
+    html: "<p>SECRET_HTML_123456</p>",
+  };
+  await sender.send(payload);
+  const row = entries.find((e) => e.message === "email sent");
+  assert.ok(row);
+  assert.equal(row.extra.text, undefined);
+  assert.equal(row.extra.html, undefined);
+  assert.equal(JSON.stringify(row.extra).includes("SECRET"), false);
+  assert.equal(JSON.stringify(row.extra).includes("123456"), false);
+});
+
 test("createEmailSender returns LoggerEmailSender for logger provider", async () => {
   const sender = await createEmailSender(baseConfig, {
     info() {},
+    warn() {},
     error() {},
   });
   assert.ok(sender instanceof LoggerEmailSender);
@@ -28,7 +56,7 @@ test("createEmailSender validates http-api config", async () => {
           emailApiEndpoint: "",
           emailApiKey: "",
         },
-        { info() {}, error() {} },
+        { info() {}, warn() {}, error() {} },
       ),
     /EMAIL_API_ENDPOINT is required/,
   );

@@ -82,6 +82,7 @@ function setupAuthService(params?: {
               id: "u1",
               email,
               publicKey: "pk",
+              locale: null,
               createdAt: redis.now().toISOString(),
               updatedAt: redis.now().toISOString(),
             }
@@ -98,7 +99,7 @@ function setupAuthService(params?: {
         sentEmails.push({
           to: input.to,
           code: input.variables.code,
-          locale: input.locale,
+          locale: input.localeHints.explicitLocale,
         });
       },
     },

@@ -108,6 +108,7 @@ export function createRegisterDeviceRoute(
         appVersion: metadata.app_version,
         clientType: metadata.client_type,
         userAgent: metadata.user_agent ?? getHeader(ctx.req, "user-agent") ?? "unknown",
+        acceptLanguage: getHeader(ctx.req, "accept-language"),
       });
 
       json(ctx.res, 200, {

@@ -1,10 +1,14 @@
 import type { Logger } from "../logger.ts";
 import type { ApiConfig } from "../config.ts";
 import {
-  EMAIL_TEMPLATE_REGISTRY,
-  resolveEmailLocale,
+  renderEmailTemplate,
   type AuthEmailCodeVariables,
+  type DeviceApprovalRequestVariables,
+  type WorkspaceInviteVariables,
+  type TwoFactorNoticeVariables,
 } from "./catalog.ts";
+import { EmailTemplateError } from "./errors.ts";
+import { resolveEmailLocaleForRecipient, type EmailLocaleHintsInput } from "./locale.ts";
 
 export interface EmailMessage {
   to: string;
@@ -16,6 +20,29 @@ export interface EmailMessage {
 
 export interface EmailSender {
   send(message: EmailMessage): Promise<void>;
+}
+
+export interface EmailLocaleHints {
+  userLocale?: string | null;
+  explicitLocale?: string | null;
+  acceptLanguage?: string | null;
+}
+
+export interface EmailTemplateServiceOptions {
+  from: string;
+  defaultLocale: string;
+  publicAppBaseUrl: string;
+  /** When send fails after successful render; omit to throw */
+  logger?: Pick<Logger, "warn" | "error">;
+}
+
+export function buildEmailAppPathUrl(publicAppBaseUrl: string, path: string): string {
+  const base = publicAppBaseUrl.trim().replace(/\/$/, "");
+  if (!base) {
+    return "";
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
 }
 
 export class LoggerEmailSender implements EmailSender {
@@ -92,13 +119,21 @@ export class SmtpEmailSender implements EmailSender {
   }
 
   async send(message: EmailMessage): Promise<void> {
-    await this.transport.sendMail({
-      from: message.from,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
+    try {
+      await this.transport.sendMail({
+        from: message.from,
+        to: message.to,
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+      });
+    } catch (cause) {
+      throw new EmailTemplateError(
+        "EMAIL_TRANSPORT_ERROR",
+        "smtp send failed",
+        { cause: cause instanceof Error ? cause.message : String(cause) },
+      );
+    }
   }
 }
 
@@ -131,8 +166,21 @@ export class HttpApiEmailSender implements EmailSender {
       });
 
       if (!response.ok) {
-        throw new Error(`email api send failed: status ${response.status}`);
+        throw new EmailTemplateError(
+          "EMAIL_TRANSPORT_ERROR",
+          `email api send failed: status ${response.status}`,
+          { status: response.status },
+        );
       }
+    } catch (cause) {
+      if (cause instanceof EmailTemplateError) {
+        throw cause;
+      }
+      throw new EmailTemplateError(
+        "EMAIL_TRANSPORT_ERROR",
+        cause instanceof Error ? cause.message : "email api request failed",
+        { cause: cause instanceof Error ? cause.message : String(cause) },
+      );
     } finally {
       clearTimeout(timeout);
     }
@@ -165,38 +213,152 @@ export async function createEmailSender(
   }
 }
 
+function toHintsInput(
+  hints: EmailLocaleHints,
+  instanceDefault: string,
+): EmailLocaleHintsInput {
+  return {
+    userLocale: hints.userLocale,
+    explicitLocale: hints.explicitLocale,
+    acceptLanguage: hints.acceptLanguage,
+    instanceDefault,
+  };
+}
+
 export class EmailTemplateService {
   private readonly sender: EmailSender;
   private readonly from: string;
-  private readonly fallbackLocale: string;
+  private readonly defaultLocale: string;
+  private readonly publicAppBaseUrl: string;
+  private readonly logger?: Pick<Logger, "warn" | "error">;
 
-  constructor(
-    sender: EmailSender,
-    from: string,
-    fallbackLocale: string,
-  ) {
+  constructor(sender: EmailSender, options: EmailTemplateServiceOptions) {
     this.sender = sender;
-    this.from = from;
-    this.fallbackLocale = fallbackLocale;
+    this.from = options.from;
+    this.defaultLocale = options.defaultLocale;
+    this.publicAppBaseUrl = options.publicAppBaseUrl;
+    this.logger = options.logger;
+  }
+
+  private resolveLocale(hints: EmailLocaleHints): ReturnType<
+    typeof resolveEmailLocaleForRecipient
+  > {
+    return resolveEmailLocaleForRecipient(toHintsInput(hints, this.defaultLocale));
+  }
+
+  private async dispatchRendered(to: string, rendered: { subject: string; text: string; html: string }): Promise<void> {
+    try {
+      await this.sender.send({
+        to,
+        from: this.from,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    } catch (cause) {
+      if (cause instanceof EmailTemplateError) {
+        const code: EmailTemplateError["code"] =
+          cause.code === "EMAIL_TRANSPORT_ERROR" ? "EMAIL_SEND_FAILED" : cause.code;
+        throw new EmailTemplateError(code, cause.message, {
+          ...cause.details,
+          originalCode: cause.code,
+        });
+      }
+      throw new EmailTemplateError(
+        "EMAIL_SEND_FAILED",
+        "email transport failed",
+        { cause: cause instanceof Error ? cause.message : String(cause) },
+      );
+    }
   }
 
   async sendAuthEmailCode(input: {
     to: string;
-    locale?: string;
+    localeHints: EmailLocaleHints;
     variables: AuthEmailCodeVariables;
   }): Promise<void> {
-    const locale = resolveEmailLocale(input.locale, this.fallbackLocale);
-    const rendered = EMAIL_TEMPLATE_REGISTRY.auth_email_code.render(
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("auth_email_code", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  async sendDeviceApprovalRequest(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: DeviceApprovalRequestVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate(
+      "device_approval_request",
       locale,
       input.variables,
     );
+    await this.dispatchRendered(input.to, rendered);
+  }
 
-    await this.sender.send({
-      to: input.to,
-      from: this.from,
-      subject: rendered.subject,
-      text: rendered.text,
-      html: rendered.html,
-    });
+  async sendWorkspaceInvite(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: WorkspaceInviteVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("workspace_invite", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  async sendTwoFactorEnabled(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: TwoFactorNoticeVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("two_factor_enabled", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  async sendTwoFactorBackupCodesRegenerated(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: TwoFactorNoticeVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate(
+      "two_factor_backup_codes_regenerated",
+      locale,
+      input.variables,
+    );
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  /**
+   * Same as {@link sendTwoFactorEnabled} but never throws: API success should not depend on mail.
+   */
+  async sendTwoFactorEnabledBestEffort(input: Parameters<EmailTemplateService["sendTwoFactorEnabled"]>[0]): Promise<void> {
+    try {
+      await this.sendTwoFactorEnabled(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("two_factor_enabled email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Same as {@link sendTwoFactorBackupCodesRegenerated} but never throws.
+   */
+  async sendTwoFactorBackupCodesRegeneratedBestEffort(
+    input: Parameters<EmailTemplateService["sendTwoFactorBackupCodesRegenerated"]>[0],
+  ): Promise<void> {
+    try {
+      await this.sendTwoFactorBackupCodesRegenerated(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("two_factor_backup_codes_regenerated email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }

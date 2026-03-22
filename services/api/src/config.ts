@@ -36,6 +36,8 @@ export interface ApiConfig {
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
   defaultEmailLocale: string;
+  /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
+  publicAppBaseUrl: string;
   emailFrom: string;
   emailProvider: EmailProvider;
   smtpHost: string;
@@ -207,6 +209,7 @@ export function loadConfig(): ApiConfig {
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
+    publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
     smtpHost: process.env.EMAIL_SMTP_HOST ?? "localhost",

@@ -48,6 +48,7 @@ export function createAuthEmailStartRoute(authService: AuthService): RouteHandle
       const result = await authService.startEmailLogin({
         email,
         locale: body.locale,
+        acceptLanguage: getHeader(ctx.req, "accept-language"),
         requestIp: getRequestIp(ctx.req),
       });
       json(ctx.res, 200, result);
@@ -80,6 +81,7 @@ export function createAuthEmailResendRoute(authService: AuthService): RouteHandl
       const result = await authService.resendEmailCode({
         challengeId: body.challengeId,
         locale: body.locale,
+        acceptLanguage: getHeader(ctx.req, "accept-language"),
         requestIp: getRequestIp(ctx.req),
       });
       json(ctx.res, 200, result);

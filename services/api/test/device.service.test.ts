@@ -5,6 +5,7 @@ import {
   DeviceServiceError,
   type RegisterDeviceInput,
 } from "../src/device/service.ts";
+import type { EmailTemplateService } from "../src/email/service.ts";
 import { UniqueConstraintError } from "../src/storage/errors.ts";
 import type { DeviceApprovalState } from "../src/storage/repositories.ts";
 
@@ -73,6 +74,7 @@ function createService(overrides?: {
     },
     config: {
       deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
     },
     now: overrides?.now,
   });
@@ -86,6 +88,50 @@ test("registerDevice returns pending_approval for new device", async () => {
   const result = await service.registerDevice("u1", "127.0.0.1", createInput());
   assert.equal(result.status, "pending_approval");
   assert.equal(result.deviceId, "d1");
+});
+
+test("registerDevice sends device_approval_request when pending and email deps configured", async () => {
+  const sends: Array<Parameters<EmailTemplateService["sendDeviceApprovalRequest"]>[0]> = [];
+  const service = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => createDeviceRecord(),
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "owner@test.local",
+        publicKey: "pk",
+        locale: "en",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    emailTemplates: {
+      sendDeviceApprovalRequest: async (input) => {
+        sends.push(input);
+      },
+    },
+  });
+
+  await service.registerDevice(
+    "u1",
+    "203.0.113.9",
+    createInput({ deviceName: "Pixel", acceptLanguage: "ru-RU" }),
+  );
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].to, "owner@test.local");
+  assert.equal(sends[0].localeHints.acceptLanguage, "ru-RU");
+  assert.equal(sends[0].variables.deviceName, "Pixel");
+  assert.match(sends[0].variables.helpUrl, /^https:\/\/app\.test\/settings\/devices$/);
 });
 
 test("registerDevice returns trusted for trusted device", async () => {
