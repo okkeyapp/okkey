@@ -87,6 +87,77 @@ components:
           type: string
           enum: [registration, device_check]
 
+    RegisterCompleteRequest:
+      type: object
+      required:
+        - auth_state_id
+        - user_public_key
+        - encrypted_private_key
+        - server_key_share
+        - password_kdf_salt
+        - password_kdf_params_version
+        - device_public_key
+        - device_share
+        - device_fingerprint
+        - device_name
+      properties:
+        auth_state_id:
+          type: string
+          format: uuid
+        user_public_key:
+          type: string
+        encrypted_private_key:
+          type: string
+        server_key_share:
+          type: string
+        password_kdf_salt:
+          type: string
+        password_kdf_params_version:
+          type: integer
+          enum: [1]
+        device_public_key:
+          type: string
+        device_share:
+          type: string
+        device_fingerprint:
+          type: string
+        device_name:
+          type: string
+        platform:
+          type: string
+        os_name:
+          type: string
+        os_version:
+          type: string
+        app_version:
+          type: string
+        client_type:
+          type: string
+        user_agent:
+          type: string
+        metadata:
+          type: object
+
+    RegisterCompleteResponse:
+      type: object
+      required: [user_id, workspace_id, vault_id, device_id, device_status]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        vault_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        device_status:
+          type: string
+          enum: [trusted]
+
     Vault:
       type: object
       required: [id, workspaceId, name, isPersonal, ownerId, createdAt, updatedAt]
@@ -358,6 +429,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/register/complete:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterCompleteRequest"
+      responses:
+        "201":
+          description: User registered with default workspace, vault, trusted device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterCompleteResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
           content:
             application/json:
               schema:

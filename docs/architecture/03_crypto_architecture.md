@@ -93,14 +93,16 @@ It is assembled from three parts.
 VaultKey = A + B + C
 ```
 
+In Core v1 transport math, **+** is **32-byte XOR** (element-wise) over the derived key material: `VaultKey = A ⊕ B ⊕ C`.
+
 where:
 - A — Server Share
 - B — Device Share
 - C — Password Share
 
 ### A — Server Share
-Stored on the server.
-- encrypted
+Stored on the server (32-byte share `server_key_share` on the user row, together with KDF salt/version for **C**).
+- not the full VaultKey
 - stored in database
 
 ### B — Device Share

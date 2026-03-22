@@ -150,6 +150,60 @@ Validates the code and returns an auth state handle for the next onboarding step
 
 **Idempotency:** confirm is **not** idempotent; repeating with the same code after success may fail.
 
+**Auth state TTL:** For `nextStep: "registration"`, the server stores `authStateId` in Redis longer than for returning users (`REGISTRATION_AUTH_STATE_TTL_SECONDS`, default 3600s) so the client can finish crypto and call register complete.
+
+### `POST /auth/register/complete`
+
+Completes **new user** onboarding after email confirm. Accepts only server-side split-key material **A**, encrypted user private key, KDF metadata, and the first device (share **B** + metadata). The master password, password share **C**, and raw `VaultKey` **never** appear on the wire.
+
+**Split-key model (Core v1):** 32-byte XOR: `VaultKey = A ⊕ B ⊕ C` with `C = Argon2id(master_password, salt, params_v1)` (32-byte output). Client proves knowledge of the password only by producing consistent ciphertext; the server stores `A`, salt, and `password_kdf_params_version`.
+
+**Auth:** none (authorization is the valid `auth_state_id` for a not-yet-registered email).
+
+**Request body** (snake_case; binary fields standard base64):
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `auth_state_id` | string | Yes | From `POST /auth/email/confirm`. |
+| `user_public_key` | string | Yes | Base64 of **32** raw Ed25519 public key bytes. |
+| `encrypted_private_key` | string | Yes | Base64 opaque blob (e.g. nonce \|\| XChaCha20-Poly1305 ciphertext). Min decoded length **41**. |
+| `server_key_share` | string | Yes | Base64 of **32** bytes (share **A**). |
+| `password_kdf_salt` | string | Yes | Base64 of **16** bytes (Argon2id salt). |
+| `password_kdf_params_version` | integer | Yes | **1** only (`m=19456`, `t=2`, `p=1`). |
+| `device_public_key` | string | Yes | Same rules as `POST /devices/register`. |
+| `device_share` | string | Yes | Base64 of **32** bytes (share **B**). |
+| `device_fingerprint` | string | Yes | Hex 32–128 chars. |
+| `device_name` | string | Yes | |
+| `platform`, `os_name`, `os_version`, `app_version`, `client_type`, `user_agent` | string | No | Default `unknown`; `user_agent` falls back to HTTP `User-Agent`. |
+| `metadata` | object | No | Same optional fields as device register (override top-level per field). |
+
+**Response `201`:**
+
+| Field | Type |
+|--------|------|
+| `user_id` | uuid string |
+| `workspace_id` | uuid string |
+| `vault_id` | uuid string |
+| `device_id` | uuid string |
+| `device_status` | `"trusted"` |
+
+Side effects (single DB transaction): insert user (with KDF columns), default workspace `"Personal"`, personal vault `"Personal"`, first device with status **trusted**.
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `REGISTRATION_BAD_REQUEST` | 400 | Invalid JSON, missing field, bad base64. |
+| `CRYPTO_PAYLOAD_INVALID` | 400 | Wrong lengths, unsupported KDF version, bad keys. |
+| `AUTH_CHALLENGE_EXPIRED` | 410 | Missing/expired `auth_state_id`. |
+| `AUTH_CHALLENGE_INVALID` | 400 | Auth state not eligible (e.g. `userId` already set). |
+| `REGISTRATION_ALREADY_COMPLETED` | 409 | User row already exists for email. |
+| `REGISTRATION_CONFLICT` | 409 | Unique constraint (race / duplicate). |
+
+**Idempotency:** Repeating the same `auth_state_id` after success returns **`201`** with the **same** JSON body while Redis still holds `registration:result:{authStateId}` (`REGISTRATION_RESULT_TTL_SECONDS`, default 7 days). Auth state is deleted after the first success.
+
+**Client helper:** `@okkey/crypto` exports `buildRegistrationCryptoArtifacts` and `registrationArtifactsToWire` (WASM-only primitives).
+
 ---
 
 ## Vault metadata
@@ -369,7 +423,7 @@ Document them when routes are added.
 - **4.4** — email challenge model (this doc).
 - **4.7** — device registration + metadata (snake_case wire fields).
 - **4.10** — approve / reject and approval errors.
-- **4.9** — registration split-key: will extend request/response shapes when implemented.
+- **4.9** — registration split-key: `POST /auth/register/complete` (this document).
 
 ---
 

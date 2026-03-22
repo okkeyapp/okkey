@@ -58,20 +58,22 @@ This enables:
 ## Registration Flow
 
 New user registration.
-1. user enters email -> email code
-2. user creates master password
-3. client generates VaultKey
-4. split VaultKey → A B C
-5. client generates UserKeyPair
-6. encrypt UserPrivateKey with VaultKey
-7. send server share A to backend
-8. store encrypted keys
+1. user enters email → email code (`POST /auth/email/start` → `confirm`)
+2. user creates master password (stays on client)
+3. client derives **C** = Argon2id(master password, salt, params v1) → 32 bytes
+4. client generates random **A** (server share) and **VaultKey**, then **B** = **A** ⊕ **C** ⊕ **VaultKey** (32-byte XOR)
+5. client generates Ed25519 `UserKeyPair`
+6. encrypt `UserPrivateKey` with `VaultKey` (AEAD, opaque blob for the server)
+7. `POST /auth/register/complete` with **A**, encrypted private key, KDF salt/version, `user_public_key`, and first device fields including **B** as `device_share`
+8. server creates user, default workspace + personal vault, **trusted** first device (no pending approval)
 
 Server stores:
 - user metadata
-- server key share
+- `server_key_share` (**A**), `password_kdf_salt`, `password_kdf_params_version`
 - public key
 - encrypted private key
+
+HTTP contract: [`docs/api_contracts.md`](../api_contracts.md) (`POST /auth/register/complete`).
 
 ---
 

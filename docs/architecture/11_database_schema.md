@@ -41,6 +41,8 @@ email
 public_key
 encrypted_private_key
 server_key_share
+password_kdf_salt (nullable for pre-4.9 rows)
+password_kdf_params_version (nullable for pre-4.9 rows)
 created_at
 updated_at
 ```
