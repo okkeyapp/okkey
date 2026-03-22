@@ -18,6 +18,8 @@ export interface AuthStatePayload {
   email: string;
   userId: string | null;
   createdAt: string;
+  /** Email challenge done; session requires TOTP or backup code first */
+  pendingTwoFactor?: boolean;
 }
 
 export class AuthError extends Error {
@@ -46,7 +48,7 @@ export interface AuthServiceDeps {
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
   };
-  users: Pick<UsersRepository, "findByEmail">;
+  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled">;
   emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   config: ApiConfig;
   now?: () => Date;
@@ -81,7 +83,7 @@ export interface EmailConfirmInput {
 export interface EmailConfirmResult {
   authStateId: string;
   userExists: boolean;
-  nextStep: "registration" | "device_check";
+  nextStep: "registration" | "device_check" | "two_factor";
 }
 
 function normalizeEmail(email: string): string {
@@ -108,7 +110,7 @@ export function authStateRedisKey(id: string): string {
 
 export class AuthService {
   private readonly redis: AuthServiceDeps["redis"];
-  private readonly users: Pick<UsersRepository, "findByEmail">;
+  private readonly users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
   private readonly now: () => Date;
@@ -277,14 +279,20 @@ export class AuthService {
     const existingUser: UserRecord | null = await this.users.findByEmail(
       challenge.email,
     );
+    const pendingTwoFactor = Boolean(
+      existingUser && (await this.users.isTwoFactorEnabled(existingUser.id)),
+    );
     const authState: AuthStatePayload = {
       id: this.generateId(),
       email: challenge.email,
       userId: existingUser?.id ?? null,
       createdAt: this.now().toISOString(),
+      ...(pendingTwoFactor ? { pendingTwoFactor: true } : {}),
     };
     const authStateTtlSeconds = existingUser
-      ? this.config.authCodeTtlSeconds
+      ? pendingTwoFactor
+        ? this.config.authPendingTwoFactorTtlSeconds
+        : this.config.authCodeTtlSeconds
       : this.config.registrationAuthStateTtlSeconds;
     await this.redis.setWithTtl(
       authStateRedisKey(authState.id),
@@ -295,7 +303,11 @@ export class AuthService {
     return {
       authStateId: authState.id,
       userExists: Boolean(existingUser),
-      nextStep: existingUser ? "device_check" : "registration",
+      nextStep: existingUser
+        ? pendingTwoFactor
+          ? "two_factor"
+          : "device_check"
+        : "registration",
     };
   }
 

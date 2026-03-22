@@ -1,3 +1,4 @@
+import type { IncomingMessage } from "node:http";
 import { DeviceService, DeviceServiceError } from "../device/service.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 
@@ -46,14 +47,6 @@ function resolveMetadata(body: RegisterDeviceBody): RegisterDeviceMetadataBody {
   };
 }
 
-function getUserId(ctx: Parameters<RouteHandler>[0]): string {
-  const userId = getHeader(ctx.req, "x-user-id");
-  if (!userId) {
-    throw new DeviceServiceError("AUTH_REQUIRED", 401, "auth required");
-  }
-  return userId;
-}
-
 function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
   const deviceId = getHeader(ctx.req, "x-device-id");
   if (!deviceId) {
@@ -66,7 +59,10 @@ function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
   return deviceId;
 }
 
-export function createRegisterDeviceRoute(deviceService: DeviceService): RouteHandler {
+export function createRegisterDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
     try {
@@ -95,7 +91,11 @@ export function createRegisterDeviceRoute(deviceService: DeviceService): RouteHa
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const metadata = resolveMetadata(body);
       const result = await deviceService.registerDevice(userId, getRequestIp(ctx.req), {
         deviceFingerprint: body.device_fingerprint,
@@ -120,7 +120,10 @@ export function createRegisterDeviceRoute(deviceService: DeviceService): RouteHa
   };
 }
 
-export function createApproveDeviceRoute(deviceService: DeviceService): RouteHandler {
+export function createApproveDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
     if (!deviceId) {
@@ -133,7 +136,11 @@ export function createApproveDeviceRoute(deviceService: DeviceService): RouteHan
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const approverDeviceId = getApproverDeviceId(ctx);
       const result = await deviceService.approveDevice(userId, approverDeviceId, deviceId);
       json(ctx.res, 200, {
@@ -146,7 +153,10 @@ export function createApproveDeviceRoute(deviceService: DeviceService): RouteHan
   };
 }
 
-export function createRejectDeviceRoute(deviceService: DeviceService): RouteHandler {
+export function createRejectDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
     if (!deviceId) {
@@ -167,7 +177,11 @@ export function createRejectDeviceRoute(deviceService: DeviceService): RouteHand
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const approverDeviceId = getApproverDeviceId(ctx);
       const result = await deviceService.rejectDevice(
         userId,

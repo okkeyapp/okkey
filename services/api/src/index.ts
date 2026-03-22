@@ -6,8 +6,10 @@ import { loadConfig } from "./config.ts";
 import { DeviceService } from "./device/service.ts";
 import { createEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
+import { SessionService } from "./session/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
+import { TwoFactorService } from "./two-factor/service.ts";
 import { VaultService } from "./vault/service.ts";
 
 async function main(): Promise<void> {
@@ -24,6 +26,18 @@ async function main(): Promise<void> {
     redis: storage.redis,
     users: storage.repositories.users,
     emailTemplates,
+    config,
+  });
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+  const twoFactorService = new TwoFactorService({
+    redis: storage.redis,
+    twoFactorRepo: storage.repositories.twoFactor,
+    users: storage.repositories.users,
+    authService,
+    sessionService,
     config,
   });
   const registrationService = new RegistrationService({
@@ -52,6 +66,8 @@ async function main(): Promise<void> {
     vaultService,
     syncService,
     deviceService,
+    sessionService,
+    twoFactorService,
   });
 
   const server = createServer(app.handler());

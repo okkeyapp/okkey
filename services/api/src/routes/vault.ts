@@ -1,15 +1,11 @@
-import { getHeader, json, type RouteHandler } from "../http.ts";
+import type { IncomingMessage } from "node:http";
+import { json, type RouteHandler } from "../http.ts";
 import { VaultService, VaultServiceError } from "../vault/service.ts";
 
-function getUserId(ctx: Parameters<RouteHandler>[0]): string {
-  const userId = getHeader(ctx.req, "x-user-id");
-  if (!userId) {
-    throw new VaultServiceError("AUTH_REQUIRED", 401, "auth required");
-  }
-  return userId;
-}
-
-export function createWorkspaceVaultsListRoute(vaultService: VaultService): RouteHandler {
+export function createWorkspaceVaultsListRoute(
+  vaultService: VaultService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     const workspaceId = ctx.params.workspaceId;
     if (!workspaceId) {
@@ -18,7 +14,11 @@ export function createWorkspaceVaultsListRoute(vaultService: VaultService): Rout
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const vaults = await vaultService.listWorkspaceVaults(workspaceId, userId);
       json(ctx.res, 200, vaults);
     } catch (error) {
@@ -27,7 +27,10 @@ export function createWorkspaceVaultsListRoute(vaultService: VaultService): Rout
   };
 }
 
-export function createVaultGetRoute(vaultService: VaultService): RouteHandler {
+export function createVaultGetRoute(
+  vaultService: VaultService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     const vaultId = ctx.params.vaultId;
     if (!vaultId) {
@@ -36,7 +39,11 @@ export function createVaultGetRoute(vaultService: VaultService): RouteHandler {
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const vault = await vaultService.getVault(vaultId, userId);
       json(ctx.res, 200, vault);
     } catch (error) {

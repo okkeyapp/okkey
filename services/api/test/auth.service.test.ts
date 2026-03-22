@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthError, AuthService } from "../src/auth/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 
 class InMemoryRedis {
   private readonly values = new Map<string, string>();
@@ -56,40 +57,12 @@ class InMemoryRedis {
   }
 }
 
-const baseConfig: ApiConfig = {
-  nodeEnv: "test",
-  port: 4000,
-  logLevel: "debug",
-  corsOrigin: "*",
-  databaseUrl: "",
-  redisUrl: "",
-  authCodeTtlSeconds: 300,
-  authResendCooldownSeconds: 60,
-  authCodeMaxAttempts: 5,
-  authRateLimitWindowSeconds: 600,
-  authRateLimitStartPerEmail: 5,
-  authRateLimitStartPerIp: 10,
-  authRateLimitConfirmPerIp: 30,
-  authRateLimitResendPerIp: 10,
-  registrationAuthStateTtlSeconds: 3600,
-  registrationResultTtlSeconds: 604800,
-  deviceApprovalTtlSeconds: 600,
-  defaultEmailLocale: "en",
-  emailFrom: "no-reply@okkey.local",
-  emailProvider: "logger",
-  smtpHost: "localhost",
-  smtpPort: 1025,
-  smtpSecure: false,
-  smtpUser: "",
-  smtpPassword: "",
-  emailApiEndpoint: "",
-  emailApiKey: "",
-  emailApiTimeoutMs: 10000,
-};
+const baseConfig: ApiConfig = createTestApiConfig();
 
 function setupAuthService(params?: {
   configOverrides?: Partial<ApiConfig>;
   existingUser?: boolean;
+  twoFactorEnabledForExisting?: boolean;
   generatedCode?: string;
 }) {
   const redis = new InMemoryRedis();
@@ -113,6 +86,12 @@ function setupAuthService(params?: {
               updatedAt: redis.now().toISOString(),
             }
           : null,
+      isTwoFactorEnabled: async (userId: string) =>
+        Boolean(
+          params?.existingUser &&
+            params?.twoFactorEnabledForExisting &&
+            userId === "u1",
+        ),
     },
     emailTemplates: {
       sendAuthEmailCode: async (input) => {
@@ -180,6 +159,27 @@ test("confirmEmailCode returns registration for unknown user", async () => {
 
   assert.equal(result.userExists, false);
   assert.equal(result.nextStep, "registration");
+});
+
+test("confirmEmailCode returns two_factor when 2FA enabled", async () => {
+  const { service } = setupAuthService({
+    existingUser: true,
+    twoFactorEnabledForExisting: true,
+    generatedCode: "333444",
+  });
+  const start = await service.startEmailLogin({
+    email: "user@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  const result = await service.confirmEmailCode({
+    challengeId: start.challengeId,
+    code: "333444",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.userExists, true);
+  assert.equal(result.nextStep, "two_factor");
 });
 
 test("confirmEmailCode returns device_check for existing user", async () => {

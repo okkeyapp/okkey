@@ -6,34 +6,9 @@ import {
   LoggerEmailSender,
 } from "../src/email/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 
-const baseConfig: ApiConfig = {
-  nodeEnv: "test",
-  port: 4000,
-  logLevel: "debug",
-  corsOrigin: "*",
-  databaseUrl: "",
-  redisUrl: "",
-  authCodeTtlSeconds: 300,
-  authResendCooldownSeconds: 60,
-  authCodeMaxAttempts: 5,
-  authRateLimitWindowSeconds: 600,
-  authRateLimitStartPerEmail: 5,
-  authRateLimitStartPerIp: 10,
-  authRateLimitConfirmPerIp: 30,
-  authRateLimitResendPerIp: 10,
-  defaultEmailLocale: "en",
-  emailFrom: "no-reply@okkey.local",
-  emailProvider: "logger",
-  smtpHost: "localhost",
-  smtpPort: 1025,
-  smtpSecure: false,
-  smtpUser: "",
-  smtpPassword: "",
-  emailApiEndpoint: "",
-  emailApiKey: "",
-  emailApiTimeoutMs: 1000,
-};
+const baseConfig: ApiConfig = createTestApiConfig({ emailApiTimeoutMs: 1000 });
 
 test("createEmailSender returns LoggerEmailSender for logger provider", async () => {
   const sender = await createEmailSender(baseConfig, {

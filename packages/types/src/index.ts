@@ -151,7 +151,53 @@ export interface EmailAuthStartResponse {
 export interface EmailAuthConfirmResponse {
   authStateId: string;
   userExists: boolean;
-  nextStep: "registration" | "device_check";
+  nextStep: "registration" | "device_check" | "two_factor";
+}
+
+/** `POST /auth/session/bootstrap` and `POST /auth/two-factor/verify` success (snake_case on wire). */
+export interface AccessTokenResponseDto {
+  access_token: string;
+  expires_at: string;
+  user_id: UUID;
+  token_type: "Bearer";
+}
+
+/** `GET /auth/two-factor/status` success body. */
+export interface TwoFactorStatusResponseDto {
+  enabled: boolean;
+  backupCodesRemaining: number;
+}
+
+/** `POST /auth/two-factor/totp/enroll/start` success body. */
+export interface TotpEnrollStartResponseDto {
+  enrollmentId: string;
+  secretBase32: string;
+  otpauthUri: string;
+  periodSeconds: number;
+  digits: number;
+  algorithm: "SHA1";
+}
+
+/** `POST /auth/two-factor/totp/enroll/confirm` request. */
+export interface TotpEnrollConfirmRequestDto {
+  enrollmentId: string;
+  code: string;
+}
+
+/** `POST /auth/two-factor/backup-codes/regenerate` request. */
+export interface BackupCodesRegenerateRequestDto {
+  totpCode: string;
+}
+
+/** `POST /auth/two-factor/disable` request (provide totpCode xor backupCode). */
+export interface TwoFactorDisableRequestDto {
+  totpCode?: string;
+  backupCode?: string;
+}
+
+/** Plaintext backup codes returned once after enroll / regenerate. */
+export interface BackupCodesPlaintextResponseDto {
+  backupCodes: string[];
 }
 
 /** One event as returned by sync HTTP API (opaque base64 payload). */

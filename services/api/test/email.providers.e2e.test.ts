@@ -6,6 +6,7 @@ import { SMTPServer } from "smtp-server";
 import { AuthService } from "../src/auth/service.ts";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 import {
   createEmailSender,
   EmailTemplateService,
@@ -41,37 +42,16 @@ class InMemoryRedis {
 }
 
 function testConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
-  return {
-    nodeEnv: "test",
+  return createTestApiConfig({
     port: 0,
-    logLevel: "debug",
-    corsOrigin: "*",
-    databaseUrl: "",
-    redisUrl: "",
-    authCodeTtlSeconds: 300,
-    authResendCooldownSeconds: 60,
-    authCodeMaxAttempts: 5,
-    authRateLimitWindowSeconds: 600,
     authRateLimitStartPerEmail: 50,
     authRateLimitStartPerIp: 50,
     authRateLimitConfirmPerIp: 50,
     authRateLimitResendPerIp: 50,
-    registrationAuthStateTtlSeconds: 3600,
-    registrationResultTtlSeconds: 604800,
-    deviceApprovalTtlSeconds: 600,
-    defaultEmailLocale: "en",
-    emailFrom: "no-reply@okkey.local",
-    emailProvider: "logger",
     smtpHost: "127.0.0.1",
-    smtpPort: 1025,
-    smtpSecure: false,
-    smtpUser: "",
-    smtpPassword: "",
-    emailApiEndpoint: "",
-    emailApiKey: "",
     emailApiTimeoutMs: 5000,
     ...overrides,
-  };
+  });
 }
 
 async function startApiForEmailProvider(config: ApiConfig): Promise<{
@@ -93,6 +73,7 @@ async function startApiForEmailProvider(config: ApiConfig): Promise<{
     redis: new InMemoryRedis(),
     users: {
       findByEmail: async () => null,
+      isTwoFactorEnabled: async () => false,
     },
     emailTemplates: templateService,
     config,

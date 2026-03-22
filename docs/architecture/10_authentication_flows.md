@@ -22,10 +22,12 @@ Primary:
 - Email + Email code
 - Passkeys (WebAuthn)
 
-Additional:
-- TOTP 2FA
-- Security Keys
-- Device approval
+Additional (Core open-source):
+- TOTP 2FA with backup recovery codes
+- Device approval for new devices
+
+Additional (planned outside Core — see `okkey-enterprise`):
+- Security keys / WebAuthn as a second factor
 
 ---
 
@@ -107,8 +109,8 @@ Security defaults:
 - max invalid attempts per challenge: 5
 - rate limiting on start/resend/confirm
 
-After successful `confirm`, backend returns an intermediate auth state.
-Device registration/approval is handled by dedicated device flows.
+After successful `confirm`, backend returns an intermediate auth state (`authStateId`, `nextStep`).
+If the user has **2FA enabled**, `nextStep` is `two_factor` and the client must call `POST /auth/two-factor/verify` with a TOTP or backup code before receiving an access token. Otherwise `nextStep` is `device_check` and the client calls `POST /auth/session/bootstrap` to obtain a **Bearer** access token. Device registration/approval uses that authenticated context (Bearer or, in non-production, `X-User-Id` fallback when explicitly allowed).
 
 ---
 
@@ -171,26 +173,30 @@ device added
 
 ---
 
-## 2FA Authentication
+## 2FA Authentication (Core)
 
-Okkey supports two-factor authentication.
+In the open-source core, the **second factor** is **TOTP** (authenticator app; RFC 6238, SHA-1, 30s step, 6 digits) plus **one-time backup codes** (hashed at rest; shown in plaintext only once when generated or regenerated).
 
-Methods:
-- TOTP
-- Security keys
+**Not in Core (enterprise / later):** WebAuthn or security keys as the second factor — those stay in `okkey-enterprise` or future extensions so Core remains authenticator + backup only.
 
-Flow:
-```text
-login
-↓
-password verification
-↓
-2FA challenge
-↓
-TOTP verification
-↓
-session issued
-```
+### Enrollment (authenticated user)
+
+1. `POST /auth/two-factor/totp/enroll/start` — receive `secretBase32` / `otpauthUri` and `enrollmentId` (pending data in Redis).
+2. User scans QR or enters secret in the authenticator app.
+3. `POST /auth/two-factor/totp/enroll/confirm` with `enrollmentId` and a valid TOTP code — server persists **encrypted** TOTP secret, enables 2FA, returns **backup codes** once.
+
+### Login (email first factor already satisfied)
+
+1. `POST /auth/email/confirm` → `nextStep: two_factor`, `authStateId`.
+2. `POST /auth/two-factor/verify` with TOTP **or** a backup code.
+3. Response includes `access_token` (Bearer) for Vault/Sync/Device APIs.
+
+### Disable / rotate backup codes
+
+- **Disable 2FA:** `POST /auth/two-factor/disable` with a valid TOTP **or** backup code (backup code is consumed).
+- **New backup set:** `POST /auth/two-factor/backup-codes/regenerate` with current TOTP; old unused codes invalidated.
+
+Rate limits and per-`authStateId` attempt caps apply to `verify` (see `docs/api_contracts.md`).
 
 ---
 

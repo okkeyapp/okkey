@@ -47,7 +47,7 @@
     "infra:ps": "./scripts/infra.sh ps",
     "infra:up": "./scripts/infra.sh up",
     "test": "echo 'TODO: add unit/integration tests' && exit 1",
-    "test:api": "node --experimental-strip-types --test services/api/test/*.test.ts",
+    "test:api": "node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
     "test:e2e": "node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }
 }

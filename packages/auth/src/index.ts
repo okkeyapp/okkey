@@ -1,9 +1,16 @@
 import { ApiClient } from "../../api/src/index.js";
 import type {
+  AccessTokenResponseDto,
+  BackupCodesPlaintextResponseDto,
+  BackupCodesRegenerateRequestDto,
   EmailAuthConfirmResponse,
   EmailAuthStartResponse,
   RegisterCompleteRequestDto,
   RegisterCompleteResponseDto,
+  TotpEnrollConfirmRequestDto,
+  TotpEnrollStartResponseDto,
+  TwoFactorDisableRequestDto,
+  TwoFactorStatusResponseDto,
 } from "../../types/src/index.js";
 
 export class AuthClient {
@@ -41,5 +48,51 @@ export class AuthClient {
     body: RegisterCompleteRequestDto,
   ): Promise<RegisterCompleteResponseDto> {
     return this.api.post<RegisterCompleteResponseDto>("/auth/register/complete", body);
+  }
+
+  async bootstrapSession(authStateId: string): Promise<AccessTokenResponseDto> {
+    return this.api.post<AccessTokenResponseDto>("/auth/session/bootstrap", {
+      authStateId,
+    });
+  }
+
+  async verifyTwoFactor(authStateId: string, code: string): Promise<AccessTokenResponseDto> {
+    return this.api.post<AccessTokenResponseDto>("/auth/two-factor/verify", {
+      authStateId,
+      code,
+    });
+  }
+
+  async getTwoFactorStatus(): Promise<TwoFactorStatusResponseDto> {
+    return this.api.get<TwoFactorStatusResponseDto>("/auth/two-factor/status");
+  }
+
+  async startTotpEnrollment(): Promise<TotpEnrollStartResponseDto> {
+    return this.api.post<TotpEnrollStartResponseDto>(
+      "/auth/two-factor/totp/enroll/start",
+      {},
+    );
+  }
+
+  async confirmTotpEnrollment(
+    body: TotpEnrollConfirmRequestDto,
+  ): Promise<BackupCodesPlaintextResponseDto> {
+    return this.api.post<BackupCodesPlaintextResponseDto>(
+      "/auth/two-factor/totp/enroll/confirm",
+      body,
+    );
+  }
+
+  async regenerateBackupCodes(
+    body: BackupCodesRegenerateRequestDto,
+  ): Promise<BackupCodesPlaintextResponseDto> {
+    return this.api.post<BackupCodesPlaintextResponseDto>(
+      "/auth/two-factor/backup-codes/regenerate",
+      body,
+    );
+  }
+
+  async disableTwoFactor(body: TwoFactorDisableRequestDto): Promise<{ disabled: true }> {
+    return this.api.post<{ disabled: true }>("/auth/two-factor/disable", body);
   }
 }

@@ -63,6 +63,12 @@ Methods:
 
 ---
 
+## Second factor (Core open-source)
+
+Core enforces optional **TOTP** (RFC 6238) plus **one-time backup codes** after the email challenge when the user has enabled 2FA. The server stores TOTP material encrypted at rest and backup codes as one-way hashes only; it never sees vault plaintext. **WebAuthn / security keys as a second factor** are out of scope for Core and belong in enterprise extensions.
+
+---
+
 ## Key Rotation
 
 When access changes: **rotate vault keys**

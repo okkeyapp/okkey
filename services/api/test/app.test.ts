@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 
 class MockResponse {
   statusCode = 200;
@@ -39,27 +40,11 @@ function createLoggerStub() {
   };
 }
 
-const testConfig: ApiConfig = {
-  nodeEnv: "test",
-  port: 4000,
-  logLevel: "debug",
+const testConfig: ApiConfig = createTestApiConfig({
   corsOrigin: "http://localhost:3000",
   databaseUrl: "postgresql://okkey:okkey@localhost:5432/okkey",
   redisUrl: "redis://localhost:6379",
-  authCodeTtlSeconds: 300,
-  authResendCooldownSeconds: 60,
-  authCodeMaxAttempts: 5,
-  authRateLimitWindowSeconds: 600,
-  authRateLimitStartPerEmail: 5,
-  authRateLimitStartPerIp: 10,
-  authRateLimitConfirmPerIp: 30,
-  authRateLimitResendPerIp: 10,
-  registrationAuthStateTtlSeconds: 3600,
-  registrationResultTtlSeconds: 604800,
-  deviceApprovalTtlSeconds: 600,
-  defaultEmailLocale: "en",
-  emailFrom: "no-reply@okkey.local",
-};
+});
 
 async function dispatch(
   method: string,

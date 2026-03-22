@@ -1,4 +1,5 @@
-import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import type { IncomingMessage } from "node:http";
+import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import { SyncService, SyncServiceError } from "../sync/service.ts";
 
 interface AppendEventBody {
@@ -7,15 +8,10 @@ interface AppendEventBody {
   baseVersion?: number;
 }
 
-function getUserId(ctx: Parameters<RouteHandler>[0]): string {
-  const userId = getHeader(ctx.req, "x-user-id");
-  if (!userId) {
-    throw new SyncServiceError("AUTH_REQUIRED", 401, "auth required");
-  }
-  return userId;
-}
-
-export function createSyncEventsListRoute(syncService: SyncService): RouteHandler {
+export function createSyncEventsListRoute(
+  syncService: SyncService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     const vaultId = ctx.params.vaultId;
     if (!vaultId) {
@@ -24,7 +20,11 @@ export function createSyncEventsListRoute(syncService: SyncService): RouteHandle
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const url = new URL(ctx.req.url ?? "", "http://localhost");
       const afterVersionRaw = url.searchParams.get("afterVersion") ?? "0";
       const afterVersion = Number(afterVersionRaw);
@@ -40,7 +40,10 @@ export function createSyncEventsListRoute(syncService: SyncService): RouteHandle
   };
 }
 
-export function createSyncEventsAppendRoute(syncService: SyncService): RouteHandler {
+export function createSyncEventsAppendRoute(
+  syncService: SyncService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
   return async (ctx) => {
     const vaultId = ctx.params.vaultId;
     if (!vaultId) {
@@ -70,7 +73,11 @@ export function createSyncEventsAppendRoute(syncService: SyncService): RouteHand
     }
 
     try {
-      const userId = getUserId(ctx);
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const created = await syncService.appendEvent(vaultId, userId, {
         eventType: body.eventType,
         encryptedPayload: body.encryptedPayload,

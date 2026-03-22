@@ -23,6 +23,18 @@ export interface ApiConfig {
   registrationAuthStateTtlSeconds: number;
   registrationResultTtlSeconds: number;
   deviceApprovalTtlSeconds: number;
+  /** Server secret: AES key for TOTP at rest, backup-code pepper, session binding */
+  sessionSecret: string;
+  sessionTtlSeconds: number;
+  /** After email confirm, TTL for auth state when 2FA is still required */
+  authPendingTwoFactorTtlSeconds: number;
+  totpEnrollmentTtlSeconds: number;
+  twoFactorVerifyMaxAttemptsPerState: number;
+  twoFactorVerifyClockSteps: number;
+  authRateLimitTwoFactorVerifyPerIp: number;
+  twoFactorBackupCodesCount: number;
+  /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
+  allowHeaderUserIdAuth: boolean;
   defaultEmailLocale: string;
   emailFrom: string;
   emailProvider: EmailProvider;
@@ -117,6 +129,8 @@ export function loadConfig(): ApiConfig {
   loadEnvFile(".env.local");
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
+  const sessionSecret =
+    process.env.SESSION_SECRET ?? process.env.JWT_SECRET ?? "dev-session-secret";
   return {
     nodeEnv,
     port: parsePort(process.env.PORT),
@@ -163,6 +177,35 @@ export function loadConfig(): ApiConfig {
       process.env.DEVICE_APPROVAL_TTL_SECONDS,
       600,
     ),
+    sessionSecret,
+    sessionTtlSeconds: parsePositiveInt(process.env.SESSION_TTL_SECONDS, 604_800),
+    authPendingTwoFactorTtlSeconds: parsePositiveInt(
+      process.env.AUTH_PENDING_TWO_FACTOR_TTL_SECONDS,
+      600,
+    ),
+    totpEnrollmentTtlSeconds: parsePositiveInt(
+      process.env.TOTP_ENROLLMENT_TTL_SECONDS,
+      600,
+    ),
+    twoFactorVerifyMaxAttemptsPerState: parsePositiveInt(
+      process.env.TWO_FACTOR_VERIFY_MAX_ATTEMPTS,
+      5,
+    ),
+    twoFactorVerifyClockSteps: parsePositiveInt(
+      process.env.TWO_FACTOR_VERIFY_CLOCK_STEPS,
+      1,
+    ),
+    authRateLimitTwoFactorVerifyPerIp: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_TWO_FACTOR_VERIFY_PER_IP,
+      40,
+    ),
+    twoFactorBackupCodesCount: parsePositiveInt(
+      process.env.TWO_FACTOR_BACKUP_CODES_COUNT,
+      10,
+    ),
+    allowHeaderUserIdAuth:
+      nodeEnv !== "production" ||
+      parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,

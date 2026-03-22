@@ -4,37 +4,9 @@ import type { AuthService } from "../src/auth/service.ts";
 import type { ApiConfig } from "../src/config.ts";
 import type { PostgresDatabase } from "../src/storage/postgres.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 
-const baseConfig: ApiConfig = {
-  nodeEnv: "test",
-  port: 4000,
-  logLevel: "debug",
-  corsOrigin: "*",
-  databaseUrl: "",
-  redisUrl: "",
-  authCodeTtlSeconds: 300,
-  authResendCooldownSeconds: 60,
-  authCodeMaxAttempts: 5,
-  authRateLimitWindowSeconds: 600,
-  authRateLimitStartPerEmail: 5,
-  authRateLimitStartPerIp: 10,
-  authRateLimitConfirmPerIp: 30,
-  authRateLimitResendPerIp: 10,
-  registrationAuthStateTtlSeconds: 3600,
-  registrationResultTtlSeconds: 604800,
-  deviceApprovalTtlSeconds: 600,
-  defaultEmailLocale: "en",
-  emailFrom: "no-reply@okkey.local",
-  emailProvider: "logger",
-  smtpHost: "localhost",
-  smtpPort: 1025,
-  smtpSecure: false,
-  smtpUser: "",
-  smtpPassword: "",
-  emailApiEndpoint: "",
-  emailApiKey: "",
-  emailApiTimeoutMs: 10000,
-};
+const baseConfig: ApiConfig = createTestApiConfig();
 
 function baseInput() {
   return {

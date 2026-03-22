@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { AuthError, type AuthService } from "../src/auth/service.ts";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { createTestApiConfig } from "./test-api-config.ts";
 
 class MockResponse {
   statusCode = 200;
@@ -30,27 +31,7 @@ function loggerStub() {
   };
 }
 
-const config: ApiConfig = {
-  nodeEnv: "test",
-  port: 4000,
-  logLevel: "debug",
-  corsOrigin: "*",
-  databaseUrl: "",
-  redisUrl: "",
-  authCodeTtlSeconds: 300,
-  authResendCooldownSeconds: 60,
-  authCodeMaxAttempts: 5,
-  authRateLimitWindowSeconds: 600,
-  authRateLimitStartPerEmail: 5,
-  authRateLimitStartPerIp: 10,
-  authRateLimitConfirmPerIp: 30,
-  authRateLimitResendPerIp: 10,
-  registrationAuthStateTtlSeconds: 3600,
-  registrationResultTtlSeconds: 604800,
-  deviceApprovalTtlSeconds: 600,
-  defaultEmailLocale: "en",
-  emailFrom: "no-reply@okkey.local",
-};
+const config: ApiConfig = createTestApiConfig();
 
 function createAuthStub(overrides?: Partial<AuthService>) {
   return {

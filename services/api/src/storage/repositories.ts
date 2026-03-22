@@ -93,6 +93,28 @@ export class UsersRepository {
     );
     return rows[0] ? mapUser(rows[0]) : null;
   }
+
+  async isTwoFactorEnabled(userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ enabled: boolean }>(
+      "SELECT (two_factor_enabled_at IS NOT NULL) AS enabled FROM users WHERE id = $1",
+      [userId],
+    );
+    return Boolean(rows[0]?.enabled);
+  }
+
+  async setTwoFactorEnabled(userId: string, enabled: boolean): Promise<void> {
+    if (enabled) {
+      await this.db.query(
+        "UPDATE users SET two_factor_enabled_at = now(), updated_at = now() WHERE id = $1",
+        [userId],
+      );
+    } else {
+      await this.db.query(
+        "UPDATE users SET two_factor_enabled_at = NULL, updated_at = now() WHERE id = $1",
+        [userId],
+      );
+    }
+  }
 }
 
 export interface WorkspaceRecord {
@@ -975,6 +997,173 @@ export class EventsRepository {
       [vaultId, afterVersion],
     );
     return rows.map(mapEvent);
+  }
+}
+
+export class TwoFactorRepository {
+  private readonly db: QueryExecutor & {
+    transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+  };
+
+  constructor(
+    db: QueryExecutor & {
+      transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+    },
+  ) {
+    this.db = db;
+  }
+
+  async upsertTotpSecret(
+    userId: string,
+    encryptedSecret: Uint8Array,
+    executor?: QueryExecutor,
+  ): Promise<void> {
+    const ex = executor ?? this.db;
+    await ex.query(
+      `
+        INSERT INTO user_totp_credentials (user_id, encrypted_secret)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO UPDATE SET
+          encrypted_secret = EXCLUDED.encrypted_secret,
+          created_at = now()
+      `,
+      [userId, Buffer.from(encryptedSecret)],
+    );
+  }
+
+  async enableTotpWithFreshBackupCodes(
+    userId: string,
+    encryptedSecret: Uint8Array,
+    backupHashes: string[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.deleteTotpForUser(userId, tx);
+      await this.deleteBackupCodesForUser(userId, tx);
+      await this.upsertTotpSecret(userId, encryptedSecret, tx);
+      await this.insertBackupCodes(userId, backupHashes, tx);
+    });
+  }
+
+  async disableTotpAndBackupCodes(userId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.deleteTotpForUser(userId, tx);
+      await this.deleteBackupCodesForUser(userId, tx);
+    });
+  }
+
+  async getEncryptedTotpSecret(userId: string): Promise<Uint8Array | null> {
+    const rows = await this.db.query<{ encrypted_secret: Buffer }>(
+      "SELECT encrypted_secret FROM user_totp_credentials WHERE user_id = $1",
+      [userId],
+    );
+    const row = rows[0];
+    return row ? Uint8Array.from(row.encrypted_secret) : null;
+  }
+
+  async deleteTotpForUser(userId: string, executor?: QueryExecutor): Promise<void> {
+    const ex = executor ?? this.db;
+    await ex.query("DELETE FROM user_totp_credentials WHERE user_id = $1", [userId]);
+  }
+
+  async deleteBackupCodesForUser(userId: string, executor?: QueryExecutor): Promise<void> {
+    const ex = executor ?? this.db;
+    await ex.query("DELETE FROM user_backup_codes WHERE user_id = $1", [userId]);
+  }
+
+  async insertBackupCodes(
+    userId: string,
+    codeHashes: string[],
+    executor?: QueryExecutor,
+  ): Promise<void> {
+    const ex = executor ?? this.db;
+    for (const h of codeHashes) {
+      await ex.query(
+        "INSERT INTO user_backup_codes (user_id, code_hash) VALUES ($1, $2)",
+        [userId, h],
+      );
+    }
+  }
+
+  async countUnusedBackupCodes(userId: string): Promise<number> {
+    const rows = await this.db.query<{ n: string }>(
+      `
+        SELECT count(*)::text AS n
+        FROM user_backup_codes
+        WHERE user_id = $1 AND used_at IS NULL
+      `,
+      [userId],
+    );
+    return Number(rows[0]?.n ?? "0");
+  }
+
+  async consumeBackupCode(userId: string, codeHash: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE user_backup_codes AS ubc
+        SET used_at = now()
+        FROM (
+          SELECT id FROM user_backup_codes
+          WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
+          LIMIT 1
+        ) AS picked
+        WHERE ubc.id = picked.id
+        RETURNING ubc.id
+      `,
+      [userId, codeHash],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async replaceBackupCodesOnly(userId: string, backupHashes: string[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.deleteBackupCodesForUser(userId, tx);
+      await this.insertBackupCodes(userId, backupHashes, tx);
+    });
+  }
+}
+
+export class SessionsRepository {
+  private readonly db: QueryExecutor;
+
+  constructor(db: QueryExecutor) {
+    this.db = db;
+  }
+
+  async createSession(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAtIso: string;
+  }): Promise<{ id: string }> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        INSERT INTO sessions (user_id, device_id, token_hash, expires_at)
+        VALUES ($1, NULL, $2, $3::timestamptz)
+        RETURNING id
+      `,
+      [input.userId, input.tokenHash, input.expiresAtIso],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new Error("session insert failed");
+    }
+    return { id: row.id };
+  }
+
+  async findValidByTokenHash(
+    tokenHash: string,
+    nowIso: string,
+  ): Promise<{ id: string; userId: string } | null> {
+    const rows = await this.db.query<{ id: string; user_id: string }>(
+      `
+        SELECT id, user_id
+        FROM sessions
+        WHERE token_hash = $1 AND expires_at > $2::timestamptz
+        LIMIT 1
+      `,
+      [tokenHash, nowIso],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, userId: row.user_id } : null;
   }
 }
 

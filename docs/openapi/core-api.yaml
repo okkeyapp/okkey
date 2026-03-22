@@ -18,6 +18,12 @@ tags:
   - name: System
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque access token from session bootstrap or two-factor verify
+
   schemas:
     ErrorBody:
       type: object
@@ -85,7 +91,114 @@ components:
           type: boolean
         nextStep:
           type: string
-          enum: [registration, device_check]
+          enum: [registration, device_check, two_factor]
+
+    SessionBootstrapRequest:
+      type: object
+      required: [authStateId]
+      properties:
+        authStateId:
+          type: string
+        auth_state_id:
+          type: string
+          format: uuid
+
+    AccessTokenResponse:
+      type: object
+      required: [access_token, expires_at, user_id, token_type]
+      properties:
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+          format: uuid
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    TwoFactorVerifyRequest:
+      type: object
+      required: [authStateId, code]
+      properties:
+        authStateId:
+          type: string
+        auth_state_id:
+          type: string
+        code:
+          type: string
+          description: Six-digit TOTP or backup code (with or without dashes)
+
+    TwoFactorStatusResponse:
+      type: object
+      required: [enabled, backupCodesRemaining]
+      properties:
+        enabled:
+          type: boolean
+        backupCodesRemaining:
+          type: integer
+
+    TotpEnrollStartResponse:
+      type: object
+      required:
+        [enrollmentId, secretBase32, otpauthUri, periodSeconds, digits, algorithm]
+      properties:
+        enrollmentId:
+          type: string
+          format: uuid
+        secretBase32:
+          type: string
+        otpauthUri:
+          type: string
+        periodSeconds:
+          type: integer
+        digits:
+          type: integer
+        algorithm:
+          type: string
+          enum: [SHA1]
+
+    TotpEnrollConfirmRequest:
+      type: object
+      required: [enrollmentId, code]
+      properties:
+        enrollmentId:
+          type: string
+          format: uuid
+        code:
+          type: string
+
+    BackupCodesResponse:
+      type: object
+      required: [backupCodes]
+      properties:
+        backupCodes:
+          type: array
+          items:
+            type: string
+
+    BackupCodesRegenerateRequest:
+      type: object
+      required: [totpCode]
+      properties:
+        totpCode:
+          type: string
+        totp_code:
+          type: string
+
+    TwoFactorDisableRequest:
+      type: object
+      properties:
+        totpCode:
+          type: string
+        totp_code:
+          type: string
+        backupCode:
+          type: string
+        backup_code:
+          type: string
 
     RegisterCompleteRequest:
       type: object
@@ -322,7 +435,11 @@ components:
     HeaderUserId:
       name: X-User-Id
       in: header
-      required: true
+      required: false
+      description: >
+        Optional dev fallback (disabled in production unless explicitly allowed).
+        Prefer `Authorization: Bearer <access_token>` from
+        `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`.
       schema:
         type: string
         format: uuid
@@ -461,6 +578,207 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/session/bootstrap:
+    post:
+      tags: [Auth]
+      summary: Create session after email confirm (no 2FA pending)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionBootstrapRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/verify:
+    post:
+      tags: [Auth]
+      summary: Complete login with TOTP or backup code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TwoFactorVerifyRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+        "400":
+          description: >
+            Includes TWO_FACTOR_INVALID_CODE, TWO_FACTOR_BACKUP_INVALID, TWO_FACTOR_BACKUP_DEPLETED,
+            TWO_FACTOR_SETUP_INVALID, TWO_FACTOR_NOT_ENABLED, AUTH_BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/status:
+    get:
+      tags: [Auth]
+      summary: Two-factor status for the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TwoFactorStatusResponse"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/totp/enroll/start:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TotpEnrollStartResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/totp/enroll/confirm:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TotpEnrollConfirmRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupCodesResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/backup-codes/regenerate:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupCodesRegenerateRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupCodesResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/disable:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TwoFactorDisableRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [disabled]
+                properties:
+                  disabled:
+                    type: boolean
+                    enum: [true]
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
           content:
             application/json:
               schema:

@@ -6,6 +6,8 @@ import {
   DevicesRepository,
   EventsRepository,
   ItemsRepository,
+  SessionsRepository,
+  TwoFactorRepository,
   UsersRepository,
   VaultsRepository,
   WorkspacesRepository,
@@ -21,6 +23,8 @@ export interface StorageLayer {
     items: ItemsRepository;
     events: EventsRepository;
     devices: DevicesRepository;
+    sessions: SessionsRepository;
+    twoFactor: TwoFactorRepository;
   };
   ping(): Promise<void>;
   close(): Promise<void>;
@@ -40,6 +44,8 @@ export async function createStorageLayer(
     items: new ItemsRepository(postgres),
     events: new EventsRepository(postgres),
     devices: new DevicesRepository(postgres),
+    sessions: new SessionsRepository(postgres),
+    twoFactor: new TwoFactorRepository(postgres),
   };
 
   logger.info("storage initialized", {

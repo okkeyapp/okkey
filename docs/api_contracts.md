@@ -26,7 +26,7 @@ Wire-aligned DTOs and the error body type live in `@okkey/types` (e.g. `CoreApiE
 | Identifiers | UUIDs as lowercase string (8-4-4-4-12), unless otherwise specified. |
 | Time | ISO-8601 UTC with millisecond precision where emitted by the server, e.g. `2026-01-01T12:05:00.000Z`. |
 | Client IP (rate limits) | First hop in `X-Forwarded-For` when present; otherwise internal logic may treat IP as `unknown`. |
-| Authentication (current) | Protected routes require header `X-User-Id: <user uuid>`. This is a **development placeholder** until session/JWT auth lands; do not rely on it for production security. |
+| Authentication (Core v1) | Prefer `Authorization: Bearer <access_token>` from `POST /auth/session/bootstrap` (after email confirm when 2FA is off) or `POST /auth/two-factor/verify` (when 2FA is on). `X-User-Id` remains a **non-production fallback** when enabled by environment (off by default in `production`). |
 | Device approval | `POST /devices/:deviceId/approve` and `POST /devices/:deviceId/reject` additionally require `X-Device-Id: <trusted approver device uuid>`. |
 
 ## Error model
@@ -136,7 +136,7 @@ Validates the code and returns an auth state handle for the next onboarding step
 |--------|------|-------------|
 | `authStateId` | string | Opaque; used by future registration/device flows. |
 | `userExists` | boolean | Whether a user row exists for this email. |
-| `nextStep` | string | `"registration"` if new user, `"device_check"` if existing. |
+| `nextStep` | string | `"registration"` if new user; `"two_factor"` if existing user with 2FA enabled; otherwise `"device_check"`. |
 
 **Errors:**
 
@@ -150,7 +150,141 @@ Validates the code and returns an auth state handle for the next onboarding step
 
 **Idempotency:** confirm is **not** idempotent; repeating with the same code after success may fail.
 
-**Auth state TTL:** For `nextStep: "registration"`, the server stores `authStateId` in Redis longer than for returning users (`REGISTRATION_AUTH_STATE_TTL_SECONDS`, default 3600s) so the client can finish crypto and call register complete.
+**Auth state TTL:** For `nextStep: "registration"`, the server stores `authStateId` in Redis longer than for returning users (`REGISTRATION_AUTH_STATE_TTL_SECONDS`, default 3600s) so the client can finish crypto and call register complete. For `nextStep: "two_factor"`, TTL is `AUTH_PENDING_TWO_FACTOR_TTL_SECONDS` (default 600s).
+
+### `POST /auth/session/bootstrap`
+
+Creates a **Bearer session** after a successful email code challenge when **2FA is not** required for this account.
+
+**Auth:** none.
+
+**Request body** (JSON; `auth_state_id` accepted as snake_case alias):
+
+| Field | Type | Required |
+|--------|------|----------|
+| `authStateId` | string | Yes |
+
+**Response `200` (snake_case):**
+
+| Field | Type |
+|--------|------|
+| `access_token` | string |
+| `expires_at` | string (ISO-8601 UTC) |
+| `user_id` | uuid string |
+| `token_type` | `"Bearer"` |
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_BAD_REQUEST` | 400 | Missing `authStateId`. |
+| `TWO_FACTOR_REQUIRED` | 400 | Account has 2FA; use `POST /auth/two-factor/verify` instead. |
+| `AUTH_CHALLENGE_INVALID` | 400 | Auth state is not for an existing user session (e.g. registration flow). |
+| `AUTH_CHALLENGE_EXPIRED` | 410 | Unknown or expired `authStateId`. |
+
+**Side effects:** Redis auth state for this `authStateId` is deleted on success.
+
+### `POST /auth/two-factor/verify`
+
+Completes login when `nextStep` from email confirm was `"two_factor"`. Accepts **either** a valid **TOTP** code (6 digits, RFC 6238 / SHA-1 / 30s step) **or** a **backup code** (one-time; stored hashed server-side).
+
+**Auth:** none.
+
+**Request body:**
+
+| Field | Type | Required |
+|--------|------|----------|
+| `authStateId` | string | Yes |
+| `code` | string | Yes |
+
+**Response `200`:** Same shape as `POST /auth/session/bootstrap`.
+
+**Errors (non-exhaustive):**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_BAD_REQUEST` | 400 | Missing fields. |
+| `TWO_FACTOR_SETUP_INVALID` | 400 | Auth state does not expect 2FA. |
+| `TWO_FACTOR_NOT_ENABLED` | 400 | User has no TOTP row (misconfiguration). |
+| `TWO_FACTOR_INVALID_CODE` | 400 | Wrong TOTP. |
+| `TWO_FACTOR_BACKUP_INVALID` | 400 | Wrong backup code (non-TOTP-shaped input). |
+| `TWO_FACTOR_BACKUP_DEPLETED` | 400 | No unused backup codes left; user must use TOTP (or add new codes after authenticated recovery flow). |
+| `TWO_FACTOR_ATTEMPTS_EXCEEDED` | 429 | Too many failures for this `authStateId`. |
+| `AUTH_RATE_LIMITED` | 429 | Per-IP verify limit. |
+| `AUTH_CHALLENGE_EXPIRED` | 410 | Auth state missing/expired. |
+
+### `GET /auth/two-factor/status`
+
+**Auth:** `Authorization: Bearer` and/or `X-User-Id` (same rules as Vault routes).
+
+**Response `200`:**
+
+| Field | Type |
+|--------|------|
+| `enabled` | boolean |
+| `backupCodesRemaining` | number |
+
+### `POST /auth/two-factor/totp/enroll/start`
+
+Starts TOTP enrollment for an authenticated user. Returns a **base32 secret** and `otpauthUri` for the authenticator app. Pending enrollment lives in Redis until confirm or TTL.
+
+**Auth:** Bearer / `X-User-Id`.
+
+**Response `200`:** `enrollmentId`, `secretBase32`, `otpauthUri`, `periodSeconds` (30), `digits` (6), `algorithm` (`SHA1`).
+
+**Errors:** `TWO_FACTOR_ALREADY_ENABLED`, `AUTH_REQUIRED`.
+
+### `POST /auth/two-factor/totp/enroll/confirm`
+
+**Auth:** Bearer / `X-User-Id`.
+
+**Request body:**
+
+| Field | Type | Required |
+|--------|------|----------|
+| `enrollmentId` | string | Yes |
+| `code` | string | Yes | Valid TOTP from the pending secret |
+
+**Response `200`:** `{ "backupCodes": string[] }` — **plaintext codes shown once**; server stores only SHA-256 hashes (with server pepper).
+
+**Errors:** `TWO_FACTOR_SETUP_INVALID`, `TWO_FACTOR_INVALID_CODE`, `TWO_FACTOR_ALREADY_ENABLED`.
+
+**Policy:** Enabling 2FA is allowed only for an **authenticated** user (Bearer session or dev header). It is **not** tied to the post-registration Redis auth state; new accounts obtain a session through the same bootstrap/2FA flow as returning users once a login path exists from registration.
+
+### `POST /auth/two-factor/backup-codes/regenerate`
+
+**Auth:** Bearer / `X-User-Id`.
+
+**Request body:** `{ "totpCode": "<6-digit>" }` (or `totp_code` snake_case).
+
+**Response `200`:** `{ "backupCodes": string[] }` — previous unused backup codes are invalidated.
+
+### `POST /auth/two-factor/disable`
+
+**Auth:** Bearer / `X-User-Id`.
+
+**Request body:** either `{ "totpCode": "..." }` or `{ "backupCode": "..." }` (snake_case aliases allowed). Using a backup code **consumes** that code.
+
+**Response `200`:** `{ "disabled": true }`
+
+**Errors:** `TWO_FACTOR_NOT_ENABLED`, `TWO_FACTOR_INVALID_CODE`, `TWO_FACTOR_BACKUP_INVALID`, `TWO_FACTOR_SETUP_INVALID`.
+
+### TOTP secret storage (server)
+
+The server stores the TOTP shared secret **only as AES-256-GCM ciphertext** (key derived from `SESSION_SECRET`). It is **never** logged or returned after enrollment confirm.
+
+### Session row after bootstrap / 2FA verify
+
+On successful `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`, Core inserts a row into `sessions` with:
+
+| Column | Value (Core v1) |
+|--------|------------------|
+| `user_id` | Authenticated user. |
+| `token_hash` | SHA-256 (hex) of the opaque `access_token`; the raw token appears **only** in the JSON response. |
+| `expires_at` | Now + `SESSION_TTL_SECONDS`. |
+| `device_id` | **`NULL` at issuance.** Device binding for vault crypto (`4.7`) is handled by `POST /devices/register` and related flows using the authenticated user; linking `sessions.device_id` after device registration may be added later without changing the login/2FA contract. |
+
+Token rotation / refresh is **not** implemented in Core v1; clients treat the access token as a long-lived session handle until expiry or explicit logout (when implemented).
 
 ### `POST /auth/register/complete`
 
@@ -424,6 +558,7 @@ Document them when routes are added.
 - **4.7** — device registration + metadata (snake_case wire fields).
 - **4.10** — approve / reject and approval errors.
 - **4.9** — registration split-key: `POST /auth/register/complete` (this document).
+- **4.11** — TOTP + backup codes, session bootstrap, Bearer auth for Vault/Sync/Device (this document).
 
 ---
 

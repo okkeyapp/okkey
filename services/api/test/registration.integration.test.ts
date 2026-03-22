@@ -27,6 +27,11 @@ test("integration: registration completes user, workspace, vault, trusted device
     "utf8",
   );
   await storage.postgres.query(migration0002);
+  const migration0003 = readFileSync(
+    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0003);
   const suffix = randomUUID();
   const email = `reg-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -150,6 +155,11 @@ test("integration: parallel completeRegistration creates single user", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0002);
+  const migration0003 = readFileSync(
+    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0003);
   const suffix = randomUUID();
   const email = `reg-parallel-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -266,6 +276,11 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0002);
+  const migration0003 = readFileSync(
+    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0003);
 
   const emailTemplates = new EmailTemplateService(
     { send: async () => {} },
