@@ -190,3 +190,43 @@ export interface DeviceRejectResponseDto {
   device_id: UUID;
   status: "revoked";
 }
+
+/** Optional nested metadata (same semantics as `POST /devices/register`). */
+export interface RegisterCompleteMetadataDto {
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+/** `POST /auth/register/complete` request body (snake_case on wire). */
+export interface RegisterCompleteRequestDto {
+  auth_state_id: UUID;
+  user_public_key: string;
+  encrypted_private_key: string;
+  server_key_share: string;
+  password_kdf_salt: string;
+  password_kdf_params_version: number;
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint: string;
+  device_name: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  metadata?: RegisterCompleteMetadataDto;
+}
+
+/** `POST /auth/register/complete` success body (snake_case on wire). */
+export interface RegisterCompleteResponseDto {
+  user_id: UUID;
+  workspace_id: UUID;
+  vault_id: UUID;
+  device_id: UUID;
+  device_status: "trusted";
+}

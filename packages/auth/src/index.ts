@@ -2,6 +2,8 @@ import { ApiClient } from "../../api/src/index.js";
 import type {
   EmailAuthConfirmResponse,
   EmailAuthStartResponse,
+  RegisterCompleteRequestDto,
+  RegisterCompleteResponseDto,
 } from "../../types/src/index.js";
 
 export class AuthClient {
@@ -33,5 +35,11 @@ export class AuthClient {
       challengeId,
       code,
     });
+  }
+
+  async completeRegistration(
+    body: RegisterCompleteRequestDto,
+  ): Promise<RegisterCompleteResponseDto> {
+    return this.api.post<RegisterCompleteResponseDto>("/auth/register/complete", body);
   }
 }
