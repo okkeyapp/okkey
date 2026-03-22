@@ -13,7 +13,7 @@ interface AuthChallenge {
   createdAt: string;
 }
 
-interface AuthState {
+export interface AuthStatePayload {
   id: string;
   email: string;
   userId: string | null;
@@ -102,7 +102,7 @@ function challengeKey(id: string): string {
   return `auth:challenge:${id}`;
 }
 
-function authStateKey(id: string): string {
+export function authStateRedisKey(id: string): string {
   return `auth:state:${id}`;
 }
 
@@ -277,16 +277,19 @@ export class AuthService {
     const existingUser: UserRecord | null = await this.users.findByEmail(
       challenge.email,
     );
-    const authState: AuthState = {
+    const authState: AuthStatePayload = {
       id: this.generateId(),
       email: challenge.email,
       userId: existingUser?.id ?? null,
       createdAt: this.now().toISOString(),
     };
+    const authStateTtlSeconds = existingUser
+      ? this.config.authCodeTtlSeconds
+      : this.config.registrationAuthStateTtlSeconds;
     await this.redis.setWithTtl(
-      authStateKey(authState.id),
+      authStateRedisKey(authState.id),
       JSON.stringify(authState),
-      this.config.authCodeTtlSeconds,
+      authStateTtlSeconds,
     );
 
     return {
@@ -340,6 +343,23 @@ export class AuthService {
     if (count > limit) {
       throw new AuthError("AUTH_RATE_LIMITED", 429, "rate limited");
     }
+  }
+
+  /** Used by registration flow; returns null if missing or expired. */
+  async readAuthState(authStateId: string): Promise<AuthStatePayload | null> {
+    const raw = await this.redis.get(authStateRedisKey(authStateId));
+    if (!raw) {
+      return null;
+    }
+    try {
+      return JSON.parse(raw) as AuthStatePayload;
+    } catch {
+      return null;
+    }
+  }
+
+  async removeAuthState(authStateId: string): Promise<void> {
+    await this.redis.del(authStateRedisKey(authStateId));
   }
 }
 

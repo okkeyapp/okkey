@@ -20,6 +20,8 @@ export interface ApiConfig {
   authRateLimitStartPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
+  registrationAuthStateTtlSeconds: number;
+  registrationResultTtlSeconds: number;
   deviceApprovalTtlSeconds: number;
   defaultEmailLocale: string;
   emailFrom: string;
@@ -148,6 +150,14 @@ export function loadConfig(): ApiConfig {
     authRateLimitResendPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_RESEND_PER_IP,
       10,
+    ),
+    registrationAuthStateTtlSeconds: parsePositiveInt(
+      process.env.REGISTRATION_AUTH_STATE_TTL_SECONDS,
+      3600,
+    ),
+    registrationResultTtlSeconds: parsePositiveInt(
+      process.env.REGISTRATION_RESULT_TTL_SECONDS,
+      604800,
     ),
     deviceApprovalTtlSeconds: parsePositiveInt(
       process.env.DEVICE_APPROVAL_TTL_SECONDS,

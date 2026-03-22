@@ -71,8 +71,20 @@ const baseConfig: ApiConfig = {
   authRateLimitStartPerIp: 10,
   authRateLimitConfirmPerIp: 30,
   authRateLimitResendPerIp: 10,
+  registrationAuthStateTtlSeconds: 3600,
+  registrationResultTtlSeconds: 604800,
+  deviceApprovalTtlSeconds: 600,
   defaultEmailLocale: "en",
   emailFrom: "no-reply@okkey.local",
+  emailProvider: "logger",
+  smtpHost: "localhost",
+  smtpPort: 1025,
+  smtpSecure: false,
+  smtpUser: "",
+  smtpPassword: "",
+  emailApiEndpoint: "",
+  emailApiKey: "",
+  emailApiTimeoutMs: 10000,
 };
 
 function setupAuthService(params?: {

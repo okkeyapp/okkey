@@ -29,7 +29,7 @@
     "smtp-server": "^3.14.0"
   },
   "scripts": {
-    "build:wasm": "RUSTUP_TOOLCHAIN=stable wasm-pack build --target web --out-dir packages/crypto/dist --features wasm rust/crypto-engine",
+    "build:wasm": "PATH=\"$HOME/.cargo/bin:$PATH\" RUSTUP_TOOLCHAIN=stable wasm-pack build rust/crypto-engine --target web --out-dir packages/crypto/dist --features wasm",
     "check:all": "yarn check:crypto && yarn build:wasm && yarn check:sdk",
     "check:crypto": "cargo test --manifest-path rust/crypto-engine/Cargo.toml",
     "check:sdk": "yarn check:sdk:types && yarn check:sdk:api && yarn check:sdk:auth && yarn check:sdk:vault && yarn check:sdk:sync && yarn check:sdk:ui",

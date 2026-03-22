@@ -1,4 +1,5 @@
 import { AuthService } from "./auth/service.ts";
+import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
@@ -25,6 +26,13 @@ async function main(): Promise<void> {
     emailTemplates,
     config,
   });
+  const registrationService = new RegistrationService({
+    authService,
+    users: storage.repositories.users,
+    postgres: storage.postgres,
+    redis: storage.redis,
+    config,
+  });
   const vaultService = new VaultService({
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
@@ -40,6 +48,7 @@ async function main(): Promise<void> {
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),
     authService,
+    registrationService,
     vaultService,
     syncService,
     deviceService,

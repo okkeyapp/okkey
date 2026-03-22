@@ -1,4 +1,5 @@
 import type { AuthService } from "./auth/service.ts";
+import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import type { DeviceService } from "./device/service.ts";
 import { HttpApp } from "./http.ts";
@@ -11,6 +12,7 @@ import {
   createAuthEmailResendRoute,
   createAuthEmailStartRoute,
 } from "./routes/auth-email.ts";
+import { createRegisterCompleteRoute } from "./routes/auth-register-complete.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
@@ -32,6 +34,7 @@ import type { VaultService } from "./vault/service.ts";
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
   authService?: AuthService;
+  registrationService?: RegistrationService;
   vaultService?: VaultService;
   syncService?: SyncService;
   deviceService?: DeviceService;
@@ -58,6 +61,13 @@ export function createApiApp(
       "POST",
       "/auth/email/confirm",
       createAuthEmailConfirmRoute(deps.authService),
+    );
+  }
+  if (deps.registrationService) {
+    app.route(
+      "POST",
+      "/auth/register/complete",
+      createRegisterCompleteRoute(deps.registrationService),
     );
   }
   if (deps.vaultService) {

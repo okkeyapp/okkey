@@ -24,6 +24,7 @@
   - `POST /auth/email/start`
   - `POST /auth/email/resend`
   - `POST /auth/email/confirm`
+  - `POST /auth/register/complete` (new user, split-key + first trusted device)
 - vault endpoints:
   - `GET /workspaces/:workspaceId/vaults` (requires `X-User-Id`)
   - `GET /vaults/:vaultId` (requires `X-User-Id`)

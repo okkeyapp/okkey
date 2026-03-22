@@ -36,6 +36,23 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
   }
 
   await ensureDevicesSchema(db);
+  await ensureUserKdfColumns(db);
+}
+
+async function ensureUserKdfColumns(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("password_kdf_salt")) {
+    const migration0002 = path.resolve(__dirname, "../migrations/0002_user_password_kdf.sql");
+    await db.query(readFileSync(migration0002, "utf8"));
+  }
 }
 
 async function ensureDevicesSchema(db: PostgresDatabase): Promise<void> {
@@ -189,6 +206,8 @@ test("integration: EventsRepository.append persists event and detects version co
     publicKey: `pk-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1, 2, 3]),
     serverKeyShare: new Uint8Array([4, 5, 6]),
+    passwordKdfSalt: new Uint8Array(16).fill(1),
+    passwordKdfParamsVersion: 1,
   });
 
   const workspace = await workspaces.create({
@@ -259,6 +278,8 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
     publicKey: `pk-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1, 2]),
     serverKeyShare: new Uint8Array([3, 4]),
+    passwordKdfSalt: new Uint8Array(16).fill(2),
+    passwordKdfParamsVersion: 1,
   });
   userId = user.id;
 
@@ -358,6 +379,8 @@ test("integration: DevicesRepository approval transitions are consistent", async
     publicKey: `pk-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1, 2]),
     serverKeyShare: new Uint8Array([3, 4]),
+    passwordKdfSalt: new Uint8Array(16).fill(3),
+    passwordKdfParamsVersion: 1,
   });
   userId = user.id;
 

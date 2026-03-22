@@ -43,14 +43,23 @@ export class UsersRepository {
     publicKey: string;
     encryptedPrivateKey: Uint8Array;
     serverKeyShare: Uint8Array;
+    passwordKdfSalt: Uint8Array;
+    passwordKdfParamsVersion: number;
   }): Promise<UserRecord> {
     try {
       const rows = await this.db.query<
         BaseRow & { email: string; public_key: string }
       >(
         `
-          INSERT INTO users (email, public_key, encrypted_private_key, server_key_share)
-          VALUES ($1, $2, $3, $4)
+          INSERT INTO users (
+            email,
+            public_key,
+            encrypted_private_key,
+            server_key_share,
+            password_kdf_salt,
+            password_kdf_params_version
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING id, email, public_key, created_at, updated_at
         `,
         [
@@ -58,6 +67,8 @@ export class UsersRepository {
           input.publicKey,
           Buffer.from(input.encryptedPrivateKey),
           Buffer.from(input.serverKeyShare),
+          Buffer.from(input.passwordKdfSalt),
+          input.passwordKdfParamsVersion,
         ],
       );
 

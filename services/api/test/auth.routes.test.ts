@@ -45,6 +45,8 @@ const config: ApiConfig = {
   authRateLimitStartPerIp: 10,
   authRateLimitConfirmPerIp: 30,
   authRateLimitResendPerIp: 10,
+  registrationAuthStateTtlSeconds: 3600,
+  registrationResultTtlSeconds: 604800,
   deviceApprovalTtlSeconds: 600,
   defaultEmailLocale: "en",
   emailFrom: "no-reply@okkey.local",

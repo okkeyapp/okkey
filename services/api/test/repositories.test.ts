@@ -77,6 +77,8 @@ test("UsersRepository.create maps inserted row", async () => {
     publicKey: "pk",
     encryptedPrivateKey: new Uint8Array([1, 2, 3]),
     serverKeyShare: new Uint8Array([4, 5]),
+    passwordKdfSalt: new Uint8Array(16).fill(9),
+    passwordKdfParamsVersion: 1,
   });
 
   assert.equal(user.id, "u1");
