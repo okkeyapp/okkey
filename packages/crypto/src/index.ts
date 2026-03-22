@@ -1,4 +1,5 @@
 import initWasm, {
+  random_bytes,
   kdf_derive,
   aead_encrypt,
   aead_decrypt,
@@ -20,6 +21,10 @@ export async function initCrypto(): Promise<void> {
     wasmReady = initWasm().then(() => undefined);
   }
   return wasmReady;
+}
+
+export function randomBytes(len: number): Uint8Array {
+  return random_bytes(len);
 }
 
 export function kdfDerive(password: Uint8Array, salt: Uint8Array, params: { mCost: number; tCost: number; pCost: number }, outLen: number): Uint8Array {
@@ -61,3 +66,12 @@ export function b64Encode(data: Uint8Array): string {
 export function b64Decode(s: string): Uint8Array {
   return b64_decode(s);
 }
+
+export {
+  buildRegistrationCryptoArtifacts,
+  OKKEY_PASSWORD_KDF_PARAMS_V1,
+  OKKEY_PASSWORD_KDF_PARAMS_VERSION,
+  registrationArtifactsToWire,
+  type RegistrationSplitKeyMaterial,
+  type RegistrationUserKeyMaterial,
+} from "./registration.js";

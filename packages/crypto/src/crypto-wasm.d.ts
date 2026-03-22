@@ -1,5 +1,6 @@
 declare module "@okkey/crypto-wasm" {
   export default function init(): Promise<void>;
+  export function random_bytes(len: number): Uint8Array;
   export function kdf_derive(password: Uint8Array, salt: Uint8Array, mCost: number, tCost: number, pCost: number, outLen: number): Uint8Array;
   export function aead_encrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array;
   export function aead_decrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, ciphertext: Uint8Array): Uint8Array;

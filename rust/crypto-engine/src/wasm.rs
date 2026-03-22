@@ -1,6 +1,17 @@
 use wasm_bindgen::prelude::*;
 
 use crate::{aead, kdf, sign, x25519, encoding};
+use getrandom::getrandom;
+
+#[wasm_bindgen]
+pub fn random_bytes(len: usize) -> Result<Vec<u8>, JsValue> {
+  if len > 4096 {
+    return Err(JsValue::from_str("len too large"));
+  }
+  let mut buf = vec![0u8; len];
+  getrandom(&mut buf).map_err(|e| JsValue::from_str(&format!("rng: {e}")))?;
+  Ok(buf)
+}
 
 #[wasm_bindgen]
 pub fn kdf_derive(password: &[u8], salt: &[u8], m_cost: u32, t_cost: u32, p_cost: u32, out_len: usize) -> Result<Vec<u8>, JsValue> {
