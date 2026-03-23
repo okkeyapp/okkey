@@ -225,6 +225,31 @@ export interface SyncAppendEventRequestDto {
   baseVersion: number;
 }
 
+/** Optional nested metadata (same semantics as `POST /devices/register`). */
+export interface RegisterCompleteMetadataDto {
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+}
+
+/** `POST /devices/register` request body (snake_case on wire). */
+export interface DeviceRegisterRequestDto {
+  device_public_key: string;
+  device_share: string;
+  device_fingerprint: string;
+  device_name: string;
+  platform?: string;
+  os_name?: string;
+  os_version?: string;
+  app_version?: string;
+  client_type?: string;
+  user_agent?: string;
+  metadata?: RegisterCompleteMetadataDto;
+}
+
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
   device_id: UUID;
@@ -235,16 +260,6 @@ export interface DeviceRegisterResponseDto {
 export interface DeviceRejectResponseDto {
   device_id: UUID;
   status: "revoked";
-}
-
-/** Optional nested metadata (same semantics as `POST /devices/register`). */
-export interface RegisterCompleteMetadataDto {
-  platform?: string;
-  os_name?: string;
-  os_version?: string;
-  app_version?: string;
-  client_type?: string;
-  user_agent?: string;
 }
 
 /** `POST /auth/register/complete` request body (snake_case on wire). */

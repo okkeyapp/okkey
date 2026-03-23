@@ -1,4 +1,13 @@
-import type { CoreApiErrorBody } from "../../types/src/index.js";
+import type {
+  CoreApiErrorBody,
+  DeviceRegisterRequestDto,
+  DeviceRegisterResponseDto,
+  DeviceRejectResponseDto,
+  SyncAppendEventRequestDto,
+  SyncEventWireDto,
+  SyncEventsListResponseDto,
+  Vault,
+} from "../../types/src/index.js";
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -19,6 +28,11 @@ export class ApiRequestError extends Error {
   }
 }
 
+export interface ApiRequestOptions {
+  /** Merged over defaultHeaders for this request only. */
+  headers?: Record<string, string>;
+}
+
 export class ApiClient {
   private baseUrl: string;
   private fetchImpl: typeof fetch;
@@ -30,16 +44,21 @@ export class ApiClient {
     this.defaultHeaders = options.defaultHeaders ?? {};
   }
 
-  async get<T>(path: string): Promise<T> {
-    return this.request<T>("GET", path);
+  async get<T>(path: string, options?: ApiRequestOptions): Promise<T> {
+    return this.request<T>("GET", path, undefined, options);
   }
 
-  async post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>("POST", path, body);
+  async post<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
+    return this.request<T>("POST", path, body, options);
   }
 
-  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = { ...this.defaultHeaders };
+  async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    options?: ApiRequestOptions,
+  ): Promise<T> {
+    const headers: Record<string, string> = { ...this.defaultHeaders, ...options?.headers };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
     }
@@ -87,4 +106,67 @@ function parseCoreApiErrorBody(raw: unknown, res: Response): CoreApiErrorBody {
     message: res.statusText || "request failed",
     requestId: "unknown",
   };
+}
+
+/** API client with `Authorization: Bearer` for Vault, Sync, and Device routes. */
+export function createBearerApiClient(baseUrl: string, accessToken: string): ApiClient {
+  return new ApiClient({
+    baseUrl,
+    defaultHeaders: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+/** Typed helpers for authenticated Core HTTP API (vault metadata, sync, devices). */
+export class CoreApiClient {
+  constructor(private readonly api: ApiClient) {}
+
+  listWorkspaceVaults(workspaceId: string): Promise<Vault[]> {
+    return this.api.get<Vault[]>(`/workspaces/${encodeURIComponent(workspaceId)}/vaults`);
+  }
+
+  getVault(vaultId: string): Promise<Vault> {
+    return this.api.get<Vault>(`/vaults/${encodeURIComponent(vaultId)}`);
+  }
+
+  listVaultEvents(vaultId: string, afterVersion = 0): Promise<SyncEventsListResponseDto> {
+    const q = new URLSearchParams({ afterVersion: String(afterVersion) });
+    return this.api.get<SyncEventsListResponseDto>(
+      `/vaults/${encodeURIComponent(vaultId)}/events?${q.toString()}`,
+    );
+  }
+
+  appendVaultEvent(vaultId: string, body: SyncAppendEventRequestDto): Promise<SyncEventWireDto> {
+    return this.api.post<SyncEventWireDto>(
+      `/vaults/${encodeURIComponent(vaultId)}/events`,
+      body,
+    );
+  }
+
+  registerDevice(body: DeviceRegisterRequestDto): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
+  }
+
+  approveDevice(pendingDeviceId: string, approverDeviceId: string): Promise<DeviceRegisterResponseDto> {
+    return this.api.post<DeviceRegisterResponseDto>(
+      `/devices/${encodeURIComponent(pendingDeviceId)}/approve`,
+      {},
+      { headers: { "X-Device-Id": approverDeviceId } },
+    );
+  }
+
+  rejectDevice(
+    pendingDeviceId: string,
+    approverDeviceId: string,
+    reason?: string,
+  ): Promise<DeviceRejectResponseDto> {
+    return this.api.post<DeviceRejectResponseDto>(
+      `/devices/${encodeURIComponent(pendingDeviceId)}/reject`,
+      reason !== undefined ? { reason } : {},
+      { headers: { "X-Device-Id": approverDeviceId } },
+    );
+  }
+}
+
+export function createCoreApiClient(baseUrl: string, accessToken: string): CoreApiClient {
+  return new CoreApiClient(createBearerApiClient(baseUrl, accessToken));
 }

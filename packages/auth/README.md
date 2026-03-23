@@ -16,6 +16,7 @@ const { challengeId, expiresAt } = await auth.startEmailLogin("user@example.com"
 const { authStateId, nextStep } = await auth.confirmEmailCode(challengeId, "123456");
 // Build `RegisterCompleteRequestDto` with `@okkey/crypto` + wire fields, then:
 // await auth.completeRegistration({ auth_state_id: authStateId, ... });
+// Returning user: await auth.completeLoginAfterEmailConfirm(authStateId, nextStep, totpCode?);
 ```
 
 Wire contracts: `docs/api_contracts.md` and `docs/openapi/core-api.yaml` in the `okkey` repo.
