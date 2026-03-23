@@ -1,5 +1,5 @@
-import type { ItemPlaintextV1, SyncAppendEventRequestDto } from "@okkey/types";
-import { ITEM_PLAINTEXT_SCHEMA_VERSION } from "@okkey/types";
+import type { ItemPlaintextV2, SyncAppendEventRequestDto } from "@okkey/types";
+import { createItemDeleteTombstoneV2, ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST } from "@okkey/types";
 import { encryptVaultItemPayload } from "@okkey/crypto/vault-item";
 
 function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
@@ -12,13 +12,13 @@ function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
 
 const encoder = new TextEncoder();
 
-export async function encodeItemPlaintextUtf8(item: ItemPlaintextV1): Promise<Uint8Array> {
+export async function encodeItemPlaintextUtf8(item: ItemPlaintextV2): Promise<Uint8Array> {
   return encoder.encode(JSON.stringify(item));
 }
 
 export async function buildItemCreateAppendRequest(
   vaultKey: Uint8Array,
-  item: ItemPlaintextV1,
+  item: ItemPlaintextV2,
   baseVersion: number,
   idempotencyKey: string,
   clientCreatedAt?: string,
@@ -29,7 +29,7 @@ export async function buildItemCreateAppendRequest(
     eventType: "ITEM_CREATE",
     encryptedPayload: uint8ArrayToStandardBase64(encrypted),
     baseVersion,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     idempotencyKey,
     clientCreatedAt,
   };
@@ -37,7 +37,7 @@ export async function buildItemCreateAppendRequest(
 
 export async function buildItemUpdateAppendRequest(
   vaultKey: Uint8Array,
-  item: ItemPlaintextV1,
+  item: ItemPlaintextV2,
   baseVersion: number,
   idempotencyKey?: string,
   clientCreatedAt?: string,
@@ -48,7 +48,7 @@ export async function buildItemUpdateAppendRequest(
     eventType: "ITEM_UPDATE",
     encryptedPayload: uint8ArrayToStandardBase64(encrypted),
     baseVersion,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };
@@ -62,22 +62,14 @@ export async function buildItemDeleteAppendRequest(
   idempotencyKey?: string,
   clientCreatedAt?: string,
 ): Promise<SyncAppendEventRequestDto> {
-  const tombstone: ItemPlaintextV1 = {
-    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
-    itemId,
-    vaultId,
-    title: "",
-    createdAtMs: 0,
-    updatedAtMs: Date.now(),
-    deleted: true,
-  };
+  const tombstone = createItemDeleteTombstoneV2(itemId, vaultId);
   const plaintext = await encodeItemPlaintextUtf8(tombstone);
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
   return {
     eventType: "ITEM_DELETE",
     encryptedPayload: uint8ArrayToStandardBase64(encrypted),
     baseVersion,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };

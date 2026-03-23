@@ -88,9 +88,14 @@ VaultKey
 store encrypted
 ```
 
-### Item plaintext schema v1 (client-only)
+### Item plaintext schema (client-only)
 
-Core v1 defines a minimal JSON structure for an item before encryption (`schemaVersion: 1`): stable `itemId`, `vaultId`, a `title` string, `createdAtMs` / `updatedAtMs`, and optional `deleted` for tombstones. Category-specific fields and sections are deferred to task **5.2**. The serialized JSON is encrypted with **VaultKey** (see `@okkey/crypto/vault-item` `encryptVaultItemPayload`) and sent as sync `encryptedPayload`; the server never parses this JSON. Append request builders for the HTTP API live under `@okkey/sync/item-sync`.
+Items are encrypted **only on the client** with **VaultKey** (`@okkey/crypto/vault-item` `encryptVaultItemPayload`) and sent as sync `encryptedPayload`; the server stores opaque bytes and never parses JSON.
+
+- **v1** (`schemaVersion: 1`): minimal fields — `itemId`, `vaultId`, `title`, `createdAtMs`, `updatedAtMs`, optional `deleted` tombstone. Legacy; new writes use v2.
+- **v2** (`schemaVersion: 2`, `ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST`): adds `categoryId`, `sections[]`, `fields[]` (typed values: text, password, TOTP, URL, note, file placeholder, unknown forward-compat). Preset sections/fields per category are defined in `@okkey/types` (`createPresetItemPlaintextV2`, category registry). Replay normalizes v1 → v2 via `migrateItemPlaintextV1ToV2` / `parseAndNormalizeItemPlaintextUtf8`.
+
+Append request builders: `@okkey/sync/item-sync`. Adding a category or field type: extend the registry in `@okkey/types` and bump docs; keep **unknown** field/value handling so older clients do not break on newer payloads.
 
 ---
 

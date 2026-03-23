@@ -2,8 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { replayItemPlaintextEvents } from "../../../packages/sync/dist/index.js";
-import { ITEM_PLAINTEXT_SCHEMA_VERSION } from "../../../packages/types/dist/index.js";
-import type { ItemPlaintextV1 } from "../../../packages/types/dist/index.js";
+import {
+  ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+  createPresetItemPlaintextV2,
+  ITEM_CATEGORY_LOGIN,
+} from "../../../packages/types/dist/index.js";
+import type { ItemPlaintextV2 } from "../../../packages/types/dist/index.js";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
@@ -19,7 +23,7 @@ import {
  * Test-only “ciphertext”: server stores opaque bytes only. Production clients use
  * `encryptVaultItemPayload` (WASM); Node integration tests skip WASM fetch limitations.
  */
-function encodeItemPlaintextOpaqueBase64(item: ItemPlaintextV1): string {
+function encodeItemPlaintextOpaqueBase64(item: ItemPlaintextV2): string {
   return Buffer.from(JSON.stringify(item), "utf8").toString("base64");
 }
 
@@ -65,33 +69,32 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   const itemId = randomUUID();
   const idem = randomUUID();
   const now = Date.now();
-  const item: ItemPlaintextV1 = {
-    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+  const item: ItemPlaintextV2 = createPresetItemPlaintextV2({
+    categoryId: ITEM_CATEGORY_LOGIN,
     itemId,
     vaultId,
     title: "Secret title",
-    createdAtMs: now,
-    updatedAtMs: now,
-  };
+    nowMs: now,
+  });
 
   const opaqueB64 = encodeItemPlaintextOpaqueBase64(item);
   const created = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_CREATE",
     encryptedPayload: opaqueB64,
     baseVersion: 0,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     idempotencyKey: idem,
   });
   assert.equal(created.eventType, "ITEM_CREATE");
   assert.equal(created.version, 1);
-  assert.equal(created.payloadSchemaVersion, 1);
+  assert.equal(created.payloadSchemaVersion, ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST);
   assert.equal(created.idempotencyKey, idem);
 
   const retry = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_CREATE",
     encryptedPayload: opaqueB64,
     baseVersion: 0,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     idempotencyKey: idem,
   });
   assert.equal(retry.id, created.id);
@@ -106,7 +109,7 @@ test("integration: item events append, list, replay, idempotency (opaque payload
           title: "stale-base-version",
         }),
         baseVersion: 0,
-        payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+        payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "VERSION_MISMATCH",
   );
@@ -129,12 +132,12 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   );
   assert.equal(replay.items.get(itemId)?.title, "Secret title");
 
-  const updatedItem: ItemPlaintextV1 = { ...item, title: "Renamed", updatedAtMs: now + 1 };
+  const updatedItem: ItemPlaintextV2 = { ...item, title: "Renamed", updatedAtMs: now + 1 };
   const up = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_UPDATE",
     encryptedPayload: encodeItemPlaintextOpaqueBase64(updatedItem),
     baseVersion: 1,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   });
   assert.equal(up.version, 2);
 
@@ -144,20 +147,23 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   );
   assert.equal(replay2.items.get(itemId)?.title, "Renamed");
 
-  const tombstone: ItemPlaintextV1 = {
-    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+  const tombstone: ItemPlaintextV2 = {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     itemId,
     vaultId,
     title: "",
+    categoryId: ITEM_CATEGORY_LOGIN,
     createdAtMs: 0,
     updatedAtMs: Date.now(),
     deleted: true,
+    sections: [],
+    fields: [],
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_DELETE",
     encryptedPayload: encodeItemPlaintextOpaqueBase64(tombstone),
     baseVersion: 2,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
+    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   });
 
   const listed3 = await syncService.listEvents(vaultId, userId, 0);

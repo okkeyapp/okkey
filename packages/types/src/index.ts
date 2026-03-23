@@ -1,4 +1,5 @@
-export type UUID = string;
+export type { UUID } from "./uuid.js";
+import type { UUID } from "./uuid.js";
 
 export interface User {
   id: UUID;
@@ -36,24 +37,31 @@ export interface Item {
   updatedAt: string;
 }
 
-/**
- * Plaintext item model v1 (client-only). Serialized to JSON, then encrypted with VaultKey for sync payloads.
- * Server never sees this structure.
- */
-export const ITEM_PLAINTEXT_SCHEMA_VERSION = 1 as const;
+export {
+  ITEM_PLAINTEXT_SCHEMA_VERSION,
+  type ItemPlaintextV1,
+} from "./item-plaintext-v1.js";
 
-export interface ItemPlaintextV1 {
-  schemaVersion: typeof ITEM_PLAINTEXT_SCHEMA_VERSION;
-  itemId: UUID;
-  vaultId: UUID;
-  /** User-visible label; full field catalog comes in 5.2 */
-  title: string;
-  /** Epoch ms for deterministic replay ordering */
-  createdAtMs: number;
-  updatedAtMs: number;
-  /** When true, item is removed from materialized state after replay */
-  deleted?: boolean;
-}
+export type { ItemPlaintextV2 } from "./item-schema/types.js";
+export {
+  ITEM_PLAINTEXT_SCHEMA_VERSION_V1,
+  ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
+  ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+  ITEM_CATEGORY_LOGIN,
+  ITEM_CATEGORY_SECURE_NOTE,
+  ITEM_CATEGORY_CREDIT_CARD,
+  createPresetItemPlaintextV2,
+  parseAndNormalizeItemPlaintextUtf8,
+  migrateItemPlaintextV1ToV2,
+  validateItemPlaintextV2,
+  normalizeItemPlaintextV2,
+  createItemDeleteTombstoneV2,
+  listCategoryIds,
+  getCategoryDefinition,
+  getFieldTypeDefinition,
+  listRegisteredFieldTypes,
+  ITEM_CATEGORY_DEFINITIONS,
+} from "./item-schema/index.js";
 
 export interface Device {
   id: UUID;
