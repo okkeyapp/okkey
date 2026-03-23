@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
+import type { SessionService } from "../src/session/service.ts";
 import { VaultServiceError, type VaultService } from "../src/vault/service.ts";
 
 class MockResponse {
@@ -62,14 +63,27 @@ function createVaultServiceStub(
   } as unknown as VaultService;
 }
 
+function createSessionServiceStub(): SessionService {
+  return {
+    async resolveAccessToken(token: string) {
+      if (token.trim() === "test-access-token") {
+        return { userId: "u1" };
+      }
+      return null;
+    },
+  } as unknown as SessionService;
+}
+
 async function dispatch(input: {
   method: string;
   url: string;
   headers?: Record<string, string>;
   vaultService?: VaultService;
+  sessionService?: SessionService;
 }) {
   const app = createApiApp(config, loggerStub(), {
     vaultService: input.vaultService ?? createVaultServiceStub(),
+    ...(input.sessionService !== undefined ? { sessionService: input.sessionService } : {}),
   });
   const req = {
     method: input.method,
@@ -94,6 +108,19 @@ test("GET /workspaces/:workspaceId/vaults returns vault list", async () => {
   assert.equal(payload[0].id, "v1");
 });
 
+test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/workspaces/w1/vaults",
+    headers: { authorization: "Bearer test-access-token" },
+    sessionService: createSessionServiceStub(),
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as Array<{ id: string }>;
+  assert.equal(payload[0].id, "v1");
+});
+
 test("GET /vaults/:vaultId returns vault", async () => {
   const res = await dispatch({
     method: "GET",
@@ -106,7 +133,7 @@ test("GET /vaults/:vaultId returns vault", async () => {
   assert.equal(payload.id, "v1");
 });
 
-test("vault routes require x-user-id", async () => {
+test("vault routes require auth", async () => {
   const res = await dispatch({
     method: "GET",
     url: "/vaults/v1",
