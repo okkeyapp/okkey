@@ -348,7 +348,7 @@ Returns **non-secret** vault rows. No ciphertext.
 
 Lists vaults in a workspace the user may access.
 
-**Auth:** `X-User-Id`.
+**Auth:** Prefer `Authorization: Bearer <access_token>`. Optional `X-User-Id` only when enabled by environment for non-production / dev (see global conventions table).
 
 **Response `200`:** JSON array of vault objects:
 
@@ -367,7 +367,7 @@ Lists vaults in a workspace the user may access.
 | `error` | HTTP | When |
 |---------|------|------|
 | `BAD_REQUEST` | 400 | Missing `workspaceId` in path. |
-| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 | `WORKSPACE_NOT_FOUND` | 404 | Unknown workspace id. |
 | `ACCESS_DENIED` | 403 | User not a member of the workspace. |
 
@@ -375,7 +375,7 @@ Lists vaults in a workspace the user may access.
 
 Returns a single vault if the user can read it.
 
-**Auth:** `X-User-Id`.
+**Auth:** Same as workspace vault list — Bearer preferred; optional `X-User-Id` when allowed by config.
 
 **Response `200`:** Single vault object (same fields as list item).
 
@@ -384,7 +384,7 @@ Returns a single vault if the user can read it.
 | `error` | HTTP | When |
 |---------|------|------|
 | `BAD_REQUEST` | 400 | Missing `vaultId` in path. |
-| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 | `VAULT_NOT_FOUND` | 404 | Unknown vault. |
 | `ACCESS_DENIED` | 403 | User cannot read this vault. |
 
@@ -400,7 +400,7 @@ Allowed `eventType` values (must match exactly):
 
 ### `GET /vaults/:vaultId/events?afterVersion=<n>`
 
-**Auth:** `X-User-Id`.
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
 **Query:**
 
@@ -433,7 +433,7 @@ Allowed `eventType` values (must match exactly):
 | `error` | HTTP | When |
 |---------|------|------|
 | `SYNC_BAD_REQUEST` | 400 | Missing `vaultId`, invalid `afterVersion`, or invalid JSON on POST sibling. |
-| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 | `VAULT_NOT_FOUND` | 404 | Unknown vault. |
 | `ACCESS_DENIED` | 403 | User cannot read vault. |
 
@@ -441,7 +441,7 @@ Allowed `eventType` values (must match exactly):
 
 Appends one event if `baseVersion` matches current stream head.
 
-**Auth:** `X-User-Id`.
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
 **Request body:**
 
@@ -461,7 +461,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `SYNC_INVALID_EVENT_TYPE` | 400 | Unknown `eventType`. |
 | `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
 | `VERSION_MISMATCH` | 409 | `baseVersion` stale; `details` may include `expectedBaseVersion` and `latestVersion`. |
-| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 | `VAULT_NOT_FOUND` | 404 | Unknown vault. |
 | `ACCESS_DENIED` | 403 | User cannot read vault. |
 
@@ -475,9 +475,9 @@ JSON field names use **snake_case** on the wire for device registration (matches
 
 ### `POST /devices/register`
 
-Registers or updates a device for `X-User-Id`. May return `pending_approval` when the user already has trusted devices.
+Registers or updates a device for the authenticated user. May return `pending_approval` when the user already has trusted devices.
 
-**Auth:** `X-User-Id`.
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
 **Request body:**
 
@@ -510,11 +510,11 @@ Registers or updates a device for `X-User-Id`. May return `pending_approval` whe
 | `DEVICE_INVALID_FINGERPRINT` | 400 | Fingerprint format invalid. |
 | `DEVICE_INVALID_PUBLIC_KEY` | 400 | Public key not valid base64. |
 | `DEVICE_DUPLICATE_CONFLICT` | 409 | Unique constraint / duplicate registration conflict. |
-| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 
 ### `POST /devices/:deviceId/approve`
 
-**Auth:** `X-User-Id` and `X-Device-Id` (approver must be a trusted device for this user).
+**Auth:** `Authorization: Bearer` (or allowed `X-User-Id`) **and** `X-Device-Id` (approver must be a trusted device for this user).
 
 **Response `200`:** `{ "device_id": "uuid", "status": "trusted" }`
 
@@ -527,11 +527,11 @@ Registers or updates a device for `X-User-Id`. May return `pending_approval` whe
 | `DEVICE_APPROVAL_NOT_FOUND` | 404 | No pending approval for this device. |
 | `DEVICE_APPROVAL_EXPIRED` | 410 | Approval window elapsed (`DEVICE_APPROVAL_TTL_SECONDS`, default 600). |
 | `DEVICE_APPROVAL_ALREADY_RESOLVED` | 409 | Already approved or rejected. |
-| `AUTH_REQUIRED` | 401 | Missing `X-User-Id`. |
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 
 ### `POST /devices/:deviceId/reject`
 
-**Auth:** `X-User-Id` and `X-Device-Id`.
+**Auth:** Bearer (or allowed `X-User-Id`) **and** `X-Device-Id`.
 
 **Request body:** optional `{ "reason": "string" }` (invalid JSON → `DEVICE_BAD_REQUEST`).
 

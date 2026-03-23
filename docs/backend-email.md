@@ -54,6 +54,19 @@ For a given recipient and request:
 
 2FA notices use best-effort send helpers: API success does not depend on mail delivery.
 
+## API action → email (Core v1)
+
+Transactional mail is sent from `EmailTemplateService` when the corresponding API path or service method runs. Use this matrix when tracing a full login / device / 2FA flow.
+
+| Trigger | Template id (catalog) | Notes |
+|--------|------------------------|--------|
+| `POST /auth/email/start`, `POST /auth/email/resend` | `auth_email_code` | Login / registration challenge; **never** includes TOTP secrets or backup codes. |
+| `POST /devices/register` → `pending_approval` | `device_approval_request` | Best-effort async send; locale from user + `Accept-Language` / body. |
+| `POST /auth/two-factor/totp/enroll/confirm` (success) | `two_factor_enabled` | Best-effort (`sendTwoFactorEnabledBestEffort`). |
+| `POST /auth/two-factor/backup-codes/regenerate` (success) | `two_factor_backup_codes_regenerated` | Best-effort (`sendTwoFactorBackupCodesRegeneratedBestEffort`). |
+
+`POST /auth/register/complete` does **not** send email by itself; the user already proved email ownership via the challenge tied to `auth_state_id`.
+
 ## Related paths
 
 - `packages/i18n/` — locales + `formatEmailMessage`

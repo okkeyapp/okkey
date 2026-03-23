@@ -79,6 +79,8 @@ Server stores:
 
 HTTP contract: [`docs/api_contracts.md`](../api_contracts.md) (`POST /auth/register/complete`).
 
+**Session after registration:** Core does **not** issue an access token in the `register/complete` response. The new user must perform the normal email login flow (`POST /auth/email/start` → `confirm` → `bootstrap` or `two-factor/verify`) to obtain a Bearer session. See transactional mail side-effects in [`docs/backend-email.md`](../backend-email.md).
+
 ---
 
 ## Login Flow (Password)
