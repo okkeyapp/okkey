@@ -37,6 +37,11 @@ export async function applyMigrations(
     "utf8",
   );
   await storage.postgres.query(migration0004);
+  const migration0005 = readFileSync(
+    path.resolve(helpersDir, "../migrations/0005_events_sync_envelope.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0005);
 }
 
 export async function cleanupUserData(

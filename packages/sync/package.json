@@ -6,7 +6,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./item-sync": {
+      "types": "./dist/item-sync.d.ts",
+      "import": "./dist/item-sync.js"
+    }
+  },
   "dependencies": {
+    "@okkey/crypto": "file:../crypto",
     "@okkey/types": "file:../types"
   },
   "scripts": {

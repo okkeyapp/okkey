@@ -12,6 +12,17 @@ const SYNC_EVENT_TYPES = new Set([
   "DEVICE_REMOVE",
 ]);
 
+const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+
+/** Max decoded ciphertext size per event (DoS guard). */
+export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
+
+const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 export class SyncServiceError extends Error {
   readonly code: string;
   readonly statusCode: number;
@@ -41,8 +52,20 @@ export interface SyncEventResponse {
   actorId: string | null;
   eventType: string;
   encryptedPayload: string;
+  payloadSchemaVersion: number;
+  idempotencyKey: string | null;
+  clientCreatedAt: string | null;
   version: number;
   createdAt: string;
+}
+
+export interface SyncAppendEventInput {
+  eventType: string;
+  encryptedPayload: string;
+  baseVersion: number;
+  payloadSchemaVersion?: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
 }
 
 export class SyncService {
@@ -75,11 +98,7 @@ export class SyncService {
   async appendEvent(
     vaultId: string,
     userId: string,
-    input: {
-      eventType: string;
-      encryptedPayload: string;
-      baseVersion: number;
-    },
+    input: SyncAppendEventInput,
   ): Promise<SyncEventResponse> {
     await this.ensureVaultReadable(vaultId, userId);
 
@@ -92,6 +111,53 @@ export class SyncService {
         400,
         "baseVersion must be a non-negative integer",
       );
+    }
+
+    const payloadSchemaVersion =
+      input.payloadSchemaVersion === undefined ? 1 : input.payloadSchemaVersion;
+    if (
+      !Number.isInteger(payloadSchemaVersion) ||
+      payloadSchemaVersion < 1 ||
+      payloadSchemaVersion > 65535
+    ) {
+      throw new SyncServiceError(
+        "SYNC_BAD_REQUEST",
+        400,
+        "payloadSchemaVersion must be an integer from 1 to 65535",
+      );
+    }
+
+    if (ITEM_EVENT_TYPES.has(input.eventType) && input.eventType === "ITEM_CREATE") {
+      if (!input.idempotencyKey) {
+        throw new SyncServiceError(
+          "SYNC_BAD_REQUEST",
+          400,
+          "idempotencyKey is required for ITEM_CREATE",
+        );
+      }
+    }
+
+    if (input.idempotencyKey !== undefined && input.idempotencyKey !== "") {
+      if (!isUuid(input.idempotencyKey)) {
+        throw new SyncServiceError(
+          "SYNC_BAD_REQUEST",
+          400,
+          "idempotencyKey must be a UUID",
+        );
+      }
+    }
+
+    let clientCreatedAt: string | null = null;
+    if (input.clientCreatedAt !== undefined && input.clientCreatedAt !== "") {
+      const parsed = Date.parse(input.clientCreatedAt);
+      if (Number.isNaN(parsed)) {
+        throw new SyncServiceError(
+          "SYNC_BAD_REQUEST",
+          400,
+          "clientCreatedAt must be a valid ISO-8601 date-time string",
+        );
+      }
+      clientCreatedAt = new Date(parsed).toISOString();
     }
 
     let payloadBytes: Uint8Array;
@@ -111,6 +177,13 @@ export class SyncService {
         "encryptedPayload must not be empty",
       );
     }
+    if (payloadBytes.length > SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES) {
+      throw new SyncServiceError(
+        "PAYLOAD_TOO_LARGE",
+        413,
+        `encryptedPayload exceeds ${SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES} bytes`,
+      );
+    }
 
     try {
       const created = await this.events.append({
@@ -119,6 +192,9 @@ export class SyncService {
         eventType: input.eventType,
         encryptedPayload: payloadBytes,
         baseVersion: input.baseVersion,
+        payloadSchemaVersion,
+        idempotencyKey: input.idempotencyKey,
+        clientCreatedAt: clientCreatedAt ?? undefined,
       });
       return mapEventToResponse(created);
     } catch (error) {
@@ -157,6 +233,9 @@ function mapEventToResponse(event: EventRecord): SyncEventResponse {
     actorId: event.actorId,
     eventType: event.eventType,
     encryptedPayload: Buffer.from(event.encryptedPayload).toString("base64"),
+    payloadSchemaVersion: event.payloadSchemaVersion,
+    idempotencyKey: event.idempotencyKey,
+    clientCreatedAt: event.clientCreatedAt,
     version: event.version,
     createdAt: event.createdAt,
   };

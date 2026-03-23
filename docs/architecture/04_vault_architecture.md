@@ -88,6 +88,10 @@ VaultKey
 store encrypted
 ```
 
+### Item plaintext schema v1 (client-only)
+
+Core v1 defines a minimal JSON structure for an item before encryption (`schemaVersion: 1`): stable `itemId`, `vaultId`, a `title` string, `createdAtMs` / `updatedAtMs`, and optional `deleted` for tombstones. Category-specific fields and sections are deferred to task **5.2**. The serialized JSON is encrypted with **VaultKey** (see `@okkey/crypto/vault-item` `encryptVaultItemPayload`) and sent as sync `encryptedPayload`; the server never parses this JSON. Append request builders for the HTTP API live under `@okkey/sync/item-sync`.
+
 ---
 
 ## Vault Sharing

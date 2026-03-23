@@ -36,6 +36,25 @@ export interface Item {
   updatedAt: string;
 }
 
+/**
+ * Plaintext item model v1 (client-only). Serialized to JSON, then encrypted with VaultKey for sync payloads.
+ * Server never sees this structure.
+ */
+export const ITEM_PLAINTEXT_SCHEMA_VERSION = 1 as const;
+
+export interface ItemPlaintextV1 {
+  schemaVersion: typeof ITEM_PLAINTEXT_SCHEMA_VERSION;
+  itemId: UUID;
+  vaultId: UUID;
+  /** User-visible label; full field catalog comes in 5.2 */
+  title: string;
+  /** Epoch ms for deterministic replay ordering */
+  createdAtMs: number;
+  updatedAtMs: number;
+  /** When true, item is removed from materialized state after replay */
+  deleted?: boolean;
+}
+
 export interface Device {
   id: UUID;
   userId: UUID;
@@ -207,6 +226,9 @@ export interface SyncEventWireDto {
   actorId: UUID | null;
   eventType: string;
   encryptedPayload: string;
+  payloadSchemaVersion: number;
+  idempotencyKey: UUID | null;
+  clientCreatedAt: string | null;
   version: number;
   createdAt: string;
 }
@@ -223,6 +245,11 @@ export interface SyncAppendEventRequestDto {
   eventType: string;
   encryptedPayload: string;
   baseVersion: number;
+  /** Defaults to 1 when omitted. */
+  payloadSchemaVersion?: number;
+  /** Required for `ITEM_CREATE`; optional for other types. Must be UUID when set. */
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
 }
 
 /** Optional nested metadata (same semantics as `POST /devices/register`). */

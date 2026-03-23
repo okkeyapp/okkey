@@ -6,6 +6,9 @@ interface AppendEventBody {
   eventType?: string;
   encryptedPayload?: string;
   baseVersion?: number;
+  payloadSchemaVersion?: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
 }
 
 export function createSyncEventsListRoute(
@@ -82,6 +85,9 @@ export function createSyncEventsAppendRoute(
         eventType: body.eventType,
         encryptedPayload: body.encryptedPayload,
         baseVersion: body.baseVersion,
+        payloadSchemaVersion: body.payloadSchemaVersion,
+        idempotencyKey: body.idempotencyKey,
+        clientCreatedAt: body.clientCreatedAt,
       });
       json(ctx.res, 201, created);
     } catch (error) {

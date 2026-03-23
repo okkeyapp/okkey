@@ -97,7 +97,7 @@ Core policy for v1:
 
 ## Transport
 
-- **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` (wire fields differ from the conceptual envelope below until extended).
+- **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` — responses include `payloadSchemaVersion`, `idempotencyKey`, and `clientCreatedAt`; append accepts optional idempotency (required for `ITEM_CREATE`) and enforces a maximum ciphertext size.
 - Realtime channel: WebSocket (event push)
 - Fallback: HTTP pull (`fetch events after version`)
 - Both transports use the same event envelope and ordering guarantees

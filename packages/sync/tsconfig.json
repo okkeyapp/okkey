@@ -4,13 +4,11 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
+    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
-    "baseUrl": ".",
-    "paths": {
-      "@okkey/types": ["../types/src"]
-    },
+    "ignoreDeprecations": "6.0",
     "skipLibCheck": true
   },
-  "include": ["src", "../types/src"]
+  "include": ["src/**/*.ts"]
 }

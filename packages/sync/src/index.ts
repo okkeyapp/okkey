@@ -3,7 +3,7 @@ import type {
   AppendEventResult,
   FetchEventsQuery,
   FetchEventsResult,
-} from "../../types/src/index.js";
+} from "@okkey/types";
 
 export interface SyncAdapter {
   fetchEvents(query: FetchEventsQuery): Promise<FetchEventsResult>;
@@ -15,3 +15,6 @@ export interface SyncQueue {
   drain(adapter: SyncAdapter): Promise<void>;
   size(): Promise<number>;
 }
+
+/** Item event replay only (no WASM). Helpers that encrypt payloads live in `@okkey/sync/item-sync`. */
+export { replayItemPlaintextEvents, type ItemVaultReplayState } from "./item-replay.js";

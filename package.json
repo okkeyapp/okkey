@@ -27,6 +27,7 @@
     "packages/*"
   ],
   "dependencies": {
+    "@okkey/crypto-wasm": "file:./packages/crypto/dist",
     "@okkey/email-templates": "0.0.1",
     "@okkey/i18n": "0.0.1",
     "nodemailer": "^7.0.5",
@@ -35,13 +36,14 @@
     "smtp-server": "^3.14.0"
   },
   "scripts": {
-    "build:wasm": "PATH=\"$HOME/.cargo/bin:$PATH\" RUSTUP_TOOLCHAIN=stable wasm-pack build rust/crypto-engine --target web --out-dir packages/crypto/dist --features wasm",
+    "build:wasm": "PATH=\"$HOME/.cargo/bin:$PATH\" RUSTUP_TOOLCHAIN=stable node packages/crypto/scripts/build.mjs",
     "check:all": "yarn check:crypto && yarn build:wasm && yarn check:sdk && yarn check:i18n && yarn check:email-templates",
     "check:crypto": "cargo test --manifest-path rust/crypto-engine/Cargo.toml",
     "check:sdk": "yarn check:sdk:types && yarn check:sdk:api && yarn check:sdk:auth && yarn check:sdk:vault && yarn check:sdk:sync && yarn check:sdk:ui",
     "check:sdk:api": "npx --yes -p typescript tsc -p packages/api/tsconfig.json",
     "check:sdk:auth": "npx --yes -p typescript tsc -p packages/auth/tsconfig.json",
     "check:sdk:sync": "npx --yes -p typescript tsc -p packages/sync/tsconfig.json",
+    "build:ts-sdk": "npx --yes -p typescript tsc -p packages/types/tsconfig.json && npx --yes -p typescript tsc -p packages/sync/tsconfig.json",
     "check:sdk:types": "npx --yes -p typescript tsc -p packages/types/tsconfig.json",
     "check:sdk:ui": "npx --yes -p typescript tsc -p packages/ui/tsconfig.json",
     "check:sdk:vault": "npx --yes -p typescript tsc -p packages/vault/tsconfig.json",
@@ -59,7 +61,7 @@
     "infra:ps": "./scripts/infra.sh ps",
     "infra:up": "./scripts/infra.sh up",
     "test": "yarn test:api && yarn test:e2e",
-    "test:api": "yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
+    "test:api": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
     "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }
 }

@@ -131,6 +131,8 @@ test("integration: register → email login (Bearer) → vault + sync → second
     eventType: "ITEM_CREATE",
     encryptedPayload: payloadB64,
     baseVersion: 0,
+    payloadSchemaVersion: 1,
+    idempotencyKey: randomUUID(),
   });
   assert.equal(created.eventType, "ITEM_CREATE");
   assert.equal(created.version, 1);

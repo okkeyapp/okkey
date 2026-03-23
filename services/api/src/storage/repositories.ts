@@ -914,6 +914,9 @@ export interface EventRecord {
   actorId: string | null;
   eventType: string;
   encryptedPayload: Uint8Array;
+  payloadSchemaVersion: number;
+  idempotencyKey: string | null;
+  clientCreatedAt: string | null;
   version: number;
   createdAt: string;
 }
@@ -937,6 +940,9 @@ export class EventsRepository {
     eventType: string;
     encryptedPayload: Uint8Array;
     baseVersion: number;
+    payloadSchemaVersion?: number;
+    idempotencyKey?: string | null;
+    clientCreatedAt?: string | null;
   }): Promise<EventRecord> {
     return this.db.transaction(async (tx) => {
       const vaultRows = await tx.query<{ id: string }>(
@@ -945,6 +951,33 @@ export class EventsRepository {
       );
       if (!vaultRows[0]) {
         throw new EntityNotFoundError("vault", input.vaultId);
+      }
+
+      if (input.idempotencyKey) {
+        const existingRows = await tx.query<{
+          id: string;
+          vault_id: string;
+          actor_id: string | null;
+          event_type: string;
+          encrypted_payload: Buffer;
+          payload_schema_version: number;
+          idempotency_key: string | null;
+          client_created_at: string | null;
+          version: number;
+          created_at: string;
+        }>(
+          `
+            SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+                   payload_schema_version, idempotency_key, client_created_at, version, created_at
+            FROM events
+            WHERE vault_id = $1 AND idempotency_key = $2::uuid
+            FOR UPDATE
+          `,
+          [input.vaultId, input.idempotencyKey],
+        );
+        if (existingRows[0]) {
+          return mapEvent(existingRows[0]);
+        }
       }
 
       const versionRows = await tx.query<{ current_version: number }>(
@@ -957,28 +990,71 @@ export class EventsRepository {
       }
 
       const nextVersion = currentVersion + 1;
-      const rows = await tx.query<{
+      const payloadSchemaVersion = input.payloadSchemaVersion ?? 1;
+
+      type EventRow = {
         id: string;
         vault_id: string;
         actor_id: string | null;
         event_type: string;
         encrypted_payload: Buffer;
+        payload_schema_version: number;
+        idempotency_key: string | null;
+        client_created_at: string | null;
         version: number;
         created_at: string;
-      }>(
-        `
-          INSERT INTO events (vault_id, actor_id, event_type, encrypted_payload, version)
-          VALUES ($1, $2, $3, $4, $5)
-          RETURNING id, vault_id, actor_id, event_type, encrypted_payload, version, created_at
+      };
+
+      const selectByIdempotency = () =>
+        tx.query<EventRow>(
+          `
+            SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+                   payload_schema_version, idempotency_key, client_created_at, version, created_at
+            FROM events
+            WHERE vault_id = $1 AND idempotency_key = $2::uuid
+            FOR UPDATE
+          `,
+          [input.vaultId, input.idempotencyKey!],
+        );
+
+      let rows: EventRow[];
+      try {
+        rows = await tx.query<EventRow>(
+          `
+          INSERT INTO events (
+            vault_id, actor_id, event_type, encrypted_payload, version,
+            payload_schema_version, idempotency_key, client_created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
+                    payload_schema_version, idempotency_key, client_created_at, version, created_at
         `,
-        [
-          input.vaultId,
-          input.actorId ?? null,
-          input.eventType,
-          Buffer.from(input.encryptedPayload),
-          nextVersion,
-        ],
-      );
+          [
+            input.vaultId,
+            input.actorId ?? null,
+            input.eventType,
+            Buffer.from(input.encryptedPayload),
+            nextVersion,
+            payloadSchemaVersion,
+            input.idempotencyKey ?? null,
+            input.clientCreatedAt ?? null,
+          ],
+        );
+      } catch (error) {
+        if (
+          input.idempotencyKey &&
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code?: string }).code === "23505"
+        ) {
+          const retryRows = await selectByIdempotency();
+          if (retryRows[0]) {
+            return mapEvent(retryRows[0]);
+          }
+        }
+        throw error;
+      }
 
       return mapEvent(rows[0]);
     });
@@ -991,11 +1067,15 @@ export class EventsRepository {
       actor_id: string | null;
       event_type: string;
       encrypted_payload: Buffer;
+      payload_schema_version: number;
+      idempotency_key: string | null;
+      client_created_at: string | null;
       version: number;
       created_at: string;
     }>(
       `
-        SELECT id, vault_id, actor_id, event_type, encrypted_payload, version, created_at
+        SELECT id, vault_id, actor_id, event_type, encrypted_payload,
+               payload_schema_version, idempotency_key, client_created_at, version, created_at
         FROM events
         WHERE vault_id = $1 AND version > $2
         ORDER BY version ASC
@@ -1297,6 +1377,9 @@ function mapEvent(row: {
   actor_id: string | null;
   event_type: string;
   encrypted_payload: Buffer;
+  payload_schema_version?: number;
+  idempotency_key?: string | null;
+  client_created_at?: string | null;
   version: number;
   created_at: string;
 }): EventRecord {
@@ -1306,6 +1389,9 @@ function mapEvent(row: {
     actorId: row.actor_id,
     eventType: row.event_type,
     encryptedPayload: Uint8Array.from(row.encrypted_payload),
+    payloadSchemaVersion: row.payload_schema_version ?? 1,
+    idempotencyKey: row.idempotency_key ?? null,
+    clientCreatedAt: row.client_created_at ?? null,
     version: row.version,
     createdAt: row.created_at,
   };

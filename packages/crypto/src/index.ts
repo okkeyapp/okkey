@@ -75,3 +75,5 @@ export {
   type RegistrationSplitKeyMaterial,
   type RegistrationUserKeyMaterial,
 } from "./registration.js";
+
+export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";

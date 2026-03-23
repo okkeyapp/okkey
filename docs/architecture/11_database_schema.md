@@ -233,6 +233,9 @@ actor_id
 event_type
 encrypted_payload
 version
+payload_schema_version
+idempotency_key (nullable, unique per vault when set)
+client_created_at (nullable)
 created_at
 ```
 

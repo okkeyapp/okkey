@@ -43,6 +43,9 @@ function createSyncServiceStub(overrides?: Partial<SyncService>): SyncService {
         actorId: "u1",
         eventType: "ITEM_CREATE",
         encryptedPayload: Buffer.from("x").toString("base64"),
+        payloadSchemaVersion: 1,
+        idempotencyKey: null,
+        clientCreatedAt: null,
         version: 1,
         createdAt: "2026-01-01T00:00:00.000Z",
       },
@@ -53,6 +56,9 @@ function createSyncServiceStub(overrides?: Partial<SyncService>): SyncService {
       actorId: "u1",
       eventType: "ITEM_UPDATE",
       encryptedPayload: Buffer.from("x").toString("base64"),
+      payloadSchemaVersion: 1,
+      idempotencyKey: null,
+      clientCreatedAt: null,
       version: 2,
       createdAt: "2026-01-01T00:00:00.000Z",
     }),
@@ -156,4 +162,82 @@ test("sync routes map VERSION_MISMATCH", async () => {
   assert.equal(res.statusCode, 409);
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "VERSION_MISMATCH");
+});
+
+test("GET /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/vaults/v1/events?afterVersion=0",
+    headers: { "x-user-id": "u1" },
+    syncService: createSyncServiceStub({
+      listEvents: async () => {
+        throw new SyncServiceError("ACCESS_DENIED", 403, "access denied");
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "ACCESS_DENIED");
+});
+
+test("GET /vaults/:vaultId/events maps VAULT_NOT_FOUND", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/vaults/v1/events?afterVersion=0",
+    headers: { "x-user-id": "u1" },
+    syncService: createSyncServiceStub({
+      listEvents: async () => {
+        throw new SyncServiceError("VAULT_NOT_FOUND", 404, "vault not found");
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 404);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "VAULT_NOT_FOUND");
+});
+
+test("POST /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events",
+    headers: { "x-user-id": "u1" },
+    body: {
+      eventType: "ITEM_UPDATE",
+      encryptedPayload: Buffer.from("x").toString("base64"),
+      baseVersion: 0,
+    },
+    syncService: createSyncServiceStub({
+      appendEvent: async () => {
+        throw new SyncServiceError("ACCESS_DENIED", 403, "access denied");
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "ACCESS_DENIED");
+});
+
+test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events",
+    headers: { "x-user-id": "u1" },
+    body: {
+      eventType: "ITEM_UPDATE",
+      encryptedPayload: Buffer.from("x").toString("base64"),
+      baseVersion: 0,
+    },
+    syncService: createSyncServiceStub({
+      appendEvent: async () => {
+        throw new SyncServiceError("PAYLOAD_TOO_LARGE", 413, "payload too large");
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 413);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "PAYLOAD_TOO_LARGE");
 });

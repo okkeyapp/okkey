@@ -39,6 +39,23 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
   await ensureDevicesSchema(db);
   await ensureUserKdfColumns(db);
   await ensureUserLocaleColumn(db);
+  await ensureEventsSyncEnvelope(db);
+}
+
+async function ensureEventsSyncEnvelope(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'events'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("payload_schema_version")) {
+    const migration0005 = path.resolve(__dirname, "../migrations/0005_events_sync_envelope.sql");
+    await db.query(readFileSync(migration0005, "utf8"));
+  }
 }
 
 async function ensureUserKdfColumns(db: PostgresDatabase): Promise<void> {

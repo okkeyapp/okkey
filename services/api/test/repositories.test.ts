@@ -217,6 +217,9 @@ test("EventsRepository.append increments version in transaction", async () => {
       actor_id: "u1",
       event_type: "ITEM_UPDATE",
       encrypted_payload: Buffer.from([10]),
+      payload_schema_version: 1,
+      idempotency_key: null,
+      client_created_at: null,
       version: 5,
       created_at: "2026-01-01T00:00:00.000Z",
     },
@@ -257,4 +260,40 @@ test("EventsRepository.append throws VersionConflictError", async () => {
       error.expectedVersion === 2 &&
       error.actualVersion === 7,
   );
+});
+
+test("EventsRepository.append returns existing row when idempotency_key matches", async () => {
+  const idem = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+  const existing = {
+    id: "e-dedup",
+    vault_id: "v1",
+    actor_id: "u1",
+    event_type: "ITEM_CREATE",
+    encrypted_payload: Buffer.from([1, 2, 3]),
+    payload_schema_version: 1,
+    idempotency_key: idem,
+    client_created_at: null,
+    version: 1,
+    created_at: "2026-01-01T00:00:00.000Z",
+  };
+
+  const db = new FakeDb();
+  db.enqueueResult([{ id: "v1" }]); // lock vault
+  db.enqueueResult([existing]); // idempotency hit
+
+  const repo = new EventsRepository(db);
+  const event = await repo.append({
+    vaultId: "v1",
+    actorId: "u1",
+    eventType: "ITEM_CREATE",
+    encryptedPayload: new Uint8Array([99]),
+    baseVersion: 99,
+    idempotencyKey: idem,
+    payloadSchemaVersion: 1,
+  });
+
+  assert.equal(event.id, "e-dedup");
+  assert.equal(event.version, 1);
+  assert.equal(db.queries.length, 2);
+  assert.match(db.queries[1].sql, /idempotency_key/);
 });

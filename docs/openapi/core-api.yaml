@@ -299,7 +299,18 @@ components:
     SyncEvent:
       type: object
       required:
-        [id, vaultId, actorId, eventType, encryptedPayload, version, createdAt]
+        [
+          id,
+          vaultId,
+          actorId,
+          eventType,
+          encryptedPayload,
+          payloadSchemaVersion,
+          idempotencyKey,
+          clientCreatedAt,
+          version,
+          createdAt,
+        ]
       properties:
         id:
           type: string
@@ -325,6 +336,18 @@ components:
         encryptedPayload:
           type: string
           description: Standard base64 ciphertext
+        payloadSchemaVersion:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        idempotencyKey:
+          type: string
+          format: uuid
+          nullable: true
+        clientCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
         version:
           type: integer
           minimum: 1
@@ -358,6 +381,16 @@ components:
         baseVersion:
           type: integer
           minimum: 0
+        payloadSchemaVersion:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        idempotencyKey:
+          type: string
+          format: uuid
+        clientCreatedAt:
+          type: string
+          format: date-time
 
     DeviceRegisterRequest:
       type: object

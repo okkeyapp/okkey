@@ -6,6 +6,16 @@
   "files": ["dist"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vault-item": {
+      "types": "./dist/vault-item.d.ts",
+      "import": "./dist/vault-item.js"
+    }
+  },
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "clean": "node ./scripts/clean.mjs"

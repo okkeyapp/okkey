@@ -4,8 +4,10 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
+    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
+    "ignoreDeprecations": "6.0",
     "skipLibCheck": true
   },
   "include": ["src"]
