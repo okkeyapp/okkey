@@ -26,11 +26,11 @@
   - `POST /auth/email/confirm`
   - `POST /auth/register/complete` (new user, split-key + first trusted device)
 - vault endpoints:
-  - `GET /workspaces/:workspaceId/vaults` (requires `X-User-Id`)
-  - `GET /vaults/:vaultId` (requires `X-User-Id`)
+  - `GET /workspaces/:workspaceId/vaults` (Bearer session; optional `X-User-Id` in dev when enabled)
+  - `GET /vaults/:vaultId` (same)
 - sync endpoints:
-  - `GET /vaults/:vaultId/events?afterVersion=0` (requires `X-User-Id`)
-  - `POST /vaults/:vaultId/events` (requires `X-User-Id`)
+  - `GET /vaults/:vaultId/events?afterVersion=0` (same)
+  - `POST /vaults/:vaultId/events` (same)
 
 ## Локальный запуск
 
@@ -77,13 +77,19 @@ yarn dev:api
 Из корня репозитория:
 
 ```bash
-yarn test:api
+yarn test
 ```
 
-Для integration-тестов storage должны быть подняты Postgres/Redis:
+Это запускает `yarn test:api` и `yarn test:e2e` (после `build:email`). Для integration-тестов storage нужны **Postgres** и **Redis**; в `services/api/.env` должны быть заданы `DATABASE_URL` и `REDIS_URL` (как в `.env.example`). MinIO для текущих API-тестов не требуется.
 
 ```bash
 yarn infra:up
+```
+
+Отдельно только API-тесты:
+
+```bash
+yarn test:api
 ```
 
 ## Email login flow (v1)
