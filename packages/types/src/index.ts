@@ -63,6 +63,15 @@ export {
   ITEM_CATEGORY_DEFINITIONS,
 } from "./item-schema/index.js";
 
+export type { FolderPlaintextV1, ItemFolderAssignPlaintextV1 } from "./folder-schema/types.js";
+export {
+  FOLDER_PLAINTEXT_SCHEMA_VERSION,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  parseFolderPlaintextUtf8,
+  parseItemFolderAssignPlaintextUtf8,
+  createFolderDeleteTombstoneV1,
+} from "./folder-schema/index.js";
+
 export interface Device {
   id: UUID;
   userId: UUID;
@@ -84,6 +93,10 @@ export const EVENT_TYPES = [
   "ITEM_CREATE",
   "ITEM_UPDATE",
   "ITEM_DELETE",
+  "FOLDER_CREATE",
+  "FOLDER_UPDATE",
+  "FOLDER_DELETE",
+  "ITEM_FOLDER_ASSIGN",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",

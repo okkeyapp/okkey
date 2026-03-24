@@ -138,3 +138,92 @@ test("replay accepts v1 and v2 wire schema versions", async () => {
   assert.equal(state.items.get(itemId)?.title, "Legacy");
   assert.equal(state.items.get(v2.itemId)?.title, "New");
 });
+
+test("replay ITEM_UPDATE applies reordered sections and fields (sync via ITEM_UPDATE)", async () => {
+  const vaultId = randomUUID();
+  const itemId = randomUUID();
+  const base = createPresetItemPlaintextV2({
+    categoryId: ITEM_CATEGORY_LOGIN,
+    itemId,
+    vaultId,
+    title: "Acct",
+    nowMs: 100,
+  });
+  const withExtra: typeof base = {
+    ...base,
+    sections: [
+      ...base.sections,
+      { id: "s-custom-a", title: "Notes", order: 1 },
+      { id: "s-custom-b", title: "Extra", order: 2 },
+    ],
+    fields: [
+      ...base.fields,
+      {
+        id: "f-extra-1",
+        type: "text",
+        sectionId: "s-custom-b",
+        order: 0,
+        value: { kind: "text", text: "first" },
+      },
+      {
+        id: "f-extra-2",
+        type: "text",
+        sectionId: "s-custom-b",
+        order: 1,
+        value: { kind: "text", text: "second" },
+      },
+    ],
+  };
+
+  const reordered: typeof withExtra = {
+    ...withExtra,
+    updatedAtMs: 200,
+    sections: withExtra.sections.map((s) => {
+      if (s.id === "s-custom-a") return { ...s, order: 2 };
+      if (s.id === "s-custom-b") return { ...s, order: 1 };
+      return s;
+    }),
+    fields: withExtra.fields.map((f) => {
+      if (f.id === "f-extra-1") return { ...f, order: 1 };
+      if (f.id === "f-extra-2") return { ...f, order: 0 };
+      return f;
+    }),
+  };
+
+  const events: SyncEventWireDto[] = [
+    {
+      id: randomUUID(),
+      vaultId,
+      actorId: null,
+      eventType: "ITEM_CREATE",
+      encryptedPayload: Buffer.from(JSON.stringify(withExtra), "utf8").toString("base64"),
+      payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      idempotencyKey: randomUUID(),
+      clientCreatedAt: null,
+      version: 1,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: randomUUID(),
+      vaultId,
+      actorId: null,
+      eventType: "ITEM_UPDATE",
+      encryptedPayload: Buffer.from(JSON.stringify(reordered), "utf8").toString("base64"),
+      payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      idempotencyKey: null,
+      clientCreatedAt: null,
+      version: 2,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  const state = await replayItemPlaintextEvents(events, async (b64) =>
+    Uint8Array.from(Buffer.from(b64, "base64")),
+  );
+  const final = state.items.get(itemId);
+  assert.ok(final);
+  assert.equal(final.sections.find((s) => s.id === "s-custom-a")?.order, 2);
+  assert.equal(final.sections.find((s) => s.id === "s-custom-b")?.order, 1);
+  assert.equal(final.fields.find((f) => f.id === "f-extra-1")?.order, 1);
+  assert.equal(final.fields.find((f) => f.id === "f-extra-2")?.order, 0);
+});

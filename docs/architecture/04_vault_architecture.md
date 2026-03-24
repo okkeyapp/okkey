@@ -73,7 +73,8 @@ Items consist of typed fields (text, password, TOTP, URL, note, file, etc.). Fie
 ## Folders
 
 Folders are personal, user-only groupings of items. Folders can be nested. Deleting a folder does not delete items inside it.
-Folder definitions and assignments are synchronized as encrypted metadata.
+
+Folder definitions, renames, moves, deletes, and per-user **item → folder** assignments are appended to the **same vault event log** as items, but ciphertext uses a **personal metadata key** derived from the user’s password share **C** and `vaultId` (SHA-256 domain separation), not the shared `VaultKey`. Workspace members who share a vault therefore cannot decrypt another user’s folder tree or assignments. See `05_sync_architecture.md` (`FOLDER_*`, `ITEM_FOLDER_ASSIGN`).
 
 ---
 

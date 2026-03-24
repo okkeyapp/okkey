@@ -396,7 +396,7 @@ Per-vault encrypted event stream. Server stores **opaque** base64 payloads only.
 
 Allowed `eventType` values (must match exactly):
 
-`ITEM_CREATE`, `ITEM_UPDATE`, `ITEM_DELETE`, `VAULT_CREATE`, `VAULT_SHARE`, `VAULT_KEY_ROTATION`, `DEVICE_ADD`, `DEVICE_REMOVE`
+`ITEM_CREATE`, `ITEM_UPDATE`, `ITEM_DELETE`, `FOLDER_CREATE`, `FOLDER_UPDATE`, `FOLDER_DELETE`, `ITEM_FOLDER_ASSIGN`, `VAULT_CREATE`, `VAULT_SHARE`, `VAULT_KEY_ROTATION`, `DEVICE_ADD`, `DEVICE_REMOVE`
 
 ### `GET /vaults/:vaultId/events?afterVersion=<n>`
 
@@ -454,7 +454,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `encryptedPayload` | string | Yes | Standard base64; decoded length must be &gt; 0 and ≤ 512 KiB. |
 | `baseVersion` | integer | Yes | Non-negative; must equal current latest version for append. |
 | `payloadSchemaVersion` | integer | No | Defaults to `1`; schema tag for ciphertext/plaintext evolution (1–65535). |
-| `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
+| `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE` and `FOLDER_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
 | `clientCreatedAt` | string | No | ISO-8601 client timestamp (optional). |
 
 **Response `201`:** Single event object (same shape as an element of `events` in the GET response).
@@ -463,7 +463,7 @@ Appends one event if `baseVersion` matches current stream head.
 
 | `error` | HTTP | When |
 |---------|------|------|
-| `SYNC_BAD_REQUEST` | 400 | Invalid JSON; missing fields; invalid `baseVersion` type/range; `ITEM_CREATE` without `idempotencyKey`; invalid UUID for `idempotencyKey`; invalid `clientCreatedAt`. |
+| `SYNC_BAD_REQUEST` | 400 | Invalid JSON; missing fields; invalid `baseVersion` type/range; `ITEM_CREATE` or `FOLDER_CREATE` without `idempotencyKey`; invalid UUID for `idempotencyKey`; invalid `clientCreatedAt`. |
 | `SYNC_INVALID_EVENT_TYPE` | 400 | Unknown `eventType`. |
 | `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
 | `PAYLOAD_TOO_LARGE` | 413 | Decoded ciphertext exceeds 512 KiB. |
@@ -472,7 +472,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `VAULT_NOT_FOUND` | 404 | Unknown vault. |
 | `ACCESS_DENIED` | 403 | User cannot read vault. |
 
-**Idempotency:** If `idempotencyKey` is set and an event with the same `(vaultId, idempotencyKey)` exists, the server returns that event (`201`) without appending again — use for `ITEM_CREATE` retries.
+**Idempotency:** If `idempotencyKey` is set and an event with the same `(vaultId, idempotencyKey)` exists, the server returns that event (`201`) without appending again — use for `ITEM_CREATE` and `FOLDER_CREATE` retries.
 
 ---
 

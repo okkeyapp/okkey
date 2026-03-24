@@ -5,6 +5,10 @@ const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
   "ITEM_UPDATE",
   "ITEM_DELETE",
+  "FOLDER_CREATE",
+  "FOLDER_UPDATE",
+  "FOLDER_DELETE",
+  "ITEM_FOLDER_ASSIGN",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",
@@ -12,7 +16,7 @@ const SYNC_EVENT_TYPES = new Set([
   "DEVICE_REMOVE",
 ]);
 
-const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE", "FOLDER_CREATE"]);
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
@@ -127,12 +131,12 @@ export class SyncService {
       );
     }
 
-    if (ITEM_EVENT_TYPES.has(input.eventType) && input.eventType === "ITEM_CREATE") {
+    if (EVENT_TYPES_REQUIRING_IDEMPOTENCY.has(input.eventType)) {
       if (!input.idempotencyKey) {
         throw new SyncServiceError(
           "SYNC_BAD_REQUEST",
           400,
-          "idempotencyKey is required for ITEM_CREATE",
+          "idempotencyKey is required for this eventType",
         );
       }
     }

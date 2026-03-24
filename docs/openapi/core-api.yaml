@@ -328,6 +328,10 @@ components:
             - ITEM_CREATE
             - ITEM_UPDATE
             - ITEM_DELETE
+            - FOLDER_CREATE
+            - FOLDER_UPDATE
+            - FOLDER_DELETE
+            - ITEM_FOLDER_ASSIGN
             - VAULT_CREATE
             - VAULT_SHARE
             - VAULT_KEY_ROTATION

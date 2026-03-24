@@ -18,3 +18,10 @@ export interface SyncQueue {
 
 /** Item event replay only (no WASM). Helpers that encrypt payloads live in `@okkey/sync/item-sync`. */
 export { replayItemPlaintextEvents, type ItemVaultReplayState } from "./item-replay.js";
+
+export {
+  replayFolderAndAssignEvents,
+  type FolderVaultReplayState,
+} from "./folder-replay.js";
+
+export { wouldIntroduceFolderParentCycle, type FolderParentRef } from "./folder-tree.js";

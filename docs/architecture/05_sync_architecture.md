@@ -53,9 +53,21 @@ Payload is always encrypted on the client. Backend stores and transports opaque 
 
 ## Event Types (Core v1)
 
+**Items (ciphertext = item plaintext JSON, encrypted with VaultKey):**
+
 - `ITEM_CREATE`
 - `ITEM_UPDATE`
 - `ITEM_DELETE`
+
+**Personal folder metadata (ciphertext encrypted with per-user metadata key — see below):**
+
+- `FOLDER_CREATE` — new folder row (`idempotencyKey` **required**, same semantics as `ITEM_CREATE`)
+- `FOLDER_UPDATE` — full folder row replace (rename and/or `parentFolderId` change); clients must reject moves that introduce a cycle in the folder tree before append
+- `FOLDER_DELETE` — remove folder from materialized state; items are **not** deleted; assignments pointing at this folder become “unassigned” (`null`) on replay
+- `ITEM_FOLDER_ASSIGN` — set or clear which folder contains an item for **this user** (`folderId: null` = vault root)
+
+**Other:**
+
 - `VAULT_CREATE`
 - `VAULT_SHARE`
 - `VAULT_KEY_ROTATION`
@@ -63,6 +75,16 @@ Payload is always encrypted on the client. Backend stores and transports opaque 
 - `DEVICE_REMOVE`
 
 Unknown event types must be ignored safely by old clients if payload schema/version is unsupported.
+
+### Personal metadata encryption (folders & assignments)
+
+- Payload JSON schemas: `@okkey/types` — `FolderPlaintextV1` / `ItemFolderAssignPlaintextV1` (`payloadSchemaVersion` **1** for both families on the wire).
+- Key: `derivePersonalVaultMetadataKey(passwordShareC, vaultId)` in `@okkey/crypto` (32-byte **C** from split-key registration + `vaultId`; **not** the shared VaultKey). Encrypt/decrypt: `encryptPersonalVaultMetadataPayload` / `decryptPersonalVaultMetadataPayload`.
+- Rationale: shared vault members all hold the same VaultKey for item ciphertext; personal folders must stay private per user while still using one vault stream and version counter.
+
+### Field sections and order inside an item
+
+Section and field order for a record is part of **item plaintext v2** (`sections[]`, `fields[]`, `order` fields). Clients sync layout via `ITEM_UPDATE` (full encrypted item). No separate event type is required for reordering sections/fields.
 
 ---
 
@@ -78,6 +100,10 @@ Requirements:
 - no gaps in applied versions
 - replay must be deterministic for the same event sequence
 - side effects are idempotent for repeated processing
+
+**`ITEM_*` replay:** decrypt with VaultKey; see `@okkey/sync` `replayItemPlaintextEvents`.
+
+**Folder / assignment replay:** `@okkey/sync` `replayFolderAndAssignEvents` — for each event, require `actorId === currentUserId` before decrypting (other users’ folder rows stay opaque). Decrypt with the personal metadata key; unsupported `payloadSchemaVersion` or malformed JSON is skipped (forward compatibility). Removing a folder clears `item → folder` mappings that referenced that folder id.
 
 ---
 
@@ -97,7 +123,7 @@ Core policy for v1:
 
 ## Transport
 
-- **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` — responses include `payloadSchemaVersion`, `idempotencyKey`, and `clientCreatedAt`; append accepts optional idempotency (required for `ITEM_CREATE`) and enforces a maximum ciphertext size.
+- **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` — responses include `payloadSchemaVersion`, `idempotencyKey`, and `clientCreatedAt`; append accepts optional idempotency (required for `ITEM_CREATE` and `FOLDER_CREATE`) and enforces a maximum ciphertext size.
 - Realtime channel: WebSocket (event push)
 - Fallback: HTTP pull (`fetch events after version`)
 - Both transports use the same event envelope and ordering guarantees

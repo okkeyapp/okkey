@@ -113,6 +113,41 @@ test("appendEvent maps version conflict", async () => {
   );
 });
 
+test("appendEvent requires idempotencyKey for FOLDER_CREATE", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "FOLDER_CREATE",
+        encryptedPayload: Buffer.from("x").toString("base64"),
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "SYNC_BAD_REQUEST",
+  );
+});
+
 test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
   const service = new SyncService({
     vaults: {

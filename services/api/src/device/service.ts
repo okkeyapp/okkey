@@ -126,11 +126,13 @@ export class DeviceService {
       };
 
       if (result.status === "pending_approval") {
-        void this.notifyDeviceApprovalEmail(userId, requestIp, input).catch((error: unknown) => {
+        try {
+          await this.notifyDeviceApprovalEmail(userId, requestIp, input);
+        } catch (error: unknown) {
           this.log?.warn("[device] approval request email failed", {
             message: error instanceof Error ? error.message : String(error),
           });
-        });
+        }
       }
 
       return result;
