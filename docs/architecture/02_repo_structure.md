@@ -48,9 +48,9 @@ apps/
 Main web application.
 
 Technologies:
+- Vite
 - React
-- Next.js
-- Typescript
+- TypeScript
 
 Responsible for:
 - UI

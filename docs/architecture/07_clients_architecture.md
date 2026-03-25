@@ -27,9 +27,10 @@ All clients use:
 
 ## Web Application
 
+- Vite (build and dev server)
 - React
-- Next.js
-- Typescript
+- TypeScript
+- Client-side SPA; static assets are deployed separately from the Core HTTP API
 
 Data storage: IndexedDB
 

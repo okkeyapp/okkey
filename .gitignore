@@ -64,12 +64,10 @@ rust/**/*.d.ts
 *.log
 
 # ============================================
-# Next.js (apps/web)
+# Vite (apps/web)
 # ============================================
-apps/web/.next/
-apps/web/out/
-apps/web/build/
-apps/web/next-env.d.ts
+apps/web/dist/
+apps/web/.vite/
 
 # ============================================
 # React Native (apps/mobile)
