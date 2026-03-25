@@ -46,3 +46,12 @@ const state = engine.getStateSnapshot();
 
 Reference fixtures and integration replay tests live in:
 `services/api/test/fixtures/sync-replay/` and `services/api/test/sync-replay-engine.test.ts`.
+
+## Outbox stores
+
+`@okkey/sync` now provides platform stores behind one `OutboxStore` interface:
+
+- `IndexedDbOutboxStore` for web clients (IndexedDB).
+- `SqliteOutboxStore` for mobile/desktop clients (inject any SQLite driver that
+  implements `execute/query` async API).
+- `InMemoryOutboxStore` for tests and non-persistent scenarios.

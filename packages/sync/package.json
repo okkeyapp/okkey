@@ -22,6 +22,18 @@
     "./replay-engine": {
       "types": "./dist/replay-engine.d.ts",
       "import": "./dist/replay-engine.js"
+    },
+    "./outbox": {
+      "types": "./dist/outbox.d.ts",
+      "import": "./dist/outbox.js"
+    },
+    "./outbox-store-indexeddb": {
+      "types": "./dist/outbox-store-indexeddb.d.ts",
+      "import": "./dist/outbox-store-indexeddb.js"
+    },
+    "./outbox-store-sqlite": {
+      "types": "./dist/outbox-store-sqlite.d.ts",
+      "import": "./dist/outbox-store-sqlite.js"
     }
   },
   "dependencies": {

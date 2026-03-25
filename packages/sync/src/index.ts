@@ -37,3 +37,21 @@ export {
   type UnknownEventPolicy,
   type UnsupportedSchemaPolicy,
 } from "./replay-engine.js";
+
+export {
+  InMemoryOutboxStore,
+  SyncOutboxClient,
+  computeBackoffDelayMs,
+  type ItemUpdateRebaseContext,
+  type OutboxClientOptions,
+  type OutboxEntry,
+  type OutboxEntryPayload,
+  type OutboxEntryStatus,
+  type OutboxHooks,
+  type OutboxStore,
+  type OutboxTransport,
+  type VersionMismatchDetails,
+} from "./outbox.js";
+
+export { IndexedDbOutboxStore, type IndexedDbOutboxStoreOptions } from "./outbox-store-indexeddb.js";
+export { SqliteOutboxStore, type SqliteDriver, type SqliteOutboxStoreOptions } from "./outbox-store-sqlite.js";

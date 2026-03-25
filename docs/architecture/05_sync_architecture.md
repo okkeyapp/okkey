@@ -133,13 +133,30 @@ Core policy for v1:
 ## Offline-First
 
 Clients keep encrypted outbox entries locally:
-- Web: IndexedDB
-- Mobile/Desktop: SQLite
+- Web: IndexedDB (`IndexedDbOutboxStore` in `@okkey/sync`)
+- Mobile/Desktop: SQLite (`SqliteOutboxStore` in `@okkey/sync`, driver-injected)
 
 When connectivity returns:
 1. drain outbox in FIFO order
 2. resolve version conflicts via refetch + rebase
 3. continue until outbox is empty
+
+### Outbox v1 behavior
+
+- **Persisted schema (SDK-level):** `id`, `vaultId`, `request`, `status`, `attemptCount`,
+  `nextAttemptAtMs`, `lastErrorCode`, `lastErrorMessage`, timestamps.
+- **Statuses:** `pending -> sending -> (removed on success)`; transient failures go to `failed`;
+  after max attempts entry becomes `dead` and requires manual `retryAll`.
+- **Drain order:** FIFO by creation time (and stable tie-break by id).
+- **Retry:** exponential backoff with jitter, configurable max attempts and queue size guard.
+- **Conflict (`VERSION_MISMATCH`):**
+  1. fetch remote events after stale `base_version`;
+  2. replay with `@okkey/sync` deterministic replay engine;
+  3. rebase local update (for v1 `ITEM_UPDATE`, via client hook) and retry append with
+     `baseVersion = latestVersion`.
+- **Conflict policy v1:** last write wins on server accept; after conflict the client must
+  realign local state with replayed server stream before retrying append.
+- **No secrets in logs:** only error codes/statuses and queue metadata.
 
 ---
 
