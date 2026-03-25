@@ -18,6 +18,10 @@
     "./folder-sync": {
       "types": "./dist/folder-sync.d.ts",
       "import": "./dist/folder-sync.js"
+    },
+    "./replay-engine": {
+      "types": "./dist/replay-engine.d.ts",
+      "import": "./dist/replay-engine.js"
     }
   },
   "dependencies": {

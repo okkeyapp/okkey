@@ -1,0 +1,113 @@
+{
+  "vaultId": "11111111-1111-4111-8111-111111111111",
+  "currentUserId": "22222222-2222-4222-8222-222222222222",
+  "events": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": null,
+      "eventType": "ITEM_UPDATE",
+      "payloadSchemaVersion": 2,
+      "version": 2,
+      "createdAt": "2026-01-01T00:00:02.000Z",
+      "payloadJson": {
+        "schemaVersion": 2,
+        "itemId": "33333333-3333-4333-8333-333333333333",
+        "vaultId": "11111111-1111-4111-8111-111111111111",
+        "title": "Email Account Updated",
+        "categoryId": "login",
+        "createdAtMs": 1,
+        "updatedAtMs": 2,
+        "sections": [
+          { "id": "s-main", "title": "Main", "order": 0, "isPreset": true }
+        ],
+        "fields": []
+      }
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": null,
+      "eventType": "ITEM_CREATE",
+      "payloadSchemaVersion": 2,
+      "version": 1,
+      "createdAt": "2026-01-01T00:00:01.000Z",
+      "payloadJson": {
+        "schemaVersion": 2,
+        "itemId": "33333333-3333-4333-8333-333333333333",
+        "vaultId": "11111111-1111-4111-8111-111111111111",
+        "title": "Email Account",
+        "categoryId": "login",
+        "createdAtMs": 1,
+        "updatedAtMs": 1,
+        "sections": [
+          { "id": "s-main", "title": "Main", "order": 0, "isPreset": true }
+        ],
+        "fields": []
+      }
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": "22222222-2222-4222-8222-222222222222",
+      "eventType": "FOLDER_CREATE",
+      "payloadSchemaVersion": 1,
+      "version": 3,
+      "createdAt": "2026-01-01T00:00:03.000Z",
+      "payloadJson": {
+        "schemaVersion": 1,
+        "folderId": "44444444-4444-4444-8444-444444444444",
+        "vaultId": "11111111-1111-4111-8111-111111111111",
+        "name": "Work",
+        "parentFolderId": null,
+        "createdAtMs": 10,
+        "updatedAtMs": 10
+      }
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": "22222222-2222-4222-8222-222222222222",
+      "eventType": "ITEM_FOLDER_ASSIGN",
+      "payloadSchemaVersion": 1,
+      "version": 4,
+      "createdAt": "2026-01-01T00:00:04.000Z",
+      "payloadJson": {
+        "schemaVersion": 1,
+        "itemId": "33333333-3333-4333-8333-333333333333",
+        "vaultId": "11111111-1111-4111-8111-111111111111",
+        "folderId": "44444444-4444-4444-8444-444444444444"
+      }
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": null,
+      "eventType": "VAULT_SHARE",
+      "payloadSchemaVersion": 1,
+      "version": 5,
+      "createdAt": "2026-01-01T00:00:05.000Z",
+      "payloadJson": {}
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": null,
+      "eventType": "DEVICE_ADD",
+      "payloadSchemaVersion": 1,
+      "version": 6,
+      "createdAt": "2026-01-01T00:00:06.000Z",
+      "payloadJson": {}
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa6",
+      "vaultId": "11111111-1111-4111-8111-111111111111",
+      "actorId": null,
+      "eventType": "UNKNOWN_FUTURE_EVENT",
+      "payloadSchemaVersion": 1,
+      "version": 7,
+      "createdAt": "2026-01-01T00:00:07.000Z",
+      "payloadJson": {}
+    }
+  ]
+}

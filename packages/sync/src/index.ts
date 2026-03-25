@@ -25,3 +25,15 @@ export {
 } from "./folder-replay.js";
 
 export { wouldIntroduceFolderParentCycle, type FolderParentRef } from "./folder-tree.js";
+
+export {
+  EventGapError,
+  SyncReplayEngine,
+  replayVaultEvents,
+  type EventGapErrorDetails,
+  type ReplayEngineOptions,
+  type ReplayQuarantineRecord,
+  type SyncMaterializedState,
+  type UnknownEventPolicy,
+  type UnsupportedSchemaPolicy,
+} from "./replay-engine.js";
