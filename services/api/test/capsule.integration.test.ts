@@ -1,0 +1,359 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import test from "node:test";
+import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
+import { loadConfig } from "../src/config.ts";
+import { createStorageLayer } from "../src/storage/index.ts";
+import {
+  applyMigrations,
+  cleanupUserData,
+  createLoggerStub,
+  registerUser,
+} from "./two-factor-test-helpers.ts";
+
+test("integration: capsule create/open with password and view limit", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-owner-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "item",
+    encryptedPayload: Buffer.from("capsule-ciphertext").toString("base64"),
+    maxViews: 1,
+    password: "12345",
+    allowedRecipientEmails: ["recipient@okkey.local"],
+  });
+  assert.equal(created.passwordRequired, true);
+
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1"),
+    (err: unknown) =>
+      err instanceof CapsuleServiceError && err.code === "CAPSULE_PASSWORD_REQUIRED",
+  );
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1", "bad-password"),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_PASSWORD_INVALID",
+  );
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1", "12345"),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_RECIPIENT_REQUIRED",
+  );
+  await assert.rejects(
+    () =>
+      capsules.openCapsule(
+        created.capsuleId,
+        "127.0.0.1",
+        "12345",
+        "blocked@okkey.local",
+      ),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_RECIPIENT_FORBIDDEN",
+  );
+
+  const opened = await capsules.openCapsule(
+    created.capsuleId,
+    "127.0.0.1",
+    "12345",
+    "recipient@okkey.local",
+  );
+  assert.equal(Buffer.from(opened.encryptedPayload, "base64").toString("utf8"), "capsule-ciphertext");
+  assert.equal(opened.viewCount, 1);
+
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1", "12345"),
+    (err: unknown) =>
+      err instanceof CapsuleServiceError && err.code === "CAPSULE_VIEW_LIMIT_EXCEEDED",
+  );
+});
+
+test("integration: file capsule persists encrypted blob in object storage", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-file-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "file",
+    encryptedPayload: Buffer.from('{"name":"doc.txt"}').toString("base64"),
+    filePayload: Buffer.from("encrypted-file-bytes").toString("base64"),
+  });
+
+  const opened = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
+  assert.equal(Buffer.from(opened.filePayload ?? "", "base64").toString("utf8"), "encrypted-file-bytes");
+});
+
+test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-expired-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "item",
+    encryptedPayload: Buffer.from("x").toString("base64"),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+
+  await storage.postgres.query("UPDATE capsules SET expires_at = now() - interval '1 second' WHERE id = $1", [
+    created.capsuleId,
+  ]);
+
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1"),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_EXPIRED",
+  );
+});
+
+test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-revoked-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "item",
+    encryptedPayload: Buffer.from("x").toString("base64"),
+  });
+
+  await capsules.revokeCapsule(created.capsuleId, userId);
+
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1"),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_REVOKED",
+  );
+});
+
+test("integration: capsule open is rate-limited per IP", async (t) => {
+  const base = loadConfig();
+  const config = {
+    ...base,
+    capsuleOpenRateLimitPerIp: 1,
+    capsuleRateLimitWindowSeconds: 60,
+  };
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-rl-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "item",
+    encryptedPayload: Buffer.from("x").toString("base64"),
+  });
+
+  const requestIp = `ip-${randomUUID()}`;
+  await storage.redis.del(`capsule:open:ip:${requestIp}`);
+
+  await capsules.openCapsule(created.capsuleId, requestIp);
+
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, requestIp),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "RATE_LIMITED",
+  );
+});
+
+test("integration: file capsule open tolerates missing object storage blob", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-missing-blob-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "file",
+    encryptedPayload: Buffer.from("meta").toString("base64"),
+    filePayload: Buffer.from("file-bytes").toString("base64"),
+  });
+
+  await storage.postgres.query(
+    `
+      UPDATE capsules
+      SET access_policy = jsonb_set(COALESCE(access_policy, '{}'::jsonb), '{fileStorageKey}', to_jsonb('missing-key'::text), true)
+      WHERE id = $1
+    `,
+    [created.capsuleId],
+  );
+
+  const opened = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
+  assert.equal(opened.filePayload, undefined);
+});
+
+test("integration: capsule create is blocked on FREE plan", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-free-${randomUUID()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  await assert.rejects(
+    () =>
+      capsules.createCapsule(workspaceId, userId, {
+        type: "item",
+        encryptedPayload: Buffer.from("x").toString("base64"),
+      }),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "FEATURE_NOT_AVAILABLE",
+  );
+});

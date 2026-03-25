@@ -568,6 +568,68 @@ Appends one event if `baseVersion` matches current stream head.
 
 ---
 
+## Capsules (secure share links)
+
+Capsules store encrypted payloads only; decryption happens client-side.
+
+### `POST /workspaces/:workspaceId/capsules`
+
+Creates a capsule for authenticated creator. FREE plan is gated.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `type` | string | Yes | `item` \| `field` \| `file` |
+| `encryptedPayload` | string | Yes | Base64 ciphertext blob |
+| `filePayload` | string | No | Base64 encrypted file bytes (for `type=file`) stored in object storage |
+| `expiresAt` | string | No | ISO-8601 future timestamp |
+| `maxViews` | integer | No | 1..10000 |
+| `password` | string | No | Optional open password (server stores KDF hash only) |
+| `allowedRecipientEmails` | string[] | No | Optional recipient allowlist (stored as hashed values) |
+
+**Response `201`:** capsule metadata:
+
+`capsuleId`, `type`, `expiresAt`, `maxViews`, `viewCount`, `passwordRequired`, `createdAt`
+
+**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `PAYLOAD_TOO_LARGE`.
+
+### `GET /capsules/:capsuleId`
+
+Returns public metadata for active capsule.
+
+**Auth:** none.
+
+**Response `200`:** same metadata shape as create response.
+
+**Errors:** `CAPSULE_NOT_FOUND`, `CAPSULE_EXPIRED`, `CAPSULE_VIEW_LIMIT_EXCEEDED`, `CAPSULE_REVOKED`.
+
+### `POST /capsules/:capsuleId/open`
+
+Consumes/open capsule by link with optional password.
+
+**Auth:** none.
+
+**Request body:** optional `{ "password": "...", "recipientEmail": "user@example.com" }`
+
+**Response `200`:** metadata + `encryptedPayload` (base64), and optional `filePayload` (base64) for file capsules.
+
+**Errors:** `RATE_LIMITED`, `CAPSULE_NOT_FOUND`, `CAPSULE_EXPIRED`, `CAPSULE_VIEW_LIMIT_EXCEEDED`, `CAPSULE_REVOKED`, `CAPSULE_PASSWORD_REQUIRED`, `CAPSULE_PASSWORD_INVALID`, `CAPSULE_RECIPIENT_REQUIRED`, `CAPSULE_RECIPIENT_FORBIDDEN`.
+
+### `POST /capsules/:capsuleId/revoke`
+
+Revokes capsule by creator.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Response `200`:** `{ "revoked": true }`
+
+**Errors:** `AUTH_REQUIRED`, `CAPSULE_NOT_FOUND`.
+
+---
+
 ## Devices
 
 JSON field names use **snake_case** on the wire for device registration (matches implemented handlers).

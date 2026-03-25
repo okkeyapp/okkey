@@ -14,6 +14,7 @@ tags:
   - name: Auth
   - name: Vaults
   - name: Sync
+  - name: Capsules
   - name: Devices
   - name: System
 
@@ -504,6 +505,70 @@ components:
           type: boolean
         revoked:
           type: boolean
+
+    CapsuleMetadata:
+      type: object
+      required:
+        [capsuleId, type, expiresAt, maxViews, viewCount, passwordRequired, createdAt]
+      properties:
+        capsuleId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [item, field, file]
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        maxViews:
+          type: integer
+          nullable: true
+        viewCount:
+          type: integer
+          minimum: 0
+        passwordRequired:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    CapsuleOpenResponse:
+      allOf:
+        - $ref: "#/components/schemas/CapsuleMetadata"
+        - type: object
+          required: [encryptedPayload]
+          properties:
+            encryptedPayload:
+              type: string
+            filePayload:
+              type: string
+
+    CapsuleCreateRequest:
+      type: object
+      required: [type, encryptedPayload]
+      properties:
+        type:
+          type: string
+          enum: [item, field, file]
+        encryptedPayload:
+          type: string
+        filePayload:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        maxViews:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        password:
+          type: string
+        allowedRecipientEmails:
+          type: array
+          items:
+            type: string
+            format: email
 
     DeviceRegisterRequest:
       type: object
@@ -1285,6 +1350,176 @@ paths:
                 $ref: "#/components/schemas/ErrorBody"
         "409":
           description: Version mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /workspaces/{workspaceId}/capsules:
+    post:
+      tags: [Capsules]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CapsuleCreateRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapsuleMetadata"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /capsules/{capsuleId}:
+    get:
+      tags: [Capsules]
+      parameters:
+        - name: capsuleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapsuleMetadata"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /capsules/{capsuleId}/open:
+    post:
+      tags: [Capsules]
+      parameters:
+        - name: capsuleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                recipientEmail:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapsuleOpenResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /capsules/{capsuleId}/revoke:
+    post:
+      tags: [Capsules]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: capsuleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked:
+                    type: boolean
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
           content:
             application/json:
               schema:

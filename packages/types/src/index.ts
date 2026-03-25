@@ -320,6 +320,31 @@ export interface VaultShareRevokeRequestDto {
   clientCreatedAt?: string;
 }
 
+export interface CapsuleMetadataDto {
+  capsuleId: UUID;
+  type: "item" | "field" | "file";
+  expiresAt: string | null;
+  maxViews: number | null;
+  viewCount: number;
+  passwordRequired: boolean;
+  createdAt: string;
+}
+
+export interface CapsuleOpenResponseDto extends CapsuleMetadataDto {
+  encryptedPayload: string;
+  filePayload?: string;
+}
+
+export interface CapsuleCreateRequestDto {
+  type: "item" | "field" | "file";
+  encryptedPayload: string;
+  filePayload?: string;
+  expiresAt?: string;
+  maxViews?: number;
+  password?: string;
+  allowedRecipientEmails?: string[];
+}
+
 /** Optional nested metadata (same semantics as `POST /devices/register`). */
 export interface RegisterCompleteMetadataDto {
   platform?: string;

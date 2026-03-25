@@ -41,6 +41,8 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     emailApiEndpoint: "",
     emailApiKey: "",
     emailApiTimeoutMs: 10_000,
+    capsuleOpenRateLimitPerIp: 60,
+    capsuleRateLimitWindowSeconds: 60,
     ...overrides,
   };
 }

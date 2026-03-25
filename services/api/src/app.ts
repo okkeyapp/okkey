@@ -36,6 +36,12 @@ import {
   createTwoFactorVerifyRoute,
 } from "./routes/two-factor.ts";
 import {
+  createCapsuleCreateRoute,
+  createCapsuleMetadataRoute,
+  createCapsuleOpenRoute,
+  createCapsuleRevokeRoute,
+} from "./routes/capsules.ts";
+import {
   createVaultGetRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
@@ -50,6 +56,7 @@ import type { SyncService } from "./sync/service.ts";
 import type { TwoFactorService } from "./two-factor/service.ts";
 import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
+import type { CapsuleService } from "./capsule/service.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
@@ -61,6 +68,7 @@ export interface AppDeps {
   deviceService?: DeviceService;
   sessionService?: SessionService;
   twoFactorService?: TwoFactorService;
+  capsuleService?: CapsuleService;
 }
 
 export function createApiApp(
@@ -199,6 +207,20 @@ export function createApiApp(
       "POST",
       "/devices/:deviceId/reject",
       createRejectDeviceRoute(deps.deviceService, resolveUserId),
+    );
+  }
+  if (deps.capsuleService) {
+    app.route(
+      "POST",
+      "/workspaces/:workspaceId/capsules",
+      createCapsuleCreateRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route("GET", "/capsules/:capsuleId", createCapsuleMetadataRoute(deps.capsuleService));
+    app.route("POST", "/capsules/:capsuleId/open", createCapsuleOpenRoute(deps.capsuleService));
+    app.route(
+      "POST",
+      "/capsules/:capsuleId/revoke",
+      createCapsuleRevokeRoute(deps.capsuleService, resolveUserId),
     );
   }
 

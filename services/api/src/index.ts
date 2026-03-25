@@ -1,4 +1,5 @@
 import { AuthService } from "./auth/service.ts";
+import { CapsuleService } from "./capsule/service.ts";
 import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
@@ -62,6 +63,12 @@ async function main(): Promise<void> {
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
   });
+  const capsuleService = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,
     config,
@@ -79,6 +86,7 @@ async function main(): Promise<void> {
     deviceService,
     sessionService,
     twoFactorService,
+    capsuleService,
   });
 
   const server = createServer(app.handler());

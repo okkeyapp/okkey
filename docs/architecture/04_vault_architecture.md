@@ -134,6 +134,12 @@ Security constraints:
 
 Capsules allow secure sharing of an entire item, a specific field, or a file. Capsules support controls such as expiration time, view limits, password access, and recipient restrictions. The shared content is decrypted only on the recipient side.
 
+Core v1 capsules protocol notes:
+- Server stores only opaque `encrypted_payload` and non-secret policies (expiry/view limit/password KDF hash).
+- Public access is by unguessable capsule id + optional password gate; decryption key transport is client responsibility (for example, out-of-band or URL fragment handled client-side).
+- Backend rate-limits public open attempts and never stores plaintext password (only salted KDF hash).
+- Threat model reminder: do not place raw decryption keys in URL query/path (can leak via logs/referrer); if link-carried keys are used, keep them in URL fragment on the client side.
+
 ---
 
 ## Access Roles

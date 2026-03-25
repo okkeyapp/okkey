@@ -77,6 +77,11 @@ export {
 } from "./registration.js";
 
 export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";
+export {
+  generateCapsuleKey,
+  encryptCapsulePayload,
+  decryptCapsulePayload,
+} from "./capsule.js";
 
 export {
   derivePersonalVaultMetadataKey,

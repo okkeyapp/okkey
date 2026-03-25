@@ -48,6 +48,8 @@ export interface ApiConfig {
   emailApiEndpoint: string;
   emailApiKey: string;
   emailApiTimeoutMs: number;
+  capsuleOpenRateLimitPerIp: number;
+  capsuleRateLimitWindowSeconds: number;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -220,5 +222,10 @@ export function loadConfig(): ApiConfig {
     emailApiEndpoint: process.env.EMAIL_API_ENDPOINT ?? "",
     emailApiKey: process.env.EMAIL_API_KEY ?? "",
     emailApiTimeoutMs: parsePositiveInt(process.env.EMAIL_API_TIMEOUT_MS, 10000),
+    capsuleOpenRateLimitPerIp: parsePositiveInt(process.env.CAPSULE_OPEN_RATE_LIMIT_PER_IP, 60),
+    capsuleRateLimitWindowSeconds: parsePositiveInt(
+      process.env.CAPSULE_RATE_LIMIT_WINDOW_SECONDS,
+      60,
+    ),
   };
 }

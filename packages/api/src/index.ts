@@ -1,4 +1,7 @@
 import type {
+  CapsuleCreateRequestDto,
+  CapsuleMetadataDto,
+  CapsuleOpenResponseDto,
   CoreApiErrorBody,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
@@ -168,6 +171,36 @@ export class CoreApiClient {
       `/vaults/${encodeURIComponent(vaultId)}/shares/revoke`,
       body,
     );
+  }
+
+  createCapsule(
+    workspaceId: string,
+    body: CapsuleCreateRequestDto,
+  ): Promise<CapsuleMetadataDto> {
+    return this.api.post<CapsuleMetadataDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/capsules`,
+      body,
+    );
+  }
+
+  getCapsule(capsuleId: string): Promise<CapsuleMetadataDto> {
+    return this.api.get<CapsuleMetadataDto>(`/capsules/${encodeURIComponent(capsuleId)}`);
+  }
+
+  openCapsule(
+    capsuleId: string,
+    options?: { password?: string; recipientEmail?: string },
+  ): Promise<CapsuleOpenResponseDto> {
+    return this.api.post<CapsuleOpenResponseDto>(
+      `/capsules/${encodeURIComponent(capsuleId)}/open`,
+      options?.password || options?.recipientEmail
+        ? { ...(options.password ? { password: options.password } : {}), ...(options.recipientEmail ? { recipientEmail: options.recipientEmail } : {}) }
+        : {},
+    );
+  }
+
+  revokeCapsule(capsuleId: string): Promise<{ revoked: true }> {
+    return this.api.post<{ revoked: true }>(`/capsules/${encodeURIComponent(capsuleId)}/revoke`, {});
   }
 
   registerDevice(body: DeviceRegisterRequestDto): Promise<DeviceRegisterResponseDto> {

@@ -1,5 +1,6 @@
 import type { ApiConfig } from "../config.ts";
 import type { Logger } from "../logger.ts";
+import { LocalObjectStorage } from "./object-storage.ts";
 import { PostgresDatabase } from "./postgres.ts";
 import { RedisCache } from "./redis.ts";
 import {
@@ -16,6 +17,7 @@ import {
 export interface StorageLayer {
   postgres: PostgresDatabase;
   redis: RedisCache;
+  objectStorage: LocalObjectStorage;
   repositories: {
     users: UsersRepository;
     workspaces: WorkspacesRepository;
@@ -36,6 +38,7 @@ export async function createStorageLayer(
 ): Promise<StorageLayer> {
   const postgres = await PostgresDatabase.connect(config.databaseUrl);
   const redis = await RedisCache.connect(config.redisUrl);
+  const objectStorage = new LocalObjectStorage();
 
   const repositories = {
     users: new UsersRepository(postgres),
@@ -56,6 +59,7 @@ export async function createStorageLayer(
   return {
     postgres,
     redis,
+    objectStorage,
     repositories,
     async ping() {
       await postgres.ping();
