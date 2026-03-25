@@ -6,6 +6,10 @@ import type {
   SyncAppendEventRequestDto,
   SyncEventWireDto,
   SyncEventsListResponseDto,
+  VaultKeyGetResponseDto,
+  VaultShareRevokeRequestDto,
+  VaultShareUpsertRequestDto,
+  VaultSharesListResponseDto,
   Vault,
 } from "../../types/src/index.js";
 
@@ -138,6 +142,30 @@ export class CoreApiClient {
   appendVaultEvent(vaultId: string, body: SyncAppendEventRequestDto): Promise<SyncEventWireDto> {
     return this.api.post<SyncEventWireDto>(
       `/vaults/${encodeURIComponent(vaultId)}/events`,
+      body,
+    );
+  }
+
+  getVaultKey(vaultId: string): Promise<VaultKeyGetResponseDto> {
+    return this.api.get<VaultKeyGetResponseDto>(`/vaults/${encodeURIComponent(vaultId)}/key`);
+  }
+
+  listVaultShares(vaultId: string): Promise<VaultSharesListResponseDto> {
+    return this.api.get<VaultSharesListResponseDto>(
+      `/vaults/${encodeURIComponent(vaultId)}/shares`,
+    );
+  }
+
+  shareVault(vaultId: string, body: VaultShareUpsertRequestDto): Promise<{ shared: true }> {
+    return this.api.post<{ shared: true }>(`/vaults/${encodeURIComponent(vaultId)}/shares`, body);
+  }
+
+  revokeVaultShare(
+    vaultId: string,
+    body: VaultShareRevokeRequestDto,
+  ): Promise<{ revoked: true }> {
+    return this.api.post<{ revoked: true }>(
+      `/vaults/${encodeURIComponent(vaultId)}/shares/revoke`,
       body,
     );
   }

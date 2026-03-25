@@ -118,6 +118,16 @@ EncryptedVaultKey_for_user
 Server stores only:
 - encrypted keys
 
+Core v1 backend flow:
+- `POST /vaults/:vaultId/shares` adds/updates explicit `vault_members` row, stores `vault_keys.encrypted_vault_key` for recipient, and appends sync `VAULT_SHARE`.
+- `POST /vaults/:vaultId/shares/revoke` removes explicit recipient membership, applies wrapped rotated keys for all remaining active recipients, and appends `VAULT_KEY_ROTATION`.
+- `GET /vaults/:vaultId/key` returns current user wrapped key only (never plaintext `VaultKey`).
+
+Security constraints:
+- VaultKey plaintext never leaves the client.
+- Server validates ACL and workspace membership, but stores only ciphertext wraps.
+- Revoke + rotation blocks revoked users from decrypting **new** ciphertext (old local snapshots remain an accepted trade-off).
+
 ---
 
 ## Capsules (Secure Sharing)

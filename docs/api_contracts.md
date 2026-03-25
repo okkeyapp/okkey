@@ -390,6 +390,98 @@ Returns a single vault if the user can read it.
 
 ---
 
+## Vault sharing and keys
+
+Core v1 sharing model: each recipient gets their own `EncryptedVaultKey_for_user` (client-side wrapped with recipient public key). Server stores only ciphertext wraps and membership metadata.
+
+### `GET /vaults/:vaultId/key`
+
+Returns current user wrapped vault key for an accessible vault.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Response `200`:** `{ "encryptedVaultKey": "<base64>" }`
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `BAD_REQUEST` | 400 | Missing `vaultId` path param. |
+| `AUTH_REQUIRED` | 401 | No valid auth context. |
+| `VAULT_NOT_FOUND` | 404 | Unknown vault. |
+| `ACCESS_DENIED` | 403 | User cannot read vault. |
+| `VAULT_KEY_NOT_FOUND` | 404 | No wrapped key row for this user. |
+
+### `GET /vaults/:vaultId/shares`
+
+Lists explicit `vault_members` with their public keys and (when present) wrapped keys. Intended for vault owner/admin share management.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Response `200`:**
+
+```json
+{
+  "vaultId": "uuid",
+  "members": [
+    {
+      "userId": "uuid",
+      "email": "user@example.com",
+      "publicKey": "base64",
+      "role": "member",
+      "encryptedVaultKey": "base64-or-null"
+    }
+  ]
+}
+```
+
+**Errors:** `BAD_REQUEST`, `AUTH_REQUIRED`, `VAULT_NOT_FOUND`, `ACCESS_DENIED`, `VAULT_SHARE_FORBIDDEN`.
+
+### `POST /vaults/:vaultId/shares`
+
+Grants or updates explicit shared access for a workspace member, stores recipient wrapped key, and appends sync event `VAULT_SHARE`.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `recipientUserId` | uuid | Yes | Must already have workspace access. |
+| `encryptedVaultKey` | string | Yes | Base64 wrapped key for recipient. |
+| `encryptedPayload` | string | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
+| `baseVersion` | integer | Yes | Expected event-log head version. |
+| `payloadSchemaVersion` | integer | No | Defaults to `1`. |
+| `idempotencyKey` | uuid | No | Optional event dedup key. |
+| `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
+| `role` | string | No | Membership role; default `member`. |
+
+**Response `201`:** `{ "shared": true }`
+
+### `POST /vaults/:vaultId/shares/revoke`
+
+Revokes explicit member access, applies key rotation wraps for all remaining active recipients, and appends sync event `VAULT_KEY_ROTATION`.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `recipientUserId` | uuid | Yes | Member to revoke. |
+| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey }[]`). |
+| `encryptedPayload` | string | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
+| `baseVersion` | integer | Yes | Expected event-log head version. |
+| `payloadSchemaVersion` | integer | No | Defaults to `1`. |
+| `idempotencyKey` | uuid | No | Optional event dedup key. |
+| `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
+
+**Response `200`:** `{ "revoked": true }`
+
+**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+
+---
+
 ## Sync (event log)
 
 Per-vault encrypted event stream. Server stores **opaque** base64 payloads only.

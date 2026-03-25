@@ -39,16 +39,24 @@ import {
   createVaultGetRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
+import {
+  createVaultKeyGetRoute,
+  createVaultShareRevokeRoute,
+  createVaultSharesListRoute,
+  createVaultShareUpsertRoute,
+} from "./routes/vault-sharing.ts";
 import type { SessionService } from "./session/service.ts";
 import type { SyncService } from "./sync/service.ts";
 import type { TwoFactorService } from "./two-factor/service.ts";
 import type { VaultService } from "./vault/service.ts";
+import type { VaultSharingService } from "./vault-sharing/service.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
   authService?: AuthService;
   registrationService?: RegistrationService;
   vaultService?: VaultService;
+  vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
   sessionService?: SessionService;
@@ -140,6 +148,28 @@ export function createApiApp(
       "GET",
       "/vaults/:vaultId",
       createVaultGetRoute(deps.vaultService, resolveUserId),
+    );
+  }
+  if (deps.vaultSharingService) {
+    app.route(
+      "GET",
+      "/vaults/:vaultId/key",
+      createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/vaults/:vaultId/shares",
+      createVaultSharesListRoute(deps.vaultSharingService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/shares",
+      createVaultShareUpsertRoute(deps.vaultSharingService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/shares/revoke",
+      createVaultShareRevokeRoute(deps.vaultSharingService, resolveUserId),
     );
   }
   if (deps.syncService) {

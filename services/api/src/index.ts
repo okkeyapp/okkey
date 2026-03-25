@@ -11,6 +11,7 @@ import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { VaultService } from "./vault/service.ts";
+import { VaultSharingService } from "./vault-sharing/service.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -53,6 +54,10 @@ async function main(): Promise<void> {
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
   });
+  const vaultSharingService = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
@@ -69,6 +74,7 @@ async function main(): Promise<void> {
     authService,
     registrationService,
     vaultService,
+    vaultSharingService,
     syncService,
     deviceService,
     sessionService,

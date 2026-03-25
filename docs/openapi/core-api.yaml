@@ -396,6 +396,115 @@ components:
           type: string
           format: date-time
 
+    VaultKeyResponse:
+      type: object
+      required: [encryptedVaultKey]
+      properties:
+        encryptedVaultKey:
+          type: string
+          description: Base64 wrapped vault key for authenticated user
+
+    VaultShareMember:
+      type: object
+      required: [userId, email, publicKey, role, encryptedVaultKey]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        publicKey:
+          type: string
+        role:
+          type: string
+          nullable: true
+        encryptedVaultKey:
+          type: string
+          nullable: true
+
+    VaultSharesResponse:
+      type: object
+      required: [vaultId, members]
+      properties:
+        vaultId:
+          type: string
+          format: uuid
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/VaultShareMember"
+
+    VaultShareUpsertRequest:
+      type: object
+      required: [recipientUserId, encryptedVaultKey, encryptedPayload, baseVersion]
+      properties:
+        recipientUserId:
+          type: string
+          format: uuid
+        encryptedVaultKey:
+          type: string
+        encryptedPayload:
+          type: string
+        baseVersion:
+          type: integer
+          minimum: 0
+        payloadSchemaVersion:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        idempotencyKey:
+          type: string
+          format: uuid
+        clientCreatedAt:
+          type: string
+          format: date-time
+        role:
+          type: string
+
+    VaultShareRevokeRequest:
+      type: object
+      required: [recipientUserId, rotatedVaultKeys, encryptedPayload, baseVersion]
+      properties:
+        recipientUserId:
+          type: string
+          format: uuid
+        rotatedVaultKeys:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [userId, encryptedVaultKey]
+            properties:
+              userId:
+                type: string
+                format: uuid
+              encryptedVaultKey:
+                type: string
+        encryptedPayload:
+          type: string
+        baseVersion:
+          type: integer
+          minimum: 0
+        payloadSchemaVersion:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        idempotencyKey:
+          type: string
+          format: uuid
+        clientCreatedAt:
+          type: string
+          format: date-time
+
+    VaultShareStateResponse:
+      type: object
+      properties:
+        shared:
+          type: boolean
+        revoked:
+          type: boolean
+
     DeviceRegisterRequest:
       type: object
       required:
@@ -898,6 +1007,186 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
         "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}/key:
+    get:
+      tags: [Vaults]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultKeyResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}/shares:
+    get:
+      tags: [Vaults]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultSharesResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+    post:
+      tags: [Vaults]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultShareUpsertRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultShareStateResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}/shares/revoke:
+    post:
+      tags: [Vaults]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultShareRevokeRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultShareStateResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
           content:
             application/json:
               schema:

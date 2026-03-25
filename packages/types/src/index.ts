@@ -273,6 +273,53 @@ export interface SyncAppendEventRequestDto {
   clientCreatedAt?: string;
 }
 
+/** `GET /vaults/:vaultId/key` success body. */
+export interface VaultKeyGetResponseDto {
+  encryptedVaultKey: string;
+}
+
+export interface VaultShareMemberDto {
+  userId: UUID;
+  email: string;
+  publicKey: string;
+  role: string | null;
+  encryptedVaultKey: string | null;
+}
+
+/** `GET /vaults/:vaultId/shares` success body. */
+export interface VaultSharesListResponseDto {
+  vaultId: UUID;
+  members: VaultShareMemberDto[];
+}
+
+/** `POST /vaults/:vaultId/shares` request body. */
+export interface VaultShareUpsertRequestDto {
+  recipientUserId: UUID;
+  encryptedVaultKey: string;
+  encryptedPayload: string;
+  baseVersion: number;
+  payloadSchemaVersion?: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+  role?: string;
+}
+
+export interface VaultRotatedKeyDto {
+  userId: UUID;
+  encryptedVaultKey: string;
+}
+
+/** `POST /vaults/:vaultId/shares/revoke` request body. */
+export interface VaultShareRevokeRequestDto {
+  recipientUserId: UUID;
+  rotatedVaultKeys: VaultRotatedKeyDto[];
+  encryptedPayload: string;
+  baseVersion: number;
+  payloadSchemaVersion?: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+}
+
 /** Optional nested metadata (same semantics as `POST /devices/register`). */
 export interface RegisterCompleteMetadataDto {
   platform?: string;
