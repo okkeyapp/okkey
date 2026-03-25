@@ -23,8 +23,12 @@
     "yarn": "^1.22.0"
   },
   "packageManager": "yarn@1.22.22",
+  "resolutions": {
+    "vite": "6.1.0"
+  },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/web"
   ],
   "dependencies": {
     "@okkey/crypto-wasm": "file:./packages/crypto/dist",
@@ -54,13 +58,15 @@
     "build:email": "yarn build:i18n && yarn build:email-templates",
     "dev:email": "yarn --cwd packages/email-templates dev",
     "dev:api": "yarn build:email && node --experimental-strip-types services/api/src/index.ts",
-    "dev:web": "echo 'TODO: add web dev command' && exit 1",
+    "dev:web": "yarn --cwd apps/web dev",
+    "build:web": "yarn --cwd apps/web build",
+    "test:web": "yarn --cwd apps/web test",
     "dev:worker": "echo 'TODO: add worker dev command' && exit 1",
     "infra:down": "./scripts/infra.sh down",
     "infra:logs": "./scripts/infra.sh logs",
     "infra:ps": "./scripts/infra.sh ps",
     "infra:up": "./scripts/infra.sh up",
-    "test": "yarn test:api && yarn test:e2e",
+    "test": "yarn test:api && yarn test:e2e && yarn test:web",
     "test:api": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
     "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }
