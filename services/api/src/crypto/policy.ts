@@ -21,6 +21,7 @@ export function buildCryptoPolicyDetails(
   version: number,
 ): Record<string, unknown> {
   return {
+    reason: "policy" as const,
     requestedVersion: version,
     allowedVersions: config.allowedCryptoProfileVersions,
   };

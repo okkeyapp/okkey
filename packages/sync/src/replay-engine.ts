@@ -105,6 +105,11 @@ export class EventGapError extends Error {
 type HandlerResult = "applied" | "ignored" | "quarantined";
 type EventHandler = (state: SyncMaterializedState, event: SyncEventWireDto) => Promise<HandlerResult>;
 
+/**
+ * Reads ciphertext envelope from wire DTOs. Defaults `crypto_version` to `2` only for **legacy /
+ * transitional** API shapes missing the field; **outgoing** appends must always set `crypto_version`
+ * explicitly (see `item-sync` builders).
+ */
 function getEventBlob(event: SyncEventWireDto): {
   crypto_version: number;
   payload: string;

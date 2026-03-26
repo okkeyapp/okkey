@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
-import { VersionConflictError } from "../src/storage/errors.ts";
+import { CryptoDowngradeInvariantError, VersionConflictError } from "../src/storage/errors.ts";
 
 function mkBlob(payload = "x", cryptoVersion = 2) {
   return {
@@ -232,6 +232,81 @@ test("appendEvent rejects oversized payload", async () => {
   );
 });
 
+test("appendEvent rejects strip attack: missing crypto_version in encryptedBlob", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  const encryptedBlobMissing: unknown = {
+    // attacker stripped `crypto_version`
+    algorithm: "opaque",
+    payload: Buffer.from("x").toString("base64"),
+    meta: {},
+  };
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: encryptedBlobMissing,
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
+  );
+});
+
+test("appendEvent rejects strip attack: legacy encryptedBlob string when legacy is disabled", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: Buffer.from("x").toString("base64"),
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
+  );
+});
+
 test("listEvents returns VAULT_NOT_FOUND when vault does not exist", async () => {
   const service = new SyncService({
     vaults: {
@@ -339,6 +414,46 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "ACCESS_DENIED",
+  );
+});
+
+test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALLOWED", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new CryptoDowngradeInvariantError("v1", 2, 1);
+      },
+    },
+    config: {
+      allowedCryptoProfileVersions: [1, 2],
+      deployEnv: "dev",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: mkBlob("x", 1),
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED" &&
+      Boolean(error.details && (error.details as { reason?: string }).reason === "downgrade"),
   );
 });
 

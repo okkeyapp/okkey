@@ -210,6 +210,7 @@ test("EventsRepository.append increments version in transaction", async () => {
   const db = new FakeDb();
   db.enqueueResult([{ id: "v1" }]); // lock vault
   db.enqueueResult([{ current_version: 4 }]); // get current version
+  db.enqueueResult([{ m: null }]); // MAX(payload_schema_version); null => no floor
   db.enqueueResult([
     {
       id: "e1",
@@ -217,7 +218,7 @@ test("EventsRepository.append increments version in transaction", async () => {
       actor_id: "u1",
       event_type: "ITEM_UPDATE",
       encrypted_payload: Buffer.from([10]),
-      payload_schema_version: 1,
+      payload_schema_version: 2,
       idempotency_key: null,
       client_created_at: null,
       version: 5,
@@ -235,8 +236,9 @@ test("EventsRepository.append increments version in transaction", async () => {
   });
 
   assert.equal(event.version, 5);
-  assert.equal(db.queries.length, 3);
+  assert.equal(db.queries.length, 4);
   assert.match(db.queries[0].sql, /FOR UPDATE/);
+  assert.match(db.queries[2].sql, /MAX\(payload_schema_version\)/);
 });
 
 test("EventsRepository.append throws VersionConflictError", async () => {

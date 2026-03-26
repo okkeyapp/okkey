@@ -1,12 +1,19 @@
-import { VersionConflictError } from "../storage/errors.ts";
-import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
-import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_DOWNGRADE_NOT_ALLOWED,
+  CRYPTO_DOWNGRADE_STATUS_CODE,
+  buildCryptoDowngradeDetails,
+} from "../crypto/downgrade.ts";
+import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   CRYPTO_POLICY_VIOLATION,
   CRYPTO_POLICY_VIOLATION_STATUS_CODE,
   buildCryptoPolicyDetails,
   isCryptoProfileAllowed,
 } from "../crypto/policy.ts";
+import type { Logger } from "../logger.ts";
+import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
+import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import type { ApiConfig } from "../config.ts";
 import {
   decodeEncryptedBlobFromStorage,
   mergeEncryptedBlobMeta,
@@ -62,7 +69,8 @@ export class SyncServiceError extends Error {
 export interface SyncServiceDeps {
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
   events: Pick<EventsRepository, "listAfterVersion" | "append">;
-  config?: Pick<ApiConfig, "allowedCryptoProfileVersions">;
+  config?: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  log?: Logger;
 }
 
 export interface SyncEventResponse {
@@ -88,12 +96,14 @@ export interface SyncAppendEventInput {
 export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
-  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions">;
+  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  private readonly log: Logger | undefined;
 
   constructor(deps: SyncServiceDeps) {
     this.vaults = deps.vaults;
     this.events = deps.events;
-    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2] };
+    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2], deployEnv: "dev" };
+    this.log = deps.log;
   }
 
   async listEvents(
@@ -151,6 +161,13 @@ export class SyncService {
       event_type: input.eventType,
     });
     if (!isCryptoProfileAllowed(this.config, normalizedBlob.crypto_version)) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "policy",
+        deployEnv: this.config.deployEnv ?? "dev",
+        vaultId,
+        actorId: userId,
+        requestedVersion: normalizedBlob.crypto_version,
+      });
       throw new SyncServiceError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,
@@ -214,6 +231,26 @@ export class SyncService {
             expectedBaseVersion: error.expectedVersion,
             latestVersion: error.actualVersion,
           },
+        );
+      }
+      if (error instanceof CryptoDowngradeInvariantError) {
+        logCryptoPolicyViolation(this.log, {
+          reason: "downgrade",
+          deployEnv: this.config.deployEnv ?? "dev",
+          vaultId,
+          actorId: userId,
+          requestedVersion: error.requestedVersion,
+          establishedMaxVersion: error.establishedMaxVersion,
+        });
+        throw new SyncServiceError(
+          CRYPTO_DOWNGRADE_NOT_ALLOWED,
+          CRYPTO_DOWNGRADE_STATUS_CODE,
+          `crypto profile downgrade blocked: vault stream requires at least v${error.establishedMaxVersion}`,
+          buildCryptoDowngradeDetails(
+            vaultId,
+            error.establishedMaxVersion,
+            error.requestedVersion,
+          ),
         );
       }
       throw error;

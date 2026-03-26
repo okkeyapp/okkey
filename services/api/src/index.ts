@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     postgres: storage.postgres,
     redis: storage.redis,
     config,
+    log: logger,
   });
   const vaultService = new VaultService({
     vaults: storage.repositories.vaults,
@@ -59,17 +60,20 @@ async function main(): Promise<void> {
     db: storage.postgres,
     vaults: storage.repositories.vaults,
     config,
+    log: logger,
   });
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
     config,
+    log: logger,
   });
   const capsuleService = new CapsuleService({
     db: storage.postgres,
     redis: storage.redis,
     objectStorage: storage.objectStorage,
     config,
+    log: logger,
   });
   const deviceService = new DeviceService({
     devices: storage.repositories.devices,

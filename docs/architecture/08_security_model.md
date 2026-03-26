@@ -17,6 +17,17 @@ server cannot read user data.
 - Crypto Agility (versioned cryptography)
 - Downgrade Resistance (no silent fallback to weaker profiles)
 
+### Downgrade threats (policy decision)
+
+| Scenario | Server behavior |
+|----------|-----------------|
+| New event uses a **lower** `crypto_version` / `payload_schema_version` than the **maximum already stored** for that vault’s event stream | **Reject** (`CRYPTO_DOWNGRADE_NOT_ALLOWED`); the stream floor only moves forward. |
+| New write uses a profile **not** in `CRYPTO_ALLOWED_PROFILE_VERSIONS` for the deployment | **Reject** (`CRYPTO_PROFILE_NOT_ALLOWED`). |
+| `EncryptedBlob` is malformed (missing fields, wrong `algorithm` for allowlist, strip attack on envelope) | **Reject** on parse (`SYNC_BAD_REQUEST` / `CRYPTO_PAYLOAD_INVALID` / similar). |
+| First event in an **empty** vault stream | No stream floor yet; only **environment** policy applies. |
+
+Clients should call `assertCryptoVersionNotBelowFloor` (from `@okkey/types`) before enqueueing sync writes when the vault’s established max version is known from replay.
+
 ---
 
 ## Zero Knowledge

@@ -1,12 +1,14 @@
 import type { AuthService } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
 import { mergeEncryptedBlobMeta, parseEncryptedBlobInput, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
+import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   CRYPTO_POLICY_VIOLATION,
   CRYPTO_POLICY_VIOLATION_STATUS_CODE,
   buildCryptoPolicyDetails,
   isCryptoProfileAllowed,
 } from "../crypto/policy.ts";
+import type { Logger } from "../logger.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
@@ -74,6 +76,7 @@ export interface RegistrationServiceDeps {
   };
   config: ApiConfig;
   now?: () => Date;
+  log?: Logger;
 }
 
 function registrationResultRedisKey(authStateId: string): string {
@@ -87,6 +90,7 @@ export class RegistrationService {
   private readonly redis: RegistrationServiceDeps["redis"];
   private readonly config: ApiConfig;
   private readonly now: () => Date;
+  private readonly log: Logger | undefined;
 
   constructor(deps: RegistrationServiceDeps) {
     this.authService = deps.authService;
@@ -95,6 +99,7 @@ export class RegistrationService {
     this.redis = deps.redis;
     this.config = deps.config;
     this.now = deps.now ?? (() => new Date());
+    this.log = deps.log;
   }
 
   async completeRegistration(input: RegisterCompleteInput): Promise<RegisterCompleteResult> {
@@ -228,6 +233,11 @@ export class RegistrationService {
       );
     }
     if (!isCryptoProfileAllowed(this.config, input.passwordKdfParamsVersion)) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "policy",
+        deployEnv: this.config.deployEnv,
+        requestedVersion: input.passwordKdfParamsVersion,
+      });
       throw new RegistrationError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,
@@ -276,6 +286,11 @@ export class RegistrationService {
       throw new RegistrationError("CRYPTO_PAYLOAD_INVALID", 400, "encrypted_private_key too short");
     }
     if (!isCryptoProfileAllowed(this.config, parsed.blob.crypto_version)) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "policy",
+        deployEnv: this.config.deployEnv,
+        requestedVersion: parsed.blob.crypto_version,
+      });
       throw new RegistrationError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,

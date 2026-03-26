@@ -49,3 +49,20 @@ export class VersionConflictError extends StorageError {
     this.actualVersion = actualVersion;
   }
 }
+
+/** New event payload_schema_version is lower than the vault stream maximum (anti-downgrade). */
+export class CryptoDowngradeInvariantError extends StorageError {
+  readonly vaultId: string;
+  readonly establishedMaxVersion: number;
+  readonly requestedVersion: number;
+
+  constructor(vaultId: string, establishedMaxVersion: number, requestedVersion: number) {
+    super(
+      `crypto profile downgrade blocked: vault ${vaultId} established max is v${establishedMaxVersion}, requested v${requestedVersion}`,
+    );
+    this.name = "CryptoDowngradeInvariantError";
+    this.vaultId = vaultId;
+    this.establishedMaxVersion = establishedMaxVersion;
+    this.requestedVersion = requestedVersion;
+  }
+}

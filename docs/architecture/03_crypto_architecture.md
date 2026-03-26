@@ -215,6 +215,15 @@ To prepare for post-quantum migration without breaking Core behavior, the crypto
 5. Migration and key rotation are event-log-safe and idempotent.
 6. Downgrade attempts to weaker crypto versions are rejected by policy.
 
+### Event log monotonicity (server)
+
+For each vault, the sync/event log stores `payload_schema_version` per row. The server enforces:
+
+- `MAX(payload_schema_version)` over existing events for that vault is a **floor**: new appends must satisfy `requested_crypto_version >= floor` (unless there are no events yet).
+- This is independent of **environment** allowlist checks (`CRYPTO_ALLOWED_PROFILE_VERSIONS`). Both must pass.
+
+See also: `docs/architecture/08_security_model.md` (Downgrade threats).
+
 Environment baseline policy for new writes:
 
 - `dev`: legacy `v1` may be used for fixtures/tests.

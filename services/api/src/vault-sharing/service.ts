@@ -1,6 +1,15 @@
 import type { QueryExecutor } from "../storage/postgres.ts";
+import { CryptoDowngradeInvariantError } from "../storage/errors.ts";
 import type { VaultsRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_DOWNGRADE_NOT_ALLOWED,
+  CRYPTO_DOWNGRADE_STATUS_CODE,
+  assertPayloadSchemaMonotonic,
+  buildCryptoDowngradeDetails,
+} from "../crypto/downgrade.ts";
+import type { Logger } from "../logger.ts";
+import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   CRYPTO_POLICY_VIOLATION,
   CRYPTO_POLICY_VIOLATION_STATUS_CODE,
@@ -65,7 +74,8 @@ export interface VaultSharingServiceDeps {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
   };
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
-  config?: Pick<ApiConfig, "allowedCryptoProfileVersions">;
+  config?: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  log?: Logger;
 }
 
 interface VaultAclMeta {
@@ -81,12 +91,14 @@ const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
   private readonly vaults: VaultSharingServiceDeps["vaults"];
-  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions">;
+  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  private readonly log: Logger | undefined;
 
   constructor(deps: VaultSharingServiceDeps) {
     this.db = deps.db;
     this.vaults = deps.vaults;
-    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2] };
+    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2], deployEnv: "dev" };
+    this.log = deps.log;
   }
 
   async getUserVaultKey(vaultId: string, userId: string): Promise<{ encryptedVaultKey: EncryptedBlob }> {
@@ -342,12 +354,50 @@ export class VaultSharingService {
 
     const payloadSchemaVersion = encryptedPayload.crypto_version;
     if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "policy",
+        deployEnv: this.config.deployEnv ?? "dev",
+        vaultId,
+        actorId,
+        requestedVersion: payloadSchemaVersion,
+      });
       throw new VaultSharingServiceError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,
         `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
         buildCryptoPolicyDetails(this.config, payloadSchemaVersion),
       );
+    }
+
+    const maxSchemaRows = await tx.query<{ m: number | null }>(
+      "SELECT MAX(payload_schema_version) AS m FROM events WHERE vault_id = $1",
+      [vaultId],
+    );
+    const establishedMax = maxSchemaRows[0]?.m ?? null;
+    try {
+      assertPayloadSchemaMonotonic(vaultId, establishedMax, payloadSchemaVersion);
+    } catch (error) {
+      if (error instanceof CryptoDowngradeInvariantError) {
+        logCryptoPolicyViolation(this.log, {
+          reason: "downgrade",
+          deployEnv: this.config.deployEnv ?? "dev",
+          vaultId,
+          actorId,
+          requestedVersion: error.requestedVersion,
+          establishedMaxVersion: error.establishedMaxVersion,
+        });
+        throw new VaultSharingServiceError(
+          CRYPTO_DOWNGRADE_NOT_ALLOWED,
+          CRYPTO_DOWNGRADE_STATUS_CODE,
+          `crypto profile downgrade blocked: vault stream requires at least v${error.establishedMaxVersion}`,
+          buildCryptoDowngradeDetails(
+            vaultId,
+            error.establishedMaxVersion,
+            error.requestedVersion,
+          ),
+        );
+      }
+      throw error;
     }
 
     await tx.query(

@@ -1,3 +1,4 @@
+import { assertPayloadSchemaMonotonic } from "../crypto/downgrade.ts";
 import type { QueryExecutor } from "./postgres.ts";
 import {
   EntityNotFoundError,
@@ -991,6 +992,13 @@ export class EventsRepository {
 
       const nextVersion = currentVersion + 1;
       const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
+
+      const maxSchemaRows = await tx.query<{ m: number | null }>(
+        "SELECT MAX(payload_schema_version) AS m FROM events WHERE vault_id = $1",
+        [input.vaultId],
+      );
+      const establishedMax = maxSchemaRows[0]?.m ?? null;
+      assertPayloadSchemaMonotonic(input.vaultId, establishedMax, payloadSchemaVersion);
 
       type EventRow = {
         id: string;

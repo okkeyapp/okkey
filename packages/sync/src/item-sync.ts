@@ -1,5 +1,9 @@
 import type { EncryptedBlobDto, ItemPlaintextV2, SyncAppendEventRequestDto } from "@okkey/types";
-import { createItemDeleteTombstoneV2, ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST } from "@okkey/types";
+import {
+  assertCryptoVersionNotBelowFloor,
+  createItemDeleteTombstoneV2,
+  ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+} from "@okkey/types";
 import { encryptVaultItemPayload } from "@okkey/crypto/vault-item";
 
 function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
@@ -25,13 +29,23 @@ export async function encodeItemPlaintextUtf8(item: ItemPlaintextV2): Promise<Ui
   return encoder.encode(JSON.stringify(item));
 }
 
+export interface ItemAppendBuildOptions {
+  /** `MAX(crypto_version)` from replayed vault events; omit if unknown. */
+  establishedCryptoFloor?: number | null;
+}
+
 export async function buildItemCreateAppendRequest(
   vaultKey: Uint8Array,
   item: ItemPlaintextV2,
   baseVersion: number,
   idempotencyKey: string,
   clientCreatedAt?: string,
+  options?: ItemAppendBuildOptions,
 ): Promise<SyncAppendEventRequestDto> {
+  assertCryptoVersionNotBelowFloor(
+    options?.establishedCryptoFloor ?? null,
+    ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+  );
   const plaintext = await encodeItemPlaintextUtf8(item);
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
   return {
@@ -52,7 +66,12 @@ export async function buildItemUpdateAppendRequest(
   baseVersion: number,
   idempotencyKey?: string,
   clientCreatedAt?: string,
+  options?: ItemAppendBuildOptions,
 ): Promise<SyncAppendEventRequestDto> {
+  assertCryptoVersionNotBelowFloor(
+    options?.establishedCryptoFloor ?? null,
+    ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+  );
   const plaintext = await encodeItemPlaintextUtf8(item);
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
   return {
@@ -74,7 +93,12 @@ export async function buildItemDeleteAppendRequest(
   baseVersion: number,
   idempotencyKey?: string,
   clientCreatedAt?: string,
+  options?: ItemAppendBuildOptions,
 ): Promise<SyncAppendEventRequestDto> {
+  assertCryptoVersionNotBelowFloor(
+    options?.establishedCryptoFloor ?? null,
+    ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+  );
   const tombstone = createItemDeleteTombstoneV2(itemId, vaultId);
   const plaintext = await encodeItemPlaintextUtf8(tombstone);
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);

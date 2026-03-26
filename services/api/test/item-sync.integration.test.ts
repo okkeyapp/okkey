@@ -175,3 +175,76 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   );
   assert.equal(replay3.items.has(itemId), false);
 });
+
+test("integration: sync rejects payload schema downgrade after higher version in stream", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const email = `item-sync-downgrade-${suffix}@okkey.local`;
+
+  const syncService = new SyncService({
+    vaults: storage.repositories.vaults,
+    events: storage.repositories.events,
+    config: {
+      allowedCryptoProfileVersions: [1, 2],
+      deployEnv: config.deployEnv,
+    },
+  });
+
+  const vaultService = new VaultService({
+    vaults: storage.repositories.vaults,
+    workspaces: storage.repositories.workspaces,
+  });
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+
+  const wsRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = wsRows[0]?.id;
+  assert.ok(workspaceId);
+
+  const vaults = await vaultService.listWorkspaceVaults(workspaceId, userId);
+  const vaultId = vaults[0].id;
+
+  const itemId = randomUUID();
+  const idem = randomUUID();
+  const now = Date.now();
+  const item: ItemPlaintextV2 = createPresetItemPlaintextV2({
+    categoryId: ITEM_CATEGORY_LOGIN,
+    itemId,
+    vaultId,
+    title: "Downgrade probe",
+    nowMs: now,
+  });
+
+  await syncService.appendEvent(vaultId, userId, {
+    eventType: "ITEM_CREATE",
+    encryptedBlob: mkBlobFromItem(item, ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST),
+    baseVersion: 0,
+    idempotencyKey: idem,
+  });
+
+  const weaker: ItemPlaintextV2 = { ...item, title: "weaker-crypto-version", updatedAtMs: now + 1 };
+  await assert.rejects(
+    () =>
+      syncService.appendEvent(vaultId, userId, {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: mkBlobFromItem(weaker, 1),
+        baseVersion: 1,
+      }),
+    (e: unknown) =>
+      e instanceof SyncServiceError && e.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED",
+  );
+});

@@ -248,3 +248,31 @@ test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "PAYLOAD_TOO_LARGE");
 });
+
+test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events",
+    headers: { "x-user-id": "u1" },
+    body: {
+      eventType: "ITEM_UPDATE",
+      encryptedBlob: mkBlob("x", 1),
+      baseVersion: 0,
+    },
+    syncService: createSyncServiceStub({
+      appendEvent: async () => {
+        throw new SyncServiceError(
+          "CRYPTO_DOWNGRADE_NOT_ALLOWED",
+          400,
+          "crypto profile downgrade blocked",
+          { reason: "downgrade" },
+        );
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string; details?: { reason?: string } };
+  assert.equal(payload.error, "CRYPTO_DOWNGRADE_NOT_ALLOWED");
+  assert.equal(payload.details?.reason, "downgrade");
+});

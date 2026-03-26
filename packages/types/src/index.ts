@@ -169,13 +169,20 @@ export interface SyncConflictErrorDetails {
   latestVersion: number;
 }
 
-/** JSON body returned by Core API on non-2xx responses (`services/api`). */
+/**
+ * JSON body returned by Core API on non-2xx responses (`services/api`).
+ *
+ * Common `error` values for crypto policy: `CRYPTO_PROFILE_NOT_ALLOWED` (env allowlist),
+ * `CRYPTO_DOWNGRADE_NOT_ALLOWED` (vault event stream would move to a weaker profile).
+ */
 export interface CoreApiErrorBody {
   error: string;
   message: string;
   requestId: string;
   details?: Record<string, unknown>;
 }
+
+export { assertCryptoVersionNotBelowFloor } from "./crypto-anti-downgrade.js";
 
 /** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */
 export interface EncryptedBlobDto {

@@ -104,3 +104,32 @@ test("vault sharing routes map domain errors", async () => {
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "VAULT_SHARE_FORBIDDEN");
 });
+
+test("POST /vaults/:vaultId/shares maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/shares",
+    headers: { "x-user-id": "u1" },
+    body: {
+      recipientUserId: "u2",
+      encryptedVaultKey: { crypto_version: 1, algorithm: "opaque", payload: "a", meta: {} },
+      encryptedPayload: { crypto_version: 1, algorithm: "opaque", payload: "a", meta: {} },
+      baseVersion: 0,
+    },
+    sharingService: createSharingStub({
+      shareVault: async () => {
+        throw new VaultSharingServiceError(
+          "CRYPTO_DOWNGRADE_NOT_ALLOWED",
+          400,
+          "crypto profile downgrade blocked",
+          { reason: "downgrade" },
+        );
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string; details?: { reason?: string } };
+  assert.equal(payload.error, "CRYPTO_DOWNGRADE_NOT_ALLOWED");
+  assert.equal(payload.details?.reason, "downgrade");
+});

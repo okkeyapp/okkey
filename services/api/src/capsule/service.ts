@@ -1,10 +1,12 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { ApiConfig } from "../config.ts";
+import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   CRYPTO_POLICY_VIOLATION,
   CRYPTO_POLICY_VIOLATION_STATUS_CODE,
   isCryptoProfileAllowed,
 } from "../crypto/policy.ts";
+import type { Logger } from "../logger.ts";
 import {
   decodeEncryptedBlobFromStorage,
   mergeEncryptedBlobMeta,
@@ -43,8 +45,10 @@ export interface CapsuleServiceDeps {
     | "capsuleOpenRateLimitPerIp"
     | "capsuleRateLimitWindowSeconds"
     | "allowedCryptoProfileVersions"
+    | "deployEnv"
   >;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject">;
+  log?: Logger;
 }
 
 interface CapsuleRow {
@@ -105,12 +109,14 @@ export class CapsuleService {
   private readonly redis: CapsuleServiceDeps["redis"];
   private readonly config: CapsuleServiceDeps["config"];
   private readonly objectStorage: CapsuleServiceDeps["objectStorage"];
+  private readonly log: Logger | undefined;
 
   constructor(deps: CapsuleServiceDeps) {
     this.db = deps.db;
     this.redis = deps.redis;
     this.config = deps.config;
     this.objectStorage = deps.objectStorage;
+    this.log = deps.log;
   }
 
   async createCapsule(
@@ -131,6 +137,12 @@ export class CapsuleService {
     });
     const payloadSchemaVersion = normalizedPayloadBlob.crypto_version;
     if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "policy",
+        deployEnv: this.config.deployEnv ?? "dev",
+        actorId: creatorId,
+        requestedVersion: payloadSchemaVersion,
+      });
       throw new CapsuleServiceError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,
