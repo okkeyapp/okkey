@@ -401,7 +401,7 @@ Returns current user wrapped vault key for an accessible vault.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
-**Response `200`:** `{ "encryptedVaultKey": "<base64>" }`
+**Response `200`:** `{ "encryptedVaultKey": EncryptedBlob }`
 
 **Errors:**
 
@@ -430,7 +430,7 @@ Lists explicit `vault_members` with their public keys and (when present) wrapped
       "email": "user@example.com",
       "publicKey": "base64",
       "role": "member",
-      "encryptedVaultKey": "base64-or-null"
+      "encryptedVaultKey": "EncryptedBlob-or-null"
     }
   ]
 }
@@ -449,10 +449,9 @@ Grants or updates explicit shared access for a workspace member, stores recipien
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Must already have workspace access. |
-| `encryptedVaultKey` | string | Yes | Base64 wrapped key for recipient. |
-| `encryptedPayload` | string | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
+| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. |
+| `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
-| `payloadSchemaVersion` | integer | No | Defaults to `2`. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
 | `role` | string | No | Membership role; default `member`. |
@@ -470,10 +469,9 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Member to revoke. |
-| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey }[]`). |
-| `encryptedPayload` | string | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
+| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). |
+| `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
-| `payloadSchemaVersion` | integer | No | Defaults to `2`. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
 
@@ -485,7 +483,18 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 
 ## Sync (event log)
 
-Per-vault encrypted event stream. Server stores **opaque** base64 payloads only.
+Per-vault encrypted event stream. Server stores encrypted payloads in canonical envelope form.
+
+`EncryptedBlob` shape (wire/storage):
+
+```json
+{
+  "crypto_version": 2,
+  "algorithm": "opaque",
+  "payload": "base64",
+  "meta": {}
+}
+```
 
 Allowed `eventType` values (must match exactly):
 
@@ -513,8 +522,12 @@ Allowed `eventType` values (must match exactly):
       "vaultId": "uuid",
       "actorId": "uuid-or-null",
       "eventType": "ITEM_CREATE",
-      "encryptedPayload": "base64",
-      "payloadSchemaVersion": 2,
+      "encryptedBlob": {
+        "crypto_version": 2,
+        "algorithm": "opaque",
+        "payload": "base64",
+        "meta": {}
+      },
       "idempotencyKey": "uuid-or-null",
       "clientCreatedAt": "2026-01-01T11:59:00.000Z",
       "version": 1,
@@ -544,9 +557,8 @@ Appends one event if `baseVersion` matches current stream head.
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `eventType` | string | Yes | One of allowed types. |
-| `encryptedPayload` | string | Yes | Standard base64; decoded length must be &gt; 0 and ≤ 512 KiB. |
+| `encryptedBlob` | object (`EncryptedBlob`) | Yes | Canonical encrypted envelope; `payload` decoded length must be &gt; 0 and ≤ 512 KiB. |
 | `baseVersion` | integer | Yes | Non-negative; must equal current latest version for append. |
-| `payloadSchemaVersion` | integer | No | Defaults to `2`; schema tag for ciphertext/plaintext evolution (1–65535). |
 | `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE` and `FOLDER_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
 | `clientCreatedAt` | string | No | ISO-8601 client timestamp (optional). |
 
@@ -585,9 +597,8 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `type` | string | Yes | `item` \| `field` \| `file` |
-| `encryptedPayload` | string | Yes | Base64 ciphertext blob |
-| `payloadSchemaVersion` | integer | No | Defaults to `2`; environment policy may reject forbidden versions. |
-| `filePayload` | string | No | Base64 encrypted file bytes (for `type=file`) stored in object storage |
+| `encryptedPayload` | object (`EncryptedBlob`) | Yes | Canonical encrypted blob envelope |
+| `filePayload` | object (`EncryptedBlob`) | No | Encrypted file blob envelope (for `type=file`) stored in object storage |
 | `expiresAt` | string | No | ISO-8601 future timestamp |
 | `maxViews` | integer | No | 1..10000 |
 | `password` | string | No | Optional open password (server stores KDF hash only) |
@@ -617,7 +628,7 @@ Consumes/open capsule by link with optional password.
 
 **Request body:** optional `{ "password": "...", "recipientEmail": "user@example.com" }`
 
-**Response `200`:** metadata + `encryptedPayload` (base64), and optional `filePayload` (base64) for file capsules.
+**Response `200`:** metadata + `encryptedPayload` (`EncryptedBlob`), and optional `filePayload` (`EncryptedBlob`) for file capsules.
 
 **Errors:** `RATE_LIMITED`, `CAPSULE_NOT_FOUND`, `CAPSULE_EXPIRED`, `CAPSULE_VIEW_LIMIT_EXCEEDED`, `CAPSULE_REVOKED`, `CAPSULE_PASSWORD_REQUIRED`, `CAPSULE_PASSWORD_INVALID`, `CAPSULE_RECIPIENT_REQUIRED`, `CAPSULE_RECIPIENT_FORBIDDEN`.
 

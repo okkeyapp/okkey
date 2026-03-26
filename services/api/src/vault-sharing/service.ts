@@ -7,6 +7,12 @@ import {
   buildCryptoPolicyDetails,
   isCryptoProfileAllowed,
 } from "../crypto/policy.ts";
+import {
+  decodeEncryptedBlobFromStorage,
+  parseEncryptedBlobInput,
+  serializeEncryptedBlobToStorage,
+  type EncryptedBlob,
+} from "../crypto/encrypted-blob.ts";
 
 export class VaultSharingServiceError extends Error {
   readonly code: string;
@@ -31,13 +37,13 @@ export interface VaultShareListEntry {
   email: string;
   publicKey: string;
   role: string | null;
-  encryptedVaultKey: string | null;
+  encryptedVaultKey: EncryptedBlob | null;
 }
 
 export interface ShareVaultInput {
   recipientUserId: string;
-  encryptedVaultKey: string;
-  encryptedPayload: string;
+  encryptedVaultKey: unknown;
+  encryptedPayload: unknown;
   baseVersion: number;
   payloadSchemaVersion?: number;
   idempotencyKey?: string;
@@ -47,8 +53,8 @@ export interface ShareVaultInput {
 
 export interface RevokeVaultInput {
   recipientUserId: string;
-  rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: string }>;
-  encryptedPayload: string;
+  rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
+  encryptedPayload: unknown;
   baseVersion: number;
   payloadSchemaVersion?: number;
   idempotencyKey?: string;
@@ -73,18 +79,6 @@ interface VaultAclMeta {
 const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
 
-function parseBase64Bytes(input: string): Uint8Array {
-  const bytes = Uint8Array.from(Buffer.from(input, "base64"));
-  if (bytes.length === 0 || Buffer.from(bytes).toString("base64") !== input) {
-    throw new VaultSharingServiceError(
-      "VAULT_KEY_WRAP_INVALID",
-      400,
-      "encryptedVaultKey must be valid base64",
-    );
-  }
-  return bytes;
-}
-
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
   private readonly vaults: VaultSharingServiceDeps["vaults"];
@@ -96,7 +90,7 @@ export class VaultSharingService {
     this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2] };
   }
 
-  async getUserVaultKey(vaultId: string, userId: string): Promise<{ encryptedVaultKey: string }> {
+  async getUserVaultKey(vaultId: string, userId: string): Promise<{ encryptedVaultKey: EncryptedBlob }> {
     await this.ensureVaultReadable(vaultId, userId);
     const rows = await this.db.query<{ encrypted_vault_key: Buffer }>(
       "SELECT encrypted_vault_key FROM vault_keys WHERE vault_id = $1 AND user_id = $2",
@@ -106,7 +100,7 @@ export class VaultSharingService {
       throw new VaultSharingServiceError("VAULT_KEY_NOT_FOUND", 404, "vault key not found");
     }
     return {
-      encryptedVaultKey: Buffer.from(rows[0].encrypted_vault_key).toString("base64"),
+      encryptedVaultKey: decodeEncryptedBlobFromStorage(Uint8Array.from(rows[0].encrypted_vault_key)),
     };
   }
 
@@ -143,7 +137,7 @@ export class VaultSharingService {
       publicKey: row.public_key,
       role: row.role,
       encryptedVaultKey: row.encrypted_vault_key
-        ? Buffer.from(row.encrypted_vault_key).toString("base64")
+        ? decodeEncryptedBlobFromStorage(Uint8Array.from(row.encrypted_vault_key))
         : null,
     }));
   }
@@ -164,8 +158,16 @@ export class VaultSharingService {
         "recipient already has implicit access",
       );
     }
-    const wrappedKey = parseBase64Bytes(input.encryptedVaultKey);
-    const payloadBytes = parseBase64Bytes(input.encryptedPayload);
+    const wrappedKeyBlob = parseBlobOrThrow(
+      input.encryptedVaultKey,
+      "encryptedVaultKey",
+      input.payloadSchemaVersion,
+    );
+    const payloadBlob = parseBlobOrThrow(
+      input.encryptedPayload,
+      "encryptedPayload",
+      input.payloadSchemaVersion,
+    );
     await this.ensureRecipientInWorkspace(acl.workspaceId, input.recipientUserId);
 
     await this.db.transaction(async (tx) => {
@@ -186,9 +188,9 @@ export class VaultSharingService {
           DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                         created_at = now()
         `,
-        [vaultId, input.recipientUserId, Buffer.from(wrappedKey)],
+        [vaultId, input.recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(wrappedKeyBlob))],
       );
-      await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", payloadBytes, input);
+      await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", payloadBlob, input);
     });
   }
 
@@ -201,8 +203,8 @@ export class VaultSharingService {
         "cannot revoke implicit owner access",
       );
     }
-    const payloadBytes = parseBase64Bytes(input.encryptedPayload);
-    const rotatedMap = new Map<string, Uint8Array>();
+    const payloadBlob = parseBlobOrThrow(input.encryptedPayload, "encryptedPayload");
+    const rotatedMap = new Map<string, EncryptedBlob>();
     for (const keyEntry of input.rotatedVaultKeys) {
       if (!UUID_RE.test(keyEntry.userId)) {
         throw new VaultSharingServiceError(
@@ -211,7 +213,14 @@ export class VaultSharingService {
           "rotatedVaultKeys.userId must be uuid",
         );
       }
-      rotatedMap.set(keyEntry.userId, parseBase64Bytes(keyEntry.encryptedVaultKey));
+      rotatedMap.set(
+        keyEntry.userId,
+        parseBlobOrThrow(
+          keyEntry.encryptedVaultKey,
+          "rotatedVaultKeys[].encryptedVaultKey",
+          input.payloadSchemaVersion,
+        ),
+      );
     }
 
     await this.db.transaction(async (tx) => {
@@ -262,7 +271,7 @@ export class VaultSharingService {
             DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                           created_at = now()
           `,
-          [vaultId, userId, Buffer.from(rotatedMap.get(userId)!)],
+          [vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
         );
       }
       await this.appendVaultEventTx(
@@ -270,7 +279,7 @@ export class VaultSharingService {
         vaultId,
         actorId,
         "VAULT_KEY_ROTATION",
-        payloadBytes,
+        payloadBlob,
         input,
       );
     });
@@ -281,10 +290,9 @@ export class VaultSharingService {
     vaultId: string,
     actorId: string,
     eventType: "VAULT_SHARE" | "VAULT_KEY_ROTATION",
-    encryptedPayload: Uint8Array,
+    encryptedPayload: EncryptedBlob,
     input: {
       baseVersion: number;
-      payloadSchemaVersion?: number;
       idempotencyKey?: string;
       clientCreatedAt?: string;
     },
@@ -319,7 +327,7 @@ export class VaultSharingService {
       });
     }
 
-    const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
+    const payloadSchemaVersion = encryptedPayload.crypto_version;
     if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
       throw new VaultSharingServiceError(
         CRYPTO_POLICY_VIOLATION,
@@ -341,7 +349,7 @@ export class VaultSharingService {
         vaultId,
         actorId,
         eventType,
-        Buffer.from(encryptedPayload),
+        Buffer.from(serializeEncryptedBlobToStorage(encryptedPayload)),
         currentVersion + 1,
         payloadSchemaVersion,
         input.idempotencyKey ?? null,
@@ -467,5 +475,17 @@ export class VaultSharingService {
       [vaultId],
     );
     return rows.map((row) => row.user_id);
+  }
+}
+
+function parseBlobOrThrow(value: unknown, fieldName: string, fallbackCryptoVersion?: number): EncryptedBlob {
+  try {
+    return parseEncryptedBlobInput(value, {
+      fieldName,
+      maxPayloadBytes: 1024 * 1024,
+      fallbackCryptoVersion,
+    }).blob;
+  } catch (error) {
+    throw new VaultSharingServiceError("VAULT_KEY_WRAP_INVALID", 400, (error as Error).message);
   }
 }

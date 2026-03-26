@@ -11,6 +11,15 @@ import {
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
+function mkBlob(input: string, cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(input).toString("base64"),
+    meta: {},
+  };
+}
+
 test("integration: share + revoke vault access with key rotation", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -62,8 +71,8 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
 
   await sharing.shareVault(vaultId, userA.userId, {
     recipientUserId: userB.userId,
-    encryptedVaultKey: Buffer.from("wrapped-key-b").toString("base64"),
-    encryptedPayload: Buffer.from("vault-share-event").toString("base64"),
+    encryptedVaultKey: mkBlob("wrapped-key-b"),
+    encryptedPayload: mkBlob("vault-share-event"),
     baseVersion: 0,
   });
 
@@ -72,7 +81,7 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
 
   const bKey = await sharing.getUserVaultKey(vaultId, userB.userId);
   assert.equal(
-    Buffer.from(bKey.encryptedVaultKey, "base64").toString("utf8"),
+    Buffer.from(bKey.encryptedVaultKey.payload, "base64").toString("utf8"),
     "wrapped-key-b",
   );
 
@@ -81,10 +90,10 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
     rotatedVaultKeys: [
       {
         userId: userA.userId,
-        encryptedVaultKey: Buffer.from("wrapped-key-a-rotated").toString("base64"),
+        encryptedVaultKey: mkBlob("wrapped-key-a-rotated"),
       },
     ],
-    encryptedPayload: Buffer.from("vault-key-rotation-event").toString("base64"),
+    encryptedPayload: mkBlob("vault-key-rotation-event"),
     baseVersion: 1,
   });
 
@@ -150,10 +159,9 @@ test("integration: sharing rejects crypto profile blocked by policy", async (t) 
     () =>
       sharing.shareVault(vaultId, userA.userId, {
         recipientUserId: userB.userId,
-        encryptedVaultKey: Buffer.from("wrapped-key-b").toString("base64"),
-        encryptedPayload: Buffer.from("vault-share-event").toString("base64"),
+        encryptedVaultKey: mkBlob("wrapped-key-b", 1),
+        encryptedPayload: mkBlob("vault-share-event", 1),
         baseVersion: 0,
-        payloadSchemaVersion: 1,
       }),
     (err: unknown) =>
       err instanceof VaultSharingServiceError && err.code === "CRYPTO_PROFILE_NOT_ALLOWED",

@@ -105,6 +105,27 @@ export class EventGapError extends Error {
 type HandlerResult = "applied" | "ignored" | "quarantined";
 type EventHandler = (state: SyncMaterializedState, event: SyncEventWireDto) => Promise<HandlerResult>;
 
+function getEventBlob(event: SyncEventWireDto): {
+  crypto_version: number;
+  payload: string;
+} {
+  const maybe = event as SyncEventWireDto & {
+    encryptedBlob?: { crypto_version?: number; payload?: string };
+    payloadSchemaVersion?: number;
+    encryptedPayload?: string;
+  };
+  if (maybe.encryptedBlob?.payload) {
+    return {
+      crypto_version: maybe.encryptedBlob.crypto_version ?? 2,
+      payload: maybe.encryptedBlob.payload,
+    };
+  }
+  return {
+    crypto_version: maybe.payloadSchemaVersion ?? 2,
+    payload: maybe.encryptedPayload ?? "",
+  };
+}
+
 function createInitialState(initialLastAppliedVersion: number): SyncMaterializedState {
   return {
     items: new Map<string, ItemPlaintextV2>(),
@@ -255,7 +276,8 @@ export class SyncReplayEngine {
 
   private registerCoreHandlers(): void {
     const itemHandler: EventHandler = async (state, event) => {
-      if (!SUPPORTED_ITEM_SCHEMAS.has(event.payloadSchemaVersion)) {
+      const blob = getEventBlob(event);
+      if (!SUPPORTED_ITEM_SCHEMAS.has(blob.crypto_version)) {
         return this.quarantineUnsupported(event);
       }
       if (!this.options.decryptItemPayload) {
@@ -264,7 +286,7 @@ export class SyncReplayEngine {
 
       let plaintext: Uint8Array;
       try {
-        plaintext = await this.options.decryptItemPayload(event.encryptedPayload);
+        plaintext = await this.options.decryptItemPayload(blob.payload);
       } catch {
         state.quarantined.push({ event, reason: "DECRYPT_FAILED" });
         return "quarantined";
@@ -288,7 +310,8 @@ export class SyncReplayEngine {
     this.registerHandler("ITEM_DELETE", itemHandler);
 
     const folderHandler: EventHandler = async (state, event) => {
-      if (event.payloadSchemaVersion !== FOLDER_PLAINTEXT_SCHEMA_VERSION) {
+      const blob = getEventBlob(event);
+      if (blob.crypto_version !== FOLDER_PLAINTEXT_SCHEMA_VERSION) {
         return this.quarantineUnsupported(event);
       }
       if (!this.options.currentUserId || event.actorId !== this.options.currentUserId) {
@@ -300,7 +323,7 @@ export class SyncReplayEngine {
 
       let plaintext: Uint8Array;
       try {
-        plaintext = await this.options.decryptPersonalMetadataPayload(event.encryptedPayload);
+        plaintext = await this.options.decryptPersonalMetadataPayload(blob.payload);
       } catch {
         state.quarantined.push({ event, reason: "DECRYPT_FAILED" });
         return "quarantined";
@@ -324,7 +347,8 @@ export class SyncReplayEngine {
     this.registerHandler("FOLDER_DELETE", folderHandler);
 
     this.registerHandler("ITEM_FOLDER_ASSIGN", async (state, event) => {
-      if (event.payloadSchemaVersion !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION) {
+      const blob = getEventBlob(event);
+      if (blob.crypto_version !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION) {
         return this.quarantineUnsupported(event);
       }
       if (!this.options.currentUserId || event.actorId !== this.options.currentUserId) {
@@ -336,7 +360,7 @@ export class SyncReplayEngine {
 
       let plaintext: Uint8Array;
       try {
-        plaintext = await this.options.decryptPersonalMetadataPayload(event.encryptedPayload);
+        plaintext = await this.options.decryptPersonalMetadataPayload(blob.payload);
       } catch {
         state.quarantined.push({ event, reason: "DECRYPT_FAILED" });
         return "quarantined";

@@ -12,9 +12,13 @@ import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListRespons
 function mkReq(baseVersion: number, eventType = "ITEM_UPDATE"): SyncAppendEventRequestDto {
   return {
     eventType,
-    encryptedPayload: Buffer.from(`payload-${baseVersion}`, "utf8").toString("base64"),
+    encryptedBlob: {
+      crypto_version: 2,
+      algorithm: "opaque",
+      payload: Buffer.from(`payload-${baseVersion}`, "utf8").toString("base64"),
+      meta: {},
+    },
     baseVersion,
-    payloadSchemaVersion: 2,
     idempotencyKey: randomUUID(),
   };
 }
@@ -25,21 +29,25 @@ function mkEvent(vaultId: string, version: number): SyncEventWireDto {
     vaultId,
     actorId: null,
     eventType: "ITEM_UPDATE",
-    encryptedPayload: Buffer.from(
-      JSON.stringify({
-        schemaVersion: 2,
-        itemId: randomUUID(),
-        vaultId,
-        title: `v${version}`,
-        categoryId: "login",
-        createdAtMs: 1,
-        updatedAtMs: version,
-        sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
-        fields: [],
-      }),
-      "utf8",
-    ).toString("base64"),
-    payloadSchemaVersion: 2,
+    encryptedBlob: {
+      crypto_version: 2,
+      algorithm: "opaque",
+      payload: Buffer.from(
+        JSON.stringify({
+          schemaVersion: 2,
+          itemId: randomUUID(),
+          vaultId,
+          title: `v${version}`,
+          categoryId: "login",
+          createdAtMs: 1,
+          updatedAtMs: version,
+          sections: [{ id: "s-main", title: "Main", order: 0, isPreset: true }],
+          fields: [],
+        }),
+        "utf8",
+      ).toString("base64"),
+      meta: {},
+    },
     idempotencyKey: randomUUID(),
     clientCreatedAt: null,
     version,
@@ -118,7 +126,7 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
         };
       }
       assert.equal(body.baseVersion, 7);
-      assert.equal(body.encryptedPayload, Buffer.from("rebased", "utf8").toString("base64"));
+      assert.equal(body.encryptedBlob.payload, Buffer.from("rebased", "utf8").toString("base64"));
       return mkEvent(vaultId, 8);
     },
     async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
@@ -133,8 +141,12 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
       decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
     },
     rebaseItemUpdate: async () => ({
-      encryptedPayload: Buffer.from("rebased", "utf8").toString("base64"),
-      payloadSchemaVersion: 2,
+      encryptedBlob: {
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: Buffer.from("rebased", "utf8").toString("base64"),
+        meta: {},
+      },
     }),
     hooks: {
       onConflictResolved: () => {

@@ -177,6 +177,14 @@ export interface CoreApiErrorBody {
   details?: Record<string, unknown>;
 }
 
+/** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */
+export interface EncryptedBlobDto {
+  crypto_version: number;
+  algorithm: string;
+  payload: string;
+  meta: Record<string, unknown>;
+}
+
 /** @deprecated Use {@link CoreApiErrorBody}; the wire field is `error`, not `code`. */
 export type ApiError = CoreApiErrorBody;
 
@@ -246,8 +254,7 @@ export interface SyncEventWireDto {
   vaultId: UUID;
   actorId: UUID | null;
   eventType: string;
-  encryptedPayload: string;
-  payloadSchemaVersion: number;
+  encryptedBlob: EncryptedBlobDto;
   idempotencyKey: UUID | null;
   clientCreatedAt: string | null;
   version: number;
@@ -264,10 +271,8 @@ export interface SyncEventsListResponseDto {
 /** `POST /vaults/:vaultId/events` request body. */
 export interface SyncAppendEventRequestDto {
   eventType: string;
-  encryptedPayload: string;
+  encryptedBlob: EncryptedBlobDto;
   baseVersion: number;
-  /** Defaults to 1 when omitted. */
-  payloadSchemaVersion?: number;
   /** Required for `ITEM_CREATE`; optional for other types. Must be UUID when set. */
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -275,7 +280,7 @@ export interface SyncAppendEventRequestDto {
 
 /** `GET /vaults/:vaultId/key` success body. */
 export interface VaultKeyGetResponseDto {
-  encryptedVaultKey: string;
+  encryptedVaultKey: EncryptedBlobDto;
 }
 
 export interface VaultShareMemberDto {
@@ -283,7 +288,7 @@ export interface VaultShareMemberDto {
   email: string;
   publicKey: string;
   role: string | null;
-  encryptedVaultKey: string | null;
+  encryptedVaultKey: EncryptedBlobDto | null;
 }
 
 /** `GET /vaults/:vaultId/shares` success body. */
@@ -295,10 +300,9 @@ export interface VaultSharesListResponseDto {
 /** `POST /vaults/:vaultId/shares` request body. */
 export interface VaultShareUpsertRequestDto {
   recipientUserId: UUID;
-  encryptedVaultKey: string;
-  encryptedPayload: string;
+  encryptedVaultKey: EncryptedBlobDto;
+  encryptedPayload: EncryptedBlobDto;
   baseVersion: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
   role?: string;
@@ -306,16 +310,15 @@ export interface VaultShareUpsertRequestDto {
 
 export interface VaultRotatedKeyDto {
   userId: UUID;
-  encryptedVaultKey: string;
+  encryptedVaultKey: EncryptedBlobDto;
 }
 
 /** `POST /vaults/:vaultId/shares/revoke` request body. */
 export interface VaultShareRevokeRequestDto {
   recipientUserId: UUID;
   rotatedVaultKeys: VaultRotatedKeyDto[];
-  encryptedPayload: string;
+  encryptedPayload: EncryptedBlobDto;
   baseVersion: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
@@ -331,15 +334,14 @@ export interface CapsuleMetadataDto {
 }
 
 export interface CapsuleOpenResponseDto extends CapsuleMetadataDto {
-  encryptedPayload: string;
-  filePayload?: string;
+  encryptedPayload: EncryptedBlobDto;
+  filePayload?: EncryptedBlobDto;
 }
 
 export interface CapsuleCreateRequestDto {
   type: "item" | "field" | "file";
-  encryptedPayload: string;
-  payloadSchemaVersion?: number;
-  filePayload?: string;
+  encryptedPayload: EncryptedBlobDto;
+  filePayload?: EncryptedBlobDto;
   expiresAt?: string;
   maxViews?: number;
   password?: string;

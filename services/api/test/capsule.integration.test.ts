@@ -11,6 +11,15 @@ import {
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
+function mkBlob(input: string) {
+  return {
+    crypto_version: 2,
+    algorithm: "opaque",
+    payload: Buffer.from(input).toString("base64"),
+    meta: {},
+  };
+}
+
 test("integration: capsule create/open with password and view limit", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -43,7 +52,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
-    encryptedPayload: Buffer.from("capsule-ciphertext").toString("base64"),
+    encryptedPayload: mkBlob("capsule-ciphertext"),
     maxViews: 1,
     password: "12345",
     allowedRecipientEmails: ["recipient@okkey.local"],
@@ -80,7 +89,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
     "12345",
     "recipient@okkey.local",
   );
-  assert.equal(Buffer.from(opened.encryptedPayload, "base64").toString("utf8"), "capsule-ciphertext");
+  assert.equal(Buffer.from(opened.encryptedPayload.payload, "base64").toString("utf8"), "capsule-ciphertext");
   assert.equal(opened.viewCount, 1);
 
   await assert.rejects(
@@ -122,12 +131,12 @@ test("integration: file capsule persists encrypted blob in object storage", asyn
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "file",
-    encryptedPayload: Buffer.from('{"name":"doc.txt"}').toString("base64"),
-    filePayload: Buffer.from("encrypted-file-bytes").toString("base64"),
+    encryptedPayload: mkBlob('{"name":"doc.txt"}'),
+    filePayload: mkBlob("encrypted-file-bytes"),
   });
 
   const opened = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
-  assert.equal(Buffer.from(opened.filePayload ?? "", "base64").toString("utf8"), "encrypted-file-bytes");
+  assert.equal(Buffer.from(opened.filePayload?.payload ?? "", "base64").toString("utf8"), "encrypted-file-bytes");
 });
 
 test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t) => {
@@ -162,7 +171,7 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
-    encryptedPayload: Buffer.from("x").toString("base64"),
+    encryptedPayload: mkBlob("x"),
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   });
 
@@ -208,7 +217,7 @@ test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t)
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
-    encryptedPayload: Buffer.from("x").toString("base64"),
+    encryptedPayload: mkBlob("x"),
   });
 
   await capsules.revokeCapsule(created.capsuleId, userId);
@@ -256,7 +265,7 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
-    encryptedPayload: Buffer.from("x").toString("base64"),
+    encryptedPayload: mkBlob("x"),
   });
 
   const requestIp = `ip-${randomUUID()}`;
@@ -302,8 +311,8 @@ test("integration: file capsule open tolerates missing object storage blob", asy
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "file",
-    encryptedPayload: Buffer.from("meta").toString("base64"),
-    filePayload: Buffer.from("file-bytes").toString("base64"),
+    encryptedPayload: mkBlob("meta"),
+    filePayload: mkBlob("file-bytes"),
   });
 
   await storage.postgres.query(
@@ -352,7 +361,7 @@ test("integration: capsule create is blocked on FREE plan", async (t) => {
     () =>
       capsules.createCapsule(workspaceId, userId, {
         type: "item",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedPayload: mkBlob("x"),
       }),
     (err: unknown) => err instanceof CapsuleServiceError && err.code === "FEATURE_NOT_AVAILABLE",
   );

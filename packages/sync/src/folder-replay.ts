@@ -13,6 +13,24 @@ const FOLDER_AND_ASSIGN_TYPES = new Set([
   "ITEM_FOLDER_ASSIGN",
 ]);
 
+function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
+  const maybe = event as SyncEventWireDto & {
+    encryptedBlob?: { crypto_version?: number; payload?: string };
+    payloadSchemaVersion?: number;
+    encryptedPayload?: string;
+  };
+  if (maybe.encryptedBlob?.payload) {
+    return {
+      crypto_version: maybe.encryptedBlob.crypto_version ?? 2,
+      payload: maybe.encryptedBlob.payload,
+    };
+  }
+  return {
+    crypto_version: maybe.payloadSchemaVersion ?? 2,
+    payload: maybe.encryptedPayload ?? "",
+  };
+}
+
 export interface FolderVaultReplayState {
   /** Active folders (no tombstones). */
   folders: Map<string, FolderPlaintextV1>;
@@ -61,13 +79,13 @@ export async function replayFolderAndAssignEvents(
 
     let plaintextBytes: Uint8Array;
     try {
-      plaintextBytes = await decryptWirePayload(ev.encryptedPayload);
+      plaintextBytes = await decryptWirePayload(getEventBlob(ev).payload);
     } catch {
       continue;
     }
 
     if (ev.eventType === "ITEM_FOLDER_ASSIGN") {
-      if (ev.payloadSchemaVersion !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION) {
+      if (getEventBlob(ev).crypto_version !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION) {
         continue;
       }
       const assign = parseItemFolderAssignPlaintextUtf8(plaintextBytes);
@@ -78,7 +96,7 @@ export async function replayFolderAndAssignEvents(
       continue;
     }
 
-    if (ev.payloadSchemaVersion !== FOLDER_PLAINTEXT_SCHEMA_VERSION) {
+    if (getEventBlob(ev).crypto_version !== FOLDER_PLAINTEXT_SCHEMA_VERSION) {
       continue;
     }
 

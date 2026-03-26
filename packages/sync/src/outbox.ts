@@ -57,7 +57,7 @@ export interface OutboxClientOptions {
   replayOptions?: Omit<ReplayEngineOptions, "vaultId" | "initialLastAppliedVersion">;
   rebaseItemUpdate?: (
     context: ItemUpdateRebaseContext,
-  ) => Promise<Pick<SyncAppendEventRequestDto, "encryptedPayload" | "payloadSchemaVersion">>;
+  ) => Promise<Pick<SyncAppendEventRequestDto, "encryptedBlob">>;
   hooks?: OutboxHooks;
 }
 
@@ -259,9 +259,16 @@ export class SyncOutboxClient {
         latestVersion: conflict.latestVersion,
         state: replay,
       });
-      entry.request.encryptedPayload = rebased.encryptedPayload;
-      if (rebased.payloadSchemaVersion !== undefined) {
-        entry.request.payloadSchemaVersion = rebased.payloadSchemaVersion;
+      const rebasedAny = rebased as { encryptedBlob?: unknown; encryptedPayload?: string; payloadSchemaVersion?: number };
+      if (rebasedAny.encryptedBlob) {
+        entry.request.encryptedBlob = rebasedAny.encryptedBlob as SyncAppendEventRequestDto["encryptedBlob"];
+      } else if (rebasedAny.encryptedPayload) {
+        entry.request.encryptedBlob = {
+          crypto_version: rebasedAny.payloadSchemaVersion ?? 2,
+          algorithm: "opaque",
+          payload: rebasedAny.encryptedPayload,
+          meta: {},
+        };
       }
     }
 

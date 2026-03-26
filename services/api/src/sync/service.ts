@@ -7,6 +7,12 @@ import {
   buildCryptoPolicyDetails,
   isCryptoProfileAllowed,
 } from "../crypto/policy.ts";
+import {
+  decodeEncryptedBlobFromStorage,
+  parseEncryptedBlobInput,
+  serializeEncryptedBlobToStorage,
+  type EncryptedBlob,
+} from "../crypto/encrypted-blob.ts";
 
 const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
@@ -63,8 +69,7 @@ export interface SyncEventResponse {
   vaultId: string;
   actorId: string | null;
   eventType: string;
-  encryptedPayload: string;
-  payloadSchemaVersion: number;
+  encryptedBlob: EncryptedBlob;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
   version: number;
@@ -73,7 +78,8 @@ export interface SyncEventResponse {
 
 export interface SyncAppendEventInput {
   eventType: string;
-  encryptedPayload: string;
+  encryptedBlob: unknown;
+  encryptedPayload?: string;
   baseVersion: number;
   payloadSchemaVersion?: number;
   idempotencyKey?: string;
@@ -127,25 +133,29 @@ export class SyncService {
       );
     }
 
-    const payloadSchemaVersion =
+    const legacyCryptoVersion =
       input.payloadSchemaVersion === undefined ? 2 : input.payloadSchemaVersion;
-    if (
-      !Number.isInteger(payloadSchemaVersion) ||
-      payloadSchemaVersion < 1 ||
-      payloadSchemaVersion > 65535
-    ) {
-      throw new SyncServiceError(
-        "SYNC_BAD_REQUEST",
-        400,
-        "payloadSchemaVersion must be an integer from 1 to 65535",
-      );
+    const blobInput = input.encryptedBlob ?? input.encryptedPayload;
+    let parsedBlob: ReturnType<typeof parseEncryptedBlobInput>;
+    try {
+      parsedBlob = parseEncryptedBlobInput(blobInput, {
+        fieldName: "encryptedBlob",
+        maxPayloadBytes: SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES,
+        fallbackCryptoVersion: legacyCryptoVersion,
+      });
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message.includes("exceeds")) {
+        throw new SyncServiceError("PAYLOAD_TOO_LARGE", 413, message);
+      }
+      throw new SyncServiceError("SYNC_BAD_REQUEST", 400, message);
     }
-    if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+    if (!isCryptoProfileAllowed(this.config, parsedBlob.blob.crypto_version)) {
       throw new SyncServiceError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
-        buildCryptoPolicyDetails(this.config, payloadSchemaVersion),
+        `crypto profile v${parsedBlob.blob.crypto_version} is not allowed by policy`,
+        buildCryptoPolicyDetails(this.config, parsedBlob.blob.crypto_version),
       );
     }
 
@@ -182,39 +192,14 @@ export class SyncService {
       clientCreatedAt = new Date(parsed).toISOString();
     }
 
-    let payloadBytes: Uint8Array;
-    try {
-      payloadBytes = Uint8Array.from(Buffer.from(input.encryptedPayload, "base64"));
-    } catch {
-      throw new SyncServiceError(
-        "SYNC_INVALID_PAYLOAD",
-        400,
-        "encryptedPayload must be base64",
-      );
-    }
-    if (payloadBytes.length === 0) {
-      throw new SyncServiceError(
-        "SYNC_INVALID_PAYLOAD",
-        400,
-        "encryptedPayload must not be empty",
-      );
-    }
-    if (payloadBytes.length > SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES) {
-      throw new SyncServiceError(
-        "PAYLOAD_TOO_LARGE",
-        413,
-        `encryptedPayload exceeds ${SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES} bytes`,
-      );
-    }
-
     try {
       const created = await this.events.append({
         vaultId,
         actorId: userId,
         eventType: input.eventType,
-        encryptedPayload: payloadBytes,
+        encryptedPayload: serializeEncryptedBlobToStorage(parsedBlob.blob),
         baseVersion: input.baseVersion,
-        payloadSchemaVersion,
+        payloadSchemaVersion: parsedBlob.blob.crypto_version,
         idempotencyKey: input.idempotencyKey,
         clientCreatedAt: clientCreatedAt ?? undefined,
       });
@@ -249,16 +234,18 @@ export class SyncService {
 }
 
 function mapEventToResponse(event: EventRecord): SyncEventResponse {
+  const encryptedBlob = decodeEncryptedBlobFromStorage(event.encryptedPayload, event.payloadSchemaVersion);
   return {
     id: event.id,
     vaultId: event.vaultId,
     actorId: event.actorId,
     eventType: event.eventType,
-    encryptedPayload: Buffer.from(event.encryptedPayload).toString("base64"),
-    payloadSchemaVersion: event.payloadSchemaVersion,
+    encryptedBlob,
+    encryptedPayload: encryptedBlob.payload,
+    payloadSchemaVersion: encryptedBlob.crypto_version,
     idempotencyKey: event.idempotencyKey,
     clientCreatedAt: event.clientCreatedAt,
     version: event.version,
     createdAt: event.createdAt,
-  };
+  } as SyncEventResponse;
 }

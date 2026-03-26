@@ -4,9 +4,9 @@ import { CapsuleService, CapsuleServiceError } from "../capsule/service.ts";
 
 interface CreateCapsuleBody {
   type?: string;
-  encryptedPayload?: string;
+  encryptedPayload?: unknown;
   payloadSchemaVersion?: number;
-  filePayload?: string;
+  filePayload?: unknown;
   expiresAt?: string;
   maxViews?: number;
   password?: string;

@@ -12,6 +12,24 @@ const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set<number>([
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
 ]);
 
+function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
+  const maybe = event as SyncEventWireDto & {
+    encryptedBlob?: { crypto_version?: number; payload?: string };
+    payloadSchemaVersion?: number;
+    encryptedPayload?: string;
+  };
+  if (maybe.encryptedBlob?.payload) {
+    return {
+      crypto_version: maybe.encryptedBlob.crypto_version ?? 2,
+      payload: maybe.encryptedBlob.payload,
+    };
+  }
+  return {
+    crypto_version: maybe.payloadSchemaVersion ?? 2,
+    payload: maybe.encryptedPayload ?? "",
+  };
+}
+
 export interface ItemVaultReplayState {
   /** Latest materialized state per item id (always normalized to v2). */
   items: Map<string, ItemPlaintextV2>;
@@ -20,7 +38,7 @@ export interface ItemVaultReplayState {
 /**
  * Deterministic replay of ITEM_* events for a vault stream (after decrypting ciphertext).
  * v1 and v2 plaintext JSON are normalized to {@link ItemPlaintextV2}.
- * Unknown `payloadSchemaVersion` values are skipped (see sync architecture).
+ * Unknown `encryptedBlob.crypto_version` values are skipped (see sync architecture).
  */
 export async function replayItemPlaintextEvents(
   events: SyncEventWireDto[],
@@ -31,10 +49,11 @@ export async function replayItemPlaintextEvents(
     if (!ITEM_TYPES.has(ev.eventType)) {
       continue;
     }
-    if (!SUPPORTED_PAYLOAD_SCHEMA_VERSIONS.has(ev.payloadSchemaVersion)) {
+    const blob = getEventBlob(ev);
+    if (!SUPPORTED_PAYLOAD_SCHEMA_VERSIONS.has(blob.crypto_version)) {
       continue;
     }
-    const plaintextBytes = await decryptWirePayload(ev.encryptedPayload);
+    const plaintextBytes = await decryptWirePayload(blob.payload);
     const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
     if (!parsed) {
       continue;

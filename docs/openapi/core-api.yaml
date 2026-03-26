@@ -305,8 +305,7 @@ components:
           vaultId,
           actorId,
           eventType,
-          encryptedPayload,
-          payloadSchemaVersion,
+          encryptedBlob,
           idempotencyKey,
           clientCreatedAt,
           version,
@@ -338,14 +337,8 @@ components:
             - VAULT_KEY_ROTATION
             - DEVICE_ADD
             - DEVICE_REMOVE
-        encryptedPayload:
-          type: string
-          description: Standard base64 ciphertext
-        payloadSchemaVersion:
-          type: integer
-          minimum: 1
-          maximum: 65535
-          default: 2
+        encryptedBlob:
+          $ref: "#/components/schemas/EncryptedBlob"
         idempotencyKey:
           type: string
           format: uuid
@@ -378,20 +371,15 @@ components:
 
     SyncAppendRequest:
       type: object
-      required: [eventType, encryptedPayload, baseVersion]
+      required: [eventType, encryptedBlob, baseVersion]
       properties:
         eventType:
           type: string
-        encryptedPayload:
-          type: string
+        encryptedBlob:
+          $ref: "#/components/schemas/EncryptedBlob"
         baseVersion:
           type: integer
           minimum: 0
-        payloadSchemaVersion:
-          type: integer
-          minimum: 1
-          maximum: 65535
-          default: 2
         idempotencyKey:
           type: string
           format: uuid
@@ -404,8 +392,7 @@ components:
       required: [encryptedVaultKey]
       properties:
         encryptedVaultKey:
-          type: string
-          description: Base64 wrapped vault key for authenticated user
+          $ref: "#/components/schemas/EncryptedBlob"
 
     VaultShareMember:
       type: object
@@ -423,7 +410,7 @@ components:
           type: string
           nullable: true
         encryptedVaultKey:
-          type: string
+          $ref: "#/components/schemas/EncryptedBlob"
           nullable: true
 
     VaultSharesResponse:
@@ -446,17 +433,12 @@ components:
           type: string
           format: uuid
         encryptedVaultKey:
-          type: string
+          $ref: "#/components/schemas/EncryptedBlob"
         encryptedPayload:
-          type: string
+          $ref: "#/components/schemas/EncryptedBlob"
         baseVersion:
           type: integer
           minimum: 0
-        payloadSchemaVersion:
-          type: integer
-          minimum: 1
-          maximum: 65535
-          default: 2
         idempotencyKey:
           type: string
           format: uuid
@@ -484,17 +466,12 @@ components:
                 type: string
                 format: uuid
               encryptedVaultKey:
-                type: string
+                $ref: "#/components/schemas/EncryptedBlob"
         encryptedPayload:
-          type: string
+          $ref: "#/components/schemas/EncryptedBlob"
         baseVersion:
           type: integer
           minimum: 0
-        payloadSchemaVersion:
-          type: integer
-          minimum: 1
-          maximum: 65535
-          default: 2
         idempotencyKey:
           type: string
           format: uuid
@@ -544,9 +521,9 @@ components:
           required: [encryptedPayload]
           properties:
             encryptedPayload:
-              type: string
+              $ref: "#/components/schemas/EncryptedBlob"
             filePayload:
-              type: string
+              $ref: "#/components/schemas/EncryptedBlob"
 
     CapsuleCreateRequest:
       type: object
@@ -556,14 +533,9 @@ components:
           type: string
           enum: [item, field, file]
         encryptedPayload:
-          type: string
-        payloadSchemaVersion:
-          type: integer
-          minimum: 1
-          maximum: 65535
-          default: 2
+          $ref: "#/components/schemas/EncryptedBlob"
         filePayload:
-          type: string
+          $ref: "#/components/schemas/EncryptedBlob"
         expiresAt:
           type: string
           format: date-time
@@ -578,6 +550,23 @@ components:
           items:
             type: string
             format: email
+
+    EncryptedBlob:
+      type: object
+      required: [crypto_version, algorithm, payload, meta]
+      properties:
+        crypto_version:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        algorithm:
+          type: string
+        payload:
+          type: string
+          description: Standard base64 ciphertext
+        meta:
+          type: object
+          additionalProperties: true
 
     DeviceRegisterRequest:
       type: object

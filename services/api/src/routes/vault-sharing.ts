@@ -4,8 +4,8 @@ import { VaultSharingService, VaultSharingServiceError } from "../vault-sharing/
 
 interface ShareVaultBody {
   recipientUserId?: string;
-  encryptedVaultKey?: string;
-  encryptedPayload?: string;
+  encryptedVaultKey?: unknown;
+  encryptedPayload?: unknown;
   baseVersion?: number;
   payloadSchemaVersion?: number;
   idempotencyKey?: string;
@@ -15,8 +15,8 @@ interface ShareVaultBody {
 
 interface RevokeVaultBody {
   recipientUserId?: string;
-  rotatedVaultKeys?: Array<{ userId?: string; encryptedVaultKey?: string }>;
-  encryptedPayload?: string;
+  rotatedVaultKeys?: Array<{ userId?: string; encryptedVaultKey?: unknown }>;
+  encryptedPayload?: unknown;
   baseVersion?: number;
   payloadSchemaVersion?: number;
   idempotencyKey?: string;
@@ -174,7 +174,7 @@ export function createVaultShareRevokeRoute(
       return;
     }
     const rotatedVaultKeys = body.rotatedVaultKeys
-      .filter((entry) => Boolean(entry.userId) && Boolean(entry.encryptedVaultKey))
+      .filter((entry) => Boolean(entry.userId) && entry.encryptedVaultKey !== undefined)
       .map((entry) => ({
         userId: entry.userId!,
         encryptedVaultKey: entry.encryptedVaultKey!,

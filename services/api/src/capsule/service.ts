@@ -5,6 +5,12 @@ import {
   CRYPTO_POLICY_VIOLATION_STATUS_CODE,
   isCryptoProfileAllowed,
 } from "../crypto/policy.ts";
+import {
+  decodeEncryptedBlobFromStorage,
+  parseEncryptedBlobInput,
+  serializeEncryptedBlobToStorage,
+  type EncryptedBlob,
+} from "../crypto/encrypted-blob.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ObjectStorage } from "../storage/object-storage.ts";
 
@@ -70,9 +76,9 @@ interface CapsuleAccessPolicy {
 
 export interface CreateCapsuleInput {
   type: string;
-  encryptedPayload: string;
+  encryptedPayload: unknown;
   payloadSchemaVersion?: number;
-  filePayload?: string;
+  filePayload?: unknown;
   expiresAt?: string;
   maxViews?: number;
   password?: string;
@@ -90,8 +96,8 @@ export interface CapsuleMetadataResponse {
 }
 
 export interface OpenCapsuleResponse extends CapsuleMetadataResponse {
-  encryptedPayload: string;
-  filePayload?: string;
+  encryptedPayload: EncryptedBlob;
+  filePayload?: EncryptedBlob;
 }
 
 export class CapsuleService {
@@ -115,15 +121,12 @@ export class CapsuleService {
     if (!CAPSULE_TYPES.has(input.type)) {
       throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid capsule type");
     }
-    const payloadSchemaVersion =
-      input.payloadSchemaVersion === undefined ? 2 : input.payloadSchemaVersion;
-    if (!Number.isInteger(payloadSchemaVersion) || payloadSchemaVersion < 1) {
-      throw new CapsuleServiceError(
-        "CAPSULE_BAD_REQUEST",
-        400,
-        "payloadSchemaVersion must be a positive integer",
-      );
-    }
+    const payloadBlob = parseBlobOrThrow(
+      input.encryptedPayload,
+      "encryptedPayload",
+      input.payloadSchemaVersion,
+    );
+    const payloadSchemaVersion = payloadBlob.crypto_version;
     if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
       throw new CapsuleServiceError(
         CRYPTO_POLICY_VIOLATION,
@@ -131,7 +134,7 @@ export class CapsuleService {
         `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
       );
     }
-    const payload = parsePayload(input.encryptedPayload);
+    const payload = serializeEncryptedBlobToStorage(payloadBlob);
     const workspace = await this.readWorkspaceAccess(workspaceId, creatorId);
     if (!workspace.exists) {
       throw new CapsuleServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
@@ -147,9 +150,13 @@ export class CapsuleService {
     const maxViews = normalizeMaxViews(input.maxViews);
     const filePayload =
       input.type === "file"
-        ? parsePayload(input.filePayload ?? "")
+        ? serializeEncryptedBlobToStorage(
+            parseBlobOrThrow(input.filePayload ?? null, "filePayload", input.payloadSchemaVersion),
+          )
         : input.filePayload
-          ? parsePayload(input.filePayload)
+          ? serializeEncryptedBlobToStorage(
+              parseBlobOrThrow(input.filePayload, "filePayload", input.payloadSchemaVersion),
+            )
           : null;
     const accessPolicy = buildAccessPolicy(
       input.password,
@@ -272,13 +279,13 @@ export class CapsuleService {
 
       const response: OpenCapsuleResponse = {
         ...mapMetadata({ ...capsule, view_count: capsule.view_count + 1 }),
-        encryptedPayload: Buffer.from(capsule.encrypted_payload).toString("base64"),
+        encryptedPayload: decodeEncryptedBlobFromStorage(Uint8Array.from(capsule.encrypted_payload)),
       };
       const policy = parsePolicy(capsule.access_policy);
       if (policy.fileStorageKey) {
         const filePayload = await this.objectStorage.getObject(policy.fileStorageKey);
         if (filePayload) {
-          response.filePayload = Buffer.from(filePayload).toString("base64");
+          response.filePayload = decodeEncryptedBlobFromStorage(Uint8Array.from(filePayload));
         }
       }
       return response;
@@ -367,28 +374,20 @@ export class CapsuleService {
   }
 }
 
-function parsePayload(encoded: string): Uint8Array {
-  let bytes: Uint8Array;
+function parseBlobOrThrow(value: unknown, fieldName: string, fallbackCryptoVersion?: number): EncryptedBlob {
   try {
-    bytes = Uint8Array.from(Buffer.from(encoded, "base64"));
-  } catch {
-    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "encryptedPayload must be base64");
+    return parseEncryptedBlobInput(value, {
+      fieldName,
+      maxPayloadBytes: MAX_ENCRYPTED_PAYLOAD_BYTES,
+      fallbackCryptoVersion,
+    }).blob;
+  } catch (error) {
+    const message = (error as Error).message;
+    if (message.includes("exceeds")) {
+      throw new CapsuleServiceError("PAYLOAD_TOO_LARGE", 413, message);
+    }
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, message);
   }
-  if (bytes.length === 0) {
-    throw new CapsuleServiceError(
-      "CAPSULE_BAD_REQUEST",
-      400,
-      "encryptedPayload must not be empty",
-    );
-  }
-  if (bytes.length > MAX_ENCRYPTED_PAYLOAD_BYTES) {
-    throw new CapsuleServiceError(
-      "PAYLOAD_TOO_LARGE",
-      413,
-      `encryptedPayload exceeds ${MAX_ENCRYPTED_PAYLOAD_BYTES} bytes`,
-    );
-  }
-  return bytes;
 }
 
 function normalizeFutureIsoDate(iso?: string): string | null {

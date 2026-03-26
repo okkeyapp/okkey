@@ -1,4 +1,4 @@
-import type { ItemPlaintextV2, SyncAppendEventRequestDto } from "@okkey/types";
+import type { EncryptedBlobDto, ItemPlaintextV2, SyncAppendEventRequestDto } from "@okkey/types";
 import { createItemDeleteTombstoneV2, ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST } from "@okkey/types";
 import { encryptVaultItemPayload } from "@okkey/crypto/vault-item";
 
@@ -11,6 +11,15 @@ function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
 }
 
 const encoder = new TextEncoder();
+
+function toEncryptedBlob(payloadBase64: string, cryptoVersion: number): EncryptedBlobDto {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: payloadBase64,
+    meta: {},
+  };
+}
 
 export async function encodeItemPlaintextUtf8(item: ItemPlaintextV2): Promise<Uint8Array> {
   return encoder.encode(JSON.stringify(item));
@@ -27,9 +36,11 @@ export async function buildItemCreateAppendRequest(
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
   return {
     eventType: "ITEM_CREATE",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(
+      uint8ArrayToStandardBase64(encrypted),
+      ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    ),
     baseVersion,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     idempotencyKey,
     clientCreatedAt,
   };
@@ -46,9 +57,11 @@ export async function buildItemUpdateAppendRequest(
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
   return {
     eventType: "ITEM_UPDATE",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(
+      uint8ArrayToStandardBase64(encrypted),
+      ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    ),
     baseVersion,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };
@@ -67,9 +80,11 @@ export async function buildItemDeleteAppendRequest(
   const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
   return {
     eventType: "ITEM_DELETE",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(
+      uint8ArrayToStandardBase64(encrypted),
+      ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+    ),
     baseVersion,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };

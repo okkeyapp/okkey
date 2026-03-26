@@ -1,4 +1,5 @@
 import type {
+  EncryptedBlobDto,
   FolderPlaintextV1,
   ItemFolderAssignPlaintextV1,
   SyncAppendEventRequestDto,
@@ -19,6 +20,15 @@ function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
 
 const encoder = new TextEncoder();
 
+function toEncryptedBlob(payloadBase64: string, cryptoVersion: number): EncryptedBlobDto {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: payloadBase64,
+    meta: {},
+  };
+}
+
 export async function buildFolderCreateAppendRequest(
   personalMetadataKey: Uint8Array,
   folder: FolderPlaintextV1,
@@ -30,9 +40,8 @@ export async function buildFolderCreateAppendRequest(
   const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
   return {
     eventType: "FOLDER_CREATE",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(uint8ArrayToStandardBase64(encrypted), FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     idempotencyKey,
     clientCreatedAt,
   };
@@ -49,9 +58,8 @@ export async function buildFolderUpdateAppendRequest(
   const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
   return {
     eventType: "FOLDER_UPDATE",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(uint8ArrayToStandardBase64(encrypted), FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };
@@ -68,9 +76,8 @@ export async function buildFolderDeleteAppendRequest(
   const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
   return {
     eventType: "FOLDER_DELETE",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(uint8ArrayToStandardBase64(encrypted), FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };
@@ -87,9 +94,11 @@ export async function buildItemFolderAssignAppendRequest(
   const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
   return {
     eventType: "ITEM_FOLDER_ASSIGN",
-    encryptedPayload: uint8ArrayToStandardBase64(encrypted),
+    encryptedBlob: toEncryptedBlob(
+      uint8ArrayToStandardBase64(encrypted),
+      ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+    ),
     baseVersion,
-    payloadSchemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     clientCreatedAt,
   };

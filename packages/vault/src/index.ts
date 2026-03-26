@@ -1,6 +1,7 @@
 import type { Item, Vault } from "../../types/src/index.js";
 import type {
   CapsuleCreateRequestDto,
+  EncryptedBlobDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
 } from "../../types/src/index.js";
@@ -31,10 +32,10 @@ export interface BuildCapsuleCreateResult {
 export async function buildCapsuleCreateRequest(
   input: BuildCapsuleCreateInput,
 ): Promise<BuildCapsuleCreateResult> {
-  const encryptedPayload = Buffer.from(await input.encrypt(input.plaintext)).toString("base64");
-  let filePayload: string | undefined;
+  const encryptedPayload = toEncryptedBlobDto(await input.encrypt(input.plaintext));
+  let filePayload: EncryptedBlobDto | undefined;
   if (input.filePlaintext) {
-    filePayload = Buffer.from(await input.encrypt(input.filePlaintext)).toString("base64");
+    filePayload = toEncryptedBlobDto(await input.encrypt(input.filePlaintext));
   }
   return {
     request: {
@@ -61,7 +62,7 @@ export interface OpenCapsuleResult {
 }
 
 export async function openCapsulePayload(input: OpenCapsuleInput): Promise<OpenCapsuleResult> {
-  const payloadBytes = Uint8Array.from(Buffer.from(input.response.encryptedPayload, "base64"));
+  const payloadBytes = Uint8Array.from(Buffer.from(input.response.encryptedPayload.payload, "base64"));
   const plaintext = await input.decrypt(payloadBytes);
   const metadata: CapsuleMetadataDto = {
     capsuleId: input.response.capsuleId,
@@ -75,8 +76,17 @@ export async function openCapsulePayload(input: OpenCapsuleInput): Promise<OpenC
   let filePlaintext: Uint8Array | undefined;
   if (input.response.filePayload) {
     filePlaintext = await input.decrypt(
-      Uint8Array.from(Buffer.from(input.response.filePayload, "base64")),
+      Uint8Array.from(Buffer.from(input.response.filePayload.payload, "base64")),
     );
   }
   return { metadata, plaintext, ...(filePlaintext ? { filePlaintext } : {}) };
+}
+
+function toEncryptedBlobDto(payload: Uint8Array): EncryptedBlobDto {
+  return {
+    crypto_version: 2,
+    algorithm: "opaque",
+    payload: Buffer.from(payload).toString("base64"),
+    meta: {},
+  };
 }
