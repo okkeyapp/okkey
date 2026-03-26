@@ -3,6 +3,15 @@ import assert from "node:assert/strict";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { VersionConflictError } from "../src/storage/errors.ts";
 
+function mkBlob(payload = "x", cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(payload).toString("base64"),
+    meta: {},
+  };
+}
+
 test("listEvents returns mapped events for readable vault", async () => {
   const service = new SyncService({
     vaults: {
@@ -69,7 +78,7 @@ test("appendEvent validates event type", async () => {
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "BAD_TYPE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x"),
         baseVersion: 0,
       }),
     (error: unknown) =>
@@ -104,7 +113,7 @@ test("appendEvent maps version conflict", async () => {
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "ITEM_UPDATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x"),
         baseVersion: 1,
       }),
     (error: unknown) =>
@@ -139,7 +148,7 @@ test("appendEvent requires idempotencyKey for FOLDER_CREATE", async () => {
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "FOLDER_CREATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x"),
         baseVersion: 0,
       }),
     (error: unknown) =>
@@ -174,7 +183,7 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "ITEM_CREATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x"),
         baseVersion: 0,
       }),
     (error: unknown) =>
@@ -210,7 +219,12 @@ test("appendEvent rejects oversized payload", async () => {
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "ITEM_UPDATE",
-        encryptedPayload: big,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: big,
+          meta: {},
+        },
         baseVersion: 0,
       }),
     (error: unknown) =>
@@ -286,7 +300,7 @@ test("appendEvent returns VAULT_NOT_FOUND when vault does not exist", async () =
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "ITEM_UPDATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x"),
         baseVersion: 0,
       }),
     (error: unknown) =>
@@ -320,7 +334,7 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "ITEM_UPDATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x"),
         baseVersion: 0,
       }),
     (error: unknown) =>
@@ -357,16 +371,15 @@ test("appendEvent rejects disallowed crypto profile by policy", async () => {
     () =>
       service.appendEvent("v1", "u1", {
         eventType: "ITEM_UPDATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
-        payloadSchemaVersion: 1,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "CRYPTO_PROFILE_NOT_ALLOWED",
   );
 });
 
-test("appendEvent uses v2 as default payloadSchemaVersion", async () => {
+test("appendEvent preserves encryptedBlob crypto_version", async () => {
   let capturedVersion = -1;
   const service = new SyncService({
     vaults: {
@@ -406,7 +419,7 @@ test("appendEvent uses v2 as default payloadSchemaVersion", async () => {
 
   await service.appendEvent("v1", "u1", {
     eventType: "ITEM_UPDATE",
-    encryptedPayload: Buffer.from("x").toString("base64"),
+    encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,
   });
   assert.equal(capturedVersion, 2);

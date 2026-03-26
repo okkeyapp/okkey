@@ -5,7 +5,6 @@ import { CapsuleService, CapsuleServiceError } from "../capsule/service.ts";
 interface CreateCapsuleBody {
   type?: string;
   encryptedPayload?: unknown;
-  payloadSchemaVersion?: number;
   filePayload?: unknown;
   expiresAt?: string;
   maxViews?: number;
@@ -58,7 +57,6 @@ export function createCapsuleCreateRoute(
       const created = await capsuleService.createCapsule(workspaceId, userId, {
         type: body.type,
         encryptedPayload: body.encryptedPayload,
-        payloadSchemaVersion: body.payloadSchemaVersion,
         filePayload: body.filePayload,
         expiresAt: body.expiresAt,
         maxViews: body.maxViews,

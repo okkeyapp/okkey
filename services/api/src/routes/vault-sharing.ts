@@ -7,7 +7,6 @@ interface ShareVaultBody {
   encryptedVaultKey?: unknown;
   encryptedPayload?: unknown;
   baseVersion?: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
   role?: string;
@@ -18,7 +17,6 @@ interface RevokeVaultBody {
   rotatedVaultKeys?: Array<{ userId?: string; encryptedVaultKey?: unknown }>;
   encryptedPayload?: unknown;
   baseVersion?: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
@@ -118,7 +116,6 @@ export function createVaultShareUpsertRoute(
         encryptedVaultKey: body.encryptedVaultKey,
         encryptedPayload: body.encryptedPayload,
         baseVersion: body.baseVersion,
-        payloadSchemaVersion: body.payloadSchemaVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
         role: body.role,
@@ -203,7 +200,6 @@ export function createVaultShareRevokeRoute(
         rotatedVaultKeys,
         encryptedPayload: body.encryptedPayload,
         baseVersion: body.baseVersion,
-        payloadSchemaVersion: body.payloadSchemaVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
       });

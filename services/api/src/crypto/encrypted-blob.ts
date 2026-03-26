@@ -30,10 +30,12 @@ export function parseEncryptedBlobInput(
     maxPayloadBytes: number;
     allowedAlgorithms?: ReadonlySet<string>;
     fallbackCryptoVersion?: number;
+    allowLegacyString?: boolean;
   },
 ): { blob: EncryptedBlob; payloadBytes: Uint8Array } {
   const allowedAlgorithms = options.allowedAlgorithms ?? DEFAULT_ALLOWED_ALGORITHMS;
-  if (typeof value === "string" && value.length > 0) {
+  const allowLegacyString = options.allowLegacyString ?? true;
+  if (allowLegacyString && typeof value === "string" && value.length > 0) {
     const payloadBytes = parseBase64Payload(value, options.fieldName);
     if (payloadBytes.length > options.maxPayloadBytes) {
       throw new Error(`${options.fieldName}.payload exceeds ${options.maxPayloadBytes} bytes`);
@@ -86,6 +88,19 @@ export function parseEncryptedBlobInput(
       meta,
     },
     payloadBytes,
+  };
+}
+
+export function mergeEncryptedBlobMeta(
+  blob: EncryptedBlob,
+  requiredMeta: Record<string, unknown>,
+): EncryptedBlob {
+  return {
+    ...blob,
+    meta: {
+      ...requiredMeta,
+      ...blob.meta,
+    },
   };
 }
 

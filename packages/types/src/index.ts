@@ -389,7 +389,7 @@ export interface DeviceRejectResponseDto {
 export interface RegisterCompleteRequestDto {
   auth_state_id: UUID;
   user_public_key: string;
-  encrypted_private_key: string;
+  encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;
   password_kdf_params_version: number;

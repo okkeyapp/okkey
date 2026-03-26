@@ -20,6 +20,15 @@ function createLoggerStub() {
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
+function mkEncryptedPrivateKeyBlob(byte: number) {
+  return {
+    crypto_version: 2,
+    algorithm: "opaque",
+    payload: Buffer.from(new Uint8Array(64).fill(byte)).toString("base64"),
+    meta: {},
+  };
+}
+
 test("integration: registration completes user, workspace, vault, trusted device", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -98,7 +107,7 @@ test("integration: registration completes user, workspace, vault, trusted device
 
   const share32 = new Uint8Array(32).fill(11);
   const salt16 = new Uint8Array(16).fill(22);
-  const encPriv = new Uint8Array(64).fill(33);
+  const encPriv = mkEncryptedPrivateKeyBlob(33);
   const pkB64 = Buffer.alloc(32, 5).toString("base64");
 
   const result = await registrationService.completeRegistration({
@@ -236,7 +245,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
 
   const share32 = new Uint8Array(32).fill(11);
   const salt16 = new Uint8Array(16).fill(22);
-  const encPriv = new Uint8Array(64).fill(33);
+  const encPriv = mkEncryptedPrivateKeyBlob(33);
   const pkB64 = Buffer.alloc(32, 5).toString("base64");
 
   const payload = {
@@ -344,7 +353,12 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
       registrationService.completeRegistration({
         authStateId: missingStateId,
         userPublicKey: Buffer.alloc(32, 1).toString("base64"),
-        encryptedPrivateKey: new Uint8Array(48).fill(1),
+        encryptedPrivateKey: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: Buffer.from(new Uint8Array(48).fill(1)).toString("base64"),
+          meta: {},
+        },
         serverKeyShare: new Uint8Array(32).fill(2),
         passwordKdfSalt: new Uint8Array(16).fill(3),
         passwordKdfParamsVersion: 1,

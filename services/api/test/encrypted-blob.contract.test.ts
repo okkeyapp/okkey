@@ -17,6 +17,7 @@ test("OpenAPI includes canonical EncryptedBlob schema and usage", async () => {
   assert.match(content, /SyncAppendRequest:[\s\S]*encryptedBlob:/);
   assert.match(content, /VaultKeyResponse:[\s\S]*encryptedVaultKey:[\s\S]*EncryptedBlob/);
   assert.match(content, /CapsuleCreateRequest:[\s\S]*encryptedPayload:[\s\S]*EncryptedBlob/);
+  assert.match(content, /RegisterCompleteRequest:[\s\S]*encrypted_private_key:[\s\S]*EncryptedBlob/);
 });
 
 test("DTO contract exposes EncryptedBlob fields in types", async () => {
@@ -32,4 +33,5 @@ test("DTO contract exposes EncryptedBlob fields in types", async () => {
   assert.match(content, /SyncAppendEventRequestDto[\s\S]*encryptedBlob: EncryptedBlobDto;/);
   assert.match(content, /SyncEventWireDto[\s\S]*encryptedBlob: EncryptedBlobDto;/);
   assert.match(content, /CapsuleCreateRequestDto[\s\S]*encryptedPayload: EncryptedBlobDto;/);
+  assert.match(content, /RegisterCompleteRequestDto[\s\S]*encrypted_private_key: EncryptedBlobDto;/);
 });

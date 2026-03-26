@@ -122,7 +122,12 @@ export async function registerUser(
 
   const share32 = new Uint8Array(32).fill(11);
   const salt16 = new Uint8Array(16).fill(22);
-  const encPriv = new Uint8Array(64).fill(33);
+  const encPriv = {
+    crypto_version: 1,
+    algorithm: "opaque",
+    payload: Buffer.from(new Uint8Array(64).fill(33)).toString("base64"),
+    meta: {},
+  };
   const pkB64 = Buffer.alloc(32, 5).toString("base64");
 
   const result = await registrationService.completeRegistration({

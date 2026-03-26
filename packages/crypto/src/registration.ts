@@ -9,6 +9,7 @@ import initWasm, {
   kdf_derive,
   random_bytes,
 } from "@okkey/crypto-wasm";
+import type { EncryptedBlobDto } from "@okkey/types";
 
 const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
@@ -104,14 +105,22 @@ export function registrationArtifactsToWire(
   material: RegistrationSplitKeyMaterial & RegistrationUserKeyMaterial,
 ): {
   user_public_key: string;
-  encrypted_private_key: string;
+  encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;
   password_kdf_params_version: number;
 } {
   return {
     user_public_key: b64_encode(material.userPublicKey),
-    encrypted_private_key: b64_encode(material.encryptedPrivateKey),
+    encrypted_private_key: {
+      crypto_version: material.passwordKdfParamsVersion,
+      algorithm: "opaque",
+      payload: b64_encode(material.encryptedPrivateKey),
+      meta: {
+        entity: "user_private_key_bundle",
+        key_scope: "account",
+      },
+    },
     server_key_share: b64_encode(material.serverKeyShare),
     password_kdf_salt: b64_encode(material.passwordKdfSalt),
     password_kdf_params_version: material.passwordKdfParamsVersion,

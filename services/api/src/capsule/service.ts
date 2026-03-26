@@ -7,6 +7,7 @@ import {
 } from "../crypto/policy.ts";
 import {
   decodeEncryptedBlobFromStorage,
+  mergeEncryptedBlobMeta,
   parseEncryptedBlobInput,
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
@@ -77,7 +78,6 @@ interface CapsuleAccessPolicy {
 export interface CreateCapsuleInput {
   type: string;
   encryptedPayload: unknown;
-  payloadSchemaVersion?: number;
   filePayload?: unknown;
   expiresAt?: string;
   maxViews?: number;
@@ -124,9 +124,12 @@ export class CapsuleService {
     const payloadBlob = parseBlobOrThrow(
       input.encryptedPayload,
       "encryptedPayload",
-      input.payloadSchemaVersion,
     );
-    const payloadSchemaVersion = payloadBlob.crypto_version;
+    const normalizedPayloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
+      entity: "capsule_payload",
+      capsule_type: input.type,
+    });
+    const payloadSchemaVersion = normalizedPayloadBlob.crypto_version;
     if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
       throw new CapsuleServiceError(
         CRYPTO_POLICY_VIOLATION,
@@ -134,7 +137,7 @@ export class CapsuleService {
         `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
       );
     }
-    const payload = serializeEncryptedBlobToStorage(payloadBlob);
+    const payload = serializeEncryptedBlobToStorage(normalizedPayloadBlob);
     const workspace = await this.readWorkspaceAccess(workspaceId, creatorId);
     if (!workspace.exists) {
       throw new CapsuleServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
@@ -151,11 +154,17 @@ export class CapsuleService {
     const filePayload =
       input.type === "file"
         ? serializeEncryptedBlobToStorage(
-            parseBlobOrThrow(input.filePayload ?? null, "filePayload", input.payloadSchemaVersion),
+            mergeEncryptedBlobMeta(parseBlobOrThrow(input.filePayload ?? null, "filePayload"), {
+              entity: "capsule_file_payload",
+              capsule_type: input.type,
+            }),
           )
         : input.filePayload
           ? serializeEncryptedBlobToStorage(
-              parseBlobOrThrow(input.filePayload, "filePayload", input.payloadSchemaVersion),
+              mergeEncryptedBlobMeta(parseBlobOrThrow(input.filePayload, "filePayload"), {
+                entity: "capsule_file_payload",
+                capsule_type: input.type,
+              }),
             )
           : null;
     const accessPolicy = buildAccessPolicy(
@@ -374,12 +383,12 @@ export class CapsuleService {
   }
 }
 
-function parseBlobOrThrow(value: unknown, fieldName: string, fallbackCryptoVersion?: number): EncryptedBlob {
+function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {
   try {
     return parseEncryptedBlobInput(value, {
       fieldName,
       maxPayloadBytes: MAX_ENCRYPTED_PAYLOAD_BYTES,
-      fallbackCryptoVersion,
+      allowLegacyString: false,
     }).blob;
   } catch (error) {
     const message = (error as Error).message;

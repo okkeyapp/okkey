@@ -19,6 +19,15 @@ import {
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
+function mkBlob(payload: string, cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(payload).toString("base64"),
+    meta: {},
+  };
+}
+
 test("integration: register → email login (Bearer) → vault + sync → second device + approval email", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -126,12 +135,10 @@ test("integration: register → email login (Bearer) → vault + sync → second
   const vaultOne = await vaultService.getVault(vaultId, userId);
   assert.equal(vaultOne.id, vaultId);
 
-  const payloadB64 = Buffer.from("opaque-event-payload").toString("base64");
   const created = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_CREATE",
-    encryptedPayload: payloadB64,
+    encryptedBlob: mkBlob("opaque-event-payload", 1),
     baseVersion: 0,
-    payloadSchemaVersion: 1,
     idempotencyKey: randomUUID(),
   });
   assert.equal(created.eventType, "ITEM_CREATE");

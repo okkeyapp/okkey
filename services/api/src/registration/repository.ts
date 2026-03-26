@@ -1,9 +1,10 @@
 import type { QueryExecutor } from "../storage/postgres.ts";
+import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 
 export interface RegistrationBundleInput {
   email: string;
   publicKey: string;
-  encryptedPrivateKey: Uint8Array;
+  encryptedPrivateKey: EncryptedBlob;
   serverKeyShare: Uint8Array;
   passwordKdfSalt: Uint8Array;
   passwordKdfParamsVersion: number;
@@ -48,7 +49,7 @@ export async function insertRegistrationBundle(
     [
       input.email,
       input.publicKey,
-      Buffer.from(input.encryptedPrivateKey),
+      Buffer.from(serializeEncryptedBlobToStorage(input.encryptedPrivateKey)),
       Buffer.from(input.serverKeyShare),
       Buffer.from(input.passwordKdfSalt),
       input.passwordKdfParamsVersion,

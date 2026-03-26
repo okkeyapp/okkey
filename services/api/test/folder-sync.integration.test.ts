@@ -21,6 +21,15 @@ function encodeFolderOpaqueBase64(payload: unknown): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
 }
 
+function mkBlobFromJson(payload: unknown, cryptoVersion: number) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: encodeFolderOpaqueBase64(payload),
+    meta: {},
+  };
+}
+
 test("integration: folder events append, idempotency, list, replay", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -73,12 +82,10 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
     updatedAtMs: now,
   };
 
-  const opaqueB64 = encodeFolderOpaqueBase64(folderRow);
   const created = await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedPayload: opaqueB64,
+    encryptedBlob: mkBlobFromJson(folderRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion: 0,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     idempotencyKey: idem,
   });
   assert.equal(created.eventType, "FOLDER_CREATE");
@@ -87,9 +94,8 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
 
   const retry = await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedPayload: opaqueB64,
+    encryptedBlob: mkBlobFromJson(folderRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion: 0,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     idempotencyKey: idem,
   });
   assert.equal(retry.id, created.id);
@@ -99,9 +105,8 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
     () =>
       syncService.appendEvent(vaultId, userId, {
         eventType: "FOLDER_CREATE",
-        encryptedPayload: opaqueB64,
+        encryptedBlob: mkBlobFromJson(folderRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
         baseVersion: 0,
-        payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "SYNC_BAD_REQUEST",
   );
@@ -115,9 +120,8 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_FOLDER_ASSIGN",
-    encryptedPayload: encodeFolderOpaqueBase64(assign),
+    encryptedBlob: mkBlobFromJson(assign, ITEM_FOLDER_ASSIGN_SCHEMA_VERSION),
     baseVersion: 1,
-    payloadSchemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
   });
 
   const listed = await syncService.listEvents(vaultId, userId, 0);
@@ -183,9 +187,8 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedPayload: encodeFolderOpaqueBase64(parentRow),
+    encryptedBlob: mkBlobFromJson(parentRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion: 0,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     idempotencyKey: randomUUID(),
   });
 
@@ -200,9 +203,8 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedPayload: encodeFolderOpaqueBase64(childRow),
+    encryptedBlob: mkBlobFromJson(childRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion: 1,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
     idempotencyKey: randomUUID(),
   });
 
@@ -216,22 +218,23 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   const renamedParent = { ...parentRow, name: "ParentRenamed", updatedAtMs: now + 1 };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_UPDATE",
-    encryptedPayload: encodeFolderOpaqueBase64(renamedParent),
+    encryptedBlob: mkBlobFromJson(renamedParent, FOLDER_PLAINTEXT_SCHEMA_VERSION),
     baseVersion: 2,
-    payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
   });
 
   await assert.rejects(
     () =>
       syncService.appendEvent(vaultId, userId, {
         eventType: "FOLDER_UPDATE",
-        encryptedPayload: encodeFolderOpaqueBase64({
-          ...parentRow,
-          name: "Conflict",
-          updatedAtMs: now + 2,
-        }),
+        encryptedBlob: mkBlobFromJson(
+          {
+            ...parentRow,
+            name: "Conflict",
+            updatedAtMs: now + 2,
+          },
+          FOLDER_PLAINTEXT_SCHEMA_VERSION,
+        ),
         baseVersion: 2,
-        payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "VERSION_MISMATCH",
   );

@@ -5,9 +5,7 @@ import { SyncService, SyncServiceError } from "../sync/service.ts";
 interface AppendEventBody {
   eventType?: string;
   encryptedBlob?: unknown;
-  encryptedPayload?: string;
   baseVersion?: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
@@ -63,13 +61,13 @@ export function createSyncEventsAppendRoute(
       return;
     }
 
-    if (!body.eventType || (!body.encryptedBlob && !body.encryptedPayload) || body.baseVersion === undefined) {
+    if (!body.eventType || !body.encryptedBlob || body.baseVersion === undefined) {
       json(
         ctx.res,
         400,
         errorPayload(
           "SYNC_BAD_REQUEST",
-          "eventType, encryptedBlob|encryptedPayload and baseVersion are required",
+          "eventType, encryptedBlob and baseVersion are required",
           ctx.requestId,
         ),
       );
@@ -85,9 +83,7 @@ export function createSyncEventsAppendRoute(
       const created = await syncService.appendEvent(vaultId, userId, {
         eventType: body.eventType,
         encryptedBlob: body.encryptedBlob,
-        encryptedPayload: body.encryptedPayload,
         baseVersion: body.baseVersion,
-        payloadSchemaVersion: body.payloadSchemaVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
       });

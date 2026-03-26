@@ -27,6 +27,15 @@ function encodeItemPlaintextOpaqueBase64(item: ItemPlaintextV2): string {
   return Buffer.from(JSON.stringify(item), "utf8").toString("base64");
 }
 
+function mkBlobFromItem(item: ItemPlaintextV2, cryptoVersion = ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: encodeItemPlaintextOpaqueBase64(item),
+    meta: {},
+  };
+}
+
 test("integration: item events append, list, replay, idempotency (opaque payload)", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -77,12 +86,10 @@ test("integration: item events append, list, replay, idempotency (opaque payload
     nowMs: now,
   });
 
-  const opaqueB64 = encodeItemPlaintextOpaqueBase64(item);
   const created = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_CREATE",
-    encryptedPayload: opaqueB64,
+    encryptedBlob: mkBlobFromItem(item),
     baseVersion: 0,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     idempotencyKey: idem,
   });
   assert.equal(created.eventType, "ITEM_CREATE");
@@ -92,9 +99,8 @@ test("integration: item events append, list, replay, idempotency (opaque payload
 
   const retry = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_CREATE",
-    encryptedPayload: opaqueB64,
+    encryptedBlob: mkBlobFromItem(item),
     baseVersion: 0,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     idempotencyKey: idem,
   });
   assert.equal(retry.id, created.id);
@@ -104,12 +110,11 @@ test("integration: item events append, list, replay, idempotency (opaque payload
     () =>
       syncService.appendEvent(vaultId, userId, {
         eventType: "ITEM_UPDATE",
-        encryptedPayload: encodeItemPlaintextOpaqueBase64({
+        encryptedBlob: mkBlobFromItem({
           ...item,
           title: "stale-base-version",
         }),
         baseVersion: 0,
-        payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "VERSION_MISMATCH",
   );
@@ -135,9 +140,8 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   const updatedItem: ItemPlaintextV2 = { ...item, title: "Renamed", updatedAtMs: now + 1 };
   const up = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_UPDATE",
-    encryptedPayload: encodeItemPlaintextOpaqueBase64(updatedItem),
+    encryptedBlob: mkBlobFromItem(updatedItem),
     baseVersion: 1,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   });
   assert.equal(up.version, 2);
 
@@ -161,9 +165,8 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_DELETE",
-    encryptedPayload: encodeItemPlaintextOpaqueBase64(tombstone),
+    encryptedBlob: mkBlobFromItem(tombstone),
     baseVersion: 2,
-    payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   });
 
   const listed3 = await syncService.listEvents(vaultId, userId, 0);

@@ -221,7 +221,7 @@ components:
         user_public_key:
           type: string
         encrypted_private_key:
-          type: string
+          $ref: "#/components/schemas/EncryptedBlob"
         server_key_share:
           type: string
         password_kdf_salt:

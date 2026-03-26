@@ -9,6 +9,7 @@ import {
 } from "../crypto/policy.ts";
 import {
   decodeEncryptedBlobFromStorage,
+  mergeEncryptedBlobMeta,
   parseEncryptedBlobInput,
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
@@ -45,7 +46,6 @@ export interface ShareVaultInput {
   encryptedVaultKey: unknown;
   encryptedPayload: unknown;
   baseVersion: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
   role?: string;
@@ -56,7 +56,6 @@ export interface RevokeVaultInput {
   rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
   encryptedPayload: unknown;
   baseVersion: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
@@ -161,13 +160,19 @@ export class VaultSharingService {
     const wrappedKeyBlob = parseBlobOrThrow(
       input.encryptedVaultKey,
       "encryptedVaultKey",
-      input.payloadSchemaVersion,
     );
+    const normalizedWrappedKeyBlob = mergeEncryptedBlobMeta(wrappedKeyBlob, {
+      entity: "vault_key_wrap",
+      recipient_user_id: input.recipientUserId,
+    });
     const payloadBlob = parseBlobOrThrow(
       input.encryptedPayload,
       "encryptedPayload",
-      input.payloadSchemaVersion,
     );
+    const normalizedPayloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
+      entity: "vault_event_payload",
+      event_type: "VAULT_SHARE",
+    });
     await this.ensureRecipientInWorkspace(acl.workspaceId, input.recipientUserId);
 
     await this.db.transaction(async (tx) => {
@@ -188,9 +193,9 @@ export class VaultSharingService {
           DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                         created_at = now()
         `,
-        [vaultId, input.recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(wrappedKeyBlob))],
+        [vaultId, input.recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(normalizedWrappedKeyBlob))],
       );
-      await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", payloadBlob, input);
+      await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", normalizedPayloadBlob, input);
     });
   }
 
@@ -203,7 +208,13 @@ export class VaultSharingService {
         "cannot revoke implicit owner access",
       );
     }
-    const payloadBlob = parseBlobOrThrow(input.encryptedPayload, "encryptedPayload");
+    const payloadBlob = mergeEncryptedBlobMeta(
+      parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
+      {
+        entity: "vault_event_payload",
+        event_type: "VAULT_KEY_ROTATION",
+      },
+    );
     const rotatedMap = new Map<string, EncryptedBlob>();
     for (const keyEntry of input.rotatedVaultKeys) {
       if (!UUID_RE.test(keyEntry.userId)) {
@@ -215,10 +226,12 @@ export class VaultSharingService {
       }
       rotatedMap.set(
         keyEntry.userId,
-        parseBlobOrThrow(
-          keyEntry.encryptedVaultKey,
-          "rotatedVaultKeys[].encryptedVaultKey",
-          input.payloadSchemaVersion,
+        mergeEncryptedBlobMeta(
+          parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+          {
+            entity: "vault_key_wrap",
+            recipient_user_id: keyEntry.userId,
+          },
         ),
       );
     }
@@ -478,12 +491,12 @@ export class VaultSharingService {
   }
 }
 
-function parseBlobOrThrow(value: unknown, fieldName: string, fallbackCryptoVersion?: number): EncryptedBlob {
+function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {
   try {
     return parseEncryptedBlobInput(value, {
       fieldName,
       maxPayloadBytes: 1024 * 1024,
-      fallbackCryptoVersion,
+      allowLegacyString: false,
     }).blob;
   } catch (error) {
     throw new VaultSharingServiceError("VAULT_KEY_WRAP_INVALID", 400, (error as Error).message);

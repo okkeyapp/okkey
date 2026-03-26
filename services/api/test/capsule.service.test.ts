@@ -30,8 +30,12 @@ test("createCapsule rejects disallowed crypto profile", async () => {
     () =>
       service.createCapsule("w1", "u1", {
         type: "item",
-        encryptedPayload: Buffer.from("cipher").toString("base64"),
-        payloadSchemaVersion: 1,
+        encryptedPayload: {
+          crypto_version: 1,
+          algorithm: "opaque",
+          payload: Buffer.from("cipher").toString("base64"),
+          meta: {},
+        },
       }),
     (err: unknown) =>
       err instanceof CapsuleServiceError && err.code === "CRYPTO_PROFILE_NOT_ALLOWED",

@@ -42,7 +42,12 @@ function validRegisterBody() {
   return {
     auth_state_id: "state-1",
     user_public_key: Buffer.alloc(32, 1).toString("base64"),
-    encrypted_private_key: Buffer.alloc(48, 2).toString("base64"),
+    encrypted_private_key: {
+      crypto_version: 2,
+      algorithm: "opaque",
+      payload: Buffer.alloc(48, 2).toString("base64"),
+      meta: {},
+    },
     server_key_share: Buffer.alloc(32, 3).toString("base64"),
     password_kdf_salt: Buffer.alloc(16, 4).toString("base64"),
     password_kdf_params_version: 1,

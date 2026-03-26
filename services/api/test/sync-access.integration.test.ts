@@ -11,6 +11,15 @@ import {
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
+function mkBlob(payload = "x", cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(payload).toString("base64"),
+    meta: {},
+  };
+}
+
 test("integration: sync append/list ACCESS_DENIED for user without vault access", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -54,9 +63,8 @@ test("integration: sync append/list ACCESS_DENIED for user without vault access"
 
   const body = {
     eventType: "ITEM_CREATE" as const,
-    encryptedPayload: Buffer.from("x").toString("base64"),
+    encryptedBlob: mkBlob("x", 1),
     baseVersion: 0,
-    payloadSchemaVersion: 1,
     idempotencyKey: randomUUID(),
   };
 
@@ -99,9 +107,8 @@ test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async
     () =>
       syncService.appendEvent(missingVaultId, userId, {
         eventType: "ITEM_CREATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
+        encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
-        payloadSchemaVersion: 1,
         idempotencyKey: randomUUID(),
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "VAULT_NOT_FOUND",

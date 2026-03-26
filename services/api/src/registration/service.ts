@@ -1,5 +1,6 @@
 import type { AuthService } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
+import { mergeEncryptedBlobMeta, parseEncryptedBlobInput, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import {
   CRYPTO_POLICY_VIOLATION,
   CRYPTO_POLICY_VIOLATION_STATUS_CODE,
@@ -37,7 +38,7 @@ export class RegistrationError extends Error {
 export interface RegisterCompleteInput {
   authStateId: string;
   userPublicKey: string;
-  encryptedPrivateKey: Uint8Array;
+  encryptedPrivateKey: EncryptedBlob;
   serverKeyShare: Uint8Array;
   passwordKdfSalt: Uint8Array;
   passwordKdfParamsVersion: number;
@@ -145,11 +146,12 @@ export class RegistrationService {
     const nowIso = this.now().toISOString();
 
     try {
+      const encryptedPrivateKey = this.validateEncryptedPrivateKey(input.encryptedPrivateKey);
       const bundle = await this.postgres.transaction(async (tx) => {
         return insertRegistrationBundle(tx, {
           email: authState.email,
           publicKey: input.userPublicKey.trim(),
-          encryptedPrivateKey: input.encryptedPrivateKey,
+          encryptedPrivateKey,
           serverKeyShare: input.serverKeyShare,
           passwordKdfSalt: input.passwordKdfSalt,
           passwordKdfParamsVersion: input.passwordKdfParamsVersion,
@@ -233,13 +235,6 @@ export class RegistrationService {
         buildCryptoPolicyDetails(this.config, input.passwordKdfParamsVersion),
       );
     }
-    if (input.encryptedPrivateKey.length < MIN_ENCRYPTED_PRIVATE_LEN) {
-      throw new RegistrationError(
-        "CRYPTO_PAYLOAD_INVALID",
-        400,
-        "encrypted_private_key too short",
-      );
-    }
 
     const pkBytes = decodeBase64Key(input.userPublicKey, "user_public_key");
     if (pkBytes.length !== ED25519_PK_LEN) {
@@ -264,6 +259,34 @@ export class RegistrationService {
         "invalid device_public_key",
       );
     }
+  }
+
+  private validateEncryptedPrivateKey(value: EncryptedBlob): EncryptedBlob {
+    let parsed: ReturnType<typeof parseEncryptedBlobInput>;
+    try {
+      parsed = parseEncryptedBlobInput(value, {
+        fieldName: "encrypted_private_key",
+        maxPayloadBytes: 1024 * 1024,
+        allowLegacyString: false,
+      });
+    } catch (error) {
+      throw new RegistrationError("CRYPTO_PAYLOAD_INVALID", 400, (error as Error).message);
+    }
+    if (parsed.payloadBytes.length < MIN_ENCRYPTED_PRIVATE_LEN) {
+      throw new RegistrationError("CRYPTO_PAYLOAD_INVALID", 400, "encrypted_private_key too short");
+    }
+    if (!isCryptoProfileAllowed(this.config, parsed.blob.crypto_version)) {
+      throw new RegistrationError(
+        CRYPTO_POLICY_VIOLATION,
+        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+        `crypto profile v${parsed.blob.crypto_version} is not allowed by policy`,
+        buildCryptoPolicyDetails(this.config, parsed.blob.crypto_version),
+      );
+    }
+    return mergeEncryptedBlobMeta(parsed.blob, {
+      entity: "user_private_key_bundle",
+      key_scope: "account",
+    });
   }
 }
 

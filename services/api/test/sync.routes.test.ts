@@ -34,6 +34,15 @@ function loggerStub() {
 
 const config: ApiConfig = createTestApiConfig();
 
+function mkBlob(payload = "x", cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(payload).toString("base64"),
+    meta: {},
+  };
+}
+
 function createSyncServiceStub(overrides?: Partial<SyncService>): SyncService {
   return {
     listEvents: async () => [
@@ -42,8 +51,7 @@ function createSyncServiceStub(overrides?: Partial<SyncService>): SyncService {
         vaultId: "v1",
         actorId: "u1",
         eventType: "ITEM_CREATE",
-        encryptedPayload: Buffer.from("x").toString("base64"),
-        payloadSchemaVersion: 1,
+        encryptedBlob: mkBlob("x", 1),
         idempotencyKey: null,
         clientCreatedAt: null,
         version: 1,
@@ -55,8 +63,7 @@ function createSyncServiceStub(overrides?: Partial<SyncService>): SyncService {
       vaultId: "v1",
       actorId: "u1",
       eventType: "ITEM_UPDATE",
-      encryptedPayload: Buffer.from("x").toString("base64"),
-      payloadSchemaVersion: 1,
+      encryptedBlob: mkBlob("x", 1),
       idempotencyKey: null,
       clientCreatedAt: null,
       version: 2,
@@ -107,7 +114,7 @@ test("POST /vaults/:vaultId/events appends event", async () => {
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
-      encryptedPayload: Buffer.from("x").toString("base64"),
+      encryptedBlob: mkBlob("x"),
       baseVersion: 1,
     },
   });
@@ -149,7 +156,7 @@ test("sync routes map VERSION_MISMATCH", async () => {
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
-      encryptedPayload: Buffer.from("x").toString("base64"),
+      encryptedBlob: mkBlob("x"),
       baseVersion: 1,
     },
     syncService: createSyncServiceStub({
@@ -205,7 +212,7 @@ test("POST /vaults/:vaultId/events maps ACCESS_DENIED", async () => {
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
-      encryptedPayload: Buffer.from("x").toString("base64"),
+      encryptedBlob: mkBlob("x"),
       baseVersion: 0,
     },
     syncService: createSyncServiceStub({
@@ -227,7 +234,7 @@ test("POST /vaults/:vaultId/events maps PAYLOAD_TOO_LARGE", async () => {
     headers: { "x-user-id": "u1" },
     body: {
       eventType: "ITEM_UPDATE",
-      encryptedPayload: Buffer.from("x").toString("base64"),
+      encryptedBlob: mkBlob("x"),
       baseVersion: 0,
     },
     syncService: createSyncServiceStub({

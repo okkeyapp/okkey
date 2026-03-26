@@ -9,6 +9,7 @@ import {
 } from "../crypto/policy.ts";
 import {
   decodeEncryptedBlobFromStorage,
+  mergeEncryptedBlobMeta,
   parseEncryptedBlobInput,
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
@@ -79,9 +80,7 @@ export interface SyncEventResponse {
 export interface SyncAppendEventInput {
   eventType: string;
   encryptedBlob: unknown;
-  encryptedPayload?: string;
   baseVersion: number;
-  payloadSchemaVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
@@ -133,15 +132,12 @@ export class SyncService {
       );
     }
 
-    const legacyCryptoVersion =
-      input.payloadSchemaVersion === undefined ? 2 : input.payloadSchemaVersion;
-    const blobInput = input.encryptedBlob ?? input.encryptedPayload;
     let parsedBlob: ReturnType<typeof parseEncryptedBlobInput>;
     try {
-      parsedBlob = parseEncryptedBlobInput(blobInput, {
+      parsedBlob = parseEncryptedBlobInput(input.encryptedBlob, {
         fieldName: "encryptedBlob",
         maxPayloadBytes: SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES,
-        fallbackCryptoVersion: legacyCryptoVersion,
+        allowLegacyString: false,
       });
     } catch (error) {
       const message = (error as Error).message;
@@ -150,12 +146,16 @@ export class SyncService {
       }
       throw new SyncServiceError("SYNC_BAD_REQUEST", 400, message);
     }
-    if (!isCryptoProfileAllowed(this.config, parsedBlob.blob.crypto_version)) {
+    const normalizedBlob = mergeEncryptedBlobMeta(parsedBlob.blob, {
+      entity: "sync_event",
+      event_type: input.eventType,
+    });
+    if (!isCryptoProfileAllowed(this.config, normalizedBlob.crypto_version)) {
       throw new SyncServiceError(
         CRYPTO_POLICY_VIOLATION,
         CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${parsedBlob.blob.crypto_version} is not allowed by policy`,
-        buildCryptoPolicyDetails(this.config, parsedBlob.blob.crypto_version),
+        `crypto profile v${normalizedBlob.crypto_version} is not allowed by policy`,
+        buildCryptoPolicyDetails(this.config, normalizedBlob.crypto_version),
       );
     }
 
@@ -197,9 +197,9 @@ export class SyncService {
         vaultId,
         actorId: userId,
         eventType: input.eventType,
-        encryptedPayload: serializeEncryptedBlobToStorage(parsedBlob.blob),
+        encryptedPayload: serializeEncryptedBlobToStorage(normalizedBlob),
         baseVersion: input.baseVersion,
-        payloadSchemaVersion: parsedBlob.blob.crypto_version,
+        payloadSchemaVersion: normalizedBlob.crypto_version,
         idempotencyKey: input.idempotencyKey,
         clientCreatedAt: clientCreatedAt ?? undefined,
       });

@@ -1,10 +1,11 @@
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { RegistrationError, type RegistrationService } from "../registration/service.ts";
+import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
 
 interface RegisterCompleteBody {
   auth_state_id?: string;
   user_public_key?: string;
-  encrypted_private_key?: string;
+  encrypted_private_key?: unknown;
   server_key_share?: string;
   password_kdf_salt?: string;
   password_kdf_params_version?: number;
@@ -59,11 +60,7 @@ function resolveMetadata(body: RegisterCompleteBody): {
   };
 }
 
-function decodeRequiredBase64(
-  value: string | undefined,
-  field: string,
-  requestId: string,
-): Uint8Array | null {
+function decodeRequiredBase64(value: string | undefined): Uint8Array | null {
   if (!value?.trim()) {
     return null;
   }
@@ -138,16 +135,24 @@ export function createRegisterCompleteRoute(
       return;
     }
 
-    const encPriv = decodeRequiredBase64(
-      body.encrypted_private_key,
-      "encrypted_private_key",
-      ctx.requestId,
-    );
-    const srvShare = decodeRequiredBase64(body.server_key_share, "server_key_share", ctx.requestId);
-    const kdfSalt = decodeRequiredBase64(body.password_kdf_salt, "password_kdf_salt", ctx.requestId);
-    const devShare = decodeRequiredBase64(body.device_share, "device_share", ctx.requestId);
+    if (!body.encrypted_private_key || typeof body.encrypted_private_key !== "object") {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "REGISTRATION_BAD_REQUEST",
+          "encrypted_private_key must be an EncryptedBlob object",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
 
-    if (!encPriv || !srvShare || !kdfSalt || !devShare) {
+    const srvShare = decodeRequiredBase64(body.server_key_share);
+    const kdfSalt = decodeRequiredBase64(body.password_kdf_salt);
+    const devShare = decodeRequiredBase64(body.device_share);
+
+    if (!srvShare || !kdfSalt || !devShare) {
       json(
         ctx.res,
         400,
@@ -168,7 +173,7 @@ export function createRegisterCompleteRoute(
       const result = await registrationService.completeRegistration({
         authStateId: body.auth_state_id.trim(),
         userPublicKey: body.user_public_key!.trim(),
-        encryptedPrivateKey: encPriv,
+        encryptedPrivateKey: body.encrypted_private_key as EncryptedBlob,
         serverKeyShare: srvShare,
         passwordKdfSalt: kdfSalt,
         passwordKdfParamsVersion: body.password_kdf_params_version,

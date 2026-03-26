@@ -29,6 +29,15 @@ function loggerStub() {
 
 const config: ApiConfig = createTestApiConfig();
 
+function mkBlob(payload = "x", cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(payload).toString("base64"),
+    meta: {},
+  };
+}
+
 function createCapsuleServiceStub(overrides?: Partial<CapsuleService>): CapsuleService {
   return {
     createCapsule: async () => ({
@@ -57,7 +66,7 @@ function createCapsuleServiceStub(overrides?: Partial<CapsuleService>): CapsuleS
       viewCount: 1,
       passwordRequired: false,
       createdAt: new Date().toISOString(),
-      encryptedPayload: Buffer.from("x").toString("base64"),
+      encryptedPayload: mkBlob("x"),
     }),
     revokeCapsule: async () => {},
     ...(overrides ?? {}),
@@ -89,7 +98,7 @@ test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
   const res = await dispatch({
     method: "POST",
     url: "/workspaces/w1/capsules",
-    body: { type: "item", encryptedPayload: "eA==" },
+    body: { type: "item", encryptedPayload: mkBlob("x") },
   });
   assert.equal(res.statusCode, 401);
 });

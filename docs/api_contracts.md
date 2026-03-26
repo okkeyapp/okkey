@@ -300,7 +300,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 |--------|------|----------|--------|
 | `auth_state_id` | string | Yes | From `POST /auth/email/confirm`. |
 | `user_public_key` | string | Yes | Base64 of **32** raw Ed25519 public key bytes. |
-| `encrypted_private_key` | string | Yes | Base64 opaque blob (e.g. nonce \|\| XChaCha20-Poly1305 ciphertext). Min decoded length **41**. |
+| `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **41** bytes. |
 | `server_key_share` | string | Yes | Base64 of **32** bytes (share **A**). |
 | `password_kdf_salt` | string | Yes | Base64 of **16** bytes (Argon2id salt). |
 | `password_kdf_params_version` | integer | Yes | Profile version. Core currently validates `1` and `2`; environment policy may restrict writes to `2` only. |
