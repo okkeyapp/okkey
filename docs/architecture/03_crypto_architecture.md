@@ -201,3 +201,16 @@ Okkey cryptography rules:
 3. Backend never decrypts vault data.
 4. All keys are transferred only in encrypted form.
 5. All operations are performed on the client.
+
+---
+
+## Q-Day / Post-Quantum Extension Principles
+
+To prepare for post-quantum migration without breaking Core behavior, the crypto layer follows these additional rules:
+
+1. Every new encrypted artifact carries explicit `crypto_version` and `algorithm` metadata.
+2. Crypto upgrades are additive and backward-compatible (`v1` data remains decryptable).
+3. Sharing envelopes move to hybrid mode (ECC + PQ) before any pure-PQ cutover.
+4. Capability detection per user/device controls safe fallback paths.
+5. Migration and key rotation are event-log-safe and idempotent.
+6. Downgrade attempts to weaker crypto versions are rejected by policy.

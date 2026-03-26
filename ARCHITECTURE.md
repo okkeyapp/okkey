@@ -17,6 +17,9 @@ Enterprise extensions live in a separate private repository: `okkey-enterprise/`
 5. Offline-first
 6. SaaS + Self-hosted deployment
 7. Enterprise features are **extensions** over Core (Plugins + Feature Interfaces + feature gating)
+8. Crypto-agility with explicit `crypto_version` on encrypted artifacts
+9. Backward-compatible migration path (classical -> hybrid -> PQ-ready)
+10. Post-quantum rollout without backend access to plaintext/keys
 
 ---
 
@@ -71,6 +74,7 @@ The **database schema is compatible**: enterprise only adds new tables.
 - docs/architecture/01_system_overview.md
 - docs/architecture/02_repo_structure.md
 - docs/architecture/03_crypto_architecture.md
+- docs/architecture/14_crypto_v2_qday.md
 - docs/architecture/04_vault_architecture.md
 - docs/architecture/05_sync_architecture.md
 - docs/architecture/06_backend_architecture.md

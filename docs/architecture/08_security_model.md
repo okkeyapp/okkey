@@ -14,6 +14,8 @@ server cannot read user data.
 - Split Key Architecture
 - Device Authorization
 - Key Rotation
+- Crypto Agility (versioned cryptography)
+- Downgrade Resistance (no silent fallback to weaker profiles)
 
 ---
 
@@ -109,3 +111,15 @@ Okkey ensures:
 - integrity
 - authentication
 - forward secrecy
+
+---
+
+## Q-Day Security Posture
+
+For post-quantum readiness, Core introduces:
+
+- explicit `crypto_version` on encrypted payloads and wrapped keys;
+- hybrid ECC+PQ key sharing during transition periods;
+- mixed-fleet compatibility rules (old/new users and devices);
+- mandatory migration and rotation controls that prevent stale weak wraps;
+- security tests for downgrade attacks, missing PQ material, and hybrid parser robustness.

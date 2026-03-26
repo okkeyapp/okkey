@@ -12,6 +12,7 @@ The open-source core must:
 - expose stable extension interfaces
 - keep core schema backwards compatible
 - keep cryptography and vault logic open and auditable
+- keep Q-Day crypto roadmap (versioning/hybrid migration) inside Core
 
 ---
 
@@ -55,6 +56,7 @@ Enterprise code:
 - attaches via Feature Interfaces
 - cannot modify core tables (only add new tables)
 - cannot override core auth or crypto flows
+- cannot bypass Core crypto-version policy or downgrade protections
 
 ---
 

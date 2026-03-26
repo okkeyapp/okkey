@@ -164,6 +164,18 @@ Vault can be opened only with all three parts.
 
 ---
 
+### Crypto Agility and Q-Day Readiness
+
+Core uses explicit crypto versioning for encrypted artifacts and supports a staged migration path:
+
+- `v1` classical cryptography
+- `v2` hybrid ECC + PQ envelopes (rollout-safe)
+- future pure-PQ modes
+
+Compatibility is mandatory during migration windows. Old data must remain decryptable while new writes can use stronger crypto profiles according to negotiated capabilities.
+
+---
+
 ## High Level Architecture
 
 ```
