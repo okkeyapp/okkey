@@ -1,5 +1,12 @@
 import { VersionConflictError } from "../storage/errors.ts";
 import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_POLICY_VIOLATION,
+  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+  buildCryptoPolicyDetails,
+  isCryptoProfileAllowed,
+} from "../crypto/policy.ts";
 
 const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
@@ -48,6 +55,7 @@ export class SyncServiceError extends Error {
 export interface SyncServiceDeps {
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
   events: Pick<EventsRepository, "listAfterVersion" | "append">;
+  config?: Pick<ApiConfig, "allowedCryptoProfileVersions">;
 }
 
 export interface SyncEventResponse {
@@ -75,10 +83,12 @@ export interface SyncAppendEventInput {
 export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
+  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions">;
 
   constructor(deps: SyncServiceDeps) {
     this.vaults = deps.vaults;
     this.events = deps.events;
+    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2] };
   }
 
   async listEvents(
@@ -118,7 +128,7 @@ export class SyncService {
     }
 
     const payloadSchemaVersion =
-      input.payloadSchemaVersion === undefined ? 1 : input.payloadSchemaVersion;
+      input.payloadSchemaVersion === undefined ? 2 : input.payloadSchemaVersion;
     if (
       !Number.isInteger(payloadSchemaVersion) ||
       payloadSchemaVersion < 1 ||
@@ -128,6 +138,14 @@ export class SyncService {
         "SYNC_BAD_REQUEST",
         400,
         "payloadSchemaVersion must be an integer from 1 to 65535",
+      );
+    }
+    if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+      throw new SyncServiceError(
+        CRYPTO_POLICY_VIOLATION,
+        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+        `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
+        buildCryptoPolicyDetails(this.config, payloadSchemaVersion),
       );
     }
 

@@ -1,5 +1,12 @@
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { VaultsRepository } from "../storage/repositories.ts";
+import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_POLICY_VIOLATION,
+  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+  buildCryptoPolicyDetails,
+  isCryptoProfileAllowed,
+} from "../crypto/policy.ts";
 
 export class VaultSharingServiceError extends Error {
   readonly code: string;
@@ -53,6 +60,7 @@ export interface VaultSharingServiceDeps {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
   };
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
+  config?: Pick<ApiConfig, "allowedCryptoProfileVersions">;
 }
 
 interface VaultAclMeta {
@@ -80,10 +88,12 @@ function parseBase64Bytes(input: string): Uint8Array {
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
   private readonly vaults: VaultSharingServiceDeps["vaults"];
+  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions">;
 
   constructor(deps: VaultSharingServiceDeps) {
     this.db = deps.db;
     this.vaults = deps.vaults;
+    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2] };
   }
 
   async getUserVaultKey(vaultId: string, userId: string): Promise<{ encryptedVaultKey: string }> {
@@ -309,6 +319,16 @@ export class VaultSharingService {
       });
     }
 
+    const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
+    if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+      throw new VaultSharingServiceError(
+        CRYPTO_POLICY_VIOLATION,
+        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+        `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
+        buildCryptoPolicyDetails(this.config, payloadSchemaVersion),
+      );
+    }
+
     await tx.query(
       `
         INSERT INTO events (
@@ -323,7 +343,7 @@ export class VaultSharingService {
         eventType,
         Buffer.from(encryptedPayload),
         currentVersion + 1,
-        input.payloadSchemaVersion ?? 1,
+        payloadSchemaVersion,
         input.idempotencyKey ?? null,
         input.clientCreatedAt ?? null,
       ],

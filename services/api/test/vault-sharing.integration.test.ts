@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
-import { VaultSharingService } from "../src/vault-sharing/service.ts";
+import { VaultSharingService, VaultSharingServiceError } from "../src/vault-sharing/service.ts";
 import {
   applyMigrations,
   cleanupUserData,
@@ -95,4 +95,67 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
   assert.equal(events.length, 2);
   assert.equal(events[0]?.eventType, "VAULT_SHARE");
   assert.equal(events[1]?.eventType, "VAULT_KEY_ROTATION");
+});
+
+test("integration: sharing rejects crypto profile blocked by policy", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `vault-share-policy-a-${suffix}@okkey.local`;
+  const emailB = `vault-share-policy-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, emailA);
+  const userB = await registerUser(storage, baseConfig, emailB);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: Buffer.from("wrapped-key-b").toString("base64"),
+        encryptedPayload: Buffer.from("vault-share-event").toString("base64"),
+        baseVersion: 0,
+        payloadSchemaVersion: 1,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError && err.code === "CRYPTO_PROFILE_NOT_ALLOWED",
+  );
 });

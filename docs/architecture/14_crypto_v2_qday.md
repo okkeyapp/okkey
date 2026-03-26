@@ -46,6 +46,12 @@ Applies to wrapped vault keys, item payload envelopes, encrypted private keys, a
 
 Profile resolution is runtime-driven via a versioned config registry.
 
+Baseline policy by environment:
+
+- `dev`: `v1`, `v2` (fixtures and compatibility tests allowed).
+- `stage`: `v2` only for new write operations.
+- `prod`: `v2` only for new write operations.
+
 ---
 
 ## Hybrid Sharing Model

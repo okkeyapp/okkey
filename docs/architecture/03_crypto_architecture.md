@@ -214,3 +214,8 @@ To prepare for post-quantum migration without breaking Core behavior, the crypto
 4. Capability detection per user/device controls safe fallback paths.
 5. Migration and key rotation are event-log-safe and idempotent.
 6. Downgrade attempts to weaker crypto versions are rejected by policy.
+
+Environment baseline policy for new writes:
+
+- `dev`: legacy `v1` may be used for fixtures/tests.
+- `stage` and `production`: only `v2` is accepted for new encrypted write paths.

@@ -990,7 +990,7 @@ export class EventsRepository {
       }
 
       const nextVersion = currentVersion + 1;
-      const payloadSchemaVersion = input.payloadSchemaVersion ?? 1;
+      const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
 
       type EventRow = {
         id: string;
@@ -1389,7 +1389,7 @@ function mapEvent(row: {
     actorId: row.actor_id,
     eventType: row.event_type,
     encryptedPayload: Uint8Array.from(row.encrypted_payload),
-    payloadSchemaVersion: row.payload_schema_version ?? 1,
+    payloadSchemaVersion: row.payload_schema_version ?? 2,
     idempotencyKey: row.idempotency_key ?? null,
     clientCreatedAt: row.client_created_at ?? null,
     version: row.version,

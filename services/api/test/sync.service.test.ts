@@ -327,3 +327,87 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
       error instanceof SyncServiceError && error.code === "ACCESS_DENIED",
   );
 });
+
+test("appendEvent rejects disallowed crypto profile by policy", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+    config: {
+      allowedCryptoProfileVersions: [2],
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedPayload: Buffer.from("x").toString("base64"),
+        baseVersion: 0,
+        payloadSchemaVersion: 1,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "CRYPTO_PROFILE_NOT_ALLOWED",
+  );
+});
+
+test("appendEvent uses v2 as default payloadSchemaVersion", async () => {
+  let capturedVersion = -1;
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async (input) => {
+        capturedVersion = input.payloadSchemaVersion;
+        return {
+          id: "e1",
+          vaultId: input.vaultId,
+          actorId: input.actorId ?? null,
+          eventType: input.eventType,
+          encryptedPayload: input.encryptedPayload,
+          payloadSchemaVersion: input.payloadSchemaVersion,
+          idempotencyKey: input.idempotencyKey ?? null,
+          clientCreatedAt: input.clientCreatedAt ?? null,
+          version: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+    },
+    config: {
+      allowedCryptoProfileVersions: [2],
+    },
+  });
+
+  await service.appendEvent("v1", "u1", {
+    eventType: "ITEM_UPDATE",
+    encryptedPayload: Buffer.from("x").toString("base64"),
+    baseVersion: 0,
+  });
+  assert.equal(capturedVersion, 2);
+});

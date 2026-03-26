@@ -1,5 +1,11 @@
 import type { AuthService } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_POLICY_VIOLATION,
+  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+  buildCryptoPolicyDetails,
+  isCryptoProfileAllowed,
+} from "../crypto/policy.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
@@ -8,7 +14,7 @@ const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
 const MIN_ENCRYPTED_PRIVATE_LEN = 41;
-const SUPPORTED_KDF_PARAMS_VERSION = 1;
+const SUPPORTED_KDF_PARAMS_VERSIONS = new Set([1, 2]);
 
 export class RegistrationError extends Error {
   readonly code: string;
@@ -212,11 +218,19 @@ export class RegistrationService {
         "password_kdf_salt must be 16 bytes",
       );
     }
-    if (input.passwordKdfParamsVersion !== SUPPORTED_KDF_PARAMS_VERSION) {
+    if (!SUPPORTED_KDF_PARAMS_VERSIONS.has(input.passwordKdfParamsVersion)) {
       throw new RegistrationError(
         "CRYPTO_PAYLOAD_INVALID",
         400,
         "unsupported password_kdf_params_version",
+      );
+    }
+    if (!isCryptoProfileAllowed(this.config, input.passwordKdfParamsVersion)) {
+      throw new RegistrationError(
+        CRYPTO_POLICY_VIOLATION,
+        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+        `crypto profile v${input.passwordKdfParamsVersion} is not allowed by policy`,
+        buildCryptoPolicyDetails(this.config, input.passwordKdfParamsVersion),
       );
     }
     if (input.encryptedPrivateKey.length < MIN_ENCRYPTED_PRIVATE_LEN) {

@@ -338,6 +338,7 @@ export interface CapsuleOpenResponseDto extends CapsuleMetadataDto {
 export interface CapsuleCreateRequestDto {
   type: "item" | "field" | "file";
   encryptedPayload: string;
+  payloadSchemaVersion?: number;
   filePayload?: string;
   expiresAt?: string;
   maxViews?: number;

@@ -223,6 +223,10 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
           locale,
           variables as TwoFactorNoticeVariables,
         );
+      default:
+        throw new EmailRenderError("EMAIL_RENDER_FAILED", `unknown templateId: ${templateId}`, {
+          templateId,
+        });
     }
   } catch (error) {
     if (error instanceof EmailRenderError) {

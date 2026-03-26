@@ -58,10 +58,12 @@ async function main(): Promise<void> {
   const vaultSharingService = new VaultSharingService({
     db: storage.postgres,
     vaults: storage.repositories.vaults,
+    config,
   });
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
+    config,
   });
   const capsuleService = new CapsuleService({
     db: storage.postgres,

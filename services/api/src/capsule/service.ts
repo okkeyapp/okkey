@@ -1,5 +1,10 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_POLICY_VIOLATION,
+  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+  isCryptoProfileAllowed,
+} from "../crypto/policy.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ObjectStorage } from "../storage/object-storage.ts";
 
@@ -25,7 +30,13 @@ export interface CapsuleServiceDeps {
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
   };
-  config: Pick<ApiConfig, "sessionSecret" | "capsuleOpenRateLimitPerIp" | "capsuleRateLimitWindowSeconds">;
+  config: Pick<
+    ApiConfig,
+    | "sessionSecret"
+    | "capsuleOpenRateLimitPerIp"
+    | "capsuleRateLimitWindowSeconds"
+    | "allowedCryptoProfileVersions"
+  >;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject">;
 }
 
@@ -60,6 +71,7 @@ interface CapsuleAccessPolicy {
 export interface CreateCapsuleInput {
   type: string;
   encryptedPayload: string;
+  payloadSchemaVersion?: number;
   filePayload?: string;
   expiresAt?: string;
   maxViews?: number;
@@ -102,6 +114,22 @@ export class CapsuleService {
   ): Promise<CapsuleMetadataResponse> {
     if (!CAPSULE_TYPES.has(input.type)) {
       throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid capsule type");
+    }
+    const payloadSchemaVersion =
+      input.payloadSchemaVersion === undefined ? 2 : input.payloadSchemaVersion;
+    if (!Number.isInteger(payloadSchemaVersion) || payloadSchemaVersion < 1) {
+      throw new CapsuleServiceError(
+        "CAPSULE_BAD_REQUEST",
+        400,
+        "payloadSchemaVersion must be a positive integer",
+      );
+    }
+    if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+      throw new CapsuleServiceError(
+        CRYPTO_POLICY_VIOLATION,
+        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
+        `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
+      );
     }
     const payload = parsePayload(input.encryptedPayload);
     const workspace = await this.readWorkspaceAccess(workspaceId, creatorId);

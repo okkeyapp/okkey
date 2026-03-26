@@ -4,6 +4,7 @@ import type { ApiConfig } from "../src/config.ts";
 export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
   return {
     nodeEnv: "test",
+    deployEnv: "dev",
     port: 4000,
     logLevel: "debug",
     corsOrigin: "*",
@@ -43,6 +44,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     emailApiTimeoutMs: 10_000,
     capsuleOpenRateLimitPerIp: 60,
     capsuleRateLimitWindowSeconds: 60,
+    allowedCryptoProfileVersions: [1, 2],
     ...overrides,
   };
 }

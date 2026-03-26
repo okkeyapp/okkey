@@ -303,7 +303,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 | `encrypted_private_key` | string | Yes | Base64 opaque blob (e.g. nonce \|\| XChaCha20-Poly1305 ciphertext). Min decoded length **41**. |
 | `server_key_share` | string | Yes | Base64 of **32** bytes (share **A**). |
 | `password_kdf_salt` | string | Yes | Base64 of **16** bytes (Argon2id salt). |
-| `password_kdf_params_version` | integer | Yes | **1** only (`m=19456`, `t=2`, `p=1`). |
+| `password_kdf_params_version` | integer | Yes | Profile version. Core currently validates `1` and `2`; environment policy may restrict writes to `2` only. |
 | `device_public_key` | string | Yes | Same rules as `POST /devices/register`. |
 | `device_share` | string | Yes | Base64 of **32** bytes (share **B**). |
 | `device_fingerprint` | string | Yes | Hex 32–128 chars. |
@@ -329,6 +329,7 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 |---------|------|------|
 | `REGISTRATION_BAD_REQUEST` | 400 | Invalid JSON, missing field, bad base64. |
 | `CRYPTO_PAYLOAD_INVALID` | 400 | Wrong lengths, unsupported KDF version, bad keys. |
+| `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. |
 | `AUTH_CHALLENGE_EXPIRED` | 410 | Missing/expired `auth_state_id`. |
 | `AUTH_CHALLENGE_INVALID` | 400 | Auth state not eligible (e.g. `userId` already set). |
 | `REGISTRATION_ALREADY_COMPLETED` | 409 | User row already exists for email. |
@@ -451,7 +452,7 @@ Grants or updates explicit shared access for a workspace member, stores recipien
 | `encryptedVaultKey` | string | Yes | Base64 wrapped key for recipient. |
 | `encryptedPayload` | string | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
-| `payloadSchemaVersion` | integer | No | Defaults to `1`. |
+| `payloadSchemaVersion` | integer | No | Defaults to `2`. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
 | `role` | string | No | Membership role; default `member`. |
@@ -472,13 +473,13 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 | `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey }[]`). |
 | `encryptedPayload` | string | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
-| `payloadSchemaVersion` | integer | No | Defaults to `1`. |
+| `payloadSchemaVersion` | integer | No | Defaults to `2`. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
 
 **Response `200`:** `{ "revoked": true }`
 
-**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `CRYPTO_PROFILE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 ---
 
@@ -513,7 +514,7 @@ Allowed `eventType` values (must match exactly):
       "actorId": "uuid-or-null",
       "eventType": "ITEM_CREATE",
       "encryptedPayload": "base64",
-      "payloadSchemaVersion": 1,
+      "payloadSchemaVersion": 2,
       "idempotencyKey": "uuid-or-null",
       "clientCreatedAt": "2026-01-01T11:59:00.000Z",
       "version": 1,
@@ -545,7 +546,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `eventType` | string | Yes | One of allowed types. |
 | `encryptedPayload` | string | Yes | Standard base64; decoded length must be &gt; 0 and ≤ 512 KiB. |
 | `baseVersion` | integer | Yes | Non-negative; must equal current latest version for append. |
-| `payloadSchemaVersion` | integer | No | Defaults to `1`; schema tag for ciphertext/plaintext evolution (1–65535). |
+| `payloadSchemaVersion` | integer | No | Defaults to `2`; schema tag for ciphertext/plaintext evolution (1–65535). |
 | `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE` and `FOLDER_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
 | `clientCreatedAt` | string | No | ISO-8601 client timestamp (optional). |
 
@@ -558,6 +559,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `SYNC_BAD_REQUEST` | 400 | Invalid JSON; missing fields; invalid `baseVersion` type/range; `ITEM_CREATE` or `FOLDER_CREATE` without `idempotencyKey`; invalid UUID for `idempotencyKey`; invalid `clientCreatedAt`. |
 | `SYNC_INVALID_EVENT_TYPE` | 400 | Unknown `eventType`. |
 | `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
+| `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. |
 | `PAYLOAD_TOO_LARGE` | 413 | Decoded ciphertext exceeds 512 KiB. |
 | `VERSION_MISMATCH` | 409 | `baseVersion` stale; `details` may include `expectedBaseVersion` and `latestVersion`. |
 | `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
@@ -584,6 +586,7 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 |--------|------|----------|--------|
 | `type` | string | Yes | `item` \| `field` \| `file` |
 | `encryptedPayload` | string | Yes | Base64 ciphertext blob |
+| `payloadSchemaVersion` | integer | No | Defaults to `2`; environment policy may reject forbidden versions. |
 | `filePayload` | string | No | Base64 encrypted file bytes (for `type=file`) stored in object storage |
 | `expiresAt` | string | No | ISO-8601 future timestamp |
 | `maxViews` | integer | No | 1..10000 |
@@ -594,7 +597,7 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 
 `capsuleId`, `type`, `expiresAt`, `maxViews`, `viewCount`, `passwordRequired`, `createdAt`
 
-**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `PAYLOAD_TOO_LARGE`.
+**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `PAYLOAD_TOO_LARGE`.
 
 ### `GET /capsules/:capsuleId`
 

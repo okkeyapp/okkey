@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api";
+type DeployEnv = "dev" | "stage" | "prod";
 
 export interface ApiConfig {
   nodeEnv: NodeEnv;
+  deployEnv: DeployEnv;
   port: number;
   logLevel: string;
   corsOrigin: string;
@@ -50,6 +52,7 @@ export interface ApiConfig {
   emailApiTimeoutMs: number;
   capsuleOpenRateLimitPerIp: number;
   capsuleRateLimitWindowSeconds: number;
+  allowedCryptoProfileVersions: number[];
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -128,15 +131,50 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function resolveDeployEnv(nodeEnv: NodeEnv, value: string | undefined): DeployEnv {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "dev" || normalized === "stage" || normalized === "prod") {
+    return normalized;
+  }
+  if (nodeEnv === "production") {
+    return "prod";
+  }
+  return "dev";
+}
+
+function parseProfileVersions(raw: string | undefined, fallback: readonly number[]): number[] {
+  if (!raw || raw.trim() === "") {
+    return [...fallback];
+  }
+
+  const values = raw
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const unique = Array.from(new Set(values)).sort((a, b) => a - b);
+  return unique.length > 0 ? unique : [...fallback];
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
+  const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
+  const defaultProfilesByEnv: Record<DeployEnv, readonly number[]> = {
+    dev: [1, 2],
+    stage: [2],
+    prod: [2],
+  };
+  const allowedCryptoProfileVersions = parseProfileVersions(
+    process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
+    defaultProfilesByEnv[deployEnv],
+  );
   const sessionSecret =
     process.env.SESSION_SECRET ?? process.env.JWT_SECRET ?? "dev-session-secret";
   return {
     nodeEnv,
+    deployEnv,
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
     corsOrigin: process.env.CORS_ORIGIN ?? "*",
@@ -227,5 +265,6 @@ export function loadConfig(): ApiConfig {
       process.env.CAPSULE_RATE_LIMIT_WINDOW_SECONDS,
       60,
     ),
+    allowedCryptoProfileVersions,
   };
 }
