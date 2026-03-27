@@ -4,6 +4,7 @@ pub mod sign;
 pub mod x25519;
 pub mod encoding;
 pub mod mlkem768;
+pub mod hybrid;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

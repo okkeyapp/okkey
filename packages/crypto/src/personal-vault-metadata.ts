@@ -11,6 +11,7 @@ import initWasm, {
   aead_decrypt,
   aead_encrypt,
   random_bytes,
+  sha256,
 } from "@okkey/crypto-wasm";
 
 const PERSONAL_METADATA_AAD = new TextEncoder().encode(
@@ -35,6 +36,7 @@ export async function derivePersonalVaultMetadataKey(
   passwordShareC: Uint8Array,
   vaultId: string,
 ): Promise<Uint8Array> {
+  await ensureWasm();
   if (passwordShareC.length !== 32) {
     throw new Error("passwordShareC must be 32 bytes");
   }
@@ -45,8 +47,7 @@ export async function derivePersonalVaultMetadataKey(
   input.set(passwordShareC, 0);
   input.set(domain, 32);
   input.set(vid, 32 + domain.length);
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  return new Uint8Array(digest);
+  return sha256(input);
 }
 
 export async function encryptPersonalVaultMetadataPayload(

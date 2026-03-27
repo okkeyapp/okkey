@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
+use sha2::{Digest, Sha256};
 
-use crate::{aead, encoding, kdf, mlkem768, sign, x25519};
+use crate::{aead, encoding, hybrid, kdf, mlkem768, sign, x25519};
 use getrandom::getrandom;
 
 #[wasm_bindgen]
@@ -76,6 +77,13 @@ pub fn b64_decode(s: &str) -> Result<Vec<u8>, JsValue> {
   encoding::b64_decode(s).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+#[wasm_bindgen]
+pub fn sha256(data: &[u8]) -> Vec<u8> {
+  let mut hasher = Sha256::new();
+  hasher.update(data);
+  hasher.finalize().to_vec()
+}
+
 /// Byte length of encoded ML-KEM-768 decapsulation (private) key.
 #[wasm_bindgen]
 pub fn mlkem768_decapsulation_key_len() -> usize {
@@ -96,4 +104,47 @@ pub fn mlkem768_keypair() -> Vec<u8> {
   out.extend_from_slice(&dk);
   out.extend_from_slice(&ek);
   out
+}
+
+/// Random ML-KEM-768 keypair alias for hybrid/PQ operations.
+#[wasm_bindgen]
+pub fn generate_pq_keys() -> Vec<u8> {
+  mlkem768_keypair()
+}
+
+#[wasm_bindgen]
+pub fn hybrid_envelope_fixed_header_len() -> usize {
+  hybrid::HYBRID_ENVELOPE_FIXED_HEADER_LEN
+}
+
+#[wasm_bindgen]
+pub fn encrypt_hybrid(
+  sender_private_key: &[u8],
+  recipient_public_key: &[u8],
+  recipient_pq_public_key: &[u8],
+  aad: &[u8],
+  plaintext: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+  hybrid::encrypt_hybrid(
+    sender_private_key,
+    recipient_public_key,
+    recipient_pq_public_key,
+    aad,
+    plaintext,
+  ).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn decrypt_hybrid(
+  recipient_private_key: &[u8],
+  recipient_pq_private_key: &[u8],
+  aad: &[u8],
+  envelope: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+  hybrid::decrypt_hybrid(
+    recipient_private_key,
+    recipient_pq_private_key,
+    aad,
+    envelope,
+  ).map_err(|e| JsValue::from_str(&e))
 }

@@ -1,4 +1,4 @@
-use crate::{aead, kdf, sign, x25519};
+use crate::{aead, hybrid, kdf, mlkem768, sign, x25519};
 use hex::decode as hex_decode;
 
 #[test]
@@ -90,4 +90,91 @@ fn x25519_kat() {
 
   let shared = x25519::derive_shared_secret(&sk, &pk).expect("shared");
   assert_eq!(shared, expected);
+}
+
+#[test]
+fn hybrid_encrypt_decrypt_roundtrip() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let (sender_sk, _) = x25519::generate_keypair();
+  let aad = b"okkey-hybrid-aad";
+  let plaintext = b"hybrid message";
+
+  let envelope = hybrid::encrypt_hybrid(
+    &sender_sk,
+    &recipient_pk,
+    &recipient_pq_ek,
+    aad,
+    plaintext,
+  ).expect("encrypt_hybrid");
+
+  let decrypted = hybrid::decrypt_hybrid(
+    &recipient_sk,
+    &recipient_pq_dk,
+    aad,
+    &envelope,
+  ).expect("decrypt_hybrid");
+
+  assert_eq!(decrypted, plaintext);
+}
+
+#[test]
+fn hybrid_decrypt_rejects_malformed_envelope() {
+  let (recipient_sk, _) = x25519::generate_keypair();
+  let (recipient_pq_dk, _) = mlkem768::generate_keypair();
+  let aad = b"okkey-hybrid-aad";
+  let malformed = vec![0u8; 12];
+  let err = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &malformed)
+    .expect_err("must fail");
+  assert!(err.contains("too short"));
+}
+
+#[test]
+fn hybrid_decrypt_rejects_wrong_key() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let (sender_sk, _) = x25519::generate_keypair();
+  let (wrong_pq_dk, _) = mlkem768::generate_keypair();
+  let aad = b"okkey-hybrid-aad";
+  let plaintext = b"hybrid message";
+
+  let envelope = hybrid::encrypt_hybrid(
+    &sender_sk,
+    &recipient_pk,
+    &recipient_pq_ek,
+    aad,
+    plaintext,
+  ).expect("encrypt_hybrid");
+
+  let err = hybrid::decrypt_hybrid(&recipient_sk, &wrong_pq_dk, aad, &envelope)
+    .expect_err("must fail");
+  assert!(!err.is_empty());
+
+  let decrypted = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &envelope)
+    .expect("decrypt with correct key");
+  assert_eq!(decrypted, plaintext);
+}
+
+#[test]
+fn hybrid_decrypt_rejects_corrupted_envelope() {
+  let (recipient_sk, recipient_pk) = x25519::generate_keypair();
+  let (recipient_pq_dk, recipient_pq_ek) = mlkem768::generate_keypair();
+  let (sender_sk, _) = x25519::generate_keypair();
+  let aad = b"okkey-hybrid-aad";
+  let plaintext = b"hybrid message";
+
+  let mut envelope = hybrid::encrypt_hybrid(
+    &sender_sk,
+    &recipient_pk,
+    &recipient_pq_ek,
+    aad,
+    plaintext,
+  ).expect("encrypt_hybrid");
+
+  let last_idx = envelope.len() - 1;
+  envelope[last_idx] ^= 0x01;
+
+  let err = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &envelope)
+    .expect_err("must fail on tampered envelope");
+  assert!(!err.is_empty());
 }

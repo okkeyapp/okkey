@@ -10,6 +10,11 @@ import initWasm, {
   x25519_shared,
   b64_encode,
   b64_decode,
+  sha256,
+  generate_pq_keys,
+  hybrid_envelope_fixed_header_len,
+  encrypt_hybrid,
+  decrypt_hybrid,
 } from "@okkey/crypto-wasm";
 
 export type AeadAlg = "aes-256-gcm" | "xchacha20-poly1305";
@@ -65,6 +70,37 @@ export function b64Encode(data: Uint8Array): string {
 
 export function b64Decode(s: string): Uint8Array {
   return b64_decode(s);
+}
+
+export function sha256Digest(data: Uint8Array): Uint8Array {
+  return sha256(data);
+}
+
+export function generatePQKeys(): Uint8Array {
+  return generate_pq_keys();
+}
+
+export function hybridEnvelopeFixedHeaderLen(): number {
+  return hybrid_envelope_fixed_header_len();
+}
+
+export function encryptHybrid(
+  senderPrivateKey: Uint8Array,
+  recipientPublicKey: Uint8Array,
+  recipientPqPublicKey: Uint8Array,
+  aad: Uint8Array,
+  plaintext: Uint8Array,
+): Uint8Array {
+  return encrypt_hybrid(senderPrivateKey, recipientPublicKey, recipientPqPublicKey, aad, plaintext);
+}
+
+export function decryptHybrid(
+  recipientPrivateKey: Uint8Array,
+  recipientPqPrivateKey: Uint8Array,
+  aad: Uint8Array,
+  envelope: Uint8Array,
+): Uint8Array {
+  return decrypt_hybrid(recipientPrivateKey, recipientPqPrivateKey, aad, envelope);
 }
 
 export {

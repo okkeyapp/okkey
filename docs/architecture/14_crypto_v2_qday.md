@@ -58,6 +58,43 @@ Baseline policy by environment:
 
 During migration, key sharing uses a hybrid envelope containing both ECC and PQ ciphertext components. Decrypt path is selected by verified capabilities, never by silent downgrade.
 
+### Canonical Hybrid Envelope (v1)
+
+For `crypto_version=v2` hybrid transport, the binary envelope is fixed and versioned:
+
+- `version` (`u8`) = `1`
+- `kdf_id` (`u8`) = `1` (`SHA-256(domain || ecc_shared || pq_shared || aad)`)
+- `aead_id` (`u8`) = `1` (`XChaCha20-Poly1305`)
+- `reserved` (`u8`) = `0`
+- `ecc_ephemeral_public_key` (`32 bytes`, X25519)
+- `pq_ciphertext` (`1088 bytes`, ML-KEM-768 ciphertext)
+- `nonce` (`24 bytes`, XChaCha20-Poly1305 nonce)
+- `ciphertext` (`N bytes`, AEAD payload with 16-byte tag suffix)
+
+`hybrid_envelope_fixed_header_len` is therefore `1+1+1+1+32+1088+24 = 1148 bytes`.
+
+Validation requirements:
+
+- strict byte lengths for ECC/PQ/nonce fields;
+- reject unsupported `version`, `kdf_id`, `aead_id`;
+- reject envelopes shorter than fixed header + AEAD tag;
+- decrypt only through Rust engine primitives (no JS/TS crypto fallback path).
+
+### Rust/WASM Primitive API (6.6)
+
+Core primitive entrypoints for hybrid transport:
+
+- `generate_pq_keys()` -> `[mlkem768_decapsulation_key || mlkem768_encapsulation_key]`
+- `encrypt_hybrid(sender_private_key, recipient_public_key, recipient_pq_public_key, aad, plaintext)` -> `hybrid_envelope_v1`
+- `decrypt_hybrid(recipient_private_key, recipient_pq_private_key, aad, envelope)` -> `plaintext`
+
+TypeScript wrapper names in `@okkey/crypto`:
+
+- `generatePQKeys()`
+- `encryptHybrid(...)`
+- `decryptHybrid(...)`
+- `hybridEnvelopeFixedHeaderLen()`
+
 ---
 
 ## Migration Strategy
