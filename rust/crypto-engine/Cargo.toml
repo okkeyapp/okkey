@@ -20,6 +20,7 @@ aes-gcm = { version = "0.10", features = ["std"] }
 ed25519-dalek = { version = "2", features = ["std"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 base64 = "0.22"
+ml-kem = "0.2"
 
 [dev-dependencies]
 hex = "0.4"

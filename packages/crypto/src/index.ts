@@ -88,3 +88,18 @@ export {
   encryptPersonalVaultMetadataPayload,
   decryptPersonalVaultMetadataPayload,
 } from "./personal-vault-metadata.js";
+
+export {
+  OKKEY_CRYPTO_PROFILE_V2,
+  MLKEM768_ENCAPSULATION_KEY_LEN,
+  MLKEM768_DECAPSULATION_KEY_LEN,
+  USER_IDENTITY_ENCRYPTED_PRIVATE_MIN_PAYLOAD_BYTES,
+  USER_IDENTITY_SK_AAD,
+  encodeUserIdentityPrivateBundleV1,
+  decodeUserIdentityPrivateBundleV1,
+  generateMlkem768KeypairMaterial,
+  encryptUserIdentityPrivateBundle,
+  decryptUserIdentityPrivateBundle,
+  decryptUserIdentityFromEncryptedBlob,
+  userIdentityEncryptedBlobDtoFromPayload,
+} from "./user-identity-bundle.js";

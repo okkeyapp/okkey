@@ -40,6 +40,23 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
   await ensureUserKdfColumns(db);
   await ensureUserLocaleColumn(db);
   await ensureEventsSyncEnvelope(db);
+  await ensureUserPublicPqKeyColumn(db);
+}
+
+async function ensureUserPublicPqKeyColumn(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("public_pq_key")) {
+    const migration0007 = path.resolve(__dirname, "../migrations/0007_user_public_pq_key.sql");
+    await db.query(readFileSync(migration0007, "utf8"));
+  }
 }
 
 async function ensureEventsSyncEnvelope(db: PostgresDatabase): Promise<void> {
@@ -239,6 +256,7 @@ test("integration: EventsRepository.append persists event and detects version co
   const user = await users.create({
     email: `integration-${suffix}@okkey.local`,
     publicKey: `pk-${suffix}`,
+    publicPqKey: `pq-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1, 2, 3]),
     serverKeyShare: new Uint8Array([4, 5, 6]),
     passwordKdfSalt: new Uint8Array(16).fill(1),
@@ -311,6 +329,7 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
   const user = await users.create({
     email: `device-${suffix}@okkey.local`,
     publicKey: `pk-${suffix}`,
+    publicPqKey: `pq-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1, 2]),
     serverKeyShare: new Uint8Array([3, 4]),
     passwordKdfSalt: new Uint8Array(16).fill(2),
@@ -412,6 +431,7 @@ test("integration: DevicesRepository approval transitions are consistent", async
   const user = await users.create({
     email: `approval-${suffix}@okkey.local`,
     publicKey: `pk-${suffix}`,
+    publicPqKey: `pq-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1, 2]),
     serverKeyShare: new Uint8Array([3, 4]),
     passwordKdfSalt: new Uint8Array(16).fill(3),

@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{aead, kdf, sign, x25519, encoding};
+use crate::{aead, encoding, kdf, mlkem768, sign, x25519};
 use getrandom::getrandom;
 
 #[wasm_bindgen]
@@ -74,4 +74,26 @@ pub fn b64_encode(data: &[u8]) -> String {
 #[wasm_bindgen]
 pub fn b64_decode(s: &str) -> Result<Vec<u8>, JsValue> {
   encoding::b64_decode(s).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Byte length of encoded ML-KEM-768 decapsulation (private) key.
+#[wasm_bindgen]
+pub fn mlkem768_decapsulation_key_len() -> usize {
+  mlkem768::DECAPSULATION_KEY_LEN
+}
+
+/// Byte length of encoded ML-KEM-768 encapsulation (public) key.
+#[wasm_bindgen]
+pub fn mlkem768_encapsulation_key_len() -> usize {
+  mlkem768::ENCAPSULATION_KEY_LEN
+}
+
+/// Random ML-KEM-768 keypair: `[decapsulation_key || encapsulation_key]` (fixed lengths).
+#[wasm_bindgen]
+pub fn mlkem768_keypair() -> Vec<u8> {
+  let (dk, ek) = mlkem768::generate_keypair();
+  let mut out = Vec::with_capacity(dk.len() + ek.len());
+  out.extend_from_slice(&dk);
+  out.extend_from_slice(&ek);
+  out
 }

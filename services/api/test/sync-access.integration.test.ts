@@ -55,6 +55,7 @@ test("integration: sync append/list ACCESS_DENIED for user without vault access"
   const userB = await storage.repositories.users.create({
     email: emailB,
     publicKey: `pk-b-${suffix}`,
+    publicPqKey: `pq-b-${suffix}`,
     encryptedPrivateKey: new Uint8Array([1]),
     serverKeyShare: new Uint8Array([2]),
     passwordKdfSalt: new Uint8Array(16).fill(3),

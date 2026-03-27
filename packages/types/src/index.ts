@@ -293,7 +293,10 @@ export interface VaultKeyGetResponseDto {
 export interface VaultShareMemberDto {
   userId: UUID;
   email: string;
+  /** Ed25519 public key (base64). */
   publicKey: string;
+  /** ML-KEM-768 encapsulation key (base64); null for legacy users. */
+  publicPqKey: string | null;
   role: string | null;
   encryptedVaultKey: EncryptedBlobDto | null;
 }
@@ -396,6 +399,8 @@ export interface DeviceRejectResponseDto {
 export interface RegisterCompleteRequestDto {
   auth_state_id: UUID;
   user_public_key: string;
+  /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
+  user_public_pq_key: string;
   encrypted_private_key: EncryptedBlobDto;
   server_key_share: string;
   password_kdf_salt: string;

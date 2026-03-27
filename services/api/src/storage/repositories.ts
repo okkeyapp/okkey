@@ -28,6 +28,8 @@ export interface UserRecord {
   id: string;
   email: string;
   publicKey: string;
+  /** ML-KEM-768 encapsulation key (base64 text); null for legacy rows */
+  publicPqKey: string | null;
   /** Preferred language for email (`en` | `ru`); null if unset */
   locale: string | null;
   createdAt: string;
@@ -44,6 +46,7 @@ export class UsersRepository {
   async create(input: {
     email: string;
     publicKey: string;
+    publicPqKey: string;
     encryptedPrivateKey: Uint8Array;
     serverKeyShare: Uint8Array;
     passwordKdfSalt: Uint8Array;
@@ -51,23 +54,25 @@ export class UsersRepository {
   }): Promise<UserRecord> {
     try {
       const rows = await this.db.query<
-        BaseRow & { email: string; public_key: string }
+        BaseRow & { email: string; public_key: string; public_pq_key: string | null }
       >(
         `
           INSERT INTO users (
             email,
             public_key,
+            public_pq_key,
             encrypted_private_key,
             server_key_share,
             password_kdf_salt,
             password_kdf_params_version
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id, email, public_key, locale, created_at, updated_at
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
         `,
         [
           input.email,
           input.publicKey,
+          input.publicPqKey,
           Buffer.from(input.encryptedPrivateKey),
           Buffer.from(input.serverKeyShare),
           Buffer.from(input.passwordKdfSalt),
@@ -83,9 +88,9 @@ export class UsersRepository {
 
   async findById(id: string): Promise<UserRecord | null> {
     const rows = await this.db.query<
-      BaseRow & { email: string; public_key: string; locale: string | null }
+      BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, locale, created_at, updated_at FROM users WHERE id = $1",
+      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE id = $1",
       [id],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -93,9 +98,9 @@ export class UsersRepository {
 
   async findByEmail(email: string): Promise<UserRecord | null> {
     const rows = await this.db.query<
-      BaseRow & { email: string; public_key: string; locale: string | null }
+      BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, locale, created_at, updated_at FROM users WHERE email = $1",
+      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE email = $1",
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -1262,12 +1267,18 @@ export class SessionsRepository {
 }
 
 function mapUser(
-  row: BaseRow & { email: string; public_key: string; locale?: string | null },
+  row: BaseRow & {
+    email: string;
+    public_key: string;
+    public_pq_key?: string | null;
+    locale?: string | null;
+  },
 ): UserRecord {
   return {
     id: row.id,
     email: row.email,
     publicKey: row.public_key,
+    publicPqKey: row.public_pq_key ?? null,
     locale: row.locale ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,

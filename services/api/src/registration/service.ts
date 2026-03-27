@@ -16,7 +16,10 @@ import { insertRegistrationBundle } from "./repository.ts";
 const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
-const MIN_ENCRYPTED_PRIVATE_LEN = 41;
+/** ML-KEM-768 encapsulation key (FIPS 203). */
+const MLKEM768_EK_LEN = 1184;
+/** Min `EncryptedBlob.payload` bytes: 24-byte nonce + AEAD ciphertext of v1 hybrid private bundle. */
+const MIN_ENCRYPTED_USER_IDENTITY_PAYLOAD_LEN = 2473;
 const SUPPORTED_KDF_PARAMS_VERSIONS = new Set([1, 2]);
 
 export class RegistrationError extends Error {
@@ -40,6 +43,7 @@ export class RegistrationError extends Error {
 export interface RegisterCompleteInput {
   authStateId: string;
   userPublicKey: string;
+  userPublicPqKey: string;
   encryptedPrivateKey: EncryptedBlob;
   serverKeyShare: Uint8Array;
   passwordKdfSalt: Uint8Array;
@@ -156,6 +160,7 @@ export class RegistrationService {
         return insertRegistrationBundle(tx, {
           email: authState.email,
           publicKey: input.userPublicKey.trim(),
+          publicPqKey: input.userPublicPqKey.trim(),
           encryptedPrivateKey,
           serverKeyShare: input.serverKeyShare,
           passwordKdfSalt: input.passwordKdfSalt,
@@ -255,6 +260,15 @@ export class RegistrationService {
       );
     }
 
+    const pqBytes = decodeBase64Key(input.userPublicPqKey, "user_public_pq_key");
+    if (pqBytes.length !== MLKEM768_EK_LEN) {
+      throw new RegistrationError(
+        "CRYPTO_PAYLOAD_INVALID",
+        400,
+        "user_public_pq_key must decode to 1184 bytes (ML-KEM-768)",
+      );
+    }
+
     if (!isValidFingerprint(input.deviceFingerprint)) {
       throw new RegistrationError(
         "CRYPTO_PAYLOAD_INVALID",
@@ -282,7 +296,7 @@ export class RegistrationService {
     } catch (error) {
       throw new RegistrationError("CRYPTO_PAYLOAD_INVALID", 400, (error as Error).message);
     }
-    if (parsed.payloadBytes.length < MIN_ENCRYPTED_PRIVATE_LEN) {
+    if (parsed.payloadBytes.length < MIN_ENCRYPTED_USER_IDENTITY_PAYLOAD_LEN) {
       throw new RegistrationError("CRYPTO_PAYLOAD_INVALID", 400, "encrypted_private_key too short");
     }
     if (!isCryptoProfileAllowed(this.config, parsed.blob.crypto_version)) {
@@ -300,6 +314,8 @@ export class RegistrationService {
     }
     return mergeEncryptedBlobMeta(parsed.blob, {
       entity: "user_private_key_bundle",
+      bundle_version: 2,
+      identity: "ed25519_mlkem768_v1",
       key_scope: "account",
     });
   }

@@ -42,10 +42,11 @@ function validRegisterBody() {
   return {
     auth_state_id: "state-1",
     user_public_key: Buffer.alloc(32, 1).toString("base64"),
+    user_public_pq_key: Buffer.alloc(1184, 8).toString("base64"),
     encrypted_private_key: {
       crypto_version: 2,
       algorithm: "opaque",
-      payload: Buffer.alloc(48, 2).toString("base64"),
+      payload: Buffer.alloc(2473, 2).toString("base64"),
       meta: {},
     },
     server_key_share: Buffer.alloc(32, 3).toString("base64"),

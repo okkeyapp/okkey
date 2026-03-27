@@ -4,6 +4,7 @@ import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/e
 export interface RegistrationBundleInput {
   email: string;
   publicKey: string;
+  publicPqKey: string;
   encryptedPrivateKey: EncryptedBlob;
   serverKeyShare: Uint8Array;
   passwordKdfSalt: Uint8Array;
@@ -38,17 +39,19 @@ export async function insertRegistrationBundle(
       INSERT INTO users (
         email,
         public_key,
+        public_pq_key,
         encrypted_private_key,
         server_key_share,
         password_kdf_salt,
         password_kdf_params_version
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
     `,
     [
       input.email,
       input.publicKey,
+      input.publicPqKey,
       Buffer.from(serializeEncryptedBlobToStorage(input.encryptedPrivateKey)),
       Buffer.from(input.serverKeyShare),
       Buffer.from(input.passwordKdfSalt),

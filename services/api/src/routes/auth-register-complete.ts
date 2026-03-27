@@ -5,6 +5,7 @@ import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
 interface RegisterCompleteBody {
   auth_state_id?: string;
   user_public_key?: string;
+  user_public_pq_key?: string;
   encrypted_private_key?: unknown;
   server_key_share?: string;
   password_kdf_salt?: string;
@@ -99,6 +100,7 @@ export function createRegisterCompleteRoute(
 
     const requiredString = [
       ["user_public_key", body.user_public_key],
+      ["user_public_pq_key", body.user_public_pq_key],
       ["encrypted_private_key", body.encrypted_private_key],
       ["server_key_share", body.server_key_share],
       ["password_kdf_salt", body.password_kdf_salt],
@@ -173,6 +175,7 @@ export function createRegisterCompleteRoute(
       const result = await registrationService.completeRegistration({
         authStateId: body.auth_state_id.trim(),
         userPublicKey: body.user_public_key!.trim(),
+        userPublicPqKey: body.user_public_pq_key!.trim(),
         encryptedPrivateKey: body.encrypted_private_key as EncryptedBlob,
         serverKeyShare: srvShare,
         passwordKdfSalt: kdfSalt,

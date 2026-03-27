@@ -46,11 +46,12 @@ Each user has:
 ## User Keys
 
 When creating an account, the following are generated:
-- UserPublicKey
-- UserPrivateKey
+- UserPublicKey (Ed25519, 32-byte raw public key)
+- UserPublicPqKey (ML-KEM-768 encapsulation key, 1184-byte raw public key)
+- UserPrivateKey material (Ed25519 signing secret + ML-KEM decapsulation key) as a single structured bundle
 
-Private key is stored:
-- encrypted with VaultKey
+Private key bundle is stored:
+- encrypted with VaultKey (AEAD), never as plaintext on the server
 
 This enables:
 - secure vault sharing
@@ -66,9 +67,9 @@ New user registration.
 2. user creates master password (stays on client)
 3. client derives **C** = Argon2id(master password, salt, params v1) → 32 bytes
 4. client generates random **A** (server share) and **VaultKey**, then **B** = **A** ⊕ **C** ⊕ **VaultKey** (32-byte XOR)
-5. client generates Ed25519 `UserKeyPair`
-6. encrypt `UserPrivateKey` with `VaultKey` (AEAD, opaque blob for the server)
-7. `POST /auth/register/complete` with **A**, encrypted private key, KDF salt/version, `user_public_key`, and first device fields including **B** as `device_share`
+5. client generates Ed25519 signing keypair and ML-KEM-768 KEM keypair (Rust crypto engine / WASM only)
+6. build a versioned plaintext private bundle (Ed25519 SK + ML-KEM DK), encrypt it with `VaultKey` (AEAD, opaque blob for the server)
+7. `POST /auth/register/complete` with **A**, encrypted private key bundle, KDF salt/version, `user_public_key`, `user_public_pq_key`, and first device fields including **B** as `device_share`
 8. server creates user, default workspace + personal vault, **trusted** first device (no pending approval)
 
 Server stores:

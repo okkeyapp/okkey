@@ -300,7 +300,8 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 |--------|------|----------|--------|
 | `auth_state_id` | string | Yes | From `POST /auth/email/confirm`. |
 | `user_public_key` | string | Yes | Base64 of **32** raw Ed25519 public key bytes. |
-| `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **41** bytes. |
+| `user_public_pq_key` | string | Yes | Base64 of **1184** raw ML-KEM-768 encapsulation key bytes. |
+| `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **2473** bytes (XChaCha20-Poly1305 over hybrid identity bundle). |
 | `server_key_share` | string | Yes | Base64 of **32** bytes (share **A**). |
 | `password_kdf_salt` | string | Yes | Base64 of **16** bytes (Argon2id salt). |
 | `password_kdf_params_version` | integer | Yes | Profile version. Core currently validates `1` and `2`; environment policy may restrict writes to `2` only. |
@@ -429,6 +430,7 @@ Lists explicit `vault_members` with their public keys and (when present) wrapped
       "userId": "uuid",
       "email": "user@example.com",
       "publicKey": "base64",
+      "publicPqKey": "base64-or-null",
       "role": "member",
       "encryptedVaultKey": "EncryptedBlob-or-null"
     }

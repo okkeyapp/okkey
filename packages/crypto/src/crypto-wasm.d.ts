@@ -11,4 +11,8 @@ declare module "@okkey/crypto-wasm" {
   export function x25519_shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
   export function b64_encode(data: Uint8Array): string;
   export function b64_decode(s: string): Uint8Array;
+  export function mlkem768_decapsulation_key_len(): number;
+  export function mlkem768_encapsulation_key_len(): number;
+  /** `[decapsulation_key || encapsulation_key]` (fixed ML-KEM-768 lengths). */
+  export function mlkem768_keypair(): Uint8Array;
 }

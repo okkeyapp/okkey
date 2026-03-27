@@ -206,6 +206,7 @@ components:
       required:
         - auth_state_id
         - user_public_key
+        - user_public_pq_key
         - encrypted_private_key
         - server_key_share
         - password_kdf_salt
@@ -220,6 +221,9 @@ components:
           format: uuid
         user_public_key:
           type: string
+        user_public_pq_key:
+          type: string
+          description: ML-KEM-768 encapsulation key (1184 raw bytes), standard base64
         encrypted_private_key:
           $ref: "#/components/schemas/EncryptedBlob"
         server_key_share:
@@ -396,7 +400,7 @@ components:
 
     VaultShareMember:
       type: object
-      required: [userId, email, publicKey, role, encryptedVaultKey]
+      required: [userId, email, publicKey, publicPqKey, role, encryptedVaultKey]
       properties:
         userId:
           type: string
@@ -406,6 +410,10 @@ components:
           format: email
         publicKey:
           type: string
+        publicPqKey:
+          type: string
+          nullable: true
+          description: ML-KEM-768 encapsulation key (base64); null for legacy users
         role:
           type: string
           nullable: true

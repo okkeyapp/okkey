@@ -66,6 +66,7 @@ test("UsersRepository.create maps inserted row", async () => {
       id: "u1",
       email: "dev@okkey.local",
       public_key: "pk",
+      public_pq_key: "pq",
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
     },
@@ -75,6 +76,7 @@ test("UsersRepository.create maps inserted row", async () => {
   const user = await repo.create({
     email: "dev@okkey.local",
     publicKey: "pk",
+    publicPqKey: "pq",
     encryptedPrivateKey: new Uint8Array([1, 2, 3]),
     serverKeyShare: new Uint8Array([4, 5]),
     passwordKdfSalt: new Uint8Array(16).fill(9),

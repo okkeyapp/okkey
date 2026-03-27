@@ -20,11 +20,14 @@ function createLoggerStub() {
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
+const MIN_ENCRYPTED_USER_IDENTITY_BYTES = 2473;
+const SAMPLE_PQ_PK_B64 = Buffer.alloc(1184, 9).toString("base64");
+
 function mkEncryptedPrivateKeyBlob(byte: number) {
   return {
     crypto_version: 2,
     algorithm: "opaque",
-    payload: Buffer.from(new Uint8Array(64).fill(byte)).toString("base64"),
+    payload: Buffer.from(new Uint8Array(MIN_ENCRYPTED_USER_IDENTITY_BYTES).fill(byte)).toString("base64"),
     meta: {},
   };
 }
@@ -52,6 +55,11 @@ test("integration: registration completes user, workspace, vault, trusted device
     "utf8",
   );
   await storage.postgres.query(migration0005);
+  const migration0007 = readFileSync(
+    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0007);
   const suffix = randomUUID();
   const email = `reg-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -113,6 +121,7 @@ test("integration: registration completes user, workspace, vault, trusted device
   const result = await registrationService.completeRegistration({
     authStateId,
     userPublicKey: pkB64,
+    userPublicPqKey: SAMPLE_PQ_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
@@ -148,6 +157,7 @@ test("integration: registration completes user, workspace, vault, trusted device
   const again = await registrationService.completeRegistration({
     authStateId,
     userPublicKey: pkB64,
+    userPublicPqKey: SAMPLE_PQ_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
@@ -190,6 +200,11 @@ test("integration: parallel completeRegistration creates single user", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0005b);
+  const migration0007b = readFileSync(
+    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0007b);
   const suffix = randomUUID();
   const email = `reg-parallel-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -251,6 +266,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
   const payload = {
     authStateId,
     userPublicKey: pkB64,
+    userPublicPqKey: SAMPLE_PQ_PK_B64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
@@ -321,6 +337,11 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0005c);
+  const migration0007c = readFileSync(
+    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0007c);
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
@@ -353,10 +374,11 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
       registrationService.completeRegistration({
         authStateId: missingStateId,
         userPublicKey: Buffer.alloc(32, 1).toString("base64"),
+        userPublicPqKey: SAMPLE_PQ_PK_B64,
         encryptedPrivateKey: {
           crypto_version: 2,
           algorithm: "opaque",
-          payload: Buffer.from(new Uint8Array(48).fill(1)).toString("base64"),
+          payload: Buffer.from(new Uint8Array(MIN_ENCRYPTED_USER_IDENTITY_BYTES).fill(1)).toString("base64"),
           meta: {},
         },
         serverKeyShare: new Uint8Array(32).fill(2),

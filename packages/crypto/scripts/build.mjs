@@ -12,9 +12,11 @@ const wasmPackBin = process.env.WASM_PACK_BIN || "wasm-pack";
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
+const env = { ...process.env, PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH ?? ""}` };
 execFileSync(wasmPackBin, ["build", "--target", "web", "--out-dir", outDir, "--features", "wasm"], {
   cwd: rustDir,
   stdio: "inherit",
+  env,
 });
 
 const pkgPath = join(outDir, "package.json");

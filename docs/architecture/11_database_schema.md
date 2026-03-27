@@ -39,6 +39,7 @@ Users table.
 id (uuid)
 email
 public_key
+public_pq_key (nullable for legacy rows; ML-KEM-768 encapsulation key, base64 text on wire)
 encrypted_private_key
 server_key_share
 password_kdf_salt (nullable for pre-4.9 rows)

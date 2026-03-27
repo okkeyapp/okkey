@@ -33,5 +33,5 @@ test("DTO contract exposes EncryptedBlob fields in types", async () => {
   assert.match(content, /SyncAppendEventRequestDto[\s\S]*encryptedBlob: EncryptedBlobDto;/);
   assert.match(content, /SyncEventWireDto[\s\S]*encryptedBlob: EncryptedBlobDto;/);
   assert.match(content, /CapsuleCreateRequestDto[\s\S]*encryptedPayload: EncryptedBlobDto;/);
-  assert.match(content, /RegisterCompleteRequestDto[\s\S]*encrypted_private_key: EncryptedBlobDto;/);
+  assert.match(content, /RegisterCompleteRequestDto[\s\S]*user_public_pq_key:[\s\S]*encrypted_private_key: EncryptedBlobDto;/);
 });

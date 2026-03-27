@@ -12,10 +12,11 @@ function baseInput() {
   return {
     authStateId: "s1",
     userPublicKey: Buffer.alloc(32, 9).toString("base64"),
+    userPublicPqKey: Buffer.alloc(1184, 7).toString("base64"),
     encryptedPrivateKey: {
       crypto_version: 2,
       algorithm: "opaque",
-      payload: Buffer.from(new Uint8Array(48).fill(1)).toString("base64"),
+      payload: Buffer.from(new Uint8Array(2473).fill(1)).toString("base64"),
       meta: {},
     },
     serverKeyShare: new Uint8Array(32).fill(2),

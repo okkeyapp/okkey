@@ -47,6 +47,11 @@ export async function applyMigrations(
     "utf8",
   );
   await storage.postgres.query(migration0006);
+  const migration0007 = readFileSync(
+    path.resolve(helpersDir, "../migrations/0007_user_public_pq_key.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0007);
 }
 
 export async function cleanupUserData(
@@ -123,16 +128,18 @@ export async function registerUser(
   const share32 = new Uint8Array(32).fill(11);
   const salt16 = new Uint8Array(16).fill(22);
   const encPriv = {
-    crypto_version: 1,
+    crypto_version: 2,
     algorithm: "opaque",
-    payload: Buffer.from(new Uint8Array(64).fill(33)).toString("base64"),
+    payload: Buffer.from(new Uint8Array(2473).fill(33)).toString("base64"),
     meta: {},
   };
   const pkB64 = Buffer.alloc(32, 5).toString("base64");
+  const pqPkB64 = Buffer.alloc(1184, 6).toString("base64");
 
   const result = await registrationService.completeRegistration({
     authStateId,
     userPublicKey: pkB64,
+    userPublicPqKey: pqPkB64,
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,

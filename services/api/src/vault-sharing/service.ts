@@ -46,6 +46,7 @@ export interface VaultShareListEntry {
   userId: string;
   email: string;
   publicKey: string;
+  publicPqKey: string | null;
   role: string | null;
   encryptedVaultKey: EncryptedBlob | null;
 }
@@ -121,6 +122,7 @@ export class VaultSharingService {
       user_id: string;
       email: string;
       public_key: string;
+      public_pq_key: string | null;
       role: string | null;
       encrypted_vault_key: Buffer | null;
     }>(
@@ -129,6 +131,7 @@ export class VaultSharingService {
           u.id AS user_id,
           u.email,
           u.public_key,
+          u.public_pq_key,
           vm.role,
           vk.encrypted_vault_key
         FROM vault_members vm
@@ -146,6 +149,7 @@ export class VaultSharingService {
       userId: row.user_id,
       email: row.email,
       publicKey: row.public_key,
+      publicPqKey: row.public_pq_key,
       role: row.role,
       encryptedVaultKey: row.encrypted_vault_key
         ? decodeEncryptedBlobFromStorage(Uint8Array.from(row.encrypted_vault_key))
