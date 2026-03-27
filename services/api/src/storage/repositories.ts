@@ -1,4 +1,8 @@
-import { assertPayloadSchemaMonotonic } from "../crypto/downgrade.ts";
+import {
+  assertPayloadSchemaMonotonic,
+  assertVaultCryptoFloor,
+  DEFAULT_NEW_VAULT_CRYPTO_VERSION,
+} from "../crypto/downgrade.ts";
 import type { QueryExecutor } from "./postgres.ts";
 import {
   EntityNotFoundError,
@@ -213,6 +217,8 @@ export interface VaultRecord {
   name: string;
   isPersonal: boolean;
   ownerId: string | null;
+  /** Minimum crypto profile for this vault; never decreases (see `assertVaultCryptoFloor`). */
+  cryptoVersion: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -236,14 +242,21 @@ export class VaultsRepository {
         name: string;
         is_personal: boolean;
         owner_id: string | null;
+        crypto_version: number;
       }
     >(
       `
-        INSERT INTO vaults (workspace_id, name, is_personal, owner_id)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, workspace_id, name, is_personal, owner_id, created_at, updated_at
+        INSERT INTO vaults (workspace_id, name, is_personal, owner_id, crypto_version)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
       `,
-      [input.workspaceId, input.name, input.isPersonal ?? false, input.ownerId ?? null],
+      [
+        input.workspaceId,
+        input.name,
+        input.isPersonal ?? false,
+        input.ownerId ?? null,
+        DEFAULT_NEW_VAULT_CRYPTO_VERSION,
+      ],
     );
     return mapVault(rows[0]);
   }
@@ -255,10 +268,11 @@ export class VaultsRepository {
         name: string;
         is_personal: boolean;
         owner_id: string | null;
+        crypto_version: number;
       }
     >(
       `
-        SELECT id, workspace_id, name, is_personal, owner_id, created_at, updated_at
+        SELECT id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
         FROM vaults
         WHERE id = $1
       `,
@@ -274,10 +288,11 @@ export class VaultsRepository {
         name: string;
         is_personal: boolean;
         owner_id: string | null;
+        crypto_version: number;
       }
     >(
       `
-        SELECT id, workspace_id, name, is_personal, owner_id, created_at, updated_at
+        SELECT id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
         FROM vaults
         WHERE workspace_id = $1
         ORDER BY created_at ASC
@@ -297,6 +312,7 @@ export class VaultsRepository {
         name: string;
         is_personal: boolean;
         owner_id: string | null;
+        crypto_version: number;
       }
     >(
       `
@@ -306,6 +322,7 @@ export class VaultsRepository {
           v.name,
           v.is_personal,
           v.owner_id,
+          v.crypto_version,
           v.created_at,
           v.updated_at
         FROM vaults v
@@ -951,13 +968,14 @@ export class EventsRepository {
     clientCreatedAt?: string | null;
   }): Promise<EventRecord> {
     return this.db.transaction(async (tx) => {
-      const vaultRows = await tx.query<{ id: string }>(
-        "SELECT id FROM vaults WHERE id = $1 FOR UPDATE",
+      const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
+        "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
         [input.vaultId],
       );
       if (!vaultRows[0]) {
         throw new EntityNotFoundError("vault", input.vaultId);
       }
+      const vaultCryptoVersion = vaultRows[0].crypto_version;
 
       if (input.idempotencyKey) {
         const existingRows = await tx.query<{
@@ -997,6 +1015,8 @@ export class EventsRepository {
 
       const nextVersion = currentVersion + 1;
       const payloadSchemaVersion = input.payloadSchemaVersion ?? 2;
+
+      assertVaultCryptoFloor(input.vaultId, vaultCryptoVersion, payloadSchemaVersion);
 
       const maxSchemaRows = await tx.query<{ m: number | null }>(
         "SELECT MAX(payload_schema_version) AS m FROM events WHERE vault_id = $1",
@@ -1068,6 +1088,16 @@ export class EventsRepository {
         }
         throw error;
       }
+
+      await tx.query(
+        `
+          UPDATE vaults
+          SET crypto_version = GREATEST(crypto_version, $2),
+              updated_at = now()
+          WHERE id = $1
+        `,
+        [input.vaultId, payloadSchemaVersion],
+      );
 
       return mapEvent(rows[0]);
     });
@@ -1304,6 +1334,7 @@ function mapVault(
     name: string;
     is_personal: boolean;
     owner_id: string | null;
+    crypto_version: number;
   },
 ): VaultRecord {
   return {
@@ -1312,6 +1343,7 @@ function mapVault(
     name: row.name,
     isPersonal: row.is_personal,
     ownerId: row.owner_id,
+    cryptoVersion: row.crypto_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };

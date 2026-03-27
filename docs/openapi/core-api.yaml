@@ -278,7 +278,7 @@ components:
 
     Vault:
       type: object
-      required: [id, workspaceId, name, isPersonal, ownerId, createdAt, updatedAt]
+      required: [id, workspaceId, name, isPersonal, ownerId, cryptoVersion, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -294,6 +294,11 @@ components:
           type: string
           format: uuid
           nullable: true
+        cryptoVersion:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Vault crypto profile version (floor); new vaults use v2; cannot downgrade.
         createdAt:
           type: string
           format: date-time

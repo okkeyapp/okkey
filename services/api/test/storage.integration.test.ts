@@ -14,7 +14,7 @@ import {
   WorkspacesRepository,
 } from "../src/storage/repositories.ts";
 import { PostgresDatabase } from "../src/storage/postgres.ts";
-import { VersionConflictError } from "../src/storage/errors.ts";
+import { CryptoDowngradeInvariantError, VersionConflictError } from "../src/storage/errors.ts";
 
 function createLoggerStub() {
   return {
@@ -41,6 +41,7 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
   await ensureUserLocaleColumn(db);
   await ensureEventsSyncEnvelope(db);
   await ensureUserPublicPqKeyColumn(db);
+  await ensureVaultCryptoVersionColumn(db);
 }
 
 async function ensureUserPublicPqKeyColumn(db: PostgresDatabase): Promise<void> {
@@ -56,6 +57,22 @@ async function ensureUserPublicPqKeyColumn(db: PostgresDatabase): Promise<void> 
   if (!names.has("public_pq_key")) {
     const migration0007 = path.resolve(__dirname, "../migrations/0007_user_public_pq_key.sql");
     await db.query(readFileSync(migration0007, "utf8"));
+  }
+}
+
+async function ensureVaultCryptoVersionColumn(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'vaults'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("crypto_version")) {
+    const migration0008 = path.resolve(__dirname, "../migrations/0008_vault_crypto_version.sql");
+    await db.query(readFileSync(migration0008, "utf8"));
   }
 }
 
@@ -275,6 +292,8 @@ test("integration: EventsRepository.append persists event and detects version co
     ownerId: user.id,
   });
 
+  assert.equal(vault.cryptoVersion, 2);
+
   userId = user.id;
   workspaceId = workspace.id;
 
@@ -287,6 +306,25 @@ test("integration: EventsRepository.append persists event and detects version co
   });
 
   assert.equal(firstEvent.version, 1);
+
+  const vaultAfterEvent = await vaults.findById(vault.id);
+  assert.equal(vaultAfterEvent?.cryptoVersion, 2);
+
+  await assert.rejects(
+    () =>
+      events.append({
+        vaultId: vault.id,
+        actorId: user.id,
+        eventType: "ITEM_UPDATE",
+        encryptedPayload: new Uint8Array([12, 13]),
+        baseVersion: 1,
+        payloadSchemaVersion: 1,
+      }),
+    (error: unknown) =>
+      error instanceof CryptoDowngradeInvariantError &&
+      error.establishedMaxVersion === 2 &&
+      error.requestedVersion === 1,
+  );
 
   await assert.rejects(
     () =>

@@ -28,6 +28,18 @@ const SUPPORTED_ITEM_SCHEMAS = new Set<number>([
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
 ]);
 
+/** EncryptedBlob.crypto_profile on wire; inner folder JSON still uses `FOLDER_PLAINTEXT_SCHEMA_VERSION`. */
+const SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS = new Set<number>([
+  FOLDER_PLAINTEXT_SCHEMA_VERSION,
+  2,
+]);
+
+/** EncryptedBlob.crypto_profile for assign events; inner JSON uses `ITEM_FOLDER_ASSIGN_SCHEMA_VERSION`. */
+const SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS = new Set<number>([
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  2,
+]);
+
 const CORE_EVENT_TYPES = new Set<CoreEventType>([
   "ITEM_CREATE",
   "ITEM_UPDATE",
@@ -48,6 +60,8 @@ export type UnsupportedSchemaPolicy = "ignore" | "quarantine";
 
 export interface ReplayEngineOptions {
   vaultId: string;
+  /** From `GET /vaults/:vaultId` (`cryptoVersion`). Server is authoritative; use with replayed `MAX(crypto_version)` for client-side checks. */
+  vaultCryptoVersion?: number;
   currentUserId?: string;
   initialLastAppliedVersion?: number;
   unknownEventPolicy?: UnknownEventPolicy;
@@ -316,7 +330,7 @@ export class SyncReplayEngine {
 
     const folderHandler: EventHandler = async (state, event) => {
       const blob = getEventBlob(event);
-      if (blob.crypto_version !== FOLDER_PLAINTEXT_SCHEMA_VERSION) {
+      if (!SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS.has(blob.crypto_version)) {
         return this.quarantineUnsupported(event);
       }
       if (!this.options.currentUserId || event.actorId !== this.options.currentUserId) {
@@ -353,7 +367,7 @@ export class SyncReplayEngine {
 
     this.registerHandler("ITEM_FOLDER_ASSIGN", async (state, event) => {
       const blob = getEventBlob(event);
-      if (blob.crypto_version !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION) {
+      if (!SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS.has(blob.crypto_version)) {
         return this.quarantineUnsupported(event);
       }
       if (!this.options.currentUserId || event.actorId !== this.options.currentUserId) {

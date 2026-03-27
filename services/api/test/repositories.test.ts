@@ -210,7 +210,7 @@ test("DevicesRepository.resolveApproval approves pending device", async () => {
 
 test("EventsRepository.append increments version in transaction", async () => {
   const db = new FakeDb();
-  db.enqueueResult([{ id: "v1" }]); // lock vault
+  db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault
   db.enqueueResult([{ current_version: 4 }]); // get current version
   db.enqueueResult([{ m: null }]); // MAX(payload_schema_version); null => no floor
   db.enqueueResult([
@@ -227,6 +227,7 @@ test("EventsRepository.append increments version in transaction", async () => {
       created_at: "2026-01-01T00:00:00.000Z",
     },
   ]);
+  db.enqueueResult([]); // UPDATE vaults crypto_version
 
   const repo = new EventsRepository(db);
   const event = await repo.append({
@@ -238,14 +239,15 @@ test("EventsRepository.append increments version in transaction", async () => {
   });
 
   assert.equal(event.version, 5);
-  assert.equal(db.queries.length, 4);
+  assert.equal(db.queries.length, 5);
   assert.match(db.queries[0].sql, /FOR UPDATE/);
   assert.match(db.queries[2].sql, /MAX\(payload_schema_version\)/);
+  assert.match(db.queries[4].sql, /UPDATE vaults/);
 });
 
 test("EventsRepository.append throws VersionConflictError", async () => {
   const db = new FakeDb();
-  db.enqueueResult([{ id: "v1" }]); // lock vault
+  db.enqueueResult([{ id: "v1", crypto_version: 2 }]); // lock vault
   db.enqueueResult([{ current_version: 7 }]); // current version
 
   const repo = new EventsRepository(db);
@@ -282,7 +284,7 @@ test("EventsRepository.append returns existing row when idempotency_key matches"
   };
 
   const db = new FakeDb();
-  db.enqueueResult([{ id: "v1" }]); // lock vault
+  db.enqueueResult([{ id: "v1", crypto_version: 1 }]); // lock vault
   db.enqueueResult([existing]); // idempotency hit
 
   const repo = new EventsRepository(db);

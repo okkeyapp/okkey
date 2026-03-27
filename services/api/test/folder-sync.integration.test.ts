@@ -21,6 +21,9 @@ function encodeFolderOpaqueBase64(payload: unknown): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
 }
 
+/** Envelope crypto profile (v2 for new vaults); plaintext inside JSON has its own `schemaVersion`. */
+const FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION = 2;
+
 function mkBlobFromJson(payload: unknown, cryptoVersion: number) {
   return {
     crypto_version: cryptoVersion,
@@ -84,7 +87,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
 
   const created = await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedBlob: mkBlobFromJson(folderRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
+    encryptedBlob: mkBlobFromJson(folderRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
     idempotencyKey: idem,
   });
@@ -94,7 +97,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
 
   const retry = await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedBlob: mkBlobFromJson(folderRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
+    encryptedBlob: mkBlobFromJson(folderRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
     idempotencyKey: idem,
   });
@@ -105,7 +108,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
     () =>
       syncService.appendEvent(vaultId, userId, {
         eventType: "FOLDER_CREATE",
-        encryptedBlob: mkBlobFromJson(folderRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
+        encryptedBlob: mkBlobFromJson(folderRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
         baseVersion: 0,
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "SYNC_BAD_REQUEST",
@@ -120,7 +123,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_FOLDER_ASSIGN",
-    encryptedBlob: mkBlobFromJson(assign, ITEM_FOLDER_ASSIGN_SCHEMA_VERSION),
+    encryptedBlob: mkBlobFromJson(assign, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 1,
   });
 
@@ -187,7 +190,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedBlob: mkBlobFromJson(parentRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
+    encryptedBlob: mkBlobFromJson(parentRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
     idempotencyKey: randomUUID(),
   });
@@ -203,7 +206,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_CREATE",
-    encryptedBlob: mkBlobFromJson(childRow, FOLDER_PLAINTEXT_SCHEMA_VERSION),
+    encryptedBlob: mkBlobFromJson(childRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 1,
     idempotencyKey: randomUUID(),
   });
@@ -218,7 +221,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   const renamedParent = { ...parentRow, name: "ParentRenamed", updatedAtMs: now + 1 };
   await syncService.appendEvent(vaultId, userId, {
     eventType: "FOLDER_UPDATE",
-    encryptedBlob: mkBlobFromJson(renamedParent, FOLDER_PLAINTEXT_SCHEMA_VERSION),
+    encryptedBlob: mkBlobFromJson(renamedParent, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 2,
   });
 
@@ -232,7 +235,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
             name: "Conflict",
             updatedAtMs: now + 2,
           },
-          FOLDER_PLAINTEXT_SCHEMA_VERSION,
+          FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION,
         ),
         baseVersion: 2,
       }),

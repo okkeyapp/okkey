@@ -13,6 +13,17 @@ const FOLDER_AND_ASSIGN_TYPES = new Set([
   "ITEM_FOLDER_ASSIGN",
 ]);
 
+/** EncryptedBlob.crypto_profile; inner JSON still carries `schemaVersion` for plaintext. */
+const SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS = new Set<number>([
+  FOLDER_PLAINTEXT_SCHEMA_VERSION,
+  2,
+]);
+
+const SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS = new Set<number>([
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  2,
+]);
+
 function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
   const maybe = event as SyncEventWireDto & {
     encryptedBlob?: { crypto_version?: number; payload?: string };
@@ -85,7 +96,7 @@ export async function replayFolderAndAssignEvents(
     }
 
     if (ev.eventType === "ITEM_FOLDER_ASSIGN") {
-      if (getEventBlob(ev).crypto_version !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION) {
+      if (!SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
         continue;
       }
       const assign = parseItemFolderAssignPlaintextUtf8(plaintextBytes);
@@ -96,7 +107,7 @@ export async function replayFolderAndAssignEvents(
       continue;
     }
 
-    if (getEventBlob(ev).crypto_version !== FOLDER_PLAINTEXT_SCHEMA_VERSION) {
+    if (!SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
       continue;
     }
 

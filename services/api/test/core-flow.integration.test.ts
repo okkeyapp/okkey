@@ -137,7 +137,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
 
   const created = await syncService.appendEvent(vaultId, userId, {
     eventType: "ITEM_CREATE",
-    encryptedBlob: mkBlob("opaque-event-payload", 1),
+    encryptedBlob: mkBlob("opaque-event-payload", 2),
     baseVersion: 0,
     idempotencyKey: randomUUID(),
   });

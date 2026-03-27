@@ -9,6 +9,7 @@ import { loadConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
+import { ensureVaultCryptoVersionColumn } from "./two-factor-test-helpers.ts";
 
 function createLoggerStub() {
   return {
@@ -60,6 +61,7 @@ test("integration: registration completes user, workspace, vault, trusted device
     "utf8",
   );
   await storage.postgres.query(migration0007);
+  await ensureVaultCryptoVersionColumn(storage);
   const suffix = randomUUID();
   const email = `reg-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -205,6 +207,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0007b);
+  await ensureVaultCryptoVersionColumn(storage);
   const suffix = randomUUID();
   const email = `reg-parallel-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -342,6 +345,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     "utf8",
   );
   await storage.postgres.query(migration0007c);
+  await ensureVaultCryptoVersionColumn(storage);
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,

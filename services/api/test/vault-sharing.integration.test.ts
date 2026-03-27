@@ -175,7 +175,7 @@ test("integration: sharing rejects crypto profile blocked by policy", async (t) 
         baseVersion: 0,
       }),
     (err: unknown) =>
-      err instanceof VaultSharingServiceError && err.code === "CRYPTO_PROFILE_NOT_ALLOWED",
+      err instanceof VaultSharingServiceError && err.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED",
   );
 });
 

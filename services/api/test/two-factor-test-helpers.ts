@@ -19,6 +19,28 @@ export function createLoggerStub() {
   };
 }
 
+/** Applies `0008_vault_crypto_version` only when the column is missing (shared Postgres in integration tests). */
+export async function ensureVaultCryptoVersionColumn(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+): Promise<void> {
+  const columns = await storage.postgres.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'vaults'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("crypto_version")) {
+    const migration0008 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0008_vault_crypto_version.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0008);
+  }
+}
+
 export async function applyMigrations(
   storage: Awaited<ReturnType<typeof createStorageLayer>>,
 ): Promise<void> {
@@ -52,6 +74,7 @@ export async function applyMigrations(
     "utf8",
   );
   await storage.postgres.query(migration0007);
+  await ensureVaultCryptoVersionColumn(storage);
 }
 
 export async function cleanupUserData(

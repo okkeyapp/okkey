@@ -6,6 +6,7 @@ import {
   CRYPTO_DOWNGRADE_NOT_ALLOWED,
   CRYPTO_DOWNGRADE_STATUS_CODE,
   assertPayloadSchemaMonotonic,
+  assertVaultCryptoFloor,
   buildCryptoDowngradeDetails,
 } from "../crypto/downgrade.ts";
 import type { Logger } from "../logger.ts";
@@ -84,6 +85,7 @@ interface VaultAclMeta {
   workspaceId: string;
   workspaceOwnerId: string;
   vaultOwnerId: string | null;
+  vaultCryptoVersion: number;
 }
 
 const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
@@ -198,6 +200,11 @@ export class VaultSharingService {
       recipientPqKey,
     );
 
+    this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
+      normalizedWrappedKeyBlob,
+      normalizedPayloadBlob,
+    ]);
+
     await this.db.transaction(async (tx) => {
       await tx.query(
         `
@@ -258,6 +265,11 @@ export class VaultSharingService {
         ),
       );
     }
+
+    this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
+      payloadBlob,
+      ...rotatedMap.values(),
+    ]);
 
     await this.db.transaction(async (tx) => {
       const membership = await tx.query<{ id: string }>(
@@ -339,7 +351,14 @@ export class VaultSharingService {
       clientCreatedAt?: string;
     },
   ): Promise<void> {
-    await tx.query("SELECT id FROM vaults WHERE id = $1 FOR UPDATE", [vaultId]);
+    const vaultLock = await tx.query<{ id: string; crypto_version: number }>(
+      "SELECT id, crypto_version FROM vaults WHERE id = $1 FOR UPDATE",
+      [vaultId],
+    );
+    if (!vaultLock[0]) {
+      throw new VaultSharingServiceError("VAULT_NOT_FOUND", 404, "vault not found");
+    }
+    const vaultCryptoVersion = vaultLock[0].crypto_version;
 
     if (input.idempotencyKey) {
       const existing = await tx.query<{ id: string }>(
@@ -384,6 +403,32 @@ export class VaultSharingService {
         `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
         buildCryptoPolicyDetails(this.config, payloadSchemaVersion),
       );
+    }
+
+    try {
+      assertVaultCryptoFloor(vaultId, vaultCryptoVersion, payloadSchemaVersion);
+    } catch (error) {
+      if (error instanceof CryptoDowngradeInvariantError) {
+        logCryptoPolicyViolation(this.log, {
+          reason: "downgrade",
+          deployEnv: this.config.deployEnv ?? "dev",
+          vaultId,
+          actorId,
+          requestedVersion: error.requestedVersion,
+          establishedMaxVersion: error.establishedMaxVersion,
+        });
+        throw new VaultSharingServiceError(
+          CRYPTO_DOWNGRADE_NOT_ALLOWED,
+          CRYPTO_DOWNGRADE_STATUS_CODE,
+          `crypto profile downgrade blocked: vault requires at least v${error.establishedMaxVersion}`,
+          buildCryptoDowngradeDetails(
+            vaultId,
+            error.establishedMaxVersion,
+            error.requestedVersion,
+          ),
+        );
+      }
+      throw error;
     }
 
     const maxSchemaRows = await tx.query<{ m: number | null }>(
@@ -435,6 +480,16 @@ export class VaultSharingService {
         input.idempotencyKey ?? null,
         input.clientCreatedAt ?? null,
       ],
+    );
+
+    await tx.query(
+      `
+        UPDATE vaults
+        SET crypto_version = GREATEST(crypto_version, $2),
+            updated_at = now()
+        WHERE id = $1
+      `,
+      [vaultId, payloadSchemaVersion],
     );
   }
 
@@ -517,7 +572,25 @@ export class VaultSharingService {
       workspaceId: meta.workspace_id,
       workspaceOwnerId: meta.workspace_owner_id,
       vaultOwnerId: meta.vault_owner_id,
+      vaultCryptoVersion: vault.cryptoVersion,
     };
+  }
+
+  private assertEncryptedBlobsMeetVaultFloor(
+    vaultId: string,
+    vaultCryptoVersion: number,
+    blobs: EncryptedBlob[],
+  ): void {
+    for (const blob of blobs) {
+      if (blob.crypto_version < vaultCryptoVersion) {
+        throw new VaultSharingServiceError(
+          CRYPTO_DOWNGRADE_NOT_ALLOWED,
+          CRYPTO_DOWNGRADE_STATUS_CODE,
+          `vault ciphertext crypto_version must be at least v${vaultCryptoVersion}`,
+          buildCryptoDowngradeDetails(vaultId, vaultCryptoVersion, blob.crypto_version),
+        );
+      }
+    }
   }
 
   private async ensureVaultReadable(vaultId: string, userId: string): Promise<void> {

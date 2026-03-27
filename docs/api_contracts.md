@@ -361,6 +361,7 @@ Lists vaults in a workspace the user may access.
 | `name` | string | |
 | `isPersonal` | boolean | |
 | `ownerId` | string \| null | UUID or null |
+| `cryptoVersion` | integer | Vault crypto profile **floor** (1–65535). New vaults are created at **v2** only. The server never decreases this value; sync append and vault sharing must use ciphertext with `crypto_version` ≥ this floor. |
 | `createdAt` | string | ISO-8601 UTC |
 | `updatedAt` | string | ISO-8601 UTC |
 
@@ -481,6 +482,8 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 
 **Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_SHARE_RECIPIENT_PQ_REQUIRED`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
+**`CRYPTO_DOWNGRADE_NOT_ALLOWED` (sharing / rotation):** Same HTTP body shape as for Sync append (see **Sync** → `POST /vaults/:vaultId/events` in the errors table below). The server rejects requests where any `EncryptedBlob` in the body has `crypto_version` **below the vault row floor** (`vault.crypto_version` in Postgres) or **below the current maximum** `payload_schema_version` already stored for that vault’s event stream.
+
 ---
 
 ## Sync (event log)
@@ -574,7 +577,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `SYNC_INVALID_EVENT_TYPE` | 400 | Unknown `eventType`. |
 | `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
 | `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. `details` may include `reason: "policy"`, `requestedVersion`, `allowedVersions`. |
-| `CRYPTO_DOWNGRADE_NOT_ALLOWED` | 400 | Requested `crypto_version` is **below** the maximum already present in this vault’s event stream (anti-downgrade). `details` may include `reason: "downgrade"`, `vaultId`, `establishedMaxVersion`, `requestedVersion`. |
+| `CRYPTO_DOWNGRADE_NOT_ALLOWED` | 400 | Anti-downgrade: the new ciphertext’s `crypto_version` is **below** the vault’s persisted **floor** (`vault.crypto_version`; new vaults use **v2**, value never decreases) **or** **below** `MAX(payload_schema_version)` over events already stored for this vault (monotonic stream). The server returns whichever check fails first; `details` may include `reason: "downgrade"`, `vaultId`, `establishedMaxVersion`, `requestedVersion`. |
 | `PAYLOAD_TOO_LARGE` | 413 | Decoded ciphertext exceeds 512 KiB. |
 | `VERSION_MISMATCH` | 409 | `baseVersion` stale; `details` may include `expectedBaseVersion` and `latestVersion`. |
 | `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |

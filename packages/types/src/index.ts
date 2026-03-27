@@ -24,6 +24,8 @@ export interface Vault {
   name: string;
   isPersonal: boolean;
   ownerId?: UUID | null;
+  /** Vault crypto profile floor; never decreases (server-enforced). */
+  cryptoVersion: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -147,6 +147,9 @@ Vault is a safe.
 id (uuid)
 workspace_id
 name
+is_personal
+owner_id (nullable)
+crypto_version (smallint, 1–65535; floor for vault crypto profile; new rows use v2)
 created_at
 updated_at
 ```

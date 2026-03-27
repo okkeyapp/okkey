@@ -46,6 +46,7 @@ function createVaultServiceStub(
         name: "Personal",
         isPersonal: true,
         ownerId: "u1",
+        cryptoVersion: 2,
         createdAt: "",
         updatedAt: "",
       },
@@ -56,6 +57,7 @@ function createVaultServiceStub(
       name: "Personal",
       isPersonal: true,
       ownerId: "u1",
+      cryptoVersion: 2,
       createdAt: "",
       updatedAt: "",
     }),
@@ -104,8 +106,9 @@ test("GET /workspaces/:workspaceId/vaults returns vault list", async () => {
   });
 
   assert.equal(res.statusCode, 200);
-  const payload = JSON.parse(res.body) as Array<{ id: string }>;
+  const payload = JSON.parse(res.body) as Array<{ id: string; cryptoVersion: number }>;
   assert.equal(payload[0].id, "v1");
+  assert.equal(payload[0].cryptoVersion, 2);
 });
 
 test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async () => {
@@ -117,8 +120,9 @@ test("GET /workspaces/:workspaceId/vaults accepts Authorization Bearer", async (
   });
 
   assert.equal(res.statusCode, 200);
-  const payload = JSON.parse(res.body) as Array<{ id: string }>;
+  const payload = JSON.parse(res.body) as Array<{ id: string; cryptoVersion: number }>;
   assert.equal(payload[0].id, "v1");
+  assert.equal(payload[0].cryptoVersion, 2);
 });
 
 test("GET /vaults/:vaultId returns vault", async () => {
@@ -129,8 +133,9 @@ test("GET /vaults/:vaultId returns vault", async () => {
   });
 
   assert.equal(res.statusCode, 200);
-  const payload = JSON.parse(res.body) as { id: string };
+  const payload = JSON.parse(res.body) as { id: string; cryptoVersion: number };
   assert.equal(payload.id, "v1");
+  assert.equal(payload.cryptoVersion, 2);
 });
 
 test("vault routes require auth", async () => {

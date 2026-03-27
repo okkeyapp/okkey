@@ -1,3 +1,4 @@
+import { DEFAULT_NEW_VAULT_CRYPTO_VERSION } from "../crypto/downgrade.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 
@@ -78,11 +79,11 @@ export async function insertRegistrationBundle(
 
   const vaultRows = await tx.query<{ id: string }>(
     `
-      INSERT INTO vaults (workspace_id, name, is_personal, owner_id)
-      VALUES ($1, $2, true, $3)
+      INSERT INTO vaults (workspace_id, name, is_personal, owner_id, crypto_version)
+      VALUES ($1, $2, true, $3, $4)
       RETURNING id
     `,
-    [workspaceId, "Personal", userId],
+    [workspaceId, "Personal", userId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
   );
   const vaultId = vaultRows[0]?.id;
   if (!vaultId) {
