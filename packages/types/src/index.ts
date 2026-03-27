@@ -310,6 +310,12 @@ export interface VaultSharesListResponseDto {
 /** `POST /vaults/:vaultId/shares` request body. */
 export interface VaultShareUpsertRequestDto {
   recipientUserId: UUID;
+  /**
+   * Recipient wrapped vault key.
+   * Production hybrid-by-default contract expects:
+   * - `crypto_version >= 2`
+   * - `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`
+   */
   encryptedVaultKey: EncryptedBlobDto;
   encryptedPayload: EncryptedBlobDto;
   baseVersion: number;
@@ -320,6 +326,7 @@ export interface VaultShareUpsertRequestDto {
 
 export interface VaultRotatedKeyDto {
   userId: UUID;
+  /** Same hybrid-by-default constraints as `VaultShareUpsertRequestDto.encryptedVaultKey`. */
   encryptedVaultKey: EncryptedBlobDto;
 }
 

@@ -451,7 +451,7 @@ Grants or updates explicit shared access for a workspace member, stores recipien
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Must already have workspace access. |
-| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. |
+| `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. In production hybrid-by-default path: `crypto_version >= 2` and `meta.key_wrap_scheme = \"hybrid_ecc_pq_v1\"`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
@@ -471,7 +471,7 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
 | `recipientUserId` | uuid | Yes | Member to revoke. |
-| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). |
+| `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`), each wrap follows the same hybrid-by-default contract in production. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
@@ -479,7 +479,7 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 
 **Response `200`:** `{ "revoked": true }`
 
-**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_SHARE_RECIPIENT_PQ_REQUIRED`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 ---
 

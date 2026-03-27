@@ -88,6 +88,7 @@ interface VaultAclMeta {
 
 const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
+const HYBRID_VAULT_KEY_WRAP_SCHEME = "hybrid_ecc_pq_v1";
 
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
@@ -190,6 +191,12 @@ export class VaultSharingService {
       event_type: "VAULT_SHARE",
     });
     await this.ensureRecipientInWorkspace(acl.workspaceId, input.recipientUserId);
+    const recipientPqKey = await this.getUserPublicPqKey(input.recipientUserId);
+    this.assertHybridVaultKeyWrapPolicy(
+      normalizedWrappedKeyBlob,
+      input.recipientUserId,
+      recipientPqKey,
+    );
 
     await this.db.transaction(async (tx) => {
       await tx.query(
@@ -272,6 +279,7 @@ export class VaultSharingService {
 
       const activeRecipients = await this.listActiveRecipients(tx, vaultId);
       const activeSet = new Set(activeRecipients);
+      const activeRecipientPqKeys = await this.getUserPublicPqKeys(activeRecipients);
       for (const userId of activeSet) {
         if (!rotatedMap.has(userId)) {
           throw new VaultSharingServiceError(
@@ -292,6 +300,11 @@ export class VaultSharingService {
       }
 
       for (const userId of activeSet) {
+        this.assertHybridVaultKeyWrapPolicy(
+          rotatedMap.get(userId)!,
+          userId,
+          activeRecipientPqKeys.get(userId) ?? null,
+        );
         await tx.query(
           `
             INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
@@ -515,6 +528,71 @@ export class VaultSharingService {
     const canRead = await this.vaults.canReadVault(vaultId, userId);
     if (!canRead) {
       throw new VaultSharingServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+  }
+
+  private async getUserPublicPqKey(userId: string): Promise<string | null> {
+    const rows = await this.db.query<{ public_pq_key: string | null }>(
+      "SELECT public_pq_key FROM users WHERE id = $1",
+      [userId],
+    );
+    return rows[0]?.public_pq_key ?? null;
+  }
+
+  private async getUserPublicPqKeys(userIds: string[]): Promise<Map<string, string | null>> {
+    const out = new Map<string, string | null>();
+    if (userIds.length === 0) {
+      return out;
+    }
+    const rows = await this.db.query<{ id: string; public_pq_key: string | null }>(
+      "SELECT id, public_pq_key FROM users WHERE id = ANY($1::uuid[])",
+      [userIds],
+    );
+    for (const row of rows) {
+      out.set(row.id, row.public_pq_key);
+    }
+    return out;
+  }
+
+  private assertHybridVaultKeyWrapPolicy(
+    wrappedKeyBlob: EncryptedBlob,
+    recipientUserId: string,
+    recipientPublicPqKey: string | null,
+  ): void {
+    if (this.config.deployEnv !== "prod") {
+      return;
+    }
+    if (!recipientPublicPqKey) {
+      throw new VaultSharingServiceError(
+        "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
+        400,
+        "recipient must have ML-KEM public key in production",
+      );
+    }
+    if (wrappedKeyBlob.crypto_version < 2) {
+      throw new VaultSharingServiceError(
+        "VAULT_KEY_WRAP_INVALID",
+        400,
+        "vault key wrap must use crypto_version >= 2 in production",
+      );
+    }
+    const wrapScheme = wrappedKeyBlob.meta?.["key_wrap_scheme"];
+    if (wrapScheme !== HYBRID_VAULT_KEY_WRAP_SCHEME) {
+      throw new VaultSharingServiceError(
+        "VAULT_KEY_WRAP_INVALID",
+        400,
+        `vault key wrap must declare meta.key_wrap_scheme=${HYBRID_VAULT_KEY_WRAP_SCHEME} in production`,
+        { recipientUserId, requiredKeyWrapScheme: HYBRID_VAULT_KEY_WRAP_SCHEME },
+      );
+    }
+    const metaRecipientUserId = wrappedKeyBlob.meta?.["recipient_user_id"];
+    if (metaRecipientUserId !== recipientUserId) {
+      throw new VaultSharingServiceError(
+        "VAULT_KEY_WRAP_INVALID",
+        400,
+        "vault key wrap recipient mismatch",
+        { recipientUserId, metaRecipientUserId },
+      );
     }
   }
 

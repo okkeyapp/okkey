@@ -20,6 +20,17 @@ function mkBlob(input: string, cryptoVersion = 2) {
   };
 }
 
+function mkHybridWrapBlob(input: string, cryptoVersion = 2) {
+  return {
+    crypto_version: cryptoVersion,
+    algorithm: "opaque",
+    payload: Buffer.from(input).toString("base64"),
+    meta: {
+      key_wrap_scheme: "hybrid_ecc_pq_v1",
+    },
+  };
+}
+
 test("integration: share + revoke vault access with key rotation", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
@@ -241,5 +252,274 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
       }),
     (err: unknown) =>
       err instanceof VaultSharingServiceError && err.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED",
+  );
+});
+
+test("integration: prod sharing requires recipient PQ key", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `vault-share-pq-a-${suffix}@okkey.local`;
+  const emailB = `vault-share-pq-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, emailA);
+  const userB = await registerUser(storage, baseConfig, emailB);
+  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1", [userB.userId]);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "prod",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: mkHybridWrapBlob("wrapped-key-b"),
+        encryptedPayload: mkBlob("vault-share-event", 2),
+        baseVersion: 0,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      err.code === "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
+  );
+});
+
+test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `vault-share-wrap-a-${suffix}@okkey.local`;
+  const emailB = `vault-share-wrap-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, emailA);
+  const userB = await registerUser(storage, baseConfig, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "prod",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: mkBlob("wrapped-key-b", 2),
+        encryptedPayload: mkBlob("vault-share-event", 2),
+        baseVersion: 0,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      err.code === "VAULT_KEY_WRAP_INVALID",
+  );
+});
+
+test("integration: prod sharing rejects wrong recipient key wrap metadata", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `vault-share-wrong-recipient-a-${suffix}@okkey.local`;
+  const emailB = `vault-share-wrong-recipient-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, emailA);
+  const userB = await registerUser(storage, baseConfig, emailB);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "prod",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: {
+          ...mkHybridWrapBlob("wrapped-key-b"),
+          meta: {
+            key_wrap_scheme: "hybrid_ecc_pq_v1",
+            recipient_user_id: userA.userId,
+          },
+        },
+        encryptedPayload: mkBlob("vault-share-event", 2),
+        baseVersion: 0,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      err.code === "VAULT_KEY_WRAP_INVALID" &&
+      err.message.includes("recipient mismatch"),
+  );
+});
+
+test("integration: sharing rejects corrupted envelope payload", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `vault-share-corrupt-a-${suffix}@okkey.local`;
+  const emailB = `vault-share-corrupt-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, baseConfig, emailA);
+  const userB = await registerUser(storage, baseConfig, emailB);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+  await storage.postgres.query(
+    `
+      INSERT INTO workspace_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.shareVault(vaultId, userA.userId, {
+        recipientUserId: userB.userId,
+        encryptedVaultKey: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: "%%%NOT_BASE64%%%",
+          meta: {
+            key_wrap_scheme: "hybrid_ecc_pq_v1",
+          },
+        },
+        encryptedPayload: mkBlob("vault-share-event", 2),
+        baseVersion: 0,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      err.code === "VAULT_KEY_WRAP_INVALID",
   );
 });

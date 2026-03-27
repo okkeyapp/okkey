@@ -442,6 +442,10 @@ components:
           format: uuid
         encryptedVaultKey:
           $ref: "#/components/schemas/EncryptedBlob"
+          description: >
+            Recipient wrapped vault key.
+            In production hybrid-by-default path, must use `crypto_version >= 2`
+            and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
         baseVersion:
@@ -475,6 +479,10 @@ components:
                 format: uuid
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
+                description: >
+                  Rotated recipient wrapped vault key.
+                  In production hybrid-by-default path, must use `crypto_version >= 2`
+                  and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
         baseVersion:
