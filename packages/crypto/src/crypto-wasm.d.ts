@@ -1,5 +1,5 @@
 declare module "@okkey/crypto-wasm" {
-  export default function init(): Promise<void>;
+  export default function init(module_or_path?: unknown): Promise<void>;
   export function random_bytes(len: number): Uint8Array;
   export function kdf_derive(password: Uint8Array, salt: Uint8Array, mCost: number, tCost: number, pCost: number, outLen: number): Uint8Array;
   export function aead_encrypt(alg: string, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array;
@@ -19,6 +19,12 @@ declare module "@okkey/crypto-wasm" {
   /** Alias for ML-KEM-768 keypair used by hybrid/PQ flow. */
   export function generate_pq_keys(): Uint8Array;
   export function hybrid_envelope_fixed_header_len(): number;
+  export function hybrid_envelope_version(): number;
+  export function hybrid_envelope_kdf_id(): number;
+  export function hybrid_envelope_aead_id(): number;
+  export function hybrid_envelope_ecc_public_key_len(): number;
+  export function hybrid_envelope_pq_ciphertext_len(): number;
+  export function hybrid_envelope_nonce_len(): number;
   export function encrypt_hybrid(
     senderPrivateKey: Uint8Array,
     recipientPublicKey: Uint8Array,

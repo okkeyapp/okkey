@@ -118,6 +118,36 @@ pub fn hybrid_envelope_fixed_header_len() -> usize {
 }
 
 #[wasm_bindgen]
+pub fn hybrid_envelope_version() -> u8 {
+  hybrid::HYBRID_ENVELOPE_VERSION_V1
+}
+
+#[wasm_bindgen]
+pub fn hybrid_envelope_kdf_id() -> u8 {
+  hybrid::HYBRID_KDF_SHA256
+}
+
+#[wasm_bindgen]
+pub fn hybrid_envelope_aead_id() -> u8 {
+  hybrid::HYBRID_AEAD_XCHACHA20_POLY1305
+}
+
+#[wasm_bindgen]
+pub fn hybrid_envelope_ecc_public_key_len() -> usize {
+  x25519::PUBLIC_KEY_LEN
+}
+
+#[wasm_bindgen]
+pub fn hybrid_envelope_pq_ciphertext_len() -> usize {
+  mlkem768::CIPHERTEXT_LEN
+}
+
+#[wasm_bindgen]
+pub fn hybrid_envelope_nonce_len() -> usize {
+  aead::XCHACHA20_NONCE_LEN
+}
+
+#[wasm_bindgen]
 pub fn encrypt_hybrid(
   sender_private_key: &[u8],
   recipient_public_key: &[u8],

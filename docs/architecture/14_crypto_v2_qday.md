@@ -97,6 +97,28 @@ TypeScript wrapper names in `@okkey/crypto`:
 
 ---
 
+## WASM + SDK Version-Aware API (6.7)
+
+`@okkey/crypto` provides a stable version-aware surface above raw WASM exports:
+
+- `getHybridEnvelopeConfig()` returns canonical envelope params (version, ids, fixed lengths) sourced from WASM.
+- `decodeHybridEnvelope(envelope)` validates header ids/lengths and returns structured views.
+- `encodeHybridEnvelope(parts)` builds a binary envelope with strict part length checks.
+- `generatePQKeys()`, `encryptHybrid(...)`, `decryptHybrid(...)` remain primary runtime primitives.
+
+Error model for SDK consumers:
+
+- all WASM runtime failures are mapped to `CryptoSdkError`;
+- stable codes: `UNSUPPORTED_ALGORITHM`, `INVALID_KEY_LENGTH`, `MALFORMED_ENVELOPE`, `DECRYPT_FAILED`, `INTERNAL`;
+- clients must branch by `code` instead of parsing low-level WASM messages.
+
+Cross-layer compatibility requirement:
+
+- same envelope contract is asserted by tests through Rust unit checks + WASM smoke + TS API integration tests;
+- no JS/TS crypto fallback implementation is allowed for hybrid/PQ primitives.
+
+---
+
 ## Migration Strategy
 
 - Lazy migration on unlock/access for active users.

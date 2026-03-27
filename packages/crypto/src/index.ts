@@ -13,55 +13,78 @@ import initWasm, {
   sha256,
   generate_pq_keys,
   hybrid_envelope_fixed_header_len,
+  hybrid_envelope_version,
+  hybrid_envelope_kdf_id,
+  hybrid_envelope_aead_id,
+  hybrid_envelope_ecc_public_key_len,
+  hybrid_envelope_pq_ciphertext_len,
+  hybrid_envelope_nonce_len,
   encrypt_hybrid,
   decrypt_hybrid,
 } from "@okkey/crypto-wasm";
+import { CryptoSdkError, mapWasmError } from "./errors.js";
+import {
+  decodeHybridEnvelopeV1,
+  encodeHybridEnvelopeV1,
+  type HybridEnvelopeConfig,
+  type HybridEnvelopeView,
+} from "./hybrid-envelope.js";
 
 export type AeadAlg = "aes-256-gcm" | "xchacha20-poly1305";
 
 let wasmReady: Promise<void> | undefined;
 
-export async function initCrypto(): Promise<void> {
+export async function initCrypto(moduleOrPath?: unknown): Promise<void> {
   if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
+    wasmReady = initWasm(
+      moduleOrPath as Parameters<typeof initWasm>[0],
+    ).then(() => undefined);
   }
   return wasmReady;
 }
 
+function withWasmError<T>(op: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    throw mapWasmError(op, err);
+  }
+}
+
 export function randomBytes(len: number): Uint8Array {
-  return random_bytes(len);
+  return withWasmError("randomBytes", () => random_bytes(len));
 }
 
 export function kdfDerive(password: Uint8Array, salt: Uint8Array, params: { mCost: number; tCost: number; pCost: number }, outLen: number): Uint8Array {
-  return kdf_derive(password, salt, params.mCost, params.tCost, params.pCost, outLen);
+  return withWasmError("kdfDerive", () => kdf_derive(password, salt, params.mCost, params.tCost, params.pCost, outLen));
 }
 
 export function aeadEncrypt(alg: AeadAlg, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, plaintext: Uint8Array): Uint8Array {
-  return aead_encrypt(alg, key, nonce, aad, plaintext);
+  return withWasmError("aeadEncrypt", () => aead_encrypt(alg, key, nonce, aad, plaintext));
 }
 
 export function aeadDecrypt(alg: AeadAlg, key: Uint8Array, nonce: Uint8Array, aad: Uint8Array, ciphertext: Uint8Array): Uint8Array {
-  return aead_decrypt(alg, key, nonce, aad, ciphertext);
+  return withWasmError("aeadDecrypt", () => aead_decrypt(alg, key, nonce, aad, ciphertext));
 }
 
 export function ed25519Keypair(): Uint8Array {
-  return ed25519_keypair();
+  return withWasmError("ed25519Keypair", () => ed25519_keypair());
 }
 
 export function ed25519Sign(privateKey: Uint8Array, message: Uint8Array): Uint8Array {
-  return ed25519_sign(privateKey, message);
+  return withWasmError("ed25519Sign", () => ed25519_sign(privateKey, message));
 }
 
 export function ed25519Verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean {
-  return ed25519_verify(publicKey, message, signature);
+  return withWasmError("ed25519Verify", () => ed25519_verify(publicKey, message, signature));
 }
 
 export function x25519Keypair(): Uint8Array {
-  return x25519_keypair();
+  return withWasmError("x25519Keypair", () => x25519_keypair());
 }
 
 export function x25519Shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array {
-  return x25519_shared(privateKey, peerPublicKey);
+  return withWasmError("x25519Shared", () => x25519_shared(privateKey, peerPublicKey));
 }
 
 export function b64Encode(data: Uint8Array): string {
@@ -69,7 +92,7 @@ export function b64Encode(data: Uint8Array): string {
 }
 
 export function b64Decode(s: string): Uint8Array {
-  return b64_decode(s);
+  return withWasmError("b64Decode", () => b64_decode(s));
 }
 
 export function sha256Digest(data: Uint8Array): Uint8Array {
@@ -77,11 +100,44 @@ export function sha256Digest(data: Uint8Array): Uint8Array {
 }
 
 export function generatePQKeys(): Uint8Array {
-  return generate_pq_keys();
+  return withWasmError("generatePQKeys", () => generate_pq_keys());
 }
 
 export function hybridEnvelopeFixedHeaderLen(): number {
-  return hybrid_envelope_fixed_header_len();
+  return withWasmError("hybridEnvelopeFixedHeaderLen", () => hybrid_envelope_fixed_header_len());
+}
+
+export function getHybridEnvelopeConfig(): HybridEnvelopeConfig {
+  return withWasmError("getHybridEnvelopeConfig", () => ({
+    version: hybrid_envelope_version(),
+    kdfId: hybrid_envelope_kdf_id(),
+    aeadId: hybrid_envelope_aead_id(),
+    eccPublicKeyLen: hybrid_envelope_ecc_public_key_len(),
+    pqCiphertextLen: hybrid_envelope_pq_ciphertext_len(),
+    nonceLen: hybrid_envelope_nonce_len(),
+    fixedHeaderLen: hybrid_envelope_fixed_header_len(),
+  }));
+}
+
+export function decodeHybridEnvelope(
+  envelope: Uint8Array,
+): HybridEnvelopeView {
+  return decodeHybridEnvelopeV1(envelope, getHybridEnvelopeConfig());
+}
+
+export function encodeHybridEnvelope(parts: {
+  header: {
+    version: number;
+    kdfId: number;
+    aeadId: number;
+    reserved: number;
+  };
+  eccEphemeralPublicKey: Uint8Array;
+  pqCiphertext: Uint8Array;
+  nonce: Uint8Array;
+  ciphertext: Uint8Array;
+}): Uint8Array {
+  return encodeHybridEnvelopeV1(parts, getHybridEnvelopeConfig());
 }
 
 export function encryptHybrid(
@@ -91,7 +147,8 @@ export function encryptHybrid(
   aad: Uint8Array,
   plaintext: Uint8Array,
 ): Uint8Array {
-  return encrypt_hybrid(senderPrivateKey, recipientPublicKey, recipientPqPublicKey, aad, plaintext);
+  return withWasmError("encryptHybrid", () =>
+    encrypt_hybrid(senderPrivateKey, recipientPublicKey, recipientPqPublicKey, aad, plaintext));
 }
 
 export function decryptHybrid(
@@ -100,8 +157,18 @@ export function decryptHybrid(
   aad: Uint8Array,
   envelope: Uint8Array,
 ): Uint8Array {
-  return decrypt_hybrid(recipientPrivateKey, recipientPqPrivateKey, aad, envelope);
+  return withWasmError("decryptHybrid", () =>
+    decrypt_hybrid(recipientPrivateKey, recipientPqPrivateKey, aad, envelope));
 }
+
+/** @deprecated use `generatePQKeys` */
+export const generatePqKeys = generatePQKeys;
+/** @deprecated use `encryptHybrid` */
+export const encryptHybridEnvelope = encryptHybrid;
+/** @deprecated use `decryptHybrid` */
+export const decryptHybridEnvelope = decryptHybrid;
+export type { HybridEnvelopeConfig, HybridEnvelopeView } from "./hybrid-envelope.js";
+export { CryptoSdkError };
 
 export {
   buildRegistrationCryptoArtifacts,
