@@ -12,7 +12,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 package-lock.json
-yarn.lock
+# yarn.lock is committed for reproducible installs and GitHub Actions (setup-node cache: yarn).
 pnpm-lock.yaml
 
 # ============================================
