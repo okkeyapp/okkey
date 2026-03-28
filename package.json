@@ -66,8 +66,9 @@
     "infra:logs": "./scripts/infra.sh logs",
     "infra:ps": "./scripts/infra.sh ps",
     "infra:up": "./scripts/infra.sh up",
-    "test": "yarn test:api && yarn test:e2e && yarn test:web",
+    "test": "yarn test:api && yarn test:security && yarn test:e2e && yarn test:web",
     "test:api": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
+    "test:security": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/security-qday-downgrade-strip.test.ts services/api/test/security-qday-missing-pq-malformed-envelope.test.ts services/api/test/security-qday-mixed-device-replay-rollback.test.ts",
     "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }
 }
