@@ -37,7 +37,7 @@ export class RedisCache {
     }
 
     const client = createClientFn({ url: redisUrl });
-    await client.connect();
+    await connectWithRetry(client);
     return new RedisCache(client);
   }
 
@@ -116,4 +116,38 @@ export class RedisCache {
   async close(): Promise<void> {
     await this.client.disconnect();
   }
+}
+
+const CONNECT_RETRY_ATTEMPTS = 120;
+const CONNECT_RETRY_DELAY_MS = 1000;
+
+async function connectWithRetry(client: RedisClientLike): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= CONNECT_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      await client.connect();
+      await client.ping();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableConnectError(error) || attempt === CONNECT_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      await delay(CONNECT_RETRY_DELAY_MS);
+    }
+  }
+  throw lastError;
+}
+
+function isRetryableConnectError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return (
+    text.includes("ECONNREFUSED") ||
+    text.includes("ENOTFOUND") ||
+    text.includes("ETIMEDOUT")
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

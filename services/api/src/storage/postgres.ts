@@ -81,8 +81,8 @@ export class PostgresDatabase implements QueryExecutor {
   }
 }
 
-const CONNECT_RETRY_ATTEMPTS = 30;
-const CONNECT_RETRY_DELAY_MS = 250;
+const CONNECT_RETRY_ATTEMPTS = 120;
+const CONNECT_RETRY_DELAY_MS = 1000;
 
 async function pingWithRetry(db: PostgresDatabase): Promise<void> {
   let lastError: unknown;
