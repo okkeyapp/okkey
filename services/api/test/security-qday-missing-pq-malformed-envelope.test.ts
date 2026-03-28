@@ -3,13 +3,23 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
-import { VaultSharingService, VaultSharingServiceError } from "../src/vault-sharing/service.ts";
+import { VaultSharingService } from "../src/vault-sharing/service.ts";
 import {
   applyMigrations,
   cleanupUserData,
   createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
+
+function isVaultSharingServiceError(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code: unknown }).code === "string" &&
+    (error as { code: string }).code === code
+  );
+}
 
 function mkBlob(input: string, cryptoVersion = 2) {
   return {
@@ -52,7 +62,18 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
 
   const owner = await registerUser(storage, baseConfig, emailA);
   const recipient = await registerUser(storage, baseConfig, emailB);
-  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1", [recipient.userId]);
+  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid", [
+    String(recipient.userId),
+  ]);
+  const pqCheck = await storage.postgres.query<{ public_pq_key: string | null }>(
+    "SELECT public_pq_key FROM users WHERE id = $1::uuid",
+    [String(recipient.userId)],
+  );
+  assert.equal(
+    pqCheck[0]?.public_pq_key,
+    null,
+    "expected recipient public_pq_key cleared (UPDATE must match user id)",
+  );
 
   const workspaceRows = await storage.postgres.query<{ id: string }>(
     "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
@@ -94,13 +115,11 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
         encryptedPayload: mkBlob("share-event", 2),
         baseVersion: 0,
       }),
-    (error: unknown) =>
-      error instanceof VaultSharingServiceError &&
-      error.code === "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
+    (error: unknown) => isVaultSharingServiceError(error, "VAULT_SHARE_RECIPIENT_PQ_REQUIRED"),
   );
 });
 
-test("security: prod rotate rejects malformed hybrid envelope metadata even with valid base64 payload", async (t) => {
+test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid base64 payload", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
@@ -149,11 +168,10 @@ test("security: prod rotate rejects malformed hybrid envelope metadata even with
             encryptedVaultKey: {
               crypto_version: 2,
               algorithm: "opaque",
-              // valid base64 payload, malformed hybrid metadata for recipient binding
+              // valid base64 payload; server binds recipient_user_id — client cannot spoof mismatch
               payload: Buffer.from("opaque-wrap", "utf8").toString("base64"),
               meta: {
-                key_wrap_scheme: "hybrid_ecc_pq_v1",
-                recipient_user_id: randomUUID(),
+                key_wrap_scheme: "ecc_legacy_v0",
               },
             },
           },
@@ -162,8 +180,8 @@ test("security: prod rotate rejects malformed hybrid envelope metadata even with
         baseVersion: 0,
       }),
     (error: unknown) =>
-      error instanceof VaultSharingServiceError &&
-      error.code === "VAULT_KEY_WRAP_INVALID" &&
-      error.message.includes("recipient mismatch"),
+      isVaultSharingServiceError(error, "VAULT_KEY_WRAP_INVALID") &&
+      typeof (error as Error).message === "string" &&
+      (error as Error).message.includes("key_wrap_scheme"),
   );
 });

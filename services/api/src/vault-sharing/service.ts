@@ -205,6 +205,10 @@ export class VaultSharingService {
       entity: "vault_key_wrap",
       recipient_user_id: input.recipientUserId,
     });
+    normalizedWrappedKeyBlob.meta = {
+      ...normalizedWrappedKeyBlob.meta,
+      recipient_user_id: input.recipientUserId,
+    };
     const payloadBlob = parseBlobOrThrow(
       input.encryptedPayload,
       "encryptedPayload",
@@ -275,16 +279,15 @@ export class VaultSharingService {
           "rotatedVaultKeys.userId must be uuid",
         );
       }
-      rotatedMap.set(
-        keyEntry.userId,
-        mergeEncryptedBlobMeta(
-          parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
-          {
-            entity: "vault_key_wrap",
-            recipient_user_id: keyEntry.userId,
-          },
-        ),
+      const merged = mergeEncryptedBlobMeta(
+        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+        {
+          entity: "vault_key_wrap",
+          recipient_user_id: keyEntry.userId,
+        },
       );
+      merged.meta = { ...merged.meta, recipient_user_id: keyEntry.userId };
+      rotatedMap.set(keyEntry.userId, merged);
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -399,16 +402,15 @@ export class VaultSharingService {
           "rotatedVaultKeys.userId must be uuid",
         );
       }
-      rotatedMap.set(
-        keyEntry.userId,
-        mergeEncryptedBlobMeta(
-          parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
-          {
-            entity: "vault_key_wrap",
-            recipient_user_id: keyEntry.userId,
-          },
-        ),
+      const merged = mergeEncryptedBlobMeta(
+        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+        {
+          entity: "vault_key_wrap",
+          recipient_user_id: keyEntry.userId,
+        },
       );
+      merged.meta = { ...merged.meta, recipient_user_id: keyEntry.userId };
+      rotatedMap.set(keyEntry.userId, merged);
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -522,16 +524,15 @@ export class VaultSharingService {
           "rotatedVaultKeys.userId must be uuid",
         );
       }
-      rotatedMap.set(
-        keyEntry.userId,
-        mergeEncryptedBlobMeta(
-          parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
-          {
-            entity: "vault_key_wrap",
-            recipient_user_id: keyEntry.userId,
-          },
-        ),
+      const merged = mergeEncryptedBlobMeta(
+        parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+        {
+          entity: "vault_key_wrap",
+          recipient_user_id: keyEntry.userId,
+        },
       );
+      merged.meta = { ...merged.meta, recipient_user_id: keyEntry.userId };
+      rotatedMap.set(keyEntry.userId, merged);
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [

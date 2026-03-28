@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { decodeEncryptedBlobFromStorage } from "../src/crypto/encrypted-blob.ts";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
 import { VaultSharingService, VaultSharingServiceError } from "../src/vault-sharing/service.ts";
@@ -386,7 +387,7 @@ test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async
   );
 });
 
-test("integration: prod sharing rejects wrong recipient key wrap metadata", async (t) => {
+test("integration: prod sharing overwrites client-spoofed recipient_user_id in wrap meta", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
@@ -436,25 +437,26 @@ test("integration: prod sharing rejects wrong recipient key wrap metadata", asyn
     },
   });
 
-  await assert.rejects(
-    () =>
-      sharing.shareVault(vaultId, userA.userId, {
-        recipientUserId: userB.userId,
-        encryptedVaultKey: {
-          ...mkHybridWrapBlob("wrapped-key-b"),
-          meta: {
-            key_wrap_scheme: "hybrid_ecc_pq_v1",
-            recipient_user_id: userA.userId,
-          },
-        },
-        encryptedPayload: mkBlob("vault-share-event", 2),
-        baseVersion: 0,
-      }),
-    (err: unknown) =>
-      err instanceof VaultSharingServiceError &&
-      err.code === "VAULT_KEY_WRAP_INVALID" &&
-      err.message.includes("recipient mismatch"),
+  await sharing.shareVault(vaultId, userA.userId, {
+    recipientUserId: userB.userId,
+    encryptedVaultKey: {
+      ...mkHybridWrapBlob("wrapped-key-b"),
+      meta: {
+        key_wrap_scheme: "hybrid_ecc_pq_v1",
+        recipient_user_id: userA.userId,
+      },
+    },
+    encryptedPayload: mkBlob("vault-share-event", 2),
+    baseVersion: 0,
+  });
+
+  const keyRows = await storage.postgres.query<{ encrypted_vault_key: Buffer }>(
+    "SELECT encrypted_vault_key FROM vault_keys WHERE vault_id = $1 AND user_id = $2",
+    [vaultId, userB.userId],
   );
+  assert.ok(keyRows[0]);
+  const stored = decodeEncryptedBlobFromStorage(Uint8Array.from(keyRows[0].encrypted_vault_key));
+  assert.equal(stored.meta?.["recipient_user_id"], userB.userId);
 });
 
 test("integration: sharing rejects corrupted envelope payload", async (t) => {
