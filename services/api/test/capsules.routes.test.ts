@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { createApiApp } from "../src/app.ts";
 import { CapsuleServiceError, type CapsuleService } from "../src/capsule/service.ts";
@@ -19,11 +20,24 @@ class MockResponse {
   }
 }
 
-function loggerStub() {
+function loggerStub(logs?: Array<Record<string, unknown>>) {
   return {
     info(_message: string, _extra?: Record<string, unknown>) {},
     warn(_message: string, _extra?: Record<string, unknown>) {},
     error(_message: string, _extra?: Record<string, unknown>) {},
+    ...(logs
+      ? {
+          info(message: string, extra?: Record<string, unknown>) {
+            logs.push({ level: "info", message, ...(extra ?? {}) });
+          },
+          warn(message: string, extra?: Record<string, unknown>) {
+            logs.push({ level: "warn", message, ...(extra ?? {}) });
+          },
+          error(message: string, extra?: Record<string, unknown>) {
+            logs.push({ level: "error", message, ...(extra ?? {}) });
+          },
+        }
+      : {}),
   };
 }
 
@@ -39,9 +53,10 @@ function mkBlob(payload = "x", cryptoVersion = 2) {
 }
 
 function createCapsuleServiceStub(overrides?: Partial<CapsuleService>): CapsuleService {
+  const capsuleId = randomUUID();
   return {
     createCapsule: async () => ({
-      capsuleId: "c1",
+      capsuleId,
       type: "item",
       expiresAt: null,
       maxViews: null,
@@ -50,7 +65,7 @@ function createCapsuleServiceStub(overrides?: Partial<CapsuleService>): CapsuleS
       createdAt: new Date().toISOString(),
     }),
     getCapsuleMetadata: async () => ({
-      capsuleId: "c1",
+      capsuleId,
       type: "item",
       expiresAt: null,
       maxViews: null,
@@ -59,7 +74,7 @@ function createCapsuleServiceStub(overrides?: Partial<CapsuleService>): CapsuleS
       createdAt: new Date().toISOString(),
     }),
     openCapsule: async () => ({
-      capsuleId: "c1",
+      capsuleId,
       type: "item",
       expiresAt: null,
       maxViews: null,
@@ -79,8 +94,9 @@ async function dispatch(input: {
   headers?: Record<string, string>;
   body?: unknown;
   capsuleService?: CapsuleService;
+  logs?: Array<Record<string, unknown>>;
 }) {
-  const app = createApiApp(config, loggerStub(), {
+  const app = createApiApp(config, loggerStub(input.logs), {
     capsuleService: input.capsuleService ?? createCapsuleServiceStub(),
   });
   const req = {
@@ -104,19 +120,32 @@ test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
 });
 
 test("GET /capsules/:capsuleId returns metadata", async () => {
+  const capsuleId = randomUUID();
   const res = await dispatch({
     method: "GET",
-    url: "/capsules/c1",
+    url: `/capsules/${capsuleId}`,
+    capsuleService: createCapsuleServiceStub({
+      getCapsuleMetadata: async () => ({
+        capsuleId,
+        type: "item",
+        expiresAt: null,
+        maxViews: null,
+        viewCount: 0,
+        passwordRequired: false,
+        createdAt: new Date().toISOString(),
+      }),
+    }),
   });
   assert.equal(res.statusCode, 200);
   const payload = JSON.parse(res.body) as { capsuleId: string };
-  assert.equal(payload.capsuleId, "c1");
+  assert.equal(payload.capsuleId, capsuleId);
 });
 
 test("capsules routes map domain errors", async () => {
+  const capsuleId = randomUUID();
   const res = await dispatch({
     method: "POST",
-    url: "/capsules/c1/open",
+    url: `/capsules/${capsuleId}/open`,
     body: {},
     capsuleService: createCapsuleServiceStub({
       openCapsule: async () => {
@@ -127,4 +156,30 @@ test("capsules routes map domain errors", async () => {
   assert.equal(res.statusCode, 401);
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "CAPSULE_PASSWORD_REQUIRED");
+});
+
+test("capsules routes reject unsafe key transport in URL query", async () => {
+  const capsuleId = randomUUID();
+  const res = await dispatch({
+    method: "POST",
+    url: `/capsules/${capsuleId}/open?key=raw-secret`,
+    body: {},
+  });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "CAPSULE_UNSAFE_KEY_TRANSPORT");
+});
+
+test("request logger redacts sensitive key transport query values", async () => {
+  const capsuleId = randomUUID();
+  const logs: Array<Record<string, unknown>> = [];
+  const res = await dispatch({
+    method: "GET",
+    url: `/capsules/${capsuleId}?key=raw-secret`,
+    logs,
+  });
+  assert.equal(res.statusCode, 400);
+  const requestLog = logs.find((entry) => entry.message === "request completed");
+  assert.ok(requestLog);
+  assert.equal(requestLog?.path, `/capsules/${capsuleId}?key=%5Bredacted%5D`);
 });

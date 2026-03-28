@@ -1,11 +1,16 @@
 import type { IncomingMessage } from "node:http";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { CapsuleService, CapsuleServiceError } from "../capsule/service.ts";
+import {
+  CAPSULE_UNSAFE_KEY_TRANSPORT,
+  hasUnsafeKeyTransportInUrl,
+} from "../capsule/key-transport-policy.ts";
 
 interface CreateCapsuleBody {
   type?: string;
   encryptedPayload?: unknown;
   filePayload?: unknown;
+  keyTransportMode?: string;
   expiresAt?: string;
   maxViews?: number;
   password?: string;
@@ -15,13 +20,28 @@ interface CreateCapsuleBody {
 interface OpenCapsuleBody {
   password?: string;
   recipientEmail?: string;
+  keyTransportMode?: string;
 }
+
+const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 
 export function createCapsuleCreateRoute(
   capsuleService: CapsuleService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
 ): RouteHandler {
   return async (ctx) => {
+    if (hasUnsafeKeyTransportInUrl(ctx.req.url)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          CAPSULE_UNSAFE_KEY_TRANSPORT,
+          "unsafe key transport via URL query/path is not allowed",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
     const workspaceId = ctx.params.workspaceId;
     if (!workspaceId) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId is required", ctx.requestId));
@@ -58,6 +78,7 @@ export function createCapsuleCreateRoute(
         type: body.type,
         encryptedPayload: body.encryptedPayload,
         filePayload: body.filePayload,
+        keyTransportMode: body.keyTransportMode,
         expiresAt: body.expiresAt,
         maxViews: body.maxViews,
         password: body.password,
@@ -72,8 +93,20 @@ export function createCapsuleCreateRoute(
 
 export function createCapsuleMetadataRoute(capsuleService: CapsuleService): RouteHandler {
   return async (ctx) => {
+    if (hasUnsafeKeyTransportInUrl(ctx.req.url)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          CAPSULE_UNSAFE_KEY_TRANSPORT,
+          "unsafe key transport via URL query/path is not allowed",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
     const capsuleId = ctx.params.capsuleId;
-    if (!capsuleId) {
+    if (!capsuleId || !UUID_RE.test(capsuleId)) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "capsuleId is required", ctx.requestId));
       return;
     }
@@ -88,8 +121,20 @@ export function createCapsuleMetadataRoute(capsuleService: CapsuleService): Rout
 
 export function createCapsuleOpenRoute(capsuleService: CapsuleService): RouteHandler {
   return async (ctx) => {
+    if (hasUnsafeKeyTransportInUrl(ctx.req.url)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          CAPSULE_UNSAFE_KEY_TRANSPORT,
+          "unsafe key transport via URL query/path is not allowed",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
     const capsuleId = ctx.params.capsuleId;
-    if (!capsuleId) {
+    if (!capsuleId || !UUID_RE.test(capsuleId)) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "capsuleId is required", ctx.requestId));
       return;
     }
@@ -107,6 +152,7 @@ export function createCapsuleOpenRoute(capsuleService: CapsuleService): RouteHan
         requestIp,
         body.password,
         body.recipientEmail,
+        body.keyTransportMode,
       );
       json(ctx.res, 200, capsule);
     } catch (error) {
@@ -120,8 +166,20 @@ export function createCapsuleRevokeRoute(
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
 ): RouteHandler {
   return async (ctx) => {
+    if (hasUnsafeKeyTransportInUrl(ctx.req.url)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          CAPSULE_UNSAFE_KEY_TRANSPORT,
+          "unsafe key transport via URL query/path is not allowed",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
     const capsuleId = ctx.params.capsuleId;
-    if (!capsuleId) {
+    if (!capsuleId || !UUID_RE.test(capsuleId)) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "capsuleId is required", ctx.requestId));
       return;
     }
@@ -165,3 +223,4 @@ function requestIpFromHeaders(forwardedFor: string | undefined): string {
   }
   return forwardedFor.split(",")[0]?.trim() || "unknown";
 }
+

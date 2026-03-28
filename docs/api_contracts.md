@@ -661,6 +661,7 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 | `type` | string | Yes | `item` \| `field` \| `file` |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Canonical encrypted blob envelope |
 | `filePayload` | object (`EncryptedBlob`) | No | Encrypted file blob envelope (for `type=file`) stored in object storage |
+| `keyTransportMode` | string | No | Key delivery transport policy: `fragment` \| `out_of_band`; default `out_of_band` |
 | `expiresAt` | string | No | ISO-8601 future timestamp |
 | `maxViews` | integer | No | 1..10000 |
 | `password` | string | No | Optional open password (server stores KDF hash only) |
@@ -670,13 +671,15 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 
 `capsuleId`, `type`, `expiresAt`, `maxViews`, `viewCount`, `passwordRequired`, `createdAt`
 
-**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `PAYLOAD_TOO_LARGE`.
+**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `PAYLOAD_TOO_LARGE`.
 
 ### `GET /capsules/:capsuleId`
 
 Returns public metadata for active capsule.
 
 **Auth:** none.
+
+`capsuleId` must be UUID. Unsafe key placement in URL query/path is rejected.
 
 **Response `200`:** same metadata shape as create response.
 
@@ -688,17 +691,21 @@ Consumes/open capsule by link with optional password.
 
 **Auth:** none.
 
-**Request body:** optional `{ "password": "...", "recipientEmail": "user@example.com" }`
+**Request body:** optional `{ "password": "...", "recipientEmail": "user@example.com", "keyTransportMode": "fragment|out_of_band" }`
+
+Unsafe key placement in URL query/path is rejected (`CAPSULE_UNSAFE_KEY_TRANSPORT`). Use fragment or out-of-band key delivery only.
 
 **Response `200`:** metadata + `encryptedPayload` (`EncryptedBlob`), and optional `filePayload` (`EncryptedBlob`) for file capsules.
 
-**Errors:** `RATE_LIMITED`, `CAPSULE_NOT_FOUND`, `CAPSULE_EXPIRED`, `CAPSULE_VIEW_LIMIT_EXCEEDED`, `CAPSULE_REVOKED`, `CAPSULE_PASSWORD_REQUIRED`, `CAPSULE_PASSWORD_INVALID`, `CAPSULE_RECIPIENT_REQUIRED`, `CAPSULE_RECIPIENT_FORBIDDEN`.
+**Errors:** `RATE_LIMITED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `CAPSULE_NOT_FOUND`, `CAPSULE_EXPIRED`, `CAPSULE_VIEW_LIMIT_EXCEEDED`, `CAPSULE_REVOKED`, `CAPSULE_PASSWORD_REQUIRED`, `CAPSULE_PASSWORD_INVALID`, `CAPSULE_RECIPIENT_REQUIRED`, `CAPSULE_RECIPIENT_FORBIDDEN`.
 
 ### `POST /capsules/:capsuleId/revoke`
 
 Revokes capsule by creator.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+`capsuleId` must be UUID. Unsafe key placement in URL query/path is rejected.
 
 **Response `200`:** `{ "revoked": true }`
 

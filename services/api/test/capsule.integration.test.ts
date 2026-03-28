@@ -52,6 +52,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
 
   const created = await capsules.createCapsule(workspaceId, userId, {
     type: "item",
+    keyTransportMode: "fragment",
     encryptedPayload: mkBlob("capsule-ciphertext"),
     maxViews: 1,
     password: "12345",
@@ -88,6 +89,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
     "127.0.0.1",
     "12345",
     "recipient@okkey.local",
+    "fragment",
   );
   assert.equal(Buffer.from(opened.encryptedPayload.payload, "base64").toString("utf8"), "capsule-ciphertext");
   assert.equal(opened.viewCount, 1);

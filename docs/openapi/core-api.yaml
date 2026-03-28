@@ -631,6 +631,10 @@ components:
           $ref: "#/components/schemas/EncryptedBlob"
         filePayload:
           $ref: "#/components/schemas/EncryptedBlob"
+        keyTransportMode:
+          type: string
+          enum: [fragment, out_of_band]
+          default: out_of_band
         expiresAt:
           type: string
           format: date-time
@@ -1561,6 +1565,7 @@ paths:
   /workspaces/{workspaceId}/capsules:
     post:
       tags: [Capsules]
+      description: Create capsule. Key transport mode is restricted to safe modes (`fragment`, `out_of_band`).
       security:
         - bearerAuth: []
       parameters:
@@ -1639,6 +1644,7 @@ paths:
   /capsules/{capsuleId}/open:
     post:
       tags: [Capsules]
+      description: Public capsule open endpoint. Key transport via URL query/path is forbidden; use fragment or out-of-band delivery.
       parameters:
         - name: capsuleId
           in: path
@@ -1658,6 +1664,10 @@ paths:
                 recipientEmail:
                   type: string
                   format: email
+                keyTransportMode:
+                  type: string
+                  enum: [fragment, out_of_band]
+                  default: out_of_band
       responses:
         "200":
           content:

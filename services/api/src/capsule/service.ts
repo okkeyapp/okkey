@@ -14,6 +14,12 @@ import {
 } from "../crypto/encrypted-blob.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ObjectStorage } from "../storage/object-storage.ts";
+import {
+  CAPSULE_UNSAFE_KEY_TRANSPORT,
+  CAPSULE_UNSAFE_KEY_TRANSPORT_STATUS_CODE,
+  normalizeCapsuleKeyTransportMode,
+  type CapsuleKeyTransportMode,
+} from "./key-transport-policy.ts";
 
 const CAPSULE_TYPES = new Set(["item", "field", "file"]);
 const MAX_ENCRYPTED_PAYLOAD_BYTES = 1024 * 1024;
@@ -73,6 +79,7 @@ interface CapsuleAccessPolicy {
   allowedRecipientHashes?: string[];
   fileStorageKey?: string;
   fileSizeBytes?: number;
+  keyTransportMode?: CapsuleKeyTransportMode;
   revoked?: boolean;
   revokedAt?: string;
 }
@@ -81,6 +88,7 @@ export interface CreateCapsuleInput {
   type: string;
   encryptedPayload: unknown;
   filePayload?: unknown;
+  keyTransportMode?: string;
   expiresAt?: string;
   maxViews?: number;
   password?: string;
@@ -149,6 +157,7 @@ export class CapsuleService {
       );
     }
     const payload = serializeEncryptedBlobToStorage(normalizedPayloadBlob);
+    const keyTransportMode = assertSafeCapsuleKeyTransportMode(input.keyTransportMode);
     const workspace = await this.readWorkspaceAccess(workspaceId, creatorId);
     if (!workspace.exists) {
       throw new CapsuleServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
@@ -182,6 +191,7 @@ export class CapsuleService {
       input.password,
       input.allowedRecipientEmails,
       this.config.sessionSecret,
+      keyTransportMode,
     );
 
     const rows = await this.db.transaction(async (tx) => {
@@ -266,8 +276,10 @@ export class CapsuleService {
     requestIp: string,
     password?: string,
     recipientEmail?: string,
+    keyTransportMode?: string,
   ): Promise<OpenCapsuleResponse> {
     await this.consumeOpenRateLimit(requestIp);
+    assertSafeCapsuleKeyTransportMode(keyTransportMode);
     return this.db.transaction(async (tx) => {
       const rows = await tx.query<CapsuleRow>(
         `
@@ -442,8 +454,9 @@ function buildAccessPolicy(
   password: string | undefined,
   allowedRecipientEmails: string[] | undefined,
   secret: string,
+  keyTransportMode: CapsuleKeyTransportMode,
 ): CapsuleAccessPolicy {
-  const policy: CapsuleAccessPolicy = {};
+  const policy: CapsuleAccessPolicy = { keyTransportMode };
   if (!password) {
     // no-op
   } else {
@@ -477,6 +490,18 @@ function buildAccessPolicy(
     }
   }
   return policy;
+}
+
+function assertSafeCapsuleKeyTransportMode(value: string | undefined): CapsuleKeyTransportMode {
+  try {
+    return normalizeCapsuleKeyTransportMode(value);
+  } catch {
+    throw new CapsuleServiceError(
+      CAPSULE_UNSAFE_KEY_TRANSPORT,
+      CAPSULE_UNSAFE_KEY_TRANSPORT_STATUS_CODE,
+      "unsafe key transport is not allowed; use fragment or out_of_band",
+    );
+  }
 }
 
 function mapMetadata(capsule: CapsuleRow): CapsuleMetadataResponse {
