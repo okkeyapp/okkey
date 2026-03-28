@@ -13,10 +13,7 @@ import {
 import type { Logger } from "../logger.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
-  CRYPTO_POLICY_VIOLATION,
-  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-  buildCryptoPolicyDetails,
-  isCryptoProfileAllowed,
+  getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import {
   decodeEncryptedBlobFromStorage,
@@ -693,7 +690,8 @@ export class VaultSharingService {
     }
 
     const payloadSchemaVersion = encryptedPayload.crypto_version;
-    if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+    const policyViolation = getCryptoWritePolicyViolation(this.config, payloadSchemaVersion);
+    if (policyViolation) {
       logCryptoPolicyViolation(this.log, {
         reason: "policy",
         deployEnv: this.config.deployEnv ?? "dev",
@@ -702,10 +700,10 @@ export class VaultSharingService {
         requestedVersion: payloadSchemaVersion,
       });
       throw new VaultSharingServiceError(
-        CRYPTO_POLICY_VIOLATION,
-        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
-        buildCryptoPolicyDetails(this.config, payloadSchemaVersion),
+        policyViolation.code,
+        policyViolation.statusCode,
+        policyViolation.message,
+        policyViolation.details,
       );
     }
 

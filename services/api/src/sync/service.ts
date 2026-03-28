@@ -5,10 +5,7 @@ import {
 } from "../crypto/downgrade.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
-  CRYPTO_POLICY_VIOLATION,
-  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-  buildCryptoPolicyDetails,
-  isCryptoProfileAllowed,
+  getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
@@ -160,7 +157,11 @@ export class SyncService {
       entity: "sync_event",
       event_type: input.eventType,
     });
-    if (!isCryptoProfileAllowed(this.config, normalizedBlob.crypto_version)) {
+    const policyViolation = getCryptoWritePolicyViolation(
+      this.config,
+      normalizedBlob.crypto_version,
+    );
+    if (policyViolation) {
       logCryptoPolicyViolation(this.log, {
         reason: "policy",
         deployEnv: this.config.deployEnv ?? "dev",
@@ -169,10 +170,10 @@ export class SyncService {
         requestedVersion: normalizedBlob.crypto_version,
       });
       throw new SyncServiceError(
-        CRYPTO_POLICY_VIOLATION,
-        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${normalizedBlob.crypto_version} is not allowed by policy`,
-        buildCryptoPolicyDetails(this.config, normalizedBlob.crypto_version),
+        policyViolation.code,
+        policyViolation.statusCode,
+        policyViolation.message,
+        policyViolation.details,
       );
     }
 

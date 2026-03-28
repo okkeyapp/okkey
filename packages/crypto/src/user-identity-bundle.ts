@@ -13,11 +13,14 @@ import initWasm, {
   random_bytes,
 } from "@okkey/crypto-wasm";
 import type { EncryptedBlobDto } from "@okkey/types";
+import { getCryptoConfig } from "./config/index.js";
 
 const NONCE_LEN = 24;
 
+const USER_IDENTITY_WRITE_CONFIG = getCryptoConfig(2);
+
 /** Crypto profile for v2 identity artifacts (aligned with server `allowedCryptoProfileVersions`). */
-export const OKKEY_CRYPTO_PROFILE_V2 = 2;
+export const OKKEY_CRYPTO_PROFILE_V2 = USER_IDENTITY_WRITE_CONFIG.version;
 
 export const MLKEM768_ENCAPSULATION_KEY_LEN = 1184;
 export const MLKEM768_DECAPSULATION_KEY_LEN = 2400;
@@ -139,7 +142,7 @@ export async function decryptUserIdentityPrivateBundle(
 export function userIdentityEncryptedBlobDtoFromPayload(payloadBytes: Uint8Array): EncryptedBlobDto {
   return {
     crypto_version: OKKEY_CRYPTO_PROFILE_V2,
-    algorithm: "opaque",
+    algorithm: USER_IDENTITY_WRITE_CONFIG.encryptedBlobAlgorithm,
     payload: b64_encode(payloadBytes),
     meta: {
       entity: "user_private_key_bundle",

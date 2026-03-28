@@ -3,10 +3,7 @@ import type { ApiConfig } from "../config.ts";
 import { mergeEncryptedBlobMeta, parseEncryptedBlobInput, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
-  CRYPTO_POLICY_VIOLATION,
-  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-  buildCryptoPolicyDetails,
-  isCryptoProfileAllowed,
+  getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
@@ -237,17 +234,21 @@ export class RegistrationService {
         "unsupported password_kdf_params_version",
       );
     }
-    if (!isCryptoProfileAllowed(this.config, input.passwordKdfParamsVersion)) {
+    const kdfPolicyViolation = getCryptoWritePolicyViolation(
+      this.config,
+      input.passwordKdfParamsVersion,
+    );
+    if (kdfPolicyViolation) {
       logCryptoPolicyViolation(this.log, {
         reason: "policy",
         deployEnv: this.config.deployEnv,
         requestedVersion: input.passwordKdfParamsVersion,
       });
       throw new RegistrationError(
-        CRYPTO_POLICY_VIOLATION,
-        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${input.passwordKdfParamsVersion} is not allowed by policy`,
-        buildCryptoPolicyDetails(this.config, input.passwordKdfParamsVersion),
+        kdfPolicyViolation.code,
+        kdfPolicyViolation.statusCode,
+        kdfPolicyViolation.message,
+        kdfPolicyViolation.details,
       );
     }
 
@@ -299,17 +300,21 @@ export class RegistrationService {
     if (parsed.payloadBytes.length < MIN_ENCRYPTED_USER_IDENTITY_PAYLOAD_LEN) {
       throw new RegistrationError("CRYPTO_PAYLOAD_INVALID", 400, "encrypted_private_key too short");
     }
-    if (!isCryptoProfileAllowed(this.config, parsed.blob.crypto_version)) {
+    const blobPolicyViolation = getCryptoWritePolicyViolation(
+      this.config,
+      parsed.blob.crypto_version,
+    );
+    if (blobPolicyViolation) {
       logCryptoPolicyViolation(this.log, {
         reason: "policy",
         deployEnv: this.config.deployEnv,
         requestedVersion: parsed.blob.crypto_version,
       });
       throw new RegistrationError(
-        CRYPTO_POLICY_VIOLATION,
-        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${parsed.blob.crypto_version} is not allowed by policy`,
-        buildCryptoPolicyDetails(this.config, parsed.blob.crypto_version),
+        blobPolicyViolation.code,
+        blobPolicyViolation.statusCode,
+        blobPolicyViolation.message,
+        blobPolicyViolation.details,
       );
     }
     return mergeEncryptedBlobMeta(parsed.blob, {

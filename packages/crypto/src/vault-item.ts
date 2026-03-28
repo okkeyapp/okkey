@@ -7,6 +7,8 @@ import initWasm, {
   aead_encrypt,
   random_bytes,
 } from "@okkey/crypto-wasm";
+import { CryptoSdkError } from "./errors.js";
+import { getCryptoConfig } from "./config/index.js";
 
 const VAULT_ITEM_AAD = new TextEncoder().encode("okkey-vault-item-payload-v1");
 const NONCE_LEN = 24;
@@ -23,8 +25,16 @@ async function ensureWasm(): Promise<void> {
 export async function encryptVaultItemPayload(
   vaultKey: Uint8Array,
   plaintext: Uint8Array,
+  profileVersion = 2,
 ): Promise<Uint8Array> {
   await ensureWasm();
+  const config = getCryptoConfig(profileVersion);
+  if (config.runtimeMode !== "qday_default") {
+    throw new CryptoSdkError(
+      "UNSUPPORTED_ALGORITHM",
+      `vault item write path requires qday profile, got v${config.version}`,
+    );
+  }
   const nonce = random_bytes(NONCE_LEN);
   const ciphertext = aead_encrypt(
     "xchacha20-poly1305",
@@ -42,8 +52,10 @@ export async function encryptVaultItemPayload(
 export async function decryptVaultItemPayload(
   vaultKey: Uint8Array,
   blob: Uint8Array,
+  profileVersion = 2,
 ): Promise<Uint8Array> {
   await ensureWasm();
+  getCryptoConfig(profileVersion);
   if (blob.length <= NONCE_LEN) {
     throw new Error("invalid vault item ciphertext: too short");
   }

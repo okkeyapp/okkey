@@ -206,3 +206,5 @@ export {
   decryptUserIdentityFromEncryptedBlob,
   userIdentityEncryptedBlobDtoFromPayload,
 } from "./user-identity-bundle.js";
+
+export { getCryptoConfig, listCryptoConfigs, type CryptoConfig } from "./config/index.js";

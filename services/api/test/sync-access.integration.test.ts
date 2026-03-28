@@ -120,3 +120,48 @@ test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async
     (e: unknown) => e instanceof SyncServiceError && e.code === "VAULT_NOT_FOUND",
   );
 });
+
+test("integration: sync write path blocks v1 when policy allows only v2", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const email = `sync-policy-v2-only-${suffix}@okkey.local`;
+
+  const syncService = new SyncService({
+    vaults: storage.repositories.vaults,
+    events: storage.repositories.events,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "prod",
+    },
+  });
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id IN (SELECT id FROM workspaces WHERE owner_id = $1) LIMIT 1",
+    [userId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await assert.rejects(
+    () =>
+      syncService.appendEvent(vaultId, userId, {
+        eventType: "ITEM_CREATE",
+        encryptedBlob: mkBlob("legacy-write", 1),
+        baseVersion: 0,
+        idempotencyKey: randomUUID(),
+      }),
+    (e: unknown) => e instanceof SyncServiceError && e.code === "CRYPTO_PROFILE_NOT_ALLOWED",
+  );
+});

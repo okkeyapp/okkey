@@ -17,6 +17,7 @@ This document defines release gates for the first production release with `Q-Day
 - `stage` and `prod` accept only `v2` for new encrypted writes.
 - Downgrade attempts are rejected (`CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`).
 - `EncryptedBlob` validation is mandatory for all critical encrypted artifacts.
+- Crypto profile selection in SDK must go through the versioned registry resolver (`getCryptoConfig`), not ad-hoc version branching.
 
 References:
 - `docs/architecture/03_crypto_architecture.md`

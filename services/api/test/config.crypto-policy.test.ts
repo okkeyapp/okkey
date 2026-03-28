@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadConfig } from "../src/config.ts";
+import { getCryptoWritePolicyViolation } from "../src/crypto/policy.ts";
 
 function withEnv(vars: Record<string, string | undefined>, run: () => void): void {
   const snapshot = new Map<string, string | undefined>();
@@ -63,4 +64,28 @@ test("loadConfig parses explicit crypto profile list", () => {
       assert.equal(cfg.deployEnv, "stage");
     },
   );
+});
+
+test("getCryptoWritePolicyViolation returns normalized violation payload", () => {
+  const violation = getCryptoWritePolicyViolation(
+    { allowedCryptoProfileVersions: [2] },
+    1,
+  );
+  assert.ok(violation);
+  assert.equal(violation.code, "CRYPTO_PROFILE_NOT_ALLOWED");
+  assert.equal(violation.statusCode, 400);
+  assert.equal(violation.message, "crypto profile v1 is not allowed by policy");
+  assert.deepEqual(violation.details, {
+    reason: "policy",
+    requestedVersion: 1,
+    allowedVersions: [2],
+  });
+});
+
+test("getCryptoWritePolicyViolation returns null for allowed profile", () => {
+  const violation = getCryptoWritePolicyViolation(
+    { allowedCryptoProfileVersions: [1, 2] },
+    2,
+  );
+  assert.equal(violation, null);
 });

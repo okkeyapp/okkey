@@ -44,7 +44,8 @@ Applies to wrapped vault keys, item payload envelopes, encrypted private keys, a
 - `v2`: hybrid profile (ECC + PQ envelope).
 - `v3+`: reserved for future PQ-first profiles.
 
-Profile resolution is runtime-driven via a versioned config registry.
+Profile resolution is runtime-driven via a versioned config registry in `packages/crypto/src/config/` (`v1.ts`, `v2.ts`, `index.ts`).
+SDK entrypoint `getCryptoConfig(version)` is the single public resolver for profile selection.
 
 Baseline policy by environment:
 
@@ -53,6 +54,11 @@ Baseline policy by environment:
 - `prod`: `v2` only for new write operations.
 
 For first production release, Core does not guarantee legacy client-data migration flows. Legacy compatibility remains test-only unless explicitly approved by release policy.
+
+Resolver policy:
+
+- unsupported profile versions must fail through typed SDK error (`CryptoSdkError`);
+- write paths must resolve profile via `getCryptoConfig(version)` and must not hardcode profile branches in production flows.
 
 ---
 

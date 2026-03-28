@@ -2,9 +2,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import type { ApiConfig } from "../config.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
-  CRYPTO_POLICY_VIOLATION,
-  CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-  isCryptoProfileAllowed,
+  getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
 import {
@@ -136,7 +134,8 @@ export class CapsuleService {
       capsule_type: input.type,
     });
     const payloadSchemaVersion = normalizedPayloadBlob.crypto_version;
-    if (!isCryptoProfileAllowed(this.config, payloadSchemaVersion)) {
+    const policyViolation = getCryptoWritePolicyViolation(this.config, payloadSchemaVersion);
+    if (policyViolation) {
       logCryptoPolicyViolation(this.log, {
         reason: "policy",
         deployEnv: this.config.deployEnv ?? "dev",
@@ -144,9 +143,9 @@ export class CapsuleService {
         requestedVersion: payloadSchemaVersion,
       });
       throw new CapsuleServiceError(
-        CRYPTO_POLICY_VIOLATION,
-        CRYPTO_POLICY_VIOLATION_STATUS_CODE,
-        `crypto profile v${payloadSchemaVersion} is not allowed by policy`,
+        policyViolation.code,
+        policyViolation.statusCode,
+        policyViolation.message,
       );
     }
     const payload = serializeEncryptedBlobToStorage(normalizedPayloadBlob);
