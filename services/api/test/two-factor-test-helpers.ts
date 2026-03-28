@@ -44,6 +44,17 @@ export async function ensureVaultCryptoVersionColumn(
 export async function applyMigrations(
   storage: Awaited<ReturnType<typeof createStorageLayer>>,
 ): Promise<void> {
+  const baseSchema = await storage.postgres.query<{ exists: boolean }>(
+    "SELECT to_regclass('public.users') IS NOT NULL AS exists",
+  );
+  if (!baseSchema[0]?.exists) {
+    const migration0001 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0001_init.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0001);
+  }
+
   const migration0002 = readFileSync(
     path.resolve(helpersDir, "../migrations/0002_user_password_kdf.sql"),
     "utf8",

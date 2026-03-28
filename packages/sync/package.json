@@ -37,8 +37,8 @@
     }
   },
   "dependencies": {
-    "@okkey/crypto": "file:../crypto",
-    "@okkey/types": "file:../types"
+    "@okkey/crypto": "0.0.1",
+    "@okkey/types": "0.0.1"
   },
   "scripts": {
     "build": "npx --yes -p typescript tsc -p tsconfig.json"
