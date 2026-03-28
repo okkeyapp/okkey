@@ -65,12 +65,14 @@ async function main(): Promise<void> {
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
+    users: storage.repositories.users,
     config,
     log: logger,
   });
   const capsuleService = new CapsuleService({
     db: storage.postgres,
     redis: storage.redis,
+    users: storage.repositories.users,
     objectStorage: storage.objectStorage,
     config,
     log: logger,

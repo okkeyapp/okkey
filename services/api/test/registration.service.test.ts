@@ -127,6 +127,79 @@ test("completeRegistration rejects kdf profile blocked by policy", async () => {
   );
 });
 
+test("completeRegistration strict mode rejects non PQ-capable device metadata", async () => {
+  const service = new RegistrationService({
+    authService: {
+      readAuthState: async () => ({
+        id: "s1",
+        email: "new@okkey.local",
+        userId: null,
+        createdAt: new Date().toISOString(),
+      }),
+      removeAuthState: async () => {},
+    } as unknown as AuthService,
+    users: {
+      findByEmail: async () => null,
+    },
+    postgres: {
+      transaction: async () => {
+        throw new Error("postgres should not be called");
+      },
+    } as unknown as PostgresDatabase,
+    redis: {
+      get: async () => null,
+      setWithTtl: async () => {},
+      del: async () => {},
+    },
+    config: createTestApiConfig({
+      cryptoRolloutMode: "strict",
+      allowedCryptoProfileVersions: [1, 2],
+    }),
+  });
+
+  await assert.rejects(
+    () => service.completeRegistration(baseInput()),
+    (err: unknown) =>
+      err instanceof RegistrationError && err.code === "CRYPTO_CAPABILITY_REQUIRED",
+  );
+});
+
+test("completeRegistration compat mode allows missing device capability hint", async () => {
+  const service = new RegistrationService({
+    authService: {
+      readAuthState: async () => ({
+        id: "s1",
+        email: "new@okkey.local",
+        userId: null,
+        createdAt: new Date().toISOString(),
+      }),
+      removeAuthState: async () => {},
+    } as unknown as AuthService,
+    users: {
+      findByEmail: async () => null,
+    },
+    postgres: {
+      transaction: async () => {
+        throw new Error("postgres called after validation");
+      },
+    } as unknown as PostgresDatabase,
+    redis: {
+      get: async () => null,
+      setWithTtl: async () => {},
+      del: async () => {},
+    },
+    config: createTestApiConfig({
+      cryptoRolloutMode: "compat",
+      allowedCryptoProfileVersions: [1, 2],
+    }),
+  });
+
+  await assert.rejects(
+    () => service.completeRegistration(baseInput()),
+    (err: unknown) => err instanceof Error && err.message === "postgres called after validation",
+  );
+});
+
 test("completeRegistration returns Redis registration:result without Postgres", async () => {
   const cached = {
     userId: "u-from-redis",

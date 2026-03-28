@@ -2,10 +2,13 @@ import type {
   CapsuleCreateRequestDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
+  ClientCryptoCapabilities,
   CoreApiErrorBody,
+  CryptoRolloutMode,
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
   DeviceRejectResponseDto,
+  EncryptedBlobDto,
   SyncAppendEventRequestDto,
   SyncEventWireDto,
   SyncEventsListResponseDto,
@@ -15,6 +18,7 @@ import type {
   VaultSharesListResponseDto,
   Vault,
 } from "../../types/src/index.js";
+import { isClientPqCapable } from "../../types/src/index.js";
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -124,8 +128,19 @@ export function createBearerApiClient(baseUrl: string, accessToken: string): Api
 }
 
 /** Typed helpers for authenticated Core HTTP API (vault metadata, sync, devices). */
+export interface CoreApiClientOptions {
+  cryptoRolloutMode?: CryptoRolloutMode;
+  capabilities?: Partial<ClientCryptoCapabilities>;
+}
+
 export class CoreApiClient {
-  constructor(private readonly api: ApiClient) {}
+  private readonly cryptoRolloutMode: CryptoRolloutMode;
+  private readonly capabilities: Partial<ClientCryptoCapabilities> | undefined;
+
+  constructor(private readonly api: ApiClient, options: CoreApiClientOptions = {}) {
+    this.cryptoRolloutMode = options.cryptoRolloutMode ?? "compat";
+    this.capabilities = options.capabilities;
+  }
 
   listWorkspaceVaults(workspaceId: string): Promise<Vault[]> {
     return this.api.get<Vault[]>(`/workspaces/${encodeURIComponent(workspaceId)}/vaults`);
@@ -143,6 +158,7 @@ export class CoreApiClient {
   }
 
   appendVaultEvent(vaultId: string, body: SyncAppendEventRequestDto): Promise<SyncEventWireDto> {
+    this.assertStrictWritePathCapability(body.encryptedBlob, "sync.append");
     return this.api.post<SyncEventWireDto>(
       `/vaults/${encodeURIComponent(vaultId)}/events`,
       body,
@@ -160,6 +176,8 @@ export class CoreApiClient {
   }
 
   shareVault(vaultId: string, body: VaultShareUpsertRequestDto): Promise<{ shared: true }> {
+    this.assertStrictWritePathCapability(body.encryptedPayload, "vault.share");
+    this.assertStrictWritePathCapability(body.encryptedVaultKey, "vault.share");
     return this.api.post<{ shared: true }>(`/vaults/${encodeURIComponent(vaultId)}/shares`, body);
   }
 
@@ -167,6 +185,10 @@ export class CoreApiClient {
     vaultId: string,
     body: VaultShareRevokeRequestDto,
   ): Promise<{ revoked: true }> {
+    this.assertStrictWritePathCapability(body.encryptedPayload, "vault.revoke");
+    for (const rotated of body.rotatedVaultKeys) {
+      this.assertStrictWritePathCapability(rotated.encryptedVaultKey, "vault.revoke");
+    }
     return this.api.post<{ revoked: true }>(
       `/vaults/${encodeURIComponent(vaultId)}/shares/revoke`,
       body,
@@ -177,6 +199,10 @@ export class CoreApiClient {
     workspaceId: string,
     body: CapsuleCreateRequestDto,
   ): Promise<CapsuleMetadataDto> {
+    this.assertStrictWritePathCapability(body.encryptedPayload, "capsule.create");
+    if (body.filePayload) {
+      this.assertStrictWritePathCapability(body.filePayload, "capsule.create");
+    }
     return this.api.post<CapsuleMetadataDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/capsules`,
       body,
@@ -226,8 +252,26 @@ export class CoreApiClient {
       { headers: { "X-Device-Id": approverDeviceId } },
     );
   }
+
+  private assertStrictWritePathCapability(
+    blob: EncryptedBlobDto,
+    operation: string,
+  ): void {
+    if (this.cryptoRolloutMode !== "strict") {
+      return;
+    }
+    if (!isClientPqCapable(this.capabilities) || blob.crypto_version < 2) {
+      throw new Error(
+        `strict rollout mode requires PQ-capable client for ${operation}`,
+      );
+    }
+  }
 }
 
-export function createCoreApiClient(baseUrl: string, accessToken: string): CoreApiClient {
-  return new CoreApiClient(createBearerApiClient(baseUrl, accessToken));
+export function createCoreApiClient(
+  baseUrl: string,
+  accessToken: string,
+  options?: CoreApiClientOptions,
+): CoreApiClient {
+  return new CoreApiClient(createBearerApiClient(baseUrl, accessToken), options);
 }

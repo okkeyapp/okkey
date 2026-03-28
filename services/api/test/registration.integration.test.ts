@@ -406,3 +406,108 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
       err.statusCode === 410,
   );
 });
+
+test("integration: strict rollout rejects registration without PQ-capable device", async (t) => {
+  const baseConfig = loadConfig();
+  const config = { ...baseConfig, cryptoRolloutMode: "strict" as const };
+  const storage = await createStorageLayer(config, createLoggerStub());
+  const migration0002 = readFileSync(
+    path.resolve(testDir, "../migrations/0002_user_password_kdf.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0002);
+  const migration0003 = readFileSync(
+    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0003);
+  const migration0004 = readFileSync(
+    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0004);
+  const migration0005 = readFileSync(
+    path.resolve(testDir, "../migrations/0005_events_sync_envelope.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0005);
+  const migration0007 = readFileSync(
+    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
+    "utf8",
+  );
+  await storage.postgres.query(migration0007);
+  await ensureVaultCryptoVersionColumn(storage);
+
+  const suffix = randomUUID();
+  const email = `reg-strict-${suffix}@okkey.local`;
+  const authStateId = randomUUID();
+
+  const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
+    from: config.emailFrom,
+    defaultLocale: config.defaultEmailLocale,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
+
+  const authService = new AuthService({
+    redis: storage.redis,
+    users: storage.repositories.users,
+    emailTemplates,
+    config,
+  });
+
+  const registrationService = new RegistrationService({
+    authService,
+    users: storage.repositories.users,
+    postgres: storage.postgres,
+    redis: storage.redis,
+    config,
+  });
+
+  t.after(async () => {
+    try {
+      await storage.postgres.query("DELETE FROM users WHERE email = $1", [email]);
+    } finally {
+      await storage.redis.del(authStateRedisKey(authStateId));
+      await storage.redis.del(`registration:result:${authStateId}`);
+      await storage.close();
+    }
+  });
+
+  await storage.redis.setWithTtl(
+    authStateRedisKey(authStateId),
+    JSON.stringify({
+      id: authStateId,
+      email,
+      userId: null,
+      createdAt: new Date().toISOString(),
+    }),
+    3600,
+  );
+
+  await assert.rejects(
+    () =>
+      registrationService.completeRegistration({
+        authStateId,
+        userPublicKey: Buffer.alloc(32, 5).toString("base64"),
+        userPublicPqKey: SAMPLE_PQ_PK_B64,
+        encryptedPrivateKey: mkEncryptedPrivateKeyBlob(33),
+        serverKeyShare: new Uint8Array(32).fill(11),
+        passwordKdfSalt: new Uint8Array(16).fill(22),
+        passwordKdfParamsVersion: 2,
+        deviceFingerprint: "a".repeat(64),
+        deviceName: "First device",
+        devicePublicKey: Buffer.from("device-pk").toString("base64"),
+        deviceShare: new Uint8Array(32).fill(11),
+        platform: "desktop",
+        osName: "macOS",
+        osVersion: "14.0",
+        appVersion: "1.0.0",
+        clientType: "desktop",
+        userAgent: "test",
+        requestIp: "127.0.0.1",
+        deviceCryptoCapable: false,
+      }),
+    (err: unknown) =>
+      err instanceof RegistrationError && err.code === "CRYPTO_CAPABILITY_REQUIRED",
+  );
+});

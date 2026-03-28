@@ -83,6 +83,21 @@ export interface Device {
   lastSeenAt?: string | null;
 }
 
+export type CryptoRolloutMode = "strict" | "compat";
+
+export interface ClientCryptoCapabilities {
+  /** Client can process hybrid ECC+PQ envelopes and key transport for crypto v2 writes. */
+  pqDevice: boolean;
+  /** Client has PQ identity material available for strict write paths. */
+  pqIdentity: boolean;
+}
+
+export function isClientPqCapable(
+  capabilities: Partial<ClientCryptoCapabilities> | undefined,
+): boolean {
+  return capabilities?.pqDevice === true && capabilities?.pqIdentity === true;
+}
+
 export interface Session {
   id: UUID;
   userId: UUID;
@@ -175,7 +190,8 @@ export interface SyncConflictErrorDetails {
  * JSON body returned by Core API on non-2xx responses (`services/api`).
  *
  * Common `error` values for crypto policy: `CRYPTO_PROFILE_NOT_ALLOWED` (env allowlist),
- * `CRYPTO_DOWNGRADE_NOT_ALLOWED` (vault event stream would move to a weaker profile).
+ * `CRYPTO_DOWNGRADE_NOT_ALLOWED` (vault event stream would move to a weaker profile),
+ * `CRYPTO_CAPABILITY_REQUIRED` (strict rollout mode requires PQ-capable user/device).
  */
 export interface CoreApiErrorBody {
   error: string;
@@ -403,6 +419,7 @@ export interface RegisterCompleteMetadataDto {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
+  crypto_capable?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */

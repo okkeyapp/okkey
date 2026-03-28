@@ -255,6 +255,21 @@ components:
           type: string
         metadata:
           type: object
+          properties:
+            platform:
+              type: string
+            os_name:
+              type: string
+            os_version:
+              type: string
+            app_version:
+              type: string
+            client_type:
+              type: string
+            user_agent:
+              type: string
+            crypto_capable:
+              type: boolean
 
     RegisterCompleteResponse:
       type: object

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api";
 type DeployEnv = "dev" | "stage" | "prod";
+type CryptoRolloutMode = "strict" | "compat";
 
 export interface ApiConfig {
   nodeEnv: NodeEnv;
@@ -53,6 +54,7 @@ export interface ApiConfig {
   capsuleOpenRateLimitPerIp: number;
   capsuleRateLimitWindowSeconds: number;
   allowedCryptoProfileVersions: number[];
+  cryptoRolloutMode: CryptoRolloutMode;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -155,6 +157,17 @@ function parseProfileVersions(raw: string | undefined, fallback: readonly number
   return unique.length > 0 ? unique : [...fallback];
 }
 
+function parseCryptoRolloutMode(
+  raw: string | undefined,
+  deployEnv: DeployEnv,
+): CryptoRolloutMode {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (normalized === "strict" || normalized === "compat") {
+    return normalized;
+  }
+  return deployEnv === "prod" ? "strict" : "compat";
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -169,6 +182,10 @@ export function loadConfig(): ApiConfig {
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
     defaultProfilesByEnv[deployEnv],
+  );
+  const cryptoRolloutMode = parseCryptoRolloutMode(
+    process.env.CRYPTO_ROLLOUT_MODE,
+    deployEnv,
   );
   const sessionSecret =
     process.env.SESSION_SECRET ?? process.env.JWT_SECRET ?? "dev-session-secret";
@@ -266,5 +283,6 @@ export function loadConfig(): ApiConfig {
       60,
     ),
     allowedCryptoProfileVersions,
+    cryptoRolloutMode,
   };
 }

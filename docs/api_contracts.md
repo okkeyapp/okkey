@@ -310,7 +310,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 | `device_fingerprint` | string | Yes | Hex 32–128 chars. |
 | `device_name` | string | Yes | |
 | `platform`, `os_name`, `os_version`, `app_version`, `client_type`, `user_agent` | string | No | Default `unknown`; `user_agent` falls back to HTTP `User-Agent`. |
-| `metadata` | object | No | Same optional fields as device register (override top-level per field). |
+| `metadata` | object | No | Same optional fields as device register (override top-level per field). Includes optional `crypto_capable: boolean` capability hint used by rollout policy in strict mode. |
 
 **Response `201`:**
 
@@ -331,6 +331,7 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 | `REGISTRATION_BAD_REQUEST` | 400 | Invalid JSON, missing field, bad base64. |
 | `CRYPTO_PAYLOAD_INVALID` | 400 | Wrong lengths, unsupported KDF version, bad keys. |
 | `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. |
+| `CRYPTO_CAPABILITY_REQUIRED` | 400 | Strict rollout mode requires PQ-capable user/device capabilities for this write path. |
 | `AUTH_CHALLENGE_EXPIRED` | 410 | Missing/expired `auth_state_id`. |
 | `AUTH_CHALLENGE_INVALID` | 400 | Auth state not eligible (e.g. `userId` already set). |
 | `REGISTRATION_ALREADY_COMPLETED` | 409 | User row already exists for email. |
@@ -484,7 +485,7 @@ Idempotency behavior:
 - same `idempotencyKey` + equivalent rotation payload => deterministic no-op,
 - same `idempotencyKey` + different payload => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
 
-**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_SHARE_RECIPIENT_PQ_REQUIRED`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_SHARE_RECIPIENT_PQ_REQUIRED`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 **`CRYPTO_DOWNGRADE_NOT_ALLOWED` (sharing / rotation):** Same HTTP body shape as for Sync append (see **Sync** → `POST /vaults/:vaultId/events` in the errors table below). The server rejects requests where any `EncryptedBlob` in the body has `crypto_version` **below the vault row floor** (`vault.crypto_version` in Postgres) or **below the current maximum** `payload_schema_version` already stored for that vault’s event stream.
 
@@ -511,7 +512,7 @@ Idempotency behavior:
 - same `idempotencyKey` + equivalent rotation payload => deterministic no-op,
 - same `idempotencyKey` + different payload => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
 
-**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_KEY_WRAP_INVALID` (missing or unknown recipient, hybrid policy violation), `VERSION_MISMATCH` (concurrent rotation), `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `VAULT_SHARE_FORBIDDEN`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_KEY_WRAP_INVALID` (missing or unknown recipient, hybrid policy violation), `VERSION_MISMATCH` (concurrent rotation), `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `VAULT_SHARE_FORBIDDEN`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 ### `PATCH /vaults/:vaultId/shares/:userId`
 
@@ -538,7 +539,7 @@ Idempotency behavior:
 - same `idempotencyKey` + equivalent rotation payload => deterministic no-op,
 - same `idempotencyKey` + different payload => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
 
-**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT` (member not found in vault), `VERSION_MISMATCH`, `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT` (member not found in vault), `VERSION_MISMATCH`, `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 ---
 
@@ -634,6 +635,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
 | `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. `details` may include `reason: "policy"`, `requestedVersion`, `allowedVersions`. |
 | `CRYPTO_DOWNGRADE_NOT_ALLOWED` | 400 | Anti-downgrade: the new ciphertext’s `crypto_version` is **below** the vault’s persisted **floor** (`vault.crypto_version`; new vaults use **v2**, value never decreases) **or** **below** `MAX(payload_schema_version)` over events already stored for this vault (monotonic stream). The server returns whichever check fails first; `details` may include `reason: "downgrade"`, `vaultId`, `establishedMaxVersion`, `requestedVersion`. |
+| `CRYPTO_CAPABILITY_REQUIRED` | 400 | Strict rollout mode blocks writes for subjects without required PQ capabilities. `details` may include `reason: "capability"`, `rolloutMode`, `operation`, `missingCapabilities`. |
 | `PAYLOAD_TOO_LARGE` | 413 | Decoded ciphertext exceeds 512 KiB. |
 | `VERSION_MISMATCH` | 409 | `baseVersion` stale; `details` may include `expectedBaseVersion` and `latestVersion`. |
 | `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
@@ -671,7 +673,7 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 
 `capsuleId`, `type`, `expiresAt`, `maxViews`, `viewCount`, `passwordRequired`, `createdAt`
 
-**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `PAYLOAD_TOO_LARGE`.
+**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `PAYLOAD_TOO_LARGE`.
 
 ### `GET /capsules/:capsuleId`
 

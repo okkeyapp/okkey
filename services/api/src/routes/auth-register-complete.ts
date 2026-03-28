@@ -27,6 +27,7 @@ interface RegisterCompleteBody {
     app_version?: string;
     client_type?: string;
     user_agent?: string;
+    crypto_capable?: boolean;
   };
 }
 
@@ -49,6 +50,7 @@ function resolveMetadata(body: RegisterCompleteBody): {
   appVersion: string;
   clientType: string;
   userAgent: string;
+  deviceCryptoCapable: boolean;
 } {
   const metadata = body.metadata ?? {};
   return {
@@ -58,6 +60,7 @@ function resolveMetadata(body: RegisterCompleteBody): {
     appVersion: metadata.app_version ?? body.app_version ?? "unknown",
     clientType: metadata.client_type ?? body.client_type ?? "unknown",
     userAgent: metadata.user_agent ?? body.user_agent ?? "",
+    deviceCryptoCapable: metadata.crypto_capable === true,
   };
 }
 
@@ -191,6 +194,7 @@ export function createRegisterCompleteRoute(
         clientType: meta.clientType,
         userAgent,
         requestIp: getRequestIp(ctx.req),
+        deviceCryptoCapable: meta.deviceCryptoCapable,
       });
 
       json(ctx.res, 201, {

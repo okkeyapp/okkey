@@ -4,6 +4,12 @@ import { CryptoDowngradeInvariantError } from "../storage/errors.ts";
 import type { VaultsRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
 import {
+  CRYPTO_CAPABILITY_REQUIRED,
+  CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+  buildCapabilityPolicyDetails,
+  evaluateCapabilityDecision,
+} from "../crypto/capability-policy.ts";
+import {
   CRYPTO_DOWNGRADE_NOT_ALLOWED,
   CRYPTO_DOWNGRADE_STATUS_CODE,
   assertPayloadSchemaMonotonic,
@@ -93,7 +99,9 @@ export interface VaultSharingServiceDeps {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
   };
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
-  config?: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  config?: Partial<
+    Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">
+  >;
   log?: Logger;
 }
 
@@ -120,13 +128,18 @@ const ROTATION_REQUEST_FINGERPRINT_META_KEY = "rotation_request_fingerprint";
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
   private readonly vaults: VaultSharingServiceDeps["vaults"];
-  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">;
   private readonly log: Logger | undefined;
 
   constructor(deps: VaultSharingServiceDeps) {
     this.db = deps.db;
     this.vaults = deps.vaults;
-    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2], deployEnv: "dev" };
+    this.config = {
+      allowedCryptoProfileVersions: [1, 2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "compat",
+      ...deps.config,
+    };
     this.log = deps.log;
   }
 
@@ -231,6 +244,7 @@ export class VaultSharingService {
       recipientUserId,
       recipientPqKey,
     );
+    this.assertRecipientCapabilityForWrite(recipientUserId, recipientPqKey, "vault.share");
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
       normalizedWrappedKeyBlob,
@@ -368,6 +382,11 @@ export class VaultSharingService {
       }
 
       for (const userId of activeSet) {
+        this.assertRecipientCapabilityForWrite(
+          userId,
+          activeRecipientPqKeys.get(userId) ?? null,
+          "vault.rotate",
+        );
         this.assertHybridVaultKeyWrapPolicy(
           rotatedMap.get(userId)!,
           userId,
@@ -476,6 +495,11 @@ export class VaultSharingService {
       }
 
       for (const userId of activeSet) {
+        this.assertRecipientCapabilityForWrite(
+          userId,
+          activeRecipientPqKeys.get(userId) ?? null,
+          "vault.rotate",
+        );
         this.assertHybridVaultKeyWrapPolicy(
           rotatedMap.get(userId)!,
           userId,
@@ -620,6 +644,11 @@ export class VaultSharingService {
       }
 
       for (const userId of activeSet) {
+        this.assertRecipientCapabilityForWrite(
+          userId,
+          activeRecipientPqKeys.get(userId) ?? null,
+          "vault.rotate",
+        );
         this.assertHybridVaultKeyWrapPolicy(
           rotatedMap.get(userId)!,
           userId,
@@ -1042,6 +1071,41 @@ export class VaultSharingService {
         { recipientUserId, metaRecipientUserId: metaRecipientRaw },
       );
     }
+  }
+
+  private assertRecipientCapabilityForWrite(
+    recipientUserId: string,
+    recipientPublicPqKey: string | null,
+    operation: string,
+  ): void {
+    const capabilityDecision = evaluateCapabilityDecision({
+      mode: this.config.cryptoRolloutMode,
+      operation,
+      requirements: [
+        { subject: "user", capability: "pq_identity", present: Boolean(recipientPublicPqKey) },
+      ],
+    });
+    if (capabilityDecision.allowed) {
+      return;
+    }
+    logCryptoPolicyViolation(this.log, {
+      reason: "capability",
+      deployEnv: this.config.deployEnv ?? "dev",
+      requestedVersion: 2,
+      rolloutMode: capabilityDecision.mode,
+      missingCapabilities: capabilityDecision.missing,
+    });
+    throw new VaultSharingServiceError(
+      CRYPTO_CAPABILITY_REQUIRED,
+      CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+      "strict rollout mode requires PQ-capable recipient",
+      buildCapabilityPolicyDetails({
+        mode: capabilityDecision.mode,
+        operation,
+        missing: capabilityDecision.missing,
+        subjectId: recipientUserId,
+      }),
+    );
   }
 
   private async listActiveRecipients(tx: QueryExecutor, vaultId: string): Promise<string[]> {

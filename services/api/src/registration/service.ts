@@ -1,5 +1,11 @@
 import type { AuthService } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_CAPABILITY_REQUIRED,
+  CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+  buildCapabilityPolicyDetails,
+  evaluateCapabilityDecision,
+} from "../crypto/capability-policy.ts";
 import { mergeEncryptedBlobMeta, parseEncryptedBlobInput, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
@@ -56,6 +62,7 @@ export interface RegisterCompleteInput {
   clientType: string;
   userAgent: string;
   requestIp: string;
+  deviceCryptoCapable?: boolean;
 }
 
 export interface RegisterCompleteResult {
@@ -267,6 +274,33 @@ export class RegistrationService {
         "CRYPTO_PAYLOAD_INVALID",
         400,
         "user_public_pq_key must decode to 1184 bytes (ML-KEM-768)",
+      );
+    }
+    const capabilityDecision = evaluateCapabilityDecision({
+      mode: this.config.cryptoRolloutMode,
+      operation: "registration.complete",
+      requirements: [
+        { subject: "user", capability: "pq_identity", present: pqBytes.length === MLKEM768_EK_LEN },
+        { subject: "device", capability: "pq_device", present: input.deviceCryptoCapable === true },
+      ],
+    });
+    if (!capabilityDecision.allowed) {
+      logCryptoPolicyViolation(this.log, {
+        reason: "capability",
+        deployEnv: this.config.deployEnv,
+        requestedVersion: input.passwordKdfParamsVersion,
+        rolloutMode: capabilityDecision.mode,
+        missingCapabilities: capabilityDecision.missing,
+      });
+      throw new RegistrationError(
+        CRYPTO_CAPABILITY_REQUIRED,
+        CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+        "strict rollout mode requires PQ-capable user/device",
+        buildCapabilityPolicyDetails({
+          mode: capabilityDecision.mode,
+          operation: "registration.complete",
+          missing: capabilityDecision.missing,
+        }),
       );
     }
 

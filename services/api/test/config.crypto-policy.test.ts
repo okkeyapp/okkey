@@ -36,6 +36,7 @@ test("loadConfig defaults crypto policy by deploy environment", () => {
       const cfg = loadConfig();
       assert.deepEqual(cfg.allowedCryptoProfileVersions, [2]);
       assert.equal(cfg.deployEnv, "prod");
+      assert.equal(cfg.cryptoRolloutMode, "strict");
     },
   );
 
@@ -48,6 +49,7 @@ test("loadConfig defaults crypto policy by deploy environment", () => {
       const cfg = loadConfig();
       assert.deepEqual(cfg.allowedCryptoProfileVersions, [1, 2]);
       assert.equal(cfg.deployEnv, "dev");
+      assert.equal(cfg.cryptoRolloutMode, "compat");
     },
   );
 });
@@ -62,6 +64,20 @@ test("loadConfig parses explicit crypto profile list", () => {
       const cfg = loadConfig();
       assert.deepEqual(cfg.allowedCryptoProfileVersions, [2, 3]);
       assert.equal(cfg.deployEnv, "stage");
+    },
+  );
+});
+
+test("loadConfig parses explicit crypto rollout mode", () => {
+  withEnv(
+    {
+      DEPLOY_ENV: "stage",
+      CRYPTO_ROLLOUT_MODE: "strict",
+    },
+    () => {
+      const cfg = loadConfig();
+      assert.equal(cfg.deployEnv, "stage");
+      assert.equal(cfg.cryptoRolloutMode, "strict");
     },
   );
 });

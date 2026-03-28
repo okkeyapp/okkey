@@ -552,3 +552,110 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
   });
   assert.equal(capturedVersion, 2);
 });
+
+test("appendEvent strict mode rejects actor without PQ capability", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "u1@okkey.local",
+        publicKey: "pk",
+        publicPqKey: null,
+        locale: "en",
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "strict",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: mkBlob("x", 2),
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "CRYPTO_CAPABILITY_REQUIRED",
+  );
+});
+
+test("appendEvent compat mode allows actor without PQ capability", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "u1@okkey.local",
+        publicKey: "pk",
+        publicPqKey: null,
+        locale: "en",
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async (input) => ({
+        id: "e1",
+        vaultId: input.vaultId,
+        actorId: input.actorId ?? null,
+        eventType: input.eventType,
+        encryptedPayload: input.encryptedPayload,
+        payloadSchemaVersion: input.payloadSchemaVersion,
+        idempotencyKey: input.idempotencyKey ?? null,
+        clientCreatedAt: input.clientCreatedAt ?? null,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "compat",
+    },
+  });
+
+  const result = await service.appendEvent("v1", "u1", {
+    eventType: "ITEM_UPDATE",
+    encryptedBlob: mkBlob("x", 2),
+    baseVersion: 0,
+  });
+  assert.equal(result.eventType, "ITEM_UPDATE");
+});

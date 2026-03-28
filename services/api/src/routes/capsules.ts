@@ -203,7 +203,10 @@ function handleCapsuleError(
   error: unknown,
 ): void {
   if (error instanceof CapsuleServiceError) {
-    json(res, error.statusCode, errorPayload(error.code, error.message, requestId));
+    json(res, error.statusCode, {
+      ...errorPayload(error.code, error.message, requestId),
+      ...(error.details ? { details: error.details } : {}),
+    });
     return;
   }
   json(res, 500, errorPayload("INTERNAL_SERVER_ERROR", "internal server error", requestId));

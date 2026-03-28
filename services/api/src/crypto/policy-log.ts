@@ -1,6 +1,6 @@
 import type { Logger } from "../logger.ts";
 
-export type CryptoPolicyViolationReason = "policy" | "downgrade";
+export type CryptoPolicyViolationReason = "policy" | "downgrade" | "capability";
 
 /**
  * Structured security log for crypto policy rejections (observability / future metrics).
@@ -13,8 +13,10 @@ export function logCryptoPolicyViolation(
     deployEnv: string;
     vaultId?: string;
     actorId?: string;
-    requestedVersion: number;
+    requestedVersion?: number;
     establishedMaxVersion?: number;
+    rolloutMode?: string;
+    missingCapabilities?: string[];
   },
 ): void {
   if (!logger) {

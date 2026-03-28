@@ -1,4 +1,10 @@
 import {
+  CRYPTO_CAPABILITY_REQUIRED,
+  CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+  buildCapabilityPolicyDetails,
+  evaluateCapabilityDecision,
+} from "../crypto/capability-policy.ts";
+import {
   CRYPTO_DOWNGRADE_NOT_ALLOWED,
   CRYPTO_DOWNGRADE_STATUS_CODE,
   buildCryptoDowngradeDetails,
@@ -10,6 +16,7 @@ import {
 import type { Logger } from "../logger.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
 import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import type { UsersRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
 import {
   decodeEncryptedBlobFromStorage,
@@ -66,7 +73,10 @@ export class SyncServiceError extends Error {
 export interface SyncServiceDeps {
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
   events: Pick<EventsRepository, "listAfterVersion" | "append">;
-  config?: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  users?: Pick<UsersRepository, "findById">;
+  config?: Partial<
+    Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">
+  >;
   log?: Logger;
 }
 
@@ -93,13 +103,20 @@ export interface SyncAppendEventInput {
 export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
-  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv">;
+  private readonly users: SyncServiceDeps["users"];
+  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">;
   private readonly log: Logger | undefined;
 
   constructor(deps: SyncServiceDeps) {
     this.vaults = deps.vaults;
     this.events = deps.events;
-    this.config = deps.config ?? { allowedCryptoProfileVersions: [1, 2], deployEnv: "dev" };
+    this.users = deps.users;
+    this.config = {
+      allowedCryptoProfileVersions: [1, 2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "compat",
+      ...deps.config,
+    };
     this.log = deps.log;
   }
 
@@ -176,6 +193,11 @@ export class SyncService {
         policyViolation.details,
       );
     }
+    await this.assertActorCapabilityForWrite(
+      userId,
+      "sync.append",
+      normalizedBlob.crypto_version,
+    );
 
     if (EVENT_TYPES_REQUIRING_IDEMPOTENCY.has(input.eventType)) {
       if (!input.idempotencyKey) {
@@ -268,6 +290,43 @@ export class SyncService {
     if (!canRead) {
       throw new SyncServiceError("ACCESS_DENIED", 403, "access denied");
     }
+  }
+
+  private async assertActorCapabilityForWrite(
+    actorId: string,
+    operation: string,
+    requestedVersion: number,
+  ): Promise<void> {
+    const user = this.users ? await this.users.findById(actorId) : null;
+    const capabilityDecision = evaluateCapabilityDecision({
+      mode: this.config.cryptoRolloutMode,
+      operation,
+      requirements: [
+        { subject: "user", capability: "pq_identity", present: Boolean(user?.publicPqKey) },
+      ],
+    });
+    if (capabilityDecision.allowed) {
+      return;
+    }
+    logCryptoPolicyViolation(this.log, {
+      reason: "capability",
+      deployEnv: this.config.deployEnv ?? "dev",
+      actorId,
+      requestedVersion,
+      rolloutMode: capabilityDecision.mode,
+      missingCapabilities: capabilityDecision.missing,
+    });
+    throw new SyncServiceError(
+      CRYPTO_CAPABILITY_REQUIRED,
+      CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+      "strict rollout mode requires PQ-capable actor",
+      buildCapabilityPolicyDetails({
+        mode: capabilityDecision.mode,
+        operation,
+        missing: capabilityDecision.missing,
+        subjectId: actorId,
+      }),
+    );
   }
 }
 

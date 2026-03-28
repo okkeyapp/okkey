@@ -1,5 +1,11 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { ApiConfig } from "../config.ts";
+import {
+  CRYPTO_CAPABILITY_REQUIRED,
+  CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+  buildCapabilityPolicyDetails,
+  evaluateCapabilityDecision,
+} from "../crypto/capability-policy.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   getCryptoWritePolicyViolation,
@@ -14,6 +20,7 @@ import {
 } from "../crypto/encrypted-blob.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { ObjectStorage } from "../storage/object-storage.ts";
+import type { UsersRepository } from "../storage/repositories.ts";
 import {
   CAPSULE_UNSAFE_KEY_TRANSPORT,
   CAPSULE_UNSAFE_KEY_TRANSPORT_STATUS_CODE,
@@ -27,11 +34,13 @@ const MAX_ENCRYPTED_PAYLOAD_BYTES = 1024 * 1024;
 export class CapsuleServiceError extends Error {
   readonly code: string;
   readonly statusCode: number;
+  readonly details?: Record<string, unknown>;
 
-  constructor(code: string, statusCode: number, message: string) {
+  constructor(code: string, statusCode: number, message: string, details?: Record<string, unknown>) {
     super(message);
     this.code = code;
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
 
@@ -50,7 +59,9 @@ export interface CapsuleServiceDeps {
     | "capsuleRateLimitWindowSeconds"
     | "allowedCryptoProfileVersions"
     | "deployEnv"
+    | "cryptoRolloutMode"
   >;
+  users?: Pick<UsersRepository, "findById">;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject">;
   log?: Logger;
 }
@@ -114,13 +125,18 @@ export class CapsuleService {
   private readonly db: CapsuleServiceDeps["db"];
   private readonly redis: CapsuleServiceDeps["redis"];
   private readonly config: CapsuleServiceDeps["config"];
+  private readonly users: CapsuleServiceDeps["users"];
   private readonly objectStorage: CapsuleServiceDeps["objectStorage"];
   private readonly log: Logger | undefined;
 
   constructor(deps: CapsuleServiceDeps) {
     this.db = deps.db;
     this.redis = deps.redis;
-    this.config = deps.config;
+    this.config = {
+      ...deps.config,
+      cryptoRolloutMode: deps.config.cryptoRolloutMode ?? "compat",
+    };
+    this.users = deps.users;
     this.objectStorage = deps.objectStorage;
     this.log = deps.log;
   }
@@ -156,6 +172,11 @@ export class CapsuleService {
         policyViolation.message,
       );
     }
+    await this.assertActorCapabilityForWrite(
+      creatorId,
+      "capsule.create",
+      payloadSchemaVersion,
+    );
     const payload = serializeEncryptedBlobToStorage(normalizedPayloadBlob);
     const keyTransportMode = assertSafeCapsuleKeyTransportMode(input.keyTransportMode);
     const workspace = await this.readWorkspaceAccess(workspaceId, creatorId);
@@ -403,6 +424,43 @@ export class CapsuleService {
     if (count > this.config.capsuleOpenRateLimitPerIp) {
       throw new CapsuleServiceError("RATE_LIMITED", 429, "rate limited");
     }
+  }
+
+  private async assertActorCapabilityForWrite(
+    actorId: string,
+    operation: string,
+    requestedVersion: number,
+  ): Promise<void> {
+    const user = this.users ? await this.users.findById(actorId) : null;
+    const capabilityDecision = evaluateCapabilityDecision({
+      mode: this.config.cryptoRolloutMode,
+      operation,
+      requirements: [
+        { subject: "user", capability: "pq_identity", present: Boolean(user?.publicPqKey) },
+      ],
+    });
+    if (capabilityDecision.allowed) {
+      return;
+    }
+    logCryptoPolicyViolation(this.log, {
+      reason: "capability",
+      deployEnv: this.config.deployEnv ?? "dev",
+      actorId,
+      requestedVersion,
+      rolloutMode: capabilityDecision.mode,
+      missingCapabilities: capabilityDecision.missing,
+    });
+    throw new CapsuleServiceError(
+      CRYPTO_CAPABILITY_REQUIRED,
+      CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
+      "strict rollout mode requires PQ-capable actor",
+      buildCapabilityPolicyDetails({
+        mode: capabilityDecision.mode,
+        operation,
+        missing: capabilityDecision.missing,
+        subjectId: actorId,
+      }),
+    );
   }
 }
 

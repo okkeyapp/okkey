@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../src/config.ts";
+import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
+import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { VaultSharingService } from "../src/vault-sharing/service.ts";
 import {
   applyMigrations,
@@ -231,4 +233,184 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
       `expected key-wrap policy message, got: ${msg}`,
     );
   }
+});
+
+test("security: strict rollout rejects share without recipient PQ capability (no silent fallback)", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `sec-strict-owner-${suffix}@okkey.local`;
+  const emailB = `sec-strict-recipient-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  await registerUser(storage, baseConfig, emailA);
+  await registerUser(storage, baseConfig, emailB);
+  const ownerId = await userIdByEmail(storage, emailA);
+  const recipientId = await userIdByEmail(storage, emailB);
+  await storage.postgres.query(
+    "UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid",
+    [recipientId],
+  );
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    [ownerId],
+  );
+  const wsId = pgWireUuid(workspaceRows[0]?.id);
+  const vaultRows = await storage.postgres.query<{ id: unknown }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
+    [wsId],
+  );
+  const vaultId = pgWireUuid(vaultRows[0]?.id);
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `INSERT INTO workspace_members (workspace_id, user_id)
+     VALUES ($1::uuid, $2::uuid)
+     ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [wsId, recipientId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "strict",
+    },
+  });
+
+  try {
+    await sharing.shareVault(vaultId, ownerId, {
+      recipientUserId: recipientId,
+      encryptedVaultKey: mkBlob("wrapped-key", 2),
+      encryptedPayload: mkBlob("share-event", 2),
+      baseVersion: 0,
+    });
+    assert.fail("expected strict rollout capability rejection");
+  } catch (error) {
+    assert.strictEqual(
+      errorChainCode(error),
+      "CRYPTO_CAPABILITY_REQUIRED",
+      `unexpected rejection: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+    );
+  }
+});
+
+test("security: strict rollout rejects sync append without actor PQ capability", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const email = `sec-strict-sync-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  await registerUser(storage, baseConfig, email);
+  const userId = await userIdByEmail(storage, email);
+  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid", [userId]);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    [userId],
+  );
+  const wsId = pgWireUuid(workspaceRows[0]?.id);
+  const vaultRows = await storage.postgres.query<{ id: unknown }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
+    [wsId],
+  );
+  const vaultId = pgWireUuid(vaultRows[0]?.id);
+  assert.ok(vaultId);
+
+  const sync = new SyncService({
+    vaults: storage.repositories.vaults,
+    events: storage.repositories.events,
+    users: storage.repositories.users,
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "strict",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      sync.appendEvent(vaultId, userId, {
+        eventType: "ITEM_UPDATE",
+        encryptedBlob: mkBlob("sync-event", 2),
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "CRYPTO_CAPABILITY_REQUIRED",
+  );
+});
+
+test("security: strict rollout rejects capsule create without actor PQ capability", async (t) => {
+  const baseConfig = loadConfig();
+  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const email = `sec-strict-capsule-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  await registerUser(storage, baseConfig, email);
+  const userId = await userIdByEmail(storage, email);
+  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid", [userId]);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    [userId],
+  );
+  const wsId = pgWireUuid(workspaceRows[0]?.id);
+  assert.ok(wsId);
+
+  const capsule = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    users: storage.repositories.users,
+    objectStorage: storage.objectStorage,
+    config: {
+      sessionSecret: baseConfig.sessionSecret,
+      capsuleOpenRateLimitPerIp: baseConfig.capsuleOpenRateLimitPerIp,
+      capsuleRateLimitWindowSeconds: baseConfig.capsuleRateLimitWindowSeconds,
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "strict",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      capsule.createCapsule(wsId, userId, {
+        type: "item",
+        encryptedPayload: mkBlob("capsule-event", 2),
+      }),
+    (error: unknown) =>
+      error instanceof CapsuleServiceError &&
+      error.code === "CRYPTO_CAPABILITY_REQUIRED",
+  );
 });
