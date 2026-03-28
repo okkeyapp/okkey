@@ -25,6 +25,12 @@ pkg.name = "@okkey/crypto-wasm";
 pkg.type = "module";
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
+const typesDir = join(root, "packages", "types");
+execFileSync("npx", ["--yes", "-p", "typescript", "tsc", "-p", "tsconfig.json"], {
+  cwd: typesDir,
+  stdio: "inherit",
+});
+
 execFileSync("npx", ["--yes", "-p", "typescript", "tsc", "-p", "tsconfig.json"], {
   cwd: pkgDir,
   stdio: "inherit",
