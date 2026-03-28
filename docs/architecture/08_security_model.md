@@ -130,7 +130,8 @@ Okkey ensures:
 For post-quantum readiness, Core introduces:
 
 - explicit `crypto_version` on encrypted payloads and wrapped keys;
-- hybrid ECC+PQ key sharing during transition periods;
-- mixed-fleet compatibility rules (old/new users and devices);
-- mandatory migration and rotation controls that prevent stale weak wraps;
+- hybrid ECC+PQ key sharing as production baseline (`v2`);
+- no silent fallback to weaker crypto profiles in production;
+- no legacy client-data obligations in first production release;
+- mandatory rotation and anti-downgrade controls that prevent stale weak wraps;
 - security tests for downgrade attacks, missing PQ material, and hybrid parser robustness.

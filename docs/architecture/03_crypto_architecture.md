@@ -206,14 +206,15 @@ Okkey cryptography rules:
 
 ## Q-Day / Post-Quantum Extension Principles
 
-To prepare for post-quantum migration without breaking Core behavior, the crypto layer follows these additional rules:
+For Q-Day readiness in Core first production release, the crypto layer follows these rules:
 
 1. Every new encrypted artifact carries explicit `crypto_version` and `algorithm` metadata.
-2. Crypto upgrades are additive and backward-compatible (`v1` data remains decryptable).
+2. Production write paths are `v2` only; `v1` is allowed only for explicit dev/test fixtures.
 3. Sharing envelopes move to hybrid mode (ECC + PQ) before any pure-PQ cutover.
-4. Capability detection per user/device controls safe fallback paths.
+4. Capability detection per user/device must not introduce silent downgrade or legacy fallback in production.
 5. Migration and key rotation are event-log-safe and idempotent.
 6. Downgrade attempts to weaker crypto versions are rejected by policy.
+7. First production release has no legacy client-data compatibility obligations.
 
 ### Event log monotonicity (server)
 

@@ -18,7 +18,7 @@ Enterprise extensions live in a separate private repository: `okkey-enterprise/`
 6. SaaS + Self-hosted deployment
 7. Enterprise features are **extensions** over Core (Plugins + Feature Interfaces + feature gating)
 8. Crypto-agility with explicit `crypto_version` on encrypted artifacts
-9. Backward-compatible migration path (classical -> hybrid -> PQ-ready)
+9. Q-Day-ready by default from first production day
 10. Post-quantum rollout without backend access to plaintext/keys
 
 ---
@@ -68,6 +68,20 @@ The **database schema is compatible**: enterprise only adds new tables.
 
 ---
 
+## Q-Day Release Policy (First Production Day)
+
+Core release policy for cryptography:
+
+- all production encrypted write paths are `crypto_version=v2` only
+- no silent fallback to weaker profiles is allowed
+- no legacy client-data obligations are part of the first production release
+- `v1` is allowed only for explicit dev/test fixtures
+- enterprise extensions cannot override this policy
+
+Release gates and readiness checklist are defined in `docs/release_policy_qday.md`.
+
+---
+
 ## Architecture Documents (Open-Source)
 
 - docs/api_contracts.md (Core HTTP API — canonical with `docs/openapi/core-api.yaml`)
@@ -75,6 +89,7 @@ The **database schema is compatible**: enterprise only adds new tables.
 - docs/architecture/02_repo_structure.md
 - docs/architecture/03_crypto_architecture.md
 - docs/architecture/14_crypto_v2_qday.md
+- docs/release_policy_qday.md
 - docs/architecture/04_vault_architecture.md
 - docs/architecture/05_sync_architecture.md
 - docs/architecture/06_backend_architecture.md

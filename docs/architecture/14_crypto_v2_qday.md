@@ -8,7 +8,7 @@ This document defines the Core roadmap for post-quantum readiness without breaki
 
 - Add crypto agility through explicit versioning.
 - Introduce hybrid ECC + PQ sharing envelopes.
-- Keep backward compatibility during migration.
+- Enforce `Q-Day-ready by default` from the first production release.
 - Preserve client-side cryptography and split-key model.
 
 ---
@@ -17,7 +17,7 @@ This document defines the Core roadmap for post-quantum readiness without breaki
 
 - Moving cryptography to backend.
 - Replacing Core with enterprise-only cryptography.
-- Breaking v1 vault decryptability.
+- Treating legacy client-data compatibility as a first-release production obligation.
 
 ---
 
@@ -52,11 +52,13 @@ Baseline policy by environment:
 - `stage`: `v2` only for new write operations.
 - `prod`: `v2` only for new write operations.
 
+For first production release, Core does not guarantee legacy client-data migration flows. Legacy compatibility remains test-only unless explicitly approved by release policy.
+
 ---
 
 ## Hybrid Sharing Model
 
-During migration, key sharing uses a hybrid envelope containing both ECC and PQ ciphertext components. Decrypt path is selected by verified capabilities, never by silent downgrade.
+Key sharing uses a hybrid envelope containing both ECC and PQ ciphertext components. Decrypt path is selected by verified capabilities, never by silent downgrade.
 
 ### Canonical Hybrid Envelope (v1)
 
@@ -121,10 +123,10 @@ Cross-layer compatibility requirement:
 
 ## Migration Strategy
 
-- Lazy migration on unlock/access for active users.
-- Background migrations for large vaults.
-- Idempotent migration modules (`v1_to_v2` etc.).
-- Vault-level `crypto_version` metadata and replay-safe updates.
+- No post-factum migration obligations for first production client data.
+- `v2` is required for new production writes from day one.
+- Legacy migration tooling is limited to internal pre-prod/test data.
+- Vault-level `crypto_version` metadata and replay-safe updates remain mandatory invariants.
 
 ---
 
@@ -138,10 +140,11 @@ Key rotation remains mandatory for access changes and is upgraded to hybrid rewr
 
 System target behavior:
 
-- old user + old vault: supported;
-- new user + old vault: supported;
-- old user + new vault: supported via policy-approved fallback;
-- new user + new vault: hybrid path enabled.
+- `dev`: `v1` and `v2` allowed for fixtures and compatibility tests.
+- `stage`: only `v2` writes; downgrade blocked.
+- `prod`: only `v2` writes; downgrade blocked; no legacy exceptions by default.
+
+Release gates and readiness checklist are defined in `docs/release_policy_qday.md`.
 
 ---
 
