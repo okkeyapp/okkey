@@ -38,7 +38,7 @@ export class PostgresDatabase implements QueryExecutor {
 
     const pool = new PoolCtor({ connectionString: databaseUrl });
     const db = new PostgresDatabase(pool);
-    await db.ping();
+    await pingWithRetry(db);
     return db;
   }
 
@@ -79,4 +79,47 @@ export class PostgresDatabase implements QueryExecutor {
   async close(): Promise<void> {
     await this.pool.end();
   }
+}
+
+const CONNECT_RETRY_ATTEMPTS = 30;
+const CONNECT_RETRY_DELAY_MS = 250;
+
+async function pingWithRetry(db: PostgresDatabase): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= CONNECT_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      await db.ping();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableConnectError(error) || attempt === CONNECT_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      await delay(CONNECT_RETRY_DELAY_MS);
+    }
+  }
+  throw lastError;
+}
+
+function isRetryableConnectError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("ECONNREFUSED") || message.includes("ENOTFOUND") || message.includes("ETIMEDOUT")) {
+    return true;
+  }
+  if (typeof error === "object" && error !== null) {
+    const details = (error as { details?: unknown }).details;
+    const detailsText = details instanceof Error ? details.message : String(details ?? "");
+    if (
+      detailsText.includes("ECONNREFUSED") ||
+      detailsText.includes("ENOTFOUND") ||
+      detailsText.includes("ETIMEDOUT")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

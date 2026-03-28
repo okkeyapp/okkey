@@ -77,5 +77,30 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Wait for Postgres and Redis ports
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for_port() {
+            local host="$1"
+            local port="$2"
+            local name="$3"
+            local timeout="${4:-120}"
+            local elapsed=0
+            until (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; do
+              elapsed=$((elapsed + 1))
+              if [ "${elapsed}" -ge "${timeout}" ]; then
+                echo "::error::${name} is not reachable at ${host}:${port} after ${timeout}s"
+                return 1
+              fi
+              sleep 1
+            done
+            echo "${name} is reachable at ${host}:${port}"
+          }
+
+          wait_for_port 127.0.0.1 5432 postgres 120
+          wait_for_port 127.0.0.1 6379 redis 120
+
       - name: Run Q-Day security suite (blocking)
         run: yarn test:security
