@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { CryptoDowngradeInvariantError } from "../storage/errors.ts";
 import type { VaultsRepository } from "../storage/repositories.ts";
@@ -110,6 +111,7 @@ interface VaultAclMeta {
 const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
 const HYBRID_VAULT_KEY_WRAP_SCHEME = "hybrid_ecc_pq_v1";
+const ROTATION_REQUEST_FINGERPRINT_META_KEY = "rotation_request_fingerprint";
 
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
@@ -257,7 +259,7 @@ export class VaultSharingService {
         "cannot revoke implicit owner access",
       );
     }
-    const payloadBlob = mergeEncryptedBlobMeta(
+    let payloadBlob = mergeEncryptedBlobMeta(
       parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
       {
         entity: "vault_event_payload",
@@ -290,7 +292,28 @@ export class VaultSharingService {
       ...rotatedMap.values(),
     ]);
 
+    const requestFingerprint = buildRotationRequestFingerprint({
+      operation: "revoke_access",
+      recipientUserId: input.recipientUserId,
+      payloadBlob,
+      rotatedMap,
+    });
+    payloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
+      [ROTATION_REQUEST_FINGERPRINT_META_KEY]: requestFingerprint,
+    });
+
     await this.db.transaction(async (tx) => {
+      const rotationGuard = await this.guardRotationAtomicityTx(
+        tx,
+        vaultId,
+        input.baseVersion,
+        input.idempotencyKey,
+        requestFingerprint,
+      );
+      if (rotationGuard === "duplicate") {
+        return;
+      }
+
       const membership = await tx.query<{ id: string }>(
         "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2",
         [vaultId, input.recipientUserId],
@@ -360,7 +383,7 @@ export class VaultSharingService {
 
   async rotateVaultKey(vaultId: string, actorId: string, input: RotateVaultKeyInput): Promise<void> {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
-    const payloadBlob = mergeEncryptedBlobMeta(
+    let payloadBlob = mergeEncryptedBlobMeta(
       parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
       {
         entity: "vault_event_payload",
@@ -393,7 +416,28 @@ export class VaultSharingService {
       ...rotatedMap.values(),
     ]);
 
+    const requestFingerprint = buildRotationRequestFingerprint({
+      operation: "rotate_vault_key",
+      reason: input.reason ?? null,
+      payloadBlob,
+      rotatedMap,
+    });
+    payloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
+      [ROTATION_REQUEST_FINGERPRINT_META_KEY]: requestFingerprint,
+    });
+
     await this.db.transaction(async (tx) => {
+      const rotationGuard = await this.guardRotationAtomicityTx(
+        tx,
+        vaultId,
+        input.baseVersion,
+        input.idempotencyKey,
+        requestFingerprint,
+      );
+      if (rotationGuard === "duplicate") {
+        return;
+      }
+
       const activeRecipients = await this.listActiveRecipients(tx, vaultId);
       const activeSet = new Set(activeRecipients);
       const activeRecipientPqKeys = await this.getUserPublicPqKeys(activeRecipients);
@@ -462,7 +506,7 @@ export class VaultSharingService {
       throw new VaultSharingServiceError("VAULT_SHARE_BAD_REQUEST", 400, "newRole is required");
     }
 
-    const payloadBlob = mergeEncryptedBlobMeta(
+    let payloadBlob = mergeEncryptedBlobMeta(
       parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
       {
         entity: "vault_event_payload",
@@ -495,7 +539,29 @@ export class VaultSharingService {
       ...rotatedMap.values(),
     ]);
 
+    const requestFingerprint = buildRotationRequestFingerprint({
+      operation: "update_member_role",
+      memberId: input.memberId,
+      newRole: input.newRole,
+      payloadBlob,
+      rotatedMap,
+    });
+    payloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
+      [ROTATION_REQUEST_FINGERPRINT_META_KEY]: requestFingerprint,
+    });
+
     await this.db.transaction(async (tx) => {
+      const rotationGuard = await this.guardRotationAtomicityTx(
+        tx,
+        vaultId,
+        input.baseVersion,
+        input.idempotencyKey,
+        requestFingerprint,
+      );
+      if (rotationGuard === "duplicate") {
+        return;
+      }
+
       const membership = await tx.query<{ id: string }>(
         "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2",
         [vaultId, input.memberId],
@@ -711,6 +777,75 @@ export class VaultSharingService {
     );
   }
 
+  private async guardRotationAtomicityTx(
+    tx: QueryExecutor,
+    vaultId: string,
+    baseVersion: number,
+    idempotencyKey: string | undefined,
+    requestFingerprint: string,
+  ): Promise<"duplicate" | "proceed"> {
+    const vaultRows = await tx.query<{ id: string }>(
+      "SELECT id FROM vaults WHERE id = $1 FOR UPDATE",
+      [vaultId],
+    );
+    if (!vaultRows[0]) {
+      throw new VaultSharingServiceError("VAULT_NOT_FOUND", 404, "vault not found");
+    }
+
+    if (idempotencyKey) {
+      const existingRows = await tx.query<{
+        event_type: string;
+        encrypted_payload: Buffer;
+      }>(
+        `
+          SELECT event_type, encrypted_payload
+          FROM events
+          WHERE vault_id = $1
+            AND idempotency_key = $2::uuid
+          FOR UPDATE
+        `,
+        [vaultId, idempotencyKey],
+      );
+      const existing = existingRows[0];
+      if (existing) {
+        if (existing.event_type !== "VAULT_KEY_ROTATION") {
+          throw new VaultSharingServiceError(
+            "IDEMPOTENCY_KEY_CONFLICT",
+            409,
+            "idempotencyKey already used by a different event type",
+          );
+        }
+        const existingBlob = decodeEncryptedBlobFromStorage(Uint8Array.from(existing.encrypted_payload));
+        const existingFingerprint =
+          typeof existingBlob.meta?.[ROTATION_REQUEST_FINGERPRINT_META_KEY] === "string"
+            ? (existingBlob.meta?.[ROTATION_REQUEST_FINGERPRINT_META_KEY] as string)
+            : null;
+        if (!existingFingerprint || existingFingerprint !== requestFingerprint) {
+          throw new VaultSharingServiceError(
+            "IDEMPOTENCY_KEY_CONFLICT",
+            409,
+            "idempotencyKey reuse detected for a different rotation payload",
+          );
+        }
+        return "duplicate";
+      }
+    }
+
+    const versionRows = await tx.query<{ current_version: number }>(
+      "SELECT COALESCE(MAX(version), 0) AS current_version FROM events WHERE vault_id = $1",
+      [vaultId],
+    );
+    const currentVersion = Number(versionRows[0]?.current_version ?? 0);
+    if (baseVersion !== currentVersion) {
+      throw new VaultSharingServiceError("VERSION_MISMATCH", 409, "baseVersion is stale", {
+        expectedBaseVersion: baseVersion,
+        latestVersion: currentVersion,
+      });
+    }
+
+    return "proceed";
+  }
+
   private async ensureRecipientInWorkspace(workspaceId: string, userId: string): Promise<void> {
     const rows = await this.db.query<{ can_access: boolean }>(
       `
@@ -924,4 +1059,44 @@ function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {
   } catch (error) {
     throw new VaultSharingServiceError("VAULT_KEY_WRAP_INVALID", 400, (error as Error).message);
   }
+}
+
+function buildRotationRequestFingerprint(input: {
+  operation: "rotate_vault_key" | "revoke_access" | "update_member_role";
+  payloadBlob: EncryptedBlob;
+  rotatedMap: Map<string, EncryptedBlob>;
+  recipientUserId?: string;
+  memberId?: string;
+  newRole?: string;
+  reason?: "security_incident" | "manual" | null;
+}): string {
+  const rotatedEntries = [...input.rotatedMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([userId, blob]) => [userId, toCanonicalValue(blob)]);
+  const fingerprintPayload = {
+    operation: input.operation,
+    recipientUserId: input.recipientUserId ?? null,
+    memberId: input.memberId ?? null,
+    newRole: input.newRole ?? null,
+    reason: input.reason ?? null,
+    payloadBlob: toCanonicalValue(input.payloadBlob),
+    rotatedEntries,
+  };
+  const serialized = JSON.stringify(fingerprintPayload);
+  return createHash("sha256").update(serialized).digest("hex");
+}
+
+function toCanonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => toCanonicalValue(entry));
+  }
+  if (value && typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(objectValue).sort()) {
+      out[key] = toCanonicalValue(objectValue[key]);
+    }
+    return out;
+  }
+  return value;
 }

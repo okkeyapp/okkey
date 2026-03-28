@@ -161,6 +161,74 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
   assert.equal((await outbox.list()).length, 0);
 });
 
+test("outbox resolves VERSION_MISMATCH for VAULT_KEY_ROTATION without item rebase", async () => {
+  const vaultId = randomUUID();
+  const store = new InMemoryOutboxStore();
+  const originalPayload = Buffer.from("rotation-payload", "utf8").toString("base64");
+  let appendCalls = 0;
+  let rebaseCalled = 0;
+  const transport: OutboxTransport = {
+    async appendVaultEvent(_vaultId, body) {
+      appendCalls += 1;
+      if (appendCalls === 1) {
+        throw {
+          code: "VERSION_MISMATCH",
+          message: "stale",
+          details: {
+            code: "VERSION_MISMATCH",
+            expectedBaseVersion: body.baseVersion,
+            latestVersion: 9,
+          },
+        };
+      }
+      assert.equal(body.eventType, "VAULT_KEY_ROTATION");
+      assert.equal(body.baseVersion, 9);
+      assert.equal(body.encryptedBlob.payload, originalPayload);
+      return mkEvent(vaultId, 10);
+    },
+    async listVaultEvents(vId, afterVersion): Promise<SyncEventsListResponseDto> {
+      if (afterVersion >= 9) return { vaultId: vId, afterVersion, events: [] };
+      return { vaultId: vId, afterVersion, events: [mkEvent(vId, 5)] };
+    },
+  };
+
+  const outbox = new SyncOutboxClient(store, transport, {
+    replayOptions: {
+      decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    },
+    rebaseItemUpdate: async () => {
+      rebaseCalled += 1;
+      return {
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: Buffer.from("unexpected-rebase", "utf8").toString("base64"),
+          meta: {},
+        },
+      };
+    },
+  });
+
+  await outbox.enqueue({
+    vaultId,
+    request: {
+      eventType: "VAULT_KEY_ROTATION",
+      encryptedBlob: {
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: originalPayload,
+        meta: {},
+      },
+      baseVersion: 4,
+      idempotencyKey: randomUUID(),
+    },
+  });
+  await outbox.drain(vaultId);
+
+  assert.equal(rebaseCalled, 0);
+  assert.equal((await outbox.list()).length, 0);
+});
+
 test("outbox survives restart via persisted store", async () => {
   const vaultId = randomUUID();
   const store = new InMemoryOutboxStore();

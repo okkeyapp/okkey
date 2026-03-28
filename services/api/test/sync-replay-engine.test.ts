@@ -304,6 +304,34 @@ test("SyncReplayEngine updates VAULT_* and DEVICE_* lifecycle handlers", async (
   assert.equal(state.deviceLifecycle.latestRemoveVersion, 5);
 });
 
+test("SyncReplayEngine converges deterministically for VAULT_SHARE + VAULT_KEY_ROTATION stream", async () => {
+  const vaultId = randomUUID();
+  const duplicateRotationId = randomUUID();
+
+  const ordered = [
+    baseWire({ vaultId, eventType: "VAULT_CREATE", version: 1 }),
+    baseWire({ vaultId, eventType: "VAULT_SHARE", version: 2 }),
+    baseWire({ id: duplicateRotationId, vaultId, eventType: "VAULT_KEY_ROTATION", version: 3 }),
+  ];
+  const shuffled = [
+    baseWire({ id: duplicateRotationId, vaultId, eventType: "VAULT_KEY_ROTATION", version: 3 }),
+    baseWire({ vaultId, eventType: "VAULT_SHARE", version: 2 }),
+    baseWire({ vaultId, eventType: "VAULT_CREATE", version: 1 }),
+    // duplicate delivery of the same rotation event id/version
+    baseWire({ id: duplicateRotationId, vaultId, eventType: "VAULT_KEY_ROTATION", version: 3 }),
+  ];
+
+  const stateOrdered = await replayVaultEvents(ordered, { vaultId });
+  const stateShuffled = await replayVaultEvents(shuffled, { vaultId });
+
+  assert.equal(stateOrdered.lastAppliedVersion, 3);
+  assert.equal(stateShuffled.lastAppliedVersion, 3);
+  assert.equal(stateOrdered.vaultLifecycle.latestCreateVersion, 1);
+  assert.equal(stateOrdered.vaultLifecycle.latestShareVersion, 2);
+  assert.equal(stateOrdered.vaultLifecycle.latestKeyRotationVersion, 3);
+  assert.deepEqual(stateShuffled.vaultLifecycle, stateOrdered.vaultLifecycle);
+});
+
 test("SyncReplayEngine supports unknown event ignore policy", async () => {
   const vaultId = randomUUID();
   const state = await replayVaultEvents(

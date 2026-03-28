@@ -480,7 +480,11 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 
 **Response `200`:** `{ "revoked": true }`
 
-**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_SHARE_RECIPIENT_PQ_REQUIRED`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+Idempotency behavior:
+- same `idempotencyKey` + equivalent rotation payload => deterministic no-op,
+- same `idempotencyKey` + different payload => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
+
+**Errors (share/revoke family):** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_SHARE_RECIPIENT_PQ_REQUIRED`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT`, `VERSION_MISMATCH`, `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 **`CRYPTO_DOWNGRADE_NOT_ALLOWED` (sharing / rotation):** Same HTTP body shape as for Sync append (see **Sync** → `POST /vaults/:vaultId/events` in the errors table below). The server rejects requests where any `EncryptedBlob` in the body has `crypto_version` **below the vault row floor** (`vault.crypto_version` in Postgres) or **below the current maximum** `payload_schema_version` already stored for that vault’s event stream.
 
@@ -503,7 +507,11 @@ Standalone key rotation trigger (security incident or manual rotation). The clie
 
 **Response `200`:** `{ "rotated": true }`
 
-**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_KEY_WRAP_INVALID` (missing or unknown recipient, hybrid policy violation), `VERSION_MISMATCH` (concurrent rotation), `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `VAULT_SHARE_FORBIDDEN`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+Idempotency behavior:
+- same `idempotencyKey` + equivalent rotation payload => deterministic no-op,
+- same `idempotencyKey` + different payload => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
+
+**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_KEY_WRAP_INVALID` (missing or unknown recipient, hybrid policy violation), `VERSION_MISMATCH` (concurrent rotation), `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `VAULT_SHARE_FORBIDDEN`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 ### `PATCH /vaults/:vaultId/shares/:userId`
 
@@ -526,7 +534,11 @@ Updates a vault member's role and **atomically rotates the vault key**. Every ro
 
 **Response `200`:** `{ "updated": true }`
 
-**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT` (member not found in vault), `VERSION_MISMATCH`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+Idempotency behavior:
+- same `idempotencyKey` + equivalent rotation payload => deterministic no-op,
+- same `idempotencyKey` + different payload => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
+
+**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT` (member not found in vault), `VERSION_MISMATCH`, `IDEMPOTENCY_KEY_CONFLICT`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
 
 ---
 

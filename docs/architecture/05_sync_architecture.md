@@ -121,6 +121,32 @@ Core policy for v1:
 
 ---
 
+## Rotation Atomicity (6.11)
+
+For `VAULT_KEY_ROTATION` flows (`POST /shares/revoke`, `POST /key/rotate`, `PATCH /shares/:userId`), Core enforces an
+append-driven atomic sequence in a single DB transaction:
+
+1. lock vault stream head (`vaults` row + `events` guard query),
+2. validate idempotency/base-version guard,
+3. validate full recipient coverage and wrap policy,
+4. apply membership/key mutations,
+5. append exactly one `VAULT_KEY_ROTATION` event,
+6. commit.
+
+Invariants:
+- no `vault_keys` mutation is allowed when append guard fails (`VERSION_MISMATCH` / idempotency conflict),
+- replay is the source of truth: active key state must always correspond to committed rotation events,
+- repeated delivery with the same idempotency request must be deterministic no-op.
+
+Idempotency semantics for rotation:
+- same `idempotencyKey` + same rotation request fingerprint => no-op success (no extra writes),
+- same `idempotencyKey` + different rotation payload/wrap set => `IDEMPOTENCY_KEY_CONFLICT` (`409`).
+
+The request fingerprint is stored in `EncryptedBlob.meta.rotation_request_fingerprint` for
+`VAULT_KEY_ROTATION` payloads and is used only for conflict detection; ciphertext remains opaque to backend.
+
+---
+
 ## Transport
 
 - **HTTP contract (implemented):** see [`docs/api_contracts.md`](../api_contracts.md) and [`docs/openapi/core-api.yaml`](../openapi/core-api.yaml) for `GET/POST /vaults/:vaultId/events` — responses include `payloadSchemaVersion`, `idempotencyKey`, and `clientCreatedAt`; append accepts optional idempotency (required for `ITEM_CREATE` and `FOLDER_CREATE`) and enforces a maximum ciphertext size.

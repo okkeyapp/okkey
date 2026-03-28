@@ -1089,6 +1089,424 @@ test("concurrency: parallel rotateVaultKey calls with same baseVersion → secon
   );
 });
 
+test("integration: rotateVaultKey idempotent retry is no-op and keeps event log stable", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `rot-idem-a-${suffix}@okkey.local`;
+  const emailB = `rot-idem-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, config, emailA);
+  const userB = await registerUser(storage, config, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+     ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
+
+  await sharing.shareVault(vaultId, userA.userId, {
+    recipientUserId: userB.userId,
+    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedPayload: mkBlob("share-event"),
+    baseVersion: 0,
+  });
+
+  const idempotencyKey = randomUUID();
+  const rotateInput = {
+    rotatedVaultKeys: [
+      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
+      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v2") },
+    ],
+    encryptedPayload: mkBlob("rotation-event"),
+    baseVersion: 1,
+    idempotencyKey,
+  };
+
+  await sharing.rotateVaultKey(vaultId, userA.userId, rotateInput);
+  await sharing.rotateVaultKey(vaultId, userA.userId, rotateInput);
+
+  const keyA = await sharing.getUserVaultKey(vaultId, userA.userId);
+  const keyB = await sharing.getUserVaultKey(vaultId, userB.userId);
+  assert.equal(Buffer.from(keyA.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-a-v2");
+  assert.equal(Buffer.from(keyB.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-b-v2");
+
+  const events = await storage.repositories.events.listAfterVersion(vaultId, 0);
+  assert.equal(events.length, 2);
+  assert.equal(events[1]?.eventType, "VAULT_KEY_ROTATION");
+});
+
+test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `rot-idem-conflict-a-${suffix}@okkey.local`;
+  const emailB = `rot-idem-conflict-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, config, emailA);
+  const userB = await registerUser(storage, config, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+     ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
+
+  await sharing.shareVault(vaultId, userA.userId, {
+    recipientUserId: userB.userId,
+    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedPayload: mkBlob("share-event"),
+    baseVersion: 0,
+  });
+
+  const idempotencyKey = randomUUID();
+  await sharing.rotateVaultKey(vaultId, userA.userId, {
+    rotatedVaultKeys: [
+      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
+      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v2") },
+    ],
+    encryptedPayload: mkBlob("rotation-event-v2"),
+    baseVersion: 1,
+    idempotencyKey,
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.rotateVaultKey(vaultId, userA.userId, {
+        rotatedVaultKeys: [
+          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v3") },
+          { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v3") },
+        ],
+        encryptedPayload: mkBlob("rotation-event-v3"),
+        baseVersion: 2,
+        idempotencyKey,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError && err.code === "IDEMPOTENCY_KEY_CONFLICT",
+  );
+
+  const keyA = await sharing.getUserVaultKey(vaultId, userA.userId);
+  const keyB = await sharing.getUserVaultKey(vaultId, userB.userId);
+  assert.equal(Buffer.from(keyA.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-a-v2");
+  assert.equal(Buffer.from(keyB.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-b-v2");
+
+  const events = await storage.repositories.events.listAfterVersion(vaultId, 0);
+  assert.equal(events.length, 2);
+});
+
+test("integration: revokeVaultAccess idempotent retry is no-op and keeps event log stable", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `revoke-idem-a-${suffix}@okkey.local`;
+  const emailB = `revoke-idem-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, config, emailA);
+  const userB = await registerUser(storage, config, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+     ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
+
+  await sharing.shareVault(vaultId, userA.userId, {
+    recipientUserId: userB.userId,
+    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedPayload: mkBlob("share-event"),
+    baseVersion: 0,
+  });
+
+  const idempotencyKey = randomUUID();
+  const revokeInput = {
+    recipientUserId: userB.userId,
+    rotatedVaultKeys: [
+      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-after-revoke") },
+    ],
+    encryptedPayload: mkBlob("revoke-rotation-event"),
+    baseVersion: 1,
+    idempotencyKey,
+  };
+
+  await sharing.revokeVaultAccess(vaultId, userA.userId, revokeInput);
+  await sharing.revokeVaultAccess(vaultId, userA.userId, revokeInput);
+
+  await assert.rejects(
+    () => sharing.getUserVaultKey(vaultId, userB.userId),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError &&
+      (err.code === "VAULT_KEY_NOT_FOUND" || err.code === "ACCESS_DENIED"),
+  );
+  const ownerKey = await sharing.getUserVaultKey(vaultId, userA.userId);
+  assert.equal(
+    Buffer.from(ownerKey.encryptedVaultKey.payload, "base64").toString("utf8"),
+    "wrapped-key-a-after-revoke",
+  );
+
+  const events = await storage.repositories.events.listAfterVersion(vaultId, 0);
+  assert.equal(events.length, 2);
+  assert.equal(events[1]?.eventType, "VAULT_KEY_ROTATION");
+});
+
+test("integration: updateVaultMemberRole rejects conflicting reuse of idempotencyKey", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `role-idem-conflict-a-${suffix}@okkey.local`;
+  const emailB = `role-idem-conflict-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, config, emailA);
+  const userB = await registerUser(storage, config, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+     ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
+
+  await sharing.shareVault(vaultId, userA.userId, {
+    recipientUserId: userB.userId,
+    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedPayload: mkBlob("share-event"),
+    baseVersion: 0,
+    role: "member",
+  });
+
+  const idempotencyKey = randomUUID();
+  await sharing.updateVaultMemberRole(vaultId, userA.userId, {
+    memberId: userB.userId,
+    newRole: "admin",
+    rotatedVaultKeys: [
+      { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
+      { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v2") },
+    ],
+    encryptedPayload: mkBlob("role-rotation-event-v2"),
+    baseVersion: 1,
+    idempotencyKey,
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.updateVaultMemberRole(vaultId, userA.userId, {
+        memberId: userB.userId,
+        newRole: "member",
+        rotatedVaultKeys: [
+          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v3") },
+          { userId: userB.userId, encryptedVaultKey: mkBlob("wrapped-key-b-v3") },
+        ],
+        encryptedPayload: mkBlob("role-rotation-event-v3"),
+        baseVersion: 2,
+        idempotencyKey,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError && err.code === "IDEMPOTENCY_KEY_CONFLICT",
+  );
+
+  const memberRows = await storage.postgres.query<{ role: string }>(
+    "SELECT role FROM vault_members WHERE vault_id = $1 AND user_id = $2",
+    [vaultId, userB.userId],
+  );
+  assert.equal(memberRows[0]?.role, "admin");
+
+  const keyA = await sharing.getUserVaultKey(vaultId, userA.userId);
+  const keyB = await sharing.getUserVaultKey(vaultId, userB.userId);
+  assert.equal(Buffer.from(keyA.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-a-v2");
+  assert.equal(Buffer.from(keyB.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-b-v2");
+
+  const events = await storage.repositories.events.listAfterVersion(vaultId, 0);
+  assert.equal(events.length, 2);
+  assert.equal(events[1]?.eventType, "VAULT_KEY_ROTATION");
+});
+
+test("integration: failed rotation validation leaves keys and events unchanged", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const suffix = randomUUID();
+  const emailA = `rot-atomic-fail-a-${suffix}@okkey.local`;
+  const emailB = `rot-atomic-fail-b-${suffix}@okkey.local`;
+
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, emailB);
+      await cleanupUserData(storage, emailA);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const userA = await registerUser(storage, config, emailA);
+  const userB = await registerUser(storage, config, emailB);
+
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userA.userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM vaults WHERE workspace_id = $1 LIMIT 1",
+    [workspaceId],
+  );
+  const vaultId = vaultRows[0]?.id;
+  assert.ok(vaultId);
+
+  await storage.postgres.query(
+    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+     ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [workspaceId, userB.userId],
+  );
+
+  const sharing = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+  });
+
+  await sharing.shareVault(vaultId, userA.userId, {
+    recipientUserId: userB.userId,
+    encryptedVaultKey: mkBlob("wrapped-key-b-v1"),
+    encryptedPayload: mkBlob("share-event"),
+    baseVersion: 0,
+  });
+
+  await assert.rejects(
+    () =>
+      sharing.rotateVaultKey(vaultId, userA.userId, {
+        rotatedVaultKeys: [
+          { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
+        ],
+        encryptedPayload: mkBlob("rotation-event-invalid"),
+        baseVersion: 1,
+      }),
+    (err: unknown) =>
+      err instanceof VaultSharingServiceError && err.code === "VAULT_KEY_WRAP_INVALID",
+  );
+
+  const keyB = await sharing.getUserVaultKey(vaultId, userB.userId);
+  assert.equal(Buffer.from(keyB.encryptedVaultKey.payload, "base64").toString("utf8"), "wrapped-key-b-v1");
+
+  const events = await storage.repositories.events.listAfterVersion(vaultId, 0);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.eventType, "VAULT_SHARE");
+});
+
 test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", async (t) => {
   const baseConfig = loadConfig();
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
