@@ -769,15 +769,17 @@
 "@okkey/api@file:packages/api":
   version "0.0.1"
   dependencies:
-    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-b443758e-b7a7-4786-9e3b-6362764fdf75-1774471391952/node_modules/@okkey/types"
+    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-e7461b99-42eb-47ab-b3e1-84b9ab93c7d2-1774707001676/node_modules/@okkey/types"
 
-"@okkey/crypto-wasm@file:./packages/crypto/dist":
-  version "0.1.0"
+"@okkey/crypto-wasm@link:./packages/crypto/dist":
+  version "0.0.0"
+  uid ""
 
 "@okkey/crypto@file:packages/crypto":
   version "0.0.1"
   dependencies:
-    "@okkey/crypto-wasm" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-crypto-0.0.1-bfe3a55e-b775-4e35-af41-7337f62058a4-1774471391952/node_modules/@okkey/crypto/dist"
+    "@okkey/crypto-wasm" "link:../../../../Library/Caches/Yarn/v6/npm-@okkey-crypto-0.0.1-d3a95a99-f519-4c2b-ae39-8009893e74fa-1774707001672/node_modules/@okkey/crypto/dist"
+    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-crypto-0.0.1-d3a95a99-f519-4c2b-ae39-8009893e74fa-1774707001672/node_modules/@okkey/types"
 
 "@okkey/types@file:packages/types":
   version "0.0.1"

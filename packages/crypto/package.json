@@ -21,7 +21,7 @@
     "clean": "node ./scripts/clean.mjs"
   },
   "dependencies": {
-    "@okkey/crypto-wasm": "file:./dist",
+    "@okkey/crypto-wasm": "link:./dist",
     "@okkey/types": "file:../types"
   }
 }
