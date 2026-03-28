@@ -1,0 +1,44 @@
+name: Crypto Fuzz Quick
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  crypto-fuzz-quick:
+    name: crypto-fuzz-quick
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: yarn
+
+      - name: Setup Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install stable Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install cargo-fuzz
+        run: yarn fuzz:crypto:install
+
+      - name: Run property tests (Rust + WASM/TS)
+        run: yarn test:crypto:property
+
+      - name: Run cross-layer contract tests
+        run: yarn test:crypto:contracts
+
+      - name: Run quick fuzz budget
+        run: yarn fuzz:crypto:quick

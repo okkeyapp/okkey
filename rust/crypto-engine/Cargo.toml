@@ -24,6 +24,7 @@ ml-kem = "0.2"
 
 [dev-dependencies]
 hex = "0.4"
+proptest = "1.6"
 
 [profile.release]
 opt-level = "s"

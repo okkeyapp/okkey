@@ -1,5 +1,6 @@
 use crate::{aead, hybrid, kdf, mlkem768, sign, x25519};
 use hex::decode as hex_decode;
+use sha2::{Digest, Sha256};
 
 #[test]
 fn kdf_derive_consistency() {
@@ -177,4 +178,24 @@ fn hybrid_decrypt_rejects_corrupted_envelope() {
   let err = hybrid::decrypt_hybrid(&recipient_sk, &recipient_pq_dk, aad, &envelope)
     .expect_err("must fail on tampered envelope");
   assert!(!err.is_empty());
+}
+
+#[test]
+fn hybrid_golden_layout_sha256_matches_cross_layer_fixture() {
+  let mut envelope = Vec::with_capacity(hybrid::HYBRID_ENVELOPE_FIXED_HEADER_LEN + 20);
+  envelope.push(hybrid::HYBRID_ENVELOPE_VERSION_V1);
+  envelope.push(hybrid::HYBRID_KDF_SHA256);
+  envelope.push(hybrid::HYBRID_AEAD_XCHACHA20_POLY1305);
+  envelope.push(0u8);
+  envelope.extend(vec![0x11u8; x25519::PUBLIC_KEY_LEN]);
+  envelope.extend(vec![0x22u8; mlkem768::CIPHERTEXT_LEN]);
+  envelope.extend(vec![0x33u8; aead::XCHACHA20_NONCE_LEN]);
+  envelope.extend(hex_decode("00112233445566778899aabbccddeeff01020304").unwrap());
+
+  assert_eq!(envelope.len(), 1168);
+  let digest = Sha256::digest(&envelope);
+  assert_eq!(
+    hex::encode(digest),
+    "5654ee284072a4b74e03edbbfaae7ac81d1a62062a5553d72c7f10e634dac34f"
+  );
 }

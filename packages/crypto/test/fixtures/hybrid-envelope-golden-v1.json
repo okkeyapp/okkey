@@ -1,0 +1,17 @@
+{
+  "name": "hybrid-envelope-v1-layout",
+  "header": {
+    "version": 1,
+    "kdfId": 1,
+    "aeadId": 1,
+    "reserved": 0
+  },
+  "parts": {
+    "eccFillByte": 17,
+    "pqFillByte": 34,
+    "nonceFillByte": 51,
+    "ciphertextHex": "00112233445566778899aabbccddeeff01020304"
+  },
+  "expectedEnvelopeLength": 1168,
+  "expectedEnvelopeSha256Hex": "5654ee284072a4b74e03edbbfaae7ac81d1a62062a5553d72c7f10e634dac34f"
+}

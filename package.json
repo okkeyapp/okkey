@@ -56,6 +56,9 @@
     "build:i18n": "yarn --cwd packages/i18n build",
     "build:email-templates": "yarn --cwd packages/email-templates build",
     "build:email": "yarn build:i18n && yarn build:email-templates",
+    "fuzz:crypto:install": "PATH=\"$HOME/.cargo/bin:$PATH\" cargo install cargo-fuzz --locked",
+    "fuzz:crypto:quick": "PATH=\"$HOME/.cargo/bin:$PATH\" rustup toolchain install nightly --profile minimal && cd rust/crypto-engine && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +nightly fuzz run hybrid_decode -- -seed=1337 -max_total_time=20 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +nightly fuzz run hybrid_decrypt -- -seed=1338 -max_total_time=20 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +nightly fuzz run signature_verify -- -seed=1339 -max_total_time=20",
+    "fuzz:crypto:extended": "PATH=\"$HOME/.cargo/bin:$PATH\" rustup toolchain install nightly --profile minimal && cd rust/crypto-engine && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +nightly fuzz run hybrid_decode -- -seed=202601 -max_total_time=300 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +nightly fuzz run hybrid_decrypt -- -seed=202602 -max_total_time=300 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +nightly fuzz run signature_verify -- -seed=202603 -max_total_time=300",
     "dev:email": "yarn --cwd packages/email-templates dev",
     "dev:api": "yarn build:email && node --experimental-strip-types services/api/src/index.ts",
     "dev:web": "yarn --cwd apps/web dev",
@@ -68,6 +71,8 @@
     "infra:up": "./scripts/infra.sh up",
     "test": "yarn test:api && yarn test:security && yarn test:e2e && yarn test:web",
     "test:api": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/*.test.ts",
+    "test:crypto:property": "yarn build:wasm && node --test packages/crypto/test/hybrid.property.test.mjs && cargo test --manifest-path rust/crypto-engine/Cargo.toml property_tests",
+    "test:crypto:contracts": "yarn build:wasm && node --test packages/crypto/test/hybrid.contracts.test.mjs && cargo test --manifest-path rust/crypto-engine/Cargo.toml hybrid_golden_layout_sha256_matches_cross_layer_fixture",
     "test:security": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-concurrency=1 services/api/test/security-qday-downgrade-strip.test.ts services/api/test/security-qday-missing-pq-malformed-envelope.test.ts services/api/test/security-qday-mixed-device-replay-rollback.test.ts",
     "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts"
   }

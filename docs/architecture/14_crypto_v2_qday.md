@@ -153,3 +153,28 @@ Required controls include:
 - mixed-fleet compatibility tests;
 - missing PQ key tests;
 - fuzz/property tests for hybrid envelope decode/decrypt.
+
+### Fuzz and Property Program (6.13)
+
+Mandatory artifacts for `v2` hybrid safety:
+
+- Rust fuzz harnesses under `rust/crypto-engine/fuzz/`:
+  - `hybrid_decode`
+  - `hybrid_decrypt`
+  - `signature_verify`
+- Rust property tests in `rust/crypto-engine/src/property_tests.rs`.
+- TS/WASM property + contract tests in `packages/crypto/test/hybrid.property.test.mjs` and `packages/crypto/test/hybrid.contracts.test.mjs`.
+- Golden vector contract fixture: `packages/crypto/test/fixtures/hybrid-envelope-golden-v1.json`.
+
+CI rollout:
+
+- quick blocking lane for PR/push:
+  - workflow: `.github/workflows/crypto-fuzz-quick.yml`
+  - commands: `yarn test:crypto:property`, `yarn test:crypto:contracts`, `yarn fuzz:crypto:quick`
+- extended lane for nightly/manual:
+  - workflow: `.github/workflows/crypto-fuzz-extended.yml`
+  - command: `yarn fuzz:crypto:extended`
+
+Triage process and required crash artifacts are documented in:
+
+- `docs/security/crypto-fuzz-triage.md`
