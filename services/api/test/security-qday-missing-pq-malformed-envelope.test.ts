@@ -25,8 +25,31 @@ function errorChainCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function isVaultSharingServiceError(error: unknown, code: string): boolean {
-  return errorChainCode(error) === code;
+const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+/** Normalise ids returned by `pg` (string / Buffer) for SQL parameters. */
+function pgWireUuid(value: unknown): string {
+  if (typeof value === "string") {
+    const t = value.trim();
+    return UUID_RE.test(t) ? t.toLowerCase() : t;
+  }
+  if (Buffer.isBuffer(value) && value.length === 16) {
+    const h = value.toString("hex");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`.toLowerCase();
+  }
+  return String(value).trim();
+}
+
+async function userIdByEmail(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+  email: string,
+): Promise<string> {
+  const rows = await storage.postgres.query<{ id: unknown }>(
+    "SELECT id FROM users WHERE email = $1 LIMIT 1",
+    [email],
+  );
+  assert.ok(rows[0], `expected user row for ${email}`);
+  return pgWireUuid(rows[0].id);
 }
 
 function mkBlob(input: string, cryptoVersion = 2) {
@@ -68,9 +91,10 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
     }
   });
 
-  const owner = await registerUser(storage, baseConfig, emailA);
-  const recipient = await registerUser(storage, baseConfig, emailB);
-  const recipientId = String(recipient.userId);
+  await registerUser(storage, baseConfig, emailA);
+  await registerUser(storage, baseConfig, emailB);
+  const ownerId = await userIdByEmail(storage, emailA);
+  const recipientId = await userIdByEmail(storage, emailB);
   const cleared = await storage.postgres.query<{ public_pq_key: string | null }>(
     "UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid RETURNING public_pq_key",
     [recipientId],
@@ -83,14 +107,15 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
 
   const workspaceRows = await storage.postgres.query<{ id: string }>(
     "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
-    [String(owner.userId)],
+    [ownerId],
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
 
-  const vaultRows = await storage.postgres.query<{ id: string }>(
+  const wsId = pgWireUuid(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: unknown }>(
     "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
-    [String(workspaceId)],
+    [wsId],
   );
   const vaultId = vaultRows[0]?.id;
   assert.ok(vaultId);
@@ -101,7 +126,7 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
       VALUES ($1::uuid, $2::uuid)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [String(workspaceId), recipientId],
+    [wsId, recipientId],
   );
 
   const sharing = new VaultSharingService({
@@ -113,16 +138,21 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
     },
   });
 
-  await assert.rejects(
-    () =>
-      sharing.shareVault(String(vaultId), String(owner.userId), {
-        recipientUserId: recipientId,
-        encryptedVaultKey: mkHybridWrapBlob("wrapped-key", recipientId),
-        encryptedPayload: mkBlob("share-event", 2),
-        baseVersion: 0,
-      }),
-    (error: unknown) => isVaultSharingServiceError(error, "VAULT_SHARE_RECIPIENT_PQ_REQUIRED"),
-  );
+  try {
+    await sharing.shareVault(pgWireUuid(vaultId), ownerId, {
+      recipientUserId: recipientId,
+      encryptedVaultKey: mkHybridWrapBlob("wrapped-key", recipientId),
+      encryptedPayload: mkBlob("share-event", 2),
+      baseVersion: 0,
+    });
+    assert.fail("expected shareVault to reject when recipient has no PQ key in prod");
+  } catch (error) {
+    assert.strictEqual(
+      errorChainCode(error),
+      "VAULT_SHARE_RECIPIENT_PQ_REQUIRED",
+      `unexpected rejection: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+    );
+  }
 });
 
 test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid base64 payload", async (t) => {
@@ -141,8 +171,8 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
     }
   });
 
-  const owner = await registerUser(storage, baseConfig, email);
-  const ownerId = String(owner.userId);
+  await registerUser(storage, baseConfig, email);
+  const ownerId = await userIdByEmail(storage, email);
   const workspaceRows = await storage.postgres.query<{ id: string }>(
     "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
     [ownerId],
@@ -150,9 +180,10 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
 
-  const vaultRows = await storage.postgres.query<{ id: string }>(
+  const wsId = pgWireUuid(workspaceId);
+  const vaultRows = await storage.postgres.query<{ id: unknown }>(
     "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
-    [String(workspaceId)],
+    [wsId],
   );
   const vaultId = vaultRows[0]?.id;
   assert.ok(vaultId);
@@ -166,39 +197,38 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
     },
   });
 
-  await assert.rejects(
-    () =>
-      sharing.rotateVaultKey(String(vaultId), ownerId, {
-        rotatedVaultKeys: [
-          {
-            userId: ownerId,
-            encryptedVaultKey: {
-              crypto_version: 2,
-              algorithm: "opaque",
-              // valid base64 payload; server binds recipient_user_id — client cannot spoof mismatch
-              payload: Buffer.from("opaque-wrap", "utf8").toString("base64"),
-              meta: {
-                key_wrap_scheme: "ecc_legacy_v0",
-              },
+  try {
+    await sharing.rotateVaultKey(pgWireUuid(vaultId), ownerId, {
+      rotatedVaultKeys: [
+        {
+          userId: ownerId,
+          encryptedVaultKey: {
+            crypto_version: 2,
+            algorithm: "opaque",
+            // valid base64 payload; server binds recipient_user_id — client cannot spoof mismatch
+            payload: Buffer.from("opaque-wrap", "utf8").toString("base64"),
+            meta: {
+              key_wrap_scheme: "ecc_legacy_v0",
             },
           },
-        ],
-        encryptedPayload: mkBlob("rotation-event"),
-        baseVersion: 0,
-      }),
-    (error: unknown) => {
-      if (!isVaultSharingServiceError(error, "VAULT_KEY_WRAP_INVALID")) {
-        return false;
-      }
-      const msg =
-        typeof error === "object" && error !== null && "message" in error
-          ? String((error as Error).message)
-          : "";
-      return (
-        msg.includes("key_wrap_scheme") ||
+        },
+      ],
+      encryptedPayload: mkBlob("rotation-event"),
+      baseVersion: 0,
+    });
+    assert.fail("expected rotateVaultKey to reject non-hybrid key_wrap_scheme in prod");
+  } catch (error) {
+    assert.strictEqual(
+      errorChainCode(error),
+      "VAULT_KEY_WRAP_INVALID",
+      `unexpected rejection: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+    );
+    const msg = error instanceof Error ? error.message : String(error);
+    assert.ok(
+      msg.includes("key_wrap_scheme") ||
         msg.includes("hybrid_ecc_pq_v1") ||
-        msg.includes("declare meta")
-      );
-    },
-  );
+        msg.includes("declare meta"),
+      `expected key-wrap policy message, got: ${msg}`,
+    );
+  }
 });
