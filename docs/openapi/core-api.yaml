@@ -507,6 +507,80 @@ components:
           type: boolean
         revoked:
           type: boolean
+        rotated:
+          type: boolean
+        updated:
+          type: boolean
+
+    VaultKeyRotateRequest:
+      type: object
+      required: [rotatedVaultKeys, encryptedPayload, baseVersion]
+      properties:
+        rotatedVaultKeys:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [userId, encryptedVaultKey]
+            properties:
+              userId:
+                type: string
+                format: uuid
+              encryptedVaultKey:
+                $ref: "#/components/schemas/EncryptedBlob"
+                description: >
+                  Re-wrapped vault key for this recipient.
+                  In production hybrid-by-default path must use `crypto_version >= 2`
+                  and `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
+        encryptedPayload:
+          $ref: "#/components/schemas/EncryptedBlob"
+        baseVersion:
+          type: integer
+          minimum: 0
+        idempotencyKey:
+          type: string
+          format: uuid
+        clientCreatedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          enum: [security_incident, manual]
+          description: Informational rotation reason.
+
+    VaultMemberRoleUpdateRequest:
+      type: object
+      required: [newRole, rotatedVaultKeys, encryptedPayload, baseVersion]
+      properties:
+        newRole:
+          type: string
+          description: New role for the member (e.g. "admin", "member").
+        rotatedVaultKeys:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [userId, encryptedVaultKey]
+            properties:
+              userId:
+                type: string
+                format: uuid
+              encryptedVaultKey:
+                $ref: "#/components/schemas/EncryptedBlob"
+                description: >
+                  Re-wrapped vault key for this recipient.
+                  Must follow the hybrid-by-default contract in production.
+        encryptedPayload:
+          $ref: "#/components/schemas/EncryptedBlob"
+        baseVersion:
+          type: integer
+          minimum: 0
+        idempotencyKey:
+          type: string
+          format: uuid
+        clientCreatedAt:
+          type: string
+          format: date-time
 
     CapsuleMetadata:
       type: object
@@ -1244,6 +1318,116 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/VaultShareRevokeRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultShareStateResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}/key/rotate:
+    post:
+      summary: Standalone vault key rotation (security incident / manual)
+      tags: [Vaults]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultKeyRotateRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultShareStateResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /vaults/{vaultId}/shares/{userId}:
+    patch:
+      summary: Update vault member role with atomic key rotation
+      tags: [Vaults]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: vaultId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaultMemberRoleUpdateRequest"
       responses:
         "200":
           content:

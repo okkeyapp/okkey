@@ -47,6 +47,8 @@ import {
 } from "./routes/vault.ts";
 import {
   createVaultKeyGetRoute,
+  createVaultKeyRotateRoute,
+  createVaultMemberRoleUpdateRoute,
   createVaultShareRevokeRoute,
   createVaultSharesListRoute,
   createVaultShareUpsertRoute,
@@ -178,6 +180,16 @@ export function createApiApp(
       "POST",
       "/vaults/:vaultId/shares/revoke",
       createVaultShareRevokeRoute(deps.vaultSharingService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/vaults/:vaultId/key/rotate",
+      createVaultKeyRotateRoute(deps.vaultSharingService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/vaults/:vaultId/shares/:userId",
+      createVaultMemberRoleUpdateRoute(deps.vaultSharingService, resolveUserId),
     );
   }
   if (deps.syncService) {

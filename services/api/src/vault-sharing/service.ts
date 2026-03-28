@@ -71,6 +71,25 @@ export interface RevokeVaultInput {
   clientCreatedAt?: string;
 }
 
+export interface RotateVaultKeyInput {
+  rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
+  encryptedPayload: unknown;
+  baseVersion: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+  reason?: "security_incident" | "manual";
+}
+
+export interface UpdateVaultMemberRoleInput {
+  memberId: string;
+  newRole: string;
+  rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
+  encryptedPayload: unknown;
+  baseVersion: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+}
+
 export interface VaultSharingServiceDeps {
   db: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
@@ -336,6 +355,205 @@ export class VaultSharingService {
         payloadBlob,
         input,
       );
+    });
+  }
+
+  async rotateVaultKey(vaultId: string, actorId: string, input: RotateVaultKeyInput): Promise<void> {
+    const acl = await this.ensureCanManageShares(vaultId, actorId);
+    const payloadBlob = mergeEncryptedBlobMeta(
+      parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
+      {
+        entity: "vault_event_payload",
+        event_type: "VAULT_KEY_ROTATION",
+      },
+    );
+    const rotatedMap = new Map<string, EncryptedBlob>();
+    for (const keyEntry of input.rotatedVaultKeys) {
+      if (!UUID_RE.test(keyEntry.userId)) {
+        throw new VaultSharingServiceError(
+          "VAULT_SHARE_INVALID_RECIPIENT",
+          400,
+          "rotatedVaultKeys.userId must be uuid",
+        );
+      }
+      rotatedMap.set(
+        keyEntry.userId,
+        mergeEncryptedBlobMeta(
+          parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+          {
+            entity: "vault_key_wrap",
+            recipient_user_id: keyEntry.userId,
+          },
+        ),
+      );
+    }
+
+    this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
+      payloadBlob,
+      ...rotatedMap.values(),
+    ]);
+
+    await this.db.transaction(async (tx) => {
+      const activeRecipients = await this.listActiveRecipients(tx, vaultId);
+      const activeSet = new Set(activeRecipients);
+      const activeRecipientPqKeys = await this.getUserPublicPqKeys(activeRecipients);
+
+      for (const userId of activeSet) {
+        if (!rotatedMap.has(userId)) {
+          throw new VaultSharingServiceError(
+            "VAULT_KEY_WRAP_INVALID",
+            400,
+            "rotatedVaultKeys must include all active recipients",
+          );
+        }
+      }
+      for (const userId of rotatedMap.keys()) {
+        if (!activeSet.has(userId)) {
+          throw new VaultSharingServiceError(
+            "VAULT_KEY_WRAP_INVALID",
+            400,
+            "rotatedVaultKeys contains unknown recipient",
+          );
+        }
+      }
+
+      for (const userId of activeSet) {
+        this.assertHybridVaultKeyWrapPolicy(
+          rotatedMap.get(userId)!,
+          userId,
+          activeRecipientPqKeys.get(userId) ?? null,
+        );
+        await tx.query(
+          `
+            INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (vault_id, user_id)
+            DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
+                          created_at = now()
+          `,
+          [vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
+        );
+      }
+      await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_KEY_ROTATION", payloadBlob, input);
+    });
+  }
+
+  async updateVaultMemberRole(
+    vaultId: string,
+    actorId: string,
+    input: UpdateVaultMemberRoleInput,
+  ): Promise<void> {
+    const acl = await this.ensureCanManageShares(vaultId, actorId);
+    if (!UUID_RE.test(input.memberId)) {
+      throw new VaultSharingServiceError(
+        "VAULT_SHARE_INVALID_RECIPIENT",
+        400,
+        "memberId must be uuid",
+      );
+    }
+    if (input.memberId === acl.workspaceOwnerId || input.memberId === acl.vaultOwnerId) {
+      throw new VaultSharingServiceError(
+        "VAULT_SHARE_FORBIDDEN",
+        403,
+        "cannot change role of implicit owner",
+      );
+    }
+    if (!input.newRole || typeof input.newRole !== "string" || input.newRole.trim() === "") {
+      throw new VaultSharingServiceError("VAULT_SHARE_BAD_REQUEST", 400, "newRole is required");
+    }
+
+    const payloadBlob = mergeEncryptedBlobMeta(
+      parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
+      {
+        entity: "vault_event_payload",
+        event_type: "VAULT_KEY_ROTATION",
+      },
+    );
+    const rotatedMap = new Map<string, EncryptedBlob>();
+    for (const keyEntry of input.rotatedVaultKeys) {
+      if (!UUID_RE.test(keyEntry.userId)) {
+        throw new VaultSharingServiceError(
+          "VAULT_SHARE_INVALID_RECIPIENT",
+          400,
+          "rotatedVaultKeys.userId must be uuid",
+        );
+      }
+      rotatedMap.set(
+        keyEntry.userId,
+        mergeEncryptedBlobMeta(
+          parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
+          {
+            entity: "vault_key_wrap",
+            recipient_user_id: keyEntry.userId,
+          },
+        ),
+      );
+    }
+
+    this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
+      payloadBlob,
+      ...rotatedMap.values(),
+    ]);
+
+    await this.db.transaction(async (tx) => {
+      const membership = await tx.query<{ id: string }>(
+        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2",
+        [vaultId, input.memberId],
+      );
+      if (!membership[0]) {
+        throw new VaultSharingServiceError("MEMBERSHIP_CONFLICT", 409, "member not found in vault");
+      }
+
+      await tx.query(
+        `
+          UPDATE vault_members
+          SET role = $3
+          WHERE vault_id = $1 AND user_id = $2
+        `,
+        [vaultId, input.memberId, input.newRole],
+      );
+
+      const activeRecipients = await this.listActiveRecipients(tx, vaultId);
+      const activeSet = new Set(activeRecipients);
+      const activeRecipientPqKeys = await this.getUserPublicPqKeys(activeRecipients);
+
+      for (const userId of activeSet) {
+        if (!rotatedMap.has(userId)) {
+          throw new VaultSharingServiceError(
+            "VAULT_KEY_WRAP_INVALID",
+            400,
+            "rotatedVaultKeys must include all active recipients",
+          );
+        }
+      }
+      for (const userId of rotatedMap.keys()) {
+        if (!activeSet.has(userId)) {
+          throw new VaultSharingServiceError(
+            "VAULT_KEY_WRAP_INVALID",
+            400,
+            "rotatedVaultKeys contains unknown recipient",
+          );
+        }
+      }
+
+      for (const userId of activeSet) {
+        this.assertHybridVaultKeyWrapPolicy(
+          rotatedMap.get(userId)!,
+          userId,
+          activeRecipientPqKeys.get(userId) ?? null,
+        );
+        await tx.query(
+          `
+            INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (vault_id, user_id)
+            DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
+                          created_at = now()
+          `,
+          [vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
+        );
+      }
+      await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_KEY_ROTATION", payloadBlob, input);
     });
   }
 

@@ -484,6 +484,50 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 
 **`CRYPTO_DOWNGRADE_NOT_ALLOWED` (sharing / rotation):** Same HTTP body shape as for Sync append (see **Sync** → `POST /vaults/:vaultId/events` in the errors table below). The server rejects requests where any `EncryptedBlob` in the body has `crypto_version` **below the vault row floor** (`vault.crypto_version` in Postgres) or **below the current maximum** `payload_schema_version` already stored for that vault’s event stream.
 
+### `POST /vaults/:vaultId/key/rotate`
+
+Standalone key rotation trigger (security incident or manual rotation). The client generates new vault key material, re-wraps it for **all current active recipients** (workspace owner + vault owner + all `vault_members`), and submits all wraps atomically. Appends `VAULT_KEY_ROTATION` event. No membership changes.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Each wrap must follow the hybrid-by-default contract in production (`crypto_version >= 2`, `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`, `meta.recipient_user_id` matches). |
+| `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION` event. |
+| `baseVersion` | integer | Yes | Expected event-log head version. |
+| `idempotencyKey` | uuid | No | Optional event dedup key. |
+| `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
+| `reason` | string | No | `"security_incident"` or `"manual"`. Informational only. |
+
+**Response `200`:** `{ "rotated": true }`
+
+**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_KEY_WRAP_INVALID` (missing or unknown recipient, hybrid policy violation), `VERSION_MISMATCH` (concurrent rotation), `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `VAULT_SHARE_FORBIDDEN`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+
+### `PATCH /vaults/:vaultId/shares/:userId`
+
+Updates a vault member's role and **atomically rotates the vault key**. Every role change requires the client to supply fresh re-wraps for all active recipients to prevent stale key access. Appends `VAULT_KEY_ROTATION` event alongside the role update in the same DB transaction.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Path params:** `:userId` — the member whose role is being changed.
+
+**Request body:**
+
+| Field | Type | Required | Notes |
+|--------|------|----------|--------|
+| `newRole` | string | Yes | New role string (e.g. `"admin"`, `"member"`). |
+| `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Same hybrid contract as `POST /key/rotate`. |
+| `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION` event. |
+| `baseVersion` | integer | Yes | Expected event-log head version. |
+| `idempotencyKey` | uuid | No | Optional event dedup key. |
+| `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
+
+**Response `200`:** `{ "updated": true }`
+
+**Errors:** `VAULT_SHARE_BAD_REQUEST`, `VAULT_SHARE_FORBIDDEN`, `VAULT_SHARE_INVALID_RECIPIENT`, `VAULT_KEY_WRAP_INVALID`, `MEMBERSHIP_CONFLICT` (member not found in vault), `VERSION_MISMATCH`, `CRYPTO_DOWNGRADE_NOT_ALLOWED`, `ACCESS_DENIED`, `VAULT_NOT_FOUND`, `AUTH_REQUIRED`.
+
 ---
 
 ## Sync (event log)

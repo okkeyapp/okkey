@@ -342,6 +342,34 @@ export interface VaultShareRevokeRequestDto {
   clientCreatedAt?: string;
 }
 
+/**
+ * `POST /vaults/:vaultId/key/rotate` request body.
+ * Used for security incident and manual rotation triggers.
+ * Client must supply freshly re-wrapped vault keys for ALL active recipients.
+ */
+export interface VaultKeyRotateRequestDto {
+  rotatedVaultKeys: VaultRotatedKeyDto[];
+  encryptedPayload: EncryptedBlobDto;
+  baseVersion: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+  reason?: "security_incident" | "manual";
+}
+
+/**
+ * `PATCH /vaults/:vaultId/shares/:userId` request body.
+ * Updates a member's role and atomically rotates the vault key.
+ * Client must supply freshly re-wrapped vault keys for ALL active recipients.
+ */
+export interface VaultMemberRoleUpdateRequestDto {
+  newRole: string;
+  rotatedVaultKeys: VaultRotatedKeyDto[];
+  encryptedPayload: EncryptedBlobDto;
+  baseVersion: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+}
+
 export interface CapsuleMetadataDto {
   capsuleId: UUID;
   type: "item" | "field" | "file";
