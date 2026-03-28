@@ -109,6 +109,13 @@ interface VaultAclMeta {
 }
 
 const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+/** Canonical wire form for UUID user/vault ids (pg may return mixed case; JS Set/Map is case-sensitive). */
+function normalizeWireUserId(raw: string): string {
+  const s = String(raw).trim();
+  return UUID_RE.test(s) ? s.toLowerCase() : s;
+}
+
 const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
 const HYBRID_VAULT_KEY_WRAP_SCHEME = "hybrid_ecc_pq_v1";
 const ROTATION_REQUEST_FINGERPRINT_META_KEY = "rotation_request_fingerprint";
@@ -183,14 +190,17 @@ export class VaultSharingService {
 
   async shareVault(vaultId: string, actorId: string, input: ShareVaultInput): Promise<void> {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
-    if (!UUID_RE.test(input.recipientUserId)) {
+    const recipientUserId = normalizeWireUserId(input.recipientUserId);
+    if (!UUID_RE.test(recipientUserId)) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_INVALID_RECIPIENT",
         400,
         "recipientUserId must be uuid",
       );
     }
-    if (input.recipientUserId === acl.workspaceOwnerId || input.recipientUserId === acl.vaultOwnerId) {
+    const wsOwner = normalizeWireUserId(acl.workspaceOwnerId);
+    const vaultOwnerNorm = acl.vaultOwnerId != null ? normalizeWireUserId(acl.vaultOwnerId) : null;
+    if (recipientUserId === wsOwner || recipientUserId === vaultOwnerNorm) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_INVALID_RECIPIENT",
         400,
@@ -203,11 +213,11 @@ export class VaultSharingService {
     );
     const normalizedWrappedKeyBlob = mergeEncryptedBlobMeta(wrappedKeyBlob, {
       entity: "vault_key_wrap",
-      recipient_user_id: input.recipientUserId,
+      recipient_user_id: recipientUserId,
     });
     normalizedWrappedKeyBlob.meta = {
       ...normalizedWrappedKeyBlob.meta,
-      recipient_user_id: input.recipientUserId,
+      recipient_user_id: recipientUserId,
     };
     const payloadBlob = parseBlobOrThrow(
       input.encryptedPayload,
@@ -217,11 +227,11 @@ export class VaultSharingService {
       entity: "vault_event_payload",
       event_type: "VAULT_SHARE",
     });
-    await this.ensureRecipientInWorkspace(acl.workspaceId, input.recipientUserId);
-    const recipientPqKey = await this.getUserPublicPqKey(input.recipientUserId);
+    await this.ensureRecipientInWorkspace(acl.workspaceId, recipientUserId);
+    const recipientPqKey = await this.getUserPublicPqKey(recipientUserId);
     this.assertHybridVaultKeyWrapPolicy(
       normalizedWrappedKeyBlob,
-      input.recipientUserId,
+      recipientUserId,
       recipientPqKey,
     );
 
@@ -238,7 +248,7 @@ export class VaultSharingService {
           ON CONFLICT (vault_id, user_id)
           DO UPDATE SET role = EXCLUDED.role
         `,
-        [vaultId, input.recipientUserId, input.role ?? "member"],
+        [vaultId, recipientUserId, input.role ?? "member"],
       );
       await tx.query(
         `
@@ -248,7 +258,7 @@ export class VaultSharingService {
           DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                         created_at = now()
         `,
-        [vaultId, input.recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(normalizedWrappedKeyBlob))],
+        [vaultId, recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(normalizedWrappedKeyBlob))],
       );
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", normalizedPayloadBlob, input);
     });
@@ -256,7 +266,10 @@ export class VaultSharingService {
 
   async revokeVaultAccess(vaultId: string, actorId: string, input: RevokeVaultInput): Promise<void> {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
-    if (input.recipientUserId === acl.workspaceOwnerId || input.recipientUserId === acl.vaultOwnerId) {
+    const recipientUserId = normalizeWireUserId(input.recipientUserId);
+    const wsOwner = normalizeWireUserId(acl.workspaceOwnerId);
+    const vaultOwnerNorm = acl.vaultOwnerId != null ? normalizeWireUserId(acl.vaultOwnerId) : null;
+    if (recipientUserId === wsOwner || recipientUserId === vaultOwnerNorm) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_FORBIDDEN",
         403,
@@ -272,7 +285,8 @@ export class VaultSharingService {
     );
     const rotatedMap = new Map<string, EncryptedBlob>();
     for (const keyEntry of input.rotatedVaultKeys) {
-      if (!UUID_RE.test(keyEntry.userId)) {
+      const uid = normalizeWireUserId(keyEntry.userId);
+      if (!UUID_RE.test(uid)) {
         throw new VaultSharingServiceError(
           "VAULT_SHARE_INVALID_RECIPIENT",
           400,
@@ -283,11 +297,11 @@ export class VaultSharingService {
         parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
         {
           entity: "vault_key_wrap",
-          recipient_user_id: keyEntry.userId,
+          recipient_user_id: uid,
         },
       );
-      merged.meta = { ...merged.meta, recipient_user_id: keyEntry.userId };
-      rotatedMap.set(keyEntry.userId, merged);
+      merged.meta = { ...merged.meta, recipient_user_id: uid };
+      rotatedMap.set(uid, merged);
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -297,7 +311,7 @@ export class VaultSharingService {
 
     const requestFingerprint = buildRotationRequestFingerprint({
       operation: "revoke_access",
-      recipientUserId: input.recipientUserId,
+      recipientUserId,
       payloadBlob,
       rotatedMap,
     });
@@ -318,20 +332,20 @@ export class VaultSharingService {
       }
 
       const membership = await tx.query<{ id: string }>(
-        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2",
-        [vaultId, input.recipientUserId],
+        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2::uuid",
+        [vaultId, recipientUserId],
       );
       if (!membership[0]) {
         throw new VaultSharingServiceError("MEMBERSHIP_CONFLICT", 409, "recipient is not a vault member");
       }
 
-      await tx.query("DELETE FROM vault_members WHERE vault_id = $1 AND user_id = $2", [
+      await tx.query("DELETE FROM vault_members WHERE vault_id = $1 AND user_id = $2::uuid", [
         vaultId,
-        input.recipientUserId,
+        recipientUserId,
       ]);
-      await tx.query("DELETE FROM vault_keys WHERE vault_id = $1 AND user_id = $2", [
+      await tx.query("DELETE FROM vault_keys WHERE vault_id = $1 AND user_id = $2::uuid", [
         vaultId,
-        input.recipientUserId,
+        recipientUserId,
       ]);
 
       const activeRecipients = await this.listActiveRecipients(tx, vaultId);
@@ -395,7 +409,8 @@ export class VaultSharingService {
     );
     const rotatedMap = new Map<string, EncryptedBlob>();
     for (const keyEntry of input.rotatedVaultKeys) {
-      if (!UUID_RE.test(keyEntry.userId)) {
+      const uid = normalizeWireUserId(keyEntry.userId);
+      if (!UUID_RE.test(uid)) {
         throw new VaultSharingServiceError(
           "VAULT_SHARE_INVALID_RECIPIENT",
           400,
@@ -406,11 +421,11 @@ export class VaultSharingService {
         parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
         {
           entity: "vault_key_wrap",
-          recipient_user_id: keyEntry.userId,
+          recipient_user_id: uid,
         },
       );
-      merged.meta = { ...merged.meta, recipient_user_id: keyEntry.userId };
-      rotatedMap.set(keyEntry.userId, merged);
+      merged.meta = { ...merged.meta, recipient_user_id: uid };
+      rotatedMap.set(uid, merged);
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -490,14 +505,17 @@ export class VaultSharingService {
     input: UpdateVaultMemberRoleInput,
   ): Promise<void> {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
-    if (!UUID_RE.test(input.memberId)) {
+    const memberId = normalizeWireUserId(input.memberId);
+    if (!UUID_RE.test(memberId)) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_INVALID_RECIPIENT",
         400,
         "memberId must be uuid",
       );
     }
-    if (input.memberId === acl.workspaceOwnerId || input.memberId === acl.vaultOwnerId) {
+    const wsOwnerUm = normalizeWireUserId(acl.workspaceOwnerId);
+    const vaultOwnerUm = acl.vaultOwnerId != null ? normalizeWireUserId(acl.vaultOwnerId) : null;
+    if (memberId === wsOwnerUm || memberId === vaultOwnerUm) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_FORBIDDEN",
         403,
@@ -517,7 +535,8 @@ export class VaultSharingService {
     );
     const rotatedMap = new Map<string, EncryptedBlob>();
     for (const keyEntry of input.rotatedVaultKeys) {
-      if (!UUID_RE.test(keyEntry.userId)) {
+      const uid = normalizeWireUserId(keyEntry.userId);
+      if (!UUID_RE.test(uid)) {
         throw new VaultSharingServiceError(
           "VAULT_SHARE_INVALID_RECIPIENT",
           400,
@@ -528,11 +547,11 @@ export class VaultSharingService {
         parseBlobOrThrow(keyEntry.encryptedVaultKey, "rotatedVaultKeys[].encryptedVaultKey"),
         {
           entity: "vault_key_wrap",
-          recipient_user_id: keyEntry.userId,
+          recipient_user_id: uid,
         },
       );
-      merged.meta = { ...merged.meta, recipient_user_id: keyEntry.userId };
-      rotatedMap.set(keyEntry.userId, merged);
+      merged.meta = { ...merged.meta, recipient_user_id: uid };
+      rotatedMap.set(uid, merged);
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -542,7 +561,7 @@ export class VaultSharingService {
 
     const requestFingerprint = buildRotationRequestFingerprint({
       operation: "update_member_role",
-      memberId: input.memberId,
+      memberId,
       newRole: input.newRole,
       payloadBlob,
       rotatedMap,
@@ -564,8 +583,8 @@ export class VaultSharingService {
       }
 
       const membership = await tx.query<{ id: string }>(
-        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2",
-        [vaultId, input.memberId],
+        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2::uuid",
+        [vaultId, memberId],
       );
       if (!membership[0]) {
         throw new VaultSharingServiceError("MEMBERSHIP_CONFLICT", 409, "member not found in vault");
@@ -575,9 +594,9 @@ export class VaultSharingService {
         `
           UPDATE vault_members
           SET role = $3
-          WHERE vault_id = $1 AND user_id = $2
+          WHERE vault_id = $1 AND user_id = $2::uuid
         `,
-        [vaultId, input.memberId, input.newRole],
+        [vaultId, memberId, input.newRole],
       );
 
       const activeRecipients = await this.listActiveRecipients(tx, vaultId);
@@ -959,9 +978,10 @@ export class VaultSharingService {
   }
 
   private async getUserPublicPqKey(userId: string): Promise<string | null> {
+    const canonical = normalizeWireUserId(userId);
     const rows = await this.db.query<{ public_pq_key: string | null }>(
-      "SELECT public_pq_key FROM users WHERE id = $1",
-      [userId],
+      "SELECT public_pq_key FROM users WHERE id = $1::uuid",
+      [canonical],
     );
     return rows[0]?.public_pq_key ?? null;
   }
@@ -971,12 +991,13 @@ export class VaultSharingService {
     if (userIds.length === 0) {
       return out;
     }
+    const canonical = [...new Set(userIds.map((id) => normalizeWireUserId(id)))];
     const rows = await this.db.query<{ id: string; public_pq_key: string | null }>(
       "SELECT id, public_pq_key FROM users WHERE id = ANY($1::uuid[])",
-      [userIds],
+      [canonical],
     );
     for (const row of rows) {
-      out.set(row.id, row.public_pq_key);
+      out.set(normalizeWireUserId(String(row.id)), row.public_pq_key);
     }
     return out;
   }
@@ -1012,13 +1033,15 @@ export class VaultSharingService {
         { recipientUserId, requiredKeyWrapScheme: HYBRID_VAULT_KEY_WRAP_SCHEME },
       );
     }
-    const metaRecipientUserId = wrappedKeyBlob.meta?.["recipient_user_id"];
-    if (metaRecipientUserId !== recipientUserId) {
+    const metaRecipientRaw = wrappedKeyBlob.meta?.["recipient_user_id"];
+    const metaRecipientUserId =
+      typeof metaRecipientRaw === "string" ? normalizeWireUserId(metaRecipientRaw) : null;
+    if (metaRecipientUserId !== normalizeWireUserId(recipientUserId)) {
       throw new VaultSharingServiceError(
         "VAULT_KEY_WRAP_INVALID",
         400,
         "vault key wrap recipient mismatch",
-        { recipientUserId, metaRecipientUserId },
+        { recipientUserId, metaRecipientUserId: metaRecipientRaw },
       );
     }
   }
@@ -1046,7 +1069,9 @@ export class VaultSharingService {
       `,
       [vaultId],
     );
-    return rows.map((row) => row.user_id);
+    return rows
+      .map((row) => normalizeWireUserId(String(row.user_id)))
+      .filter((id) => UUID_RE.test(id));
   }
 }
 
