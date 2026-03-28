@@ -22,6 +22,9 @@ jobs:
           node-version: "25"
           cache: yarn
 
+      - name: Bootstrap crypto-wasm path for Yarn
+        run: node scripts/ensure-crypto-wasm-dist.mjs
+
       - name: Setup Rust nightly
         uses: dtolnay/rust-toolchain@nightly
 
