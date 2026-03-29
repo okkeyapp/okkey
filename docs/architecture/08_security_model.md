@@ -143,3 +143,12 @@ For post-quantum readiness, Core introduces:
 - no legacy client-data obligations in first production release;
 - mandatory rotation and anti-downgrade controls that prevent stale weak wraps;
 - security tests for downgrade attacks, missing PQ material, and hybrid parser robustness.
+
+Auth-surface roadmap and boundary controls are tracked in:
+
+- `docs/security/6.28-auth-surface-qday-roadmap.md`
+
+For authentication-specific rollout:
+
+- `dev`/`stage`: compatibility validation can be enabled only for non-production rollout safety.
+- `prod`: strict enforcement with no legacy fallback and no boundary override by enterprise modules.

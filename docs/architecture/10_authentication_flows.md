@@ -228,6 +228,7 @@ Session is protected via:
 - httpOnly cookies
 - token rotation
 - device binding
+- strict policy enforcement by deployment environment (`compat` vs `strict`)
 
 ---
 
@@ -263,6 +264,19 @@ Main rules:
 3. device authorization is mandatory
 4. new devices require confirmation
 5. private keys are always stored encrypted
+
+## Q-Day Auth Roadmap Baseline
+
+The phased Q-Day plan for auth surfaces is defined in:
+
+- `docs/security/6.28-auth-surface-qday-roadmap.md`
+
+Baseline policy alignment:
+
+- `dev` and `stage` may operate in `compat` rollout mode for controlled testing.
+- `prod` is `strict` with `v2`-only write-policy behavior and no legacy fallback.
+- auth-surface controls must not bypass Core anti-downgrade and policy gates.
+
 ## Enterprise Authentication Extensions
 
 Enterprise authentication (SAML, OIDC, LDAP, SCIM provisioning) is implemented in the private `okkey-enterprise/` repo.
