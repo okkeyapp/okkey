@@ -169,6 +169,8 @@ export async function registerUser(
   };
   const pkB64 = Buffer.alloc(32, 5).toString("base64");
   const pqPkB64 = Buffer.alloc(1184, 6).toString("base64");
+  const passwordKdfParamsVersion = config.allowedCryptoProfileVersions.includes(2) ? 2 : 1;
+  const deviceCryptoCapable = config.cryptoRolloutMode === "strict" ? true : undefined;
 
   const result = await registrationService.completeRegistration({
     authStateId,
@@ -177,7 +179,7 @@ export async function registerUser(
     encryptedPrivateKey: encPriv,
     serverKeyShare: share32,
     passwordKdfSalt: salt16,
-    passwordKdfParamsVersion: 1,
+    passwordKdfParamsVersion,
     deviceFingerprint: "f".repeat(64),
     deviceName: "2FA test device",
     devicePublicKey: Buffer.from("2fa-dpk").toString("base64"),
@@ -189,6 +191,7 @@ export async function registerUser(
     clientType: "desktop",
     userAgent: "test",
     requestIp: "127.0.0.1",
+    deviceCryptoCapable,
   });
 
   return { userId: result.userId, email, authStateId };
