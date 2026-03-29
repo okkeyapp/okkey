@@ -9,6 +9,8 @@ This document defines release gates for the first production release with `Q-Day
 - Legacy client-data compatibility is not a first-release production obligation.
 - `v1` is allowed only in explicitly scoped dev/test fixtures.
 - Enterprise extensions cannot override or weaken this policy.
+- Internal-only migration tooling for pre-prod/test is documented in
+  `docs/security/6.23-preprod-migration-tooling.md` and is not part of production launch flow.
 
 ## Release Gates (Blocking)
 

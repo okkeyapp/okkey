@@ -133,6 +133,7 @@ Cross-layer compatibility requirement:
 - `v2` is required for new production writes from day one.
 - Legacy migration tooling is limited to internal pre-prod/test data.
 - Vault-level `crypto_version` metadata and replay-safe updates remain mandatory invariants.
+- Internal tooling runbook and guardrails are documented in `docs/security/6.23-preprod-migration-tooling.md`.
 
 ---
 
