@@ -66,8 +66,8 @@ jobs:
           path: ${{ env.PROVENANCE_OUT_DIR }}
           if-no-files-found: error
 
-      - name: Attest crypto provenance artifact
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+      - name: Attest crypto provenance artifact (optional)
+        if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false) && vars.ENABLE_GITHUB_ATTESTATION == 'true'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: ${{ env.PROVENANCE_OUT_DIR }}/provenance.json
