@@ -76,6 +76,7 @@ References:
 - [ ] Production edge TLS policy follows 6.19 runbook and has validated rollback checklist.
 - [ ] Rotation and replay invariants are verified for sharing/sync flows.
 - [ ] Security suite and crypto fuzz quick suite pass on release candidate.
+- [ ] Crypto emergency response plan (`6.26`) is approved and latest drill evidence is attached.
 - [ ] Core/Enterprise boundary docs explicitly state no enterprise override of crypto policy.
 - [ ] Architecture docs use the same wording: `Q-Day-ready by default`, `no legacy client-data obligations`.
 
@@ -99,6 +100,6 @@ References:
 - `6.21` Key lifecycle and zeroization policy -> `docs/security/6.21-key-lifecycle-zeroization-policy.md` + guardrail tests + execution evidence (`docs/security/6.21-key-lifecycle-evidence.md`).
 - `6.22` Rollout observability and feature-gating -> `docs/security/6.22-crypto-rollout-observability-spec.md` + alerts/runbook/evidence set.
 - `6.25` Unified crypto policy matrix (`dev/stage/prod`) -> canonical matrix source + schema validation tests + CI gate (`yarn test:policy-matrix` in security suite).
-- `6.26` Emergency response plan consumes `6.25` matrix for profile disable/rotation sequencing and rollback-safe communication.
+- `6.26` Crypto emergency response plan -> runbook (`docs/security/6.26-crypto-emergency-response-runbook.md`), incident template (`docs/security/6.26-crypto-incident-template.md`), postmortem checklist (`docs/security/6.26-crypto-postmortem-checklist.md`), and drill evidence (`docs/security/6.26-crypto-emergency-drill-evidence.md`); consumes `6.25` matrix and `6.19/6.22` control planes.
 
 This checklist is release-blocking for the first production launch.
