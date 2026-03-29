@@ -26,6 +26,13 @@ function toEncryptedBlob(payloadBase64: string, cryptoVersion: number): Encrypte
   };
 }
 
+function assertBytes(value: Uint8Array | undefined, fieldName: string): Uint8Array {
+  if (!value) {
+    throw new Error(`${fieldName} is not initialized`);
+  }
+  return value;
+}
+
 export async function encodeItemPlaintextUtf8(item: ItemPlaintextV2): Promise<Uint8Array> {
   return encoder.encode(JSON.stringify(item));
 }
@@ -55,7 +62,7 @@ export async function buildItemCreateAppendRequest(
     return {
       eventType: "ITEM_CREATE",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       ),
       baseVersion,
@@ -88,7 +95,7 @@ export async function buildItemUpdateAppendRequest(
     return {
       eventType: "ITEM_UPDATE",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       ),
       baseVersion,
@@ -123,7 +130,7 @@ export async function buildItemDeleteAppendRequest(
     return {
       eventType: "ITEM_DELETE",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
       ),
       baseVersion,

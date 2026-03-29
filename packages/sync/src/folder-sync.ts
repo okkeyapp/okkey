@@ -29,6 +29,13 @@ function toEncryptedBlob(payloadBase64: string, cryptoVersion: number): Encrypte
   };
 }
 
+function assertBytes(value: Uint8Array | undefined, fieldName: string): Uint8Array {
+  if (!value) {
+    throw new Error(`${fieldName} is not initialized`);
+  }
+  return value;
+}
+
 export async function buildFolderCreateAppendRequest(
   personalMetadataKey: Uint8Array,
   folder: FolderPlaintextV1,
@@ -44,7 +51,7 @@ export async function buildFolderCreateAppendRequest(
     return {
       eventType: "FOLDER_CREATE",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         FOLDER_PLAINTEXT_SCHEMA_VERSION,
       ),
       baseVersion,
@@ -72,7 +79,7 @@ export async function buildFolderUpdateAppendRequest(
     return {
       eventType: "FOLDER_UPDATE",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         FOLDER_PLAINTEXT_SCHEMA_VERSION,
       ),
       baseVersion,
@@ -100,7 +107,7 @@ export async function buildFolderDeleteAppendRequest(
     return {
       eventType: "FOLDER_DELETE",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         FOLDER_PLAINTEXT_SCHEMA_VERSION,
       ),
       baseVersion,
@@ -128,7 +135,7 @@ export async function buildItemFolderAssignAppendRequest(
     return {
       eventType: "ITEM_FOLDER_ASSIGN",
       encryptedBlob: toEncryptedBlob(
-        uint8ArrayToStandardBase64(encrypted),
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
       ),
       baseVersion,
