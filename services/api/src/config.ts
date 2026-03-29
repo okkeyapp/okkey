@@ -1,11 +1,17 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertCryptoPolicyMatrix,
+  getAllowedCryptoProfileVersionsByEnv,
+  getDefaultCryptoRolloutModeByEnv,
+  isCryptoProfileVersionAllowedByEnv,
+  type CryptoRolloutMode,
+  type DeployEnv,
+} from "./crypto/policy-matrix.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api";
-type DeployEnv = "dev" | "stage" | "prod";
-type CryptoRolloutMode = "strict" | "compat";
 type CryptoRolloutState = "resume" | "stop";
 
 export interface ApiConfig {
@@ -169,7 +175,7 @@ function parseCryptoRolloutMode(
   if (normalized === "strict" || normalized === "compat") {
     return normalized;
   }
-  return deployEnv === "prod" ? "strict" : "compat";
+  return getDefaultCryptoRolloutModeByEnv(deployEnv);
 }
 
 function parseCryptoRolloutState(raw: string | undefined): CryptoRolloutState {
@@ -190,18 +196,22 @@ function parseCsvList(raw: string | undefined): string[] {
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
+  assertCryptoPolicyMatrix();
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
-  const defaultProfilesByEnv: Record<DeployEnv, readonly number[]> = {
-    dev: [1, 2],
-    stage: [2],
-    prod: [2],
-  };
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
-    defaultProfilesByEnv[deployEnv],
+    getAllowedCryptoProfileVersionsByEnv(deployEnv),
   );
+  const disallowedOverrideProfiles = allowedCryptoProfileVersions.filter(
+    (version) => !isCryptoProfileVersionAllowedByEnv(deployEnv, version),
+  );
+  if (disallowedOverrideProfiles.length > 0) {
+    throw new Error(
+      `CRYPTO_ALLOWED_PROFILE_VERSIONS includes versions blocked by ${deployEnv} policy: ${disallowedOverrideProfiles.join(",")}`,
+    );
+  }
   const cryptoRolloutMode = parseCryptoRolloutMode(
     process.env.CRYPTO_ROLLOUT_MODE,
     deployEnv,

@@ -11,6 +11,9 @@ This document defines release gates for the first production release with `Q-Day
 - Enterprise extensions cannot override or weaken this policy.
 - Internal-only migration tooling for pre-prod/test is documented in
   `docs/security/6.23-preprod-migration-tooling.md` and is not part of production launch flow.
+- Environment policy matrix (`dev/stage/prod`) is canonical in
+  `services/api/src/crypto/policy-matrix.ts` with human-readable mirror in
+  `docs/security/6.25-crypto-policy-matrix.md`.
 
 ## Release Gates (Blocking)
 
@@ -61,6 +64,7 @@ References:
 References:
 - `docs/security/6.12-threat-to-test-matrix.md`
 - `docs/security/crypto-fuzz-triage.md`
+- `docs/security/6.25-crypto-policy-matrix.md`
 - `.github/workflows/crypto-fuzz-quick.yml`
 - `.github/workflows/crypto-fuzz-extended.yml`
 
@@ -93,5 +97,8 @@ References:
 - `6.19` TLS/transport Q-Day plan -> runbook + staged validation + rollback checklist.
   - execution evidence: `docs/security/6.19-tls-transport-qday-evidence.md`
 - `6.21` Key lifecycle and zeroization policy -> `docs/security/6.21-key-lifecycle-zeroization-policy.md` + guardrail tests + execution evidence (`docs/security/6.21-key-lifecycle-evidence.md`).
+- `6.22` Rollout observability and feature-gating -> `docs/security/6.22-crypto-rollout-observability-spec.md` + alerts/runbook/evidence set.
+- `6.25` Unified crypto policy matrix (`dev/stage/prod`) -> canonical matrix source + schema validation tests + CI gate (`yarn test:policy-matrix` in security suite).
+- `6.26` Emergency response plan consumes `6.25` matrix for profile disable/rotation sequencing and rollback-safe communication.
 
 This checklist is release-blocking for the first production launch.

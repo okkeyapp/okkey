@@ -54,16 +54,46 @@ test("loadConfig defaults crypto policy by deploy environment", () => {
   );
 });
 
-test("loadConfig parses explicit crypto profile list", () => {
+test("loadConfig parses explicit crypto profile list within env policy", () => {
   withEnv(
     {
       DEPLOY_ENV: "stage",
-      CRYPTO_ALLOWED_PROFILE_VERSIONS: "2, 3, 2, bad",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "2,2,bad",
     },
     () => {
       const cfg = loadConfig();
-      assert.deepEqual(cfg.allowedCryptoProfileVersions, [2, 3]);
+      assert.deepEqual(cfg.allowedCryptoProfileVersions, [2]);
       assert.equal(cfg.deployEnv, "stage");
+    },
+  );
+});
+
+test("loadConfig rejects crypto profile overrides blocked by matrix", () => {
+  withEnv(
+    {
+      DEPLOY_ENV: "prod",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "1,2",
+    },
+    () => {
+      assert.throws(
+        () => loadConfig(),
+        /CRYPTO_ALLOWED_PROFILE_VERSIONS includes versions blocked by prod policy: 1/,
+      );
+    },
+  );
+});
+
+test("loadConfig rejects stage overrides that enable forbidden profiles", () => {
+  withEnv(
+    {
+      DEPLOY_ENV: "stage",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "1,2",
+    },
+    () => {
+      assert.throws(
+        () => loadConfig(),
+        /CRYPTO_ALLOWED_PROFILE_VERSIONS includes versions blocked by stage policy: 1/,
+      );
     },
   );
 });

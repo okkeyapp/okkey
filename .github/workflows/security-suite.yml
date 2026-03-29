@@ -80,6 +80,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Run crypto policy matrix gate
+        run: yarn test:policy-matrix
+
       - name: Wait for Postgres and Redis ports
         shell: bash
         run: |
