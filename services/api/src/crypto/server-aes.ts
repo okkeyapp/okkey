@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { wipeSecretBytes } from "./secret-lifecycle.ts";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -13,20 +14,28 @@ export function deriveAes256KeyFromSessionSecret(sessionSecret: string): Buffer 
 export function sealSecret(key: Buffer, plaintext: Uint8Array): Buffer {
   const iv = randomBytes(IV_LEN);
   const cipher = createCipheriv(ALGO, key, iv, { authTagLength: TAG_LEN });
-  const ciphertext = Buffer.concat([cipher.update(Buffer.from(plaintext)), cipher.final()]);
+  const plaintextBuffer = Buffer.from(plaintext);
+  const ciphertext = Buffer.concat([cipher.update(plaintextBuffer), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ciphertext]);
+  const packed = Buffer.concat([iv, tag, ciphertext]);
+  wipeSecretBytes(plaintextBuffer);
+  wipeSecretBytes(ciphertext);
+  return packed;
 }
 
 export function openSecret(key: Buffer, packed: Uint8Array): Buffer {
   const buf = Buffer.from(packed);
-  if (buf.length < IV_LEN + TAG_LEN + 1) {
-    throw new Error("invalid sealed secret");
+  try {
+    if (buf.length < IV_LEN + TAG_LEN + 1) {
+      throw new Error("invalid sealed secret");
+    }
+    const iv = buf.subarray(0, IV_LEN);
+    const tag = buf.subarray(IV_LEN, IV_LEN + TAG_LEN);
+    const ciphertext = buf.subarray(IV_LEN + TAG_LEN);
+    const decipher = createDecipheriv(ALGO, key, iv, { authTagLength: TAG_LEN });
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } finally {
+    wipeSecretBytes(buf);
   }
-  const iv = buf.subarray(0, IV_LEN);
-  const tag = buf.subarray(IV_LEN, IV_LEN + TAG_LEN);
-  const ciphertext = buf.subarray(IV_LEN + TAG_LEN);
-  const decipher = createDecipheriv(ALGO, key, iv, { authTagLength: TAG_LEN });
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }

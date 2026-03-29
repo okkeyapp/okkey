@@ -90,5 +90,6 @@ References:
 - `6.13` Fuzz/property/contract suite -> blocking quick lane + extended lane.
 - `6.19` TLS/transport Q-Day plan -> runbook + staged validation + rollback checklist.
   - execution evidence: `docs/security/6.19-tls-transport-qday-evidence.md`
+- `6.21` Key lifecycle and zeroization policy -> `docs/security/6.21-key-lifecycle-zeroization-policy.md` + guardrail tests + execution evidence (`docs/security/6.21-key-lifecycle-evidence.md`).
 
 This checklist is release-blocking for the first production launch.

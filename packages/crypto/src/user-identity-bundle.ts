@@ -14,6 +14,7 @@ import initWasm, {
 } from "@okkey/crypto-wasm";
 import type { EncryptedBlobDto } from "@okkey/types";
 import { getCryptoConfig } from "./config/index.js";
+import { wipeBytes } from "./secret-buffer.js";
 
 const NONCE_LEN = 24;
 
@@ -91,10 +92,15 @@ export async function generateMlkem768KeypairMaterial(): Promise<{
   if (both.length !== dkLen + ekLen) {
     throw new Error("unexpected mlkem768_keypair output length");
   }
-  return {
-    decapsulationKey: both.slice(0, dkLen),
-    encapsulationKey: both.slice(dkLen),
-  };
+  try {
+    return {
+      decapsulationKey: both.slice(0, dkLen),
+      encapsulationKey: both.slice(dkLen),
+    };
+  } finally {
+    // best-effort cleanup for concatenated keypair material buffer
+    wipeBytes(both);
+  }
 }
 
 export async function encryptUserIdentityPrivateBundle(
@@ -136,7 +142,12 @@ export async function decryptUserIdentityPrivateBundle(
     USER_IDENTITY_SK_AAD,
     ciphertext,
   );
-  return decodeUserIdentityPrivateBundleV1(plaintext);
+  try {
+    return decodeUserIdentityPrivateBundleV1(plaintext);
+  } finally {
+    // decoded secret keys are copied out; wipe intermediate plaintext bundle bytes
+    wipeBytes(plaintext);
+  }
 }
 
 export function userIdentityEncryptedBlobDtoFromPayload(payloadBytes: Uint8Array): EncryptedBlobDto {
@@ -163,5 +174,9 @@ export async function decryptUserIdentityFromEncryptedBlob(
 }> {
   await ensureWasm();
   const blobBytes = b64_decode(encryptedPayloadBase64.trim());
-  return decryptUserIdentityPrivateBundle(vaultKey, blobBytes);
+  try {
+    return decryptUserIdentityPrivateBundle(vaultKey, blobBytes);
+  } finally {
+    wipeBytes(blobBytes);
+  }
 }

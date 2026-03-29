@@ -9,6 +9,7 @@ import {
   normalizeBackupCodeInput,
 } from "../crypto/backup-code.ts";
 import { deriveAes256KeyFromSessionSecret, openSecret, sealSecret } from "../crypto/server-aes.ts";
+import { wipeSecretBytes } from "../crypto/secret-lifecycle.ts";
 import { base32Encode, verifyTotpCode } from "../crypto/totp-rfc6238.ts";
 import type { SessionService } from "../session/service.ts";
 import type { TwoFactorRepository, UsersRepository } from "../storage/repositories.ts";
@@ -96,6 +97,15 @@ export class TwoFactorService {
 
   private aesKey(): Buffer {
     return deriveAes256KeyFromSessionSecret(this.config.sessionSecret);
+  }
+
+  private withAesKey<T>(fn: (key: Buffer) => T): T {
+    const key = this.aesKey();
+    try {
+      return fn(key);
+    } finally {
+      wipeSecretBytes(key);
+    }
   }
 
   private async consumeRateLimitTwoFactorVerifyIp(requestIp: string): Promise<void> {
@@ -203,46 +213,52 @@ export class TwoFactorService {
       );
     }
 
-    let secret: Buffer;
-    try {
-      secret = openSecret(this.aesKey(), enc);
-    } catch {
-      throw new TwoFactorError(
-        "INTERNAL_SERVER_ERROR",
-        500,
-        "totp storage corrupted",
-      );
-    }
-
-    const trimmed = params.code.trim();
-    const unixSeconds = Math.floor(this.now().getTime() / 1000);
-
-    const totpOk =
-      /^\d{6}$/.test(trimmed) &&
-      verifyTotpCode({
-        secret,
-        code: trimmed,
-        unixSeconds,
-        periodSeconds: 30,
-        digits: 6,
-        windowSteps: this.config.twoFactorVerifyClockSteps,
-      });
-
+    let secret: Buffer | undefined;
+    let trimmed = "";
+    let totpOk = false;
     let backupOk = false;
-    if (!totpOk) {
-      const isSixDigitTotpAttempt = /^\d{6}$/.test(trimmed);
-      if (!isSixDigitTotpAttempt) {
-        const unusedBackups = await this.twoFactorRepo.countUnusedBackupCodes(userId);
-        if (unusedBackups === 0) {
-          throw new TwoFactorError(
-            "TWO_FACTOR_BACKUP_DEPLETED",
-            400,
-            "no backup codes remaining",
-          );
-        }
-        const backupHash = hashBackupCode(trimmed, this.config.sessionSecret);
-        backupOk = await this.twoFactorRepo.consumeBackupCode(userId, backupHash);
+    try {
+      try {
+        secret = this.withAesKey((key) => openSecret(key, enc));
+      } catch {
+        throw new TwoFactorError(
+          "INTERNAL_SERVER_ERROR",
+          500,
+          "totp storage corrupted",
+        );
       }
+
+      trimmed = params.code.trim();
+      const unixSeconds = Math.floor(this.now().getTime() / 1000);
+
+      totpOk =
+        /^\d{6}$/.test(trimmed) &&
+        verifyTotpCode({
+          secret,
+          code: trimmed,
+          unixSeconds,
+          periodSeconds: 30,
+          digits: 6,
+          windowSteps: this.config.twoFactorVerifyClockSteps,
+        });
+
+      if (!totpOk) {
+        const isSixDigitTotpAttempt = /^\d{6}$/.test(trimmed);
+        if (!isSixDigitTotpAttempt) {
+          const unusedBackups = await this.twoFactorRepo.countUnusedBackupCodes(userId);
+          if (unusedBackups === 0) {
+            throw new TwoFactorError(
+              "TWO_FACTOR_BACKUP_DEPLETED",
+              400,
+              "no backup codes remaining",
+            );
+          }
+          const backupHash = hashBackupCode(trimmed, this.config.sessionSecret);
+          backupOk = await this.twoFactorRepo.consumeBackupCode(userId, backupHash);
+        }
+      }
+    } finally {
+      wipeSecretBytes(secret);
     }
 
     if (!totpOk && !backupOk) {
@@ -303,7 +319,14 @@ export class TwoFactorService {
       userId,
       secretB64: Buffer.from(secret).toString("base64"),
     };
-    const sealed = sealSecret(this.aesKey(), Buffer.from(JSON.stringify(payload), "utf8"));
+    const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
+    const sealed = (() => {
+      try {
+        return this.withAesKey((key) => sealSecret(key, payloadBytes));
+      } finally {
+        wipeSecretBytes(payloadBytes);
+      }
+    })();
     const activeKey = enrollActiveUserKey(userId);
     const prev = await this.redis.get(activeKey);
     if (prev) {
@@ -324,14 +347,19 @@ export class TwoFactorService {
     const label = encodeURIComponent(`${issuer}:${user.email}`);
     const otpauthUri = `otpauth://totp/${label}?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 
-    return {
-      enrollmentId,
-      secretBase32,
-      otpauthUri,
-      periodSeconds: 30,
-      digits: 6,
-      algorithm: "SHA1",
-    };
+    try {
+      return {
+        enrollmentId,
+        secretBase32,
+        otpauthUri,
+        periodSeconds: 30,
+        digits: 6,
+        algorithm: "SHA1",
+      };
+    } finally {
+      wipeSecretBytes(secret);
+      wipeSecretBytes(sealed);
+    }
   }
 
   async enrollTotpConfirm(
@@ -358,8 +386,10 @@ export class TwoFactorService {
     }
 
     let payload: PendingTotpPayload;
+    let opened: Buffer | undefined;
     try {
-      const opened = openSecret(this.aesKey(), Uint8Array.from(Buffer.from(raw, "base64")));
+      opened = this.withAesKey((key) =>
+        openSecret(key, Uint8Array.from(Buffer.from(raw, "base64"))));
       payload = JSON.parse(opened.toString("utf8")) as PendingTotpPayload;
     } catch {
       throw new TwoFactorError(
@@ -367,6 +397,8 @@ export class TwoFactorService {
         400,
         "enrollment payload invalid",
       );
+    } finally {
+      wipeSecretBytes(opened);
     }
 
     if (payload.userId !== userId) {
@@ -387,7 +419,8 @@ export class TwoFactorService {
       throw new TwoFactorError("TWO_FACTOR_INVALID_CODE", 400, "invalid totp code");
     }
 
-    const sealedForDb = sealSecret(this.aesKey(), secret);
+    const sealedForDb = this.withAesKey((key) => sealSecret(key, secret));
+
     const backupCodes: string[] = [];
     const backupHashes: string[] = [];
     for (let i = 0; i < this.config.twoFactorBackupCodesCount; i++) {
@@ -396,35 +429,40 @@ export class TwoFactorService {
       backupHashes.push(hashBackupCode(plain, this.config.sessionSecret));
     }
 
-    await this.twoFactorRepo.enableTotpWithFreshBackupCodes(
-      userId,
-      sealedForDb,
-      backupHashes,
-    );
-    await this.users.setTwoFactorEnabled(userId, true);
+    try {
+      await this.twoFactorRepo.enableTotpWithFreshBackupCodes(
+        userId,
+        sealedForDb,
+        backupHashes,
+      );
+      await this.users.setTwoFactorEnabled(userId, true);
 
-    await this.redis.del(enrollRedisKey(input.enrollmentId));
-    await this.redis.del(enrollActiveUserKey(userId));
+      await this.redis.del(enrollRedisKey(input.enrollmentId));
+      await this.redis.del(enrollActiveUserKey(userId));
 
-    const user = await this.users.findById(userId);
-    if (user && this.emailTemplates) {
-      void this.emailTemplates.sendTwoFactorEnabledBestEffort({
-        to: user.email,
-        localeHints: {
-          userLocale: user.locale,
-          acceptLanguage: context?.acceptLanguage,
-        },
-        variables: {
-          occurredAtIso: this.now().toISOString(),
-          securitySettingsUrl: buildEmailAppPathUrl(
-            this.config.publicAppBaseUrl,
-            "/settings/security",
-          ),
-        },
-      });
+      const user = await this.users.findById(userId);
+      if (user && this.emailTemplates) {
+        void this.emailTemplates.sendTwoFactorEnabledBestEffort({
+          to: user.email,
+          localeHints: {
+            userLocale: user.locale,
+            acceptLanguage: context?.acceptLanguage,
+          },
+          variables: {
+            occurredAtIso: this.now().toISOString(),
+            securitySettingsUrl: buildEmailAppPathUrl(
+              this.config.publicAppBaseUrl,
+              "/settings/security",
+            ),
+          },
+        });
+      }
+
+      return { backupCodes };
+    } finally {
+      wipeSecretBytes(secret);
+      wipeSecretBytes(sealedForDb);
     }
-
-    return { backupCodes };
   }
 
   async regenerateBackupCodes(
@@ -439,16 +477,22 @@ export class TwoFactorService {
     if (!enc) {
       throw new TwoFactorError("TWO_FACTOR_NOT_ENABLED", 400, "two-factor not enabled");
     }
-    const secret = openSecret(this.aesKey(), enc);
-    const unixSeconds = Math.floor(this.now().getTime() / 1000);
-    const ok = verifyTotpCode({
-      secret,
-      code: totpCode.trim(),
-      unixSeconds,
-      periodSeconds: 30,
-      digits: 6,
-      windowSteps: this.config.twoFactorVerifyClockSteps,
-    });
+    let secret: Buffer | undefined;
+    let ok = false;
+    try {
+      secret = this.withAesKey((key) => openSecret(key, enc));
+      const unixSeconds = Math.floor(this.now().getTime() / 1000);
+      ok = verifyTotpCode({
+        secret,
+        code: totpCode.trim(),
+        unixSeconds,
+        periodSeconds: 30,
+        digits: 6,
+        windowSteps: this.config.twoFactorVerifyClockSteps,
+      });
+    } finally {
+      wipeSecretBytes(secret);
+    }
     if (!ok) {
       throw new TwoFactorError("TWO_FACTOR_INVALID_CODE", 400, "invalid totp code");
     }
@@ -505,16 +549,21 @@ export class TwoFactorService {
     if (totp && /^\d{6}$/.test(totp)) {
       const enc = await this.twoFactorRepo.getEncryptedTotpSecret(userId);
       if (enc) {
-        const secret = openSecret(this.aesKey(), enc);
-        const unixSeconds = Math.floor(this.now().getTime() / 1000);
-        verified = verifyTotpCode({
-          secret,
-          code: totp,
-          unixSeconds,
-          periodSeconds: 30,
-          digits: 6,
-          windowSteps: this.config.twoFactorVerifyClockSteps,
-        });
+        let secret: Buffer | undefined;
+        try {
+          secret = this.withAesKey((key) => openSecret(key, enc));
+          const unixSeconds = Math.floor(this.now().getTime() / 1000);
+          verified = verifyTotpCode({
+            secret,
+            code: totp,
+            unixSeconds,
+            periodSeconds: 30,
+            digits: 6,
+            windowSteps: this.config.twoFactorVerifyClockSteps,
+          });
+        } finally {
+          wipeSecretBytes(secret);
+        }
       }
     }
 

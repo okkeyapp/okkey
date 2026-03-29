@@ -69,6 +69,11 @@ Features:
 - password capture
 - quick vault access
 
+Secure storage policy by platform (web/mobile/desktop/extension) and lifecycle
+requirements are specified in:
+
+- `docs/security/6.21-key-lifecycle-zeroization-policy.md`
+
 ---
 
 ## Crypto Usage

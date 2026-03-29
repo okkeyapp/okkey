@@ -59,6 +59,7 @@ Enterprise code:
 - cannot override core auth or crypto flows
 - cannot bypass Core crypto-version policy or downgrade protections
 - cannot introduce legacy crypto exceptions for production traffic
+- cannot redefine Core key lifecycle/zeroization policy for vault key material
 
 ---
 

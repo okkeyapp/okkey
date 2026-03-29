@@ -241,3 +241,4 @@ export {
 } from "./hybrid-signature.js";
 
 export { getCryptoConfig, listCryptoConfigs, type CryptoConfig } from "./config/index.js";
+export { wipeBytes, withSensitiveBytes, withSensitiveBytesAsync } from "./secret-buffer.js";

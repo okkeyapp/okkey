@@ -8,7 +8,7 @@ import {
   FOLDER_PLAINTEXT_SCHEMA_VERSION,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
 } from "@okkey/types";
-import { encryptPersonalVaultMetadataPayload } from "@okkey/crypto";
+import { encryptPersonalVaultMetadataPayload, wipeBytes } from "@okkey/crypto";
 
 function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -36,15 +36,25 @@ export async function buildFolderCreateAppendRequest(
   idempotencyKey: string,
   clientCreatedAt?: string,
 ): Promise<SyncAppendEventRequestDto> {
-  const plaintext = encoder.encode(JSON.stringify(folder));
-  const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
-  return {
-    eventType: "FOLDER_CREATE",
-    encryptedBlob: toEncryptedBlob(uint8ArrayToStandardBase64(encrypted), FOLDER_PLAINTEXT_SCHEMA_VERSION),
-    baseVersion,
-    idempotencyKey,
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = encoder.encode(JSON.stringify(folder));
+    encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
+    return {
+      eventType: "FOLDER_CREATE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        FOLDER_PLAINTEXT_SCHEMA_VERSION,
+      ),
+      baseVersion,
+      idempotencyKey,
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }
 
 export async function buildFolderUpdateAppendRequest(
@@ -54,15 +64,25 @@ export async function buildFolderUpdateAppendRequest(
   idempotencyKey?: string,
   clientCreatedAt?: string,
 ): Promise<SyncAppendEventRequestDto> {
-  const plaintext = encoder.encode(JSON.stringify(folder));
-  const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
-  return {
-    eventType: "FOLDER_UPDATE",
-    encryptedBlob: toEncryptedBlob(uint8ArrayToStandardBase64(encrypted), FOLDER_PLAINTEXT_SCHEMA_VERSION),
-    baseVersion,
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = encoder.encode(JSON.stringify(folder));
+    encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
+    return {
+      eventType: "FOLDER_UPDATE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        FOLDER_PLAINTEXT_SCHEMA_VERSION,
+      ),
+      baseVersion,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }
 
 export async function buildFolderDeleteAppendRequest(
@@ -72,15 +92,25 @@ export async function buildFolderDeleteAppendRequest(
   idempotencyKey?: string,
   clientCreatedAt?: string,
 ): Promise<SyncAppendEventRequestDto> {
-  const plaintext = encoder.encode(JSON.stringify(tombstone));
-  const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
-  return {
-    eventType: "FOLDER_DELETE",
-    encryptedBlob: toEncryptedBlob(uint8ArrayToStandardBase64(encrypted), FOLDER_PLAINTEXT_SCHEMA_VERSION),
-    baseVersion,
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = encoder.encode(JSON.stringify(tombstone));
+    encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
+    return {
+      eventType: "FOLDER_DELETE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        FOLDER_PLAINTEXT_SCHEMA_VERSION,
+      ),
+      baseVersion,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }
 
 export async function buildItemFolderAssignAppendRequest(
@@ -90,16 +120,23 @@ export async function buildItemFolderAssignAppendRequest(
   idempotencyKey?: string,
   clientCreatedAt?: string,
 ): Promise<SyncAppendEventRequestDto> {
-  const plaintext = encoder.encode(JSON.stringify(assign));
-  const encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
-  return {
-    eventType: "ITEM_FOLDER_ASSIGN",
-    encryptedBlob: toEncryptedBlob(
-      uint8ArrayToStandardBase64(encrypted),
-      ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
-    ),
-    baseVersion,
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = encoder.encode(JSON.stringify(assign));
+    encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
+    return {
+      eventType: "ITEM_FOLDER_ASSIGN",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+      ),
+      baseVersion,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }

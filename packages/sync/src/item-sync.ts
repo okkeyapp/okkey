@@ -5,6 +5,7 @@ import {
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
 } from "@okkey/types";
 import { encryptVaultItemPayload } from "@okkey/crypto/vault-item";
+import { wipeBytes } from "@okkey/crypto";
 
 function uint8ArrayToStandardBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -46,18 +47,25 @@ export async function buildItemCreateAppendRequest(
     options?.establishedCryptoFloor ?? null,
     ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   );
-  const plaintext = await encodeItemPlaintextUtf8(item);
-  const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
-  return {
-    eventType: "ITEM_CREATE",
-    encryptedBlob: toEncryptedBlob(
-      uint8ArrayToStandardBase64(encrypted),
-      ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-    ),
-    baseVersion,
-    idempotencyKey,
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = await encodeItemPlaintextUtf8(item);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
+    return {
+      eventType: "ITEM_CREATE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      ),
+      baseVersion,
+      idempotencyKey,
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }
 
 export async function buildItemUpdateAppendRequest(
@@ -72,18 +80,25 @@ export async function buildItemUpdateAppendRequest(
     options?.establishedCryptoFloor ?? null,
     ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   );
-  const plaintext = await encodeItemPlaintextUtf8(item);
-  const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
-  return {
-    eventType: "ITEM_UPDATE",
-    encryptedBlob: toEncryptedBlob(
-      uint8ArrayToStandardBase64(encrypted),
-      ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-    ),
-    baseVersion,
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = await encodeItemPlaintextUtf8(item);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
+    return {
+      eventType: "ITEM_UPDATE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      ),
+      baseVersion,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }
 
 export async function buildItemDeleteAppendRequest(
@@ -100,16 +115,23 @@ export async function buildItemDeleteAppendRequest(
     ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   );
   const tombstone = createItemDeleteTombstoneV2(itemId, vaultId);
-  const plaintext = await encodeItemPlaintextUtf8(tombstone);
-  const encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
-  return {
-    eventType: "ITEM_DELETE",
-    encryptedBlob: toEncryptedBlob(
-      uint8ArrayToStandardBase64(encrypted),
-      ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-    ),
-    baseVersion,
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-    clientCreatedAt,
-  };
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = await encodeItemPlaintextUtf8(tombstone);
+    encrypted = await encryptVaultItemPayload(vaultKey, plaintext);
+    return {
+      eventType: "ITEM_DELETE",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(encrypted),
+        ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
+      ),
+      baseVersion,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
 }

@@ -1,6 +1,7 @@
 import type { Logger } from "../logger.ts";
 import type { Middleware } from "../http.ts";
 import { CAPSULE_KEY_QUERY_PARAM_NAMES } from "../capsule/key-transport-policy.ts";
+import { SENSITIVE_QUERY_PARAM_NAMES } from "../crypto/secret-lifecycle.ts";
 
 export function sanitizeRequestUrlForLogs(url: string | undefined): string | undefined {
   if (!url) {
@@ -10,7 +11,7 @@ export function sanitizeRequestUrlForLogs(url: string | undefined): string | und
     const parsed = new URL(url, "http://localhost");
     let hasSensitive = false;
     for (const key of parsed.searchParams.keys()) {
-      if (CAPSULE_KEY_QUERY_PARAM_NAMES.has(key)) {
+      if (CAPSULE_KEY_QUERY_PARAM_NAMES.has(key) || SENSITIVE_QUERY_PARAM_NAMES.has(key)) {
         hasSensitive = true;
         parsed.searchParams.set(key, "[redacted]");
       }

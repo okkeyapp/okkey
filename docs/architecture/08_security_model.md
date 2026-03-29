@@ -113,6 +113,14 @@ Clients use:
 - sandbox environments
 - memory protections
 
+Key lifecycle and zeroization policy is defined in:
+
+- `docs/security/6.21-key-lifecycle-zeroization-policy.md`
+
+For implementation, Core treats secret material in classes (`vault-data`,
+`server-security`, `transport/integration`) and requires wipe-on-finally for
+temporary mutable buffers.
+
 ---
 
 # Cryptographic Guarantees
