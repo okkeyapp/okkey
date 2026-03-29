@@ -31,6 +31,7 @@ test("loadConfig defaults crypto policy by deploy environment", () => {
     {
       DEPLOY_ENV: "prod",
       CRYPTO_ALLOWED_PROFILE_VERSIONS: undefined,
+      CRYPTO_ROLLOUT_MODE: undefined,
     },
     () => {
       const cfg = loadConfig();
@@ -44,6 +45,7 @@ test("loadConfig defaults crypto policy by deploy environment", () => {
     {
       DEPLOY_ENV: "dev",
       CRYPTO_ALLOWED_PROFILE_VERSIONS: undefined,
+      CRYPTO_ROLLOUT_MODE: undefined,
     },
     () => {
       const cfg = loadConfig();
@@ -103,6 +105,7 @@ test("loadConfig parses explicit crypto rollout mode", () => {
     {
       DEPLOY_ENV: "stage",
       CRYPTO_ROLLOUT_MODE: "strict",
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: undefined,
     },
     () => {
       const cfg = loadConfig();
