@@ -1,0 +1,73 @@
+name: Supply Chain
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  attestations: write
+  id-token: write
+
+jobs:
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUST_TOOLCHAIN: 1.86.0
+      WASM_PACK_VERSION: 0.13.1
+      PROVENANCE_OUT_DIR: .artifacts/crypto-provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: yarn
+
+      - name: Bootstrap crypto-wasm path for Yarn
+        run: node scripts/ensure-crypto-wasm-dist.mjs
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: PATH="$HOME/.cargo/bin:$PATH" cargo install wasm-pack --version $WASM_PACK_VERSION --locked
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run supply-chain script tests
+        run: yarn test:supply-chain
+
+      - name: Verify reproducible crypto build
+        run: yarn verify:crypto:repro
+
+      - name: Generate crypto provenance bundle
+        run: yarn build:crypto:provenance
+
+      - name: Validate crypto provenance bundle
+        run: yarn verify:crypto:provenance
+
+      - name: Upload crypto provenance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crypto-provenance
+          path: ${{ env.PROVENANCE_OUT_DIR }}
+          if-no-files-found: error
+
+      - name: Attest crypto provenance artifact
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ env.PROVENANCE_OUT_DIR }}/provenance.json

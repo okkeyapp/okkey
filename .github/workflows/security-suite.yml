@@ -36,6 +36,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
+      RUST_TOOLCHAIN: 1.86.0
+      WASM_PACK_VERSION: 0.13.1
       DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
       REDIS_URL: redis://127.0.0.1:6379
       DEPLOY_ENV: dev
@@ -69,13 +71,13 @@ jobs:
         run: node scripts/ensure-crypto-wasm-dist.mjs
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Add WebAssembly target (stable)
-        run: rustup target add wasm32-unknown-unknown --toolchain stable
+        run: PATH="$HOME/.cargo/bin:$PATH" cargo install wasm-pack --version $WASM_PACK_VERSION --locked
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -110,6 +112,9 @@ jobs:
 
       - name: Run Q-Day security suite (blocking)
         run: yarn test:security
+
+      - name: Verify bootstrap placeholder is not present
+        run: yarn verify:crypto:bootstrap
 
       - name: Run strict rollout smoke lane
         env:

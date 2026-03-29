@@ -10,6 +10,6 @@
     "@okkey/types": "file:../types"
   },
   "scripts": {
-    "build": "npx --yes -p typescript tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json"
   }
 }

@@ -10,15 +10,19 @@ jobs:
     name: crypto-fuzz-extended
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    env:
+      RUST_NIGHTLY_TOOLCHAIN: nightly-2026-03-20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Setup pinned Rust nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Install cargo-fuzz
         run: PATH="$HOME/.cargo/bin:$PATH" cargo install cargo-fuzz --locked
 
       - name: Run extended fuzz budget
-        run: cd rust/crypto-engine && PATH="$HOME/.cargo/bin:$PATH" cargo +nightly fuzz run hybrid_decode -- -seed=202601 -max_total_time=300 && PATH="$HOME/.cargo/bin:$PATH" cargo +nightly fuzz run hybrid_decrypt -- -seed=202602 -max_total_time=300 && PATH="$HOME/.cargo/bin:$PATH" cargo +nightly fuzz run signature_verify -- -seed=202603 -max_total_time=300
+        run: cd rust/crypto-engine && PATH="$HOME/.cargo/bin:$PATH" cargo +$RUST_NIGHTLY_TOOLCHAIN fuzz run hybrid_decode -- -seed=202601 -max_total_time=300 && PATH="$HOME/.cargo/bin:$PATH" cargo +$RUST_NIGHTLY_TOOLCHAIN fuzz run hybrid_decrypt -- -seed=202602 -max_total_time=300 && PATH="$HOME/.cargo/bin:$PATH" cargo +$RUST_NIGHTLY_TOOLCHAIN fuzz run signature_verify -- -seed=202603 -max_total_time=300

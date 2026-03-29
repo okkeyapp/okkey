@@ -12,7 +12,10 @@ const wasmPackBin = process.env.WASM_PACK_BIN || "wasm-pack";
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
-const env = { ...process.env, PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH ?? ""}` };
+const env = {
+  ...process.env,
+  PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH ?? ""}`,
+};
 execFileSync(wasmPackBin, ["build", "--target", "web", "--out-dir", outDir, "--features", "wasm"], {
   cwd: rustDir,
   stdio: "inherit",
@@ -26,12 +29,14 @@ pkg.type = "module";
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
 const typesDir = join(root, "packages", "types");
-execFileSync("npx", ["--yes", "-p", "typescript", "tsc", "-p", "tsconfig.json"], {
+execFileSync("yarn", ["tsc", "-p", "tsconfig.json"], {
   cwd: typesDir,
   stdio: "inherit",
+  env,
 });
 
-execFileSync("npx", ["--yes", "-p", "typescript", "tsc", "-p", "tsconfig.json"], {
+execFileSync("yarn", ["tsc", "-p", "tsconfig.json"], {
   cwd: pkgDir,
   stdio: "inherit",
+  env,
 });

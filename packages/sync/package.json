@@ -41,6 +41,6 @@
     "@okkey/types": "0.0.1"
   },
   "scripts": {
-    "build": "npx --yes -p typescript tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json"
   }
 }

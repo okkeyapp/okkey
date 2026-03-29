@@ -10,6 +10,6 @@
     "intl-messageformat": "^10.7.0"
   },
   "scripts": {
-    "build": "npx --yes -p typescript tsc -p tsconfig.json && node scripts/copy-email-locale-json.mjs"
+    "build": "tsc -p tsconfig.json && node scripts/copy-email-locale-json.mjs"
   }
 }
