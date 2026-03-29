@@ -43,6 +43,36 @@ fn ed25519_sign_verify() {
 }
 
 #[test]
+fn hybrid_signature_sign_verify() {
+  let (sk, pk) = sign::generate_keypair();
+  let (_, pq_ek) = mlkem768::generate_keypair();
+  let context = b"sync.append";
+  let message = br#"{"eventType":"ITEM_CREATE","vaultId":"v1","baseVersion":7}"#;
+
+  let sig = sign::hybrid_sign_v1(&sk, &pq_ek, context, message).expect("hybrid sign");
+  let ok = sign::hybrid_verify_v1(&pk, &pq_ek, context, message, &sig).expect("hybrid verify");
+  assert!(ok);
+}
+
+#[test]
+fn hybrid_signature_rejects_tampered_message() {
+  let (sk, pk) = sign::generate_keypair();
+  let (_, pq_ek) = mlkem768::generate_keypair();
+  let context = b"vault.share";
+  let message = br#"{"recipient":"u1","baseVersion":3}"#;
+
+  let sig = sign::hybrid_sign_v1(&sk, &pq_ek, context, message).expect("hybrid sign");
+  let ok = sign::hybrid_verify_v1(
+    &pk,
+    &pq_ek,
+    context,
+    br#"{"recipient":"u1","baseVersion":4}"#,
+    &sig,
+  ).expect("hybrid verify");
+  assert!(!ok);
+}
+
+#[test]
 fn x25519_shared_secret_match() {
   let (sk1, pk1) = x25519::generate_keypair();
   let (sk2, pk2) = x25519::generate_keypair();

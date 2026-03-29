@@ -363,6 +363,9 @@ components:
             - DEVICE_REMOVE
         encryptedBlob:
           $ref: "#/components/schemas/EncryptedBlob"
+        signature:
+          $ref: "#/components/schemas/HybridSignatureEnvelope"
+          nullable: true
         idempotencyKey:
           type: string
           format: uuid
@@ -401,6 +404,11 @@ components:
           type: string
         encryptedBlob:
           $ref: "#/components/schemas/EncryptedBlob"
+        signature:
+          $ref: "#/components/schemas/HybridSignatureEnvelope"
+          description: >
+            Hybrid integrity signature (`context = sync.append`).
+            Required by strict rollout policy for critical event types.
         baseVersion:
           type: integer
           minimum: 0
@@ -455,7 +463,7 @@ components:
 
     VaultShareUpsertRequest:
       type: object
-      required: [recipientUserId, encryptedVaultKey, encryptedPayload, baseVersion]
+      required: [recipientUserId, encryptedVaultKey, encryptedPayload, signature, baseVersion]
       properties:
         recipientUserId:
           type: string
@@ -468,6 +476,10 @@ components:
             and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
+        signature:
+          $ref: "#/components/schemas/HybridSignatureEnvelope"
+          description: >
+            Hybrid integrity signature (`context = vault.share`).
         baseVersion:
           type: integer
           minimum: 0
@@ -482,7 +494,7 @@ components:
 
     VaultShareRevokeRequest:
       type: object
-      required: [recipientUserId, rotatedVaultKeys, encryptedPayload, baseVersion]
+      required: [recipientUserId, rotatedVaultKeys, encryptedPayload, signature, baseVersion]
       properties:
         recipientUserId:
           type: string
@@ -505,6 +517,10 @@ components:
                   and include `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
+        signature:
+          $ref: "#/components/schemas/HybridSignatureEnvelope"
+          description: >
+            Hybrid integrity signature (`context = vault.revoke`).
         baseVersion:
           type: integer
           minimum: 0
@@ -529,7 +545,7 @@ components:
 
     VaultKeyRotateRequest:
       type: object
-      required: [rotatedVaultKeys, encryptedPayload, baseVersion]
+      required: [rotatedVaultKeys, encryptedPayload, signature, baseVersion]
       properties:
         rotatedVaultKeys:
           type: array
@@ -549,6 +565,10 @@ components:
                   and `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
+        signature:
+          $ref: "#/components/schemas/HybridSignatureEnvelope"
+          description: >
+            Hybrid integrity signature (`context = vault.rotate`).
         baseVersion:
           type: integer
           minimum: 0
@@ -565,7 +585,7 @@ components:
 
     VaultMemberRoleUpdateRequest:
       type: object
-      required: [newRole, rotatedVaultKeys, encryptedPayload, baseVersion]
+      required: [newRole, rotatedVaultKeys, encryptedPayload, signature, baseVersion]
       properties:
         newRole:
           type: string
@@ -587,6 +607,10 @@ components:
                   Must follow the hybrid-by-default contract in production.
         encryptedPayload:
           $ref: "#/components/schemas/EncryptedBlob"
+        signature:
+          $ref: "#/components/schemas/HybridSignatureEnvelope"
+          description: >
+            Hybrid integrity signature (`context = vault.member_role_update`).
         baseVersion:
           type: integer
           minimum: 0
@@ -681,6 +705,45 @@ components:
         meta:
           type: object
           additionalProperties: true
+    HybridSignatureEnvelope:
+      type: object
+      required:
+        [
+          version,
+          algorithm,
+          key_id,
+          context,
+          signer_pq_public_key,
+          payload_hash,
+          signature,
+          created_at,
+        ]
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        algorithm:
+          type: string
+          enum: [hybrid_ed25519_pq_bind_v1]
+        key_id:
+          type: string
+        context:
+          type: string
+          enum:
+            - sync.append
+            - vault.share
+            - vault.revoke
+            - vault.rotate
+            - vault.member_role_update
+        signer_pq_public_key:
+          type: string
+        payload_hash:
+          type: string
+        signature:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     DeviceRegisterRequest:
       type: object

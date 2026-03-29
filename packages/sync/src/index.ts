@@ -28,6 +28,7 @@ export { wouldIntroduceFolderParentCycle, type FolderParentRef } from "./folder-
 
 export {
   EventGapError,
+  SignatureValidationError,
   SyncReplayEngine,
   replayVaultEvents,
   type EventGapErrorDetails,

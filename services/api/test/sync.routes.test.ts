@@ -33,6 +33,16 @@ function loggerStub() {
 }
 
 const config: ApiConfig = createTestApiConfig();
+const signatureStub = {
+  version: 1,
+  algorithm: "hybrid_ed25519_pq_bind_v1",
+  key_id: "k1",
+  context: "sync.append",
+  signer_pq_public_key: "cHE=",
+  payload_hash: "aGFzaA==",
+  signature: "c2ln",
+  created_at: "2026-01-01T00:00:00.000Z",
+};
 
 function mkBlob(payload = "x", cryptoVersion = 2) {
   return {
@@ -275,4 +285,37 @@ test("POST /vaults/:vaultId/events maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () 
   const payload = JSON.parse(res.body) as { error: string; details?: { reason?: string } };
   assert.equal(payload.error, "CRYPTO_DOWNGRADE_NOT_ALLOWED");
   assert.equal(payload.details?.reason, "downgrade");
+});
+
+test("POST /vaults/:vaultId/events requires signature for VAULT_SHARE", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events",
+    headers: { "x-user-id": "u1" },
+    body: {
+      eventType: "VAULT_SHARE",
+      encryptedBlob: mkBlob("x", 2),
+      baseVersion: 0,
+    },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "SIGNATURE_REQUIRED");
+});
+
+test("POST /vaults/:vaultId/events accepts signature for VAULT_KEY_ROTATION", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/vaults/v1/events",
+    headers: { "x-user-id": "u1" },
+    body: {
+      eventType: "VAULT_KEY_ROTATION",
+      encryptedBlob: mkBlob("x", 2),
+      signature: signatureStub,
+      baseVersion: 1,
+    },
+  });
+
+  assert.equal(res.statusCode, 201);
 });

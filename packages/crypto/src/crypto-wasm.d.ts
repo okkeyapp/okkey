@@ -7,6 +7,19 @@ declare module "@okkey/crypto-wasm" {
   export function ed25519_keypair(): Uint8Array;
   export function ed25519_sign(privateKey: Uint8Array, message: Uint8Array): Uint8Array;
   export function ed25519_verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
+  export function hybrid_sign_v1(
+    privateKey: Uint8Array,
+    signerPqPublicKey: Uint8Array,
+    context: Uint8Array,
+    message: Uint8Array,
+  ): Uint8Array;
+  export function hybrid_verify_v1(
+    publicKey: Uint8Array,
+    signerPqPublicKey: Uint8Array,
+    context: Uint8Array,
+    message: Uint8Array,
+    signature: Uint8Array,
+  ): boolean;
   export function x25519_keypair(): Uint8Array;
   export function x25519_shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
   export function b64_encode(data: Uint8Array): string;

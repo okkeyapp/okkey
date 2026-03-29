@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import {
   EventGapError,
+  SignatureValidationError,
   SyncReplayEngine,
   replayVaultEvents,
 } from "../../../packages/sync/dist/index.js";
@@ -423,5 +424,62 @@ test("fixture stream JSON replays to expected materialized state", async () => {
   assert.deepEqual(
     state.quarantined.map((q) => q.reason).sort(),
     expected.quarantinedReasons.sort(),
+  );
+});
+
+test("SyncReplayEngine enforces signature policy when requiredSignatureEventTypes is configured", async () => {
+  const vaultId = randomUUID();
+  const engine = new SyncReplayEngine({
+    vaultId,
+    requiredSignatureEventTypes: ["VAULT_SHARE"],
+  });
+
+  await assert.rejects(
+    () =>
+      engine.applyEvents([
+        baseWire({
+          vaultId,
+          eventType: "VAULT_SHARE",
+          version: 1,
+        }),
+      ]),
+    (error: unknown) => error instanceof SignatureValidationError,
+  );
+});
+
+test("SyncReplayEngine rejects altered signature when verify hook is enabled", async () => {
+  const vaultId = randomUUID();
+  const event = baseWire({
+    vaultId,
+    eventType: "VAULT_SHARE",
+    version: 1,
+    encryptedBlob: {
+      crypto_version: 2,
+      algorithm: "opaque",
+      payload: opaqueJson({}),
+      meta: {
+        signature: {
+          version: 1,
+          algorithm: "hybrid_ed25519_pq_bind_v1",
+          key_id: "k1",
+          context: "vault.share",
+          signer_pq_public_key: "cHE=",
+          payload_hash: "aGFzaA==",
+          signature: "tampered-signature",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      },
+    },
+  });
+
+  const engine = new SyncReplayEngine({
+    vaultId,
+    requiredSignatureEventTypes: ["VAULT_SHARE"],
+    verifyEventSignature: ({ envelope }) => envelope.signature === "expected-signature",
+  });
+
+  await assert.rejects(
+    () => engine.applyEvents([event]),
+    (error: unknown) => error instanceof SignatureValidationError,
   );
 });

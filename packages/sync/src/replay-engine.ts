@@ -68,6 +68,14 @@ export interface ReplayEngineOptions {
   unsupportedSchemaPolicy?: UnsupportedSchemaPolicy;
   decryptItemPayload?: (encryptedPayloadBase64: string) => Promise<Uint8Array>;
   decryptPersonalMetadataPayload?: (encryptedPayloadBase64: string) => Promise<Uint8Array>;
+  /** Integrity verifier for signature envelopes embedded into critical events. */
+  verifyEventSignature?: (input: {
+    event: SyncEventWireDto;
+    payload: unknown;
+    envelope: Record<string, unknown>;
+  }) => Promise<boolean> | boolean;
+  /** Defaults to VAULT_SHARE/VAULT_KEY_ROTATION. */
+  requiredSignatureEventTypes?: string[];
 }
 
 export interface ReplayQuarantineRecord {
@@ -77,7 +85,9 @@ export interface ReplayQuarantineRecord {
     | "UNSUPPORTED_PAYLOAD_SCHEMA_VERSION"
     | "DECRYPT_FAILED"
     | "INVALID_PAYLOAD"
-    | "STALE_VERSION_NOT_DUPLICATE";
+    | "STALE_VERSION_NOT_DUPLICATE"
+    | "SIGNATURE_REQUIRED"
+    | "SIGNATURE_INVALID";
 }
 
 export interface SyncMaterializedState {
@@ -113,6 +123,20 @@ export class EventGapError extends Error {
     );
     this.name = "EventGapError";
     this.details = details;
+  }
+}
+
+export class SignatureValidationError extends Error {
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly reason: "SIGNATURE_REQUIRED" | "SIGNATURE_INVALID";
+
+  constructor(eventId: string, eventType: string, reason: "SIGNATURE_REQUIRED" | "SIGNATURE_INVALID") {
+    super(`${reason}: ${eventType} (${eventId})`);
+    this.name = "SignatureValidationError";
+    this.eventId = eventId;
+    this.eventType = eventType;
+    this.reason = reason;
   }
 }
 
@@ -186,6 +210,39 @@ function sortForDeterministicReplay(events: SyncEventWireDto[]): SyncEventWireDt
   });
 }
 
+function extractEventSignatureEnvelope(event: SyncEventWireDto): Record<string, unknown> | null {
+  const fromTopLevel = (event as SyncEventWireDto & { signature?: unknown }).signature;
+  if (fromTopLevel && typeof fromTopLevel === "object" && !Array.isArray(fromTopLevel)) {
+    return fromTopLevel as unknown as Record<string, unknown>;
+  }
+  const maybe = event as SyncEventWireDto & {
+    encryptedBlob?: { meta?: Record<string, unknown> };
+  };
+  const fromMeta = maybe.encryptedBlob?.meta?.signature;
+  if (fromMeta && typeof fromMeta === "object" && !Array.isArray(fromMeta)) {
+    return fromMeta as Record<string, unknown>;
+  }
+  return null;
+}
+
+function signatureContextMatchesEventType(eventType: string, context: unknown): boolean {
+  if (typeof context !== "string") {
+    return false;
+  }
+  if (eventType === "VAULT_SHARE") {
+    return context === "vault.share" || context === "sync.append";
+  }
+  if (eventType === "VAULT_KEY_ROTATION") {
+    return (
+      context === "vault.revoke" ||
+      context === "vault.rotate" ||
+      context === "vault.member_role_update" ||
+      context === "sync.append"
+    );
+  }
+  return context === "sync.append";
+}
+
 export class SyncReplayEngine {
   private readonly options: Required<
     Pick<ReplayEngineOptions, "vaultId" | "unknownEventPolicy" | "unsupportedSchemaPolicy">
@@ -194,6 +251,7 @@ export class SyncReplayEngine {
 
   private readonly state: SyncMaterializedState;
   private readonly handlers: Map<string, EventHandler>;
+  private readonly requiredSignatureEventTypes: Set<string>;
 
   constructor(options: ReplayEngineOptions) {
     this.options = {
@@ -203,6 +261,7 @@ export class SyncReplayEngine {
     };
     this.state = createInitialState(options.initialLastAppliedVersion ?? 0);
     this.handlers = new Map<string, EventHandler>();
+    this.requiredSignatureEventTypes = new Set(options.requiredSignatureEventTypes ?? []);
     this.registerCoreHandlers();
   }
 
@@ -254,12 +313,40 @@ export class SyncReplayEngine {
         continue;
       }
 
+      await this.assertCriticalEventSignature(ev);
       await handler(this.state, ev);
       this.state.lastAppliedVersion = ev.version;
       this.state.appliedEventIds.add(ev.id);
     }
 
     return this.getStateSnapshot();
+  }
+
+  private async assertCriticalEventSignature(event: SyncEventWireDto): Promise<void> {
+    if (!this.requiredSignatureEventTypes.has(event.eventType)) {
+      return;
+    }
+    const envelope = extractEventSignatureEnvelope(event);
+    if (!envelope) {
+      throw new SignatureValidationError(event.id, event.eventType, "SIGNATURE_REQUIRED");
+    }
+    const payload = {
+      vaultId: event.vaultId,
+      eventType: event.eventType,
+      encryptedBlob: event.encryptedBlob,
+    };
+    if (typeof envelope.payload_hash !== "string" || envelope.payload_hash.length === 0) {
+      throw new SignatureValidationError(event.id, event.eventType, "SIGNATURE_INVALID");
+    }
+    if (!signatureContextMatchesEventType(event.eventType, envelope.context)) {
+      throw new SignatureValidationError(event.id, event.eventType, "SIGNATURE_INVALID");
+    }
+    if (this.options.verifyEventSignature) {
+      const verified = await this.options.verifyEventSignature({ event, payload, envelope });
+      if (!verified) {
+        throw new SignatureValidationError(event.id, event.eventType, "SIGNATURE_INVALID");
+      }
+    }
   }
 
   async replayFromFetcher(

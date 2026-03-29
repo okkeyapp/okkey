@@ -34,6 +34,16 @@ function loggerStub() {
 }
 
 const config: ApiConfig = createTestApiConfig();
+const signatureStub = {
+  version: 1,
+  algorithm: "hybrid_ed25519_pq_bind_v1",
+  key_id: "k1",
+  context: "vault.rotate",
+  signer_pq_public_key: "cHE=",
+  payload_hash: "aGFzaA==",
+  signature: "c2ln",
+  created_at: "2026-01-01T00:00:00.000Z",
+};
 
 function createSharingStub(overrides?: Partial<VaultSharingService>): VaultSharingService {
   return {
@@ -116,6 +126,7 @@ test("POST /vaults/:vaultId/shares maps CRYPTO_DOWNGRADE_NOT_ALLOWED", async () 
       recipientUserId: "u2",
       encryptedVaultKey: { crypto_version: 1, algorithm: "opaque", payload: "a", meta: {} },
       encryptedPayload: { crypto_version: 1, algorithm: "opaque", payload: "a", meta: {} },
+      signature: { ...signatureStub, context: "vault.share" },
       baseVersion: 0,
     },
     sharingService: createSharingStub({
@@ -156,6 +167,7 @@ test("POST /vaults/:vaultId/key/rotate rejects empty rotatedVaultKeys array", as
     body: {
       rotatedVaultKeys: [],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} },
+      signature: { ...signatureStub, context: "vault.rotate" },
       baseVersion: 0,
     },
   });
@@ -174,6 +186,7 @@ test("POST /vaults/:vaultId/key/rotate returns 200 on success", async () => {
         { userId: "u1", encryptedVaultKey: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} } },
       ],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "b", meta: {} },
+      signature: { ...signatureStub, context: "vault.rotate" },
       baseVersion: 0,
       reason: "manual",
     },
@@ -193,6 +206,7 @@ test("POST /vaults/:vaultId/key/rotate maps domain errors", async () => {
         { userId: "u1", encryptedVaultKey: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} } },
       ],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "b", meta: {} },
+      signature: { ...signatureStub, context: "vault.rotate" },
       baseVersion: 0,
     },
     sharingService: createSharingStub({
@@ -215,6 +229,7 @@ test("POST /vaults/:vaultId/key/rotate requires auth", async () => {
         { userId: "u1", encryptedVaultKey: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} } },
       ],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "b", meta: {} },
+      signature: { ...signatureStub, context: "vault.rotate" },
       baseVersion: 0,
     },
   });
@@ -242,6 +257,7 @@ test("PATCH /vaults/:vaultId/shares/:userId rejects empty rotatedVaultKeys array
       newRole: "admin",
       rotatedVaultKeys: [],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} },
+      signature: { ...signatureStub, context: "vault.member_role_update" },
       baseVersion: 0,
     },
   });
@@ -261,6 +277,7 @@ test("PATCH /vaults/:vaultId/shares/:userId returns 200 on success", async () =>
         { userId: "u1", encryptedVaultKey: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} } },
       ],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "b", meta: {} },
+      signature: { ...signatureStub, context: "vault.member_role_update" },
       baseVersion: 0,
     },
   });
@@ -280,6 +297,7 @@ test("PATCH /vaults/:vaultId/shares/:userId maps domain errors", async () => {
         { userId: "u1", encryptedVaultKey: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} } },
       ],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "b", meta: {} },
+      signature: { ...signatureStub, context: "vault.member_role_update" },
       baseVersion: 0,
     },
     sharingService: createSharingStub({
@@ -303,6 +321,7 @@ test("PATCH /vaults/:vaultId/shares/:userId requires auth", async () => {
         { userId: "u1", encryptedVaultKey: { crypto_version: 2, algorithm: "opaque", payload: "a", meta: {} } },
       ],
       encryptedPayload: { crypto_version: 2, algorithm: "opaque", payload: "b", meta: {} },
+      signature: { ...signatureStub, context: "vault.member_role_update" },
       baseVersion: 0,
     },
   });

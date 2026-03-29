@@ -41,6 +41,7 @@ Each event contains:
 - `payload_ciphertext`: encrypted payload blob
 - `payload_encoding`: encoding of encrypted payload (`base64`)
 - `payload_schema_version`: payload schema version for safe evolution
+- optional `signature`: hybrid signature envelope for integrity-critical event payloads
 - `idempotency_key`: deduplication key for append retries
 - `base_version`: client-known vault version before append
 - `version`: server-assigned vault version after append
@@ -48,6 +49,7 @@ Each event contains:
 - optional `client_created_at`: client timestamp (RFC3339)
 
 Payload is always encrypted on the client. Backend stores and transports opaque ciphertext only.
+For integrity-critical operations, signature metadata is stored with event payload envelope metadata (`EncryptedBlob.meta.signature`) and may also be exposed as top-level wire field.
 
 ---
 
@@ -100,10 +102,20 @@ Requirements:
 - no gaps in applied versions
 - replay must be deterministic for the same event sequence
 - side effects are idempotent for repeated processing
+- signature policy (when enabled) must fail-fast for invalid or missing signatures on critical event types
 
 **`ITEM_*` replay:** decrypt with VaultKey; see `@okkey/sync` `replayItemPlaintextEvents`.
 
 **Folder / assignment replay:** `@okkey/sync` `replayFolderAndAssignEvents` — for each event, require `actorId === currentUserId` before decrypting (other users’ folder rows stay opaque). Decrypt with the personal metadata key; unsupported `payloadSchemaVersion` or malformed JSON is skipped (forward compatibility). Removing a folder clears `item → folder` mappings that referenced that folder id.
+
+### Signature validation in replay (6.18)
+
+`@okkey/sync` replay engine supports optional signature enforcement:
+
+- policy is configured with `requiredSignatureEventTypes` (defaults to disabled for compatibility);
+- for configured critical types (for example `VAULT_SHARE`, `VAULT_KEY_ROTATION`) replay requires a signature envelope;
+- replay validates minimal envelope invariants (`payload_hash`, context-event mapping) and can delegate cryptographic verification via `verifyEventSignature` hook;
+- invalid or missing signatures produce fail-fast security error (`SignatureValidationError`) rather than silent ignore.
 
 ---
 

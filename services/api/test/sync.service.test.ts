@@ -659,3 +659,115 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
   });
   assert.equal(result.eventType, "ITEM_UPDATE");
 });
+
+test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "u1@okkey.local",
+        publicKey: "cHVibGljLWtleQ==",
+        publicPqKey: "cHEta2V5",
+        locale: "en",
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "strict",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "VAULT_SHARE",
+        encryptedBlob: mkBlob("x", 2),
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "SIGNATURE_REQUIRED",
+  );
+});
+
+test("appendEvent rejects malformed signature envelope when provided", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Vault",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "u1@okkey.local",
+        publicKey: "cHVibGljLWtleQ==",
+        publicPqKey: "cHEta2V5",
+        locale: "en",
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+    config: {
+      allowedCryptoProfileVersions: [2],
+      deployEnv: "dev",
+      cryptoRolloutMode: "compat",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v1", "u1", {
+        eventType: "VAULT_SHARE",
+        encryptedBlob: mkBlob("x", 2),
+        signature: {
+          version: 1,
+          algorithm: "hybrid_ed25519_pq_bind_v1",
+          key_id: "k1",
+          context: "vault.rotate",
+          signer_pq_public_key: "cHEta2V5",
+          payload_hash: "aGFzaA==",
+          signature: "c2ln",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+        baseVersion: 0,
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError && error.code === "SIGNATURE_INVALID",
+  );
+});

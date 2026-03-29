@@ -5,10 +5,13 @@ import { SyncService, SyncServiceError } from "../sync/service.ts";
 interface AppendEventBody {
   eventType?: string;
   encryptedBlob?: unknown;
+  signature?: unknown;
   baseVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
+
+const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
 
 export function createSyncEventsListRoute(
   syncService: SyncService,
@@ -73,6 +76,18 @@ export function createSyncEventsAppendRoute(
       );
       return;
     }
+    if (EVENT_TYPES_REQUIRING_SIGNATURE.has(body.eventType) && !body.signature) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "SIGNATURE_REQUIRED",
+          "signature is required for this eventType",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
 
     try {
       const userId = await resolveUserId(ctx.req);
@@ -83,6 +98,7 @@ export function createSyncEventsAppendRoute(
       const created = await syncService.appendEvent(vaultId, userId, {
         eventType: body.eventType,
         encryptedBlob: body.encryptedBlob,
+        signature: body.signature,
         baseVersion: body.baseVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,

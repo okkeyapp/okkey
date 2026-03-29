@@ -57,6 +57,29 @@ pub fn ed25519_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> Re
 }
 
 #[wasm_bindgen]
+pub fn hybrid_sign_v1(
+  private_key: &[u8],
+  signer_pq_public_key: &[u8],
+  context: &[u8],
+  message: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+  sign::hybrid_sign_v1(private_key, signer_pq_public_key, context, message)
+    .map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn hybrid_verify_v1(
+  public_key: &[u8],
+  signer_pq_public_key: &[u8],
+  context: &[u8],
+  message: &[u8],
+  signature: &[u8],
+) -> Result<bool, JsValue> {
+  sign::hybrid_verify_v1(public_key, signer_pq_public_key, context, message, signature)
+    .map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
 pub fn x25519_keypair() -> Vec<u8> {
   let (sk, pk) = x25519::generate_keypair();
   [sk, pk].concat()

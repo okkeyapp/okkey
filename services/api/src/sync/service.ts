@@ -25,6 +25,13 @@ import {
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
 } from "../crypto/encrypted-blob.ts";
+import {
+  SIGNATURE_INVALID,
+  SIGNATURE_REQUIRED,
+  SIGNATURE_STATUS_CODE,
+  parseHybridSignatureEnvelope,
+  verifyHybridSignatureForPayload,
+} from "../crypto/hybrid-signature.ts";
 
 const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
@@ -42,6 +49,7 @@ const SYNC_EVENT_TYPES = new Set([
 ]);
 
 const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE", "FOLDER_CREATE"]);
+const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
@@ -86,6 +94,7 @@ export interface SyncEventResponse {
   actorId: string | null;
   eventType: string;
   encryptedBlob: EncryptedBlob;
+  signature?: unknown;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
   version: number;
@@ -95,6 +104,7 @@ export interface SyncEventResponse {
 export interface SyncAppendEventInput {
   eventType: string;
   encryptedBlob: unknown;
+  signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -174,6 +184,68 @@ export class SyncService {
       entity: "sync_event",
       event_type: input.eventType,
     });
+    const signatureIsRequired =
+      EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) &&
+      this.config.cryptoRolloutMode === "strict";
+    if (EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) && (input.signature || signatureIsRequired)) {
+      if (!input.signature) {
+        throw new SyncServiceError(
+          SIGNATURE_REQUIRED,
+          SIGNATURE_STATUS_CODE,
+          "signature is required for this eventType",
+          { context: "sync.append", eventType: input.eventType },
+        );
+      }
+      const actor = this.users ? await this.users.findById(userId) : null;
+      if (!actor?.publicKey || !actor.publicPqKey) {
+        throw new SyncServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signer keys are unavailable",
+          { context: "sync.append", eventType: input.eventType },
+        );
+      }
+      let envelope;
+      try {
+        envelope = parseHybridSignatureEnvelope(input.signature, "sync.append");
+      } catch (error) {
+        throw new SyncServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          (error as Error).message,
+          { context: "sync.append", eventType: input.eventType },
+        );
+      }
+      if (envelope.signer_pq_public_key !== actor.publicPqKey) {
+        throw new SyncServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature signer_pq_public_key mismatch",
+          { context: "sync.append", eventType: input.eventType },
+        );
+      }
+      const verified = verifyHybridSignatureForPayload({
+        envelope,
+        payload: {
+          vaultId,
+          eventType: input.eventType,
+          encryptedBlob: normalizedBlob,
+        },
+        signerPublicKeyBase64: actor.publicKey,
+      });
+      if (!verified) {
+        throw new SyncServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature verification failed",
+          { context: "sync.append", eventType: input.eventType },
+        );
+      }
+      normalizedBlob.meta = {
+        ...normalizedBlob.meta,
+        signature: envelope,
+      };
+    }
     const policyViolation = getCryptoWritePolicyViolation(
       this.config,
       normalizedBlob.crypto_version,
@@ -332,12 +404,19 @@ export class SyncService {
 
 function mapEventToResponse(event: EventRecord): SyncEventResponse {
   const encryptedBlob = decodeEncryptedBlobFromStorage(event.encryptedPayload, event.payloadSchemaVersion);
+  const signature =
+    encryptedBlob.meta &&
+    typeof encryptedBlob.meta === "object" &&
+    !Array.isArray(encryptedBlob.meta)
+      ? encryptedBlob.meta.signature
+      : undefined;
   return {
     id: event.id,
     vaultId: event.vaultId,
     actorId: event.actorId,
     eventType: event.eventType,
     encryptedBlob,
+    signature,
     encryptedPayload: encryptedBlob.payload,
     payloadSchemaVersion: encryptedBlob.crypto_version,
     idempotencyKey: event.idempotencyKey,

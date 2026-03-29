@@ -210,6 +210,23 @@ export interface EncryptedBlobDto {
   meta: Record<string, unknown>;
 }
 
+/** Canonical hybrid signature envelope for integrity-critical artifacts. */
+export interface HybridSignatureEnvelopeDto {
+  version: 1;
+  algorithm: "hybrid_ed25519_pq_bind_v1";
+  key_id: string;
+  context:
+    | "sync.append"
+    | "vault.share"
+    | "vault.revoke"
+    | "vault.rotate"
+    | "vault.member_role_update";
+  signer_pq_public_key: string;
+  payload_hash: string;
+  signature: string;
+  created_at: string;
+}
+
 /** @deprecated Use {@link CoreApiErrorBody}; the wire field is `error`, not `code`. */
 export type ApiError = CoreApiErrorBody;
 
@@ -280,6 +297,7 @@ export interface SyncEventWireDto {
   actorId: UUID | null;
   eventType: string;
   encryptedBlob: EncryptedBlobDto;
+  signature?: HybridSignatureEnvelopeDto;
   idempotencyKey: UUID | null;
   clientCreatedAt: string | null;
   version: number;
@@ -297,6 +315,8 @@ export interface SyncEventsListResponseDto {
 export interface SyncAppendEventRequestDto {
   eventType: string;
   encryptedBlob: EncryptedBlobDto;
+  /** Required for integrity-critical event types (`VAULT_SHARE`, `VAULT_KEY_ROTATION`). */
+  signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
   /** Required for `ITEM_CREATE`; optional for other types. Must be UUID when set. */
   idempotencyKey?: string;
@@ -336,6 +356,8 @@ export interface VaultShareUpsertRequestDto {
    */
   encryptedVaultKey: EncryptedBlobDto;
   encryptedPayload: EncryptedBlobDto;
+  /** Required. */
+  signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -353,6 +375,8 @@ export interface VaultShareRevokeRequestDto {
   recipientUserId: UUID;
   rotatedVaultKeys: VaultRotatedKeyDto[];
   encryptedPayload: EncryptedBlobDto;
+  /** Required. */
+  signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -366,6 +390,8 @@ export interface VaultShareRevokeRequestDto {
 export interface VaultKeyRotateRequestDto {
   rotatedVaultKeys: VaultRotatedKeyDto[];
   encryptedPayload: EncryptedBlobDto;
+  /** Required. */
+  signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -381,6 +407,8 @@ export interface VaultMemberRoleUpdateRequestDto {
   newRole: string;
   rotatedVaultKeys: VaultRotatedKeyDto[];
   encryptedPayload: EncryptedBlobDto;
+  /** Required. */
+  signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;

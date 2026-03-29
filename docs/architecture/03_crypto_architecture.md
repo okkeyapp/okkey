@@ -37,6 +37,7 @@ Crypto engine primitives (Core):
 - XChaCha20-Poly1305 (AEAD)
 - Ed25519 (signing)
 - X25519 (key exchange)
+- ML-KEM-768 (PQ KEM)
 
 ---
 
@@ -54,6 +55,7 @@ Symmetric encryption:
 Public key cryptography:
 - Ed25519 → signatures
 - X25519 → key exchange
+- ML-KEM-768 → PQ key encapsulation
 
 Key derivation helpers:
 - HKDF
@@ -229,3 +231,41 @@ Environment baseline policy for new writes:
 
 - `dev`: legacy `v1` may be used for fixtures/tests.
 - `stage` and `production`: only `v2` is accepted for new encrypted write paths.
+
+---
+
+## Hybrid Signature Path (6.18)
+
+For integrity-critical artifacts, Core introduces hybrid signature envelopes and verification rules:
+
+- critical write/read integrity path includes `VAULT_SHARE` and `VAULT_KEY_ROTATION` payloads in sync stream;
+- signature payload canonicalization is deterministic JSON (sorted object keys, recursive normalization);
+- domain separation is explicit through `context` (`sync.append`, `vault.share`, `vault.revoke`, `vault.rotate`, `vault.member_role_update`);
+- hybrid signature binds classical signer key (Ed25519 verify key) with PQ identity material (`signer_pq_public_key`) and payload hash.
+
+Canonical envelope (wire):
+
+```json
+{
+  "version": 1,
+  "algorithm": "hybrid_ed25519_pq_bind_v1",
+  "key_id": "string",
+  "context": "sync.append",
+  "signer_pq_public_key": "base64",
+  "payload_hash": "base64",
+  "signature": "base64",
+  "created_at": "RFC3339"
+}
+```
+
+Verification requirements:
+
+1. Envelope version/algorithm/context must be supported.
+2. `signer_pq_public_key` must match actor PQ identity metadata.
+3. Payload hash must match canonical payload bytes.
+4. Cryptographic verification must succeed against actor Ed25519 public key.
+
+Rollout policy:
+
+- `compat`: signature is optional for backward-compatible flows, but if present it is strictly verified;
+- `strict`: signature is required for integrity-critical operations and invalid/missing signatures are rejected (`SIGNATURE_REQUIRED` / `SIGNATURE_INVALID`).

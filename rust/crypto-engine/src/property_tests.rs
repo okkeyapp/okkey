@@ -60,3 +60,26 @@ proptest! {
         prop_assert!(!tampered_result);
     }
 }
+
+proptest! {
+    #[test]
+    fn hybrid_signature_verify_property(
+        context in proptest::collection::vec(any::<u8>(), 1..64),
+        message in proptest::collection::vec(any::<u8>(), 0..512),
+        tamper_bit in 0usize..512usize,
+    ) {
+        let (sk, pk) = sign::generate_keypair();
+        let (_, pq_ek) = mlkem768::generate_keypair();
+        let sig = sign::hybrid_sign_v1(&sk, &pq_ek, &context, &message).expect("hybrid sign");
+        let verified = sign::hybrid_verify_v1(&pk, &pq_ek, &context, &message, &sig)
+            .expect("hybrid verify");
+        prop_assert!(verified);
+
+        let mut tampered = sig.clone();
+        let idx = usize::min(tamper_bit / 8, tampered.len().saturating_sub(1));
+        tampered[idx] ^= 1u8 << (tamper_bit % 8);
+        let tampered_ok = sign::hybrid_verify_v1(&pk, &pq_ek, &context, &message, &tampered)
+            .expect("hybrid verify");
+        prop_assert!(!tampered_ok);
+    }
+}

@@ -455,6 +455,7 @@ Grants or updates explicit shared access for a workspace member, stores recipien
 | `recipientUserId` | uuid | Yes | Must already have workspace access. |
 | `encryptedVaultKey` | object (`EncryptedBlob`) | Yes | Wrapped key for recipient in canonical envelope. In production hybrid-by-default path: `crypto_version >= 2` and `meta.key_wrap_scheme = \"hybrid_ecc_pq_v1\"`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_SHARE`. |
+| `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.share`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
@@ -475,6 +476,7 @@ Revokes explicit member access, applies key rotation wraps for all remaining act
 | `recipientUserId` | uuid | Yes | Member to revoke. |
 | `rotatedVaultKeys` | array | Yes | Non-empty full recipient set after revoke (`{ userId, encryptedVaultKey: EncryptedBlob }[]`), each wrap follows the same hybrid-by-default contract in production. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION`. |
+| `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.revoke`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
@@ -501,6 +503,7 @@ Standalone key rotation trigger (security incident or manual rotation). The clie
 |--------|------|----------|--------|
 | `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Each wrap must follow the hybrid-by-default contract in production (`crypto_version >= 2`, `meta.key_wrap_scheme = "hybrid_ecc_pq_v1"`, `meta.recipient_user_id` matches). |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION` event. |
+| `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.rotate`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
@@ -529,6 +532,7 @@ Updates a vault member's role and **atomically rotates the vault key**. Every ro
 | `newRole` | string | Yes | New role string (e.g. `"admin"`, `"member"`). |
 | `rotatedVaultKeys` | array | Yes | Non-empty; **must cover every active recipient** (`{ userId, encryptedVaultKey: EncryptedBlob }[]`). Same hybrid contract as `POST /key/rotate`. |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Opaque sync ciphertext for `VAULT_KEY_ROTATION` event. |
+| `signature` | object (`HybridSignatureEnvelope`) | Yes | Hybrid integrity signature (`context = vault.member_role_update`). |
 | `baseVersion` | integer | Yes | Expected event-log head version. |
 | `idempotencyKey` | uuid | No | Optional event dedup key. |
 | `clientCreatedAt` | string | No | Optional ISO-8601 client timestamp. |
@@ -555,6 +559,21 @@ Per-vault encrypted event stream. Server stores encrypted payloads in canonical 
   "algorithm": "opaque",
   "payload": "base64",
   "meta": {}
+}
+```
+
+`HybridSignatureEnvelope` shape:
+
+```json
+{
+  "version": 1,
+  "algorithm": "hybrid_ed25519_pq_bind_v1",
+  "key_id": "user-signing-key-id",
+  "context": "sync.append",
+  "signer_pq_public_key": "base64",
+  "payload_hash": "base64",
+  "signature": "base64",
+  "created_at": "2026-01-01T12:00:00.000Z"
 }
 ```
 
@@ -620,6 +639,7 @@ Appends one event if `baseVersion` matches current stream head.
 |--------|------|----------|--------|
 | `eventType` | string | Yes | One of allowed types. |
 | `encryptedBlob` | object (`EncryptedBlob`) | Yes | Canonical encrypted envelope; `payload` decoded length must be &gt; 0 and ≤ 512 KiB. |
+| `signature` | object (`HybridSignatureEnvelope`) | Conditional | Required for critical event types `VAULT_SHARE` and `VAULT_KEY_ROTATION`; optional for other event types. Context must be `sync.append`. |
 | `baseVersion` | integer | Yes | Non-negative; must equal current latest version for append. |
 | `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE` and `FOLDER_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
 | `clientCreatedAt` | string | No | ISO-8601 client timestamp (optional). |
@@ -636,6 +656,8 @@ Appends one event if `baseVersion` matches current stream head.
 | `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. `details` may include `reason: "policy"`, `requestedVersion`, `allowedVersions`. |
 | `CRYPTO_DOWNGRADE_NOT_ALLOWED` | 400 | Anti-downgrade: the new ciphertext’s `crypto_version` is **below** the vault’s persisted **floor** (`vault.crypto_version`; new vaults use **v2**, value never decreases) **or** **below** `MAX(payload_schema_version)` over events already stored for this vault (monotonic stream). The server returns whichever check fails first; `details` may include `reason: "downgrade"`, `vaultId`, `establishedMaxVersion`, `requestedVersion`. |
 | `CRYPTO_CAPABILITY_REQUIRED` | 400 | Strict rollout mode blocks writes for subjects without required PQ capabilities. `details` may include `reason: "capability"`, `rolloutMode`, `operation`, `missingCapabilities`. |
+| `SIGNATURE_REQUIRED` | 400 | Signature is required by active rollout policy for this operation. |
+| `SIGNATURE_INVALID` | 400 | Signature envelope malformed, signer binding mismatch, or cryptographic verify failed. |
 | `PAYLOAD_TOO_LARGE` | 413 | Decoded ciphertext exceeds 512 KiB. |
 | `VERSION_MISMATCH` | 409 | `baseVersion` stale; `details` may include `expectedBaseVersion` and `latestVersion`. |
 | `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |

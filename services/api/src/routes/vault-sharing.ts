@@ -6,6 +6,7 @@ interface ShareVaultBody {
   recipientUserId?: string;
   encryptedVaultKey?: unknown;
   encryptedPayload?: unknown;
+  signature?: unknown;
   baseVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -16,6 +17,7 @@ interface RevokeVaultBody {
   recipientUserId?: string;
   rotatedVaultKeys?: Array<{ userId?: string; encryptedVaultKey?: unknown }>;
   encryptedPayload?: unknown;
+  signature?: unknown;
   baseVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -24,6 +26,7 @@ interface RevokeVaultBody {
 interface RotateVaultKeyBody {
   rotatedVaultKeys?: Array<{ userId?: string; encryptedVaultKey?: unknown }>;
   encryptedPayload?: unknown;
+  signature?: unknown;
   baseVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -34,6 +37,7 @@ interface UpdateVaultMemberRoleBody {
   newRole?: string;
   rotatedVaultKeys?: Array<{ userId?: string; encryptedVaultKey?: unknown }>;
   encryptedPayload?: unknown;
+  signature?: unknown;
   baseVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -109,6 +113,7 @@ export function createVaultShareUpsertRoute(
       !body.recipientUserId ||
       !body.encryptedVaultKey ||
       !body.encryptedPayload ||
+      !body.signature ||
       body.baseVersion === undefined
     ) {
       json(
@@ -116,7 +121,7 @@ export function createVaultShareUpsertRoute(
         400,
         errorPayload(
           "VAULT_SHARE_BAD_REQUEST",
-          "recipientUserId, encryptedVaultKey, encryptedPayload and baseVersion are required",
+          "recipientUserId, encryptedVaultKey, encryptedPayload, signature and baseVersion are required",
           ctx.requestId,
         ),
       );
@@ -133,6 +138,7 @@ export function createVaultShareUpsertRoute(
         recipientUserId: body.recipientUserId,
         encryptedVaultKey: body.encryptedVaultKey,
         encryptedPayload: body.encryptedPayload,
+        signature: body.signature,
         baseVersion: body.baseVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
@@ -164,13 +170,13 @@ export function createVaultShareRevokeRoute(
       return;
     }
 
-    if (!body.recipientUserId || !body.encryptedPayload || body.baseVersion === undefined) {
+    if (!body.recipientUserId || !body.encryptedPayload || !body.signature || body.baseVersion === undefined) {
       json(
         ctx.res,
         400,
         errorPayload(
           "VAULT_SHARE_BAD_REQUEST",
-          "recipientUserId, encryptedPayload and baseVersion are required",
+          "recipientUserId, encryptedPayload, signature and baseVersion are required",
           ctx.requestId,
         ),
       );
@@ -217,6 +223,7 @@ export function createVaultShareRevokeRoute(
         recipientUserId: body.recipientUserId,
         rotatedVaultKeys,
         encryptedPayload: body.encryptedPayload,
+        signature: body.signature,
         baseVersion: body.baseVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
@@ -247,13 +254,13 @@ export function createVaultKeyRotateRoute(
       return;
     }
 
-    if (!body.encryptedPayload || body.baseVersion === undefined) {
+    if (!body.encryptedPayload || !body.signature || body.baseVersion === undefined) {
       json(
         ctx.res,
         400,
         errorPayload(
           "VAULT_SHARE_BAD_REQUEST",
-          "encryptedPayload and baseVersion are required",
+          "encryptedPayload, signature and baseVersion are required",
           ctx.requestId,
         ),
       );
@@ -303,6 +310,7 @@ export function createVaultKeyRotateRoute(
       await sharingService.rotateVaultKey(vaultId, userId, {
         rotatedVaultKeys,
         encryptedPayload: body.encryptedPayload,
+        signature: body.signature,
         baseVersion: body.baseVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
@@ -335,13 +343,13 @@ export function createVaultMemberRoleUpdateRoute(
       return;
     }
 
-    if (!body.newRole || !body.encryptedPayload || body.baseVersion === undefined) {
+    if (!body.newRole || !body.encryptedPayload || !body.signature || body.baseVersion === undefined) {
       json(
         ctx.res,
         400,
         errorPayload(
           "VAULT_SHARE_BAD_REQUEST",
-          "newRole, encryptedPayload and baseVersion are required",
+          "newRole, encryptedPayload, signature and baseVersion are required",
           ctx.requestId,
         ),
       );
@@ -389,6 +397,7 @@ export function createVaultMemberRoleUpdateRoute(
         newRole: body.newRole,
         rotatedVaultKeys,
         encryptedPayload: body.encryptedPayload,
+        signature: body.signature,
         baseVersion: body.baseVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,

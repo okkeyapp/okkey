@@ -163,6 +163,71 @@ Required controls include:
 - missing PQ key tests;
 - fuzz/property tests for hybrid envelope decode/decrypt.
 
+---
+
+## Hybrid Signatures for Critical Artifacts (6.18)
+
+To protect authenticity and integrity of critical sync/sharing operations, Core adds a hybrid signature path.
+
+Scope (first iteration):
+
+- sync append path for critical events (`VAULT_SHARE`, `VAULT_KEY_ROTATION`);
+- sharing/rotation operations that produce these events (`share/revoke/rotate/update-role`);
+- replay pipeline validation for configured critical event types.
+- invite artifacts are planned by product scope, but invite endpoints are not yet part of current Core HTTP surface.
+
+Out of scope:
+
+- retroactive full re-signing of historical data.
+
+### Signature Envelope (v1)
+
+Canonical envelope:
+
+```ts
+type HybridSignatureEnvelopeV1 = {
+  version: 1;
+  algorithm: "hybrid_ed25519_pq_bind_v1";
+  key_id: string;
+  context:
+    | "sync.append"
+    | "vault.share"
+    | "vault.revoke"
+    | "vault.rotate"
+    | "vault.member_role_update";
+  signer_pq_public_key: string; // base64
+  payload_hash: string; // base64(SHA-256(canonical_payload_bytes))
+  signature: string; // base64
+  created_at: string; // RFC3339
+};
+```
+
+Canonical payload form:
+
+- deterministic JSON serialization with recursively sorted object keys;
+- no backend plaintext access required: signing/verification runs over ciphertext envelope structures;
+- context-specific domain separation is mandatory.
+
+### Verification Path
+
+Server verify gate:
+
+1. parse envelope and validate version/algorithm/context;
+2. verify signer binding (`signer_pq_public_key` matches actor PQ identity metadata);
+3. recompute `payload_hash` from canonical payload;
+4. cryptographically verify signature against actor Ed25519 public key;
+5. reject on failure with `SIGNATURE_INVALID`.
+
+Policy behavior:
+
+- `compat`: signature optional; if provided, strict verification applies;
+- `strict`: signature required for critical operations; missing signature rejected (`SIGNATURE_REQUIRED`).
+
+Replay behavior:
+
+- replay engine can enforce signature presence and integrity for configured critical event types;
+- invalid or missing signatures in enforced mode cause fail-fast security error.
+
 ### Fuzz and Property Program (6.13)
 
 Mandatory artifacts for `v2` hybrid safety:

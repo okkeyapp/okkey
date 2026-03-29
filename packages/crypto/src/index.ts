@@ -6,6 +6,8 @@ import initWasm, {
   ed25519_keypair,
   ed25519_sign,
   ed25519_verify,
+  hybrid_sign_v1,
+  hybrid_verify_v1,
   x25519_keypair,
   x25519_shared,
   b64_encode,
@@ -77,6 +79,27 @@ export function ed25519Sign(privateKey: Uint8Array, message: Uint8Array): Uint8A
 
 export function ed25519Verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean {
   return withWasmError("ed25519Verify", () => ed25519_verify(publicKey, message, signature));
+}
+
+export function hybridSignV1(
+  privateKey: Uint8Array,
+  signerPqPublicKey: Uint8Array,
+  context: Uint8Array,
+  message: Uint8Array,
+): Uint8Array {
+  return withWasmError("hybridSignV1", () =>
+    hybrid_sign_v1(privateKey, signerPqPublicKey, context, message));
+}
+
+export function hybridVerifyV1(
+  publicKey: Uint8Array,
+  signerPqPublicKey: Uint8Array,
+  context: Uint8Array,
+  message: Uint8Array,
+  signature: Uint8Array,
+): boolean {
+  return withWasmError("hybridVerifyV1", () =>
+    hybrid_verify_v1(publicKey, signerPqPublicKey, context, message, signature));
 }
 
 export function x25519Keypair(): Uint8Array {
@@ -206,5 +229,15 @@ export {
   decryptUserIdentityFromEncryptedBlob,
   userIdentityEncryptedBlobDtoFromPayload,
 } from "./user-identity-bundle.js";
+
+export {
+  HYBRID_SIGNATURE_ENVELOPE_VERSION_V1,
+  HYBRID_SIGNATURE_ALGORITHM_V1,
+  HYBRID_SIGNATURE_REQUIRED_CONTEXTS,
+  buildHybridSignaturePayloadBytes,
+  buildHybridSignatureEnvelopeV1,
+  verifyHybridSignatureEnvelopeV1,
+  type HybridSignatureEnvelopeV1,
+} from "./hybrid-signature.js";
 
 export { getCryptoConfig, listCryptoConfigs, type CryptoConfig } from "./config/index.js";

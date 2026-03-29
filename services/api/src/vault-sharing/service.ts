@@ -28,6 +28,12 @@ import {
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
 } from "../crypto/encrypted-blob.ts";
+import {
+  SIGNATURE_INVALID,
+  SIGNATURE_STATUS_CODE,
+  parseHybridSignatureEnvelope,
+  verifyHybridSignatureForPayload,
+} from "../crypto/hybrid-signature.ts";
 
 export class VaultSharingServiceError extends Error {
   readonly code: string;
@@ -60,6 +66,7 @@ export interface ShareVaultInput {
   recipientUserId: string;
   encryptedVaultKey: unknown;
   encryptedPayload: unknown;
+  signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -70,6 +77,7 @@ export interface RevokeVaultInput {
   recipientUserId: string;
   rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
   encryptedPayload: unknown;
+  signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -78,6 +86,7 @@ export interface RevokeVaultInput {
 export interface RotateVaultKeyInput {
   rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
   encryptedPayload: unknown;
+  signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -89,6 +98,7 @@ export interface UpdateVaultMemberRoleInput {
   newRole: string;
   rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: unknown }>;
   encryptedPayload: unknown;
+  signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
@@ -237,6 +247,49 @@ export class VaultSharingService {
       entity: "vault_event_payload",
       event_type: "VAULT_SHARE",
     });
+    if (input.signature) {
+      const actorKeys = await this.getUserSigningKeys(actorId);
+      let signatureEnvelope;
+      try {
+        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.share");
+      } catch (error) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          (error as Error).message,
+          { context: "vault.share" },
+        );
+      }
+      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature signer_pq_public_key mismatch",
+          { context: "vault.share" },
+        );
+      }
+      const verifiedSignature = verifyHybridSignatureForPayload({
+        envelope: signatureEnvelope,
+        payload: {
+          vaultId,
+          eventType: "VAULT_SHARE",
+          encryptedBlob: normalizedPayloadBlob,
+        },
+        signerPublicKeyBase64: actorKeys.publicKey,
+      });
+      if (!verifiedSignature) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature verification failed",
+          { context: "vault.share" },
+        );
+      }
+      normalizedPayloadBlob.meta = {
+        ...normalizedPayloadBlob.meta,
+        signature: signatureEnvelope,
+      };
+    }
     await this.ensureRecipientInWorkspace(acl.workspaceId, recipientUserId);
     const recipientPqKey = await this.getUserPublicPqKey(recipientUserId);
     this.assertHybridVaultKeyWrapPolicy(
@@ -295,6 +348,7 @@ export class VaultSharingService {
       },
     );
     const rotatedMap = new Map<string, EncryptedBlob>();
+    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
     for (const keyEntry of input.rotatedVaultKeys) {
       const uid = normalizeWireUserId(keyEntry.userId);
       if (!UUID_RE.test(uid)) {
@@ -313,6 +367,53 @@ export class VaultSharingService {
       );
       merged.meta = { ...merged.meta, recipient_user_id: uid };
       rotatedMap.set(uid, merged);
+      normalizedRotatedVaultKeys.push({
+        userId: uid,
+        encryptedVaultKey: merged,
+      });
+    }
+    if (input.signature) {
+      const actorKeys = await this.getUserSigningKeys(actorId);
+      let signatureEnvelope;
+      try {
+        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.revoke");
+      } catch (error) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          (error as Error).message,
+          { context: "vault.revoke" },
+        );
+      }
+      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature signer_pq_public_key mismatch",
+          { context: "vault.revoke" },
+        );
+      }
+      const verifiedSignature = verifyHybridSignatureForPayload({
+        envelope: signatureEnvelope,
+        payload: {
+          vaultId,
+          eventType: "VAULT_KEY_ROTATION",
+          encryptedBlob: payloadBlob,
+        },
+        signerPublicKeyBase64: actorKeys.publicKey,
+      });
+      if (!verifiedSignature) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature verification failed",
+          { context: "vault.revoke" },
+        );
+      }
+      payloadBlob.meta = {
+        ...payloadBlob.meta,
+        signature: signatureEnvelope,
+      };
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -424,6 +525,7 @@ export class VaultSharingService {
       },
     );
     const rotatedMap = new Map<string, EncryptedBlob>();
+    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
     for (const keyEntry of input.rotatedVaultKeys) {
       const uid = normalizeWireUserId(keyEntry.userId);
       if (!UUID_RE.test(uid)) {
@@ -442,6 +544,53 @@ export class VaultSharingService {
       );
       merged.meta = { ...merged.meta, recipient_user_id: uid };
       rotatedMap.set(uid, merged);
+      normalizedRotatedVaultKeys.push({
+        userId: uid,
+        encryptedVaultKey: merged,
+      });
+    }
+    if (input.signature) {
+      const actorKeys = await this.getUserSigningKeys(actorId);
+      let signatureEnvelope;
+      try {
+        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.rotate");
+      } catch (error) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          (error as Error).message,
+          { context: "vault.rotate" },
+        );
+      }
+      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature signer_pq_public_key mismatch",
+          { context: "vault.rotate" },
+        );
+      }
+      const verifiedSignature = verifyHybridSignatureForPayload({
+        envelope: signatureEnvelope,
+        payload: {
+          vaultId,
+          eventType: "VAULT_KEY_ROTATION",
+          encryptedBlob: payloadBlob,
+        },
+        signerPublicKeyBase64: actorKeys.publicKey,
+      });
+      if (!verifiedSignature) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature verification failed",
+          { context: "vault.rotate" },
+        );
+      }
+      payloadBlob.meta = {
+        ...payloadBlob.meta,
+        signature: signatureEnvelope,
+      };
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -555,6 +704,7 @@ export class VaultSharingService {
       },
     );
     const rotatedMap = new Map<string, EncryptedBlob>();
+    const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
     for (const keyEntry of input.rotatedVaultKeys) {
       const uid = normalizeWireUserId(keyEntry.userId);
       if (!UUID_RE.test(uid)) {
@@ -573,6 +723,53 @@ export class VaultSharingService {
       );
       merged.meta = { ...merged.meta, recipient_user_id: uid };
       rotatedMap.set(uid, merged);
+      normalizedRotatedVaultKeys.push({
+        userId: uid,
+        encryptedVaultKey: merged,
+      });
+    }
+    if (input.signature) {
+      const actorKeys = await this.getUserSigningKeys(actorId);
+      let signatureEnvelope;
+      try {
+        signatureEnvelope = parseHybridSignatureEnvelope(input.signature, "vault.member_role_update");
+      } catch (error) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          (error as Error).message,
+          { context: "vault.member_role_update" },
+        );
+      }
+      if (signatureEnvelope.signer_pq_public_key !== actorKeys.publicPqKey) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature signer_pq_public_key mismatch",
+          { context: "vault.member_role_update" },
+        );
+      }
+      const verifiedSignature = verifyHybridSignatureForPayload({
+        envelope: signatureEnvelope,
+        payload: {
+          vaultId,
+          eventType: "VAULT_KEY_ROTATION",
+          encryptedBlob: payloadBlob,
+        },
+        signerPublicKeyBase64: actorKeys.publicKey,
+      });
+      if (!verifiedSignature) {
+        throw new VaultSharingServiceError(
+          SIGNATURE_INVALID,
+          SIGNATURE_STATUS_CODE,
+          "signature verification failed",
+          { context: "vault.member_role_update" },
+        );
+      }
+      payloadBlob.meta = {
+        ...payloadBlob.meta,
+        signature: signatureEnvelope,
+      };
     }
 
     this.assertEncryptedBlobsMeetVaultFloor(vaultId, acl.vaultCryptoVersion, [
@@ -1011,6 +1208,25 @@ export class VaultSharingService {
       [canonical],
     );
     return rows[0]?.public_pq_key ?? null;
+  }
+
+  private async getUserSigningKeys(userId: string): Promise<{ publicKey: string; publicPqKey: string }> {
+    const canonical = normalizeWireUserId(userId);
+    const rows = await this.db.query<{ public_key: string; public_pq_key: string | null }>(
+      "SELECT public_key, public_pq_key FROM users WHERE id = $1::uuid",
+      [canonical],
+    );
+    if (!rows[0]?.public_key || !rows[0]?.public_pq_key) {
+      throw new VaultSharingServiceError(
+        SIGNATURE_INVALID,
+        SIGNATURE_STATUS_CODE,
+        "signer keys are unavailable",
+      );
+    }
+    return {
+      publicKey: rows[0].public_key,
+      publicPqKey: rows[0].public_pq_key,
+    };
   }
 
   private async getUserPublicPqKeys(userIds: string[]): Promise<Map<string, string | null>> {
