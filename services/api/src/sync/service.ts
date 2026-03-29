@@ -9,11 +9,17 @@ import {
   CRYPTO_DOWNGRADE_STATUS_CODE,
   buildCryptoDowngradeDetails,
 } from "../crypto/downgrade.ts";
+import { getCryptoRolloutGateViolation } from "../crypto/rollout-gates.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
+import {
+  recordCapabilityDecision,
+  recordCryptoOperationOutcome,
+  startCryptoOperationTimer,
+} from "../observability/crypto-rollout.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
 import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
@@ -83,7 +89,15 @@ export interface SyncServiceDeps {
   events: Pick<EventsRepository, "listAfterVersion" | "append">;
   users?: Pick<UsersRepository, "findById">;
   config?: Partial<
-    Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">
+    Pick<
+      ApiConfig,
+      | "allowedCryptoProfileVersions"
+      | "deployEnv"
+      | "cryptoRolloutMode"
+      | "cryptoRolloutEnabled"
+      | "cryptoRolloutState"
+      | "cryptoRolloutStopWritePaths"
+    >
   >;
   log?: Logger;
 }
@@ -114,7 +128,15 @@ export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
   private readonly users: SyncServiceDeps["users"];
-  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">;
+  private readonly config: Pick<
+    ApiConfig,
+    | "allowedCryptoProfileVersions"
+    | "deployEnv"
+    | "cryptoRolloutMode"
+    | "cryptoRolloutEnabled"
+    | "cryptoRolloutState"
+    | "cryptoRolloutStopWritePaths"
+  >;
   private readonly log: Logger | undefined;
 
   constructor(deps: SyncServiceDeps) {
@@ -125,6 +147,9 @@ export class SyncService {
       allowedCryptoProfileVersions: [1, 2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
+      cryptoRolloutEnabled: true,
+      cryptoRolloutState: "resume",
+      cryptoRolloutStopWritePaths: [],
       ...deps.config,
     };
     this.log = deps.log;
@@ -153,6 +178,29 @@ export class SyncService {
     userId: string,
     input: SyncAppendEventInput,
   ): Promise<SyncEventResponse> {
+    const operation = "sync.append";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new SyncServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
     await this.ensureVaultReadable(vaultId, userId);
 
     if (!SYNC_EVENT_TYPES.has(input.eventType)) {
@@ -315,6 +363,12 @@ export class SyncService {
         idempotencyKey: input.idempotencyKey,
         clientCreatedAt: clientCreatedAt ?? undefined,
       });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
       return mapEventToResponse(created);
     } catch (error) {
       if (error instanceof VersionConflictError) {
@@ -348,7 +402,16 @@ export class SyncService {
           ),
         );
       }
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof SyncServiceError ? error.code : "UNEXPECTED",
+      });
       throw error;
+    } finally {
+      stopTimer();
     }
   }
 
@@ -376,6 +439,13 @@ export class SyncService {
       requirements: [
         { subject: "user", capability: "pq_identity", present: Boolean(user?.publicPqKey) },
       ],
+    });
+    recordCapabilityDecision(this.log, {
+      operation,
+      mode: capabilityDecision.mode,
+      allowed: capabilityDecision.allowed,
+      deployEnv: this.config.deployEnv,
+      subject: "user",
     });
     if (capabilityDecision.allowed) {
       return;

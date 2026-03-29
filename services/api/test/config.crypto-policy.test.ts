@@ -82,6 +82,22 @@ test("loadConfig parses explicit crypto rollout mode", () => {
   );
 });
 
+test("loadConfig parses rollout stop/resume gates", () => {
+  withEnv(
+    {
+      CRYPTO_ROLLOUT_ENABLED: "false",
+      CRYPTO_ROLLOUT_STATE: "stop",
+      CRYPTO_ROLLOUT_STOP_WRITE_PATHS: "sync.append, vault.rotate ,*",
+    },
+    () => {
+      const cfg = loadConfig();
+      assert.equal(cfg.cryptoRolloutEnabled, false);
+      assert.equal(cfg.cryptoRolloutState, "stop");
+      assert.deepEqual(cfg.cryptoRolloutStopWritePaths, ["sync.append", "vault.rotate", "*"]);
+    },
+  );
+});
+
 test("getCryptoWritePolicyViolation returns normalized violation payload", () => {
   const violation = getCryptoWritePolicyViolation(
     { allowedCryptoProfileVersions: [2] },

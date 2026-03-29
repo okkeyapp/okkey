@@ -1,0 +1,45 @@
+version: 1
+alerts:
+  - name: crypto-policy-violations-critical
+    severity: critical
+    expr: |
+      rate(crypto_policy_violations_total{reason=~"policy|downgrade",deploy_env="prod"}[5m]) > 0.05
+    for: 10m
+    runbook: docs/security/6.22-crypto-rollout-stop-resume-runbook.md
+    description: "Sustained policy/downgrade rejects in prod."
+
+  - name: crypto-rotation-failure-critical
+    severity: critical
+    expr: |
+      (
+        rate(crypto_rotation_failures_total{deploy_env="prod"}[5m])
+        /
+        clamp_min(rate(crypto_operation_total{operation=~"vault.rotate|vault.revoke|vault.member_role_update",deploy_env="prod"}[5m]), 0.0001)
+      ) > 0.01
+    for: 15m
+    runbook: docs/security/6.22-crypto-rollout-stop-resume-runbook.md
+    description: "Rotation failure ratio above 1% in prod."
+
+  - name: crypto-rollout-paused-warning
+    severity: warning
+    expr: |
+      rate(crypto_operation_total{outcome="blocked",code="CRYPTO_ROLLOUT_PAUSED",deploy_env="prod"}[5m]) > 0
+    for: 5m
+    runbook: docs/security/6.22-crypto-rollout-stop-resume-runbook.md
+    description: "Write paths are blocked by rollout gates in prod."
+
+dashboards:
+  - name: crypto-rollout-overview
+    panels:
+      - title: "Crypto Operation Outcomes"
+        metric: "crypto_operation_total"
+        breakdown: ["operation", "outcome", "deploy_env"]
+      - title: "Policy Violations by Reason"
+        metric: "crypto_policy_violations_total"
+        breakdown: ["reason", "deploy_env", "rollout_mode"]
+      - title: "Capability Coverage"
+        metric: "crypto_capability_coverage_total"
+        breakdown: ["operation", "mode", "subject", "result"]
+      - title: "Rotation Failures"
+        metric: "crypto_rotation_failures_total"
+        breakdown: ["operation", "code", "deploy_env"]

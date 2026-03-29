@@ -46,6 +46,9 @@ jobs:
       EMAIL_DEFAULT_LOCALE: en
       EMAIL_FROM: no-reply@okkey.local
       CRYPTO_ALLOWED_PROFILE_VERSIONS: 1,2
+      CRYPTO_ROLLOUT_MODE: compat
+      CRYPTO_ROLLOUT_ENABLED: "true"
+      CRYPTO_ROLLOUT_STATE: resume
       S3_ENDPOINT: http://localhost:9000
       S3_REGION: us-east-1
       S3_BUCKET: okkey
@@ -104,3 +107,13 @@ jobs:
 
       - name: Run Q-Day security suite (blocking)
         run: yarn test:security
+
+      - name: Run strict rollout smoke lane
+        env:
+          DEPLOY_ENV: prod
+          CRYPTO_ALLOWED_PROFILE_VERSIONS: 2
+          CRYPTO_ROLLOUT_MODE: strict
+          CRYPTO_ROLLOUT_ENABLED: "true"
+          CRYPTO_ROLLOUT_STATE: resume
+          CRYPTO_ROLLOUT_STOP_WRITE_PATHS: ""
+        run: node --experimental-strip-types --test --test-force-exit --test-concurrency=1 services/api/test/security-qday-missing-pq-malformed-envelope.test.ts

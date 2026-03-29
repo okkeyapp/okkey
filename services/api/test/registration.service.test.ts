@@ -243,3 +243,63 @@ test("completeRegistration returns Redis registration:result without Postgres", 
   const out = await service.completeRegistration(baseInput());
   assert.deepEqual(out, cached);
 });
+
+test("completeRegistration cache hit emits success operation metric", async () => {
+  const cached = {
+    userId: "u-from-redis",
+    workspaceId: "w-from-redis",
+    vaultId: "v-from-redis",
+    deviceId: "d-from-redis",
+    deviceStatus: "trusted" as const,
+  };
+  const records: Array<{ message: string; extra?: Record<string, unknown> }> = [];
+  const service = new RegistrationService({
+    authService: {
+      readAuthState: async () => {
+        throw new Error("readAuthState must not run when registration result is cached");
+      },
+      removeAuthState: async () => {
+        throw new Error("removeAuthState must not run when registration result is cached");
+      },
+    } as unknown as AuthService,
+    users: {
+      findByEmail: async () => {
+        throw new Error("findByEmail must not run when registration result is cached");
+      },
+    },
+    postgres: {
+      transaction: async () => {
+        throw new Error("postgres.transaction must not run when registration result is cached");
+      },
+    } as unknown as PostgresDatabase,
+    redis: {
+      get: async () => JSON.stringify(cached),
+      setWithTtl: async () => {
+        throw new Error("setWithTtl must not run on cache hit");
+      },
+      del: async () => {},
+    },
+    config: baseConfig,
+    log: {
+      info(message, extra) {
+        records.push({ message, extra });
+      },
+      warn() {},
+      error() {},
+    },
+  });
+
+  const out = await service.completeRegistration(baseInput());
+  assert.deepEqual(out, cached);
+  const hasSuccessMetric = records.some((record) => {
+    if (record.message !== "crypto_metric") {
+      return false;
+    }
+    if (record.extra?.metric_name !== "crypto.operation_total") {
+      return false;
+    }
+    const tags = record.extra?.tags as Record<string, unknown> | undefined;
+    return tags?.operation === "registration.complete" && tags?.outcome === "success";
+  });
+  assert.equal(hasSuccessMetric, true);
+});

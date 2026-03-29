@@ -46,6 +46,9 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     capsuleRateLimitWindowSeconds: 60,
     allowedCryptoProfileVersions: [1, 2],
     cryptoRolloutMode: "compat",
+    cryptoRolloutEnabled: true,
+    cryptoRolloutState: "resume",
+    cryptoRolloutStopWritePaths: [],
     ...overrides,
   };
 }

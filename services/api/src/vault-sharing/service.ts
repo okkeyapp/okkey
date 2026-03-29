@@ -16,11 +16,18 @@ import {
   assertVaultCryptoFloor,
   buildCryptoDowngradeDetails,
 } from "../crypto/downgrade.ts";
+import { getCryptoRolloutGateViolation } from "../crypto/rollout-gates.ts";
 import type { Logger } from "../logger.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
+import {
+  incrementCryptoMetric,
+  recordCapabilityDecision,
+  recordCryptoOperationOutcome,
+  startCryptoOperationTimer,
+} from "../observability/crypto-rollout.ts";
 import {
   decodeEncryptedBlobFromStorage,
   mergeEncryptedBlobMeta,
@@ -110,7 +117,15 @@ export interface VaultSharingServiceDeps {
   };
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
   config?: Partial<
-    Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">
+    Pick<
+      ApiConfig,
+      | "allowedCryptoProfileVersions"
+      | "deployEnv"
+      | "cryptoRolloutMode"
+      | "cryptoRolloutEnabled"
+      | "cryptoRolloutState"
+      | "cryptoRolloutStopWritePaths"
+    >
   >;
   log?: Logger;
 }
@@ -138,7 +153,15 @@ const ROTATION_REQUEST_FINGERPRINT_META_KEY = "rotation_request_fingerprint";
 export class VaultSharingService {
   private readonly db: VaultSharingServiceDeps["db"];
   private readonly vaults: VaultSharingServiceDeps["vaults"];
-  private readonly config: Pick<ApiConfig, "allowedCryptoProfileVersions" | "deployEnv" | "cryptoRolloutMode">;
+  private readonly config: Pick<
+    ApiConfig,
+    | "allowedCryptoProfileVersions"
+    | "deployEnv"
+    | "cryptoRolloutMode"
+    | "cryptoRolloutEnabled"
+    | "cryptoRolloutState"
+    | "cryptoRolloutStopWritePaths"
+  >;
   private readonly log: Logger | undefined;
 
   constructor(deps: VaultSharingServiceDeps) {
@@ -148,6 +171,9 @@ export class VaultSharingService {
       allowedCryptoProfileVersions: [1, 2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
+      cryptoRolloutEnabled: true,
+      cryptoRolloutState: "resume",
+      cryptoRolloutStopWritePaths: [],
       ...deps.config,
     };
     this.log = deps.log;
@@ -209,6 +235,30 @@ export class VaultSharingService {
   }
 
   async shareVault(vaultId: string, actorId: string, input: ShareVaultInput): Promise<void> {
+    const operation = "vault.share";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new VaultSharingServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    try {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
     const recipientUserId = normalizeWireUserId(input.recipientUserId);
     if (!UUID_RE.test(recipientUserId)) {
@@ -326,9 +376,51 @@ export class VaultSharingService {
       );
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", normalizedPayloadBlob, input);
     });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+    } catch (error) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      throw error;
+    } finally {
+      stopTimer();
+    }
   }
 
   async revokeVaultAccess(vaultId: string, actorId: string, input: RevokeVaultInput): Promise<void> {
+    const operation = "vault.revoke";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new VaultSharingServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    try {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
     const recipientUserId = normalizeWireUserId(input.recipientUserId);
     const wsOwner = normalizeWireUserId(acl.workspaceOwnerId);
@@ -513,9 +605,57 @@ export class VaultSharingService {
         input,
       );
     });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+    } catch (error) {
+      incrementCryptoMetric(this.log, "crypto.rotation_failures_total", {
+        operation,
+        deploy_env: this.config.deployEnv,
+        rollout_mode: this.config.cryptoRolloutMode,
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      throw error;
+    } finally {
+      stopTimer();
+    }
   }
 
   async rotateVaultKey(vaultId: string, actorId: string, input: RotateVaultKeyInput): Promise<void> {
+    const operation = "vault.rotate";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new VaultSharingServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    try {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
     let payloadBlob = mergeEncryptedBlobMeta(
       parseBlobOrThrow(input.encryptedPayload, "encryptedPayload"),
@@ -667,6 +807,30 @@ export class VaultSharingService {
       }
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_KEY_ROTATION", payloadBlob, input);
     });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+    } catch (error) {
+      incrementCryptoMetric(this.log, "crypto.rotation_failures_total", {
+        operation,
+        deploy_env: this.config.deployEnv,
+        rollout_mode: this.config.cryptoRolloutMode,
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      throw error;
+    } finally {
+      stopTimer();
+    }
   }
 
   async updateVaultMemberRole(
@@ -674,6 +838,30 @@ export class VaultSharingService {
     actorId: string,
     input: UpdateVaultMemberRoleInput,
   ): Promise<void> {
+    const operation = "vault.member_role_update";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new VaultSharingServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    try {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
     const memberId = normalizeWireUserId(input.memberId);
     if (!UUID_RE.test(memberId)) {
@@ -864,6 +1052,30 @@ export class VaultSharingService {
       }
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_KEY_ROTATION", payloadBlob, input);
     });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+    } catch (error) {
+      incrementCryptoMetric(this.log, "crypto.rotation_failures_total", {
+        operation,
+        deploy_env: this.config.deployEnv,
+        rollout_mode: this.config.cryptoRolloutMode,
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof VaultSharingServiceError ? error.code : "UNEXPECTED",
+      });
+      throw error;
+    } finally {
+      stopTimer();
+    }
   }
 
   private async appendVaultEventTx(
@@ -1300,6 +1512,13 @@ export class VaultSharingService {
       requirements: [
         { subject: "user", capability: "pq_identity", present: Boolean(recipientPublicPqKey) },
       ],
+    });
+    recordCapabilityDecision(this.log, {
+      operation,
+      mode: capabilityDecision.mode,
+      allowed: capabilityDecision.allowed,
+      deployEnv: this.config.deployEnv,
+      subject: "recipient",
     });
     if (capabilityDecision.allowed) {
       return;

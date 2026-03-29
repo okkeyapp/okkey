@@ -6,11 +6,17 @@ import {
   buildCapabilityPolicyDetails,
   evaluateCapabilityDecision,
 } from "../crypto/capability-policy.ts";
+import { getCryptoRolloutGateViolation } from "../crypto/rollout-gates.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
+import {
+  recordCapabilityDecision,
+  recordCryptoOperationOutcome,
+  startCryptoOperationTimer,
+} from "../observability/crypto-rollout.ts";
 import {
   decodeEncryptedBlobFromStorage,
   mergeEncryptedBlobMeta,
@@ -60,6 +66,9 @@ export interface CapsuleServiceDeps {
     | "allowedCryptoProfileVersions"
     | "deployEnv"
     | "cryptoRolloutMode"
+    | "cryptoRolloutEnabled"
+    | "cryptoRolloutState"
+    | "cryptoRolloutStopWritePaths"
   >;
   users?: Pick<UsersRepository, "findById">;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject">;
@@ -135,6 +144,9 @@ export class CapsuleService {
     this.config = {
       ...deps.config,
       cryptoRolloutMode: deps.config.cryptoRolloutMode ?? "compat",
+      cryptoRolloutEnabled: deps.config.cryptoRolloutEnabled ?? true,
+      cryptoRolloutState: deps.config.cryptoRolloutState ?? "resume",
+      cryptoRolloutStopWritePaths: deps.config.cryptoRolloutStopWritePaths ?? [],
     };
     this.users = deps.users;
     this.objectStorage = deps.objectStorage;
@@ -146,6 +158,30 @@ export class CapsuleService {
     creatorId: string,
     input: CreateCapsuleInput,
   ): Promise<CapsuleMetadataResponse> {
+    const operation = "capsule.create";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new CapsuleServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    try {
     if (!CAPSULE_TYPES.has(input.type)) {
       throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid capsule type");
     }
@@ -283,7 +319,25 @@ export class CapsuleService {
       return inserted;
     });
 
-    return mapMetadata(rows[0]);
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+      return mapMetadata(rows[0]);
+    } catch (error) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof CapsuleServiceError ? error.code : "UNEXPECTED",
+      });
+      throw error;
+    } finally {
+      stopTimer();
+    }
   }
 
   async getCapsuleMetadata(capsuleId: string): Promise<CapsuleMetadataResponse> {
@@ -438,6 +492,13 @@ export class CapsuleService {
       requirements: [
         { subject: "user", capability: "pq_identity", present: Boolean(user?.publicPqKey) },
       ],
+    });
+    recordCapabilityDecision(this.log, {
+      operation,
+      mode: capabilityDecision.mode,
+      allowed: capabilityDecision.allowed,
+      deployEnv: this.config.deployEnv ?? "dev",
+      subject: "user",
     });
     if (capabilityDecision.allowed) {
       return;

@@ -1,4 +1,5 @@
 import type { Logger } from "../logger.ts";
+import { incrementCryptoMetric } from "../observability/crypto-rollout.ts";
 
 export type CryptoPolicyViolationReason = "policy" | "downgrade" | "capability";
 
@@ -22,6 +23,11 @@ export function logCryptoPolicyViolation(
   if (!logger) {
     return;
   }
+  incrementCryptoMetric(logger, "crypto.policy_violations_total", {
+    reason: fields.reason,
+    deploy_env: fields.deployEnv,
+    rollout_mode: fields.rolloutMode,
+  });
   logger.warn("crypto_policy_violation", {
     event: "crypto_policy_violation",
     ...fields,

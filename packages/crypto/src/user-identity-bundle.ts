@@ -5,8 +5,6 @@
 import initWasm, {
   aead_decrypt,
   aead_encrypt,
-  b64_decode,
-  b64_encode,
   mlkem768_decapsulation_key_len,
   mlkem768_encapsulation_key_len,
   mlkem768_keypair,
@@ -154,7 +152,7 @@ export function userIdentityEncryptedBlobDtoFromPayload(payloadBytes: Uint8Array
   return {
     crypto_version: OKKEY_CRYPTO_PROFILE_V2,
     algorithm: USER_IDENTITY_WRITE_CONFIG.encryptedBlobAlgorithm,
-    payload: b64_encode(payloadBytes),
+    payload: Buffer.from(payloadBytes).toString("base64"),
     meta: {
       entity: "user_private_key_bundle",
       bundle_version: 2,
@@ -173,9 +171,9 @@ export async function decryptUserIdentityFromEncryptedBlob(
   mlkem768DecapsulationKey: Uint8Array;
 }> {
   await ensureWasm();
-  const blobBytes = b64_decode(encryptedPayloadBase64.trim());
+  const blobBytes = Uint8Array.from(Buffer.from(encryptedPayloadBase64.trim(), "base64"));
   try {
-    return decryptUserIdentityPrivateBundle(vaultKey, blobBytes);
+    return await decryptUserIdentityPrivateBundle(vaultKey, blobBytes);
   } finally {
     wipeBytes(blobBytes);
   }

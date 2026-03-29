@@ -6,6 +6,7 @@ type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api";
 type DeployEnv = "dev" | "stage" | "prod";
 type CryptoRolloutMode = "strict" | "compat";
+type CryptoRolloutState = "resume" | "stop";
 
 export interface ApiConfig {
   nodeEnv: NodeEnv;
@@ -55,6 +56,9 @@ export interface ApiConfig {
   capsuleRateLimitWindowSeconds: number;
   allowedCryptoProfileVersions: number[];
   cryptoRolloutMode: CryptoRolloutMode;
+  cryptoRolloutEnabled: boolean;
+  cryptoRolloutState: CryptoRolloutState;
+  cryptoRolloutStopWritePaths: string[];
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -168,6 +172,21 @@ function parseCryptoRolloutMode(
   return deployEnv === "prod" ? "strict" : "compat";
 }
 
+function parseCryptoRolloutState(raw: string | undefined): CryptoRolloutState {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (normalized === "stop" || normalized === "resume") {
+    return normalized;
+  }
+  return "resume";
+}
+
+function parseCsvList(raw: string | undefined): string[] {
+  if (!raw || raw.trim() === "") {
+    return [];
+  }
+  return [...new Set(raw.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -187,6 +206,9 @@ export function loadConfig(): ApiConfig {
     process.env.CRYPTO_ROLLOUT_MODE,
     deployEnv,
   );
+  const cryptoRolloutEnabled = parseBoolean(process.env.CRYPTO_ROLLOUT_ENABLED, true);
+  const cryptoRolloutState = parseCryptoRolloutState(process.env.CRYPTO_ROLLOUT_STATE);
+  const cryptoRolloutStopWritePaths = parseCsvList(process.env.CRYPTO_ROLLOUT_STOP_WRITE_PATHS);
   const sessionSecret =
     process.env.SESSION_SECRET ?? process.env.JWT_SECRET ?? "dev-session-secret";
   return {
@@ -284,5 +306,8 @@ export function loadConfig(): ApiConfig {
     ),
     allowedCryptoProfileVersions,
     cryptoRolloutMode,
+    cryptoRolloutEnabled,
+    cryptoRolloutState,
+    cryptoRolloutStopWritePaths,
   };
 }

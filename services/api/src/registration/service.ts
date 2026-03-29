@@ -6,12 +6,18 @@ import {
   buildCapabilityPolicyDetails,
   evaluateCapabilityDecision,
 } from "../crypto/capability-policy.ts";
+import { getCryptoRolloutGateViolation } from "../crypto/rollout-gates.ts";
 import { mergeEncryptedBlobMeta, parseEncryptedBlobInput, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
 import {
   getCryptoWritePolicyViolation,
 } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
+import {
+  recordCapabilityDecision,
+  recordCryptoOperationOutcome,
+  startCryptoOperationTimer,
+} from "../observability/crypto-rollout.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
@@ -111,6 +117,28 @@ export class RegistrationService {
   }
 
   async completeRegistration(input: RegisterCompleteInput): Promise<RegisterCompleteResult> {
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation: "registration.complete",
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, "registration.complete");
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation: "registration.complete",
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new RegistrationError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
     const cached = await this.redis.get(registrationResultRedisKey(input.authStateId));
     if (cached) {
       try {
@@ -122,6 +150,13 @@ export class RegistrationService {
           parsed.deviceId &&
           parsed.deviceStatus === "trusted"
         ) {
+          recordCryptoOperationOutcome(this.log, {
+            operation: "registration.complete",
+            deployEnv: this.config.deployEnv,
+            rolloutMode: this.config.cryptoRolloutMode,
+            outcome: "success",
+          });
+          stopTimer();
           return parsed;
         }
       } catch {
@@ -199,8 +234,21 @@ export class RegistrationService {
       );
       await this.authService.removeAuthState(input.authStateId);
 
+      recordCryptoOperationOutcome(this.log, {
+        operation: "registration.complete",
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
       return result;
     } catch (error) {
+      recordCryptoOperationOutcome(this.log, {
+        operation: "registration.complete",
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof RegistrationError ? error.code : "UNEXPECTED",
+      });
       if (isPgUniqueViolation(error)) {
         throw new RegistrationError(
           "REGISTRATION_CONFLICT",
@@ -209,6 +257,8 @@ export class RegistrationService {
         );
       }
       throw error;
+    } finally {
+      stopTimer();
     }
   }
 
@@ -283,6 +333,20 @@ export class RegistrationService {
         { subject: "user", capability: "pq_identity", present: pqBytes.length === MLKEM768_EK_LEN },
         { subject: "device", capability: "pq_device", present: input.deviceCryptoCapable === true },
       ],
+    });
+    recordCapabilityDecision(this.log, {
+      operation: "registration.complete",
+      mode: capabilityDecision.mode,
+      allowed: capabilityDecision.allowed,
+      deployEnv: this.config.deployEnv,
+      subject: "user",
+    });
+    recordCapabilityDecision(this.log, {
+      operation: "registration.complete",
+      mode: capabilityDecision.mode,
+      allowed: capabilityDecision.allowed,
+      deployEnv: this.config.deployEnv,
+      subject: "device",
     });
     if (!capabilityDecision.allowed) {
       logCryptoPolicyViolation(this.log, {
