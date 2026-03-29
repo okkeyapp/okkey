@@ -30,11 +30,14 @@ References:
 - Hybrid envelope contract is canonical and versioned.
 - Decrypt/encrypt hybrid path is implemented in Rust/WASM primitives only.
 - No JS/TS crypto fallback is allowed for hybrid/PQ operations.
+- Edge/ingress transport posture follows the TLS/transport Q-Day runbook for
+  strict profile + explicit compatibility exceptions.
 
 References:
 - `docs/architecture/14_crypto_v2_qday.md`
 - `packages/crypto`
 - `rust/crypto-engine`
+- `docs/security/6.19-tls-transport-qday-runbook.md`
 
 ### Gate 3: Rotation and Event-Log Safety
 
@@ -64,6 +67,7 @@ References:
 - [ ] All production write APIs reject `v1` and malformed envelopes.
 - [ ] No production path performs silent fallback to weaker crypto profile.
 - [ ] Hybrid envelope validation and Rust/WASM-only crypto path are enforced.
+- [ ] Production edge TLS policy follows 6.19 runbook and has validated rollback checklist.
 - [ ] Rotation and replay invariants are verified for sharing/sync flows.
 - [ ] Security suite and crypto fuzz quick suite pass on release candidate.
 - [ ] Core/Enterprise boundary docs explicitly state no enterprise override of crypto policy.
@@ -84,5 +88,7 @@ References:
 - `6.11` Atomic rotation via event log -> append/replay invariants tests.
 - `6.12` Security suite -> blocking CI security job.
 - `6.13` Fuzz/property/contract suite -> blocking quick lane + extended lane.
+- `6.19` TLS/transport Q-Day plan -> runbook + staged validation + rollback checklist.
+  - execution evidence: `docs/security/6.19-tls-transport-qday-evidence.md`
 
 This checklist is release-blocking for the first production launch.
