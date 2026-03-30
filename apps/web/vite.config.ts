@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@okkey/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      "@workspace/ui": path.resolve(__dirname, "../../packages/ui/src"),
     },
   },
   server: {

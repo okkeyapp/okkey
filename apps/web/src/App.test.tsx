@@ -1,12 +1,23 @@
 import { render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import App from "./App";
 import { applyStoredTheme } from "./theme/applyTheme";
 
+function renderWithRouter(ui: ReactElement, initialEntries: string[]) {
+  return render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+}
+
 describe("App", () => {
-  it("renders title", () => {
-    render(<App />);
+  it("renders home title", () => {
+    renderWithRouter(<App />, ["/"]);
     expect(screen.getByRole("heading", { name: /^okkey$/i })).toBeInTheDocument();
+  });
+
+  it("renders design system gallery on /dev/ui", () => {
+    renderWithRouter(<App />, ["/dev/ui"]);
+    expect(screen.getByRole("heading", { name: /design system/i })).toBeInTheDocument();
   });
 
   function mockLocalStorage(values: Record<string, string | null>) {

@@ -82,8 +82,11 @@
   }
 
   .dark[data-accent="a1"] {
-    --primary: 0.0 0.0% 98.0%;
-    --accent: 0.0 0.0% 98.0%;
+    /* Light “ink” surface on dark UI — need dark text, not default white primary-foreground */
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --accent: 0 0% 98%;
+    --accent-foreground: 0 0% 9%;
   }
   .dark[data-accent="a2"] {
     --primary: 217.2 91.2% 59.8%;
