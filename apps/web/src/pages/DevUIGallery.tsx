@@ -127,28 +127,66 @@ export default function DevUIGallery() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-lg font-medium">Components</h2>
-          <div className="flex flex-wrap gap-3 rounded-lg border border-border bg-card p-6">
-            <Button type="button">Primary</Button>
-            <Button type="button" variant="secondary">
-              Secondary
-            </Button>
-            <Button type="button" variant="outline">
-              Outline
-            </Button>
-            <Button type="button" variant="ghost">
-              Ghost
-            </Button>
-            <Button type="button" variant="destructive">
-              Destructive
-            </Button>
-            <Button type="button" variant="link">
-              Link
-            </Button>
+          <div>
+            <h2 className="text-lg font-medium">Buttons</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Стандартные варианты и размеры shadcn/ui из{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">@okkey/ui</code> (
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">default</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">sm</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">lg</code>).
+            </p>
           </div>
+
+          <div className="space-y-3 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <h3 className="text-sm font-medium text-muted-foreground">Размер default</h3>
+            <div className="flex flex-wrap gap-3">
+              <Button type="button">Primary</Button>
+              <Button type="button" variant="secondary">
+                Secondary
+              </Button>
+              <Button type="button" variant="outline">
+                Outline
+              </Button>
+              <Button type="button" variant="ghost">
+                Ghost
+              </Button>
+              <Button type="button" variant="destructive">
+                Destructive
+              </Button>
+              <Button type="button" variant="link">
+                Link
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <h3 className="text-sm font-medium text-muted-foreground">Размер sm</h3>
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" size="sm">
+                Primary
+              </Button>
+              <Button type="button" size="sm" variant="secondary">
+                Secondary
+              </Button>
+              <Button type="button" size="sm" variant="outline">
+                Outline
+              </Button>
+              <Button type="button" size="sm" variant="ghost">
+                Ghost
+              </Button>
+              <Button type="button" size="sm" variant="destructive">
+                Destructive
+              </Button>
+              <Button type="button" size="sm" variant="link">
+                Link
+              </Button>
+            </div>
+          </div>
+
           <p className="text-sm text-muted-foreground">
-            More shadcn primitives will land with task 7.4 (`npx shadcn@latest add …` using{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/web/components.json</code>).
+            Дальше по 7.4: остальные примитивы через{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/web/components.json</code>.
           </p>
         </section>
       </div>
