@@ -45,9 +45,11 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: "calc(var(--radius) * 1px)",
-        md: "calc((var(--radius) - 2) * 1px)",
-        sm: "calc((var(--radius) - 4) * 1px)",
+        lg: "var(--radius)",
+        /** OKKEY: `rounded-md` / control corners */
+        md: "8px",
+        /** OKKEY: `rounded-sm` / tighter controls */
+        sm: "6px",
       },
     },
   },

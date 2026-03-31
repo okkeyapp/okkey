@@ -769,7 +769,7 @@
 "@okkey/api@file:packages/api":
   version "0.0.1"
   dependencies:
-    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-892580ee-4b04-478f-b6d0-ec81fa3b629f-1774898607091/node_modules/@okkey/types"
+    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-66f419ab-ff65-40c7-aa01-6b7ec28137cb-1774900958243/node_modules/@okkey/types"
 
 "@okkey/crypto-wasm@link:./packages/crypto/dist":
   version "0.0.0"

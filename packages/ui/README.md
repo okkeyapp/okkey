@@ -48,3 +48,11 @@ Then re-export new primitives from `src/index.ts` as needed (task **7.4**).
 ```tsx
 import { Button, cn } from "@okkey/ui";
 ```
+
+Refresh `Button` from the registry when needed:
+
+```bash
+cd apps/web && npx shadcn@latest add button --overwrite
+```
+
+`--radius` in `apps/web/src/index.css` must be a length (e.g. `0.5rem`) so Tailwind `rounded-md` / `rounded-lg` map correctly via `tailwind.config.ts`.
