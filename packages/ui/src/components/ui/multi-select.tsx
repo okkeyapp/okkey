@@ -266,7 +266,8 @@ const MultiSelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes
                   /* Match Select horizontal inset (12px text) but frame pt/pb/pl = 3px; chevron column = pr-3 like Select */
                   "!h-auto min-h-9 !px-0 pt-[3px] pb-[3px] pl-[3px]",
                   "flex w-full items-center justify-between gap-2 text-left normal-case",
-                  "data-[state=open]:border-accent data-[state=open]:bg-background data-[state=open]:outline-none data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)/0.4)]",
+                  "data-[state=open]:border-accent data-[state=open]:bg-background data-[state=open]:outline-none data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
+                  "data-[state=open]:hover:border-accent dark:data-[state=open]:hover:border-accent data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                 ),
             className,
           )}
@@ -367,8 +368,8 @@ const MultiSelectContent = React.forwardRef<
         className={cn(
           "relative z-50 flex max-h-96 flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
           ctx.variant === "inline"
-            ? "min-w-[220px] w-max"
-            : "w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)]",
+            ? "min-w-[180px] w-max"
+            : "w-[var(--radix-popover-trigger-width)] min-w-[max(var(--radix-popover-trigger-width),180px)]",
           className,
         )}
         onOpenAutoFocus={(e) => {
