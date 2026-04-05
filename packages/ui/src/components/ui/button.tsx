@@ -18,9 +18,9 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground hover:bg-primary/85 active:bg-primary active:text-primary-foreground",
         destructive:
-          "border border-input bg-background text-destructive shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.1)] hover:bg-destructive hover:text-destructive-foreground hover:shadow-none focus:border-destructive focus-visible:border-destructive focus:shadow-[0_0_0_2px_hsl(var(--destructive)/0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)/0.4)] active:bg-destructive/90 active:text-destructive-foreground",
+          "border border-input bg-background text-destructive shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] hover:bg-destructive hover:text-destructive-foreground hover:shadow-none focus:border-destructive focus-visible:border-destructive focus:shadow-[0_0_0_2px_hsl(var(--destructive)/0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)/0.4)] active:bg-destructive/90 active:text-destructive-foreground",
         outline:
-          "border border-input bg-background shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.1)] hover:bg-accent hover:text-accent-foreground hover:shadow-none focus:border-accent focus-visible:border-accent active:bg-accent/90 active:text-accent-foreground",
+          "border border-input bg-background shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_1px_2px_rgba(255,255,255,0.05)] hover:bg-accent hover:text-accent-foreground hover:shadow-none focus:border-accent focus-visible:border-accent active:bg-accent/90 active:text-accent-foreground",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary active:text-secondary-foreground",
         ghost:
