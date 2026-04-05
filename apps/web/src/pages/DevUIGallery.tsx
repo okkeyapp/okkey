@@ -57,6 +57,8 @@ const GALLERY_FRUITS = [
   ["plum", "Plum"],
 ] as const;
 
+const DEV_UI_SELECT_BUTTON_VARIANTS = ["default", "secondary", "outline", "destructive", "ghost"] as const;
+
 const MOCK_USERS = [
   { id: "u1", first: "Alice", last: "Anderson", email: "alice.anderson@example.com" },
   { id: "u2", first: "Bob", last: "Bennett", email: "bob.bennett@example.com" },
@@ -272,8 +274,12 @@ export default function DevUIGallery() {
               Radix-based select (shadcn/ui pattern) with the same trigger surface as{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">Input</code> (
               <code className="rounded bg-muted px-1 py-0.5 text-xs">@radix-ui/react-select</code>
-              ). Use <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;inline&quot;</code> for
-              borderless text + chevron; dropdown uses <code className="rounded bg-muted px-1 py-0.5 text-xs">min-width: 220px</code>.
+              ). <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;inline&quot;</code> is borderless
+              text + chevron (dropdown <code className="rounded bg-muted px-1 py-0.5 text-xs">min-width: 180px</code>
+              ). <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;button&quot;</code> uses{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">buttonVariant</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">buttonSize</code> like{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">Button</code>.
             </p>
           </div>
 
@@ -326,6 +332,63 @@ export default function DevUIGallery() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <span className="text-sm text-muted-foreground">Button (default size)</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {DEV_UI_SELECT_BUTTON_VARIANTS.map((buttonVariant, i) => (
+                    <Select
+                      key={`select-btn-md-${buttonVariant}`}
+                      variant="button"
+                      buttonVariant={buttonVariant}
+                      defaultValue={GALLERY_FRUITS[i][0]}
+                    >
+                      <SelectTrigger
+                        id={`dev-ui-select-btn-md-${buttonVariant}`}
+                        aria-label={`${buttonVariant} select`}
+                      >
+                        <SelectValue placeholder="Fruit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GALLERY_FRUITS.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm text-muted-foreground">Button (small)</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {DEV_UI_SELECT_BUTTON_VARIANTS.map((buttonVariant, i) => (
+                    <Select
+                      key={`select-btn-sm-${buttonVariant}`}
+                      variant="button"
+                      buttonVariant={buttonVariant}
+                      buttonSize="sm"
+                      defaultValue={GALLERY_FRUITS[i][0]}
+                    >
+                      <SelectTrigger
+                        id={`dev-ui-select-btn-sm-${buttonVariant}`}
+                        aria-label={`${buttonVariant} small select`}
+                      >
+                        <SelectValue placeholder="Fruit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GALLERY_FRUITS.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
