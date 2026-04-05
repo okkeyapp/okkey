@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useState, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import {
   Button,
+  buttonVariants,
+  cn,
+  ControlGroup,
+  controlGroupItemFixedClassName,
+  controlGroupItemGrowClassName,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   MultiSelect,
   MultiSelectContent,
@@ -59,6 +68,8 @@ const GALLERY_FRUITS = [
 
 const DEV_UI_SELECT_BUTTON_VARIANTS = ["default", "secondary", "outline", "destructive", "ghost"] as const;
 
+const DEV_UI_ICON_BUTTON_VARIANTS = ["default", "secondary", "outline", "ghost", "destructive"] as const;
+
 const MOCK_USERS = [
   { id: "u1", first: "Alice", last: "Anderson", email: "alice.anderson@example.com" },
   { id: "u2", first: "Bob", last: "Bennett", email: "bob.bennett@example.com" },
@@ -71,6 +82,48 @@ const MOCK_USERS = [
   { id: "u9", first: "Ivy", last: "Irwin", email: "ivy.irwin@example.com" },
   { id: "u10", first: "Jack", last: "Jordan", email: "jack.jordan@example.com" },
 ] as const;
+
+function SettingsGearIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function MenuEditIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  );
+}
+
+function MenuShareIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.59 13.51 6.83 3.98" />
+      <path d="m15.41 6.51-6.82 3.98" />
+    </svg>
+  );
+}
+
+function MenuDeleteIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  );
+}
 
 function ColorSwatch({
   label,
@@ -92,6 +145,7 @@ export default function DevUIGallery() {
   const [multiFruits, setMultiFruits] = useState<string[]>([]);
   const [multiSummary, setMultiSummary] = useState<string[]>([]);
   const [multiUsers, setMultiUsers] = useState<string[]>([]);
+  const [controlGroupScope, setControlGroupScope] = useState<string[]>(["apple", "banana"]);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -232,6 +286,37 @@ export default function DevUIGallery() {
             </div>
           </div>
 
+          <div className="space-y-3 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <h3 className="text-sm font-medium text-muted-foreground">Icon sizes (any variant)</h3>
+            <p className="text-xs text-muted-foreground">
+              Use <code className="rounded bg-muted px-1 py-0.5">size=&quot;icon&quot;</code> (36px),{" "}
+              <code className="rounded bg-muted px-1 py-0.5">iconSm</code> (32px), or{" "}
+              <code className="rounded bg-muted px-1 py-0.5">iconLg</code> (44px) with{" "}
+              <code className="rounded bg-muted px-1 py-0.5">variant</code>{" "}
+              <code className="rounded bg-muted px-1 py-0.5">default</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5">secondary</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5">outline</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5">ghost</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5">destructive</code>.
+            </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {DEV_UI_ICON_BUTTON_VARIANTS.map((v) => (
+                  <Button key={`icon-${v}`} type="button" variant={v} size="icon" aria-label={`${v} icon`}>
+                    <SettingsGearIcon className="size-4" />
+                  </Button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {DEV_UI_ICON_BUTTON_VARIANTS.map((v) => (
+                  <Button key={`iconsm-${v}`} type="button" variant={v} size="iconSm" aria-label={`${v} icon small`}>
+                    <SettingsGearIcon className="size-[14px]" />
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <p className="text-sm text-muted-foreground">
             Next for 7.4: remaining primitives via{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/web/components.json</code>.
@@ -279,7 +364,11 @@ export default function DevUIGallery() {
               ). <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;button&quot;</code> uses{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">buttonVariant</code> /{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">buttonSize</code> like{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">Button</code>.
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">Button</code>. Icon-only triggers use{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">buttonSize=&quot;icon&quot;</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">iconSm</code>, or{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">iconLg</code> with any{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">buttonVariant</code> (no chevron).
             </p>
           </div>
 
@@ -389,6 +478,57 @@ export default function DevUIGallery() {
                   ))}
                 </div>
               </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm text-muted-foreground">Button (icon sizes × variants)</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {DEV_UI_ICON_BUTTON_VARIANTS.map((bv, i) => (
+                      <Select
+                        key={`select-icon-${bv}`}
+                        variant="button"
+                        buttonVariant={bv}
+                        buttonSize="icon"
+                        defaultValue={GALLERY_FRUITS[i][0]}
+                      >
+                        <SelectTrigger id={`dev-ui-select-btn-icon-${bv}`} aria-label={`${bv} icon select`}>
+                          <SettingsGearIcon className="size-4 shrink-0" />
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GALLERY_FRUITS.map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {DEV_UI_ICON_BUTTON_VARIANTS.map((bv, i) => (
+                      <Select
+                        key={`select-iconsm-${bv}`}
+                        variant="button"
+                        buttonVariant={bv}
+                        buttonSize="iconSm"
+                        defaultValue={GALLERY_FRUITS[i][0]}
+                      >
+                        <SelectTrigger id={`dev-ui-select-btn-iconsm-${bv}`} aria-label={`${bv} icon select small`}>
+                          <SettingsGearIcon className="size-[14px] shrink-0" />
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GALLERY_FRUITS.map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -480,6 +620,122 @@ export default function DevUIGallery() {
                   ))}
                 </MultiSelectContent>
               </MultiSelect>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Control grouping</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Several buttons, fields, or selects on one row with no gap: shared outer{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">border-radius</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">0</code> at inner seams, and one border line (
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">ControlGroup</code> from{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">@okkey/ui</code>). Children must be direct DOM
+              descendants (typically <code className="rounded bg-muted px-1 py-0.5 text-xs">Button</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">Input</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">Select</code> trigger).
+            </p>
+          </div>
+
+          <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-muted-foreground">Buttons + icon menu</h3>
+              <p className="text-xs text-muted-foreground">
+                Context-style menu: on open, focus moves to the menu surface (focus trap); no item is
+                highlighted until ArrowDown / ArrowUp or hover. Do not call{" "}
+                <code className="rounded bg-muted px-1 py-0.5">preventDefault()</code> on{" "}
+                <code className="rounded bg-muted px-1 py-0.5">onOpenAutoFocus</code> — that skips
+                Radix focus-into-menu and Tab will jump to controls outside the menu.
+              </p>
+              <ControlGroup className="max-w-xl" aria-label="Actions and menu">
+                <Button type="button" variant="outline">
+                  Settings
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(buttonVariants({ variant: "outline", size: "icon" }), controlGroupItemFixedClassName)}
+                      aria-label="Action menu"
+                    >
+                      <SettingsGearIcon className="size-4 shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[10rem]">
+                    <DropdownMenuItem>
+                      <MenuEditIcon className="size-4 shrink-0 text-muted-foreground" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <MenuShareIcon className="size-4 shrink-0 text-muted-foreground" />
+                      Share
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive data-[highlighted]:text-destructive">
+                      <MenuDeleteIcon className="size-4 shrink-0" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </ControlGroup>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-muted-foreground">Three inputs</h3>
+              <ControlGroup className="max-w-xl" aria-label="Compound field">
+                <Input className={controlGroupItemGrowClassName} placeholder="First name" aria-label="First name" />
+                <Input className={controlGroupItemGrowClassName} placeholder="Last name" aria-label="Last name" />
+                <Input className={controlGroupItemGrowClassName} placeholder="Email" type="email" aria-label="Email" />
+              </ControlGroup>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                Input + select + multi-select (summary) + button
+              </h3>
+              <ControlGroup className="max-w-3xl" aria-label="Search, filters, and action">
+                <Input
+                  className={controlGroupItemGrowClassName}
+                  placeholder="Search query…"
+                  aria-label="Search query"
+                />
+                <Select defaultValue="banana">
+                  <SelectTrigger aria-label="Category" className={cn(controlGroupItemFixedClassName, "min-w-[10rem]")}>
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GALLERY_FRUITS.slice(0, 6).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <MultiSelect
+                  displayMode="summary"
+                  selectionCountLabel="Selected"
+                  value={controlGroupScope}
+                  onValueChange={setControlGroupScope}
+                  placeholder="Tags"
+                >
+                  <MultiSelectTrigger
+                    id="dev-ui-control-group-scope-ms"
+                    aria-label="Additional tags"
+                    className={cn(controlGroupItemFixedClassName, "min-w-[9.5rem] max-w-[14rem]")}
+                  />
+                  <MultiSelectContent className="min-w-[var(--radix-popover-trigger-width)]">
+                    {GALLERY_FRUITS.slice(0, 8).map(([value, label]) => (
+                      <MultiSelectItem key={value} value={value}>
+                        {label}
+                      </MultiSelectItem>
+                    ))}
+                  </MultiSelectContent>
+                </MultiSelect>
+                <Button type="button" variant="outline" className={controlGroupItemFixedClassName}>
+                  Search
+                </Button>
+              </ControlGroup>
             </div>
           </div>
         </section>
