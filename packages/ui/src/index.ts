@@ -1,4 +1,21 @@
 export { cn } from "./lib/utils.js";
+export {
+  ControlGroup,
+  controlGroupClassName,
+  controlGroupItemFixedClassName,
+  controlGroupItemGrowClassName,
+  type ControlGroupProps,
+} from "./components/ui/control-group.js";
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  type DropdownMenuContentProps,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./components/ui/dropdown-menu.js";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
 export { Input, type InputProps } from "./components/ui/input.js";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";

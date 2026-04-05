@@ -31,6 +31,12 @@ const SelectUiContext = React.createContext<SelectUiContextValue>({
 
 type SelectButtonVisualVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
 
+const SELECT_ICON_BUTTON_SIZES: ReadonlySet<string> = new Set(["icon", "iconSm", "iconLg"]);
+
+function isSelectIconButtonSize(size: string): boolean {
+  return SELECT_ICON_BUTTON_SIZES.has(size);
+}
+
 /** Open trigger = same look as Button `:focus` + `:hover` (ring/border + hover surface). */
 function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVariant): string {
   const accentRing =
@@ -45,7 +51,7 @@ function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVari
       return cn(
         accentRing,
         accentRingIfHoveredWhileOpen,
-        "data-[state=open]:bg-[color-mix(in_hsl,hsl(var(--secondary))_93%,hsl(var(--foreground))_7%)] dark:data-[state=open]:bg-[color-mix(in_hsl,hsl(var(--secondary))_70%,hsl(var(--foreground))_30%)]",
+        "data-[state=open]:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:data-[state=open]:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)]",
       );
     case "ghost":
       return cn(accentRing, accentRingIfHoveredWhileOpen, "data-[state=open]:bg-muted");
@@ -61,11 +67,11 @@ function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVari
       );
     case "outline":
       return cn(
+        accentRing,
+        accentRingIfHoveredWhileOpen,
         "data-[state=open]:outline-none data-[state=open]:border-accent",
-        "data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
-        "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "data-[state=open]:bg-muted data-[state=open]:text-foreground",
         "data-[state=open]:hover:border-accent dark:data-[state=open]:hover:border-accent",
-        "data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
       );
     default: {
       const _exhaustive: never = v;
@@ -107,14 +113,17 @@ const selectTriggerValueSlot =
 const selectTriggerButtonValueSlot =
   "[&>span]:min-w-0 [&>span]:truncate [&_[data-placeholder]]:text-inherit [&_[data-placeholder]]:opacity-60";
 
+/** Icon-only button trigger: keep SelectValue in DOM for a11y/Radix, hide label visually (truncate would keep text visible). */
+const selectTriggerButtonIconValueSlot =
+  "[&>span]:pointer-events-none [&>span]:sr-only [&>span]:min-w-0 [&_[data-placeholder]]:text-inherit [&_[data-placeholder]]:opacity-60";
+
 const SelectTrigger = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
 >(({ className, children, ...props }, ref) => {
   const { triggerVariant, buttonVariant, buttonSize } = React.useContext(SelectUiContext);
 
-  const chevronOpacity =
-    triggerVariant === "inline" ? "opacity-60" : triggerVariant === "button" ? "opacity-90" : "opacity-50";
+  const chevronOpacity = triggerVariant === "inline" ? "opacity-60" : "opacity-50";
 
   return (
     <SelectPrimitive.Trigger
@@ -133,10 +142,13 @@ const SelectTrigger = React.forwardRef<
           : triggerVariant === "button"
             ? cn(
                 buttonVariants({ variant: buttonVariant, size: buttonSize }),
-                selectTriggerButtonValueSlot,
+                isSelectIconButtonSize(buttonSize)
+                  ? selectTriggerButtonIconValueSlot
+                  : selectTriggerButtonValueSlot,
                 selectButtonOpenMatchesFocusAndHoverClassName(buttonVariant),
                 "max-w-full",
-                buttonSize === "sm" ? "!gap-1 !pr-2" : "!pr-3",
+                !isSelectIconButtonSize(buttonSize) &&
+                  (buttonSize === "sm" ? "!gap-1 !pr-2" : "!pr-3"),
               )
             : cn(
                 inputLikeControlClassName,
@@ -150,9 +162,11 @@ const SelectTrigger = React.forwardRef<
       {...props}
     >
       {children}
-      <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className={cn("size-4 shrink-0", chevronOpacity)} />
-      </SelectPrimitive.Icon>
+      {!(triggerVariant === "button" && isSelectIconButtonSize(buttonSize)) ? (
+        <SelectPrimitive.Icon asChild>
+          <ChevronDownIcon className={cn("size-4 shrink-0", chevronOpacity)} />
+        </SelectPrimitive.Icon>
+      ) : null}
     </SelectPrimitive.Trigger>
   );
 });

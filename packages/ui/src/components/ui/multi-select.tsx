@@ -253,7 +253,7 @@ const MultiSelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes
           className={cn(
             ctx.variant === "inline"
               ? cn(
-                  "inline-flex h-auto min-h-0 w-auto max-w-full flex-wrap items-center gap-1 border-0 bg-transparent p-0 text-left text-sm font-medium text-foreground shadow-none outline-none normal-case",
+                  "inline-flex h-auto min-h-0 w-auto max-w-full cursor-pointer flex-wrap items-center gap-1 border-0 bg-transparent p-0 text-left text-sm font-medium text-foreground shadow-none outline-none normal-case",
                   "transition-[color,opacity,box-shadow,border-color]",
                   "hover:border-transparent hover:shadow-none dark:hover:border-transparent",
                   "focus:border-transparent focus:shadow-none focus-visible:border-transparent focus-visible:shadow-none",
@@ -263,6 +263,7 @@ const MultiSelectTrigger = React.forwardRef<HTMLDivElement, React.HTMLAttributes
                 )
               : cn(
                   inputLikeControlClassName,
+                  "cursor-pointer",
                   /* Match Select horizontal inset (12px text) but frame pt/pb/pl = 3px; chevron column = pr-3 like Select */
                   "!h-auto min-h-9 !px-0 pt-[3px] pb-[3px] pl-[3px]",
                   "flex w-full items-center justify-between gap-2 text-left normal-case",
