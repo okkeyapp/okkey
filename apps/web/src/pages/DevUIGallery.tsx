@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Button } from "@okkey/ui";
+import {
+  Button,
+  Input,
+  MultiSelect,
+  MultiSelectContent,
+  MultiSelectItem,
+  MultiSelectTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@okkey/ui";
 
 import { applyStoredTheme } from "../theme/applyTheme";
 
@@ -27,6 +39,37 @@ function setStoredAccent(accent: AccentId) {
   applyStoredTheme();
 }
 
+const GALLERY_FRUITS = [
+  ["apple", "Apple"],
+  ["apricot", "Apricot"],
+  ["banana", "Banana"],
+  ["cherry", "Cherry"],
+  ["fig", "Fig"],
+  ["grape", "Grape"],
+  ["kiwi", "Kiwi"],
+  ["lemon", "Lemon"],
+  ["lime", "Lime"],
+  ["mango", "Mango"],
+  ["melon", "Melon"],
+  ["orange", "Orange"],
+  ["peach", "Peach"],
+  ["pear", "Pear"],
+  ["plum", "Plum"],
+] as const;
+
+const MOCK_USERS = [
+  { id: "u1", first: "Alice", last: "Anderson", email: "alice.anderson@example.com" },
+  { id: "u2", first: "Bob", last: "Bennett", email: "bob.bennett@example.com" },
+  { id: "u3", first: "Claire", last: "Collins", email: "claire.collins@example.com" },
+  { id: "u4", first: "David", last: "Dawson", email: "david.dawson@example.com" },
+  { id: "u5", first: "Emma", last: "Ellis", email: "emma.ellis@example.com" },
+  { id: "u6", first: "Frank", last: "Foster", email: "frank.foster@example.com" },
+  { id: "u7", first: "Grace", last: "Graham", email: "grace.graham@example.com" },
+  { id: "u8", first: "Henry", last: "Hughes", email: "henry.hughes@example.com" },
+  { id: "u9", first: "Ivy", last: "Irwin", email: "ivy.irwin@example.com" },
+  { id: "u10", first: "Jack", last: "Jordan", email: "jack.jordan@example.com" },
+] as const;
+
 function ColorSwatch({
   label,
   className,
@@ -44,6 +87,9 @@ function ColorSwatch({
 
 export default function DevUIGallery() {
   const [accent, setAccent] = useState<AccentId>(readAccentFromStorage);
+  const [multiFruits, setMultiFruits] = useState<string[]>([]);
+  const [multiSummary, setMultiSummary] = useState<string[]>([]);
+  const [multiUsers, setMultiUsers] = useState<string[]>([]);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -130,7 +176,7 @@ export default function DevUIGallery() {
           <div>
             <h2 className="text-lg font-medium">Buttons</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Стандартные варианты и размеры shadcn/ui из{" "}
+              Standard shadcn/ui variants and sizes from{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">@okkey/ui</code> (
               <code className="rounded bg-muted px-1 py-0.5 text-xs">default</code>,{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">sm</code>,{" "}
@@ -139,7 +185,7 @@ export default function DevUIGallery() {
           </div>
 
           <div className="space-y-3 rounded-lg border border-border bg-card p-6 text-card-foreground">
-            <h3 className="text-sm font-medium text-muted-foreground">Размер default</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Default size</h3>
             <div className="flex flex-wrap gap-3">
               <Button type="button">Primary</Button>
               <Button type="button" variant="secondary">
@@ -161,7 +207,7 @@ export default function DevUIGallery() {
           </div>
 
           <div className="space-y-3 rounded-lg border border-border bg-card p-6 text-card-foreground">
-            <h3 className="text-sm font-medium text-muted-foreground">Размер sm</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Small size</h3>
             <div className="flex flex-wrap gap-3">
               <Button type="button" size="sm">
                 Primary
@@ -185,9 +231,194 @@ export default function DevUIGallery() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Дальше по 7.4: остальные примитивы через{" "}
+            Next for 7.4: remaining primitives via{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/web/components.json</code>.
           </p>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Input</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Base field styled like the{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">outline</code> button (background,
+              border, shadow, height{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">h-9</code>
+              ), horizontal padding{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">12px</code>.
+            </p>
+          </div>
+
+          <div className="space-y-4 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-input-default" className="text-sm font-medium">
+                Label
+              </label>
+              <Input id="dev-ui-input-default" type="text" placeholder="Placeholder" />
+            </div>
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-input-disabled" className="text-sm font-medium text-muted-foreground">
+                Disabled
+              </label>
+              <Input id="dev-ui-input-disabled" type="text" placeholder="Unavailable" disabled />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Select</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Radix-based select (shadcn/ui pattern) with the same trigger surface as{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">Input</code> (
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">@radix-ui/react-select</code>
+              ). Use <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;inline&quot;</code> for
+              borderless text + chevron; dropdown uses <code className="rounded bg-muted px-1 py-0.5 text-xs">min-width: 220px</code>.
+            </p>
+          </div>
+
+          <div className="space-y-4 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-select" className="text-sm font-medium">
+                Select
+              </label>
+              <Select defaultValue="banana">
+                <SelectTrigger id="dev-ui-select">
+                  <SelectValue placeholder="Choose a fruit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GALLERY_FRUITS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-select-disabled" className="text-sm font-medium text-muted-foreground">
+                Disabled
+              </label>
+              <Select disabled defaultValue="apple">
+                <SelectTrigger id="dev-ui-select-disabled">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GALLERY_FRUITS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">Inline</span>
+              <Select variant="inline" defaultValue="banana">
+                <SelectTrigger id="dev-ui-select-inline" aria-label="Inline select">
+                  <SelectValue placeholder="Pick one" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GALLERY_FRUITS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Multi-select</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Same trigger surface as single <code className="rounded bg-muted px-1 py-0.5 text-xs">Select</code>.
+              Default <code className="rounded bg-muted px-1 py-0.5 text-xs">displayMode=&quot;chips&quot;</code> uses
+              removable secondary chips; <code className="rounded bg-muted px-1 py-0.5 text-xs">summary</code> shows{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">selectionCountLabel: count</code> (label from the
+              app, e.g. i18n). With <code className="rounded bg-muted px-1 py-0.5 text-xs">filterable</code>, a search
+              field filters items by <code className="rounded bg-muted px-1 py-0.5 text-xs">searchText</code>; use{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">chipLabel</code> for compact chips (e.g. email)
+              while <code className="rounded bg-muted px-1 py-0.5 text-xs">children</code> can be a richer row.
+            </p>
+          </div>
+
+          <div className="space-y-4 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-multiselect-users" className="text-sm font-medium">
+                Users (search + chips by email)
+              </label>
+              <MultiSelect
+                filterable
+                searchPlaceholder="Name, surname, or email…"
+                searchEmptyMessage="No users found"
+                value={multiUsers}
+                onValueChange={setMultiUsers}
+                placeholder="Select users"
+              >
+                <MultiSelectTrigger id="dev-ui-multiselect-users" />
+                <MultiSelectContent className="min-w-[min(100vw-2rem,22rem)]">
+                  {MOCK_USERS.map((u) => (
+                    <MultiSelectItem
+                      key={u.id}
+                      value={u.id}
+                      chipLabel={u.email}
+                      searchText={`${u.first} ${u.last} ${u.email}`}
+                      className="items-start py-2"
+                    >
+                      <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
+                        <span className="font-medium text-foreground">
+                          {u.first} {u.last}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{u.email}</span>
+                      </span>
+                    </MultiSelectItem>
+                  ))}
+                </MultiSelectContent>
+              </MultiSelect>
+            </div>
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-multiselect" className="text-sm font-medium">
+                Fruits
+              </label>
+              <MultiSelect
+                value={multiFruits}
+                onValueChange={setMultiFruits}
+                placeholder="Choose fruits"
+              >
+                <MultiSelectTrigger id="dev-ui-multiselect" />
+                <MultiSelectContent>
+                  {GALLERY_FRUITS.map(([value, label]) => (
+                    <MultiSelectItem key={value} value={value}>
+                      {label}
+                    </MultiSelectItem>
+                  ))}
+                </MultiSelectContent>
+              </MultiSelect>
+            </div>
+            <div className="flex max-w-md flex-col gap-2">
+              <label htmlFor="dev-ui-multiselect-summary" className="text-sm font-medium">
+                Summary (no chip remove buttons)
+              </label>
+              <MultiSelect
+                displayMode="summary"
+                selectionCountLabel="Selected"
+                value={multiSummary}
+                onValueChange={setMultiSummary}
+              >
+                <MultiSelectTrigger id="dev-ui-multiselect-summary" />
+                <MultiSelectContent>
+                  {GALLERY_FRUITS.map(([value, label]) => (
+                    <MultiSelectItem key={value} value={value}>
+                      {label}
+                    </MultiSelectItem>
+                  ))}
+                </MultiSelectContent>
+              </MultiSelect>
+            </div>
+          </div>
         </section>
       </div>
     </main>
