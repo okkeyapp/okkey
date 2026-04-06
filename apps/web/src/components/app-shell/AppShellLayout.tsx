@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export type AppShellLayoutProps = {
   title: string;
-  description: string;
+  description: ReactNode;
   children: ReactNode;
   /** Logo mark above the title */
   logo?: ReactNode;

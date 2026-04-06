@@ -1,6 +1,9 @@
 import { useState, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   buttonVariants,
   cn,
@@ -125,6 +128,36 @@ function MenuDeleteIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <line x1="10" x2="10" y1="11" y2="17" />
       <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  );
+}
+
+function AlertInfoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </svg>
+  );
+}
+
+function AlertWarningIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
+function AlertErrorIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m15 9-6 6" />
+      <path d="m9 9 6 6" />
     </svg>
   );
 }
@@ -810,6 +843,38 @@ export default function DevUIGallery() {
                 imageAlt=""
               />
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Alert</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              shadcn-style <code className="rounded bg-muted px-1 py-0.5 text-xs">Alert</code> with{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">default</code> (info),{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>, and{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">error</code> variants (
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">@okkey/ui</code>).
+            </p>
+          </div>
+          <div className="space-y-4 rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <Alert variant="default">
+              <AlertInfoIcon className="size-4" />
+              <AlertTitle>Note</AlertTitle>
+              <AlertDescription>
+                Default (info): neutral surface for tips or non-blocking context.
+              </AlertDescription>
+            </Alert>
+            <Alert variant="warning">
+              <AlertWarningIcon className="size-4" />
+              <AlertTitle>Warning</AlertTitle>
+              <AlertDescription>Something may need attention before you continue.</AlertDescription>
+            </Alert>
+            <Alert variant="error">
+              <AlertErrorIcon className="size-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>An action failed or validation blocked progress.</AlertDescription>
+            </Alert>
           </div>
         </section>
       </div>
