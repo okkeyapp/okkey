@@ -12,6 +12,7 @@ import { Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { useLocale } from "../../locale/LocaleContext";
 
 const OTP_LENGTH = 6;
 
@@ -28,6 +29,7 @@ function ResendIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function AuthOtpPage() {
+  const { t } = useLocale();
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email") ?? "alexzorin@okkey.app";
 
@@ -104,10 +106,10 @@ export default function AuthOtpPage() {
 
   return (
     <AppShellLayout
-      title="Welcome to Okkey"
+      title={t("auth.otp.title")}
       description={
         <>
-          Enter the 6-digit code sent to:{" "}
+          {t("auth.otp.descriptionBeforeEmail")}{" "}
           <span className="font-semibold">{email}</span>
         </>
       }
@@ -117,11 +119,11 @@ export default function AuthOtpPage() {
         <div className="flex w-full flex-col gap-3">
           <div className="flex w-full items-center gap-2">
             <span id="auth-otp-label" className="min-w-0 flex-1 okkey-small font-medium text-copy-primary">
-              Confirmation code
+              {t("auth.otp.labelConfirmationCode")}
             </span>
             <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={handleResend}>
               <ResendIcon className="size-4" />
-              Send again
+              {t("auth.otp.sendAgain")}
             </Button>
           </div>
           <div
@@ -141,7 +143,7 @@ export default function AuthOtpPage() {
                 name={`otp-${index}`}
                 maxLength={1}
                 value={digit}
-                aria-label={`Digit ${index + 1} of ${OTP_LENGTH}`}
+                aria-label={t("auth.otp.digitAriaLabel", { n: index + 1, total: OTP_LENGTH })}
                 className={otpCellClassName}
                 onChange={(e) => handleCellChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
@@ -151,14 +153,14 @@ export default function AuthOtpPage() {
           </div>
         </div>
         <Button type="submit" variant="default" className="w-full">
-          Sign in
+          {t("auth.otp.submit")}
         </Button>
         <p className="text-center">
           <Link
             to="/auth/email"
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
-            Enter a different email
+            {t("auth.otp.differentEmail")}
           </Link>
         </p>
       </form>

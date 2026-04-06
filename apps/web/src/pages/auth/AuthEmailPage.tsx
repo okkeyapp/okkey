@@ -4,8 +4,10 @@ import { Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { useLocale } from "../../locale/LocaleContext";
 
 export default function AuthEmailPage() {
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -14,14 +16,14 @@ export default function AuthEmailPage() {
 
   return (
     <AppShellLayout
-      title="Welcome to Okkey"
-      description="Enter your email"
+      title={t("auth.email.title")}
+      description={t("auth.email.description")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
     >
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="auth-email" className="okkey-small font-medium text-copy-primary">
-            Email
+            {t("auth.email.labelEmail")}
           </label>
           <Input
             id="auth-email"
@@ -29,23 +31,23 @@ export default function AuthEmailPage() {
             type="email"
             autoComplete="email"
             inputMode="email"
-            placeholder="me@example.com"
+            placeholder={t("auth.email.placeholderEmail")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
         <Button type="submit" variant="default" className="w-full">
-          Sign in
+          {t("auth.email.submit")}
         </Button>
         <p className="text-center text-xs leading-4 text-copy-secondary">
-          By clicking &quot;Sign in&quot;, you agree to our{" "}
+          {t("auth.email.legalBeforeLink")}
           <Link
             to="/privacy"
             className="text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
-            Privacy policy
+            {t("auth.email.privacyLink")}
           </Link>
-          .
+          {t("auth.email.legalAfterLink")}
         </p>
       </form>
     </AppShellLayout>

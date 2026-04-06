@@ -4,6 +4,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { useLocale } from "../../locale/LocaleContext";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
 
@@ -25,6 +26,7 @@ function RequirementCrossIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function AuthRegistrationPage() {
+  const { t } = useLocale();
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email") ?? "alexzorin@okkey.app";
 
@@ -59,10 +61,11 @@ export default function AuthRegistrationPage() {
 
   return (
     <AppShellLayout
-      title="Register with Okkey"
+      title={t("auth.registration.title")}
       description={
         <>
-          You signed in with <span className="font-semibold">{email}</span>
+          {t("auth.registration.descriptionBeforeEmail")}{" "}
+          <span className="font-semibold">{email}</span>
         </>
       }
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
@@ -70,7 +73,7 @@ export default function AuthRegistrationPage() {
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="auth-reg-first-name" className="okkey-small font-medium text-copy-primary">
-            First name
+            {t("auth.registration.firstName")}
           </label>
           <Input
             id="auth-reg-first-name"
@@ -83,7 +86,7 @@ export default function AuthRegistrationPage() {
         </div>
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="auth-reg-last-name" className="okkey-small font-medium text-copy-primary">
-            Last name
+            {t("auth.registration.lastName")}
           </label>
           <Input
             id="auth-reg-last-name"
@@ -96,7 +99,7 @@ export default function AuthRegistrationPage() {
         </div>
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="auth-reg-master-password" className="okkey-small font-medium text-copy-primary">
-            Master password
+            {t("auth.registration.masterPassword")}
           </label>
           <Input
             id="auth-reg-master-password"
@@ -106,14 +109,11 @@ export default function AuthRegistrationPage() {
             value={masterPassword}
             onChange={(e) => setMasterPassword(e.target.value)}
           />
-          <p className="okkey-small text-copy-secondary">
-            This is the only password you need to remember. You will use it to unlock your vault. If you lose your
-            master password, it cannot be recovered.
-          </p>
+          <p className="okkey-small text-copy-secondary">{t("auth.registration.masterPasswordHint")}</p>
         </div>
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="auth-reg-repeat-master-password" className="okkey-small font-medium text-copy-primary">
-            Repeat master password
+            {t("auth.registration.repeatMasterPassword")}
           </label>
           <Input
             id="auth-reg-repeat-master-password"
@@ -125,7 +125,7 @@ export default function AuthRegistrationPage() {
           />
         </div>
         <Alert variant="default">
-          <AlertTitle className="text-foreground">Before you register</AlertTitle>
+          <AlertTitle className="text-foreground">{t("auth.registration.requirementsTitle")}</AlertTitle>
           <AlertDescription>
             <ul className="mt-3 space-y-1">
               <li className="flex gap-2.5">
@@ -136,7 +136,9 @@ export default function AuthRegistrationPage() {
                     <RequirementCrossIcon className="size-4 text-destructive" />
                   )}
                 </span>
-                <span className={allFieldsFilled ? "text-foreground" : "text-muted-foreground"}>All fields are filled</span>
+                <span className={allFieldsFilled ? "text-foreground" : "text-muted-foreground"}>
+                  {t("auth.registration.reqAllFields")}
+                </span>
               </li>
               <li className="flex gap-2.5">
                 <span className="mt-0.5 shrink-0">
@@ -147,7 +149,7 @@ export default function AuthRegistrationPage() {
                   )}
                 </span>
                 <span className={passwordLongEnough ? "text-foreground" : "text-muted-foreground"}>
-                  Password is at least {MIN_MASTER_PASSWORD_LENGTH} characters
+                  {t("auth.registration.reqPasswordLength", { min: MIN_MASTER_PASSWORD_LENGTH })}
                 </span>
               </li>
               <li className="flex gap-2.5">
@@ -158,20 +160,22 @@ export default function AuthRegistrationPage() {
                     <RequirementCrossIcon className="size-4 text-destructive" />
                   )}
                 </span>
-                <span className={passwordsMatch ? "text-foreground" : "text-muted-foreground"}>Passwords match</span>
+                <span className={passwordsMatch ? "text-foreground" : "text-muted-foreground"}>
+                  {t("auth.registration.reqPasswordsMatch")}
+                </span>
               </li>
             </ul>
           </AlertDescription>
         </Alert>
         <Button type="submit" variant="default" className="w-full" disabled={!isFormValid}>
-          Register
+          {t("auth.registration.submit")}
         </Button>
         <p className="text-center">
           <Link
             to="/auth/email"
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
-            Log in with a different email
+            {t("auth.registration.differentEmail")}
           </Link>
         </p>
       </form>

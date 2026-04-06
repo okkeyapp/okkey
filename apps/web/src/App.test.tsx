@@ -54,6 +54,8 @@ describe("App", () => {
     renderWithRouter(<App />, ["/unlock/password"]);
     expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
+    expect(screen.getByText("Alexander Zorin")).toBeInTheDocument();
+    expect(screen.getByText("alexzorin@okkey.app")).toBeInTheDocument();
     expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeDisabled();
     expect(screen.getByRole("link", { name: /sign out/i })).toBeInTheDocument();

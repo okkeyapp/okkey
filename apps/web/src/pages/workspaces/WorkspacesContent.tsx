@@ -2,10 +2,16 @@ import type { SVGProps } from "react";
 
 import { WorkspaceTile } from "@okkey/ui";
 
+import { useLocale } from "../../locale/LocaleContext";
+
 const YANDEX_FAVICON_URL = "https://favicon.yandex.net/favicon/yandex.ru?size=120";
 
 /** Default personal tile fill; replace with user settings when available. */
 const PERSONAL_WORKSPACE_TILE_COLOR = "#3B82F6";
+
+/** Demo workspace titles from product mock; replace with `workspace.name` from API. */
+const DEMO_WORKSPACE_TITLE_PERSONAL = "Personal";
+const DEMO_WORKSPACE_TITLE_TEAM = "Yandex team";
 
 /** Dashed “create” tile: dark outline, no filled shadow on the tile. */
 const dashedTileChrome =
@@ -35,19 +41,21 @@ function CreateWorkspaceMark(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function WorkspacesContent() {
+  const { t } = useLocale();
+
   return (
     <div className="flex w-full flex-nowrap items-start justify-center gap-4 overflow-x-auto px-1 py-3">
       <WorkspaceTile
         type="button"
-        title="Personal"
-        description="Free"
+        title={DEMO_WORKSPACE_TITLE_PERSONAL}
+        description={t("plan.free")}
         tileColor={PERSONAL_WORKSPACE_TILE_COLOR}
       />
 
       <WorkspaceTile
         type="button"
-        title="Yandex team"
-        description="Enterprise"
+        title={DEMO_WORKSPACE_TITLE_TEAM}
+        description={t("plan.enterprise")}
         imageSrc={YANDEX_FAVICON_URL}
         imageAlt=""
         business
@@ -55,13 +63,13 @@ export default function WorkspacesContent() {
 
       <button
         type="button"
-        aria-label="Create workspace"
+        aria-label={t("workspaces.createWorkspaceAria")}
         className={`flex h-[170px] w-[180px] shrink-0 flex-col items-center justify-center gap-3 rounded-xl p-6 ${dashedTileChrome} transition-[transform,box-shadow] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
       >
         <p className="okkey-body-strong text-center text-copy-primary">
-          Create
+          {t("workspaces.createLine1")}
           <br />
-          workspace
+          {t("workspaces.createLine2")}
         </p>
         <CreateWorkspaceMark className="shrink-0 text-copy-primary" />
       </button>

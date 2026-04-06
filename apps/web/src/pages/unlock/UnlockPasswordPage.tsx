@@ -1,9 +1,10 @@
-import { useMemo, useState, type FormEvent, type SVGProps } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useState, type FormEvent, type SVGProps } from "react";
+import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { useLocale } from "../../locale/LocaleContext";
 
 function AlertErrorIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -25,27 +26,41 @@ function LogOutIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function buildDisplayName(
-  givenName: string,
-  familyName: string,
-  nameParam: string | null,
-  fallback: string,
-): string {
-  const g = givenName.trim();
-  const f = familyName.trim();
-  if (g && f) return `${g} ${f}`;
-  if (nameParam?.trim()) return nameParam.trim();
-  return fallback;
+/** Until vault session provides profile, show a fixed card (no query params). */
+const UNLOCK_PLACEHOLDER_FIRST_NAME = "Alexander";
+const UNLOCK_PLACEHOLDER_LAST_NAME = "Zorin";
+const UNLOCK_PLACEHOLDER_EMAIL = "alexzorin@okkey.app";
+
+function firstLetter(value: string): string {
+  const t = value.trim();
+  if (t.length === 0) return "";
+  const ch = [...t][0];
+  return ch ?? "";
 }
 
-function buildInitials(displayName: string, email: string): string {
-  const parts = displayName.trim().split(/\s+/).filter(Boolean);
+/** First letter of given name + first letter of family name; falls back if a part is missing. */
+function buildInitials(firstName: string, lastName: string, email: string): string {
+  const f = firstLetter(firstName);
+  const l = firstLetter(lastName);
+  if (f && l) {
+    return `${f.toLocaleUpperCase()}${l.toLocaleUpperCase()}`;
+  }
+
+  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  const parts = displayName.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    const a = firstLetter(parts[0]);
+    const b = firstLetter(parts[parts.length - 1]);
+    return `${a.toLocaleUpperCase()}${b.toLocaleUpperCase()}`;
   }
-  if (parts.length === 1 && parts[0].length >= 2) {
-    return parts[0].slice(0, 2).toUpperCase();
+  if (parts.length === 1) {
+    const w = parts[0];
+    const chars = [...w];
+    if (chars.length >= 2) {
+      return `${chars[0].toLocaleUpperCase()}${chars[1].toLocaleUpperCase()}`;
+    }
   }
+
   const local = email.split("@")[0] ?? "";
   if (local.length >= 2) {
     return local.slice(0, 2).toUpperCase();
@@ -54,18 +69,12 @@ function buildInitials(displayName: string, email: string): string {
 }
 
 export default function UnlockPasswordPage() {
-  const [searchParams] = useSearchParams();
-  const email = searchParams.get("email") ?? "alexzorin@okkey.app";
-  const givenName = searchParams.get("givenName") ?? searchParams.get("firstName") ?? "";
-  const familyName = searchParams.get("familyName") ?? searchParams.get("lastName") ?? "";
-  const nameParam = searchParams.get("name");
-
-  const displayName = useMemo(
-    () => buildDisplayName(givenName, familyName, nameParam, "Alexander Zorin"),
-    [givenName, familyName, nameParam],
-  );
-
-  const initials = useMemo(() => buildInitials(displayName, email), [displayName, email]);
+  const { t } = useLocale();
+  const firstName = UNLOCK_PLACEHOLDER_FIRST_NAME;
+  const lastName = UNLOCK_PLACEHOLDER_LAST_NAME;
+  const email = UNLOCK_PLACEHOLDER_EMAIL;
+  const displayName = [firstName, lastName].filter(Boolean).join(" ");
+  const initials = buildInitials(firstName, lastName, email);
 
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
@@ -77,8 +86,8 @@ export default function UnlockPasswordPage() {
 
   return (
     <AppShellLayout
-      title="Vault is locked"
-      description="Enter your master password to unlock"
+      title={t("unlock.title")}
+      description={t("unlock.description")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
     >
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
@@ -96,14 +105,14 @@ export default function UnlockPasswordPage() {
           <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 px-2.5" asChild>
             <Link to="/auth/email">
               <LogOutIcon className="size-4" />
-              Sign out
+              {t("unlock.signOut")}
             </Link>
           </Button>
         </div>
 
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="unlock-master-password" className="okkey-small font-medium text-copy-primary">
-            Master password
+            {t("unlock.masterPassword")}
           </label>
           <Input
             id="unlock-master-password"
@@ -121,13 +130,13 @@ export default function UnlockPasswordPage() {
         {showUnlockError ? (
           <Alert variant="error">
             <AlertErrorIcon className="size-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>Incorrect master password</AlertDescription>
+            <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+            <AlertDescription>{t("unlock.errorIncorrectPassword")}</AlertDescription>
           </Alert>
         ) : null}
 
         <Button type="submit" variant="default" className="w-full" disabled={masterPassword.length === 0}>
-          Unlock
+          {t("unlock.submit")}
         </Button>
 
         <p className="text-center">
@@ -135,7 +144,7 @@ export default function UnlockPasswordPage() {
             type="button"
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
-            Forgot master password?
+            {t("unlock.forgotPassword")}
           </button>
         </p>
       </form>
