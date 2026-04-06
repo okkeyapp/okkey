@@ -796,7 +796,7 @@
 "@okkey/api@file:packages/api":
   version "0.0.1"
   dependencies:
-    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-357e4c3b-6fd4-4aad-8ba6-2f0dafed37aa-1775415571292/node_modules/@okkey/types"
+    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-857acf98-5547-42f1-929c-52c858f590d9-1775498605792/node_modules/@okkey/types"
 
 "@okkey/crypto-wasm@link:./packages/crypto/dist":
   version "0.0.0"
@@ -1051,6 +1051,19 @@
   integrity sha512-Jl+bCv8HxKnlTLVrcDE8zTMJ09R9/ukw4qBs/oZClOfoQk/cOTbDn+NceXfV7j09YPVQUryJPHurafcSg6EVKA==
   dependencies:
     "@radix-ui/react-compose-refs" "1.1.2"
+
+"@radix-ui/react-switch@^1.2.6":
+  version "1.2.6"
+  resolved "https://registry.yarnpkg.com/@radix-ui/react-switch/-/react-switch-1.2.6.tgz#ff79acb831f0d5ea9216cfcc5b939912571358e3"
+  integrity sha512-bByzr1+ep1zk4VubeEVViV592vu2lHE2BZY5OnzehZqOOgogN80+mNtCqPkhn2gklJqOpxWgPoYTSnhBCqpOXQ==
+  dependencies:
+    "@radix-ui/primitive" "1.1.3"
+    "@radix-ui/react-compose-refs" "1.1.2"
+    "@radix-ui/react-context" "1.1.2"
+    "@radix-ui/react-primitive" "2.1.3"
+    "@radix-ui/react-use-controllable-state" "1.2.2"
+    "@radix-ui/react-use-previous" "1.1.1"
+    "@radix-ui/react-use-size" "1.1.1"
 
 "@radix-ui/react-use-callback-ref@1.1.1":
   version "1.1.1"

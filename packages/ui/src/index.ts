@@ -18,6 +18,7 @@ export {
 } from "./components/ui/dropdown-menu.js";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
 export { Input, type InputProps } from "./components/ui/input.js";
+export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";
 export {
   Select,
