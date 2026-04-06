@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
   Switch,
+  WorkspaceTile,
 } from "@okkey/ui";
 
 import { applyStoredTheme } from "../theme/applyTheme";
@@ -70,6 +71,8 @@ const GALLERY_FRUITS = [
 const DEV_UI_SELECT_BUTTON_VARIANTS = ["default", "secondary", "outline", "destructive", "ghost"] as const;
 
 const DEV_UI_ICON_BUTTON_VARIANTS = ["default", "secondary", "outline", "ghost", "destructive"] as const;
+
+const DEV_UI_YANDEX_FAVICON = "https://favicon.yandex.net/favicon/yandex.ru?size=120";
 
 const MOCK_USERS = [
   { id: "u1", first: "Alice", last: "Anderson", email: "alice.anderson@example.com" },
@@ -222,12 +225,12 @@ export default function DevUIGallery() {
         <section className="space-y-4">
           <h2 className="text-lg font-medium">Typography</h2>
           <div className="space-y-2 rounded-lg border border-border bg-card p-6 text-card-foreground">
-            <h3 className="text-xl font-semibold">Heading xl</h3>
+            <h3 className="okkey-heading-xl">Heading xl</h3>
             <h4 className="text-lg font-medium">Heading lg</h4>
-            <p className="text-base leading-relaxed text-muted-foreground">
+            <p className="okkey-body text-copy-secondary">
               Body: The quick brown fox jumps over the lazy dog. 01456789
             </p>
-            <p className="text-sm text-muted-foreground">Small muted caption text.</p>
+            <p className="okkey-small text-copy-secondary">Small muted caption text.</p>
           </div>
         </section>
 
@@ -773,6 +776,39 @@ export default function DevUIGallery() {
                   Search
                 </Button>
               </ControlGroup>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Workspace tile</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">tileColor</code> fills the personal-workspace SVG;{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">imageSrc</code> overrides it and shows an image;{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">business</code> adds the briefcase badge at the bottom-right.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-6 text-card-foreground">
+            <div className="flex flex-wrap items-start justify-center gap-4">
+              <WorkspaceTile type="button" title="Personal" description="Free" tileColor="#3B82F6" />
+              <WorkspaceTile type="button" title="Custom color" description="tileColor (#10B981)" tileColor="#10B981" />
+              <WorkspaceTile
+                type="button"
+                title="Yandex team"
+                description="Enterprise"
+                imageSrc={DEV_UI_YANDEX_FAVICON}
+                imageAlt=""
+                business
+              />
+              <WorkspaceTile
+                type="button"
+                title="Image only"
+                description="No business badge"
+                imageSrc={DEV_UI_YANDEX_FAVICON}
+                imageAlt=""
+              />
             </div>
           </div>
         </section>

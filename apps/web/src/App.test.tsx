@@ -20,6 +20,26 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /design system/i })).toBeInTheDocument();
   });
 
+  it.each([
+    ["/auth/email", "Sign in with email"],
+    ["/auth/otp", "Check your email"],
+    ["/auth/registration", "Create account"],
+    ["/auth/password", "Master password"],
+  ] as const)("renders auth placeholder on %s", (path, titleText) => {
+    renderWithRouter(<App />, [path]);
+    expect(screen.getByTestId("app-shell-title")).toHaveTextContent(titleText);
+    expect(screen.getByTestId("page-stub-notice")).toBeInTheDocument();
+  });
+
+  it("renders workspaces layout and workspace cards", () => {
+    renderWithRouter(<App />, ["/workspaces"]);
+    expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Welcome to Okkey");
+    expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /personal/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /yandex team/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create workspace/i })).toBeInTheDocument();
+  });
+
   function mockLocalStorage(values: Record<string, string | null>) {
     const storage = {
       getItem: (key: string) => (key in values ? values[key] : null),

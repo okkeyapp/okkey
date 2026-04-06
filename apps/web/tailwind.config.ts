@@ -43,6 +43,14 @@ const config: Config = {
           DEFAULT: "hsl(var(--popover) / <alpha-value>)",
           foreground: "hsl(var(--popover-foreground) / <alpha-value>)",
         },
+        /**
+         * Primary vs. secondary ink for prose (not accent `primary`).
+         * Named `copy` — avoid `content` here: it breaks Tailwind `@apply` / utility generation.
+         */
+        copy: {
+          primary: "hsl(var(--foreground) / <alpha-value>)",
+          secondary: "hsl(var(--muted-foreground) / <alpha-value>)",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

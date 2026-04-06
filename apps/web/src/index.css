@@ -130,3 +130,26 @@
     min-height: 100vh;
   }
 }
+
+@layer components {
+  /** Design-system type roles — use these instead of ad-hoc text-* / font-* on screens */
+  .okkey-heading-xl {
+    @apply text-xl font-semibold leading-7 tracking-tight text-copy-primary;
+  }
+
+  .okkey-body {
+    @apply text-base font-normal leading-relaxed;
+  }
+
+  .okkey-body-strong {
+    @apply text-base font-semibold leading-relaxed;
+  }
+
+  .okkey-small {
+    @apply text-sm font-normal leading-5;
+  }
+
+  .okkey-small-strong {
+    @apply text-sm font-semibold leading-5;
+  }
+}

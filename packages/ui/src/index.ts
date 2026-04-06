@@ -43,3 +43,9 @@ export {
   type MultiSelectItemProps,
   type MultiSelectProps,
 } from "./components/ui/multi-select.js";
+export {
+  PersonalWorkspaceMark,
+  WorkspaceTile,
+  type PersonalWorkspaceMarkProps,
+  type WorkspaceTileProps,
+} from "./components/ui/workspace-tile.js";
