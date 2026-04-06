@@ -15,8 +15,9 @@ export const controlGroupItemFixedClassName = "w-auto shrink-0";
 export const controlGroupClassName =
   "flex w-full min-w-0 flex-row items-stretch isolate " +
   "[&>*]:relative [&>*]:z-[1] " +
-  "[&>*:focus]:z-20 [&>*:focus-visible]:z-20 [&>*:active]:z-20 " +
-  "[&>*[data-state=open]]:z-20 " +
+  "[&>*:hover]:z-[2] " +
+  "[&>*:focus]:z-[3] [&>*:focus-visible]:z-[3] [&>*:active]:z-[3] " +
+  "[&>*[data-state=open]]:z-[3] " +
   "[&>*]:rounded-none " +
   "[&>*:first-child]:rounded-l-md " +
   "[&>*:last-child]:rounded-r-md " +
