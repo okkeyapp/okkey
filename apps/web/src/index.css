@@ -121,7 +121,7 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased tracking-normal;
     margin: 0;
     min-height: 100vh;
   }
@@ -134,22 +134,22 @@
 @layer components {
   /** Design-system type roles — use these instead of ad-hoc text-* / font-* on screens */
   .okkey-heading-xl {
-    @apply text-xl font-semibold leading-7 tracking-tight text-copy-primary;
+    @apply text-xl font-semibold leading-7 tracking-normal text-copy-primary;
   }
 
   .okkey-body {
-    @apply text-base font-normal leading-relaxed;
+    @apply text-base font-normal leading-relaxed tracking-normal;
   }
 
   .okkey-body-strong {
-    @apply text-base font-semibold leading-relaxed;
+    @apply text-base font-semibold leading-relaxed tracking-normal;
   }
 
   .okkey-small {
-    @apply text-sm font-normal leading-5;
+    @apply text-sm font-normal leading-5 tracking-normal;
   }
 
   .okkey-small-strong {
-    @apply text-sm font-semibold leading-5;
+    @apply text-sm font-semibold leading-5 tracking-normal;
   }
 }

@@ -196,7 +196,7 @@ export default function DevUIGallery() {
                 ← Home
               </Link>
             </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Design system</h1>
+            <h1 className="mt-2 text-2xl font-semibold">Design system</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Dev gallery — theme tokens and UI primitives (Okkey / shadcn)
             </p>
