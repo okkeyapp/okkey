@@ -17,6 +17,9 @@ import type {
   VaultShareUpsertRequestDto,
   VaultSharesListResponseDto,
   Vault,
+  VaultUnlockBootstrapResponseDto,
+  Workspace,
+  AccountProfileResponseDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -51,7 +54,8 @@ export class ApiClient {
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // Native `fetch` must be bound; storing it unbound causes "Illegal invocation" when called.
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.defaultHeaders = options.defaultHeaders ?? {};
   }
 
@@ -85,7 +89,16 @@ export class ApiClient {
       throw new ApiRequestError(res.status, parseCoreApiErrorBody(raw, res));
     }
 
-    return (await res.json()) as T;
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new SyntaxError("empty API response body");
+    }
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      throw new SyntaxError("API response is not valid JSON");
+    }
   }
 }
 
@@ -140,6 +153,19 @@ export class CoreApiClient {
   constructor(private readonly api: ApiClient, options: CoreApiClientOptions = {}) {
     this.cryptoRolloutMode = options.cryptoRolloutMode ?? "compat";
     this.capabilities = options.capabilities;
+  }
+
+  listWorkspaces(): Promise<Workspace[]> {
+    return this.api.get<Workspace[]>("/workspaces");
+  }
+
+  getVaultUnlockBootstrap(deviceFingerprint: string): Promise<VaultUnlockBootstrapResponseDto> {
+    const q = new URLSearchParams({ device_fingerprint: deviceFingerprint });
+    return this.api.get<VaultUnlockBootstrapResponseDto>(`/vault/unlock-bootstrap?${q.toString()}`);
+  }
+
+  getAccountProfile(): Promise<AccountProfileResponseDto> {
+    return this.api.get<AccountProfileResponseDto>("/account/profile");
   }
 
   listWorkspaceVaults(workspaceId: string): Promise<Vault[]> {

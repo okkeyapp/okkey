@@ -36,6 +36,24 @@ export const USER_IDENTITY_ENCRYPTED_PRIVATE_MIN_PAYLOAD_BYTES =
 
 export const USER_IDENTITY_SK_AAD = new TextEncoder().encode("okkey-user-identity-sk-v2");
 
+/** Browser-safe base64 (no Node `Buffer`; used on the registration / unlock web path). */
+function uint8ToStandardBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
+}
+
+function standardBase64ToUint8(b64: string): Uint8Array {
+  const bin = atob(b64.trim());
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    out[i] = bin.charCodeAt(i) & 0xff;
+  }
+  return out;
+}
+
 let wasmReady: Promise<void> | undefined;
 
 async function ensureWasm(): Promise<void> {
@@ -152,7 +170,7 @@ export function userIdentityEncryptedBlobDtoFromPayload(payloadBytes: Uint8Array
   return {
     crypto_version: OKKEY_CRYPTO_PROFILE_V2,
     algorithm: USER_IDENTITY_WRITE_CONFIG.encryptedBlobAlgorithm,
-    payload: Buffer.from(payloadBytes).toString("base64"),
+    payload: uint8ToStandardBase64(payloadBytes),
     meta: {
       entity: "user_private_key_bundle",
       bundle_version: 2,
@@ -171,7 +189,7 @@ export async function decryptUserIdentityFromEncryptedBlob(
   mlkem768DecapsulationKey: Uint8Array;
 }> {
   await ensureWasm();
-  const blobBytes = Uint8Array.from(Buffer.from(encryptedPayloadBase64.trim(), "base64"));
+  const blobBytes = standardBase64ToUint8(encryptedPayloadBase64);
   try {
     return await decryptUserIdentityPrivateBundle(vaultKey, blobBytes);
   } finally {

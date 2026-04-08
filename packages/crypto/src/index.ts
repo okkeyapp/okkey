@@ -195,6 +195,7 @@ export { CryptoSdkError };
 
 export {
   buildRegistrationCryptoArtifacts,
+  reconstructVaultKeyWithMasterPassword,
   OKKEY_PASSWORD_KDF_PARAMS_V1,
   OKKEY_PASSWORD_KDF_PARAMS_VERSION,
   registrationArtifactsToWire,

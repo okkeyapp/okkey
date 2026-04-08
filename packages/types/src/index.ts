@@ -491,6 +491,8 @@ export interface RegisterCompleteRequestDto {
   device_share: string;
   device_fingerprint: string;
   device_name: string;
+  /** Optional label for default workspace + personal vault; server default is `Personal`. */
+  personal_workspace_name?: string;
   platform?: string;
   os_name?: string;
   os_version?: string;
@@ -498,6 +500,9 @@ export interface RegisterCompleteRequestDto {
   client_type?: string;
   user_agent?: string;
   metadata?: RegisterCompleteMetadataDto;
+  /** Optional; stored server-side to restore UI after clearing browser storage. */
+  first_name?: string;
+  last_name?: string;
 }
 
 /** `POST /auth/register/complete` success body (snake_case on wire). */
@@ -507,4 +512,23 @@ export interface RegisterCompleteResponseDto {
   vault_id: UUID;
   device_id: UUID;
   device_status: "trusted";
+  access_token: string;
+  expires_at: string;
+  token_type: "Bearer";
+}
+
+/** `GET /account/profile` (Bearer) — non-sensitive display fields for UI. */
+export interface AccountProfileResponseDto {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
+/** `GET /vault/unlock-bootstrap?device_fingerprint=...` (Bearer) — split-key material to re-hydrate the client. */
+export interface VaultUnlockBootstrapResponseDto {
+  server_key_share: string;
+  device_share: string;
+  password_kdf_salt: string;
+  password_kdf_params_version: number;
+  encrypted_private_key: EncryptedBlobDto;
 }
