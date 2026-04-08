@@ -40,6 +40,7 @@
     "smtp-server": "^3.14.0"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "typescript": "^5.9.3"
   },
   "scripts": {
@@ -62,8 +63,10 @@
     "fuzz:crypto:install": "PATH=\"$HOME/.cargo/bin:$PATH\" cargo install cargo-fuzz --locked",
     "fuzz:crypto:quick": "PATH=\"$HOME/.cargo/bin:$PATH\" RUST_NIGHTLY_TOOLCHAIN=\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" rustup toolchain install \"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" --profile minimal && cd rust/crypto-engine && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decode -- -seed=1337 -max_total_time=20 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decrypt -- -seed=1338 -max_total_time=20 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run signature_verify -- -seed=1339 -max_total_time=20",
     "fuzz:crypto:extended": "PATH=\"$HOME/.cargo/bin:$PATH\" RUST_NIGHTLY_TOOLCHAIN=\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" rustup toolchain install \"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" --profile minimal && cd rust/crypto-engine && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decode -- -seed=202601 -max_total_time=300 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run hybrid_decrypt -- -seed=202602 -max_total_time=300 && PATH=\"$HOME/.cargo/bin:$PATH\" cargo +\"${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-03-20}\" fuzz run signature_verify -- -seed=202603 -max_total_time=300",
+    "dev": "yarn build:email && concurrently -n api,web -c blue,green \"yarn dev:api:serve\" \"yarn dev:web\"",
     "dev:email": "yarn --cwd packages/email-templates dev",
-    "dev:api": "yarn build:email && node --experimental-strip-types services/api/src/index.ts",
+    "dev:api:serve": "node --experimental-strip-types services/api/src/index.ts",
+    "dev:api": "yarn build:email && yarn dev:api:serve",
     "dev:web": "yarn --cwd apps/web dev",
     "build:web": "yarn --cwd apps/web build",
     "test:web": "yarn --cwd apps/web test",
