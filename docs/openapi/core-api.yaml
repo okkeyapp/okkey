@@ -241,6 +241,10 @@ components:
           type: string
         device_name:
           type: string
+        personal_workspace_name:
+          type: string
+          maxLength: 128
+          description: Optional display name for default personal workspace and vault; omit for server default "Personal"
         platform:
           type: string
         os_name:
@@ -314,6 +318,27 @@ components:
           minimum: 1
           maximum: 65535
           description: Vault crypto profile version (floor); new vaults use v2; cannot downgrade.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Workspace:
+      type: object
+      required: [id, name, ownerId, planTier, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        ownerId:
+          type: string
+          format: uuid
+        planTier:
+          type: string
         createdAt:
           type: string
           format: date-time
@@ -1164,6 +1189,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /workspaces:
+    get:
+      tags: [Vaults]
+      summary: List workspaces the current user can access
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      responses:
+        "200":
+          description: Workspaces where the user is owner or member
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workspace"
         "401":
           content:
             application/json:

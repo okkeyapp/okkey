@@ -309,6 +309,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 | `device_share` | string | Yes | Base64 of **32** bytes (share **B**). |
 | `device_fingerprint` | string | Yes | Hex 32–128 chars. |
 | `device_name` | string | Yes | |
+| `personal_workspace_name` | string | No | Optional label for the default workspace and personal vault (max 128 chars after trim, no ASCII control characters). When omitted, the server uses **`Personal`**. |
 | `platform`, `os_name`, `os_version`, `app_version`, `client_type`, `user_agent` | string | No | Default `unknown`; `user_agent` falls back to HTTP `User-Agent`. |
 | `metadata` | object | No | Same optional fields as device register (override top-level per field). Includes optional `crypto_capable: boolean` capability hint used by rollout policy in strict mode. |
 
@@ -322,7 +323,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 | `device_id` | uuid string |
 | `device_status` | `"trusted"` |
 
-Side effects (single DB transaction): insert user (with KDF columns), default workspace `"Personal"`, personal vault `"Personal"`, first device with status **trusted**.
+Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**.
 
 **Errors:**
 
@@ -346,6 +347,29 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 ## Vault metadata
 
 Returns **non-secret** vault rows. No ciphertext.
+
+### `GET /workspaces`
+
+Lists workspaces the authenticated user may access (owner or `workspace_members` row).
+
+**Auth:** Prefer `Authorization: Bearer <access_token>`. Optional `X-User-Id` only when enabled by environment for non-production / dev.
+
+**Response `200`:** JSON array of workspace objects:
+
+| Field | Type | Notes |
+|--------|------|--------|
+| `id` | string | UUID |
+| `name` | string | |
+| `ownerId` | string | UUID |
+| `planTier` | string | e.g. `FREE` |
+| `createdAt` | string | ISO-8601 UTC |
+| `updatedAt` | string | ISO-8601 UTC |
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
 
 ### `GET /workspaces/:workspaceId/vaults`
 
