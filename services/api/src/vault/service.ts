@@ -1,6 +1,7 @@
 import type {
   VaultRecord,
   VaultsRepository,
+  WorkspaceRecord,
   WorkspacesRepository,
 } from "../storage/repositories.ts";
 
@@ -20,7 +21,7 @@ export interface VaultServiceDeps {
     VaultsRepository,
     "findById" | "listAccessibleByWorkspace" | "canReadVault"
   >;
-  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "listAccessibleByUser">;
 }
 
 export class VaultService {
@@ -30,6 +31,10 @@ export class VaultService {
   constructor(deps: VaultServiceDeps) {
     this.vaults = deps.vaults;
     this.workspaces = deps.workspaces;
+  }
+
+  async listAccessibleWorkspaces(userId: string): Promise<WorkspaceRecord[]> {
+    return this.workspaces.listAccessibleByUser(userId);
   }
 
   async listWorkspaceVaults(

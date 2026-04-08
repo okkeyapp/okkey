@@ -14,6 +14,7 @@ test("listWorkspaceVaults returns vaults for accessible workspace", async () => 
         updatedAt: "",
       }),
       hasAccess: async () => true,
+      listAccessibleByUser: async () => [],
     },
     vaults: {
       listAccessibleByWorkspace: async () => [
@@ -43,6 +44,7 @@ test("getVault returns 404 when vault missing", async () => {
     workspaces: {
       findById: async () => null,
       hasAccess: async () => false,
+      listAccessibleByUser: async () => [],
     },
     vaults: {
       findById: async () => null,
@@ -63,6 +65,7 @@ test("getVault returns 403 when user has no access", async () => {
     workspaces: {
       findById: async () => null,
       hasAccess: async () => false,
+      listAccessibleByUser: async () => [],
     },
     vaults: {
       findById: async () => ({
@@ -85,4 +88,31 @@ test("getVault returns 403 when user has no access", async () => {
     (error: unknown) =>
       error instanceof VaultServiceError && error.code === "ACCESS_DENIED",
   );
+});
+
+test("listAccessibleWorkspaces delegates to workspaces repository", async () => {
+  const ws = {
+    id: "w1",
+    name: "Personal",
+    ownerId: "u1",
+    planTier: "FREE",
+    createdAt: "2020-01-01T00:00:00.000Z",
+    updatedAt: "2020-01-01T00:00:00.000Z",
+  };
+  const service = new VaultService({
+    workspaces: {
+      findById: async () => null,
+      hasAccess: async () => false,
+      listAccessibleByUser: async (userId: string) => (userId === "u1" ? [ws] : []),
+    },
+    vaults: {
+      findById: async () => null,
+      canReadVault: async () => false,
+      listAccessibleByWorkspace: async () => [],
+    },
+  });
+
+  const result = await service.listAccessibleWorkspaces("u1");
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, "w1");
 });

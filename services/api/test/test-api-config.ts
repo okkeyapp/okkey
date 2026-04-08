@@ -1,4 +1,19 @@
 import type { ApiConfig } from "../src/config.ts";
+import type { SessionService } from "../src/session/service.ts";
+
+/** Deterministic session minting for `RegistrationService` unit tests. */
+export function createMockSessionService(): Pick<SessionService, "createSession"> {
+  let seq = 0;
+  return {
+    async createSession(userId: string) {
+      seq += 1;
+      return {
+        accessToken: `mock-access-token-${userId}-${seq}`,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+    },
+  };
+}
 
 /** Full `ApiConfig` for route/service unit tests (no missing keys after env changes). */
 export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {

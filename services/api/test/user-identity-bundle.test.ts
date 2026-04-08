@@ -9,6 +9,7 @@ import { authStateRedisKey, AuthService } from "../src/auth/service.ts";
 import { loadConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationService } from "../src/registration/service.ts";
+import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
 import {
   buildRegistrationCryptoArtifacts,
@@ -111,11 +112,17 @@ test("integration: registration + first unlock decrypts stored hybrid identity b
     config,
   });
 
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService,
     config,
   });
 

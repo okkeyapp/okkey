@@ -22,6 +22,11 @@ export interface RegistrationBundleInput {
   userAgent: string;
   requestIp: string;
   nowIso: string;
+  /** Default personal workspace + vault label; server default is "Personal". */
+  personalWorkspaceName?: string;
+  /** Optional display name fields (stored server-side for UX after client storage loss). */
+  firstName?: string | null;
+  lastName?: string | null;
 }
 
 export interface RegistrationBundleResult {
@@ -44,9 +49,11 @@ export async function insertRegistrationBundle(
         encrypted_private_key,
         server_key_share,
         password_kdf_salt,
-        password_kdf_params_version
+        password_kdf_params_version,
+        first_name,
+        last_name
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
     `,
     [
@@ -57,6 +64,8 @@ export async function insertRegistrationBundle(
       Buffer.from(input.serverKeyShare),
       Buffer.from(input.passwordKdfSalt),
       input.passwordKdfParamsVersion,
+      input.firstName ?? null,
+      input.lastName ?? null,
     ],
   );
   const userId = userRows[0]?.id;
@@ -64,13 +73,15 @@ export async function insertRegistrationBundle(
     throw new Error("user insert returned no id");
   }
 
+  const workspaceLabel = input.personalWorkspaceName?.trim() || "Personal";
+
   const workspaceRows = await tx.query<{ id: string }>(
     `
       INSERT INTO workspaces (name, owner_id, plan_tier)
       VALUES ($1, $2, 'FREE')
       RETURNING id
     `,
-    ["Personal", userId],
+    [workspaceLabel, userId],
   );
   const workspaceId = workspaceRows[0]?.id;
   if (!workspaceId) {
@@ -83,7 +94,7 @@ export async function insertRegistrationBundle(
       VALUES ($1, $2, true, $3, $4)
       RETURNING id
     `,
-    [workspaceId, "Personal", userId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
+    [workspaceId, workspaceLabel, userId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
   );
   const vaultId = vaultRows[0]?.id;
   if (!vaultId) {

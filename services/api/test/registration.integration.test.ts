@@ -8,8 +8,12 @@ import { authStateRedisKey, AuthService } from "../src/auth/service.ts";
 import { loadConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
+import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
-import { ensureVaultCryptoVersionColumn } from "./two-factor-test-helpers.ts";
+import {
+  ensureUserProfileNameColumns,
+  ensureVaultCryptoVersionColumn,
+} from "./two-factor-test-helpers.ts";
 
 function createLoggerStub() {
   return {
@@ -62,6 +66,7 @@ test("integration: registration completes user, workspace, vault, trusted device
   );
   await storage.postgres.query(migration0007);
   await ensureVaultCryptoVersionColumn(storage);
+  await ensureUserProfileNameColumns(storage);
   const suffix = randomUUID();
   const email = `reg-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -79,11 +84,17 @@ test("integration: registration completes user, workspace, vault, trusted device
     config,
   });
 
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService,
     config,
   });
 
@@ -139,6 +150,8 @@ test("integration: registration completes user, workspace, vault, trusted device
     clientType: "desktop",
     userAgent: "test",
     requestIp: "127.0.0.1",
+    firstName: "Alice",
+    lastName: "Tester",
   });
 
   assert.equal(result.deviceStatus, "trusted");
@@ -149,6 +162,13 @@ test("integration: registration completes user, workspace, vault, trusted device
     [email],
   );
   assert.equal(userRows.length, 1);
+
+  const nameRows = await storage.postgres.query<{ first_name: string | null; last_name: string | null }>(
+    "SELECT first_name, last_name FROM users WHERE email = $1",
+    [email],
+  );
+  assert.equal(nameRows[0]?.first_name, "Alice");
+  assert.equal(nameRows[0]?.last_name, "Tester");
 
   const devRows = await storage.postgres.query<{ status: string }>(
     "SELECT status FROM devices WHERE id = $1",
@@ -208,6 +228,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
   );
   await storage.postgres.query(migration0007b);
   await ensureVaultCryptoVersionColumn(storage);
+  await ensureUserProfileNameColumns(storage);
   const suffix = randomUUID();
   const email = `reg-parallel-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -225,11 +246,17 @@ test("integration: parallel completeRegistration creates single user", async (t)
     config,
   });
 
+  const sessionServiceParallel = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService: sessionServiceParallel,
     config,
   });
 
@@ -346,6 +373,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
   );
   await storage.postgres.query(migration0007c);
   await ensureVaultCryptoVersionColumn(storage);
+  await ensureUserProfileNameColumns(storage);
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
@@ -360,11 +388,17 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     config,
   });
 
+  const sessionServiceMissingState = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService: sessionServiceMissingState,
     config,
   });
 
@@ -437,6 +471,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
   );
   await storage.postgres.query(migration0007);
   await ensureVaultCryptoVersionColumn(storage);
+  await ensureUserProfileNameColumns(storage);
 
   const suffix = randomUUID();
   const email = `reg-strict-${suffix}@okkey.local`;
@@ -455,11 +490,17 @@ test("integration: strict rollout rejects registration without PQ-capable device
     config,
   });
 
+  const sessionServiceStrict = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
+
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService: sessionServiceStrict,
     config,
   });
 

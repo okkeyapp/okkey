@@ -3,7 +3,7 @@ import test from "node:test";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
 import { VaultSharingService, VaultSharingServiceError } from "../src/vault-sharing/service.ts";
-import { createTestApiConfig } from "./test-api-config.ts";
+import { createMockSessionService, createTestApiConfig } from "./test-api-config.ts";
 
 function createCaptureLogger() {
   const records: Array<{ level: "info" | "warn" | "error"; message: string; extra?: Record<string, unknown> }> =
@@ -64,6 +64,7 @@ test("registration gate blocks write path and emits blocked metric", async () =>
       setWithTtl: async () => {},
       del: async () => 0,
     },
+    sessionService: createMockSessionService(),
     config: createTestApiConfig({
       cryptoRolloutEnabled: true,
       cryptoRolloutState: "stop",

@@ -226,6 +226,7 @@ export function loadConfig(): ApiConfig {
     deployEnv,
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
+    /** Comma-separated browser origins, or `*` (reflects request Origin when listed). */
     corsOrigin: process.env.CORS_ORIGIN ?? "*",
     databaseUrl:
       process.env.DATABASE_URL ?? "postgresql://okkey:okkey@localhost:5432/okkey",

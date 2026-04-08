@@ -79,6 +79,9 @@ function createRegistrationStub(
         vaultId: "v1",
         deviceId: "d1",
         deviceStatus: "trusted",
+        accessToken: "tok-reg-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        tokenType: "Bearer" as const,
       };
     },
   } as unknown as RegistrationService;
@@ -122,6 +125,15 @@ test("POST /auth/register/complete validates auth_state_id", async () => {
   assert.equal(payload.error, "REGISTRATION_BAD_REQUEST");
 });
 
+test("POST /auth/register/complete rejects invalid personal_workspace_name", async () => {
+  const body = validRegisterBody();
+  body.personal_workspace_name = `${"x".repeat(129)}`;
+  const res = await dispatch({ body });
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "REGISTRATION_BAD_REQUEST");
+});
+
 test("POST /auth/register/complete maps RegistrationError", async () => {
   const res = await dispatch({
     registrationService: createRegistrationStub(async () => {
@@ -139,6 +151,9 @@ const REGISTER_SUCCESS_KEYS = new Set([
   "vault_id",
   "device_id",
   "device_status",
+  "access_token",
+  "expires_at",
+  "token_type",
 ]);
 
 test("POST /auth/register/complete success exposes only public ids (no ciphertext shares)", async () => {

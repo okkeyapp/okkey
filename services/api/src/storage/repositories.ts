@@ -110,12 +110,73 @@ export class UsersRepository {
     return rows[0] ? mapUser(rows[0]) : null;
   }
 
+  /** Email + optional display names for authenticated client UI (not cryptographic). */
+  async loadAccountProfile(userId: string): Promise<{
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  } | null> {
+    const rows = await this.db.query<{
+      email: string;
+      first_name: string | null;
+      last_name: string | null;
+    }>(
+      `
+        SELECT email, first_name, last_name
+        FROM users
+        WHERE id = $1::uuid
+      `,
+      [userId],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      email: row.email,
+      firstName: row.first_name,
+      lastName: row.last_name,
+    };
+  }
+
   async isTwoFactorEnabled(userId: string): Promise<boolean> {
     const rows = await this.db.query<{ enabled: boolean }>(
       "SELECT (two_factor_enabled_at IS NOT NULL) AS enabled FROM users WHERE id = $1",
       [userId],
     );
     return Boolean(rows[0]?.enabled);
+  }
+
+  /** Split-key + identity blob for re-hydrating a client after local storage was cleared (Bearer required). */
+  async loadVaultUnlockRow(userId: string): Promise<{
+    encryptedPrivateKey: Uint8Array;
+    serverKeyShare: Uint8Array;
+    passwordKdfSalt: Uint8Array;
+    passwordKdfParamsVersion: number;
+  } | null> {
+    const rows = await this.db.query<{
+      encrypted_private_key: Buffer;
+      server_key_share: Buffer;
+      password_kdf_salt: Buffer;
+      password_kdf_params_version: number;
+    }>(
+      `
+        SELECT encrypted_private_key, server_key_share, password_kdf_salt, password_kdf_params_version
+        FROM users
+        WHERE id = $1::uuid
+      `,
+      [userId],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      encryptedPrivateKey: Uint8Array.from(row.encrypted_private_key),
+      serverKeyShare: Uint8Array.from(row.server_key_share),
+      passwordKdfSalt: Uint8Array.from(row.password_kdf_salt),
+      passwordKdfParamsVersion: row.password_kdf_params_version,
+    };
   }
 
   async setTwoFactorEnabled(userId: string, enabled: boolean): Promise<void> {
@@ -188,6 +249,29 @@ export class WorkspacesRepository {
         ORDER BY created_at ASC
       `,
       [ownerId],
+    );
+    return rows.map(mapWorkspace);
+  }
+
+  /** Workspaces where the user is owner or a workspace member (deduplicated). */
+  async listAccessibleByUser(userId: string): Promise<WorkspaceRecord[]> {
+    const rows = await this.db.query<
+      BaseRow & { name: string; owner_id: string; plan_tier: string }
+    >(
+      `
+        SELECT id, name, owner_id, plan_tier, created_at, updated_at
+        FROM (
+          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.created_at, w.updated_at
+          FROM workspaces w
+          WHERE w.owner_id = $1
+          UNION
+          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.created_at, w.updated_at
+          FROM workspaces w
+          INNER JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = $1
+        ) sub
+        ORDER BY sub.created_at ASC
+      `,
+      [userId],
     );
     return rows.map(mapWorkspace);
   }
@@ -592,6 +676,59 @@ export class DevicesRepository {
     } catch (error) {
       throw toUniqueError(error);
     }
+  }
+
+  /**
+   * Trusted device_share (B) for unlock bootstrap.
+   * If `fingerprint` matches a trusted row, use it; else if the user has exactly one trusted device, use that row
+   * (covers cleared localStorage where a new random fingerprint was generated).
+   */
+  async findTrustedDeviceShareForUnlock(
+    userId: string,
+    fingerprint: string | null,
+  ): Promise<Uint8Array | null> {
+    const norm = fingerprint?.trim().toLowerCase() ?? null;
+    if (norm && /^[0-9a-f]{64}$/.test(norm)) {
+      const rows = await this.db.query<{ device_share: Buffer }>(
+        `
+          SELECT device_share
+          FROM devices
+          WHERE user_id = $1::uuid
+            AND device_fingerprint = $2
+            AND status = 'trusted'
+          ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
+          LIMIT 1
+        `,
+        [userId, norm],
+      );
+      if (rows[0]) {
+        return Uint8Array.from(rows[0].device_share);
+      }
+    }
+
+    const countRows = await this.db.query<{ n: string }>(
+      `
+        SELECT COUNT(*)::text AS n
+        FROM devices
+        WHERE user_id = $1::uuid AND status = 'trusted'
+      `,
+      [userId],
+    );
+    const n = Number(countRows[0]?.n ?? 0);
+    if (n !== 1) {
+      return null;
+    }
+
+    const rows = await this.db.query<{ device_share: Buffer }>(
+      `
+        SELECT device_share
+        FROM devices
+        WHERE user_id = $1::uuid AND status = 'trusted'
+        LIMIT 1
+      `,
+      [userId],
+    );
+    return rows[0] ? Uint8Array.from(rows[0].device_share) : null;
   }
 
   async isTrustedDevice(userId: string, deviceId: string): Promise<boolean> {

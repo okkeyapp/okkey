@@ -109,7 +109,7 @@ function setupAuthService(params?: {
     generateId: () => `id-${nextId++}`,
   });
 
-  return { service, sentEmails };
+  return { service, sentEmails, redis };
 }
 
 test("startEmailLogin sends normalized email and 6-digit code", async () => {
@@ -125,6 +125,26 @@ test("startEmailLogin sends normalized email and 6-digit code", async () => {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "user@example.com");
   assert.equal(sentEmails[0].code, "654321");
+});
+
+test("startEmailLogin reuses active challenge for same email without sending again", async () => {
+  const { service, sentEmails } = setupAuthService({ generatedCode: "111000" });
+
+  const first = await service.startEmailLogin({
+    email: "reuse@example.com",
+    requestIp: "127.0.0.1",
+  });
+  assert.equal(sentEmails.length, 1);
+
+  const second = await service.startEmailLogin({
+    email: "reuse@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(second.challengeId, first.challengeId);
+  assert.equal(second.expiresAt, first.expiresAt);
+  assert.equal(second.resendAvailableAt, first.resendAvailableAt);
+  assert.equal(sentEmails.length, 1);
 });
 
 test("resendEmailCode blocks resend before cooldown", async () => {
@@ -237,11 +257,19 @@ test("confirmEmailCode enforces max attempts", async () => {
 });
 
 test("startEmailLogin enforces email rate limit", async () => {
-  const { service } = setupAuthService({
+  const { service, redis } = setupAuthService({
     configOverrides: {
       authRateLimitStartPerEmail: 1,
       authRateLimitStartPerIp: 10,
+      authCodeTtlSeconds: 300,
     },
+  });
+
+  const t0 = redis.now().getTime();
+
+  await service.startEmailLogin({
+    email: "user@example.com",
+    requestIp: "127.0.0.1",
   });
 
   await service.startEmailLogin({
@@ -249,6 +277,7 @@ test("startEmailLogin enforces email rate limit", async () => {
     requestIp: "127.0.0.1",
   });
 
+  redis.setNow(t0 + 400_000);
   await assert.rejects(
     () =>
       service.startEmailLogin({

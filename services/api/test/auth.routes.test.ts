@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { AuthError, type AuthService } from "../src/auth/service.ts";
+import { EmailTemplateError } from "../src/email/errors.ts";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
@@ -90,6 +91,24 @@ test("POST /auth/email/start returns challenge", async () => {
   assert.equal(res.statusCode, 200);
   const payload = JSON.parse(res.body) as { challengeId: string };
   assert.equal(payload.challengeId, "c1");
+});
+
+test("POST /auth/email/start maps EmailTemplateError to 503", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/auth/email/start",
+    body: { email: "user@example.com" },
+    headers: { "x-forwarded-for": "127.0.0.1" },
+    authService: createAuthStub({
+      startEmailLogin: async () => {
+        throw new EmailTemplateError("EMAIL_SEND_FAILED", "smtp down", {});
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 503);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "EMAIL_SEND_FAILED");
 });
 
 test("POST /auth/email/start validates email required", async () => {

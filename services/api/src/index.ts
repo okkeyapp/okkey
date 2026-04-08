@@ -11,6 +11,7 @@ import { SessionService } from "./session/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
+import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
 
@@ -49,12 +50,17 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService,
     config,
     log: logger,
   });
   const vaultService = new VaultService({
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
+  });
+  const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
+    users: storage.repositories.users,
+    devices: storage.repositories.devices,
   });
   const vaultSharingService = new VaultSharingService({
     db: storage.postgres,
@@ -88,7 +94,9 @@ async function main(): Promise<void> {
     readyCheck: () => storage.ping(),
     authService,
     registrationService,
+    usersRepository: storage.repositories.users,
     vaultService,
+    vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,
     deviceService,

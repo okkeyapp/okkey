@@ -18,6 +18,7 @@ import {
   recordCryptoOperationOutcome,
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
+import type { SessionService } from "../session/service.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
@@ -69,6 +70,10 @@ export interface RegisterCompleteInput {
   userAgent: string;
   requestIp: string;
   deviceCryptoCapable?: boolean;
+  /** When set, used as workspace and personal vault name instead of default "Personal". */
+  personalWorkspaceName?: string;
+  firstName?: string | null;
+  lastName?: string | null;
 }
 
 export interface RegisterCompleteResult {
@@ -77,6 +82,9 @@ export interface RegisterCompleteResult {
   vaultId: string;
   deviceId: string;
   deviceStatus: "trusted";
+  accessToken: string;
+  expiresAt: string;
+  tokenType: "Bearer";
 }
 
 export interface RegistrationServiceDeps {
@@ -88,6 +96,7 @@ export interface RegistrationServiceDeps {
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
     del(key: string): Promise<number>;
   };
+  sessionService: Pick<SessionService, "createSession">;
   config: ApiConfig;
   now?: () => Date;
   log?: Logger;
@@ -102,6 +111,7 @@ export class RegistrationService {
   private readonly users: Pick<UsersRepository, "findByEmail">;
   private readonly postgres: PostgresDatabase;
   private readonly redis: RegistrationServiceDeps["redis"];
+  private readonly sessionService: Pick<SessionService, "createSession">;
   private readonly config: ApiConfig;
   private readonly now: () => Date;
   private readonly log: Logger | undefined;
@@ -111,9 +121,35 @@ export class RegistrationService {
     this.users = deps.users;
     this.postgres = deps.postgres;
     this.redis = deps.redis;
+    this.sessionService = deps.sessionService;
     this.config = deps.config;
     this.now = deps.now ?? (() => new Date());
     this.log = deps.log;
+  }
+
+  /** Idempotent cache may omit session fields (older entries); mint a session when missing. */
+  private async ensureSessionOnRegisterResult(
+    base: Omit<RegisterCompleteResult, "accessToken" | "expiresAt" | "tokenType"> &
+      Partial<Pick<RegisterCompleteResult, "accessToken" | "expiresAt" | "tokenType">>,
+  ): Promise<RegisterCompleteResult> {
+    if (
+      base.accessToken &&
+      base.expiresAt &&
+      base.tokenType === "Bearer"
+    ) {
+      return base as RegisterCompleteResult;
+    }
+    const session = await this.sessionService.createSession(base.userId);
+    return {
+      userId: base.userId,
+      workspaceId: base.workspaceId,
+      vaultId: base.vaultId,
+      deviceId: base.deviceId,
+      deviceStatus: base.deviceStatus,
+      accessToken: session.accessToken,
+      expiresAt: session.expiresAt,
+      tokenType: "Bearer",
+    };
   }
 
   async completeRegistration(input: RegisterCompleteInput): Promise<RegisterCompleteResult> {
@@ -157,7 +193,7 @@ export class RegistrationService {
             outcome: "success",
           });
           stopTimer();
-          return parsed;
+          return await this.ensureSessionOnRegisterResult(parsed);
         }
       } catch {
         /* fall through */
@@ -216,15 +252,22 @@ export class RegistrationService {
           userAgent: input.userAgent,
           requestIp: input.requestIp,
           nowIso,
+          personalWorkspaceName: input.personalWorkspaceName,
+          firstName: input.firstName ?? null,
+          lastName: input.lastName ?? null,
         });
       });
 
+      const session = await this.sessionService.createSession(bundle.userId);
       const result: RegisterCompleteResult = {
         userId: bundle.userId,
         workspaceId: bundle.workspaceId,
         vaultId: bundle.vaultId,
         deviceId: bundle.deviceId,
         deviceStatus: "trusted",
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt,
+        tokenType: "Bearer",
       };
 
       await this.redis.setWithTtl(

@@ -107,6 +107,11 @@ function challengeKey(id: string): string {
   return `auth:challenge:${id}`;
 }
 
+/** Maps normalized email → active challenge id (same TTL as challenge) to avoid duplicate sends on restart. */
+function emailActiveChallengeKey(email: string): string {
+  return `auth:email:active-challenge:${email}`;
+}
+
 export function authStateRedisKey(id: string): string {
   return `auth:state:${id}`;
 }
@@ -136,6 +141,19 @@ export class AuthService {
       throw new AuthError("AUTH_EMAIL_INVALID", 400, "invalid email");
     }
 
+    const mappedId = await this.redis.get(emailActiveChallengeKey(email));
+    if (mappedId) {
+      const existing = await this.peekValidChallenge(mappedId);
+      if (existing && existing.email === email) {
+        return {
+          challengeId: existing.id,
+          expiresAt: existing.expiresAt,
+          resendAvailableAt: existing.resendAvailableAt,
+        };
+      }
+      await this.redis.del(emailActiveChallengeKey(email));
+    }
+
     await this.consumeStartRateLimits(email, input.requestIp);
 
     const now = this.now();
@@ -158,6 +176,11 @@ export class AuthService {
     await this.redis.setWithTtl(
       challengeKey(challengeId),
       JSON.stringify(challenge),
+      this.config.authCodeTtlSeconds,
+    );
+    await this.redis.setWithTtl(
+      emailActiveChallengeKey(email),
+      challengeId,
       this.config.authCodeTtlSeconds,
     );
 
@@ -221,6 +244,11 @@ export class AuthService {
       JSON.stringify(updated),
       this.config.authCodeTtlSeconds,
     );
+    await this.redis.setWithTtl(
+      emailActiveChallengeKey(updated.email),
+      updated.id,
+      this.config.authCodeTtlSeconds,
+    );
 
     const account = await this.users.findByEmail(updated.email);
     await this.emailTemplates.sendAuthEmailCode({
@@ -270,12 +298,12 @@ export class AuthService {
         ...challenge,
         attemptsLeft,
       };
-      await this.redis.setWithTtl(
-        challengeKey(challenge.id),
-        JSON.stringify(updated),
-        ttlSecondsUntil(updated.expiresAt, this.now()),
-      );
+      const ttlBad = ttlSecondsUntil(updated.expiresAt, this.now());
+      await this.redis.setWithTtl(challengeKey(challenge.id), JSON.stringify(updated), ttlBad);
+      await this.redis.setWithTtl(emailActiveChallengeKey(challenge.email), challenge.id, ttlBad);
       if (attemptsLeft <= 0) {
+        await this.redis.del(challengeKey(challenge.id));
+        await this.redis.del(emailActiveChallengeKey(challenge.email));
         throw new AuthError(
           "AUTH_CODE_ATTEMPTS_EXCEEDED",
           429,
@@ -288,6 +316,7 @@ export class AuthService {
     }
 
     await this.redis.del(challengeKey(challenge.id));
+    await this.redis.del(emailActiveChallengeKey(challenge.email));
 
     const existingUser: UserRecord | null = await this.users.findByEmail(
       challenge.email,
@@ -324,19 +353,31 @@ export class AuthService {
     };
   }
 
-  private async loadChallenge(challengeId: string): Promise<AuthChallenge> {
+  private async peekValidChallenge(challengeId: string): Promise<AuthChallenge | null> {
     const raw = await this.redis.get(challengeKey(challengeId));
     if (!raw) {
-      throw new AuthError("AUTH_CODE_EXPIRED", 400, "auth code expired");
+      return null;
     }
-
     const challenge = JSON.parse(raw) as AuthChallenge;
     const now = this.now();
     if (now.getTime() > new Date(challenge.expiresAt).getTime()) {
       await this.redis.del(challengeKey(challengeId));
+      await this.redis.del(emailActiveChallengeKey(challenge.email));
+      return null;
+    }
+    if (challenge.attemptsLeft <= 0) {
+      await this.redis.del(challengeKey(challengeId));
+      await this.redis.del(emailActiveChallengeKey(challenge.email));
+      return null;
+    }
+    return challenge;
+  }
+
+  private async loadChallenge(challengeId: string): Promise<AuthChallenge> {
+    const challenge = await this.peekValidChallenge(challengeId);
+    if (!challenge) {
       throw new AuthError("AUTH_CODE_EXPIRED", 400, "auth code expired");
     }
-
     return challenge;
   }
 

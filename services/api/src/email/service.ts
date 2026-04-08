@@ -45,11 +45,39 @@ export function buildEmailAppPathUrl(publicAppBaseUrl: string, path: string): st
   return `${base}${normalizedPath}`;
 }
 
+export type LoggerEmailSenderOptions = {
+  /**
+   * When true, log the plain-text body (e.g. OTP) alongside metadata.
+   * See {@link shouldLogPlainTextForLoggerProvider} for when this is enabled for `EMAIL_PROVIDER=logger`.
+   */
+  includePlainTextBody?: boolean;
+};
+
+function shouldLogPlainTextForLoggerProvider(config: ApiConfig): boolean {
+  if (config.emailProvider !== "logger") {
+    return false;
+  }
+  const flag = process.env.EMAIL_LOG_PLAINTEXT;
+  if (flag !== undefined) {
+    const v = flag.toLowerCase().trim();
+    if (v === "false" || v === "0" || v === "no") {
+      return false;
+    }
+    if (v === "true" || v === "1" || v === "yes") {
+      return true;
+    }
+  }
+  // Local stacks often use NODE_ENV=production but DEPLOY_ENV=dev; real prod should use deployEnv=prod.
+  return config.deployEnv === "dev" || config.nodeEnv !== "production";
+}
+
 export class LoggerEmailSender implements EmailSender {
   private readonly logger: Logger;
+  private readonly includePlainTextBody: boolean;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, options: LoggerEmailSenderOptions = {}) {
     this.logger = logger;
+    this.includePlainTextBody = options.includePlainTextBody === true;
   }
 
   async send(message: EmailMessage): Promise<void> {
@@ -57,6 +85,7 @@ export class LoggerEmailSender implements EmailSender {
       to: message.to,
       from: message.from,
       subject: message.subject,
+      ...(this.includePlainTextBody ? { plainText: message.text } : {}),
     });
   }
 }
@@ -193,7 +222,9 @@ export async function createEmailSender(
 ): Promise<EmailSender> {
   switch (config.emailProvider) {
     case "logger":
-      return new LoggerEmailSender(logger);
+      return new LoggerEmailSender(logger, {
+        includePlainTextBody: shouldLogPlainTextForLoggerProvider(config),
+      });
     case "smtp":
       return SmtpEmailSender.fromConfig(config);
     case "http-api":

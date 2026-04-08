@@ -42,7 +42,7 @@ function createLoggerStub() {
 }
 
 const testConfig: ApiConfig = createTestApiConfig({
-  corsOrigin: "http://localhost:3000",
+  corsOrigin: "http://localhost:5173,http://localhost:3000",
   databaseUrl: "postgresql://okkey:okkey@localhost:5432/okkey",
   redisUrl: "redis://localhost:6379",
 });
@@ -52,10 +52,11 @@ async function dispatch(
   url: string,
   logger = createLoggerStub(),
   readyCheck: () => Promise<void> = async () => {},
+  headers?: Record<string, string>,
 ): Promise<{ res: MockResponse; logger: ReturnType<typeof createLoggerStub> }> {
   const app = createApiApp(testConfig, logger, { readyCheck });
   const handler = app.handler();
-  const req = { method, url } as IncomingMessage;
+  const req = { method, url, headers: headers ?? {} } as IncomingMessage;
   const res = new MockResponse();
 
   await handler(req, res as unknown as ServerResponse);
@@ -85,10 +86,26 @@ test("unknown route returns 404", async () => {
 });
 
 test("OPTIONS request is handled by cors middleware", async () => {
-  const { res } = await dispatch("OPTIONS", "/health");
+  const { res } = await dispatch("OPTIONS", "/health", createLoggerStub(), async () => {}, {
+    origin: "http://localhost:5173",
+  });
   assert.equal(res.statusCode, 204);
-  assert.equal(res.getHeader("access-control-allow-origin"), testConfig.corsOrigin);
+  assert.equal(res.getHeader("access-control-allow-origin"), "http://localhost:5173");
   assert.equal(res.writableEnded, true);
+});
+
+test("OPTIONS echoes matching origin from comma-separated CORS_ORIGIN", async () => {
+  const { res } = await dispatch("OPTIONS", "/health", createLoggerStub(), async () => {}, {
+    origin: "http://localhost:3000",
+  });
+  assert.equal(res.getHeader("access-control-allow-origin"), "http://localhost:3000");
+});
+
+test("OPTIONS omits Allow-Origin when Origin is not allowed", async () => {
+  const { res } = await dispatch("OPTIONS", "/health", createLoggerStub(), async () => {}, {
+    origin: "http://evil.example",
+  });
+  assert.equal(res.getHeader("access-control-allow-origin"), undefined);
 });
 
 test("error middleware catches thrown handler error and returns 500", async () => {

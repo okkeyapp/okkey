@@ -4,7 +4,7 @@ import type { AuthService } from "../src/auth/service.ts";
 import type { ApiConfig } from "../src/config.ts";
 import type { PostgresDatabase } from "../src/storage/postgres.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
-import { createTestApiConfig } from "./test-api-config.ts";
+import { createMockSessionService, createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig();
 
@@ -60,6 +60,7 @@ function createService() {
       setWithTtl: async () => {},
       del: async () => {},
     },
+    sessionService: createMockSessionService(),
     config: baseConfig,
   });
 }
@@ -112,6 +113,7 @@ test("completeRegistration rejects kdf profile blocked by policy", async () => {
       setWithTtl: async () => {},
       del: async () => {},
     },
+    sessionService: createMockSessionService(),
     config: createTestApiConfig({
       deployEnv: "prod",
       allowedCryptoProfileVersions: [2],
@@ -151,6 +153,7 @@ test("completeRegistration strict mode rejects non PQ-capable device metadata", 
       setWithTtl: async () => {},
       del: async () => {},
     },
+    sessionService: createMockSessionService(),
     config: createTestApiConfig({
       cryptoRolloutMode: "strict",
       allowedCryptoProfileVersions: [1, 2],
@@ -188,6 +191,7 @@ test("completeRegistration compat mode allows missing device capability hint", a
       setWithTtl: async () => {},
       del: async () => {},
     },
+    sessionService: createMockSessionService(),
     config: createTestApiConfig({
       cryptoRolloutMode: "compat",
       allowedCryptoProfileVersions: [1, 2],
@@ -207,6 +211,9 @@ test("completeRegistration returns Redis registration:result without Postgres", 
     vaultId: "v-from-redis",
     deviceId: "d-from-redis",
     deviceStatus: "trusted" as const,
+    accessToken: "cached-access",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    tokenType: "Bearer" as const,
   };
   const service = new RegistrationService({
     authService: {
@@ -237,6 +244,7 @@ test("completeRegistration returns Redis registration:result without Postgres", 
       },
       del: async () => {},
     },
+    sessionService: createMockSessionService(),
     config: baseConfig,
   });
 
@@ -251,6 +259,9 @@ test("completeRegistration cache hit emits success operation metric", async () =
     vaultId: "v-from-redis",
     deviceId: "d-from-redis",
     deviceStatus: "trusted" as const,
+    accessToken: "cached-access",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    tokenType: "Bearer" as const,
   };
   const records: Array<{ message: string; extra?: Record<string, unknown> }> = [];
   const service = new RegistrationService({
@@ -279,6 +290,7 @@ test("completeRegistration cache hit emits success operation metric", async () =
       },
       del: async () => {},
     },
+    sessionService: createMockSessionService(),
     config: baseConfig,
     log: {
       info(message, extra) {

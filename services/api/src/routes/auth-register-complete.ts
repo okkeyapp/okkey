@@ -20,6 +20,11 @@ interface RegisterCompleteBody {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
+  /** Optional display name for the default personal workspace and personal vault (e.g. localized "Personal" / "Личный"). */
+  personal_workspace_name?: string;
+  /** Optional; persisted for UI when client storage is cleared. */
+  first_name?: string;
+  last_name?: string;
   metadata?: {
     platform?: string;
     os_name?: string;
@@ -29,6 +34,43 @@ interface RegisterCompleteBody {
     user_agent?: string;
     crypto_capable?: boolean;
   };
+}
+
+const PERSONAL_WORKSPACE_NAME_MAX_LEN = 128;
+const PROFILE_NAME_MAX_LEN = 128;
+
+function parsePersonalWorkspaceName(raw: string | undefined): string | null {
+  if (raw === undefined) {
+    return null;
+  }
+  const t = raw.trim();
+  if (t.length === 0) {
+    return null;
+  }
+  if (t.length > PERSONAL_WORKSPACE_NAME_MAX_LEN) {
+    return null;
+  }
+  if (/[\u0000-\u001f\u007f]/.test(t)) {
+    return null;
+  }
+  return t;
+}
+
+function parseOptionalProfileName(raw: string | undefined): string | null {
+  if (raw === undefined) {
+    return null;
+  }
+  const t = raw.trim();
+  if (t.length === 0) {
+    return null;
+  }
+  if (t.length > PROFILE_NAME_MAX_LEN) {
+    return null;
+  }
+  if (/[\u0000-\u001f\u007f]/.test(t)) {
+    return null;
+  }
+  return t;
 }
 
 function requestIpFromHeaders(forwardedFor: string | undefined): string {
@@ -153,6 +195,60 @@ export function createRegisterCompleteRoute(
       return;
     }
 
+    const personalWorkspaceName = parsePersonalWorkspaceName(body.personal_workspace_name);
+    if (
+      body.personal_workspace_name !== undefined &&
+      body.personal_workspace_name.trim() !== "" &&
+      personalWorkspaceName === null
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "REGISTRATION_BAD_REQUEST",
+          "personal_workspace_name is invalid (length, control characters)",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    const firstNameForDb = parseOptionalProfileName(body.first_name);
+    if (
+      body.first_name !== undefined &&
+      body.first_name.trim() !== "" &&
+      firstNameForDb === null
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "REGISTRATION_BAD_REQUEST",
+          "first_name is invalid (length, control characters)",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    const lastNameForDb = parseOptionalProfileName(body.last_name);
+    if (
+      body.last_name !== undefined &&
+      body.last_name.trim() !== "" &&
+      lastNameForDb === null
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "REGISTRATION_BAD_REQUEST",
+          "last_name is invalid (length, control characters)",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
     const srvShare = decodeRequiredBase64(body.server_key_share);
     const kdfSalt = decodeRequiredBase64(body.password_kdf_salt);
     const devShare = decodeRequiredBase64(body.device_share);
@@ -195,6 +291,9 @@ export function createRegisterCompleteRoute(
         userAgent,
         requestIp: getRequestIp(ctx.req),
         deviceCryptoCapable: meta.deviceCryptoCapable,
+        personalWorkspaceName: personalWorkspaceName ?? undefined,
+        firstName: firstNameForDb,
+        lastName: lastNameForDb,
       });
 
       json(ctx.res, 201, {
@@ -203,6 +302,9 @@ export function createRegisterCompleteRoute(
         vault_id: result.vaultId,
         device_id: result.deviceId,
         device_status: result.deviceStatus,
+        access_token: result.accessToken,
+        expires_at: result.expiresAt,
+        token_type: result.tokenType,
       });
     } catch (error) {
       handleRegistrationError(ctx.requestId, ctx.res, error);

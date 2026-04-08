@@ -7,6 +7,7 @@ import type { ApiConfig } from "../src/config.ts";
 import { base32Decode, totpAt } from "../src/crypto/totp-rfc6238.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationService } from "../src/registration/service.ts";
+import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
 
 const helpersDir = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,28 @@ export async function ensureVaultCryptoVersionColumn(
       "utf8",
     );
     await storage.postgres.query(migration0008);
+  }
+}
+
+/** Applies `0009_user_profile_names` when `users.first_name` is missing. */
+export async function ensureUserProfileNameColumns(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+): Promise<void> {
+  const columns = await storage.postgres.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("first_name")) {
+    const migration0009 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0009_user_profile_names.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0009);
   }
 }
 
@@ -86,6 +109,7 @@ export async function applyMigrations(
   );
   await storage.postgres.query(migration0007);
   await ensureVaultCryptoVersionColumn(storage);
+  await ensureUserProfileNameColumns(storage);
 }
 
 export async function cleanupUserData(
@@ -140,11 +164,16 @@ export async function registerUser(
     emailTemplates,
     config,
   });
+  const sessionService = new SessionService({
+    sessions: storage.repositories.sessions,
+    config,
+  });
   const registrationService = new RegistrationService({
     authService,
     users: storage.repositories.users,
     postgres: storage.postgres,
     redis: storage.redis,
+    sessionService,
     config,
   });
 

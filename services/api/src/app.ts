@@ -41,10 +41,13 @@ import {
   createCapsuleOpenRoute,
   createCapsuleRevokeRoute,
 } from "./routes/capsules.ts";
+import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
   createVaultGetRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
+import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
+import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
   createVaultKeyGetRoute,
   createVaultKeyRotateRoute,
@@ -59,12 +62,17 @@ import type { TwoFactorService } from "./two-factor/service.ts";
 import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
 import type { CapsuleService } from "./capsule/service.ts";
+import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
+import type { UsersRepository } from "./storage/repositories.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
   authService?: AuthService;
   registrationService?: RegistrationService;
   vaultService?: VaultService;
+  vaultUnlockBootstrapService?: VaultUnlockBootstrapService;
+  /** When set with `sessionService`, exposes `GET /account/profile` (Bearer). */
+  usersRepository?: Pick<UsersRepository, "loadAccountProfile">;
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
@@ -148,7 +156,26 @@ export function createApiApp(
       createTwoFactorDisableRoute(deps.twoFactorService, resolveUserId),
     );
   }
+  if (deps.vaultUnlockBootstrapService) {
+    app.route(
+      "GET",
+      "/vault/unlock-bootstrap",
+      createVaultUnlockBootstrapRoute(deps.vaultUnlockBootstrapService, resolveUserId),
+    );
+  }
+  if (deps.sessionService !== undefined && deps.usersRepository) {
+    app.route(
+      "GET",
+      "/account/profile",
+      createAccountProfileRoute(deps.usersRepository, resolveUserId),
+    );
+  }
   if (deps.vaultService) {
+    app.route(
+      "GET",
+      "/workspaces",
+      createWorkspacesListRoute(deps.vaultService, resolveUserId),
+    );
     app.route(
       "GET",
       "/workspaces/:workspaceId/vaults",

@@ -39,6 +39,16 @@ function createVaultServiceStub(
   overrides?: Partial<VaultService>,
 ): VaultService {
   return {
+    listAccessibleWorkspaces: async () => [
+      {
+        id: "w1",
+        name: "Personal",
+        ownerId: "u1",
+        planTier: "FREE",
+        createdAt: "",
+        updatedAt: "",
+      },
+    ],
     listWorkspaceVaults: async () => [
       {
         id: "v1",
@@ -97,6 +107,31 @@ async function dispatch(input: {
   await app.handler()(req, res as unknown as ServerResponse);
   return res;
 }
+
+test("GET /workspaces returns workspace list", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/workspaces",
+    headers: { authorization: "Bearer test-access-token" },
+    sessionService: createSessionServiceStub(),
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as Array<{ id: string; planTier: string }>;
+  assert.equal(payload[0].id, "w1");
+  assert.equal(payload[0].planTier, "FREE");
+});
+
+test("GET /workspaces requires auth", async () => {
+  const res = await dispatch({
+    method: "GET",
+    url: "/workspaces",
+  });
+
+  assert.equal(res.statusCode, 401);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "AUTH_REQUIRED");
+});
 
 test("GET /workspaces/:workspaceId/vaults returns vault list", async () => {
   const res = await dispatch({

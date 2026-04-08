@@ -31,10 +31,33 @@ test("LoggerEmailSender info log omits text and html bodies (no secret leakage)"
   await sender.send(payload);
   const row = entries.find((e) => e.message === "email sent");
   assert.ok(row);
+  assert.equal(row.extra.plainText, undefined);
   assert.equal(row.extra.text, undefined);
   assert.equal(row.extra.html, undefined);
   assert.equal(JSON.stringify(row.extra).includes("SECRET"), false);
   assert.equal(JSON.stringify(row.extra).includes("123456"), false);
+});
+
+test("LoggerEmailSender can include plainText in dev-only mode", async () => {
+  const entries: Array<{ message: string; extra: Record<string, unknown> }> = [];
+  const logger = {
+    info(message: string, extra?: Record<string, unknown>) {
+      entries.push({ message, extra: extra ?? {} });
+    },
+    warn() {},
+    error() {},
+  };
+  const sender = new LoggerEmailSender(logger, { includePlainTextBody: true });
+  await sender.send({
+    to: "user@example.com",
+    from: "no-reply@okkey.local",
+    subject: "Code",
+    text: "Your code: 654321",
+    html: "<p>654321</p>",
+  });
+  const row = entries.find((e) => e.message === "email sent");
+  assert.ok(row);
+  assert.equal(row.extra.plainText, "Your code: 654321");
 });
 
 test("createEmailSender returns LoggerEmailSender for logger provider", async () => {
@@ -44,6 +67,108 @@ test("createEmailSender returns LoggerEmailSender for logger provider", async ()
     error() {},
   });
   assert.ok(sender instanceof LoggerEmailSender);
+});
+
+test("createEmailSender logger logs plainText when nodeEnv is not production", async () => {
+  const entries: Array<Record<string, unknown>> = [];
+  const logger = {
+    info(_message: string, extra?: Record<string, unknown>) {
+      entries.push(extra ?? {});
+    },
+    warn() {},
+    error() {},
+  };
+  const sender = await createEmailSender(
+    { ...baseConfig, nodeEnv: "test", emailProvider: "logger" },
+    logger,
+  );
+  await sender.send({
+    to: "user@example.com",
+    from: "no-reply@okkey.local",
+    subject: "Code",
+    text: "OTP_BODY",
+    html: "<p>x</p>",
+  });
+  assert.equal(entries[0]?.plainText, "OTP_BODY");
+});
+
+test("createEmailSender logger logs plainText when deployEnv is dev even if nodeEnv is production", async () => {
+  const entries: Array<Record<string, unknown>> = [];
+  const logger = {
+    info(_message: string, extra?: Record<string, unknown>) {
+      entries.push(extra ?? {});
+    },
+    warn() {},
+    error() {},
+  };
+  const sender = await createEmailSender(
+    { ...baseConfig, nodeEnv: "production", deployEnv: "dev", emailProvider: "logger" },
+    logger,
+  );
+  await sender.send({
+    to: "user@example.com",
+    from: "no-reply@okkey.local",
+    subject: "Code",
+    text: "LOCAL_DOCKER",
+    html: "<p>x</p>",
+  });
+  assert.equal(entries[0]?.plainText, "LOCAL_DOCKER");
+});
+
+test("createEmailSender logger omits plainText when nodeEnv is production and deployEnv is prod", async () => {
+  const entries: Array<Record<string, unknown>> = [];
+  const logger = {
+    info(_message: string, extra?: Record<string, unknown>) {
+      entries.push(extra ?? {});
+    },
+    warn() {},
+    error() {},
+  };
+  const sender = await createEmailSender(
+    { ...baseConfig, nodeEnv: "production", deployEnv: "prod", emailProvider: "logger" },
+    logger,
+  );
+  await sender.send({
+    to: "user@example.com",
+    from: "no-reply@okkey.local",
+    subject: "Code",
+    text: "OTP_BODY",
+    html: "<p>x</p>",
+  });
+  assert.equal(entries[0]?.plainText, undefined);
+});
+
+test("EMAIL_LOG_PLAINTEXT=true enables plainText when nodeEnv is production", async () => {
+  const previous = process.env.EMAIL_LOG_PLAINTEXT;
+  process.env.EMAIL_LOG_PLAINTEXT = "true";
+  try {
+    const entries: Array<Record<string, unknown>> = [];
+    const logger = {
+      info(_message: string, extra?: Record<string, unknown>) {
+        entries.push(extra ?? {});
+      },
+      warn() {},
+      error() {},
+    };
+    const sender = await createEmailSender(
+      { ...baseConfig, nodeEnv: "production", deployEnv: "prod", emailProvider: "logger" },
+      logger,
+    );
+    await sender.send({
+      to: "user@example.com",
+      from: "no-reply@okkey.local",
+      subject: "Code",
+      text: "FORCED",
+      html: "<p>x</p>",
+    });
+    assert.equal(entries[0]?.plainText, "FORCED");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.EMAIL_LOG_PLAINTEXT;
+    } else {
+      process.env.EMAIL_LOG_PLAINTEXT = previous;
+    }
+  }
 });
 
 test("createEmailSender validates http-api config", async () => {

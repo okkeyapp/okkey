@@ -1,4 +1,5 @@
 import { AuthError, type AuthService } from "../auth/service.ts";
+import { EmailTemplateError } from "../email/errors.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 
 interface StartBody {
@@ -130,6 +131,16 @@ function handleAuthError(
 ): void {
   if (error instanceof AuthError) {
     json(res, error.statusCode, {
+      error: error.code,
+      message: error.message,
+      requestId,
+      ...(error.details ? { details: error.details } : {}),
+    });
+    return;
+  }
+
+  if (error instanceof EmailTemplateError) {
+    json(res, 503, {
       error: error.code,
       message: error.message,
       requestId,
