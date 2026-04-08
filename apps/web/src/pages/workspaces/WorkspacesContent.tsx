@@ -1,23 +1,18 @@
 import type { SVGProps } from "react";
-
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ApiRequestError } from "@okkey/api";
+import type { Workspace } from "@okkey/types";
 import { WorkspaceTile } from "@okkey/ui";
 
+import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { useLocale } from "../../locale/LocaleContext";
 
-const YANDEX_FAVICON_URL = "https://favicon.yandex.net/favicon/yandex.ru?size=120";
+const PERSONAL_FREE_TILE_COLOR = "#3B82F6";
 
-/** Default personal tile fill; replace with user settings when available. */
-const PERSONAL_WORKSPACE_TILE_COLOR = "#3B82F6";
-
-/** Demo workspace titles from product mock; replace with `workspace.name` from API. */
-const DEMO_WORKSPACE_TITLE_PERSONAL = "Personal";
-const DEMO_WORKSPACE_TITLE_TEAM = "Yandex team";
-
-/** Dashed “create” tile: dark outline, no filled shadow on the tile. */
 const dashedTileChrome =
   "border border-dashed border-foreground/90 bg-transparent shadow-none dark:border-foreground/70";
 
-/** Shield + plus — stroke follows `currentColor`. */
 function CreateWorkspaceMark(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -40,26 +35,73 @@ function CreateWorkspaceMark(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function planDescriptionKey(planTier: string): string {
+  if (planTier === "FREE") {
+    return "plan.free";
+  }
+  return "plan.enterprise";
+}
+
 export default function WorkspacesContent() {
   const { t } = useLocale();
+  const navigate = useNavigate();
+  const core = useAuthenticatedCoreClient();
+  const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!core) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await core.listWorkspaces();
+        if (!cancelled) {
+          setWorkspaces(list);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          if (e instanceof ApiRequestError) {
+            setLoadError(t("auth.email.errorGeneric"));
+          } else {
+            setLoadError(t("auth.email.errorGeneric"));
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, t]);
+
+  if (loadError) {
+    return <p className="okkey-body text-center text-destructive">{loadError}</p>;
+  }
+
+  if (workspaces === null) {
+    return <p className="okkey-body text-center text-copy-secondary">…</p>;
+  }
+
+  if (workspaces.length === 0) {
+    return <p className="okkey-body text-center text-copy-secondary">{t("workspaces.description")}</p>;
+  }
 
   return (
     <div className="flex w-full flex-nowrap items-start justify-center gap-4 overflow-x-auto px-1 py-3">
-      <WorkspaceTile
-        type="button"
-        title={DEMO_WORKSPACE_TITLE_PERSONAL}
-        description={t("plan.free")}
-        tileColor={PERSONAL_WORKSPACE_TILE_COLOR}
-      />
-
-      <WorkspaceTile
-        type="button"
-        title={DEMO_WORKSPACE_TITLE_TEAM}
-        description={t("plan.enterprise")}
-        imageSrc={YANDEX_FAVICON_URL}
-        imageAlt=""
-        business
-      />
+      {workspaces.map((ws) => {
+        const isFree = ws.planTier === "FREE";
+        return (
+          <WorkspaceTile
+            key={ws.id}
+            type="button"
+            title={ws.name}
+            description={t(planDescriptionKey(ws.planTier))}
+            {...(isFree ? { tileColor: PERSONAL_FREE_TILE_COLOR } : { business: true })}
+            onClick={() => navigate(`/workspaces/${ws.id}`)}
+          />
+        );
+      })}
 
       <button
         type="button"

@@ -1,10 +1,23 @@
-import { useMemo, useState, type FormEvent, type SVGProps } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type FormEvent, type SVGProps } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  buildRegistrationCryptoArtifacts,
+  ed25519Keypair,
+  initCrypto,
+  registrationArtifactsToWire,
+  wipeBytes,
+} from "@okkey/crypto";
+import type { RegisterCompleteRequestDto } from "@okkey/types";
 import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
+import { bytesToBase64 } from "../../auth/base64";
+import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { useLocale } from "../../locale/LocaleContext";
+import { registrationErrorI18nKey } from "./registrationErrors";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
 
@@ -26,14 +39,34 @@ function RequirementCrossIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function AuthRegistrationPage() {
-  const { t } = useLocale();
-  const [searchParams] = useSearchParams();
-  const email = searchParams.get("email") ?? "alexzorin@okkey.app";
+  const { t, locale } = useLocale();
+  const navigate = useNavigate();
+  const {
+    authClient,
+    registrationAuthStateId,
+    profile,
+    saveVaultBundle,
+    updateLocalProfile,
+    setRegistrationAuthStateId,
+    applyAccessTokenResponse,
+    clearEmailLoginFlow,
+    logout,
+  } = useAuthVault();
+
+  const email = profile?.email ?? "";
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [masterPassword, setMasterPassword] = useState("");
   const [repeatMasterPassword, setRepeatMasterPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!registrationAuthStateId || !email) {
+      navigate("/auth/email", { replace: true });
+    }
+  }, [registrationAuthStateId, email, navigate]);
 
   const { isFormValid, allFieldsFilled, passwordLongEnough, passwordsMatch } = useMemo(() => {
     const trimmedFirst = firstName.trim();
@@ -47,16 +80,97 @@ export default function AuthRegistrationPage() {
 
     const passwordLongEnough = masterPassword.length >= MIN_MASTER_PASSWORD_LENGTH;
 
-    const passwordsMatch =
-      repeatMasterPassword.length > 0 && masterPassword === repeatMasterPassword;
+    const passwordsMatch = repeatMasterPassword.length > 0 && masterPassword === repeatMasterPassword;
 
     const isFormValid = allFieldsFilled && passwordLongEnough && passwordsMatch;
 
     return { isFormValid, allFieldsFilled, passwordLongEnough, passwordsMatch };
   }, [firstName, lastName, masterPassword, repeatMasterPassword]);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!registrationAuthStateId || !isFormValid) {
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    const pwd = new TextEncoder().encode(masterPassword);
+    try {
+      await initCrypto();
+      const material = await buildRegistrationCryptoArtifacts(pwd);
+      const wire = registrationArtifactsToWire(material);
+
+      saveVaultBundle({
+        server_key_share_b64: wire.server_key_share,
+        device_share_b64: bytesToBase64(material.deviceShare),
+        password_kdf_salt_b64: wire.password_kdf_salt,
+        password_kdf_params_version: wire.password_kdf_params_version,
+        encrypted_private_key: wire.encrypted_private_key,
+      });
+
+      const deviceKp = ed25519Keypair();
+      const devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
+      wipeBytes(deviceKp);
+
+      const personalWorkspaceName = locale === "ru" ? "Личный" : "Personal";
+
+      const body: RegisterCompleteRequestDto = {
+        auth_state_id: registrationAuthStateId,
+        user_public_key: wire.user_public_key,
+        user_public_pq_key: wire.user_public_pq_key,
+        encrypted_private_key: wire.encrypted_private_key,
+        server_key_share: wire.server_key_share,
+        password_kdf_salt: wire.password_kdf_salt,
+        password_kdf_params_version: wire.password_kdf_params_version,
+        device_public_key: devicePublicKeyB64,
+        device_share: bytesToBase64(material.deviceShare),
+        device_fingerprint: getOrCreateDeviceFingerprint(),
+        device_name: `Web · ${navigator.userAgent?.slice(0, 80) ?? "browser"}`,
+        personal_workspace_name: personalWorkspaceName,
+        first_name: trimmedFirst,
+        last_name: trimmedLast,
+        client_type: "web",
+        metadata: { crypto_capable: true },
+      };
+
+      const reg = await authClient.completeRegistration(body);
+      applyAccessTokenResponse({
+        access_token: reg.access_token,
+        expires_at: reg.expires_at,
+        user_id: reg.user_id,
+        token_type: reg.token_type,
+      });
+      finalizePendingVaultBundle(reg.user_id);
+      setRegistrationAuthStateId(null);
+      clearEmailLoginFlow();
+
+      updateLocalProfile({
+        email,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+
+      wipeBytes(material.vaultKey);
+      wipeBytes(pwd);
+      wipeBytes(material.serverKeyShare);
+      wipeBytes(material.deviceShare);
+
+      navigate("/unlock/password", { replace: true });
+    } catch (err) {
+      wipeBytes(pwd);
+      if (import.meta.env.DEV) {
+        console.error("[auth/register/complete]", err);
+      }
+      try {
+        setFormError(t(registrationErrorI18nKey(err)));
+      } catch {
+        setFormError(t("auth.registration.errorGeneric"));
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -71,6 +185,12 @@ export default function AuthRegistrationPage() {
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
     >
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
+        {formError ? (
+          <Alert variant="error">
+            <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+            <AlertDescription>{formError}</AlertDescription>
+          </Alert>
+        ) : null}
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="auth-reg-first-name" className="okkey-small font-medium text-copy-primary">
             {t("auth.registration.firstName")}
@@ -167,16 +287,20 @@ export default function AuthRegistrationPage() {
             </ul>
           </AlertDescription>
         </Alert>
-        <Button type="submit" variant="default" className="w-full" disabled={!isFormValid}>
+        <Button type="submit" variant="default" className="w-full" disabled={!isFormValid || submitting}>
           {t("auth.registration.submit")}
         </Button>
         <p className="text-center">
-          <Link
-            to="/auth/email"
+          <button
+            type="button"
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
+            onClick={() => {
+              logout();
+              navigate("/auth/email", { replace: true });
+            }}
           >
             {t("auth.registration.differentEmail")}
-          </Link>
+          </button>
         </p>
       </form>
     </AppShellLayout>

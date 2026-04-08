@@ -1,9 +1,12 @@
 import { useState, type FormEvent, type SVGProps } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { initCrypto } from "@okkey/crypto";
 import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { safeRedirectPath } from "../../auth/safeRedirect";
 import { useLocale } from "../../locale/LocaleContext";
 
 function AlertErrorIcon(props: SVGProps<SVGSVGElement>) {
@@ -26,11 +29,6 @@ function LogOutIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** Until vault session provides profile, show a fixed card (no query params). */
-const UNLOCK_PLACEHOLDER_FIRST_NAME = "Alexander";
-const UNLOCK_PLACEHOLDER_LAST_NAME = "Zorin";
-const UNLOCK_PLACEHOLDER_EMAIL = "alexzorin@okkey.app";
-
 function firstLetter(value: string): string {
   const t = value.trim();
   if (t.length === 0) return "";
@@ -38,7 +36,7 @@ function firstLetter(value: string): string {
   return ch ?? "";
 }
 
-/** First letter of given name + first letter of family name; falls back if a part is missing. */
+/** Initials from first/last name; email local-part only if no name on profile. */
 function buildInitials(firstName: string, lastName: string, email: string): string {
   const f = firstLetter(firstName);
   const l = firstLetter(lastName);
@@ -46,8 +44,8 @@ function buildInitials(firstName: string, lastName: string, email: string): stri
     return `${f.toLocaleUpperCase()}${l.toLocaleUpperCase()}`;
   }
 
-  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
-  const parts = displayName.split(/\s+/).filter(Boolean);
+  const combined = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  const parts = combined.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
     const a = firstLetter(parts[0]);
     const b = firstLetter(parts[parts.length - 1]);
@@ -58,6 +56,9 @@ function buildInitials(firstName: string, lastName: string, email: string): stri
     const chars = [...w];
     if (chars.length >= 2) {
       return `${chars[0].toLocaleUpperCase()}${chars[1].toLocaleUpperCase()}`;
+    }
+    if (chars.length === 1) {
+      return `${chars[0].toLocaleUpperCase()}${chars[0].toLocaleUpperCase()}`;
     }
   }
 
@@ -70,18 +71,53 @@ function buildInitials(firstName: string, lastName: string, email: string): stri
 
 export default function UnlockPasswordPage() {
   const { t } = useLocale();
-  const firstName = UNLOCK_PLACEHOLDER_FIRST_NAME;
-  const lastName = UNLOCK_PLACEHOLDER_LAST_NAME;
-  const email = UNLOCK_PLACEHOLDER_EMAIL;
-  const displayName = [firstName, lastName].filter(Boolean).join(" ");
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const {
+    profile,
+    tryUnlockWithMasterPassword,
+    logout,
+    hasVaultBundle,
+    vaultUnlockBootstrapLoading,
+    touchActivity,
+  } = useAuthVault();
+
+  const firstName = profile?.firstName ?? "";
+  const lastName = profile?.lastName ?? "";
+  const email = profile?.email ?? "";
+  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  const hasDisplayName = displayName.length > 0;
   const initials = buildInitials(firstName, lastName, email);
 
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
+  const [noBundleError, setNoBundleError] = useState(false);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setShowUnlockError(true);
+    setShowUnlockError(false);
+    setNoBundleError(false);
+    if (vaultUnlockBootstrapLoading) {
+      return;
+    }
+    if (!hasVaultBundle) {
+      setNoBundleError(true);
+      return;
+    }
+    await initCrypto();
+    const ok = await tryUnlockWithMasterPassword(masterPassword);
+    if (!ok) {
+      setShowUnlockError(true);
+      return;
+    }
+    touchActivity();
+    const redirect = safeRedirectPath(searchParams.get("redirect"), "/workspaces");
+    navigate(redirect, { replace: true });
+  }
+
+  function handleSignOut() {
+    logout();
+    navigate("/auth/email", { replace: true });
   }
 
   return (
@@ -99,16 +135,22 @@ export default function UnlockPasswordPage() {
             {initials}
           </div>
           <div className="min-w-0 flex-1 text-left">
-            <p className="truncate okkey-small font-semibold text-copy-primary">{displayName}</p>
-            <p className="truncate text-xs leading-4 text-copy-secondary">{email}</p>
+            <p className="truncate okkey-small font-semibold text-copy-primary">
+              {hasDisplayName ? displayName : email || "—"}
+            </p>
+            {hasDisplayName && email ? (
+              <p className="truncate text-xs leading-4 text-copy-secondary">{email}</p>
+            ) : null}
           </div>
-          <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 px-2.5" asChild>
-            <Link to="/auth/email">
-              <LogOutIcon className="size-4" />
-              {t("unlock.signOut")}
-            </Link>
+          <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 px-2.5" onClick={handleSignOut}>
+            <LogOutIcon className="size-4" />
+            {t("unlock.signOut")}
           </Button>
         </div>
+
+        {vaultUnlockBootstrapLoading ? (
+          <p className="okkey-small text-center text-copy-secondary">{t("unlock.syncingVault")}</p>
+        ) : null}
 
         <div className="flex w-full flex-col gap-3">
           <label htmlFor="unlock-master-password" className="okkey-small font-medium text-copy-primary">
@@ -123,9 +165,18 @@ export default function UnlockPasswordPage() {
             onChange={(e) => {
               setMasterPassword(e.target.value);
               setShowUnlockError(false);
+              setNoBundleError(false);
             }}
           />
         </div>
+
+        {noBundleError ? (
+          <Alert variant="error">
+            <AlertErrorIcon className="size-4" />
+            <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+            <AlertDescription>{t("unlock.errorNoLocalVault")}</AlertDescription>
+          </Alert>
+        ) : null}
 
         {showUnlockError ? (
           <Alert variant="error">
@@ -135,17 +186,22 @@ export default function UnlockPasswordPage() {
           </Alert>
         ) : null}
 
-        <Button type="submit" variant="default" className="w-full" disabled={masterPassword.length === 0}>
+        <Button
+          type="submit"
+          variant="default"
+          className="w-full"
+          disabled={masterPassword.length === 0 || vaultUnlockBootstrapLoading}
+        >
           {t("unlock.submit")}
         </Button>
 
         <p className="text-center">
-          <button
-            type="button"
+          <Link
+            to="/auth/email"
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
             {t("unlock.forgotPassword")}
-          </button>
+          </Link>
         </p>
       </form>
     </AppShellLayout>

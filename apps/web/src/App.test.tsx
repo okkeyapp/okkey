@@ -1,18 +1,32 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import App from "./App";
+import { PROFILE_STORAGE_KEY, SESSION_STORAGE_KEY } from "./auth/storageKeys";
 import { applyStoredTheme } from "./theme/applyTheme";
 
 function renderWithRouter(ui: ReactElement, initialEntries: string[]) {
   return render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
 }
 
+function seedBearerSession() {
+  sessionStorage.setItem(
+    SESSION_STORAGE_KEY,
+    JSON.stringify({
+      access_token: "test-token",
+      user_id: "00000000-0000-4000-8000-000000000001",
+      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    }),
+  );
+}
+
 describe("App", () => {
-  it("renders home title", () => {
+  it("redirects root to email sign-in when unauthenticated", async () => {
     renderWithRouter(<App />, ["/"]);
-    expect(screen.getByRole("heading", { name: /^okkey$/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    });
   });
 
   it("renders design system gallery on /dev/ui", () => {
@@ -28,56 +42,65 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
   });
 
-  it("renders OTP verification on /auth/otp", () => {
+  it("redirects /auth/otp to email when challenge is missing", async () => {
     renderWithRouter(<App />, ["/auth/otp"]);
-    expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Welcome to Okkey");
-    expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /send again/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /different email/i })).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox")).toHaveLength(6);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    });
   });
 
-  it("renders registration on /auth/registration", () => {
+  it("redirects /auth/registration when registration state is missing", async () => {
     renderWithRouter(<App />, ["/auth/registration"]);
-    expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Register with Okkey");
-    expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/^first name$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^last name$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^repeat master password$/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^register$/i })).toBeDisabled();
-    expect(screen.getByRole("link", { name: /different email/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    });
   });
 
-  it("renders vault unlock on /unlock/password", () => {
+  it("redirects /workspaces to unlock when session exists but vault is locked", async () => {
+    seedBearerSession();
+    renderWithRouter(<App />, ["/workspaces"]);
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
+    });
+    sessionStorage.clear();
+  });
+
+  it("renders vault unlock when authenticated", async () => {
+    seedBearerSession();
+    sessionStorage.setItem(
+      PROFILE_STORAGE_KEY,
+      JSON.stringify({
+        email: "user@okkey.local",
+        firstName: "Test",
+        lastName: "User",
+      }),
+    );
     renderWithRouter(<App />, ["/unlock/password"]);
-    expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
-    expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
-    expect(screen.getByText("Alexander Zorin")).toBeInTheDocument();
-    expect(screen.getByText("alexzorin@okkey.app")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
+    });
+    expect(screen.getByText("user@okkey.local")).toBeInTheDocument();
     expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeDisabled();
-    expect(screen.getByRole("link", { name: /sign out/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /forgot master password/i })).toBeInTheDocument();
+    sessionStorage.clear();
   });
 
-  it("shows error alert after unlock submit on /unlock/password", () => {
+  it("shows error when unlocking without local vault bundle", async () => {
+    seedBearerSession();
+    sessionStorage.setItem(
+      PROFILE_STORAGE_KEY,
+      JSON.stringify({ email: "user@okkey.local" }),
+    );
     renderWithRouter(<App />, ["/unlock/password"]);
-    fireEvent.change(screen.getByLabelText(/^master password$/i), { target: { value: "wrong" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText(/^master password$/i), { target: { value: "any" } });
     fireEvent.click(screen.getByRole("button", { name: /^unlock$/i }));
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^error$/i })).toBeInTheDocument();
-    expect(screen.getByText("Incorrect master password")).toBeInTheDocument();
-  });
-
-  it("renders workspaces layout and workspace cards", () => {
-    renderWithRouter(<App />, ["/workspaces"]);
-    expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Welcome to Okkey");
-    expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /personal/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /yandex team/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /create workspace/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    sessionStorage.clear();
   });
 
   function mockLocalStorage(values: Record<string, string | null>) {

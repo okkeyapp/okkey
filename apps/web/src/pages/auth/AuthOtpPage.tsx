@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -7,11 +8,16 @@ import {
   type KeyboardEvent,
   type SVGProps,
 } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { Button, Input } from "@okkey/ui";
+import { useNavigate } from "react-router-dom";
+import { ApiRequestError } from "@okkey/api";
+import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { createAuthenticatedCoreClient } from "../../api/client";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
+import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { useLocale } from "../../locale/LocaleContext";
 
 const OTP_LENGTH = 6;
@@ -29,12 +35,51 @@ function ResendIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function AuthOtpPage() {
-  const { t } = useLocale();
-  const [searchParams] = useSearchParams();
-  const email = searchParams.get("email") ?? "alexzorin@okkey.app";
+  const { t, locale } = useLocale();
+  const navigate = useNavigate();
+  const {
+    authClient,
+    emailChallengeId,
+    pendingEmail,
+    setEmailChallenge,
+    setRegistrationAuthStateId,
+    setTwoFactorAuthStateId,
+    applyAccessTokenResponse,
+    emailResendAvailableAt,
+    clearEmailLoginFlow,
+  } = useAuthVault();
 
+  const email = pendingEmail ?? "";
   const [digits, setDigits] = useState<string[]>(() => Array.from({ length: OTP_LENGTH }, () => ""));
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [attemptsHint, setAttemptsHint] = useState<string | null>(null);
+  const [resendUntil, setResendUntil] = useState<number>(0);
+  const [resendTick, setResendTick] = useState(0);
+
+  useEffect(() => {
+    if (!emailChallengeId || !email) {
+      navigate("/auth/email", { replace: true });
+    }
+  }, [emailChallengeId, email, navigate]);
+
+  useEffect(() => {
+    if (emailResendAvailableAt) {
+      const t = Date.parse(emailResendAvailableAt);
+      if (Number.isFinite(t)) {
+        setResendUntil(t);
+      }
+    }
+  }, [emailResendAvailableAt]);
+
+  useEffect(() => {
+    if (resendUntil <= Date.now()) {
+      return;
+    }
+    const id = window.setInterval(() => setResendTick((x) => x + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [resendUntil, resendTick]);
 
   const setDigitAt = useCallback((index: number, char: string) => {
     const d = char.replace(/\D/g, "").slice(-1);
@@ -96,13 +141,86 @@ export default function AuthOtpPage() {
     inputsRef.current[focusIndex]?.focus();
   }, []);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!emailChallengeId) {
+      return;
+    }
+    const code = digits.join("");
+    if (code.length !== OTP_LENGTH) {
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    setAttemptsHint(null);
+    try {
+      const res = await authClient.confirmEmailCode(emailChallengeId, code);
+      if (res.nextStep === "registration") {
+        setRegistrationAuthStateId(res.authStateId);
+        navigate("/auth/registration", { replace: true });
+        return;
+      }
+      if (res.nextStep === "two_factor") {
+        setTwoFactorAuthStateId(res.authStateId);
+        navigate("/auth/two-factor", { replace: true });
+        return;
+      }
+      const dto = await authClient.completeLoginAfterEmailConfirm(res.authStateId, res.nextStep);
+      applyAccessTokenResponse(dto);
+      clearPendingVaultBundle();
+      const core = createAuthenticatedCoreClient(dto.access_token);
+      await navigateAfterSession(core, navigate);
+    } catch (err) {
+      if (err instanceof ApiRequestError) {
+        const left = err.body.details?.attemptsLeft;
+        if (typeof left === "number" && left >= 0) {
+          setAttemptsHint(t("auth.otp.attemptsLeft", { n: String(left) }));
+        }
+        if (err.body.error === "AUTH_CODE_INVALID") {
+          setFormError(t("auth.otp.errorInvalid"));
+        } else {
+          setFormError(t("auth.email.errorGeneric"));
+        }
+      } else {
+        setFormError(t("auth.email.errorGeneric"));
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function handleResend() {
-    // Stub: hook up to resend API later
+  async function handleResend() {
+    if (!emailChallengeId) {
+      return;
+    }
+    const waitMs = resendUntil - Date.now();
+    if (waitMs > 0) {
+      setFormError(String(Math.ceil(waitMs / 1000)));
+      return;
+    }
+    setFormError(null);
+    try {
+      const out = await authClient.resendEmailCode(emailChallengeId, locale);
+      setResendUntil(Date.parse(out.resendAvailableAt));
+      setEmailChallenge(email, out.challengeId, out.resendAvailableAt);
+    } catch (err) {
+      if (err instanceof ApiRequestError) {
+        const retry = err.body.details?.retryAfterSeconds;
+        if (typeof retry === "number") {
+          setFormError(String(retry));
+          setResendUntil(Date.now() + retry * 1000);
+        } else {
+          setFormError(t("auth.email.errorGeneric"));
+        }
+      } else {
+        setFormError(t("auth.email.errorGeneric"));
+      }
+    }
   }
+
+  const resendWaitSec =
+    resendUntil > Date.now() ? Math.max(1, Math.ceil((resendUntil - Date.now()) / 1000)) : 0;
+  const resendDisabled = resendWaitSec > 0;
 
   return (
     <AppShellLayout
@@ -116,14 +234,39 @@ export default function AuthOtpPage() {
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
     >
       <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6" noValidate>
+        {formError ? (
+          <Alert variant="error">
+            <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+            <AlertDescription>
+              {formError}
+              {attemptsHint ? <span className="mt-1 block">{attemptsHint}</span> : null}
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <div className="flex w-full flex-col gap-3">
           <div className="flex w-full items-center gap-2">
             <span id="auth-otp-label" className="min-w-0 flex-1 okkey-small font-medium text-copy-primary">
               {t("auth.otp.labelConfirmationCode")}
             </span>
-            <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={handleResend}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={handleResend}
+              disabled={resendDisabled}
+              aria-label={
+                resendDisabled
+                  ? t("auth.otp.resendCountdownAria", { seconds: String(resendWaitSec) })
+                  : t("auth.otp.sendAgain")
+              }
+            >
               <ResendIcon className="size-4" />
-              {t("auth.otp.sendAgain")}
+              {resendDisabled ? (
+                <span className="min-w-[1.5ch] tabular-nums">{resendWaitSec}</span>
+              ) : (
+                t("auth.otp.sendAgain")
+              )}
             </Button>
           </div>
           <div
@@ -152,16 +295,20 @@ export default function AuthOtpPage() {
             ))}
           </div>
         </div>
-        <Button type="submit" variant="default" className="w-full">
+        <Button type="submit" variant="default" className="w-full" disabled={submitting}>
           {t("auth.otp.submit")}
         </Button>
         <p className="text-center">
-          <Link
-            to="/auth/email"
+          <button
+            type="button"
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
+            onClick={() => {
+              clearEmailLoginFlow();
+              navigate("/auth/email", { replace: true });
+            }}
           >
             {t("auth.otp.differentEmail")}
-          </Link>
+          </button>
         </p>
       </form>
     </AppShellLayout>
