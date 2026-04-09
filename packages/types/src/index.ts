@@ -522,6 +522,8 @@ export interface AccountProfileResponseDto {
   email: string;
   first_name: string | null;
   last_name: string | null;
+  /** Inactivity timeout before vault locks on device (seconds); server default 900 (15 min). */
+  vault_idle_lock_seconds: number;
 }
 
 /** `GET /vault/unlock-bootstrap?device_fingerprint=...` (Bearer) — split-key material to re-hydrate the client. */

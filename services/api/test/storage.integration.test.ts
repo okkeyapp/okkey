@@ -43,6 +43,23 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
   await ensureUserPublicPqKeyColumn(db);
   await ensureVaultCryptoVersionColumn(db);
   await ensureUserProfileNameColumns(db);
+  await ensureVaultIdleLockColumn(db);
+}
+
+async function ensureVaultIdleLockColumn(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("vault_idle_lock_seconds")) {
+    const migration0010 = path.resolve(__dirname, "../migrations/0010_user_vault_idle_lock.sql");
+    await db.query(readFileSync(migration0010, "utf8"));
+  }
 }
 
 async function ensureUserProfileNameColumns(db: PostgresDatabase): Promise<void> {

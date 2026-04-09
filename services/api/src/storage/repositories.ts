@@ -115,14 +115,16 @@ export class UsersRepository {
     email: string;
     firstName: string | null;
     lastName: string | null;
+    vaultIdleLockSeconds: number;
   } | null> {
     const rows = await this.db.query<{
       email: string;
       first_name: string | null;
       last_name: string | null;
+      vault_idle_lock_seconds: number;
     }>(
       `
-        SELECT email, first_name, last_name
+        SELECT email, first_name, last_name, vault_idle_lock_seconds
         FROM users
         WHERE id = $1::uuid
       `,
@@ -136,6 +138,7 @@ export class UsersRepository {
       email: row.email,
       firstName: row.first_name,
       lastName: row.last_name,
+      vaultIdleLockSeconds: row.vault_idle_lock_seconds,
     };
   }
 

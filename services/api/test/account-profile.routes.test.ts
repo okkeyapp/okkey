@@ -67,6 +67,7 @@ function createUsersRepositoryStub(): Pick<UsersRepository, "loadAccountProfile"
         email: "user@example.com",
         firstName: "Ann",
         lastName: "Bee",
+        vaultIdleLockSeconds: 900,
       };
     },
   };
@@ -132,8 +133,10 @@ test("GET /account/profile with auth returns profile", async () => {
     email: string;
     first_name: string | null;
     last_name: string | null;
+    vault_idle_lock_seconds: number;
   };
   assert.equal(payload.email, "user@example.com");
   assert.equal(payload.first_name, "Ann");
   assert.equal(payload.last_name, "Bee");
+  assert.equal(payload.vault_idle_lock_seconds, 900);
 });

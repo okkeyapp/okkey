@@ -25,6 +25,7 @@ export function createAccountProfileRoute(
       email: row.email,
       first_name: row.firstName,
       last_name: row.lastName,
+      vault_idle_lock_seconds: row.vaultIdleLockSeconds,
     });
   };
 }

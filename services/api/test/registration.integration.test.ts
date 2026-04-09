@@ -13,6 +13,7 @@ import { createStorageLayer } from "../src/storage/index.ts";
 import {
   ensureUserProfileNameColumns,
   ensureVaultCryptoVersionColumn,
+  ensureVaultIdleLockColumn,
 } from "./two-factor-test-helpers.ts";
 
 function createLoggerStub() {
@@ -67,6 +68,7 @@ test("integration: registration completes user, workspace, vault, trusted device
   await storage.postgres.query(migration0007);
   await ensureVaultCryptoVersionColumn(storage);
   await ensureUserProfileNameColumns(storage);
+  await ensureVaultIdleLockColumn(storage);
   const suffix = randomUUID();
   const email = `reg-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -229,6 +231,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
   await storage.postgres.query(migration0007b);
   await ensureVaultCryptoVersionColumn(storage);
   await ensureUserProfileNameColumns(storage);
+  await ensureVaultIdleLockColumn(storage);
   const suffix = randomUUID();
   const email = `reg-parallel-${suffix}@okkey.local`;
   const authStateId = randomUUID();
@@ -374,6 +377,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
   await storage.postgres.query(migration0007c);
   await ensureVaultCryptoVersionColumn(storage);
   await ensureUserProfileNameColumns(storage);
+  await ensureVaultIdleLockColumn(storage);
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
@@ -472,6 +476,7 @@ test("integration: strict rollout rejects registration without PQ-capable device
   await storage.postgres.query(migration0007);
   await ensureVaultCryptoVersionColumn(storage);
   await ensureUserProfileNameColumns(storage);
+  await ensureVaultIdleLockColumn(storage);
 
   const suffix = randomUUID();
   const email = `reg-strict-${suffix}@okkey.local`;

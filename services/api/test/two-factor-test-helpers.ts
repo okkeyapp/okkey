@@ -64,6 +64,28 @@ export async function ensureUserProfileNameColumns(
   }
 }
 
+/** Applies `0010_user_vault_idle_lock` when `users.vault_idle_lock_seconds` is missing. */
+export async function ensureVaultIdleLockColumn(
+  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+): Promise<void> {
+  const columns = await storage.postgres.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("vault_idle_lock_seconds")) {
+    const migration0010 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0010_user_vault_idle_lock.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0010);
+  }
+}
+
 export async function applyMigrations(
   storage: Awaited<ReturnType<typeof createStorageLayer>>,
 ): Promise<void> {
@@ -110,6 +132,7 @@ export async function applyMigrations(
   await storage.postgres.query(migration0007);
   await ensureVaultCryptoVersionColumn(storage);
   await ensureUserProfileNameColumns(storage);
+  await ensureVaultIdleLockColumn(storage);
 }
 
 export async function cleanupUserData(
