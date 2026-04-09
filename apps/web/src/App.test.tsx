@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { PROFILE_STORAGE_KEY, SESSION_STORAGE_KEY } from "./auth/storageKeys";
 import { applyStoredTheme } from "./theme/applyTheme";
@@ -11,17 +11,30 @@ function renderWithRouter(ui: ReactElement, initialEntries: string[]) {
 }
 
 function seedBearerSession() {
-  sessionStorage.setItem(
-    SESSION_STORAGE_KEY,
-    JSON.stringify({
-      access_token: "test-token",
-      user_id: "00000000-0000-4000-8000-000000000001",
-      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-    }),
-  );
+  const payload = JSON.stringify({
+    access_token: "test-token",
+    user_id: "00000000-0000-4000-8000-000000000001",
+    expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  if (typeof localStorage?.setItem === "function") {
+    localStorage.setItem(SESSION_STORAGE_KEY, payload);
+  } else {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, payload);
+  }
+}
+
+function clearBearerAndSession() {
+  sessionStorage.clear();
+  if (typeof localStorage?.removeItem === "function") {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
 }
 
 describe("App", () => {
+  beforeEach(() => {
+    clearBearerAndSession();
+  });
+
   it("redirects root to email sign-in when unauthenticated", async () => {
     renderWithRouter(<App />, ["/"]);
     await waitFor(() => {
@@ -40,6 +53,15 @@ describe("App", () => {
     expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
+  it("redirects /auth/email to workspaces when bearer session exists", async () => {
+    seedBearerSession();
+    renderWithRouter(<App />, ["/auth/email"]);
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
+    });
+    clearBearerAndSession();
   });
 
   it("redirects /auth/otp to email when challenge is missing", async () => {
@@ -62,7 +84,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     });
-    sessionStorage.clear();
+    clearBearerAndSession();
   });
 
   it("renders vault unlock when authenticated", async () => {
@@ -82,7 +104,7 @@ describe("App", () => {
     expect(screen.getByText("user@okkey.local")).toBeInTheDocument();
     expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeDisabled();
-    sessionStorage.clear();
+    clearBearerAndSession();
   });
 
   it("shows error when unlocking without local vault bundle", async () => {
@@ -100,7 +122,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
-    sessionStorage.clear();
+    clearBearerAndSession();
   });
 
   function mockLocalStorage(values: Record<string, string | null>) {

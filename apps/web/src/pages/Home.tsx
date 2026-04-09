@@ -1,17 +1,13 @@
-import { useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
 
 export default function Home() {
-  const { accessToken, vaultUnlocked } = useAuthVault();
-  const navigate = useNavigate();
+  const { accessToken } = useAuthVault();
 
-  useEffect(() => {
-    if (accessToken && vaultUnlocked) {
-      navigate("/workspaces", { replace: true });
-    }
-  }, [accessToken, vaultUnlocked, navigate]);
+  if (accessToken) {
+    return <Navigate to="/workspaces" replace />;
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">

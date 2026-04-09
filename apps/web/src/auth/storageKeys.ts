@@ -1,5 +1,10 @@
-/** sessionStorage: Bearer session JSON */
+/**
+ * localStorage: Bearer session JSON (переживает перезапуск браузера; очищается при logout).
+ * Ранее мог лежать в sessionStorage — `readStoredSession` мигрирует при чтении.
+ */
 export const SESSION_STORAGE_KEY = "okkey.access.session";
+/** sessionStorage: материал разблокированного vault key для этой вкладки (переживает F5, не переживает закрытие вкладки). */
+export const VAULT_UNLOCK_TAB_KEY = "okkey.vault.unlock.tab";
 /** sessionStorage + localStorage: split-key material for unlock (XSS-sensitive; see localVaultBundle) */
 export const VAULT_BUNDLE_STORAGE_KEY = "okkey.vault.bundle";
 /** localStorage: registration bundle before user id is known */

@@ -5,9 +5,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -41,8 +43,17 @@ import {
   readStoredSession,
   writeStoredSession,
 } from "./sessionAuthStorage";
+import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
+import {
+  clearVaultUnlockSession,
+  persistVaultUnlockSession,
+  readInitialTabVaultSession,
+  readVaultUnlockSessionIfFresh,
+  touchVaultUnlockSession,
+  vaultUnlockSessionExceededIdle,
+} from "./vaultUnlockSessionStorage";
 
-export const DEFAULT_IDLE_MS = 15 * 60 * 1000;
+export const DEFAULT_IDLE_MS = DEFAULT_VAULT_IDLE_LOCK_MS;
 
 export type AuthVaultContextValue = {
   accessToken: string | null;
@@ -71,6 +82,8 @@ export type AuthVaultContextValue = {
   hasVaultBundle: boolean;
   /** Пока true — идёт попытка подтянуть split-key с API после пустого локального хранилища. */
   vaultUnlockBootstrapLoading: boolean;
+  /** Интервал бездействия до блокировки хранилища (мс), с сервера `vault_idle_lock_seconds`. */
+  vaultIdleLockMs: number;
 };
 
 const AuthVaultContext = createContext<AuthVaultContextValue | null>(null);
@@ -119,102 +132,42 @@ function IdleLockWatcher({
   return null;
 }
 
-function NavigationGuards({
-  children,
+function VaultIdleLockBridge({
   accessToken,
   vaultUnlocked,
+  vaultIdleLockMs,
   lockVault,
+  touchActivity,
   lastActivityRef,
-  emailChallengeId,
-  pendingEmail,
-  registrationAuthStateId,
-  twoFactorAuthStateId,
 }: {
-  children: ReactNode;
   accessToken: string | null;
   vaultUnlocked: boolean;
+  vaultIdleLockMs: number;
   lockVault: () => void;
-  lastActivityRef: React.MutableRefObject<number>;
-  emailChallengeId: string | null;
-  pendingEmail: string | null;
-  registrationAuthStateId: string | null;
-  twoFactorAuthStateId: string | null;
+  touchActivity: () => void;
+  lastActivityRef: MutableRefObject<number>;
 }) {
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const touch = useCallback(() => {
-    lastActivityRef.current = Date.now();
-  }, [lastActivityRef]);
-
-  useActivityListeners(touch);
+  useActivityListeners(touchActivity);
 
   const handleIdle = useCallback(() => {
     if (!accessToken || !vaultUnlocked) {
       return;
     }
     lockVault();
-    const path = `${location.pathname}${location.search}`;
-    const redirectParam = encodeURIComponent(path);
-    navigate(`/unlock/password?redirect=${redirectParam}`, { replace: true });
+    const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
+    navigate(`/unlock/password?redirect=${redirect}`, { replace: true });
   }, [accessToken, vaultUnlocked, lockVault, navigate, location.pathname, location.search]);
 
-  const isDevUi = import.meta.env.DEV && location.pathname === "/dev/ui";
-
-  useEffect(() => {
-    if (isDevUi) {
-      return;
-    }
-
-    const path = location.pathname;
-
-    if (!accessToken) {
-      const inOtpFlow = Boolean(emailChallengeId && pendingEmail);
-      const allowed =
-        path === "/auth/email" ||
-        (path === "/auth/otp" && inOtpFlow) ||
-        (path === "/auth/registration" && Boolean(registrationAuthStateId)) ||
-        (path === "/auth/two-factor" && Boolean(twoFactorAuthStateId));
-      if (!allowed) {
-        navigate("/auth/email", { replace: true });
-      }
-      return;
-    }
-
-    if (!vaultUnlocked) {
-      if (path !== "/unlock/password") {
-        const redirectParam = encodeURIComponent(`${location.pathname}${location.search}`);
-        navigate(`/unlock/password?redirect=${redirectParam}`, { replace: true });
-      }
-      return;
-    }
-
-    if (path.startsWith("/auth/") || path === "/unlock/password") {
-      navigate("/workspaces", { replace: true });
-    }
-  }, [
-    accessToken,
-    vaultUnlocked,
-    location.pathname,
-    location.search,
-    navigate,
-    isDevUi,
-    emailChallengeId,
-    pendingEmail,
-    registrationAuthStateId,
-    twoFactorAuthStateId,
-  ]);
-
   return (
-    <>
-      <IdleLockWatcher
-        enabled={Boolean(accessToken && vaultUnlocked)}
-        idleMs={DEFAULT_IDLE_MS}
-        lastActivityRef={lastActivityRef}
-        onIdle={handleIdle}
-      />
-      {children}
-    </>
+    <IdleLockWatcher
+      enabled={Boolean(accessToken && vaultUnlocked)}
+      idleMs={vaultIdleLockMs}
+      lastActivityRef={lastActivityRef}
+      onIdle={handleIdle}
+    />
   );
 }
 
@@ -222,12 +175,22 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const publicApi = useMemo(() => createPublicApiClient(), []);
   const authClient = useMemo(() => createAuthSdk(publicApi), [publicApi]);
 
-  const vaultKeyRef = useRef<Uint8Array | null>(null);
-  const lastActivityRef = useRef<number>(Date.now());
-
   const [accessToken, setAccessToken] = useState<string | null>(() => readStoredSession()?.access_token ?? null);
   const [userId, setUserId] = useState<string | null>(() => readStoredSession()?.user_id ?? null);
-  const [vaultUnlocked, setVaultUnlocked] = useState(false);
+
+  const [initialTabVault] = useState(() => {
+    const uid = readStoredSession()?.user_id ?? null;
+    if (!uid) {
+      return { vaultKey: null as Uint8Array | null, lastActivityAt: Date.now(), unlocked: false };
+    }
+    return readInitialTabVaultSession(uid);
+  });
+
+  const vaultKeyRef = useRef<Uint8Array | null>(initialTabVault.vaultKey);
+  const lastActivityRef = useRef(initialTabVault.lastActivityAt);
+  const vaultUnlockedRef = useRef(initialTabVault.unlocked);
+  const [vaultUnlocked, setVaultUnlocked] = useState(initialTabVault.unlocked);
+  const [vaultIdleLockMs, setVaultIdleLockMsState] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
   const [emailResendAvailableAt, setEmailResendAvailableAt] = useState<string | null>(null);
@@ -241,6 +204,30 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   userIdRef.current = userId;
 
   const [vaultUnlockBootstrapLoading, setVaultUnlockBootstrapLoading] = useState(false);
+
+  useEffect(() => {
+    vaultUnlockedRef.current = vaultUnlocked;
+  }, [vaultUnlocked]);
+
+  useLayoutEffect(() => {
+    if (!accessToken || !userId) {
+      return;
+    }
+    if (vaultUnlockedRef.current && vaultKeyRef.current) {
+      return;
+    }
+    const restored = readVaultUnlockSessionIfFresh(userId, vaultIdleLockMs);
+    if (!restored) {
+      return;
+    }
+    if (vaultKeyRef.current) {
+      wipeBytes(vaultKeyRef.current);
+    }
+    vaultKeyRef.current = restored.vaultKey;
+    lastActivityRef.current = restored.lastActivityAt;
+    vaultUnlockedRef.current = true;
+    setVaultUnlocked(true);
+  }, [accessToken, userId, vaultIdleLockMs]);
 
   useEffect(() => {
     if (!accessToken || !userId) {
@@ -289,6 +276,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return;
         }
+        setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(dto.vault_idle_lock_seconds));
         setProfile((prev) => {
           const fromServerFirst = dto.first_name?.trim() || undefined;
           const fromServerLast = dto.last_name?.trim() || undefined;
@@ -328,8 +316,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       user_id: dto.user_id,
       expires_at: dto.expires_at,
     });
+    if (vaultKeyRef.current) {
+      wipeBytes(vaultKeyRef.current);
+      vaultKeyRef.current = null;
+    }
+    vaultUnlockedRef.current = false;
+    setVaultUnlocked(false);
     setAccessToken(dto.access_token);
     setUserId(dto.user_id);
+    setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
     migrateLegacyVaultBundleToUser(dto.user_id);
     const merged = bridgeLocalProfileAfterLogin(dto.user_id);
     if (merged) {
@@ -340,12 +335,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     userIdRef.current = null;
+    clearVaultUnlockSession();
     clearStoredSession();
     clearSessionLocalProfile();
     clearVaultBundleSessionMirror();
     clearPendingVaultBundle();
     setAccessToken(null);
     setUserId(null);
+    vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
     if (vaultKeyRef.current) {
       wipeBytes(vaultKeyRef.current);
@@ -357,19 +354,34 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setRegistrationAuthStateId(null);
     setTwoFactorAuthStateIdState(null);
     setProfile(null);
+    setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
   }, []);
 
   const lockVault = useCallback(() => {
+    clearVaultUnlockSession();
     if (vaultKeyRef.current) {
       wipeBytes(vaultKeyRef.current);
       vaultKeyRef.current = null;
     }
+    vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
   }, []);
 
   const touchActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
+    if (userIdRef.current && vaultUnlockedRef.current) {
+      touchVaultUnlockSession(userIdRef.current);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!accessToken || !userId || !vaultUnlocked) {
+      return;
+    }
+    if (vaultUnlockSessionExceededIdle(userId, vaultIdleLockMs)) {
+      lockVault();
+    }
+  }, [accessToken, userId, vaultUnlocked, vaultIdleLockMs, lockVault]);
 
   const saveVaultBundle = useCallback(
     (bundle: StoredVaultBundle) => {
@@ -415,8 +427,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         wipeBytes(vaultKeyRef.current);
       }
       vaultKeyRef.current = vaultKey;
+      vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
       lastActivityRef.current = Date.now();
+      if (userId) {
+        persistVaultUnlockSession(userId, vaultKey);
+      }
       wipeBytes(pwd);
       wipeBytes(serverA);
       wipeBytes(deviceB);
@@ -455,6 +471,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       tryUnlockWithMasterPassword,
       hasVaultBundle,
       vaultUnlockBootstrapLoading,
+      vaultIdleLockMs,
     }),
     [
       accessToken,
@@ -478,23 +495,21 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       tryUnlockWithMasterPassword,
       hasVaultBundle,
       vaultUnlockBootstrapLoading,
+      vaultIdleLockMs,
     ],
   );
 
   return (
     <AuthVaultContext.Provider value={value}>
-      <NavigationGuards
+      {children}
+      <VaultIdleLockBridge
         accessToken={accessToken}
         vaultUnlocked={vaultUnlocked}
+        vaultIdleLockMs={vaultIdleLockMs}
         lockVault={lockVault}
+        touchActivity={touchActivity}
         lastActivityRef={lastActivityRef}
-        emailChallengeId={emailChallengeId}
-        pendingEmail={pendingEmail}
-        registrationAuthStateId={registrationAuthStateId}
-        twoFactorAuthStateId={twoFactorAuthStateId}
-      >
-        {children}
-      </NavigationGuards>
+      />
     </AuthVaultContext.Provider>
   );
 }

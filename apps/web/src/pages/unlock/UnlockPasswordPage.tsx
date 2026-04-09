@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type SVGProps } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { initCrypto } from "@okkey/crypto";
 import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
@@ -79,6 +79,7 @@ export default function UnlockPasswordPage() {
     logout,
     hasVaultBundle,
     vaultUnlockBootstrapLoading,
+    vaultUnlocked,
     touchActivity,
   } = useAuthVault();
 
@@ -111,13 +112,16 @@ export default function UnlockPasswordPage() {
       return;
     }
     touchActivity();
-    const redirect = safeRedirectPath(searchParams.get("redirect"), "/workspaces");
-    navigate(redirect, { replace: true });
   }
 
   function handleSignOut() {
     logout();
     navigate("/auth/email", { replace: true });
+  }
+
+  if (vaultUnlocked) {
+    const redirect = safeRedirectPath(searchParams.get("redirect"), "/workspaces");
+    return <Navigate to={redirect} replace />;
   }
 
   return (
