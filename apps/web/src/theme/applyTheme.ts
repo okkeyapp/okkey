@@ -1,3 +1,5 @@
+import { applySemanticAccentTint, readAccentTintEnabled } from "./accentSemanticTint.js";
+
 export type ThemeMode = "light" | "dark";
 
 export const DEFAULT_THEME: ThemeMode = "light";
@@ -24,10 +26,21 @@ export function applyStoredTheme() {
   const themeRaw = readLocalStorage("okkey.theme");
   const theme: ThemeMode = themeRaw === "dark" ? "dark" : DEFAULT_THEME;
 
-  const accentId = normalizeAccentId(readLocalStorage("okkey.accent"));
+  const storedAccent = readLocalStorage("okkey.accent");
+  const accentId = normalizeAccentId(storedAccent);
+
+  if (storedAccent == null || !ACCENT_IDS.has(storedAccent)) {
+    try {
+      window.localStorage.setItem("okkey.accent", accentId);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }
 
   const root = document.documentElement;
   root.classList.toggle("dark", theme === "dark");
   root.dataset.accent = accentId;
+
+  applySemanticAccentTint(root, theme, accentId, readAccentTintEnabled());
 }
 

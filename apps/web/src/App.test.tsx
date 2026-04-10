@@ -144,6 +144,13 @@ describe("App", () => {
   function resetDocTheme() {
     document.documentElement.classList.remove("dark");
     document.documentElement.dataset.accent = "";
+    delete document.documentElement.dataset.accentTint;
+    document.documentElement.style.removeProperty("--secondary");
+    document.documentElement.style.removeProperty("--muted");
+    document.documentElement.style.removeProperty("--muted-foreground");
+    document.documentElement.style.removeProperty("--border");
+    document.documentElement.style.removeProperty("--input");
+    document.documentElement.style.removeProperty("--foreground");
   }
 
   it("applies stored theme and accent", () => {
@@ -180,5 +187,32 @@ describe("App", () => {
 
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(document.documentElement.dataset.accent).toBe("a2");
+  });
+
+  it("accent tint off keeps semantic tokens from stylesheet only", () => {
+    mockLocalStorage({
+      "okkey.accent": "a5",
+    });
+    resetDocTheme();
+
+    applyStoredTheme();
+
+    expect(document.documentElement.dataset.accentTint).toBe("off");
+    expect(document.documentElement.style.getPropertyValue("--secondary")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--foreground")).toBe("");
+  });
+
+  it("accent tint on applies inline mixes for semantic tokens", () => {
+    mockLocalStorage({
+      "okkey.accent": "a5",
+      "okkey.accentTint": "1",
+    });
+    resetDocTheme();
+
+    applyStoredTheme();
+
+    expect(document.documentElement.dataset.accentTint).toBe("on");
+    expect(document.documentElement.style.getPropertyValue("--secondary")).not.toBe("");
+    expect(document.documentElement.style.getPropertyValue("--foreground")).not.toBe("");
   });
 });

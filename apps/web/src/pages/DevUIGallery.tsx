@@ -29,6 +29,7 @@ import {
   WorkspaceTile,
 } from "@okkey/ui";
 
+import { readAccentTintEnabled, writeAccentTintEnabled } from "../theme/accentSemanticTint";
 import { applyStoredTheme } from "../theme/applyTheme";
 
 const ACCENT_IDS = ["a1", "a2", "a3", "a4", "a5", "a6", "a7"] as const;
@@ -186,6 +187,7 @@ export default function DevUIGallery() {
   const [controlGroupScope, setControlGroupScope] = useState<string[]>(["apple", "banana"]);
   const [switchOn, setSwitchOn] = useState(true);
   const [switchOnLg, setSwitchOnLg] = useState(true);
+  const [accentTintEnabled, setAccentTintEnabled] = useState(readAccentTintEnabled);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -238,6 +240,26 @@ export default function DevUIGallery() {
                 {id}
               </Button>
             ))}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-4 text-card-foreground">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-sm font-medium text-foreground">Accent tint</p>
+              <p className="text-sm text-muted-foreground">
+                Subtle accent hue on secondary, muted, border, and foreground tokens. Off by default.
+              </p>
+            </div>
+            <Switch
+              checked={accentTintEnabled}
+              onCheckedChange={(on) => {
+                setAccentTintEnabled(on);
+                writeAccentTintEnabled(on);
+                applyStoredTheme();
+              }}
+              aria-label="Apply accent tint to semantic colors"
+            />
           </div>
         </section>
 
