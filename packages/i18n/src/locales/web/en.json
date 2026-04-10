@@ -78,7 +78,7 @@
   "account.restore.title": "Forgot master password?",
   "account.restore.description": "Restore access to your vault",
   "account.restore.proOnlyTitle": "Recovery is not available",
-  "account.restore.proOnlyBody": "Vault access recovery is available only on Pro plans and above.",
+  "account.restore.proOnlyBody": "Recovery is not available on the free plan. Switch to any paid plan to set up vault access recovery.",
   "account.restore.backToMasterPassword": "Back to master password",
 
   "plan.free": "Free",

@@ -78,7 +78,7 @@
   "account.restore.title": "Забыли мастер-пароль?",
   "account.restore.description": "Восстановите доступ к хранилищу",
   "account.restore.proOnlyTitle": "Восстановление недоступно",
-  "account.restore.proOnlyBody": "Восстановление доступа к хранилищу доступно только в тарифах PRO и выше.",
+  "account.restore.proOnlyBody": "Восстановление недоступно на бесплатном тарифе. Переключитесь на любой платный тариф, чтобы настроить восстановление доступа к хранилищу.",
   "account.restore.backToMasterPassword": "Вернуться к вводу мастер-пароля",
 
   "plan.free": "Бесплатный",
