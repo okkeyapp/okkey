@@ -22,7 +22,7 @@ function RootRedirect() {
   return <Navigate to="/auth/email" replace />;
 }
 
-/** Экраны входа/регистрации только без Bearer-сессии (без ожидания эффектов). */
+/** Login/registration screens only when there is no Bearer session (no effect timing). */
 function GuestAuthOnly({ children }: { children: ReactNode }) {
   const { accessToken } = useAuthVault();
   if (accessToken) {

@@ -44,7 +44,7 @@ function parseSession(raw: string | null): StoredAccessSession | null {
 }
 
 /**
- * Читает сессию из localStorage; при отсутствии — одноразово переносит из sessionStorage (legacy).
+ * Read session from localStorage; if missing, one-time migrate from sessionStorage (legacy).
  */
 export function readStoredSession(): StoredAccessSession | null {
   if (localStorageOk()) {

@@ -72,7 +72,7 @@ function syncSessionMirror(bundle: StoredVaultBundle): void {
 }
 
 /**
- * @param userId — текущий пользователь из сессии; `null` на шаге регистрации до выдачи токена.
+ * @param userId — current user from session; `null` during registration before token is issued.
  */
 export function readVaultBundle(userId: string | null): StoredVaultBundle | null {
   if (userId) {
@@ -129,7 +129,7 @@ export function writeVaultBundle(bundle: StoredVaultBundle, userId: string | nul
   }
 }
 
-/** После регистрации: переносит pending bundle в хранилище пользователя. */
+/** After registration: move pending bundle into the user's scoped storage. */
 export function finalizePendingVaultBundle(userId: string): void {
   if (!localStorageOk()) {
     return;
@@ -148,7 +148,7 @@ export function finalizePendingVaultBundle(userId: string): void {
   }
 }
 
-/** Подтягивает старый единый ключ `okkey.vault.bundle` к пользователю (один аккаунт на профиль браузера). */
+/** Migrate legacy single key `okkey.vault.bundle` to the user's scoped key (one account per browser profile). */
 export function migrateLegacyVaultBundleToUser(userId: string): void {
   if (!localStorageOk()) {
     return;
@@ -169,14 +169,14 @@ export function migrateLegacyVaultBundleToUser(userId: string): void {
   }
 }
 
-/** Выход из аккаунта: убираем только зеркало в sessionStorage, локальные ключи пользователя оставляем. */
+/** Logout: clear sessionStorage mirror only; keep the user's local key material. */
 export function clearVaultBundleSessionMirror(): void {
   if (sessionStorageOk()) {
     sessionStorage.removeItem(VAULT_BUNDLE_STORAGE_KEY);
   }
 }
 
-/** Незавершённая регистрация — не оставляем pending другому аккаунту на этом браузере. */
+/** Incomplete registration — do not leave pending data for another account in this browser. */
 export function clearPendingVaultBundle(): void {
   if (!localStorageOk()) {
     return;
@@ -188,7 +188,7 @@ export function clearPendingVaultBundle(): void {
   }
 }
 
-/** Полная очистка (редко): legacy + pending + scoped для одного userId. */
+/** Full wipe (rare): legacy + pending + scoped storage for one userId. */
 export function clearVaultBundleForUser(userId: string): void {
   clearVaultBundleSessionMirror();
   if (!localStorageOk()) {

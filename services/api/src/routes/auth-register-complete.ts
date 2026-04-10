@@ -20,7 +20,7 @@ interface RegisterCompleteBody {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
-  /** Optional display name for the default personal workspace and personal vault (e.g. localized "Personal" / "Личный"). */
+  /** Optional display name for the default personal workspace and personal vault (client-localized label). */
   personal_workspace_name?: string;
   /** Optional; persisted for UI when client storage is cleared. */
   first_name?: string;

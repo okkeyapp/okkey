@@ -39,7 +39,7 @@ function RequirementCrossIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function AuthRegistrationPage() {
-  const { t, locale } = useLocale();
+  const { t } = useLocale();
   const navigate = useNavigate();
   const {
     authClient,
@@ -114,7 +114,7 @@ export default function AuthRegistrationPage() {
       const devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
       wipeBytes(deviceKp);
 
-      const personalWorkspaceName = locale === "ru" ? "Личный" : "Personal";
+      const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
 
       const body: RegisterCompleteRequestDto = {
         auth_state_id: registrationAuthStateId,

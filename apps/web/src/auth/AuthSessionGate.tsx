@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthVault } from "./AuthVaultContext";
 
 /**
- * Редирект гостей с защищённых путей на email (до paint). Экраны /auth/* для сессии режутся в App через GuestAuthOnly.
+ * Redirect guests away from protected routes to email sign-in (before paint). /auth/* session flows are gated in App via GuestAuthOnly.
  */
 export default function AuthSessionGate() {
   const { accessToken, emailChallengeId, pendingEmail, registrationAuthStateId, twoFactorAuthStateId } =

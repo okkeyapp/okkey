@@ -3,8 +3,8 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuthVault } from "./AuthVaultContext";
 
 /**
- * Дочерние маршруты доступны только при Bearer-сессии и разблокированном vault.
- * Иначе — редирект на unlock с сохранением целевого URL (без «мигания» через /workspaces).
+ * Child routes require a Bearer session and an unlocked vault.
+ * Otherwise redirect to unlock with the target URL preserved (no flash via /workspaces).
  */
 export default function ProtectedVaultLayout() {
   const { accessToken, vaultUnlocked, vaultUnlockBootstrapLoading } = useAuthVault();

@@ -62,6 +62,7 @@
   "auth.registration.reqPasswordsMatch": "Passwords match",
   "auth.registration.submit": "Register",
   "auth.registration.differentEmail": "Log in with a different email",
+  "auth.registration.personalWorkspaceName": "Personal",
 
   "unlock.title": "Vault is locked",
   "unlock.description": "Enter your master password to unlock",

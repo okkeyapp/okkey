@@ -1,8 +1,8 @@
 /**
- * Временное хранение разблокированного vault key в sessionStorage этой вкладки.
- * — Переживает перезагрузку страницы (F5).
- * — Очищается при закрытии вкладки (в отличие от access token в localStorage).
- * — Уязвимо к XSS на том же origin; смягчается CSP. Мастер-пароль и ключ не уходят на сервер.
+ * Temporary storage for unlocked vault key in this tab’s sessionStorage.
+ * — Survives full page reload (F5).
+ * — Cleared when the tab closes (unlike access token in localStorage).
+ * — XSS-sensitive on same origin; mitigate with CSP. Master password and key never go to the server.
  */
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { VAULT_UNLOCK_TAB_KEY } from "./storageKeys";
@@ -61,7 +61,7 @@ export function touchVaultUnlockSession(userId: string): void {
 }
 
 /**
- * Возвращает ключ и метку активности, если запись есть, user совпадает и бездействие не превысило idleMs.
+ * Returns key and last activity if a record exists, user matches, and idle time is within idleMs.
  */
 export function readVaultUnlockSessionIfFresh(
   userId: string,
@@ -88,7 +88,7 @@ export function readVaultUnlockSessionIfFresh(
   }
 }
 
-/** Синхронное чтение при старте приложения (до первого paint), с дефолтным idle как на сервере. */
+/** Synchronous read on app startup (before first paint), default idle aligned with server. */
 export function readInitialTabVaultSession(userId: string): {
   vaultKey: Uint8Array | null;
   lastActivityAt: number;
@@ -112,7 +112,7 @@ export function clearVaultUnlockSession(): void {
   sessionStorage.removeItem(VAULT_UNLOCK_TAB_KEY);
 }
 
-/** true если записи нет, user не совпал или прошло ≥ idleMs с last_activity (нужно заблокировать vault). */
+/** true if there is no record, user mismatches, or ≥ idleMs since last_activity (vault should lock). */
 export function vaultUnlockSessionExceededIdle(userId: string, idleMs: number): boolean {
   if (typeof sessionStorage === "undefined") {
     return true;

@@ -54,7 +54,7 @@ function readScopedProfile(userId: string): LocalProfile | null {
 }
 
 /**
- * @param userId — из сессии; `null` до логина (только session mirror с email).
+ * @param userId — from session; `null` before login (session mirror with email only).
  */
 export function readLocalProfile(userId: string | null): LocalProfile | null {
   if (userId && localStorageOk()) {
@@ -67,7 +67,7 @@ export function readLocalProfile(userId: string | null): LocalProfile | null {
 }
 
 /**
- * Пишет зеркало в session (если есть email) и долговременную копию в localStorage для userId.
+ * Write session mirror (if email present) and durable copy in localStorage for userId.
  */
 export function writeLocalProfile(profile: LocalProfile, userId: string | null): void {
   if (profile.email?.trim() && sessionStorageOk()) {
@@ -82,20 +82,20 @@ export function writeLocalProfile(profile: LocalProfile, userId: string | null):
   }
 }
 
-/** Только session mirror — при logout, долговременный профиль пользователя сохраняем. */
+/** Session mirror only — on logout, keep the durable user profile. */
 export function clearSessionLocalProfile(): void {
   if (sessionStorageOk()) {
     sessionStorage.removeItem(PROFILE_STORAGE_KEY);
   }
 }
 
-/** @deprecated используйте clearSessionLocalProfile; оставлено для явной полной очистки при смене устройства */
+/** @deprecated use clearSessionLocalProfile; kept for explicit full wipe on device change */
 export function clearLocalProfile(): void {
   clearSessionLocalProfile();
 }
 
 /**
- * После выдачи токена: объединяет email из OTP-шага (session) с именем из scoped-профиля.
+ * After token issue: merge email from the OTP step (session) with name from scoped profile.
  */
 export function bridgeLocalProfileAfterLogin(userId: string): LocalProfile | null {
   const scoped = readScopedProfile(userId);

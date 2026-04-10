@@ -80,9 +80,9 @@ export type AuthVaultContextValue = {
   updateLocalProfile: (patch: Partial<LocalProfile> & { email?: string }) => void;
   tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean>;
   hasVaultBundle: boolean;
-  /** Пока true — идёт попытка подтянуть split-key с API после пустого локального хранилища. */
+  /** While true, split-key is being fetched from the API after an empty local vault bundle. */
   vaultUnlockBootstrapLoading: boolean;
-  /** Интервал бездействия до блокировки хранилища (мс), с сервера `vault_idle_lock_seconds`. */
+  /** Idle interval before vault locks (ms), from server `vault_idle_lock_seconds`. */
   vaultIdleLockMs: number;
 };
 

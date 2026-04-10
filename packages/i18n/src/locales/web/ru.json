@@ -62,6 +62,7 @@
   "auth.registration.reqPasswordsMatch": "Пароли совпадают",
   "auth.registration.submit": "Зарегистрироваться",
   "auth.registration.differentEmail": "Войти с другим email",
+  "auth.registration.personalWorkspaceName": "Личный",
 
   "unlock.title": "Хранилище закрыто",
   "unlock.description": "Введите мастер-пароль, чтобы разблокировать",
