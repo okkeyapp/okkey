@@ -15,23 +15,28 @@ Server **never has access to decrypted data**.
 ## Crypto Engine
 
 All cryptography is implemented in Rust:
+
 ```text
 rust/crypto-engine
 ```
 
 Rust is chosen for the following reasons:
+
 - memory safety
 - high performance
 - proven cryptographic libraries
 - ability to compile to WASM
 
 Crypto engine compiles to:
+
 - WASM
 
 and is used via:
+
 - packages/crypto
 
 Crypto engine primitives (Core):
+
 - Argon2id (KDF)
 - AES-256-GCM (AEAD)
 - XChaCha20-Poly1305 (AEAD)
@@ -46,21 +51,26 @@ Crypto engine primitives (Core):
 Okkey uses modern cryptographic algorithms.
 
 Key derivation:
+
 - Argon2id
 
 Symmetric encryption:
+
 - XChaCha20-Poly1305
 - AES-256-GCM
 
 Public key cryptography:
+
 - Ed25519 → signatures
 - X25519 → key exchange
 - ML-KEM-768 → PQ key encapsulation
 
 Key derivation helpers:
+
 - HKDF
 
 Random generation:
+
 - Secure OS RNG
 
 ---
@@ -82,6 +92,7 @@ Item Keys
 ---
 
 ## Account Vault Key
+
 VaultKey is used for account access.
 
 VaultKey **is not stored directly**.
@@ -91,6 +102,7 @@ It is assembled from three parts.
 ---
 
 ## Split Key Model
+
 ```text
 VaultKey = A + B + C
 ```
@@ -98,24 +110,31 @@ VaultKey = A + B + C
 In Core v1 transport math, **+** is **32-byte XOR** (element-wise) over the derived key material: `VaultKey = A ⊕ B ⊕ C`.
 
 where:
+
 - A — Server Share
 - B — Device Share
 - C — Password Share
 
 ### A — Server Share
+
 Stored on the server (32-byte share `server_key_share` on the user row, together with KDF salt/version for **C**).
+
 - not the full VaultKey
 - stored in database
 
 ### B — Device Share
+
 Stored in the device's secure storage.
+
 - iOS → Keychain
 - Android → Keystore
 - Desktop → OS Secure Storage
 - Web → IndexedDB + WebCrypto
 
 ### C — Password Share
+
 Derived from master password.
+
 ```text
 C = Argon2id(master_password)
 ```
@@ -123,6 +142,7 @@ C = Argon2id(master_password)
 ---
 
 ## Vault Unlock Flow
+
 When user opens vault:
 
 1. fetch server share
@@ -137,10 +157,12 @@ When user opens vault:
 ## User Key Pair
 
 Each user has:
+
 - UserPublicKey
 - UserPrivateKey
 
 Private key is stored:
+
 - encrypted with VaultKey
 
 This enables:
@@ -154,11 +176,13 @@ This enables:
 ## Vault Keys
 
 Each vault has a separate key. For example:
+
 - VaultKey_personal
 - VaultKey_team
 - VaultKey_devops
 
 Items inside vault:
+
 - encrypted with VaultKey
 
 ---
@@ -182,6 +206,7 @@ AttachmentKey: encrypted with VaultKey
 ## Key Rotation
 
 When access changes:
+
 - generate new VaultKey
 - re-encrypt items
 - distribute keys
@@ -269,3 +294,4 @@ Rollout policy:
 
 - `compat`: signature is optional for backward-compatible flows, but if present it is strictly verified;
 - `strict`: signature is required for integrity-critical operations and invalid/missing signatures are rejected (`SIGNATURE_REQUIRED` / `SIGNATURE_INVALID`).
+

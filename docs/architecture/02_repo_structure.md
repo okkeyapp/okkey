@@ -34,6 +34,7 @@ okkey
 ---
 
 ## apps
+
 Applications that users interact with.
 
 ```
@@ -45,34 +46,42 @@ apps/
 ```
 
 ### apps/web
+
 Main web application.
 
 Technologies:
+
 - Vite
 - React
 - TypeScript
 
 Responsible for:
+
 - UI
 - vault management
 - sharing
 - account settings
 
 ### apps/mobile
+
 Mobile application (ios, android).
 
 Technologies:
+
 - React Native
 - Typescript
 
 Secure storage:
+
 - iOS Keychain
 - Android Keystore
 
 ### apps/desktop
+
 Desktop application.
 
 Technologies:
+
 - Tauri
 - React UI
 - Rust backend
@@ -84,20 +93,24 @@ Advantages:
 - secure OS integration
 
 ### apps/extension
+
 Browser extension.
 
 Technologies:
+
 - React
 - WebExtension API
 - Typescript
 
 Support:
+
 - Chrome
 - Firefox
 - Edge
 - Opera
 
 Extension is used for:
+
 - autofill
 - password capture
 - quick vault access
@@ -105,6 +118,7 @@ Extension is used for:
 ---
 
 ## packages
+
 Shared libraries used by all applications.
 
 ```
@@ -120,23 +134,28 @@ packages/
 ```
 
 ### packages/api
+
 SDK for communicating with Okkey API.
 
 Contains:
+
 - REST client
 - WebSocket client
 - API types
 
 Used by:
+
 - apps/web
 - apps/mobile
 - apps/desktop
 - apps/extension
 
 ### packages/auth
+
 Authentication logic.
 
 Contains:
+
 - login flows
 - passkey
 - 2FA
@@ -144,9 +163,11 @@ Contains:
 - session handling
 
 ### packages/crypto
+
 Bindings for Rust crypto engine.
 
 Contains:
+
 - WASM loader
 - crypto API
 - key derivation
@@ -158,9 +179,11 @@ Typescript **never implements cryptography**.
 All operations are performed via Rust WASM.
 
 ### packages/vault
+
 Vault logic.
 
 Contains:
+
 - vault decryption
 - vault encryption
 - item CRUD
@@ -168,35 +191,43 @@ Contains:
 - sharing logic
 
 ### packages/sync
+
 Data synchronization.
 
 Contains:
+
 - event processing
 - conflict resolution
 - offline sync
 - local state management
 
 ### packages/ui
+
 Shared UI React components.
 
 Used by:
+
 - apps/web
 - apps/mobile
 - apps/desktop
 - apps/extension
 
 ### packages/hooks
+
 React hooks for working with Okkey.
 
 For example:
+
 - useVault()
 - useAuth()
 - useSync()
 
 ### packages/types
+
 Common system types.
 
 Contains:
+
 - API types
 - vault types
 - event types
@@ -204,6 +235,7 @@ Contains:
 ---
 
 ## services
+
 Backend services.
 
 ```
@@ -218,6 +250,7 @@ Enterprise modules implement these interfaces in the `okkey-enterprise/` repo.
 ---
 
 ## rust
+
 Crypto engine (Rust + WASM).
 
 ```
@@ -228,6 +261,7 @@ rust/
 ---
 
 ## infrastructure
+
 Self-hosting and deployment artifacts.
 
 ```

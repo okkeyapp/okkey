@@ -41,6 +41,7 @@ Enterprise features **must not** alter Core behavior and **must not** be require
 They attach via the Core Plugin Registry and Feature Interfaces.
 
 Typical enterprise modules:
+
 - SSO / SAML / OIDC
 - SCIM / directory sync
 - Audit logs
@@ -55,11 +56,13 @@ Enterprise architecture docs are in `okkey-enterprise/docs/architecture/`.
 ## Key Architectural Boundary
 
 Core backend exposes:
+
 - Plugin Registry
 - Feature Interfaces
 - license/feature-flag hooks
 
 Enterprise backend provides:
+
 - Plugin implementations
 - extra tables
 - enterprise deployment assets

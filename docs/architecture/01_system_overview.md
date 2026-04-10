@@ -38,38 +38,40 @@ Key product concepts (see `docs/glossary.md`):
 
 ## Okkey General Architecture (Core)
 
-                        ┌────────────────────────────┐
-                        │           Clients          │
-                        │                            │
-                        │  Web App (React)           │
-                        │  Mobile App (ReactNative)  │
-                        │  Desktop App (Tauri)       │
-                        │  Browser Extension         │
-                        └─────────────┬──────────────┘
-                                      │
-                                      │ HTTPS / WebSocket
-                                      │
-                        ┌─────────────▼──────────────┐
-                        │       Okkey Core API       │
-                        │                            │
-                        │ Auth Service               │
-                        │ Vault Service              │
-                        │ Sharing Service            │
-                        │ Sync Service               │
-                        │ Device Service             │
-                        └─────────────┬──────────────┘
-                                      │
-                ┌─────────────────────┼─────────────────────┐
-                │                     │                     │
-                ▼                     ▼                     ▼
+```
+                    ┌────────────────────────────┐
+                    │           Clients          │
+                    │                            │
+                    │  Web App (React)           │
+                    │  Mobile App (ReactNative)  │
+                    │  Desktop App (Tauri)       │
+                    │  Browser Extension         │
+                    └─────────────┬──────────────┘
+                                  │
+                                  │ HTTPS / WebSocket
+                                  │
+                    ┌─────────────▼──────────────┐
+                    │       Okkey Core API       │
+                    │                            │
+                    │ Auth Service               │
+                    │ Vault Service              │
+                    │ Sharing Service            │
+                    │ Sync Service               │
+                    │ Device Service             │
+                    └─────────────┬──────────────┘
+                                  │
+            ┌─────────────────────┼─────────────────────┐
+            │                     │                     │
+            ▼                     ▼                     ▼
 
-        ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
-        │ PostgreSQL   │      │ Redis        │      │ MinIO        │
-        │              │      │              │      │              │
-        │ users        │      │ sessions     │      │ attachments  │
-        │ vault meta   │      │ cache        │      │ files        │
-        │ sharing meta │      │ locks        │      │ backups      │
-        └──────────────┘      └──────────────┘      └──────────────┘
+    ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+    │ PostgreSQL   │      │ Redis        │      │ MinIO        │
+    │              │      │              │      │              │
+    │ users        │      │ sessions     │      │ attachments  │
+    │ vault meta   │      │ cache        │      │ files        │
+    │ sharing meta │      │ locks        │      │ backups      │
+    └──────────────┘      └──────────────┘      └──────────────┘
+```
 
 ---
 
@@ -77,43 +79,47 @@ Key product concepts (see `docs/glossary.md`):
 
 Enterprise modules plug into the Core API via Feature Interfaces and the Plugin Registry.
 
-                        ┌────────────────────────────┐
-                        │   Enterprise Extensions    │
-                        │  (okkey-enterprise repo)   │
-                        │                            │
-                        │  SSO / SCIM / Audit        │
-                        │  Org Policies / Admin      │
-                        └─────────────┬──────────────┘
-                                      │
-                                      │ Feature Interfaces
-                                      ▼
-                        ┌────────────────────────────┐
-                        │       Okkey Core API       │
-                        └────────────────────────────┘
+```
+                    ┌────────────────────────────┐
+                    │   Enterprise Extensions    │
+                    │  (okkey-enterprise repo)   │
+                    │                            │
+                    │  SSO / SCIM / Audit        │
+                    │  Org Policies / Admin      │
+                    └─────────────┬──────────────┘
+                                  │
+                                  │ Feature Interfaces
+                                  ▼
+                    ┌────────────────────────────┐
+                    │       Okkey Core API       │
+                    └────────────────────────────┘
+```
 
 ---
 
 ## Cryptography (Rust Crypto Engine)
 
-                   ┌────────────────────┐
-                   │  Rust Crypto Core  │
-                   │                    │
-                   │ Argon2             │
-                   │ AES-256-GCM        │
-                   │ XChaCha20-Poly1305 │
-                   │ Ed25519            │
-                   │ X25519             │
-                   └─────────┬──────────┘
-                             │
-                WASM bindings│
-                             │
-          ┌──────────────────▼─────────────────┐
-          │            Clients                 │
-          │                                    │
-          │ encryption / decryption            │
-          │ key derivation                     │
-          │ signing                            │
-          └────────────────────────────────────┘
+```
+               ┌────────────────────┐
+               │  Rust Crypto Core  │
+               │                    │
+               │ Argon2             │
+               │ AES-256-GCM        │
+               │ XChaCha20-Poly1305 │
+               │ Ed25519            │
+               │ X25519             │
+               └─────────┬──────────┘
+                         │
+            WASM bindings│
+                         │
+      ┌──────────────────▼─────────────────┐
+      │            Clients                 │
+      │                                    │
+      │ encryption / decryption            │
+      │ key derivation                     │
+      │ signing                            │
+      └────────────────────────────────────┘
+```
 
 ---
 
