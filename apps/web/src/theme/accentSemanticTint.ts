@@ -1,5 +1,5 @@
 /**
- * Optional “accent tint”: nudge semantic neutrals (secondary, muted, border, foreground)
+ * Optional “accent tint”: nudge semantic neutrals (background, card, secondary, muted, border, foreground, …)
  * toward the current accent in hue/saturation only — **lightness stays on the base token**
  * so surfaces don’t get darker in light mode or lighter in dark mode.
  */
@@ -31,31 +31,41 @@ export function writeAccentTintEnabled(on: boolean): void {
 
 type Hsl = readonly [number, number, number];
 
-type SemanticBaseKey = "secondary" | "muted" | "mutedForeground" | "border" | "input" | "foreground";
+type SemanticBaseKey =
+  | "background"
+  | "card"
+  | "secondary"
+  | "muted"
+  | "mutedForeground"
+  | "border"
+  | "input"
+  | "foreground";
 
 /** --accent / --primary source per theme (same numbers as `index.css`). */
 const ACCENT_HSL: Record<"light" | "dark", Record<string, Hsl>> = {
   light: {
-    a1: [0, 0, 9],
-    a2: [217.2, 91.2, 59.8],
-    a3: [188.7, 94.5, 42.7],
-    a4: [161.4, 93.5, 30.4],
-    a5: [24.6, 95.0, 53.1],
-    a6: [333.3, 71.4, 50.6],
-    a7: [262.1, 83.3, 57.8],
+    a1: [215, 5.0, 9.0],
+    a2: [217.2, 93.2, 59.8],
+    a3: [188.7, 96.2, 42.7],
+    a4: [159.8, 83.5, 41.0],
+    a5: [24.6, 97.0, 53.1],
+    a6: [331.0, 82.5, 60.4],
+    a7: [258.6, 90.5, 67.1],
   },
   dark: {
-    a1: [0, 0, 98],
-    a2: [217.2, 91.2, 59.8],
-    a3: [188.7, 94.5, 42.7],
-    a4: [158.1, 64.4, 51.6],
-    a5: [24.6, 95.0, 53.1],
-    a6: [328.6, 85.5, 70.2],
-    a7: [255.1, 91.7, 76.3],
+    a1: [215, 4.0, 98.0],
+    a2: [217.2, 93.2, 59.8],
+    a3: [188.7, 96.2, 42.7],
+    a4: [159.8, 83.5, 41.0],
+    a5: [24.6, 97.0, 53.1],
+    a6: [331.0, 82.5, 60.4],
+    a7: [258.6, 90.5, 67.1],
   },
 };
 
 const BASE_LIGHT: Record<SemanticBaseKey, Hsl> = {
+  background: [0, 0, 100],
+  card: [0, 0, 100],
   secondary: [210, 40, 96.1],
   muted: [210, 40, 96.1],
   mutedForeground: [215.4, 16.3, 46.9],
@@ -65,6 +75,8 @@ const BASE_LIGHT: Record<SemanticBaseKey, Hsl> = {
 };
 
 const BASE_DARK: Record<SemanticBaseKey, Hsl> = {
+  background: [222.2, 84, 4.9],
+  card: [222.2, 84, 4.9],
   secondary: [217.2, 32.6, 17.5],
   muted: [217.2, 32.6, 17.5],
   mutedForeground: [215, 20.2, 65.1],
@@ -74,6 +86,8 @@ const BASE_DARK: Record<SemanticBaseKey, Hsl> = {
 };
 
 const TINT_ROWS: readonly { cssVar: string; baseKey: SemanticBaseKey; weight: number }[] = [
+  { cssVar: "--background", baseKey: "background", weight: 0.09 },
+  { cssVar: "--card", baseKey: "card", weight: 0.09 },
   { cssVar: "--secondary", baseKey: "secondary", weight: 0.14 },
   { cssVar: "--muted", baseKey: "muted", weight: 0.14 },
   { cssVar: "--muted-foreground", baseKey: "mutedForeground", weight: 0.1 },
@@ -116,7 +130,8 @@ export function clearSemanticAccentTintInline(root: HTMLElement): void {
 }
 
 /**
- * When `enabled`, sets inline `--secondary`, `--muted`, `--muted-foreground`, `--border`, `--input`, `--foreground`.
+ * When `enabled`, sets inline semantic vars including `--background`, `--card`, `--secondary`, `--muted`,
+ * `--muted-foreground`, `--border`, `--input`, `--foreground`.
  * When disabled, clears those inline properties so stylesheet tokens apply.
  */
 export function applySemanticAccentTint(

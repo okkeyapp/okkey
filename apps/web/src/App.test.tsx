@@ -161,6 +161,8 @@ describe("App", () => {
     document.documentElement.dataset.accent = "";
     delete document.documentElement.dataset.themePreference;
     delete document.documentElement.dataset.accentTint;
+    document.documentElement.style.removeProperty("--background");
+    document.documentElement.style.removeProperty("--card");
     document.documentElement.style.removeProperty("--secondary");
     document.documentElement.style.removeProperty("--muted");
     document.documentElement.style.removeProperty("--muted-foreground");
@@ -237,6 +239,8 @@ describe("App", () => {
 
     expect(document.documentElement.dataset.themePreference).toBe("auto");
     expect(document.documentElement.dataset.accentTint).toBe("off");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--card")).toBe("");
     expect(document.documentElement.style.getPropertyValue("--secondary")).toBe("");
     expect(document.documentElement.style.getPropertyValue("--foreground")).toBe("");
   });
@@ -252,6 +256,8 @@ describe("App", () => {
 
     expect(document.documentElement.dataset.themePreference).toBe("auto");
     expect(document.documentElement.dataset.accentTint).toBe("on");
+    expect(document.documentElement.style.getPropertyValue("--background")).not.toBe("");
+    expect(document.documentElement.style.getPropertyValue("--card")).not.toBe("");
     expect(document.documentElement.style.getPropertyValue("--secondary")).not.toBe("");
     expect(document.documentElement.style.getPropertyValue("--foreground")).not.toBe("");
   });

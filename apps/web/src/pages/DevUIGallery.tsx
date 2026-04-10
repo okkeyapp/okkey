@@ -280,7 +280,8 @@ export default function DevUIGallery() {
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-medium text-foreground">Accent tint</p>
               <p className="text-sm text-muted-foreground">
-                Subtle accent hue on secondary, muted, border, and foreground tokens. Off by default.
+                Subtle accent hue on background, card, secondary, muted, border, and foreground tokens. Off by
+                default.
               </p>
             </div>
             <Switch
