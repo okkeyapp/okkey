@@ -30,7 +30,11 @@ import {
 } from "@okkey/ui";
 
 import { readAccentTintEnabled, writeAccentTintEnabled } from "../theme/accentSemanticTint";
-import { applyStoredTheme } from "../theme/applyTheme";
+import {
+  applyStoredTheme,
+  readStoredThemePreference,
+  type ThemePreference,
+} from "../theme/applyTheme";
 
 const ACCENT_IDS = ["a1", "a2", "a3", "a4", "a5", "a6", "a7"] as const;
 
@@ -43,11 +47,6 @@ function readAccentFromStorage(): AccentId {
   } catch {
     return "a2";
   }
-}
-
-function setStoredTheme(theme: "light" | "dark") {
-  window.localStorage.setItem("okkey.theme", theme);
-  applyStoredTheme();
 }
 
 function setStoredAccent(accent: AccentId) {
@@ -91,6 +90,14 @@ const MOCK_USERS = [
   { id: "u9", first: "Ivy", last: "Irwin", email: "ivy.irwin@example.com" },
   { id: "u10", first: "Jack", last: "Jordan", email: "jack.jordan@example.com" },
 ] as const;
+
+function ThemeCheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
 
 function SettingsGearIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -180,6 +187,7 @@ function ColorSwatch({
 }
 
 export default function DevUIGallery() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => readStoredThemePreference());
   const [accent, setAccent] = useState<AccentId>(readAccentFromStorage);
   const [multiFruits, setMultiFruits] = useState<string[]>([]);
   const [multiSummary, setMultiSummary] = useState<string[]>([]);
@@ -188,6 +196,12 @@ export default function DevUIGallery() {
   const [switchOn, setSwitchOn] = useState(true);
   const [switchOnLg, setSwitchOnLg] = useState(true);
   const [accentTintEnabled, setAccentTintEnabled] = useState(readAccentTintEnabled);
+
+  function setStoredThemePreference(preference: ThemePreference) {
+    window.localStorage.setItem("okkey.theme", preference);
+    setThemePreference(preference);
+    applyStoredTheme();
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -213,13 +227,31 @@ export default function DevUIGallery() {
 
         <section className="space-y-4">
           <h2 className="text-lg font-medium">Theme</h2>
+          <p className="text-sm text-muted-foreground">
+            Stored as <code className="rounded bg-muted px-1 py-0.5 text-xs">okkey.theme</code>.{" "}
+            <strong>Auto</strong> follows the OS / browser via{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">prefers-color-scheme</code> (macOS, Windows,
+            Linux).
+          </p>
           <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" onClick={() => setStoredTheme("light")}>
-              Light
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => setStoredTheme("dark")}>
-              Dark
-            </Button>
+            {(
+              [
+                ["light", "Light"] as const,
+                ["dark", "Dark"] as const,
+                ["auto", "Auto"] as const,
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                variant={themePreference === value ? "default" : "secondary"}
+                className="inline-flex items-center gap-2"
+                onClick={() => setStoredThemePreference(value)}
+              >
+                {themePreference === value ? <ThemeCheckIcon className="size-4 shrink-0" /> : null}
+                {label}
+              </Button>
+            ))}
           </div>
         </section>
 

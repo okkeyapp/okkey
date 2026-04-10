@@ -32,15 +32,15 @@ From `apps/web/` you can run `yarn dev`, `yarn build`, `yarn test`, `yarn test:w
 
 The root `yarn test` runs API tests, E2E, then `yarn test:web`.
 
-## Theme (light/dark + accent)
+## Theme (light / dark / system + accent)
 
 Web UI uses **shadcnUI-compatible CSS variables** and Tailwind tokens.
 
-- Dark mode: `darkMode: 'class'` (Tailwind) + `.dark { ... }` variables in `src/index.css`.
+- Dark mode: `darkMode: 'class'` (Tailwind) + `.dark { ... }` variables in `src/index.css`. Resolved theme follows `okkey.theme` and, when set to `auto`, `prefers-color-scheme` (OS-level on macOS, Windows, and Linux browsers).
 - Accent: `data-accent="a1" ... "a7"` on `document.documentElement`.
   - For each accent id we override `--primary` / `--accent` (and therefore Tailwind `primary/*` and `accent/*` colors).
   - Persisted locally via `localStorage` keys:
-    - `okkey.theme` = `light|dark`
+    - `okkey.theme` = `light|dark|auto` (default: `auto`)
     - `okkey.accent` = `a1..a7` (default: `a2`)
 
 Accent palette (ids `a1..a7`) comes from design colors:

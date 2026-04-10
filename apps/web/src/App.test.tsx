@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { PROFILE_STORAGE_KEY, SESSION_STORAGE_KEY } from "./auth/storageKeys";
 import { applyStoredTheme } from "./theme/applyTheme";
@@ -144,6 +144,7 @@ describe("App", () => {
   function resetDocTheme() {
     document.documentElement.classList.remove("dark");
     document.documentElement.dataset.accent = "";
+    delete document.documentElement.dataset.themePreference;
     delete document.documentElement.dataset.accentTint;
     document.documentElement.style.removeProperty("--secondary");
     document.documentElement.style.removeProperty("--muted");
@@ -162,18 +163,40 @@ describe("App", () => {
 
     applyStoredTheme();
 
+    expect(document.documentElement.dataset.themePreference).toBe("dark");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(document.documentElement.dataset.accent).toBe("a4");
   });
 
-  it("defaults to light + accent a2 when storage is empty", () => {
+  it("defaults to auto theme preference and resolves light when system prefers light", () => {
     mockLocalStorage({});
     resetDocTheme();
 
     applyStoredTheme();
 
+    expect(document.documentElement.dataset.themePreference).toBe("auto");
     expect(document.documentElement.classList.contains("dark")).toBe(false);
     expect(document.documentElement.dataset.accent).toBe("a2");
+  });
+
+  it("auto theme resolves to dark when prefers-color-scheme is dark", () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(prefers-color-scheme: dark)",
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      onchange: null,
+    }));
+    mockLocalStorage({ "okkey.theme": "auto" });
+    resetDocTheme();
+
+    applyStoredTheme();
+
+    expect(document.documentElement.dataset.themePreference).toBe("auto");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
   it("falls back to accent a2 on invalid accentId", () => {
@@ -197,6 +220,7 @@ describe("App", () => {
 
     applyStoredTheme();
 
+    expect(document.documentElement.dataset.themePreference).toBe("auto");
     expect(document.documentElement.dataset.accentTint).toBe("off");
     expect(document.documentElement.style.getPropertyValue("--secondary")).toBe("");
     expect(document.documentElement.style.getPropertyValue("--foreground")).toBe("");
@@ -211,6 +235,7 @@ describe("App", () => {
 
     applyStoredTheme();
 
+    expect(document.documentElement.dataset.themePreference).toBe("auto");
     expect(document.documentElement.dataset.accentTint).toBe("on");
     expect(document.documentElement.style.getPropertyValue("--secondary")).not.toBe("");
     expect(document.documentElement.style.getPropertyValue("--foreground")).not.toBe("");
