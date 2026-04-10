@@ -216,6 +216,8 @@ export {
   decryptPersonalVaultMetadataPayload,
 } from "./personal-vault-metadata.js";
 
+export { wrapVaultKeyWithRecoverySecret, unwrapVaultKeyWithRecoverySecret } from "./vault-recovery-key.js";
+
 export {
   OKKEY_CRYPTO_PROFILE_V2,
   MLKEM768_ENCAPSULATION_KEY_LEN,
