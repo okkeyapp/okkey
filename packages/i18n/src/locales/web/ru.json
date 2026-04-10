@@ -82,6 +82,7 @@
   "plan.personal": "Персональный",
 
   "workspaces.title": "Добро пожаловать в Okkey",
+  "workspaces.loading": "Загрузка пространств",
   "workspaces.description": "Выберите рабочее пространство",
   "workspaces.createLine1": "Создать",
   "workspaces.createLine2": "пространство",

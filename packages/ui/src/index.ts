@@ -21,6 +21,7 @@ export { Button, buttonVariants, type ButtonProps } from "./components/ui/button
 export { Input, type InputProps } from "./components/ui/input.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";
+export { Spinner, spinnerVariants, type SpinnerProps } from "./components/ui/spinner.js";
 export {
   Select,
   SelectContent,

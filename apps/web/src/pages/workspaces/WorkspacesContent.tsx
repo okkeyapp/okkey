@@ -1,14 +1,17 @@
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiRequestError } from "@okkey/api";
 import type { Workspace } from "@okkey/types";
-import { WorkspaceTile } from "@okkey/ui";
+import { Spinner, WorkspaceTile } from "@okkey/ui";
 
 import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { useLocale } from "../../locale/LocaleContext";
 
 const PERSONAL_FREE_TILE_COLOR = "#3B82F6";
+
+/** Matches `WorkspaceTile` / create-workspace button (`workspace-tile.tsx`). */
+const WORKSPACE_TILE_BOX_CLASS = "h-[170px] w-[180px] shrink-0 rounded-xl";
 
 const dashedTileChrome =
   "border border-dashed border-foreground/90 bg-transparent shadow-none dark:border-foreground/70";
@@ -40,6 +43,35 @@ function planDescriptionKey(planTier: string): string {
     return "plan.free";
   }
   return "plan.enterprise";
+}
+
+function WorkspacesListChrome({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-full flex-nowrap items-start justify-center gap-4 overflow-x-auto px-1 py-3">
+      {children}
+    </div>
+  );
+}
+
+function WorkspacesLoadingPlaceholder() {
+  const { t } = useLocale();
+  const label = t("workspaces.loading");
+
+  return (
+    <WorkspacesListChrome>
+      <div
+        className={`box-border flex ${WORKSPACE_TILE_BOX_CLASS} items-center justify-center border border-transparent bg-transparent p-[12px]`}
+        role="status"
+        aria-busy
+        aria-label={label}
+      >
+        <div className="flex h-[36px] w-[36px] shrink-0 items-center justify-center">
+          <Spinner />
+        </div>
+        <span className="sr-only">{label}</span>
+      </div>
+    </WorkspacesListChrome>
+  );
 }
 
 export default function WorkspacesContent() {
@@ -80,7 +112,7 @@ export default function WorkspacesContent() {
   }
 
   if (workspaces === null) {
-    return <p className="okkey-body text-center text-copy-secondary">…</p>;
+    return <WorkspacesLoadingPlaceholder />;
   }
 
   if (workspaces.length === 0) {
@@ -88,7 +120,7 @@ export default function WorkspacesContent() {
   }
 
   return (
-    <div className="flex w-full flex-nowrap items-start justify-center gap-4 overflow-x-auto px-1 py-3">
+    <WorkspacesListChrome>
       {workspaces.map((ws) => {
         const isFree = ws.planTier === "FREE";
         return (
@@ -106,7 +138,7 @@ export default function WorkspacesContent() {
       <button
         type="button"
         aria-label={t("workspaces.createWorkspaceAria")}
-        className={`flex h-[170px] w-[180px] shrink-0 flex-col items-center justify-center gap-3 rounded-xl p-6 ${dashedTileChrome} transition-[transform,box-shadow] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
+        className={`flex ${WORKSPACE_TILE_BOX_CLASS} flex-col items-center justify-center gap-3 p-6 ${dashedTileChrome} transition-[transform,box-shadow] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
       >
         <p className="okkey-body-strong text-center text-copy-primary">
           {t("workspaces.createLine1")}
@@ -115,6 +147,6 @@ export default function WorkspacesContent() {
         </p>
         <CreateWorkspaceMark className="shrink-0 text-copy-primary" />
       </button>
-    </div>
+    </WorkspacesListChrome>
   );
 }
