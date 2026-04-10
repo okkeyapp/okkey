@@ -71,8 +71,8 @@ describe("App", () => {
     });
   });
 
-  it("redirects /auth/registration when registration state is missing", async () => {
-    renderWithRouter(<App />, ["/auth/registration"]);
+  it("redirects /account/new when registration state is missing", async () => {
+    renderWithRouter(<App />, ["/account/new"]);
     await waitFor(() => {
       expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
     });
@@ -97,7 +97,7 @@ describe("App", () => {
         lastName: "User",
       }),
     );
-    renderWithRouter(<App />, ["/unlock/password"]);
+    renderWithRouter(<App />, ["/account/lock"]);
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     });
@@ -107,13 +107,28 @@ describe("App", () => {
     clearBearerAndSession();
   });
 
+  it("renders account restore stub with Pro message and link back to lock", async () => {
+    seedBearerSession();
+    sessionStorage.setItem(
+      PROFILE_STORAGE_KEY,
+      JSON.stringify({ email: "user@okkey.local", firstName: "Test", lastName: "User" }),
+    );
+    renderWithRouter(<App />, ["/account/restore"]);
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Forgot master password?");
+    });
+    expect(screen.getByText(/^recovery is not available$/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /back to master password/i })).toHaveAttribute("href", "/account/lock");
+    clearBearerAndSession();
+  });
+
   it("shows error when unlocking without local vault bundle", async () => {
     seedBearerSession();
     sessionStorage.setItem(
       PROFILE_STORAGE_KEY,
       JSON.stringify({ email: "user@okkey.local" }),
     );
-    renderWithRouter(<App />, ["/unlock/password"]);
+    renderWithRouter(<App />, ["/account/lock"]);
     await waitFor(() => {
       expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
     });

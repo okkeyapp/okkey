@@ -29,9 +29,12 @@ export default function AuthSessionGate() {
       path === "/dev/ui" ||
       path === "/auth/email" ||
       (path === "/auth/otp" && inOtpFlow) ||
+      (path === "/account/new" && Boolean(registrationAuthStateId)) ||
       (path === "/auth/registration" && Boolean(registrationAuthStateId)) ||
       (path === "/auth/two-factor" && Boolean(twoFactorAuthStateId)) ||
-      path === "/unlock/password";
+      path === "/account/lock" ||
+      path === "/unlock/password" ||
+      path === "/account/restore";
 
     if (!allowed) {
       navigate("/auth/email", { replace: true });

@@ -19,6 +19,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { useLocale } from "../../locale/LocaleContext";
+import { ACCOUNT_NEW_PATH } from "../../routes/paths";
 
 const OTP_LENGTH = 6;
 
@@ -157,7 +158,7 @@ export default function AuthOtpPage() {
       const res = await authClient.confirmEmailCode(emailChallengeId, code);
       if (res.nextStep === "registration") {
         setRegistrationAuthStateId(res.authStateId);
-        navigate("/auth/registration", { replace: true });
+        navigate(ACCOUNT_NEW_PATH, { replace: true });
         return;
       }
       if (res.nextStep === "two_factor") {

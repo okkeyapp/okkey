@@ -24,7 +24,7 @@ export default function ProtectedVaultLayout() {
 
   if (!vaultUnlocked) {
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
-    return <Navigate to={`/unlock/password?redirect=${redirect}`} replace />;
+    return <Navigate to={`/account/lock?redirect=${redirect}`} replace />;
   }
 
   return <Outlet />;

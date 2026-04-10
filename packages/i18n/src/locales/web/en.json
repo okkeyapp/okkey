@@ -75,6 +75,12 @@
   "unlock.syncingVault": "Restoring vault data from the server…",
   "unlock.errorNoLocalVault": "This browser has no vault key data. If you cleared site data, we could not restore from the server (e.g. several trusted devices and a new browser fingerprint). Use another browser profile that still has Okkey data, or add recovery in a future release.",
 
+  "account.restore.title": "Forgot master password?",
+  "account.restore.description": "Restore access to your vault",
+  "account.restore.proOnlyTitle": "Recovery is not available",
+  "account.restore.proOnlyBody": "Vault access recovery is available only on Pro plans and above.",
+  "account.restore.backToMasterPassword": "Back to master password",
+
   "plan.free": "Free",
   "plan.premium": "Premium",
   "plan.family": "Family",

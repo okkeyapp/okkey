@@ -158,7 +158,7 @@ function VaultIdleLockBridge({
     }
     lockVault();
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
-    navigate(`/unlock/password?redirect=${redirect}`, { replace: true });
+    navigate(`/account/lock?redirect=${redirect}`, { replace: true });
   }, [accessToken, vaultUnlocked, lockVault, navigate, location.pathname, location.search]);
 
   return (
