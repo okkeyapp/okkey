@@ -3,6 +3,7 @@ import { cn, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } fro
 import type { ReactNode } from "react";
 
 import { useLocale } from "../../locale/LocaleContext";
+import { BodyGradient } from "../BodyGradient";
 
 export type AppShellLayoutProps = {
   title: string;
@@ -31,18 +32,7 @@ export default function AppShellLayout({
 
   return (
     <div className="relative isolate min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div
-        className="pointer-events-none absolute inset-0 dark:hidden"
-        style={{
-          backgroundImage:
-            "linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%)",
-        }}
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-0 hidden bg-gradient-to-b from-secondary/80 via-background to-background dark:block"
-        aria-hidden
-      />
+      <BodyGradient />
 
       <div className="absolute right-10 top-10 z-10">
         <Select value={locale} onValueChange={(v) => setLocale(v as WebLocale)} variant="inline">
