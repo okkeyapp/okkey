@@ -19,6 +19,8 @@ import {
   MultiSelectContent,
   MultiSelectItem,
   MultiSelectTrigger,
+  OkkeyAppSidebar,
+  OkkeyAppSidebarToolbar,
   Select,
   SelectContent,
   SelectItem,
@@ -320,6 +322,47 @@ export default function DevUIGallery() {
               Body: The quick brown fox jumps over the lazy dog. 01456789
             </p>
             <p className="okkey-small text-copy-secondary">Small muted caption text.</p>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Sidebar</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Primitives follow the shadcn/ui sidebar pattern (
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">SidebarProvider</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">OkkeyAppSidebarToolbar</code> in the main column,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">SidebarMenuButton</code>, collapsible groups,
+              tree). The scrollable block uses{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">ScrollArea</code>. Colors use{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">sidebar-*</code> tokens and shared{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">foreground</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">primary</code>.
+            </p>
+          </div>
+          <div className="relative isolate overflow-x-auto rounded-lg">
+            <div
+              className="pointer-events-none absolute inset-0 dark:hidden"
+              style={{
+                backgroundImage:
+                  "linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%)",
+              }}
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute inset-0 hidden bg-gradient-to-b from-secondary/80 via-background to-background dark:block"
+              aria-hidden
+            />
+            <div className="relative flex h-[min(640px,75vh)] min-h-[360px] w-max min-w-full">
+              <OkkeyAppSidebar className="h-full min-h-0">
+                <OkkeyAppSidebarToolbar />
+                <div
+                  className="mt-2 mr-2 mb-2 flex min-h-0 flex-1 items-center justify-center rounded-xl bg-background px-6 text-sm text-muted-foreground shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                >
+                  Main content
+                </div>
+              </OkkeyAppSidebar>
+            </div>
           </div>
         </section>
 
@@ -792,7 +835,7 @@ export default function DevUIGallery() {
                       <SettingsGearIcon className="size-4 shrink-0" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-[10rem]">
+                  <DropdownMenuContent align="end" className="min-w-[10rem] p-1">
                     <DropdownMenuItem>
                       <MenuEditIcon className="size-4 shrink-0 text-muted-foreground" />
                       Edit
