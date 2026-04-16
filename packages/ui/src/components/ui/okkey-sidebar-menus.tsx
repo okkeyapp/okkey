@@ -75,8 +75,19 @@ function sidebarSectionPlusButton(className?: string) {
   );
 }
 
-const collapsedFolderSubMenuDropdownItemClassName =
-  "min-h-8 -translate-x-px cursor-pointer gap-2 rounded-lg py-1.5";
+/** Popover folder tree: same hover tint as sidebar rows (`SidebarMenuButton`), not `bg-secondary`. */
+/** Chevron points down when open, right when closed; `group` lives on the CollapsibleTrigger surface. */
+const folderTreeChevronClassName = "size-4 shrink-0 transition group-data-[state=closed]:-rotate-90";
+
+const folderDropdownInteractiveRowClassName = cn(
+  "group relative flex w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground outline-none transition-[background-color,color]",
+  sidebarRowHoverClassName,
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
+/** Radix uses `data-highlighted` for pointer hover in menus — mirror sidebar row hover, not default item `secondary`. */
+const folderDropdownMenuItemClassName =
+  "cursor-pointer gap-2 data-[highlighted]:bg-[rgba(0,0,0,0.05)] data-[highlighted]:text-foreground dark:data-[highlighted]:bg-[rgba(255,255,255,0.08)]";
 
 /** Tailwind `group/<name>` suffix, e.g. `collapsible` → `group/collapsible` + chevron `group-data-[state=closed]/collapsible:`. */
 function collapsibleGroupClass(name: string) {
@@ -328,14 +339,16 @@ function FolderSubTreeSidebar({
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
-          const gClass = collapsibleGroupClass(gName);
-          const ch = collapsibleChevronClass(gName);
           return (
             <SidebarMenuSubItem key={node.id}>
-              <Collapsible defaultOpen={node.defaultOpen} className={gClass}>
+              <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuSubButton type="button" className="pr-2" onPointerDown={(e) => e.preventDefault()}>
-                    <ChevronDownMenuIcon className={cn("size-4 shrink-0 transition", ch)} />
+                  <SidebarMenuSubButton
+                    type="button"
+                    className="group cursor-pointer"
+                    onPointerDown={(e) => e.preventDefault()}
+                  >
+                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
                     <span className="truncate">{node.label}</span>
                   </SidebarMenuSubButton>
                 </CollapsibleTrigger>
@@ -350,7 +363,7 @@ function FolderSubTreeSidebar({
         }
         return (
           <SidebarMenuSubItem key={node.id}>
-            <SidebarMenuSubButton type="button">
+            <SidebarMenuSubButton type="button" className="cursor-pointer">
               {leafIcon}
               <span className="truncate">{node.label}</span>
             </SidebarMenuSubButton>
@@ -375,14 +388,12 @@ function FolderTopTreeSidebar({
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
-          const gClass = collapsibleGroupClass(gName);
-          const ch = collapsibleChevronClass(gName);
           return (
             <SidebarMenuItem key={node.id}>
-              <Collapsible defaultOpen={node.defaultOpen} className={gClass}>
+              <Collapsible defaultOpen={node.defaultOpen}>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuButton type="button" className="pr-2" onPointerDown={(e) => e.preventDefault()}>
-                    <ChevronDownMenuIcon className={cn("size-4 shrink-0 transition", ch)} />
+                  <SidebarMenuButton type="button" className="group cursor-pointer" onPointerDown={(e) => e.preventDefault()}>
+                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
                     <span className="truncate">{node.label}</span>
                   </SidebarMenuButton>
                 </CollapsibleTrigger>
@@ -397,7 +408,7 @@ function FolderTopTreeSidebar({
         }
         return (
           <SidebarMenuItem key={node.id}>
-            <SidebarMenuButton type="button">
+            <SidebarMenuButton type="button" className="cursor-pointer">
               {leafIcon}
               <span className="truncate">{node.label}</span>
             </SidebarMenuButton>
@@ -422,16 +433,18 @@ function FolderSubTreeDropdown({
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
-          const gClass = collapsibleGroupClass(gName);
-          const ch = collapsibleChevronClass(gName);
           return (
             <SidebarMenuSubItem key={node.id}>
-              <Collapsible defaultOpen={node.defaultOpen} className={gClass}>
+              <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuSubButton type="button" className="pr-2" onPointerDown={(e) => e.preventDefault()}>
-                    <ChevronDownMenuIcon className={cn("size-4 shrink-0 transition", ch)} />
+                  <button
+                    type="button"
+                    className={folderDropdownInteractiveRowClassName}
+                    onPointerDown={(e) => e.preventDefault()}
+                  >
+                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
                     <span className="truncate">{node.label}</span>
-                  </SidebarMenuSubButton>
+                  </button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <SidebarMenuSub>
@@ -444,7 +457,7 @@ function FolderSubTreeDropdown({
         }
         return (
           <SidebarMenuSubItem key={node.id}>
-            <DropdownMenuItem className={collapsedFolderSubMenuDropdownItemClassName}>
+            <DropdownMenuItem className={folderDropdownMenuItemClassName}>
               {leafIcon}
               <span className="truncate">{node.label}</span>
             </DropdownMenuItem>
@@ -469,15 +482,17 @@ function FolderTopTreeDropdown({
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
-          const gClass = collapsibleGroupClass(gName);
-          const ch = collapsibleChevronClass(gName);
           return (
-            <Collapsible key={node.id} defaultOpen={node.defaultOpen} className={gClass}>
+            <Collapsible key={node.id} defaultOpen={node.defaultOpen}>
               <CollapsibleTrigger asChild>
-                <SidebarMenuButton type="button" className="pr-2" onPointerDown={(e) => e.preventDefault()}>
-                  <ChevronDownMenuIcon className={cn("size-4 shrink-0 transition", ch)} />
+                <button
+                  type="button"
+                  className={folderDropdownInteractiveRowClassName}
+                  onPointerDown={(e) => e.preventDefault()}
+                >
+                  <ChevronDownMenuIcon className={folderTreeChevronClassName} />
                   <span className="truncate">{node.label}</span>
-                </SidebarMenuButton>
+                </button>
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <SidebarMenuSub>
@@ -488,7 +503,7 @@ function FolderTopTreeDropdown({
           );
         }
         return (
-          <DropdownMenuItem key={node.id} className="cursor-pointer gap-2">
+          <DropdownMenuItem key={node.id} className={folderDropdownMenuItemClassName}>
             {leafIcon}
             <span className="truncate">{node.label}</span>
           </DropdownMenuItem>
