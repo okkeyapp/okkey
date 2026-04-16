@@ -1,4 +1,5 @@
-import { useNavigate, type SVGProps } from "react-router-dom";
+import { type SVGProps } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@okkey/ui";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";

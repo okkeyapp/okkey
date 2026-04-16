@@ -13,7 +13,7 @@ export default function AuthSessionGate() {
   const navigate = useNavigate();
 
   useLayoutEffect(() => {
-    const isDevUi = import.meta.env.DEV && location.pathname === "/dev/ui";
+    const isDevUi = import.meta.env.DEV && location.pathname.startsWith("/dev/ui");
     if (isDevUi) {
       return;
     }
@@ -26,7 +26,7 @@ export default function AuthSessionGate() {
 
     const inOtpFlow = Boolean(emailChallengeId && pendingEmail);
     const allowed =
-      path === "/dev/ui" ||
+      path.startsWith("/dev/ui") ||
       path === "/auth/email" ||
       (path === "/auth/otp" && inOtpFlow) ||
       (path === "/account/new" && Boolean(registrationAuthStateId)) ||

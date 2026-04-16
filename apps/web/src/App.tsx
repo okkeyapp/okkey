@@ -11,7 +11,17 @@ import AuthRegistrationPage from "./pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "./pages/auth/AuthTwoFactorPage";
 import AccountRestorePage from "./pages/account/AccountRestorePage";
 import UnlockPasswordPage from "./pages/unlock/UnlockPasswordPage";
-import DevUIGallery from "./pages/DevUIGallery";
+import DevUIAlertPage from "./pages/dev-ui/DevUIAlertPage";
+import DevUIButtonPage from "./pages/dev-ui/DevUIButtonPage";
+import DevUIControlGroupingPage from "./pages/dev-ui/DevUIControlGroupingPage";
+import DevUIFoundationPage from "./pages/dev-ui/DevUIFoundationPage";
+import DevUIGalleryLayout from "./pages/dev-ui/DevUIGalleryLayout";
+import DevUIInputPage from "./pages/dev-ui/DevUIInputPage";
+import DevUISelectPage from "./pages/dev-ui/DevUISelectPage";
+import DevUISidebarPage from "./pages/dev-ui/DevUISidebarPage";
+import DevUISpinnerPage from "./pages/dev-ui/DevUISpinnerPage";
+import DevUISwitchPage from "./pages/dev-ui/DevUISwitchPage";
+import DevUIWorkspaceTilePage from "./pages/dev-ui/DevUIWorkspaceTilePage";
 import WorkspacesPage from "./pages/workspaces/WorkspacesPage";
 import WorkspaceDetailPage from "./pages/workspaces/WorkspaceDetailPage";
 import { ACCOUNT_LOCK_PATH, ACCOUNT_NEW_PATH } from "./routes/paths";
@@ -47,7 +57,18 @@ export default function App() {
           <AuthSessionGate />
           <Routes>
             <Route path="/" element={<RootRedirect />} />
-            <Route path="/dev/ui" element={<DevUIGallery />} />
+            <Route path="/dev/ui" element={<DevUIGalleryLayout />}>
+              <Route index element={<DevUIFoundationPage />} />
+              <Route path="sidebar" element={<DevUISidebarPage />} />
+              <Route path="button" element={<DevUIButtonPage />} />
+              <Route path="input" element={<DevUIInputPage />} />
+              <Route path="switch" element={<DevUISwitchPage />} />
+              <Route path="select" element={<DevUISelectPage />} />
+              <Route path="control-grouping" element={<DevUIControlGroupingPage />} />
+              <Route path="spinner" element={<DevUISpinnerPage />} />
+              <Route path="workspace-tile" element={<DevUIWorkspaceTilePage />} />
+              <Route path="alert" element={<DevUIAlertPage />} />
+            </Route>
             <Route
               path="/auth/email"
               element={
