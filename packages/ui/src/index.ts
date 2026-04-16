@@ -79,3 +79,17 @@ export {
   OkkeyAppSidebarToolbar,
   type OkkeyAppSidebarProps,
 } from "./components/ui/okkey-app-sidebar.js";
+export {
+  OkkeySidebarFoldersMenu,
+  OkkeySidebarPlainLinksMenu,
+  OkkeySidebarVaultsMenu,
+  OkkeySidebarWorkspaceMenu,
+  type OkkeySidebarFolderTreeNode,
+  type OkkeySidebarFoldersMenuProps,
+  type OkkeySidebarPlainLinkItem,
+  type OkkeySidebarPlainLinksMenuProps,
+  type OkkeySidebarVaultItem,
+  type OkkeySidebarVaultsMenuProps,
+  type OkkeySidebarWorkspaceMenuProps,
+  type OkkeySidebarWorkspaceNavItem,
+} from "./components/ui/okkey-sidebar-menus.js";

@@ -1,7 +1,6 @@
 import * as React from "react";
 
 import { Button } from "./button.js";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,18 +10,23 @@ import {
 import { ScrollArea } from "./scroll-area.js";
 import { PersonalWorkspaceMark } from "./workspace-tile.js";
 import {
+  OkkeySidebarFoldersMenu,
+  OkkeySidebarPlainLinksMenu,
+  OkkeySidebarVaultsMenu,
+  OkkeySidebarWorkspaceMenu,
+  type OkkeySidebarFolderTreeNode,
+  type OkkeySidebarPlainLinkItem,
+  type OkkeySidebarVaultItem,
+  type OkkeySidebarWorkspaceNavItem,
+} from "./okkey-sidebar-menus.js";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarProvider,
   useSidebar,
 } from "./sidebar.js";
@@ -42,29 +46,6 @@ function ChevronsUpDownIcon({ className, ...props }: React.SVGProps<SVGSVGElemen
     >
       <path
         d="M4.66663 10.0001L7.99996 13.3334L11.3333 10.0001M4.66663 6.00008L7.99996 2.66675L11.3333 6.00008"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronDownIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      className={cn("size-4 shrink-0", className)}
-      {...props}
-    >
-      <path
-        d="M4 6L8 10L12 6"
         stroke="currentColor"
         strokeWidth="1"
         strokeLinecap="round"
@@ -575,158 +556,92 @@ const sidebarDropdownTriggerOpenClassName =
 const sidebarSubtleControlSurfaceClassName =
   "bg-[rgba(0,0,0,0.05)] hover:bg-[rgba(0,0,0,0.1)] dark:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.14)]";
 
-function sidebarSectionPlusButton(className?: string) {
-  return cn(
-    "inline-flex size-6 shrink-0 items-center justify-center rounded-lg text-foreground outline-none ring-sidebar-ring transition focus-visible:ring-2",
-    sidebarSubtleControlSurfaceClassName,
-    className,
+function demoVaultLeading(emoji: string) {
+  return (
+    <span className="text-base leading-none" aria-hidden>
+      {emoji}
+    </span>
   );
 }
 
-/** Dropdown rows that mirror `SidebarMenuSubButton` (align with `SidebarMenuSub` border). */
-const collapsedFolderSubMenuDropdownItemClassName =
-  "min-h-8 -translate-x-px cursor-pointer gap-2 rounded-lg py-1.5";
-
-function CollapsedSafesDropdownPanel() {
-  return (
-    <>
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <span className="text-xs font-medium leading-4 text-muted-foreground">Vaults</span>
-        <button
-          type="button"
-          className={sidebarSectionPlusButton()}
-          aria-label="Add vault"
-          onPointerDown={(e) => e.preventDefault()}
-        >
-          <PlusIcon className="size-4" />
-        </button>
-      </div>
-      <ScrollArea className="max-h-[360px]">
-        <div className="p-1">
-          <DropdownMenuItem className="cursor-pointer gap-2">
-            <span className="text-base leading-none" aria-hidden>
-              🏠
-            </span>
-            <span>Personal</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="text-base leading-none" aria-hidden>
-                💼
-              </span>
-              <span className="truncate">Engineering</span>
-            </span>
-            <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="text-base leading-none" aria-hidden>
-                🎨
-              </span>
-              <span className="truncate">Marketing</span>
-            </span>
-            <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="text-base leading-none" aria-hidden>
-                🏡
-              </span>
-              <span className="truncate">Company</span>
-            </span>
-            <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="text-base leading-none" aria-hidden>
-                🧳
-              </span>
-              <span className="truncate">Clients</span>
-            </span>
-            <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-          </DropdownMenuItem>
-        </div>
-      </ScrollArea>
-    </>
-  );
+function demoWorkspaceNavItems(): OkkeySidebarWorkspaceNavItem[] {
+  return [
+    {
+      id: "all",
+      icon: <NavRecordsIcon />,
+      label: "All items",
+      trailingPlus: true,
+      addAriaLabel: "Add records",
+    },
+    {
+      id: "cap",
+      icon: <NavCapsulesIcon />,
+      label: "Capsules",
+      trailingPlus: true,
+      addAriaLabel: "Add capsule",
+    },
+    { id: "mon", icon: <NavMonitoringIcon />, label: "Monitoring" },
+    { id: "tools", icon: <NavToolsIcon />, label: "Tools" },
+    { id: "set", icon: <NavSettingsIcon />, label: "Settings" },
+  ];
 }
 
-function CollapsedFoldersDropdownPanel() {
-  return (
-    <>
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <span className="text-xs font-medium leading-4 text-muted-foreground">Folders</span>
-        <button
-          type="button"
-          className={sidebarSectionPlusButton()}
-          aria-label="Add folder"
-          onPointerDown={(e) => e.preventDefault()}
-        >
-          <PlusIcon className="size-4" />
-        </button>
-      </div>
-      <ScrollArea className="max-h-[360px]">
-        <div className="flex flex-col gap-0 px-2 py-1">
-          <Collapsible defaultOpen className="group/colf-a">
-            <CollapsibleTrigger asChild>
-              <SidebarMenuButton
-                type="button"
-                className="pr-2"
-                onPointerDown={(e) => e.preventDefault()}
-              >
-                <ChevronDownIcon className="size-4 shrink-0 transition group-data-[state=closed]/colf-a:-rotate-90" />
-                <span className="truncate">My folder</span>
-              </SidebarMenuButton>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <SidebarMenuSub>
-                <SidebarMenuSubItem>
-                  <Collapsible defaultOpen className="group/colf-b">
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuSubButton
-                        type="button"
-                        className="pr-2"
-                        onPointerDown={(e) => e.preventDefault()}
-                      >
-                        <ChevronDownIcon className="size-4 shrink-0 transition group-data-[state=closed]/colf-b:-rotate-90" />
-                        <span className="truncate">Web</span>
-                      </SidebarMenuSubButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        <SidebarMenuSubItem>
-                          <DropdownMenuItem className={collapsedFolderSubMenuDropdownItemClassName}>
-                            <FolderClosedIcon />
-                            <span className="truncate">Design</span>
-                          </DropdownMenuItem>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <DropdownMenuItem className={collapsedFolderSubMenuDropdownItemClassName}>
-                            <FolderClosedIcon />
-                            <span className="truncate">Frontend</span>
-                          </DropdownMenuItem>
-                        </SidebarMenuSubItem>
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </SidebarMenuSubItem>
-                <SidebarMenuSubItem>
-                  <DropdownMenuItem className={collapsedFolderSubMenuDropdownItemClassName}>
-                    <FolderClosedIcon />
-                    <span className="truncate">AI</span>
-                  </DropdownMenuItem>
-                </SidebarMenuSubItem>
-              </SidebarMenuSub>
-            </CollapsibleContent>
-          </Collapsible>
-          <DropdownMenuItem className="cursor-pointer gap-2">
-            <FolderClosedIcon />
-            <span className="truncate">Company</span>
-          </DropdownMenuItem>
-        </div>
-      </ScrollArea>
-    </>
-  );
+function demoVaultItems(): OkkeySidebarVaultItem[] {
+  return [
+    { id: "p", leading: demoVaultLeading("🏠"), label: "Personal" },
+    {
+      id: "e",
+      leading: demoVaultLeading("💼"),
+      label: "Engineering",
+      rightIcon: <UsersIcon className="size-4 shrink-0 text-muted-foreground" />,
+    },
+    {
+      id: "m",
+      leading: demoVaultLeading("🎨"),
+      label: "Marketing",
+      rightIcon: <UsersIcon className="size-4 shrink-0 text-muted-foreground" />,
+    },
+    {
+      id: "c",
+      leading: demoVaultLeading("🏡"),
+      label: "Company",
+      rightIcon: <UsersIcon className="size-4 shrink-0 text-muted-foreground" />,
+    },
+    {
+      id: "cl",
+      leading: demoVaultLeading("🧳"),
+      label: "Clients",
+      rightIcon: <UsersIcon className="size-4 shrink-0 text-muted-foreground" />,
+    },
+  ];
+}
+
+const DEMO_FOLDER_TREE: OkkeySidebarFolderTreeNode[] = [
+  {
+    id: "my",
+    label: "My folder",
+    defaultOpen: true,
+    children: [
+      {
+        id: "web",
+        label: "Web",
+        defaultOpen: true,
+        children: [
+          { id: "design", label: "Design" },
+          { id: "frontend", label: "Frontend" },
+        ],
+      },
+      { id: "ai", label: "AI" },
+    ],
+  },
+  { id: "company", label: "Company" },
+];
+
+function demoPlainLinkItems(): OkkeySidebarPlainLinkItem[] {
+  return [
+    { id: "doc", icon: <NavDocumentationIcon />, label: "Documentation" },
+    { id: "help", icon: <NavHelpIcon />, label: "Help" },
+  ];
 }
 
 export type OkkeyAppSidebarProps = {
@@ -849,7 +764,14 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
                       sideOffset={6}
                       className={collapsedSectionDropdownContentClassName}
                     >
-                      <CollapsedSafesDropdownPanel />
+                      <OkkeySidebarVaultsMenu
+                        surface="dropdown"
+                        sectionTitle="Vaults"
+                        collapsibleGroupName="vaults-dd"
+                        items={demoVaultItems()}
+                        showHeaderPlus
+                        headerPlusAriaLabel="Add vault"
+                      />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </SidebarMenuItem>
@@ -873,7 +795,15 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
                       sideOffset={6}
                       className={collapsedSectionDropdownContentClassName}
                     >
-                      <CollapsedFoldersDropdownPanel />
+                      <OkkeySidebarFoldersMenu
+                        surface="dropdown"
+                        sectionTitle="Folders"
+                        collapsibleGroupName="folders-dd"
+                        tree={DEMO_FOLDER_TREE}
+                        leafIcon={<FolderClosedIcon />}
+                        showHeaderPlus
+                        headerPlusAriaLabel="Add folder"
+                      />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </SidebarMenuItem>
@@ -892,246 +822,31 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
               </SidebarMenu>
             ) : (
               <>
-                <SidebarGroup className="p-0">
-                  <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <div className="flex items-center gap-2">
-                        <SidebarMenuButton type="button" className="flex-1 pr-8">
-                          <NavRecordsIcon />
-                          <span className="truncate">All items</span>
-                        </SidebarMenuButton>
-                        <button type="button" className={sidebarSectionPlusButton()} aria-label="Add records">
-                          <PlusIcon className="size-4" />
-                        </button>
-                      </div>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <div className="flex items-center gap-2">
-                        <SidebarMenuButton type="button" className="flex-1 pr-8">
-                          <NavCapsulesIcon />
-                          <span className="truncate">Capsules</span>
-                        </SidebarMenuButton>
-                        <button type="button" className={sidebarSectionPlusButton()} aria-label="Add capsule">
-                          <PlusIcon className="size-4" />
-                        </button>
-                      </div>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button">
-                        <NavMonitoringIcon />
-                        <span className="truncate">Monitoring</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button">
-                        <NavToolsIcon />
-                        <span className="truncate">Tools</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button">
-                        <NavSettingsIcon />
-                        <span className="truncate">Settings</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroup>
+                <OkkeySidebarWorkspaceMenu labelText="Workspace" items={demoWorkspaceNavItems()} />
 
                 <div className={cn("flex flex-col", safesOpen ? "gap-6" : "gap-2")}>
-                  <Collapsible open={safesOpen} onOpenChange={setSafesOpen} className="group/collapsible">
-                    <SidebarGroup className="p-0">
-                      <div className="flex h-8 w-full shrink-0 items-center gap-2">
-                        <CollapsibleTrigger asChild>
-                          <button
-                            type="button"
-                            className={cn(
-                              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 pr-8 text-xs font-medium text-muted-foreground outline-none ring-sidebar-ring transition focus-visible:ring-2",
-                              sidebarRowHoverClassName,
-                            )}
-                          >
-                            <span className="truncate">Vaults</span>
-                            <ChevronDownIcon className="size-4 shrink-0 transition group-data-[state=closed]/collapsible:-rotate-90" />
-                          </button>
-                        </CollapsibleTrigger>
-                        <button type="button" className={sidebarSectionPlusButton()} aria-label="Add vault">
-                          <PlusIcon className="size-4" />
-                        </button>
-                    </div>
-                    <CollapsibleContent>
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton type="button">
-                            <span className="text-base leading-none" aria-hidden>
-                              🏠
-                            </span>
-                            <span className="truncate">Personal</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <div className="flex items-center gap-2">
-                            <SidebarMenuButton type="button" className="flex-1 pr-8">
-                              <span className="text-base leading-none" aria-hidden>
-                                💼
-                              </span>
-                              <span className="min-w-0 flex-1 truncate">Engineering</span>
-                            </SidebarMenuButton>
-                            <div
-                              className="flex size-6 shrink-0 items-center justify-center text-muted-foreground"
-                              aria-hidden
-                            >
-                              <UsersIcon className="size-4 shrink-0" />
-                            </div>
-                          </div>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <div className="flex items-center gap-2">
-                            <SidebarMenuButton type="button" className="flex-1 pr-8">
-                              <span className="text-base leading-none" aria-hidden>
-                                🎨
-                              </span>
-                              <span className="min-w-0 flex-1 truncate">Marketing</span>
-                            </SidebarMenuButton>
-                            <div
-                              className="flex size-6 shrink-0 items-center justify-center text-muted-foreground"
-                              aria-hidden
-                            >
-                              <UsersIcon className="size-4 shrink-0" />
-                            </div>
-                          </div>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <div className="flex items-center gap-2">
-                            <SidebarMenuButton type="button" className="flex-1 pr-8">
-                              <span className="text-base leading-none" aria-hidden>
-                                🏡
-                              </span>
-                              <span className="min-w-0 flex-1 truncate">Company</span>
-                            </SidebarMenuButton>
-                            <div
-                              className="flex size-6 shrink-0 items-center justify-center text-muted-foreground"
-                              aria-hidden
-                            >
-                              <UsersIcon className="size-4 shrink-0" />
-                            </div>
-                          </div>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <div className="flex items-center gap-2">
-                            <SidebarMenuButton type="button" className="flex-1 pr-8">
-                              <span className="text-base leading-none" aria-hidden>
-                                🧳
-                              </span>
-                              <span className="min-w-0 flex-1 truncate">Clients</span>
-                            </SidebarMenuButton>
-                            <div
-                              className="flex size-6 shrink-0 items-center justify-center text-muted-foreground"
-                              aria-hidden
-                            >
-                              <UsersIcon className="size-4 shrink-0" />
-                            </div>
-                          </div>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </CollapsibleContent>
-                  </SidebarGroup>
-                </Collapsible>
-
-                  <Collapsible defaultOpen className="group/collapsible-folders">
-                    <SidebarGroup className="p-0">
-                    <div className="flex h-8 w-full shrink-0 items-center gap-2">
-                      <CollapsibleTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 pr-8 text-xs font-medium text-muted-foreground outline-none ring-sidebar-ring transition focus-visible:ring-2",
-                            sidebarRowHoverClassName,
-                          )}
-                        >
-                          <span className="truncate">Folders</span>
-                          <ChevronDownIcon className="size-4 shrink-0 transition group-data-[state=closed]/collapsible-folders:-rotate-90" />
-                        </button>
-                      </CollapsibleTrigger>
-                      <button type="button" className={sidebarSectionPlusButton()} aria-label="Add folder">
-                        <PlusIcon className="size-4" />
-                      </button>
-                    </div>
-                    <CollapsibleContent>
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <Collapsible defaultOpen className="group/folder-a">
-                            <CollapsibleTrigger asChild>
-                              <SidebarMenuButton type="button" className="pr-2">
-                                <ChevronDownIcon className="size-4 shrink-0 transition group-data-[state=closed]/folder-a:-rotate-90" />
-                                <span className="truncate">My folder</span>
-                              </SidebarMenuButton>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <SidebarMenuSub>
-                                <SidebarMenuSubItem>
-                                  <Collapsible defaultOpen className="group/folder-b">
-                                    <CollapsibleTrigger asChild>
-                                      <SidebarMenuSubButton type="button" className="pr-2">
-                                        <ChevronDownIcon className="size-4 shrink-0 transition group-data-[state=closed]/folder-b:-rotate-90" />
-                                        <span className="truncate">Web</span>
-                                      </SidebarMenuSubButton>
-                                    </CollapsibleTrigger>
-                                    <CollapsibleContent>
-                                      <SidebarMenuSub>
-                                        <SidebarMenuSubItem>
-                                          <SidebarMenuSubButton type="button">
-                                            <FolderClosedIcon />
-                                            <span className="truncate">Design</span>
-                                          </SidebarMenuSubButton>
-                                        </SidebarMenuSubItem>
-                                        <SidebarMenuSubItem>
-                                          <SidebarMenuSubButton type="button">
-                                            <FolderClosedIcon />
-                                            <span className="truncate">Frontend</span>
-                                          </SidebarMenuSubButton>
-                                        </SidebarMenuSubItem>
-                                      </SidebarMenuSub>
-                                    </CollapsibleContent>
-                                  </Collapsible>
-                                </SidebarMenuSubItem>
-                                <SidebarMenuSubItem>
-                                  <SidebarMenuSubButton type="button">
-                                    <FolderClosedIcon />
-                                    <span className="truncate">AI</span>
-                                  </SidebarMenuSubButton>
-                                </SidebarMenuSubItem>
-                              </SidebarMenuSub>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton type="button">
-                            <FolderClosedIcon />
-                            <span className="truncate">Company</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </CollapsibleContent>
-                    </SidebarGroup>
-                  </Collapsible>
+                  <OkkeySidebarVaultsMenu
+                    surface="sidebar-expanded"
+                    sectionTitle="Vaults"
+                    collapsibleGroupName="collapsible"
+                    open={safesOpen}
+                    onOpenChange={setSafesOpen}
+                    items={demoVaultItems()}
+                    showHeaderPlus
+                    headerPlusAriaLabel="Add vault"
+                  />
+                  <OkkeySidebarFoldersMenu
+                    surface="sidebar-expanded"
+                    sectionTitle="Folders"
+                    collapsibleGroupName="collapsible-folders"
+                    tree={DEMO_FOLDER_TREE}
+                    leafIcon={<FolderClosedIcon />}
+                    showHeaderPlus
+                    headerPlusAriaLabel="Add folder"
+                  />
                 </div>
 
-                <div className="flex flex-col gap-0">
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button">
-                        <NavDocumentationIcon />
-                        <span className="truncate">Documentation</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button">
-                        <NavHelpIcon />
-                        <span className="truncate">Help</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </div>
+                <OkkeySidebarPlainLinksMenu items={demoPlainLinkItems()} />
               </>
             )}
           </div>
