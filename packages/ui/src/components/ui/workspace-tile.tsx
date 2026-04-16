@@ -2,8 +2,11 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
 
-const filledTileShadow =
-  "bg-card shadow-[0px_0px_0px_1px_rgba(0,0,0,0.05),0px_1px_2px_0px_rgba(0,0,0,0.15)] dark:shadow-[0px_0px_0px_1px_rgba(255,255,255,0.22),0px_2px_16px_0px_rgba(255,255,255,0.08),0px_1px_2px_0px_rgba(255,255,255,0.05)]";
+/** Elevation only (no fill) — reuse for panels that use a different `background`. */
+export const workspaceTileElevatedShadowClassName =
+  "shadow-[0px_0px_0px_1px_rgba(0,0,0,0.05),0px_1px_2px_0px_rgba(0,0,0,0.15)] dark:shadow-[0px_0px_0px_1px_rgba(255,255,255,0.22),0px_2px_16px_0px_rgba(255,255,255,0.08),0px_1px_2px_0px_rgba(255,255,255,0.05)]";
+
+const filledTileShadow = cn("bg-card", workspaceTileElevatedShadowClassName);
 
 const badgeShadow =
   "shadow-[0px_0px_0px_1px_rgba(0,0,0,0.06),0px_1px_2px_rgba(0,0,0,0.12)] dark:shadow-[0px_0px_0px_1px_rgba(255,255,255,0.2),0px_2px_8px_rgba(255,255,255,0.07)]";

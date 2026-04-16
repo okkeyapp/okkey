@@ -48,6 +48,34 @@ export {
 export {
   PersonalWorkspaceMark,
   WorkspaceTile,
+  workspaceTileElevatedShadowClassName,
   type PersonalWorkspaceMarkProps,
   type WorkspaceTileProps,
 } from "./components/ui/workspace-tile.js";
+export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  type SidebarMenuButtonProps,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  type SidebarProviderProps,
+  SidebarSeparator,
+  useSidebar,
+} from "./components/ui/sidebar.js";
+export {
+  OkkeyAppSidebar,
+  OkkeyAppSidebarToolbar,
+  type OkkeyAppSidebarProps,
+} from "./components/ui/okkey-app-sidebar.js";
