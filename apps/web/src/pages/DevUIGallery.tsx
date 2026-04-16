@@ -1,4 +1,4 @@
-import { useState, type SVGProps } from "react";
+import { useState, type ReactNode, type SVGProps } from "react";
 import { Link } from "react-router-dom";
 import {
   Alert,
@@ -21,14 +21,25 @@ import {
   MultiSelectTrigger,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  OkkeySidebarFoldersMenu,
+  OkkeySidebarPlainLinksMenu,
+  OkkeySidebarVaultsMenu,
+  OkkeySidebarWorkspaceMenu,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Sidebar,
+  SidebarContent,
+  SidebarProvider,
   Spinner,
   Switch,
   WorkspaceTile,
+  type OkkeySidebarFolderTreeNode,
+  type OkkeySidebarPlainLinkItem,
+  type OkkeySidebarVaultItem,
+  type OkkeySidebarWorkspaceNavItem,
 } from "@okkey/ui";
 
 import { readAccentTintEnabled, writeAccentTintEnabled } from "../theme/accentSemanticTint";
@@ -37,6 +48,7 @@ import {
   readStoredThemePreference,
   type ThemePreference,
 } from "../theme/applyTheme";
+import { BodyGradient } from "../components/BodyGradient";
 
 const ACCENT_IDS = ["a1", "a2", "a3", "a4", "a5", "a6", "a7"] as const;
 
@@ -188,6 +200,137 @@ function ColorSwatch({
   );
 }
 
+function devUiEmoji(emoji: string) {
+  return (
+    <span className="text-base leading-none" aria-hidden>
+      {emoji}
+    </span>
+  );
+}
+
+function DevUiDemoUsersIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0 text-muted-foreground", className)}
+      {...props}
+    >
+      <path
+        d="M10.6667 14V12.6667C10.6667 11.9594 10.3858 11.2811 9.88566 10.781C9.38556 10.281 8.70728 10 8.00004 10H4.00004C3.2928 10 2.61452 10.281 2.11442 10.781C1.61433 11.2811 1.33337 11.9594 1.33337 12.6667V14M14.6667 13.9999V12.6666C14.6663 12.0757 14.4696 11.5018 14.1076 11.0348C13.7456 10.5678 13.2388 10.2343 12.6667 10.0866M10.6667 2.08659C11.2403 2.23346 11.7487 2.56706 12.1118 3.0348C12.4749 3.50254 12.6719 4.07781 12.6719 4.66992C12.6719 5.26204 12.4749 5.83731 12.1118 6.30505C11.7487 6.77279 11.2403 7.10639 10.6667 7.25326M8.66671 4.66667C8.66671 6.13943 7.4728 7.33333 6.00004 7.33333C4.52728 7.33333 3.33337 6.13943 3.33337 4.66667C3.33337 3.19391 4.52728 2 6.00004 2C7.4728 2 8.66671 3.19391 8.66671 4.66667Z"
+        stroke="currentColor"
+        strokeOpacity={0.5}
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DevUiFolderLeafIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M1.5 6.5H14.5M13.1667 13.5C13.5203 13.5 13.8594 13.3595 14.1095 13.1095C14.3595 12.8594 14.5 12.5203 14.5 12.1667V5.83333C14.5 5.47971 14.3595 5.14057 14.1095 4.89052C13.8594 4.64048 13.5203 4.5 13.1667 4.5H8.06671C7.84372 4.50219 7.62374 4.44841 7.42691 4.34359C7.23008 4.23877 7.06268 4.08625 6.94004 3.9L6.40004 3.1C6.27863 2.91565 6.11336 2.76432 5.91904 2.6596C5.72472 2.55488 5.50745 2.50004 5.28671 2.5H2.83333C2.47971 2.5 2.14057 2.64048 1.89052 2.89052C1.64048 3.14057 1.5 3.47971 1.5 3.83333V12.1667C1.5 12.5203 1.64048 12.8594 1.89052 13.1095C2.14057 13.3595 2.47971 13.5 2.83333 13.5H13.1667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const DEV_UI_WORKSPACE_NAV: OkkeySidebarWorkspaceNavItem[] = [
+  {
+    id: "w-all",
+    icon: devUiEmoji("📋"),
+    label: "All items",
+    trailingPlus: true,
+    addAriaLabel: "Add item",
+  },
+  {
+    id: "w-cap",
+    icon: devUiEmoji("💊"),
+    label: "Capsules",
+    trailingPlus: true,
+    addAriaLabel: "Add capsule",
+  },
+  { id: "w-mon", icon: devUiEmoji("📊"), label: "Monitoring" },
+];
+
+const DEV_UI_VAULT_ITEMS: OkkeySidebarVaultItem[] = [
+  { id: "v-p", leading: devUiEmoji("🏠"), label: "Personal" },
+  {
+    id: "v-e",
+    leading: devUiEmoji("💼"),
+    label: "Engineering",
+    rightIcon: <DevUiDemoUsersIcon />,
+  },
+  {
+    id: "v-m",
+    leading: devUiEmoji("🎨"),
+    label: "Marketing",
+    rightIcon: <DevUiDemoUsersIcon />,
+  },
+];
+
+const DEV_UI_FOLDER_TREE: OkkeySidebarFolderTreeNode[] = [
+  {
+    id: "my",
+    label: "My folder",
+    defaultOpen: true,
+    children: [
+      {
+        id: "web",
+        label: "Web",
+        defaultOpen: true,
+        children: [
+          { id: "design", label: "Design" },
+          { id: "frontend", label: "Frontend" },
+        ],
+      },
+      { id: "ai", label: "AI" },
+    ],
+  },
+  { id: "company", label: "Company" },
+];
+
+const DEV_UI_PLAIN_LINKS: OkkeySidebarPlainLinkItem[] = [
+  { id: "doc", icon: devUiEmoji("📖"), label: "Documentation" },
+  { id: "help", icon: devUiEmoji("❓"), label: "Help" },
+];
+
+const devUiDropdownPanelClassName = "flex w-[min(100vw-2rem,280px)] min-w-56 flex-col overflow-hidden p-0";
+
+function DevUiSidebarMenuShell({ children }: { children: ReactNode }) {
+  return (
+    <SidebarProvider defaultExpanded>
+      <div className="h-[min(420px,55vh)] w-[280px] max-w-full shrink-0 overflow-hidden rounded-lg border border-border">
+        <Sidebar className="h-full border-0 bg-sidebar">
+          <SidebarContent className="overflow-y-auto p-0">
+            <div className="flex flex-col gap-6 p-2">{children}</div>
+          </SidebarContent>
+        </Sidebar>
+      </div>
+    </SidebarProvider>
+  );
+}
+
 export default function DevUIGallery() {
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readStoredThemePreference());
   const [accent, setAccent] = useState<AccentId>(readAccentFromStorage);
@@ -198,6 +341,7 @@ export default function DevUIGallery() {
   const [switchOn, setSwitchOn] = useState(true);
   const [switchOnLg, setSwitchOnLg] = useState(true);
   const [accentTintEnabled, setAccentTintEnabled] = useState(readAccentTintEnabled);
+  const [devUiVaultOpen, setDevUiVaultOpen] = useState(true);
 
   function setStoredThemePreference(preference: ThemePreference) {
     window.localStorage.setItem("okkey.theme", preference);
@@ -341,18 +485,7 @@ export default function DevUIGallery() {
             </p>
           </div>
           <div className="relative isolate overflow-x-auto rounded-lg">
-            <div
-              className="pointer-events-none absolute inset-0 dark:hidden"
-              style={{
-                backgroundImage:
-                  "linear-gradient(136.85deg, rgba(255, 248, 239, 0) 8.44%, rgb(255, 248, 239) 91.56%), linear-gradient(180deg, rgb(234, 240, 250) 0%, rgb(242, 255, 252) 100%)",
-              }}
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute inset-0 hidden bg-gradient-to-b from-secondary/80 via-background to-background dark:block"
-              aria-hidden
-            />
+            <BodyGradient />
             <div className="relative flex h-[min(640px,75vh)] min-h-[360px] w-max min-w-full">
               <OkkeyAppSidebar className="h-full min-h-0">
                 <OkkeyAppSidebarToolbar />
@@ -362,6 +495,107 @@ export default function DevUIGallery() {
                   Main content
                 </div>
               </OkkeyAppSidebar>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-6">
+          <div>
+            <h2 className="text-lg font-medium">Shell: page gradient & sidebar menus</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Standalone building blocks from <code className="rounded bg-muted px-1 py-0.5 text-xs">apps/web</code>{" "}
+              (<code className="rounded bg-muted px-1 py-0.5 text-xs">BodyGradient</code>) and{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">@okkey/ui</code> (
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">OkkeySidebarWorkspaceMenu</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">OkkeySidebarVaultsMenu</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">OkkeySidebarFoldersMenu</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">OkkeySidebarPlainLinksMenu</code>). Menus expect{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">SidebarProvider</code> +{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">Sidebar</code> /{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">SidebarContent</code> for expanded layout.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-muted-foreground">BodyGradient</h3>
+            <div className="relative isolate h-36 overflow-hidden rounded-lg border border-border bg-background">
+              <BodyGradient />
+              <p className="relative flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
+                Same overlay as <code className="rounded bg-muted px-1 py-0.5 text-xs">AppShellLayout</code> — cropped
+                for preview.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-muted-foreground">Menu blocks (expanded)</h3>
+            <DevUiSidebarMenuShell>
+              <OkkeySidebarWorkspaceMenu labelText="Workspace" items={DEV_UI_WORKSPACE_NAV} />
+              <OkkeySidebarVaultsMenu
+                surface="sidebar-expanded"
+                sectionTitle="Vaults"
+                collapsibleGroupName="dev-ui-vaults"
+                open={devUiVaultOpen}
+                onOpenChange={setDevUiVaultOpen}
+                items={DEV_UI_VAULT_ITEMS}
+                showHeaderPlus
+                headerPlusAriaLabel="Add vault"
+              />
+              <OkkeySidebarFoldersMenu
+                surface="sidebar-expanded"
+                sectionTitle="Folders"
+                collapsibleGroupName="dev-ui-folders"
+                tree={DEV_UI_FOLDER_TREE}
+                leafIcon={<DevUiFolderLeafIcon />}
+                showHeaderPlus
+                headerPlusAriaLabel="Add folder"
+              />
+              <OkkeySidebarPlainLinksMenu items={DEV_UI_PLAIN_LINKS} />
+            </DevUiSidebarMenuShell>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-muted-foreground">Menu panels (dropdown surface)</h3>
+            <p className="text-sm text-muted-foreground">
+              Same components with <code className="rounded bg-muted px-1 py-0.5 text-xs">surface=&quot;dropdown&quot;</code>{" "}
+              as in the collapsed rail.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm">
+                    Vaults panel
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" sideOffset={6} className={devUiDropdownPanelClassName}>
+                  <OkkeySidebarVaultsMenu
+                    surface="dropdown"
+                    sectionTitle="Vaults"
+                    collapsibleGroupName="dev-ui-vaults-dd"
+                    items={DEV_UI_VAULT_ITEMS}
+                    showHeaderPlus
+                    headerPlusAriaLabel="Add vault"
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm">
+                    Folders panel
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" sideOffset={6} className={devUiDropdownPanelClassName}>
+                  <OkkeySidebarFoldersMenu
+                    surface="dropdown"
+                    sectionTitle="Folders"
+                    collapsibleGroupName="dev-ui-folders-dd"
+                    tree={DEV_UI_FOLDER_TREE}
+                    leafIcon={<DevUiFolderLeafIcon />}
+                    showHeaderPlus
+                    headerPlusAriaLabel="Add folder"
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </section>
