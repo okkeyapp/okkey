@@ -25,6 +25,7 @@ export default function UnlockPasswordPage() {
   const { t } = useLocale();
   const [searchParams] = useSearchParams();
   const {
+    accessToken,
     tryUnlockWithMasterPassword,
     hasVaultBundle,
     vaultUnlockBootstrapLoading,
@@ -64,6 +65,10 @@ export default function UnlockPasswordPage() {
   if (vaultUnlocked) {
     const redirect = safeRedirectPath(searchParams.get("redirect"), "/workspaces");
     return <Navigate to={redirect} replace />;
+  }
+
+  if (!accessToken) {
+    return <Navigate to="/auth/email" replace />;
   }
 
   return (

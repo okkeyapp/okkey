@@ -38,6 +38,7 @@ import {
   writeLocalProfile,
   type LocalProfile,
 } from "./localProfileStorage";
+import { normalizeAccountProfileWire } from "./normalizeAccountProfileWire";
 import {
   clearStoredSession,
   readStoredSession,
@@ -272,16 +273,20 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         const client = createAuthenticatedCoreClient(accessToken);
-        const dto = await client.getAccountProfile();
+        const raw = (await client.getAccountProfile()) as unknown;
         if (cancelled) {
+          return;
+        }
+        const dto = normalizeAccountProfileWire(raw);
+        if (!dto) {
           return;
         }
         setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(dto.vault_idle_lock_seconds));
         setProfile((prev) => {
-          const fromServerFirst = dto.first_name?.trim() || undefined;
-          const fromServerLast = dto.last_name?.trim() || undefined;
+          const fromServerFirst = dto.first_name ?? undefined;
+          const fromServerLast = dto.last_name ?? undefined;
           const merged: LocalProfile = {
-            email: dto.email.trim() || prev?.email || "",
+            email: dto.email || prev?.email || "",
             firstName: fromServerFirst ?? prev?.firstName,
             lastName: fromServerLast ?? prev?.lastName,
           };
