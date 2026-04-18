@@ -1,10 +1,13 @@
 import { useLayoutEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { isAllowedPathWithoutBearerSession } from "../routes/guestEntryPaths";
+import { AUTH_EMAIL_PATH, isDevUiPathname } from "../routes/paths";
 import { useAuthVault } from "./AuthVaultContext";
 
 /**
- * Redirect guests away from protected routes to email sign-in (before paint). /auth/* session flows are gated in App via GuestAuthOnly.
+ * Redirect guests away from protected routes to email sign-in (before paint).
+ * Public entry routes are listed in {@link isAllowedPathWithoutBearerSession} and mirrored in AppRoutes.
  */
 export default function AuthSessionGate() {
   const { accessToken, emailChallengeId, pendingEmail, registrationAuthStateId, twoFactorAuthStateId } =
@@ -13,8 +16,7 @@ export default function AuthSessionGate() {
   const navigate = useNavigate();
 
   useLayoutEffect(() => {
-    const isDevUi = import.meta.env.DEV && location.pathname.startsWith("/dev/ui");
-    if (isDevUi) {
+    if (import.meta.env.DEV && isDevUiPathname(location.pathname)) {
       return;
     }
 
@@ -25,19 +27,14 @@ export default function AuthSessionGate() {
     }
 
     const inOtpFlow = Boolean(emailChallengeId && pendingEmail);
-    const allowed =
-      path.startsWith("/dev/ui") ||
-      path === "/auth/email" ||
-      (path === "/auth/otp" && inOtpFlow) ||
-      (path === "/account/new" && Boolean(registrationAuthStateId)) ||
-      (path === "/auth/registration" && Boolean(registrationAuthStateId)) ||
-      (path === "/auth/two-factor" && Boolean(twoFactorAuthStateId)) ||
-      path === "/account/lock" ||
-      path === "/unlock/password" ||
-      path === "/account/restore";
+    const allowed = isAllowedPathWithoutBearerSession(path, {
+      inOtpFlow,
+      hasRegistrationAuthState: Boolean(registrationAuthStateId),
+      hasTwoFactorAuthState: Boolean(twoFactorAuthStateId),
+    });
 
     if (!allowed) {
-      navigate("/auth/email", { replace: true });
+      navigate(AUTH_EMAIL_PATH, { replace: true });
     }
   }, [
     accessToken,

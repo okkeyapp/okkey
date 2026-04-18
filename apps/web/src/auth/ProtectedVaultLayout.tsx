@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
+import { accountLockWithRedirectQuery, AUTH_EMAIL_PATH } from "../routes/paths";
 import { useAuthVault } from "./AuthVaultContext";
 
 /**
@@ -11,7 +12,7 @@ export default function ProtectedVaultLayout() {
   const location = useLocation();
 
   if (!accessToken) {
-    return <Navigate to="/auth/email" replace state={{ from: location.pathname + location.search }} />;
+    return <Navigate to={AUTH_EMAIL_PATH} replace state={{ from: location.pathname + location.search }} />;
   }
 
   if (vaultUnlockBootstrapLoading) {
@@ -24,7 +25,7 @@ export default function ProtectedVaultLayout() {
 
   if (!vaultUnlocked) {
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
-    return <Navigate to={`/account/lock?redirect=${redirect}`} replace />;
+    return <Navigate to={accountLockWithRedirectQuery(redirect)} replace />;
   }
 
   return <Outlet />;

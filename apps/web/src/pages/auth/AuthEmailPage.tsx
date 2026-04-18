@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { AUTH_OTP_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
 
@@ -28,7 +29,7 @@ export default function AuthEmailPage() {
       const start = await authClient.startEmailLogin(trimmed, locale);
       updateLocalProfile({ email: trimmed });
       setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt);
-      navigate("/auth/otp", { replace: true });
+      navigate(AUTH_OTP_PATH, { replace: true });
     } catch (err) {
       if (import.meta.env.DEV) {
         console.error("[auth/email/start]", err);

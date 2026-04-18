@@ -10,6 +10,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { useLocale } from "../../locale/LocaleContext";
+import { AUTH_EMAIL_PATH } from "../../routes/paths";
 
 export default function AuthTwoFactorPage() {
   const { t } = useLocale();
@@ -21,14 +22,14 @@ export default function AuthTwoFactorPage() {
 
   useEffect(() => {
     if (!twoFactorAuthStateId?.trim()) {
-      navigate("/auth/email", { replace: true });
+      navigate(AUTH_EMAIL_PATH, { replace: true });
     }
   }, [twoFactorAuthStateId, navigate]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!twoFactorAuthStateId?.trim()) {
-      navigate("/auth/email", { replace: true });
+      navigate(AUTH_EMAIL_PATH, { replace: true });
       return;
     }
     setSubmitting(true);
@@ -83,7 +84,7 @@ export default function AuthTwoFactorPage() {
         </Button>
         <p className="text-center">
           <Link
-            to="/auth/email"
+            to={AUTH_EMAIL_PATH}
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
             {t("auth.otp.differentEmail")}

@@ -19,7 +19,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { useLocale } from "../../locale/LocaleContext";
-import { ACCOUNT_NEW_PATH } from "../../routes/paths";
+import { ACCOUNT_NEW_PATH, AUTH_EMAIL_PATH, AUTH_TWO_FACTOR_PATH } from "../../routes/paths";
 
 const OTP_LENGTH = 6;
 
@@ -61,7 +61,7 @@ export default function AuthOtpPage() {
 
   useEffect(() => {
     if (!emailChallengeId || !email) {
-      navigate("/auth/email", { replace: true });
+      navigate(AUTH_EMAIL_PATH, { replace: true });
     }
   }, [emailChallengeId, email, navigate]);
 
@@ -163,7 +163,7 @@ export default function AuthOtpPage() {
       }
       if (res.nextStep === "two_factor") {
         setTwoFactorAuthStateId(res.authStateId);
-        navigate("/auth/two-factor", { replace: true });
+        navigate(AUTH_TWO_FACTOR_PATH, { replace: true });
         return;
       }
       const dto = await authClient.completeLoginAfterEmailConfirm(res.authStateId, res.nextStep);
@@ -305,7 +305,7 @@ export default function AuthOtpPage() {
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
             onClick={() => {
               clearEmailLoginFlow();
-              navigate("/auth/email", { replace: true });
+              navigate(AUTH_EMAIL_PATH, { replace: true });
             }}
           >
             {t("auth.otp.differentEmail")}

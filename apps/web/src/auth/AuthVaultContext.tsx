@@ -20,6 +20,7 @@ import {
 } from "@okkey/crypto";
 
 import { createAuthSdk, createAuthenticatedCoreClient, createPublicApiClient } from "../api/client";
+import { accountLockWithRedirectQuery } from "../routes/paths";
 import { base64ToBytes } from "./base64";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import {
@@ -159,7 +160,7 @@ function VaultIdleLockBridge({
     }
     lockVault();
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
-    navigate(`/account/lock?redirect=${redirect}`, { replace: true });
+    navigate(accountLockWithRedirectQuery(redirect), { replace: true });
   }, [accessToken, vaultUnlocked, lockVault, navigate, location.pathname, location.search]);
 
   return (

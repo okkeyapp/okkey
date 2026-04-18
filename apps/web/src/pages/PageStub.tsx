@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import AppShellLayout from "../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../components/app-shell/OkkeyLogoMark";
+import { ROOT_PATH } from "../routes/paths";
 
 export type PageStubProps = {
   title: string;
@@ -25,7 +26,7 @@ export default function PageStub({ title, description, pathLabel }: PageStubProp
           Placeholder — flow not implemented yet.
         </p>
         {import.meta.env.DEV ? (
-          <Link to="/" className="okkey-body font-medium text-primary hover:underline">
+          <Link to={ROOT_PATH} className="okkey-body font-medium text-primary hover:underline">
             Back to home
           </Link>
         ) : null}

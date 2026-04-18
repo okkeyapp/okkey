@@ -6,6 +6,7 @@ import type { Workspace } from "@okkey/types";
 import { Spinner, WorkspaceTile } from "@okkey/ui";
 
 import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { workspacePath } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 
 const PERSONAL_FREE_TILE_COLOR = "#3B82F6";
@@ -130,7 +131,7 @@ export default function WorkspacesContent() {
             title={ws.name}
             description={t(planDescriptionKey(ws.planTier))}
             {...(isFree ? { tileColor: PERSONAL_FREE_TILE_COLOR } : { business: true })}
-            onClick={() => navigate(`/workspaces/${ws.id}`)}
+            onClick={() => navigate(workspacePath(ws.id))}
           />
         );
       })}

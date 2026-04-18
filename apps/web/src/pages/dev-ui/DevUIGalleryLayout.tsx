@@ -2,17 +2,19 @@ import { Link, matchPath, NavLink, Outlet, useLocation } from "react-router-dom"
 
 import { Button, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@okkey/ui";
 
+import { devUiGalleryPath, ROOT_PATH } from "../../routes/paths";
+
 const DEV_UI_NAV: readonly { to: string; label: string; end?: boolean }[] = [
-  { to: "/dev/ui", label: "Foundation", end: true },
-  { to: "/dev/ui/sidebar", label: "Sidebar & shell" },
-  { to: "/dev/ui/button", label: "Button" },
-  { to: "/dev/ui/input", label: "Input" },
-  { to: "/dev/ui/switch", label: "Switch" },
-  { to: "/dev/ui/select", label: "Select" },
-  { to: "/dev/ui/control-grouping", label: "Control grouping" },
-  { to: "/dev/ui/spinner", label: "Spinner" },
-  { to: "/dev/ui/workspace-tile", label: "Workspace tile" },
-  { to: "/dev/ui/alert", label: "Alert" },
+  { to: devUiGalleryPath(), label: "Foundation", end: true },
+  { to: devUiGalleryPath("sidebar"), label: "Sidebar & shell" },
+  { to: devUiGalleryPath("button"), label: "Button" },
+  { to: devUiGalleryPath("input"), label: "Input" },
+  { to: devUiGalleryPath("switch"), label: "Switch" },
+  { to: devUiGalleryPath("select"), label: "Select" },
+  { to: devUiGalleryPath("control-grouping"), label: "Control grouping" },
+  { to: devUiGalleryPath("spinner"), label: "Spinner" },
+  { to: devUiGalleryPath("workspace-tile"), label: "Workspace tile" },
+  { to: devUiGalleryPath("alert"), label: "Alert" },
 ];
 
 function navItemActive(pathname: string, to: string, end?: boolean) {
@@ -29,7 +31,7 @@ export default function DevUIGalleryLayout() {
           <Sidebar className="w-full shrink-0 bg-transparent lg:sticky lg:top-6 lg:w-[255px] lg:self-start">
             <SidebarHeader className="px-2 pb-2">
               <p className="text-xs text-muted-foreground">
-                <Link to="/" className="text-primary hover:underline">
+                <Link to={ROOT_PATH} className="text-primary hover:underline">
                   ← Home
                 </Link>
               </p>

@@ -17,7 +17,7 @@ import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { bytesToBase64 } from "../../auth/base64";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { useLocale } from "../../locale/LocaleContext";
-import { ACCOUNT_LOCK_PATH } from "../../routes/paths";
+import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH } from "../../routes/paths";
 import { registrationErrorI18nKey } from "./registrationErrors";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
@@ -65,7 +65,7 @@ export default function AuthRegistrationPage() {
 
   useEffect(() => {
     if (!registrationAuthStateId || !email) {
-      navigate("/auth/email", { replace: true });
+      navigate(AUTH_EMAIL_PATH, { replace: true });
     }
   }, [registrationAuthStateId, email, navigate]);
 
@@ -297,7 +297,7 @@ export default function AuthRegistrationPage() {
             className="okkey-small text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
             onClick={() => {
               logout();
-              navigate("/auth/email", { replace: true });
+              navigate(AUTH_EMAIL_PATH, { replace: true });
             }}
           >
             {t("auth.registration.differentEmail")}

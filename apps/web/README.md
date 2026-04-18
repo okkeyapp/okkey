@@ -48,6 +48,10 @@ Accent palette (ids `a1..a7`) comes from design colors:
 - Light accents: `#171717, #3B82F6, #06B6D4, #059669, #F97316, #DB2777, #7C3AED`
 - Dark accents:  `#FAFAFA, #3B82F6, #06B6D4, #34D399, #F97316, #F472B6, #A78BFA`
 
+## Routing
+
+React Router paths, the route tree, and guest-session rules live under **`src/routes/`**. Conventions and a checklist for new routes: [`src/routes/README.md`](src/routes/README.md).
+
 ## Environment variables
 
 Client-visible variables must use the `VITE_` prefix. See `.env.example`.

@@ -4,6 +4,15 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { PROFILE_STORAGE_KEY, SESSION_STORAGE_KEY } from "./auth/storageKeys";
+import {
+  ACCOUNT_LOCK_PATH,
+  ACCOUNT_NEW_PATH,
+  ACCOUNT_RESTORE_PATH,
+  AUTH_EMAIL_PATH,
+  AUTH_OTP_PATH,
+  DEFAULT_AUTHENTICATED_PATH,
+  DEV_UI_BASE_PATH,
+} from "./routes/paths";
 import { applyStoredTheme } from "./theme/applyTheme";
 
 function renderWithRouter(ui: ReactElement, initialEntries: string[]) {
@@ -43,12 +52,12 @@ describe("App", () => {
   });
 
   it("renders design system gallery on /dev/ui", () => {
-    renderWithRouter(<App />, ["/dev/ui"]);
+    renderWithRouter(<App />, [DEV_UI_BASE_PATH]);
     expect(screen.getByRole("heading", { name: /design system/i })).toBeInTheDocument();
   });
 
   it("renders email sign-in on /auth/email", () => {
-    renderWithRouter(<App />, ["/auth/email"]);
+    renderWithRouter(<App />, [AUTH_EMAIL_PATH]);
     expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Welcome to Okkey");
     expect(screen.queryByTestId("page-stub-notice")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
@@ -57,7 +66,7 @@ describe("App", () => {
 
   it("redirects /auth/email to workspaces when bearer session exists", async () => {
     seedBearerSession();
-    renderWithRouter(<App />, ["/auth/email"]);
+    renderWithRouter(<App />, [AUTH_EMAIL_PATH]);
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     });
@@ -65,14 +74,14 @@ describe("App", () => {
   });
 
   it("redirects /auth/otp to email when challenge is missing", async () => {
-    renderWithRouter(<App />, ["/auth/otp"]);
+    renderWithRouter(<App />, [AUTH_OTP_PATH]);
     await waitFor(() => {
       expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
     });
   });
 
   it("redirects /account/new when registration state is missing", async () => {
-    renderWithRouter(<App />, ["/account/new"]);
+    renderWithRouter(<App />, [ACCOUNT_NEW_PATH]);
     await waitFor(() => {
       expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
     });
@@ -80,7 +89,7 @@ describe("App", () => {
 
   it("redirects /workspaces to unlock when session exists but vault is locked", async () => {
     seedBearerSession();
-    renderWithRouter(<App />, ["/workspaces"]);
+    renderWithRouter(<App />, [DEFAULT_AUTHENTICATED_PATH]);
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     });
@@ -97,7 +106,7 @@ describe("App", () => {
         lastName: "User",
       }),
     );
-    renderWithRouter(<App />, ["/account/lock"]);
+    renderWithRouter(<App />, [ACCOUNT_LOCK_PATH]);
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Vault is locked");
     });
@@ -113,12 +122,12 @@ describe("App", () => {
       PROFILE_STORAGE_KEY,
       JSON.stringify({ email: "user@okkey.local", firstName: "Test", lastName: "User" }),
     );
-    renderWithRouter(<App />, ["/account/restore"]);
+    renderWithRouter(<App />, [ACCOUNT_RESTORE_PATH]);
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Forgot master password?");
     });
     expect(screen.getByText(/^recovery is not available$/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /back to master password/i })).toHaveAttribute("href", "/account/lock");
+    expect(screen.getByRole("link", { name: /back to master password/i })).toHaveAttribute("href", ACCOUNT_LOCK_PATH);
     clearBearerAndSession();
   });
 
@@ -128,7 +137,7 @@ describe("App", () => {
       PROFILE_STORAGE_KEY,
       JSON.stringify({ email: "user@okkey.local" }),
     );
-    renderWithRouter(<App />, ["/account/lock"]);
+    renderWithRouter(<App />, [ACCOUNT_LOCK_PATH]);
     await waitFor(() => {
       expect(screen.getByLabelText(/^master password$/i)).toBeInTheDocument();
     });

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@okkey/ui";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { AUTH_EMAIL_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 
 function LogOutIcon(props: SVGProps<SVGSVGElement>) {
@@ -68,7 +69,7 @@ export default function AccountUserBar() {
 
   function handleSignOut() {
     logout();
-    navigate("/auth/email", { replace: true });
+    navigate(AUTH_EMAIL_PATH, { replace: true });
   }
 
   return (

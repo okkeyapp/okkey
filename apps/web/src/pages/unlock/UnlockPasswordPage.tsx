@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
-import { ACCOUNT_RESTORE_PATH } from "../../routes/paths";
+import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH } from "../../routes/paths";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { useLocale } from "../../locale/LocaleContext";
@@ -63,12 +63,12 @@ export default function UnlockPasswordPage() {
   }
 
   if (vaultUnlocked) {
-    const redirect = safeRedirectPath(searchParams.get("redirect"), "/workspaces");
+    const redirect = safeRedirectPath(searchParams.get("redirect"), DEFAULT_AUTHENTICATED_PATH);
     return <Navigate to={redirect} replace />;
   }
 
   if (!accessToken) {
-    return <Navigate to="/auth/email" replace />;
+    return <Navigate to={AUTH_EMAIL_PATH} replace />;
   }
 
   return (

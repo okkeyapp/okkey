@@ -1,12 +1,13 @@
 import { Link, Navigate } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
+import { DEFAULT_AUTHENTICATED_PATH, DEV_UI_BASE_PATH } from "../routes/paths";
 
 export default function Home() {
   const { accessToken } = useAuthVault();
 
   if (accessToken) {
-    return <Navigate to="/workspaces" replace />;
+    return <Navigate to={DEFAULT_AUTHENTICATED_PATH} replace />;
   }
 
   return (
@@ -16,8 +17,8 @@ export default function Home() {
         <p className="mt-2 text-muted-foreground">Web client (development scaffold)</p>
         {(import.meta.env.DEV || import.meta.env.VITE_SHOW_DEV_LINKS === "true") && (
           <p className="mt-4 text-sm">
-            <Link to="/dev/ui" className="text-primary font-medium hover:underline">
-              Design system gallery (/dev/ui)
+            <Link to={DEV_UI_BASE_PATH} className="text-primary font-medium hover:underline">
+              Design system gallery ({DEV_UI_BASE_PATH})
             </Link>
           </p>
         )}
