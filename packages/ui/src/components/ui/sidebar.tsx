@@ -23,16 +23,70 @@ export function useSidebar(): SidebarContextValue {
 
 export type SidebarProviderProps = React.PropsWithChildren<{
   defaultExpanded?: boolean;
+  /**
+   * When set, `expanded` is restored from `localStorage` on mount and saved on every change
+   * (collapse/expand survives route remounts). Client-only; missing/invalid values fall back to `defaultExpanded`.
+   */
+  persistExpandedStorageKey?: string;
 }>;
 
-export function SidebarProvider({ defaultExpanded = true, children }: SidebarProviderProps) {
-  const [expanded, setExpanded] = React.useState(defaultExpanded);
+function readExpandedFromStorage(key: string | undefined, defaultExpanded: boolean): boolean {
+  if (!key || typeof window === "undefined") {
+    return defaultExpanded;
+  }
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === "false" || raw === "0") {
+      return false;
+    }
+    if (raw === "true" || raw === "1") {
+      return true;
+    }
+  } catch {
+    /* private mode / quota */
+  }
+  return defaultExpanded;
+}
+
+function writeExpandedToStorage(key: string | undefined, expanded: boolean) {
+  if (!key || typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, expanded ? "true" : "false");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function SidebarProvider({
+  defaultExpanded = true,
+  children,
+  persistExpandedStorageKey,
+}: SidebarProviderProps) {
+  const storageKey = persistExpandedStorageKey;
+  const [expanded, setExpandedState] = React.useState(() =>
+    readExpandedFromStorage(storageKey, defaultExpanded),
+  );
+
+  const setExpanded = React.useCallback(
+    (value: boolean | ((prev: boolean) => boolean)) => {
+      setExpandedState((prev) => {
+        const next = typeof value === "function" ? (value as (p: boolean) => boolean)(prev) : value;
+        writeExpandedToStorage(storageKey, next);
+        return next;
+      });
+    },
+    [storageKey],
+  );
+
   const toggleSidebar = React.useCallback(() => {
     setExpanded((v) => !v);
-  }, []);
+  }, [setExpanded]);
+
   const value = React.useMemo(
     () => ({ expanded, setExpanded, toggleSidebar }),
-    [expanded, toggleSidebar],
+    [expanded, setExpanded, toggleSidebar],
   );
   return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
 }

@@ -77,7 +77,12 @@ export {
 export {
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  okkeyWorkspaceShellNavItems,
+  workspaceSwitcherActiveItemClassName,
+  type OkkeyAppSidebarAccountMenu,
   type OkkeyAppSidebarProps,
+  type OkkeyWorkspaceShellNavLabels,
+  type OkkeyWorkspaceShellNavPaths,
 } from "./components/ui/okkey-app-sidebar.js";
 export {
   OkkeySidebarFoldersMenu,
@@ -92,4 +97,5 @@ export {
   type OkkeySidebarVaultsMenuProps,
   type OkkeySidebarWorkspaceMenuProps,
   type OkkeySidebarWorkspaceNavItem,
+  type OkkeyWorkspaceNavLinkComponent,
 } from "./components/ui/okkey-sidebar-menus.js";

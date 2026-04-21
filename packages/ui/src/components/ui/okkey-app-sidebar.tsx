@@ -18,6 +18,7 @@ import {
   type OkkeySidebarPlainLinkItem,
   type OkkeySidebarVaultItem,
   type OkkeySidebarWorkspaceNavItem,
+  type OkkeyWorkspaceNavLinkComponent,
 } from "./okkey-sidebar-menus.js";
 import {
   Sidebar,
@@ -414,6 +415,9 @@ function CheckMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+/** viewBox is 24×24 but icon is 16×16 CSS px — stroke in user units is scaled by 16/24 (~0.67px per 1 unit). */
+const LOGOUT_ICON_STROKE_USER = 24 / 16;
+
 function LogOutMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -429,17 +433,24 @@ function LogOutMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) 
       <path
         d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth={LOGOUT_ICON_STROKE_USER}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <line x1="21" x2="9" y1="12" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <polyline
+        points="16 17 21 12 16 7"
+        stroke="currentColor"
+        strokeWidth={LOGOUT_ICON_STROKE_USER}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line x1="21" x2="9" y1="12" y2="12" stroke="currentColor" strokeWidth={LOGOUT_ICON_STROKE_USER} strokeLinecap="round" />
     </svg>
   );
 }
 
-const workspaceSwitcherActiveItemClassName =
+/** Row highlight for the current workspace in switcher menus (shared with app shell). */
+export const workspaceSwitcherActiveItemClassName =
   "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)] data-[highlighted]:bg-secondary dark:data-[highlighted]:bg-secondary";
 
 function WorkspaceSwitcherDropdownPanel() {
@@ -486,9 +497,20 @@ function WorkspaceSwitcherDropdownPanel() {
   );
 }
 
-function ProfileAccountDropdownPanel() {
-  const displayName = [DEMO_PROFILE.firstName.trim(), DEMO_PROFILE.lastName.trim()].filter(Boolean).join(" ");
-  const initials = buildUserInitials(DEMO_PROFILE.firstName, DEMO_PROFILE.lastName, DEMO_PROFILE.email);
+function ProfileAccountDropdownPanel({
+  firstName,
+  lastName,
+  email,
+  onLogout,
+}: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  onLogout?: () => void;
+}) {
+  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  const titleLine = displayName.length > 0 ? displayName : email;
+  const initials = buildUserInitials(firstName, lastName, email);
 
   return (
     <>
@@ -500,8 +522,8 @@ function ProfileAccountDropdownPanel() {
           {initials}
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <p className="truncate text-sm font-semibold leading-5 text-foreground">{displayName}</p>
-          <p className="truncate text-xs leading-4 text-muted-foreground">{DEMO_PROFILE.email}</p>
+          <p className="truncate text-sm font-semibold leading-5 text-foreground">{titleLine}</p>
+          {displayName ? <p className="truncate text-xs leading-4 text-muted-foreground">{email}</p> : null}
         </div>
       </div>
       <div className="p-1">
@@ -509,7 +531,12 @@ function ProfileAccountDropdownPanel() {
           <NavSettingsIcon />
           <span>My settings</span>
         </DropdownMenuItem>
-        <DropdownMenuItem className="cursor-pointer gap-2">
+        <DropdownMenuItem
+          className="cursor-pointer gap-2"
+          onSelect={() => {
+            onLogout?.();
+          }}
+        >
           <LogOutMenuIcon />
           <span>Log out</span>
         </DropdownMenuItem>
@@ -564,25 +591,79 @@ function demoVaultLeading(emoji: string) {
   );
 }
 
-function demoWorkspaceNavItems(): OkkeySidebarWorkspaceNavItem[] {
+export type OkkeyWorkspaceShellNavPaths = {
+  items: string;
+  capsules: string;
+  monitoring: string;
+  tools: string;
+  settings: string;
+};
+
+export type OkkeyWorkspaceShellNavLabels = Partial<{
+  allItems: string;
+  capsules: string;
+  monitoring: string;
+  tools: string;
+  settings: string;
+  addRecords: string;
+  addCapsule: string;
+}>;
+
+const defaultShellNavLabels: Required<OkkeyWorkspaceShellNavLabels> = {
+  allItems: "All items",
+  capsules: "Capsules",
+  monitoring: "Monitoring",
+  tools: "Tools",
+  settings: "Settings",
+  addRecords: "Add records",
+  addCapsule: "Add capsule",
+};
+
+/**
+ * Primary workspace nav rows for the app shell (with optional `to` paths for SPA routing).
+ * Without `paths`, rows render as non-navigating buttons (design / gallery default).
+ */
+export function okkeyWorkspaceShellNavItems(
+  paths?: OkkeyWorkspaceShellNavPaths,
+  labels?: OkkeyWorkspaceShellNavLabels,
+): OkkeySidebarWorkspaceNavItem[] {
+  const L = { ...defaultShellNavLabels, ...labels };
+  const p = paths;
   return [
     {
       id: "all",
+      to: p?.items,
       icon: <NavRecordsIcon />,
-      label: "All items",
+      label: L.allItems,
       trailingPlus: true,
-      addAriaLabel: "Add records",
+      addAriaLabel: L.addRecords,
     },
     {
       id: "cap",
+      to: p?.capsules,
       icon: <NavCapsulesIcon />,
-      label: "Capsules",
+      label: L.capsules,
       trailingPlus: true,
-      addAriaLabel: "Add capsule",
+      addAriaLabel: L.addCapsule,
     },
-    { id: "mon", icon: <NavMonitoringIcon />, label: "Monitoring" },
-    { id: "tools", icon: <NavToolsIcon />, label: "Tools" },
-    { id: "set", icon: <NavSettingsIcon />, label: "Settings" },
+    {
+      id: "mon",
+      to: p?.monitoring,
+      icon: <NavMonitoringIcon />,
+      label: L.monitoring,
+    },
+    {
+      id: "tools",
+      to: p?.tools,
+      icon: <NavToolsIcon />,
+      label: L.tools,
+    },
+    {
+      id: "set",
+      to: p?.settings,
+      icon: <NavSettingsIcon />,
+      label: L.settings,
+    },
   ];
 }
 
@@ -644,10 +725,59 @@ function demoPlainLinkItems(): OkkeySidebarPlainLinkItem[] {
   ];
 }
 
+/** When passed from the host app (e.g. web shell), footer user block + account menu use real identity and logout. */
+export type OkkeyAppSidebarAccountMenu = {
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  onLogout: () => void;
+};
+
+function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefined) {
+  if (accountMenu?.email?.trim()) {
+    return {
+      firstName: accountMenu.firstName ?? "",
+      lastName: accountMenu.lastName ?? "",
+      email: accountMenu.email.trim(),
+      onLogout: accountMenu.onLogout,
+    };
+  }
+  return {
+    firstName: DEMO_PROFILE.firstName,
+    lastName: DEMO_PROFILE.lastName,
+    email: DEMO_PROFILE.email,
+    onLogout: undefined as (() => void) | undefined,
+  };
+}
+
 export type OkkeyAppSidebarProps = {
   className?: string;
   /** Main column (toolbar with `OkkeyAppSidebarToolbar`, page content). Rendered to the right of the sidebar inside the same `SidebarProvider`. */
   children?: React.ReactNode;
+  /** Overrides primary workspace nav; default is non-linked gallery items. */
+  workspaceNavItems?: OkkeySidebarWorkspaceNavItem[];
+  /** Required when `workspaceNavItems` use `to` (e.g. pass `react-router-dom` `Link`). */
+  workspaceNavLink?: OkkeyWorkspaceNavLinkComponent;
+  /** Sidebar group label above primary nav (e.g. i18n “Workspace”). */
+  workspaceNavGroupLabel?: string;
+  /** Replaces workspace header trigger contents (avatar + titles); receives sidebar `expanded`. */
+  workspaceSwitcherTrigger?: (ctx: { expanded: boolean }) => React.ReactNode;
+  /** Replaces workspace switcher dropdown panel (list + actions). */
+  workspaceSwitcherDropdown?: React.ReactNode;
+  /** Vault list; omit for demo data. */
+  vaultItems?: OkkeySidebarVaultItem[];
+  vaultNavLink?: OkkeyWorkspaceNavLinkComponent;
+  vaultSectionTitle?: string;
+  /**
+   * Folder tree. `undefined` → built-in demo tree (gallery). `[]` → hide folders (`showFolders` is length-based).
+   * In the web app, pass real nodes with leaf `to` (e.g. `/items?folder=…`) and optional `children` for nested labels.
+   */
+  folderTree?: OkkeySidebarFolderTreeNode[];
+  /** Required on leaves when `folderTree` nodes use `to` (e.g. React Router `Link` wrapper). */
+  folderNavLink?: OkkeyWorkspaceNavLinkComponent;
+  folderSectionTitle?: string;
+  /** Real user row + account dropdown + working logout; omit for gallery / demo footer copy. */
+  accountMenu?: OkkeyAppSidebarAccountMenu;
 };
 
 export function OkkeyAppSidebarToolbar({ className }: { className?: string }) {
@@ -671,9 +801,98 @@ export function OkkeyAppSidebarToolbar({ className }: { className?: string }) {
   );
 }
 
-function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "className">) {
+function CollapsedPrimaryNavRow({
+  item,
+  linkComponent,
+}: {
+  item: OkkeySidebarWorkspaceNavItem;
+  linkComponent?: OkkeyWorkspaceNavLinkComponent;
+}) {
+  const compact = "h-9 min-h-9 justify-center px-0";
+  const srOnly = <span className="sr-only">{item.label}</span>;
+  const LinkC = linkComponent;
+  if (item.to && LinkC) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={item.isActive} className={compact}>
+          <LinkC to={item.to}>
+            {item.icon}
+            {srOnly}
+          </LinkC>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton type="button" isActive={item.isActive} className={compact}>
+        {item.icon}
+        {srOnly}
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function DefaultWorkspaceSwitcherTrigger({ expanded }: { expanded: boolean }) {
+  return (
+    <>
+      <div className={cn("shrink-0 overflow-hidden rounded-lg", expanded ? "size-8" : "size-9")}>
+        <PersonalWorkspaceMark fillColor={SIDEBAR_WORKSPACE_TILE_COLOR} className="block size-full" />
+      </div>
+      {expanded ? (
+        <>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold leading-5 text-foreground">Okkey team</p>
+            <p className="truncate text-xs font-normal leading-4 text-muted-foreground">Enterprise</p>
+          </div>
+          <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function OkkeyAppSidebarInner({
+  className,
+  workspaceNavItems,
+  workspaceNavLink,
+  workspaceNavGroupLabel,
+  workspaceSwitcherTrigger,
+  workspaceSwitcherDropdown,
+  vaultItems,
+  vaultNavLink,
+  vaultSectionTitle,
+  folderTree,
+  folderNavLink,
+  folderSectionTitle,
+  accountMenu,
+}: Pick<
+  OkkeyAppSidebarProps,
+  | "className"
+  | "workspaceNavItems"
+  | "workspaceNavLink"
+  | "workspaceNavGroupLabel"
+  | "workspaceSwitcherTrigger"
+  | "workspaceSwitcherDropdown"
+  | "vaultItems"
+  | "vaultNavLink"
+  | "vaultSectionTitle"
+  | "folderTree"
+  | "folderNavLink"
+  | "folderSectionTitle"
+  | "accountMenu"
+>) {
   const { expanded } = useSidebar();
   const [safesOpen, setSafesOpen] = React.useState(true);
+  const footerAccount = footerAccountFromProps(accountMenu);
+  const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
+  const primaryNav = workspaceNavItems ?? okkeyWorkspaceShellNavItems();
+  const groupLabel = workspaceNavGroupLabel ?? "Workspace";
+  const vaultData = vaultItems ?? demoVaultItems();
+  const folderData = folderTree === undefined ? DEMO_FOLDER_TREE : folderTree;
+  const showFolders = folderData.length > 0;
+  const vaultTitle = vaultSectionTitle ?? "Vaults";
+  const folderTitle = folderSectionTitle ?? "Folders";
 
   return (
     <Sidebar className={cn("border-0 bg-transparent", className)}>
@@ -689,66 +908,23 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
                 expanded ? "w-full gap-2 p-2" : "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
               )}
             >
-              <div
-                className={cn(
-                  "shrink-0 overflow-hidden rounded-lg",
-                  expanded ? "size-8" : "size-9",
-                )}
-              >
-                <PersonalWorkspaceMark fillColor={SIDEBAR_WORKSPACE_TILE_COLOR} className="block size-full" />
-              </div>
-              {expanded ? (
-                <>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold leading-5 text-foreground">Okkey team</p>
-                    <p className="truncate text-xs font-normal leading-4 text-muted-foreground">Enterprise</p>
-                  </div>
-                  <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
-                </>
-              ) : null}
+              {workspaceSwitcherTrigger ? workspaceSwitcherTrigger({ expanded }) : <DefaultWorkspaceSwitcherTrigger expanded={expanded} />}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="start" sideOffset={6} className="w-72 p-0">
-            <WorkspaceSwitcherDropdownPanel />
+            {workspaceSwitcherDropdown ?? <WorkspaceSwitcherDropdownPanel />}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarHeader>
 
-      <SidebarContent>
-        <ScrollArea className="absolute inset-0 min-h-0 min-w-0">
+      <SidebarContent className="flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
           <div className="flex flex-col gap-6 p-2">
             {!expanded ? (
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavRecordsIcon />
-                    <span className="sr-only">All items</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavCapsulesIcon />
-                    <span className="sr-only">Capsules</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavMonitoringIcon />
-                    <span className="sr-only">Monitoring</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavToolsIcon />
-                    <span className="sr-only">Tools</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavSettingsIcon />
-                    <span className="sr-only">Settings</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {primaryNav.map((item) => (
+                  <CollapsedPrimaryNavRow key={item.id} item={item} linkComponent={workspaceNavLink} />
+                ))}
                 <SidebarMenuItem>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -760,7 +936,7 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
                         )}
                       >
                         <NavSafesIcon />
-                        <span className="sr-only">Vaults</span>
+                        <span className="sr-only">{vaultTitle}</span>
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -771,91 +947,110 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
                     >
                       <OkkeySidebarVaultsMenu
                         surface="dropdown"
-                        sectionTitle="Vaults"
+                        sectionTitle={vaultTitle}
                         collapsibleGroupName="vaults-dd"
-                        items={demoVaultItems()}
+                        items={vaultData}
                         showHeaderPlus
                         headerPlusAriaLabel="Add vault"
+                        linkComponent={vaultNavLink}
                       />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <SidebarMenuButton
-                        type="button"
-                        className={cn(
-                          "h-9 min-h-9 justify-center px-0",
-                          sidebarDropdownTriggerOpenClassName,
-                        )}
+                {showFolders ? (
+                  <SidebarMenuItem>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <SidebarMenuButton
+                          type="button"
+                          className={cn(
+                            "h-9 min-h-9 justify-center px-0",
+                            sidebarDropdownTriggerOpenClassName,
+                          )}
+                        >
+                          <FolderClosedIcon />
+                          <span className="sr-only">{folderTitle}</span>
+                        </SidebarMenuButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        side="right"
+                        align="start"
+                        sideOffset={6}
+                        className={collapsedSectionDropdownContentClassName}
                       >
-                        <FolderClosedIcon />
-                        <span className="sr-only">Folders</span>
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      side="right"
-                      align="start"
-                      sideOffset={6}
-                      className={collapsedSectionDropdownContentClassName}
-                    >
-                      <OkkeySidebarFoldersMenu
-                        surface="dropdown"
-                        sectionTitle="Folders"
-                        collapsibleGroupName="folders-dd"
-                        tree={DEMO_FOLDER_TREE}
-                        leafIcon={<FolderClosedIcon />}
-                        showHeaderPlus
-                        headerPlusAriaLabel="Add folder"
-                      />
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavDocumentationIcon />
-                    <span className="sr-only">Documentation</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                    <NavHelpIcon />
-                    <span className="sr-only">Help</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                        <OkkeySidebarFoldersMenu
+                          surface="dropdown"
+                          sectionTitle={folderTitle}
+                          collapsibleGroupName="folders-dd"
+                          tree={folderData}
+                          leafIcon={<FolderClosedIcon />}
+                          showHeaderPlus
+                          headerPlusAriaLabel="Add folder"
+                          linkComponent={folderNavLink}
+                        />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
+                ) : null}
               </SidebarMenu>
             ) : (
               <>
-                <OkkeySidebarWorkspaceMenu labelText="Workspace" items={demoWorkspaceNavItems()} />
+                <OkkeySidebarWorkspaceMenu
+                  labelText={groupLabel}
+                  items={primaryNav}
+                  linkComponent={workspaceNavLink}
+                />
 
                 <div className={cn("flex flex-col", safesOpen ? "gap-6" : "gap-2")}>
                   <OkkeySidebarVaultsMenu
                     surface="sidebar-expanded"
-                    sectionTitle="Vaults"
+                    sectionTitle={vaultTitle}
                     collapsibleGroupName="collapsible"
                     open={safesOpen}
                     onOpenChange={setSafesOpen}
-                    items={demoVaultItems()}
+                    items={vaultData}
                     showHeaderPlus
                     headerPlusAriaLabel="Add vault"
+                    linkComponent={vaultNavLink}
                   />
-                  <OkkeySidebarFoldersMenu
-                    surface="sidebar-expanded"
-                    sectionTitle="Folders"
-                    collapsibleGroupName="collapsible-folders"
-                    tree={DEMO_FOLDER_TREE}
-                    leafIcon={<FolderClosedIcon />}
-                    showHeaderPlus
-                    headerPlusAriaLabel="Add folder"
-                  />
+                  {showFolders ? (
+                    <OkkeySidebarFoldersMenu
+                      surface="sidebar-expanded"
+                      sectionTitle={folderTitle}
+                      collapsibleGroupName="collapsible-folders"
+                      tree={folderData}
+                      leafIcon={<FolderClosedIcon />}
+                      showHeaderPlus
+                      headerPlusAriaLabel="Add folder"
+                      linkComponent={folderNavLink}
+                    />
+                  ) : null}
                 </div>
-
-                <OkkeySidebarPlainLinksMenu items={demoPlainLinkItems()} />
               </>
             )}
           </div>
         </ScrollArea>
+
+        <div className="mt-auto shrink-0 p-2">
+          {!expanded ? (
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
+                  <NavDocumentationIcon />
+                  <span className="sr-only">Documentation</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
+                  <NavHelpIcon />
+                  <span className="sr-only">Help</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          ) : (
+            <OkkeySidebarPlainLinksMenu items={demoPlainLinkItems()} />
+          )}
+        </div>
       </SidebarContent>
 
       <SidebarFooter>
@@ -883,21 +1078,28 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
                 <>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold leading-5 text-foreground">
-                      {DEMO_PROFILE.firstName} {DEMO_PROFILE.lastName}
+                      {footerNameLine || footerAccount.email}
                     </p>
-                    <p className="truncate text-xs font-normal leading-4 text-muted-foreground">{DEMO_PROFILE.email}</p>
+                    {footerNameLine ? (
+                      <p className="truncate text-xs font-normal leading-4 text-muted-foreground">{footerAccount.email}</p>
+                    ) : null}
                   </div>
                   <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
                 </>
               ) : (
                 <span className="sr-only">
-                  {DEMO_PROFILE.firstName} {DEMO_PROFILE.lastName}, {DEMO_PROFILE.email}
+                  {footerNameLine ? `${footerNameLine}, ${footerAccount.email}` : footerAccount.email}
                 </span>
               )}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="end" sideOffset={6} className="w-64 p-0">
-            <ProfileAccountDropdownPanel />
+            <ProfileAccountDropdownPanel
+              firstName={footerAccount.firstName}
+              lastName={footerAccount.lastName}
+              email={footerAccount.email}
+              onLogout={footerAccount.onLogout}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarFooter>
@@ -909,11 +1111,43 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
  * OKKEY app shell: `SidebarProvider`, sidebar panel, and optional main column (`children`).
  * Put `OkkeyAppSidebarToolbar` in the main column for the collapse control.
  */
-export function OkkeyAppSidebar({ className, children }: OkkeyAppSidebarProps) {
+/** Persisted by {@link SidebarProvider} `persistExpandedStorageKey` so collapse survives navigations. */
+const OKKEY_APP_SHELL_SIDEBAR_EXPANDED_KEY = "okkey.appShell.sidebarExpanded";
+
+export function OkkeyAppSidebar({
+  className,
+  children,
+  workspaceNavItems,
+  workspaceNavLink,
+  workspaceNavGroupLabel,
+  workspaceSwitcherTrigger,
+  workspaceSwitcherDropdown,
+  vaultItems,
+  vaultNavLink,
+  vaultSectionTitle,
+  folderTree,
+  folderNavLink,
+  folderSectionTitle,
+  accountMenu,
+}: OkkeyAppSidebarProps) {
   return (
-    <SidebarProvider>
+    <SidebarProvider persistExpandedStorageKey={OKKEY_APP_SHELL_SIDEBAR_EXPANDED_KEY}>
       <div className="flex h-full min-h-0 w-full">
-        <OkkeyAppSidebarInner className={className} />
+        <OkkeyAppSidebarInner
+          className={className}
+          workspaceNavItems={workspaceNavItems}
+          workspaceNavLink={workspaceNavLink}
+          workspaceNavGroupLabel={workspaceNavGroupLabel}
+          workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+          workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+          vaultItems={vaultItems}
+          vaultNavLink={vaultNavLink}
+          vaultSectionTitle={vaultSectionTitle}
+          folderTree={folderTree}
+          folderNavLink={folderNavLink}
+          folderSectionTitle={folderSectionTitle}
+          accountMenu={accountMenu}
+        />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
       </div>
     </SidebarProvider>
