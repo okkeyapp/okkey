@@ -45,6 +45,7 @@ import {
   readStoredSession,
   writeStoredSession,
 } from "./sessionAuthStorage";
+import { clearStoredCurrentWorkspaceId } from "./workspaceStorage";
 import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
 import {
   clearVaultUnlockSession,
@@ -340,6 +341,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    const workspaceUserId = userIdRef.current;
+    if (workspaceUserId) {
+      clearStoredCurrentWorkspaceId(workspaceUserId);
+    }
     userIdRef.current = null;
     clearVaultUnlockSession();
     clearStoredSession();

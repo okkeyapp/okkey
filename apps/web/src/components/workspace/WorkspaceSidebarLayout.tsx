@@ -1,5 +1,15 @@
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
-import { cn, OkkeyAppSidebar, OkkeyAppSidebarToolbar, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@okkey/ui";
+import {
+  cn,
+  OkkeyAppSidebar,
+  OkkeyAppSidebarToolbar,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  type OkkeyAppSidebarProps,
+} from "@okkey/ui";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -11,12 +21,45 @@ export type WorkspaceSidebarLayoutProps = {
   title: string;
   description: ReactNode;
   children: ReactNode;
-};
+} & Pick<
+  OkkeyAppSidebarProps,
+  | "workspaceNavItems"
+  | "workspaceNavLink"
+  | "workspaceNavGroupLabel"
+  | "workspaceSwitcherTrigger"
+  | "workspaceSwitcherDropdown"
+  | "vaultItems"
+  | "vaultNavLink"
+  | "vaultSectionTitle"
+  | "folderTree"
+  | "folderNavLink"
+  | "folderSectionTitle"
+  | "accountMenu"
+>;
 
 /**
- * App shell for `/workspaces/:workspaceId`: {@link OkkeyAppSidebar} + main column (same pattern as dev/ui/sidebar).
+ * Authenticated workspace shell: {@link OkkeyAppSidebar} + main column (`/items`, `/capsules`, …).
+ *
+ * Folders: `folderTree` / `folderNavLink` are forwarded as-is. Real wiring lives in
+ * {@link ../../workspace/WorkspaceRoutesLayout} (`itemsPathWithFolder`, query `folder`, active state).
  */
-export default function WorkspaceSidebarLayout({ title, description, children }: WorkspaceSidebarLayoutProps) {
+export default function WorkspaceSidebarLayout({
+  title,
+  description,
+  children,
+  workspaceNavItems,
+  workspaceNavLink,
+  workspaceNavGroupLabel,
+  workspaceSwitcherTrigger,
+  workspaceSwitcherDropdown,
+  vaultItems,
+  vaultNavLink,
+  vaultSectionTitle,
+  folderTree,
+  folderNavLink,
+  folderSectionTitle,
+  accountMenu,
+}: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
 
   return (
@@ -24,7 +67,21 @@ export default function WorkspaceSidebarLayout({ title, description, children }:
       <BodyGradient />
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <OkkeyAppSidebar className="h-full min-h-0 border-0 bg-transparent">
+        <OkkeyAppSidebar
+          className="h-full min-h-0 border-0 bg-transparent"
+          workspaceNavItems={workspaceNavItems}
+          workspaceNavLink={workspaceNavLink}
+          workspaceNavGroupLabel={workspaceNavGroupLabel}
+          workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+          workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+          vaultItems={vaultItems}
+          vaultNavLink={vaultNavLink}
+          vaultSectionTitle={vaultSectionTitle}
+          folderTree={folderTree}
+          folderNavLink={folderNavLink}
+          folderSectionTitle={folderSectionTitle}
+          accountMenu={accountMenu}
+        >
           <OkkeyAppSidebarToolbar />
           <div
             className={cn(

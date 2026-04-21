@@ -6,7 +6,7 @@ This folder defines **browser URL paths**, **route tree**, and **guest entry rul
 
 | File | Role |
 |------|------|
-| `paths.ts` | **Canonical path strings** and small builders (`workspacePath`, `accountLockWithRedirectQuery`, `isDevUiPathname`, …). No React imports. |
+| `paths.ts` | **Canonical path strings** and small builders (`workspaceShellPath`, `accountLockWithRedirectQuery`, `isDevUiPathname`, …). No React imports. |
 | `guestEntryPaths.ts` | **Which paths may render without a Bearer token** (`isAllowedPathWithoutBearerSession`). Must mirror public / flow-specific routes in `AppRoutes.tsx` and `AuthSessionGate`. |
 | `AppRoutes.tsx` | **`<Routes>` / `<Route>` tree** only. Uses `paths.ts` for every `path` / `Navigate to`. |
 

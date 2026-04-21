@@ -19,9 +19,11 @@ import DevUISpinnerPage from "../pages/dev-ui/DevUISpinnerPage";
 import DevUISwitchPage from "../pages/dev-ui/DevUISwitchPage";
 import DevUIWorkspaceTilePage from "../pages/dev-ui/DevUIWorkspaceTilePage";
 import UnlockPasswordPage from "../pages/unlock/UnlockPasswordPage";
-import WorkspaceDetailPage from "../pages/workspaces/WorkspaceDetailPage";
+import LegacyWorkspaceNestedRedirect from "../pages/workspace/LegacyWorkspaceNestedRedirect";
+import WorkspaceSectionPage from "../pages/workspace/WorkspaceSectionPage";
 import WorkspacesPage from "../pages/workspaces/WorkspacesPage";
 import ProtectedVaultLayout from "../auth/ProtectedVaultLayout";
+import WorkspaceRoutesLayout from "../workspace/WorkspaceRoutesLayout";
 import {
   ACCOUNT_LOCK_PATH,
   ACCOUNT_NEW_PATH,
@@ -30,11 +32,16 @@ import {
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
+  CAPSULES_PATH,
   DEFAULT_AUTHENTICATED_PATH,
   DEV_UI_BASE_PATH,
+  ITEMS_PATH,
+  LEGACY_WORKSPACE_DETAIL_PATH_PATTERN,
+  MONITORING_PATH,
   ROOT_PATH,
+  SETTINGS_PATH,
+  TOOLS_PATH,
   UNLOCK_PASSWORD_LEGACY_PATH,
-  WORKSPACE_DETAIL_PATH_PATTERN,
   WORKSPACES_PATH,
 } from "./paths";
 
@@ -108,7 +115,14 @@ export default function AppRoutes() {
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
       <Route element={<ProtectedVaultLayout />}>
         <Route path={WORKSPACES_PATH} element={<WorkspacesPage />} />
-        <Route path={WORKSPACE_DETAIL_PATH_PATTERN} element={<WorkspaceDetailPage />} />
+        <Route path={LEGACY_WORKSPACE_DETAIL_PATH_PATTERN} element={<LegacyWorkspaceNestedRedirect />} />
+        <Route element={<WorkspaceRoutesLayout />}>
+          <Route path={ITEMS_PATH} element={<WorkspaceSectionPage />} />
+          <Route path={CAPSULES_PATH} element={<WorkspaceSectionPage />} />
+          <Route path={MONITORING_PATH} element={<WorkspaceSectionPage />} />
+          <Route path={TOOLS_PATH} element={<WorkspaceSectionPage />} />
+          <Route path={SETTINGS_PATH} element={<WorkspaceSectionPage />} />
+        </Route>
       </Route>
     </Routes>
   );

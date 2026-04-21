@@ -5,8 +5,9 @@ import { ApiRequestError } from "@okkey/api";
 import type { Workspace } from "@okkey/types";
 import { Spinner, WorkspaceTile } from "@okkey/ui";
 
-import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
-import { workspacePath } from "../../routes/paths";
+import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { writeStoredCurrentWorkspaceId } from "../../auth/workspaceStorage";
+import { ITEMS_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 
 const PERSONAL_FREE_TILE_COLOR = "#3B82F6";
@@ -78,6 +79,7 @@ function WorkspacesLoadingPlaceholder() {
 export default function WorkspacesContent() {
   const { t } = useLocale();
   const navigate = useNavigate();
+  const { userId } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -131,7 +133,12 @@ export default function WorkspacesContent() {
             title={ws.name}
             description={t(planDescriptionKey(ws.planTier))}
             {...(isFree ? { tileColor: PERSONAL_FREE_TILE_COLOR } : { business: true })}
-            onClick={() => navigate(workspacePath(ws.id))}
+            onClick={() => {
+              if (userId) {
+                writeStoredCurrentWorkspaceId(userId, ws.id);
+              }
+              navigate(ITEMS_PATH);
+            }}
           />
         );
       })}

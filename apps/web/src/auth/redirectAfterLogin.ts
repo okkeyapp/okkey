@@ -1,7 +1,9 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { NavigateFunction } from "react-router-dom";
 
-import { DEFAULT_AUTHENTICATED_PATH, workspacePath } from "../routes/paths";
+import { DEFAULT_AUTHENTICATED_PATH, ITEMS_PATH, WORKSPACES_PATH } from "../routes/paths";
+import { readStoredSession } from "./sessionAuthStorage";
+import { writeStoredCurrentWorkspaceId } from "./workspaceStorage";
 
 export async function navigateAfterSession(
   core: CoreApiClient,
@@ -10,11 +12,14 @@ export async function navigateAfterSession(
 ): Promise<void> {
   try {
     const workspaces = await core.listWorkspaces();
-    if (workspaces.length === 1) {
-      navigate(workspacePath(workspaces[0].id), { replace: true });
+    const session = readStoredSession();
+    const userId = session?.user_id;
+    if (workspaces.length === 1 && userId) {
+      writeStoredCurrentWorkspaceId(userId, workspaces[0].id);
+      navigate(ITEMS_PATH, { replace: true });
       return;
     }
-    navigate(DEFAULT_AUTHENTICATED_PATH, { replace: true });
+    navigate(WORKSPACES_PATH, { replace: true });
   } catch {
     navigate(fallback, { replace: true });
   }
