@@ -683,13 +683,18 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
             <button
               type="button"
               className={cn(
-                "flex w-full items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+                "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
                 sidebarRowHoverClassName,
                 sidebarDropdownTriggerOpenClassName,
-                expanded ? "gap-2 p-2" : "justify-center p-0",
+                expanded ? "w-full gap-2 p-2" : "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
               )}
             >
-              <div className="size-8 shrink-0 overflow-hidden rounded-lg">
+              <div
+                className={cn(
+                  "shrink-0 overflow-hidden rounded-lg",
+                  expanded ? "size-8" : "size-9",
+                )}
+              >
                 <PersonalWorkspaceMark fillColor={SIDEBAR_WORKSPACE_TILE_COLOR} className="block size-full" />
               </div>
               {expanded ? (
@@ -859,13 +864,18 @@ function OkkeyAppSidebarInner({ className }: Pick<OkkeyAppSidebarProps, "classNa
             <button
               type="button"
               className={cn(
-                "flex w-full items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+                "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
                 sidebarRowHoverClassName,
                 sidebarDropdownTriggerOpenClassName,
-                expanded ? "gap-2 p-2" : "justify-center p-0",
+                expanded ? "w-full gap-2 p-2" : "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
               )}
             >
-              <div className="flex size-8 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white">
+              <div
+                className={cn(
+                  "flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white",
+                  expanded ? "size-8" : "size-9",
+                )}
+              >
                 <UserFooterShieldCheckIcon className="shrink-0" />
                 <span className="text-[10px] font-semibold leading-none">48</span>
               </div>
