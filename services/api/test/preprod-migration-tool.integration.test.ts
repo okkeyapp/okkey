@@ -155,6 +155,8 @@ test("integration: CLI blocks execution in production environment", () => {
       NODE_ENV: "production",
       DEPLOY_ENV: "prod",
       INTERNAL_PREPROD_MIGRATION_ALLOW_PROD: "",
+      // Avoid inheriting dev `.env` profile list (e.g. 1,2) which fails prod policy before prod guard runs.
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: "2",
     },
     encoding: "utf8",
   });
