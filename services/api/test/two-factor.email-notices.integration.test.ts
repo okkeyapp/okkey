@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { formatEmailMessage } from "@okkey/i18n";
 import { randomUUID } from "node:crypto";
 import { AuthService } from "../src/auth/service.ts";
 import { loadConfig, type ApiConfig } from "../src/config.ts";
@@ -88,7 +89,7 @@ test("integration: after TOTP enroll confirm, transport receives two_factor_enab
   await flushOutboundEmailTasks();
 
   assert.equal(sent.length, 1);
-  assert.match(sent[0].subject, /двухфакторная/i);
+  assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.equal(sent[0].to, email);
   for (const code of backupCodes) {
     assert.equal(sent[0].text.includes(code), false, "plaintext backup codes must not appear in email");
@@ -175,7 +176,7 @@ test("integration: after backup regeneration, transport receives two_factor_back
   await flushOutboundEmailTasks();
 
   assert.equal(sent.length, 1);
-  assert.match(sent[0].subject, /Резервные коды|перевыпущены/i);
+  assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
   assert.equal(sent[0].to, email);
   for (const code of newCodes) {
     assert.equal(sent[0].text.includes(code), false);

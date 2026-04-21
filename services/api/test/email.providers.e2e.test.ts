@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { formatEmailMessage } from "@okkey/i18n";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { SMTPServer } from "smtp-server";
@@ -219,5 +220,6 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
   assert.equal(response.status, 200);
   assert.equal(providerAuthHeader, "Bearer test-api-key");
   assert.match(providerRequestBody, /"to":"user@example.com"/);
-  assert.match(providerRequestBody, /"subject":"Код входа в Okkey"/);
+  const parsed = JSON.parse(providerRequestBody) as { subject?: string };
+  assert.equal(parsed.subject, formatEmailMessage("ru", "email.auth.signInCode.subject", {}));
 });

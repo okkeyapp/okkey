@@ -48,7 +48,7 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
     code: "654321",
     ttlSeconds: 60,
   });
-  assert.match(ru.subject, /Код входа/);
+  assert.equal(ru.subject, formatEmailMessage("ru", "email.auth.signInCode.subject", {}));
   assert.match(ru.text, /654321/);
   assertNoMustachePlaceholders(ru.text);
 });
@@ -61,7 +61,7 @@ test("renderEmailTemplate device_approval_request en and ru", async () => {
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
-  assert.match(ru.subject, /устройства|подтверждени/i);
+  assert.equal(ru.subject, formatEmailMessage("ru", "email.device.approval.subject", {}));
   assert.match(ru.text, /Pixel/);
   assertNoMustachePlaceholders(ru.text);
 });
@@ -74,7 +74,10 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("workspace_invite", "ru", workspaceVars);
-  assert.match(ru.subject, /Приглашение/i);
+  assert.equal(
+    ru.subject,
+    formatEmailMessage("ru", "email.workspaceInvite.subject", { workspaceName: workspaceVars.workspaceName }),
+  );
   assert.match(ru.html, /token-abc/);
   assertNoMustachePlaceholders(ru.text);
 });
@@ -88,7 +91,7 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
-  assert.match(ru.subject, /двухфакторная/i);
+  assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.match(ru.text, /UTC/);
   assertNoMustachePlaceholders(ru.text);
 });
@@ -108,8 +111,8 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
     "ru",
     twoFactorVars,
   );
-  assert.match(ru.subject, /Резервные|перевыпущены/i);
-  assert.match(ru.text, /коды/i);
+  assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
+  assert.ok(ru.text.includes(formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {})));
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -195,7 +198,7 @@ test("EmailTemplateService sendAuthEmailCode uses mock transport without leftove
   assert.equal(sent[0].text.includes("{{"), false);
 });
 
-test("EmailTemplateService sendDeviceApprovalRequest ru uses Russian subject", async () => {
+test("EmailTemplateService sendDeviceApprovalRequest ru uses ru bundle subject", async () => {
   const sent: Array<{ subject: string; text: string }> = [];
   const sender: EmailSender = {
     send: async (m) => {
@@ -213,7 +216,7 @@ test("EmailTemplateService sendDeviceApprovalRequest ru uses Russian subject", a
     variables: { ...deviceVars },
   });
   assert.equal(sent.length, 1);
-  assert.match(sent[0].subject, /устройства|подтверждени/i);
+  assert.equal(sent[0].subject, formatEmailMessage("ru", "email.device.approval.subject", {}));
   assert.equal(sent[0].text.includes("{{"), false);
 });
 
@@ -265,6 +268,6 @@ test("EmailTemplateService sendTwoFactorEnabled and sendTwoFactorBackupCodesRege
     variables: twoFactorVars,
   });
   assert.equal(sent.length, 2);
-  assert.match(sent[0].subject, /двухфакторная/i);
-  assert.match(sent[1].subject, /Резервные|перевыпущены/i);
+  assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
+  assert.equal(sent[1].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
 });

@@ -1,92 +1,95 @@
 # API Service
 
-Минимальный backend-каркас для Okkey Core.
+Minimal backend scaffold for Okkey Core.
 
-**Контракты HTTP API:** [`docs/api_contracts.md`](../../docs/api_contracts.md), OpenAPI: [`docs/openapi/core-api.yaml`](../../docs/openapi/core-api.yaml).
+**HTTP API contracts:** [`docs/api_contracts.md`](../../docs/api_contracts.md), OpenAPI: [`docs/openapi/core-api.yaml`](../../docs/openapi/core-api.yaml).
 
-## Что есть в каркасе
+## What the scaffold includes
 
-- единая точка входа: `src/index.ts`
-- загрузка env из `services/api/.env` и `services/api/.env.local`
-- базовый роутинг
-- storage layer:
-  - Postgres клиент + транзакции
-  - Redis клиент
-  - репозитории `users/workspaces/vaults/items/events`
-- middleware:
-  - обработка ошибок
+- Single entry point: `src/index.ts`
+- Env loading from `services/api/.env` and `services/api/.env.local`
+- Basic routing
+- Storage layer:
+  - Postgres client + transactions
+  - Redis client
+  - Repositories `users/workspaces/vaults/items/events`
+- Middleware:
+  - Error handling
   - CORS
-  - логирование запросов
-- health endpoints:
+  - Request logging
+- Health endpoints:
   - `GET /health`
   - `GET /ready`
-- auth endpoints:
+- Auth endpoints:
   - `POST /auth/email/start`
   - `POST /auth/email/resend`
   - `POST /auth/email/confirm`
   - `POST /auth/register/complete` (new user, split-key + first trusted device)
-- vault endpoints:
+- Vault endpoints:
   - `GET /workspaces/:workspaceId/vaults` (Bearer session; optional `X-User-Id` in dev when enabled)
   - `GET /vaults/:vaultId` (same)
-- sync endpoints:
+- Sync endpoints:
   - `GET /vaults/:vaultId/events?afterVersion=0` (same)
   - `POST /vaults/:vaultId/events` (same)
 
-## Локальный запуск
+## Local run
 
-1. Подготовить env:
+1. Prepare env:
 
 ```bash
 cp services/api/.env.example services/api/.env
 ```
 
-Root `.env` не используется для runtime API-конфига.  
-API читает только `services/api/.env` и `services/api/.env.local`.
+The root `.env` is not used for API runtime config.  
+The API reads only `services/api/.env` and `services/api/.env.local`.
 
-2. Запустить API из корня репозитория:
+2. Start the API from the repository root:
 
 ```bash
 yarn dev:api
 ```
 
-По умолчанию API стартует на `http://localhost:4000`.
+By default the API listens on `http://localhost:4000`.
 
-Важно: для запуска storage layer нужны зависимости `pg` и `redis`.
+Note: the storage layer needs `pg` and `redis` dependencies to run.
 
 ## Email providers
 
-Поддерживаются 3 режима:
-- `EMAIL_PROVIDER=logger` — только логирование отправки (dev по умолчанию)
-- `EMAIL_PROVIDER=smtp` — отправка через SMTP
-- `EMAIL_PROVIDER=http-api` — отправка через внешний HTTP API провайдера
+Three modes are supported:
 
-Для SMTP задаются:
+- `EMAIL_PROVIDER=logger` — log sends only (default in dev)
+- `EMAIL_PROVIDER=smtp` — send via SMTP
+- `EMAIL_PROVIDER=http-api` — send via an external provider HTTP API
+
+SMTP variables:
+
 - `EMAIL_SMTP_HOST`
 - `EMAIL_SMTP_PORT`
 - `EMAIL_SMTP_SECURE`
 - `EMAIL_SMTP_USER`
 - `EMAIL_SMTP_PASSWORD`
 
-Для HTTP API задаются:
+HTTP API variables:
+
 - `EMAIL_API_ENDPOINT`
 - `EMAIL_API_KEY`
 - `EMAIL_API_TIMEOUT_MS`
 
-## Тесты каркаса
+## Scaffold tests
 
-Из корня репозитория:
+From the repository root:
 
 ```bash
 yarn test
 ```
 
-Это запускает `yarn test:api` и `yarn test:e2e` (после `build:email`). Для integration-тестов storage нужны **Postgres** и **Redis**; в `services/api/.env` должны быть заданы `DATABASE_URL` и `REDIS_URL` (как в `.env.example`). MinIO для текущих API-тестов не требуется.
+This runs `yarn test:api` and `yarn test:e2e` (after `build:email`). Integration tests for storage need **Postgres** and **Redis**; `services/api/.env` must define `DATABASE_URL` and `REDIS_URL` (as in `.env.example`). MinIO is not required for current API tests.
 
 ```bash
 yarn infra:up
 ```
 
-Отдельно только API-тесты:
+API tests only:
 
 ```bash
 yarn test:api
@@ -94,7 +97,7 @@ yarn test:api
 
 ## Email login flow (v1)
 
-- код входа: 6 цифр
-- TTL кода: 5 минут (настраивается через env)
-- повторная отправка: не чаще 1 раза в 60 секунд
-- лимит неверных попыток confirm: 5
+- Sign-in code: 6 digits
+- Code TTL: 5 minutes (configurable via env)
+- Resend: at most once per 60 seconds
+- Failed confirm attempts limit: 5
