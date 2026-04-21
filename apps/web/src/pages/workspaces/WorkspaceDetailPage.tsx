@@ -1,7 +1,6 @@
 import { useParams } from "react-router-dom";
 
-import AppShellLayout from "../../components/app-shell/AppShellLayout";
-import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import WorkspaceSidebarLayout from "../../components/workspace/WorkspaceSidebarLayout";
 import { useLocale } from "../../locale/LocaleContext";
 
 /** Placeholder until vault UI is implemented; route exists for post-login deep links. */
@@ -9,14 +8,13 @@ export default function WorkspaceDetailPage() {
   const { t } = useLocale();
   const { workspaceId } = useParams<{ workspaceId: string }>();
 
+  const description = workspaceId
+    ? t("workspaces.shellId", { id: workspaceId })
+    : t("workspaces.description");
+
   return (
-    <AppShellLayout
-      title={t("workspaces.title")}
-      description={workspaceId ? `Workspace ${workspaceId}` : t("workspaces.description")}
-      logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      contentClassName="max-w-3xl"
-    >
-      <p className="okkey-body text-copy-secondary text-center">{t("workspaces.description")}</p>
-    </AppShellLayout>
+    <WorkspaceSidebarLayout title={t("workspaces.shellTitle")} description={description}>
+      <p className="okkey-body text-copy-secondary">{t("workspaces.shellPlaceholder")}</p>
+    </WorkspaceSidebarLayout>
   );
 }

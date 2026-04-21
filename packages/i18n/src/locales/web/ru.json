@@ -93,5 +93,9 @@
   "workspaces.description": "Выберите рабочее пространство",
   "workspaces.createLine1": "Создать",
   "workspaces.createLine2": "пространство",
-  "workspaces.createWorkspaceAria": "Создать рабочее пространство"
+  "workspaces.createWorkspaceAria": "Создать рабочее пространство",
+  "workspaces.backToList": "Все пространства",
+  "workspaces.shellTitle": "Пространство",
+  "workspaces.shellId": "ID: {id}",
+  "workspaces.shellPlaceholder": "Здесь появится интерфейс сейфов и записей."
 }

@@ -93,5 +93,9 @@
   "workspaces.description": "Choose a workspace",
   "workspaces.createLine1": "Create",
   "workspaces.createLine2": "workspace",
-  "workspaces.createWorkspaceAria": "Create workspace"
+  "workspaces.createWorkspaceAria": "Create workspace",
+  "workspaces.backToList": "All workspaces",
+  "workspaces.shellTitle": "Workspace",
+  "workspaces.shellId": "ID: {id}",
+  "workspaces.shellPlaceholder": "Vault and records UI will appear here."
 }
