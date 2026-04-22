@@ -8,6 +8,7 @@ import {
   Sidebar,
   SidebarContent,
   SidebarProvider,
+  TooltipProvider,
   type OkkeySidebarFolderTreeNode,
   type OkkeySidebarPlainLinkItem,
   type OkkeySidebarVaultItem,
@@ -20,15 +21,17 @@ export const devUiDropdownPanelClassName = "flex w-[min(100vw-2rem,280px)] min-w
 
 export function DevUiSidebarMenuShell({ children }: { children: ReactNode }) {
   return (
-    <SidebarProvider defaultExpanded>
-      <div className="h-[min(420px,55vh)] w-[280px] max-w-full shrink-0 overflow-hidden rounded-lg border border-border">
-        <Sidebar className="h-full border-0 bg-sidebar">
-          <SidebarContent className="overflow-y-auto p-0">
-            <div className="flex flex-col gap-6 p-2">{children}</div>
-          </SidebarContent>
-        </Sidebar>
-      </div>
-    </SidebarProvider>
+    <TooltipProvider delayDuration={0}>
+      <SidebarProvider defaultExpanded>
+        <div className="h-[min(420px,55vh)] w-[280px] max-w-full shrink-0 overflow-hidden rounded-lg border border-border">
+          <Sidebar className="h-full border-0 bg-sidebar">
+            <SidebarContent className="overflow-y-auto p-0">
+              <div className="flex flex-col gap-6 p-2">{children}</div>
+            </SidebarContent>
+          </Sidebar>
+        </div>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
 

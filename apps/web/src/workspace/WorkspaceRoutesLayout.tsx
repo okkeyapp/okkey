@@ -138,7 +138,7 @@ export default function WorkspaceRoutesLayout() {
       monitoring: t("web.nav.monitoring"),
       tools: t("web.nav.tools"),
       settings: t("web.nav.settings"),
-      addRecords: t("web.nav.addRecords"),
+      addRecords: t("web.items.createRecord"),
       addCapsule: t("web.nav.addCapsule"),
     };
     const base = okkeyWorkspaceShellNavItems(navPaths, labels);
@@ -383,6 +383,12 @@ export default function WorkspaceRoutesLayout() {
       folderTree={[]}
       folderSectionTitle={t("web.nav.foldersSection")}
       accountMenu={accountMenu}
+      footerPlainLinkLabels={{
+        documentation: t("web.nav.documentation"),
+        help: t("web.nav.help"),
+      }}
+      vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
+      folderHeaderPlusAriaLabel={t("web.nav.createFolder")}
     >
       <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
     </WorkspaceSidebarLayout>

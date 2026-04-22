@@ -15,6 +15,7 @@ const DEV_UI_NAV: readonly { to: string; label: string; end?: boolean }[] = [
   { to: devUiGalleryPath("spinner"), label: "Spinner" },
   { to: devUiGalleryPath("workspace-tile"), label: "Workspace tile" },
   { to: devUiGalleryPath("alert"), label: "Alert" },
+  { to: devUiGalleryPath("tooltip"), label: "Tooltip" },
 ];
 
 function navItemActive(pathname: string, to: string, end?: boolean) {

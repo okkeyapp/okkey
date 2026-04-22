@@ -36,6 +36,9 @@ export type WorkspaceSidebarLayoutProps = {
   | "folderNavLink"
   | "folderSectionTitle"
   | "accountMenu"
+  | "footerPlainLinkLabels"
+  | "vaultHeaderPlusAriaLabel"
+  | "folderHeaderPlusAriaLabel"
 >;
 
 /**
@@ -60,6 +63,9 @@ export default function WorkspaceSidebarLayout({
   folderNavLink,
   folderSectionTitle,
   accountMenu,
+  footerPlainLinkLabels,
+  vaultHeaderPlusAriaLabel,
+  folderHeaderPlusAriaLabel,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
 
@@ -82,9 +88,16 @@ export default function WorkspaceSidebarLayout({
           folderNavLink={folderNavLink}
           folderSectionTitle={folderSectionTitle}
           accountMenu={accountMenu}
+          footerPlainLinkLabels={footerPlainLinkLabels}
+          vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
+          folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
         >
           <div className="flex shrink-0 flex-row items-center gap-2 ps-2 pe-4 pt-2">
-            <OkkeyAppSidebarToolbar className="!p-0 shrink-0" />
+            <OkkeyAppSidebarToolbar
+              className="!p-0 shrink-0"
+              expandSidebarLabel={t("web.nav.expandSidebar")}
+              collapseSidebarLabel={t("web.nav.collapseSidebar")}
+            />
             <div className="min-w-0 flex-1">
               <ItemsShellTopBar />
             </div>

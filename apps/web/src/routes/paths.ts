@@ -87,7 +87,8 @@ export type DevUiGallerySegment =
   | "control-grouping"
   | "spinner"
   | "workspace-tile"
-  | "alert";
+  | "alert"
+  | "tooltip";
 
 export function devUiGalleryPath(segment?: DevUiGallerySegment): string {
   if (!segment) {

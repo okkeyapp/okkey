@@ -8,6 +8,7 @@ import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
 import DevUIAlertPage from "../pages/dev-ui/DevUIAlertPage";
+import DevUITooltipPage from "../pages/dev-ui/DevUITooltipPage";
 import DevUIButtonPage from "../pages/dev-ui/DevUIButtonPage";
 import DevUIControlGroupingPage from "../pages/dev-ui/DevUIControlGroupingPage";
 import DevUIFoundationPage from "../pages/dev-ui/DevUIFoundationPage";
@@ -83,6 +84,7 @@ export default function AppRoutes() {
         <Route path="spinner" element={<DevUISpinnerPage />} />
         <Route path="workspace-tile" element={<DevUIWorkspaceTilePage />} />
         <Route path="alert" element={<DevUIAlertPage />} />
+        <Route path="tooltip" element={<DevUITooltipPage />} />
       </Route>
       <Route
         path={AUTH_EMAIL_PATH}
