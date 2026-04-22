@@ -20,8 +20,6 @@
 
   "web.items.searchPlaceholder": "Поиск...",
   "web.items.createRecord": "Создать запись",
-  "web.items.createRecordAria": "Создать запись",
-  "web.items.notificationsAriaLabel": "Уведомления",
   "web.items.notificationsTitle": "Уведомления",
   "web.items.notificationsEmpty": "Пока нет уведомлений.",
 

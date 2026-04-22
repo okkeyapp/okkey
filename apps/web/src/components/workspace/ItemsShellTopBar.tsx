@@ -111,6 +111,10 @@ export default function ItemsShellTopBar() {
   const shortcutSegments = isApple ? WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_APPLE : WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_WIN;
   const shortcutAriaLabel = isApple ? WORKSPACE_SEARCH_SHORTCUT_ARIA_APPLE : WORKSPACE_SEARCH_SHORTCUT_ARIA_WIN;
 
+  const searchFieldLabel = t("web.items.searchPlaceholder");
+  const createRecordLabel = t("web.items.createRecord");
+  const notificationsLabel = t("web.items.notificationsTitle");
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!shouldTriggerWorkspaceSearchShortcut(e, isApple)) {
@@ -154,8 +158,8 @@ export default function ItemsShellTopBar() {
             role="searchbox"
             name="workspace-shell-search"
             id="workspace-shell-search"
-            placeholder={t("web.items.searchPlaceholder")}
-            aria-label={t("web.items.searchPlaceholder")}
+            placeholder={searchFieldLabel}
+            aria-label={searchFieldLabel}
             autoComplete="off"
             data-testid="items-shell-search"
             className={cn(
@@ -190,7 +194,7 @@ export default function ItemsShellTopBar() {
               variant="outline"
               size="icon"
               className="relative size-9 min-h-9 min-w-9 shrink-0 rounded-lg bg-background"
-              aria-label={t("web.items.notificationsAriaLabel")}
+              aria-label={notificationsLabel}
             >
               <BellIcon />
               <span
@@ -202,7 +206,7 @@ export default function ItemsShellTopBar() {
           <DropdownMenuContent align="end" sideOffset={6} className="w-72 p-0">
             <div className="border-b border-border px-3 py-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t("web.items.notificationsTitle")}
+                {notificationsLabel}
               </p>
             </div>
             <DropdownMenuSeparator className="m-0" />
@@ -216,10 +220,10 @@ export default function ItemsShellTopBar() {
           type="button"
           variant="default"
           className="h-9 shrink-0 gap-[4px] rounded-lg px-4 text-sm font-medium"
-          aria-label={t("web.items.createRecordAria")}
+          aria-label={createRecordLabel}
         >
           <PlusIcon />
-          {t("web.items.createRecord")}
+          {createRecordLabel}
         </Button>
       </div>
     </div>

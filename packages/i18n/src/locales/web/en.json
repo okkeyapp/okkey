@@ -20,8 +20,6 @@
 
   "web.items.searchPlaceholder": "Search…",
   "web.items.createRecord": "Create item",
-  "web.items.createRecordAria": "Create item",
-  "web.items.notificationsAriaLabel": "Notifications",
   "web.items.notificationsTitle": "Notifications",
   "web.items.notificationsEmpty": "No notifications yet.",
 
