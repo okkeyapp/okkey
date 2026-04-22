@@ -3,6 +3,7 @@ import * as React from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./collapsible.js";
 import { DropdownMenuItem } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.js";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -96,6 +97,19 @@ const folderDropdownMenuItemClassName = cn(
   "focus-visible:bg-[rgba(0,0,0,0.05)] focus-visible:text-foreground dark:focus-visible:bg-[rgba(255,255,255,0.08)]",
 );
 
+function NavPlusControlTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <span className="inline-flex shrink-0 items-center justify-center">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right" align="center">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** Tailwind `group/<name>` on collapsible root (nested folder rows use `group` for chevrons). */
 function collapsibleGroupClass(name: string) {
   return `group/${name}`;
@@ -162,14 +176,16 @@ export function OkkeySidebarWorkspaceMenu({ labelText, items, linkComponent }: O
                       {rowBody}
                     </SidebarMenuButton>
                   )}
-                  <button
-                    type="button"
-                    className={sidebarSectionPlusButton()}
-                    aria-label={item.addAriaLabel ?? "Add"}
-                    onPointerDown={item.onAddPointerDown ?? ((e) => e.preventDefault())}
-                  >
-                    <PlusMenuIcon />
-                  </button>
+                  <NavPlusControlTooltip label={item.addAriaLabel ?? "Add"}>
+                    <button
+                      type="button"
+                      className={sidebarSectionPlusButton()}
+                      aria-label={item.addAriaLabel ?? "Add"}
+                      onPointerDown={item.onAddPointerDown ?? ((e) => e.preventDefault())}
+                    >
+                      <PlusMenuIcon />
+                    </button>
+                  </NavPlusControlTooltip>
                 </div>
               </SidebarMenuItem>
             );
@@ -379,14 +395,16 @@ export function OkkeySidebarVaultsMenu({
         </button>
       </CollapsibleTrigger>
       {showHeaderPlus ? (
-        <button
-          type="button"
-          className={sidebarSectionPlusButton()}
-          aria-label={headerPlusAriaLabel ?? "Add"}
-          onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
-        >
-          <PlusMenuIcon />
-        </button>
+        <NavPlusControlTooltip label={headerPlusAriaLabel ?? "Add"}>
+          <button
+            type="button"
+            className={sidebarSectionPlusButton()}
+            aria-label={headerPlusAriaLabel ?? "Add"}
+            onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
+          >
+            <PlusMenuIcon />
+          </button>
+        </NavPlusControlTooltip>
       ) : null}
     </div>
   );
@@ -405,14 +423,16 @@ export function OkkeySidebarVaultsMenu({
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
           <span className="text-xs font-medium leading-4 text-muted-foreground">{sectionTitle}</span>
           {showHeaderPlus ? (
-            <button
-              type="button"
-              className={sidebarSectionPlusButton()}
-              aria-label={headerPlusAriaLabel ?? "Add"}
-              onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
-            >
-              <PlusMenuIcon />
-            </button>
+            <NavPlusControlTooltip label={headerPlusAriaLabel ?? "Add"}>
+              <button
+                type="button"
+                className={sidebarSectionPlusButton()}
+                aria-label={headerPlusAriaLabel ?? "Add"}
+                onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
+              >
+                <PlusMenuIcon />
+              </button>
+            </NavPlusControlTooltip>
           ) : null}
         </div>
         <ScrollArea className="max-h-[360px]">
@@ -780,14 +800,16 @@ export function OkkeySidebarFoldersMenu({
         </button>
       </CollapsibleTrigger>
       {showHeaderPlus ? (
-        <button
-          type="button"
-          className={sidebarSectionPlusButton()}
-          aria-label={headerPlusAriaLabel ?? "Add"}
-          onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
-        >
-          <PlusMenuIcon />
-        </button>
+        <NavPlusControlTooltip label={headerPlusAriaLabel ?? "Add"}>
+          <button
+            type="button"
+            className={sidebarSectionPlusButton()}
+            aria-label={headerPlusAriaLabel ?? "Add"}
+            onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
+          >
+            <PlusMenuIcon />
+          </button>
+        </NavPlusControlTooltip>
       ) : null}
     </div>
   );
@@ -798,14 +820,16 @@ export function OkkeySidebarFoldersMenu({
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
           <span className="text-xs font-medium leading-4 text-muted-foreground">{sectionTitle}</span>
           {showHeaderPlus ? (
-            <button
-              type="button"
-              className={sidebarSectionPlusButton()}
-              aria-label={headerPlusAriaLabel ?? "Add"}
-              onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
-            >
-              <PlusMenuIcon />
-            </button>
+            <NavPlusControlTooltip label={headerPlusAriaLabel ?? "Add"}>
+              <button
+                type="button"
+                className={sidebarSectionPlusButton()}
+                aria-label={headerPlusAriaLabel ?? "Add"}
+                onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
+              >
+                <PlusMenuIcon />
+              </button>
+            </NavPlusControlTooltip>
           ) : null}
         </div>
         <ScrollArea className="max-h-[360px]">

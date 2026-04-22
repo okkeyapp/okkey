@@ -31,6 +31,7 @@ import {
   SidebarProvider,
   useSidebar,
 } from "./sidebar.js";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip.js";
 import { cn } from "../../lib/utils.js";
 
 function ChevronsUpDownIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
@@ -778,24 +779,94 @@ export type OkkeyAppSidebarProps = {
   folderSectionTitle?: string;
   /** Real user row + account dropdown + working logout; omit for gallery / demo footer copy. */
   accountMenu?: OkkeyAppSidebarAccountMenu;
+  /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
+  footerPlainLinkLabels?: { documentation: string; help: string };
+  /** `aria-label` + tooltip for the vaults section “+” (expanded + collapsed dropdown). Default: gallery English. */
+  vaultHeaderPlusAriaLabel?: string;
+  /** `aria-label` + tooltip for the folders section “+” (expanded + collapsed dropdown). Default: gallery English. */
+  folderHeaderPlusAriaLabel?: string;
 };
 
-export function OkkeyAppSidebarToolbar({ className }: { className?: string }) {
+export type OkkeyAppSidebarToolbarProps = {
+  className?: string;
+  /** Shown when the sidebar is collapsed (expand action). Default: English. */
+  expandSidebarLabel?: string;
+  /** Shown when the sidebar is expanded (collapse action). Default: English. */
+  collapseSidebarLabel?: string;
+};
+
+/**
+ * Radix `TooltipTrigger` opens on `pointermove` on the trigger node. Composing `asChild` only with
+ * `SidebarMenuButton asChild` + router `Link` (or nested dropdown triggers) can leave hover on a
+ * descendant that never receives the composed trigger props — wrap in a real `span` host.
+ */
+function SidebarCollapsedTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <span className="inline-flex w-full min-w-0 justify-center">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right" align="center">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CollapsedDropdownIconTooltip({
+  label,
+  children,
+  /** `compact` — квадратные контролы в шапке/футере; `menuRow` — полная ширина ряла как у `SidebarMenuButton` */
+  variant = "menuRow",
+}: {
+  label: string;
+  children: React.ReactNode;
+  variant?: "menuRow" | "compact";
+}) {
+  const wrapClassName =
+    variant === "compact" ? "inline-flex shrink-0" : "inline-flex w-full min-w-0 justify-center";
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <span className={wrapClassName}>{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right" align="center">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function OkkeyAppSidebarToolbar({
+  className,
+  expandSidebarLabel = "Expand sidebar",
+  collapseSidebarLabel = "Collapse sidebar",
+}: OkkeyAppSidebarToolbarProps) {
   const { expanded, toggleSidebar } = useSidebar();
+  const toggleLabel = expanded ? collapseSidebarLabel : expandSidebarLabel;
   return (
     <div className={cn("flex shrink-0 flex-col border-0 pb-0 pt-2 px-2", className)}>
       <div className="flex h-9 min-h-9 items-center">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className={sidebarSubtleControlSurfaceClassName}
-          onClick={toggleSidebar}
-          aria-expanded={expanded}
-          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
-        >
-          <SidebarPanelToggleIcon />
-        </Button>
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <span className="inline-flex shrink-0">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={sidebarSubtleControlSurfaceClassName}
+                onClick={toggleSidebar}
+                aria-expanded={expanded}
+                aria-label={toggleLabel}
+              >
+                <SidebarPanelToggleIcon />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start">
+            {toggleLabel}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -811,24 +882,23 @@ function CollapsedPrimaryNavRow({
   const compact = "h-9 min-h-9 justify-center px-0";
   const srOnly = <span className="sr-only">{item.label}</span>;
   const LinkC = linkComponent;
-  if (item.to && LinkC) {
-    return (
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={item.isActive} className={compact}>
-          <LinkC to={item.to}>
-            {item.icon}
-            {srOnly}
-          </LinkC>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    );
-  }
-  return (
-    <SidebarMenuItem>
+  const button =
+    item.to && LinkC ? (
+      <SidebarMenuButton asChild isActive={item.isActive} className={compact}>
+        <LinkC to={item.to}>
+          {item.icon}
+          {srOnly}
+        </LinkC>
+      </SidebarMenuButton>
+    ) : (
       <SidebarMenuButton type="button" isActive={item.isActive} className={compact}>
         {item.icon}
         {srOnly}
       </SidebarMenuButton>
+    );
+  return (
+    <SidebarMenuItem>
+      <SidebarCollapsedTooltip label={item.label}>{button}</SidebarCollapsedTooltip>
     </SidebarMenuItem>
   );
 }
@@ -866,6 +936,9 @@ function OkkeyAppSidebarInner({
   folderNavLink,
   folderSectionTitle,
   accountMenu,
+  footerPlainLinkLabels,
+  vaultHeaderPlusAriaLabel = "Add vault",
+  folderHeaderPlusAriaLabel = "Add folder",
 }: Pick<
   OkkeyAppSidebarProps,
   | "className"
@@ -881,11 +954,23 @@ function OkkeyAppSidebarInner({
   | "folderNavLink"
   | "folderSectionTitle"
   | "accountMenu"
+  | "footerPlainLinkLabels"
+  | "vaultHeaderPlusAriaLabel"
+  | "folderHeaderPlusAriaLabel"
 >) {
   const { expanded } = useSidebar();
   const [safesOpen, setSafesOpen] = React.useState(true);
   const footerAccount = footerAccountFromProps(accountMenu);
   const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
+  const footerPlainItems = React.useMemo((): OkkeySidebarPlainLinkItem[] => {
+    const base = demoPlainLinkItems();
+    if (!footerPlainLinkLabels) return base;
+    return base.map((item) => {
+      if (item.id === "doc") return { ...item, label: footerPlainLinkLabels.documentation };
+      if (item.id === "help") return { ...item, label: footerPlainLinkLabels.help };
+      return item;
+    });
+  }, [footerPlainLinkLabels]);
   const primaryNav = workspaceNavItems ?? okkeyWorkspaceShellNavItems();
   const groupLabel = workspaceNavGroupLabel ?? "Workspace";
   const vaultData = vaultItems ?? demoVaultItems();
@@ -898,19 +983,37 @@ function OkkeyAppSidebarInner({
     <Sidebar className={cn("border-0 bg-transparent", className)}>
       <SidebarHeader>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
-                sidebarRowHoverClassName,
-                sidebarDropdownTriggerOpenClassName,
-                expanded ? "w-full gap-2 p-2" : "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
-              )}
-            >
-              {workspaceSwitcherTrigger ? workspaceSwitcherTrigger({ expanded }) : <DefaultWorkspaceSwitcherTrigger expanded={expanded} />}
-            </button>
-          </DropdownMenuTrigger>
+          {expanded ? (
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+                  sidebarRowHoverClassName,
+                  sidebarDropdownTriggerOpenClassName,
+                  "w-full gap-2 p-2",
+                )}
+              >
+                {workspaceSwitcherTrigger ? workspaceSwitcherTrigger({ expanded }) : <DefaultWorkspaceSwitcherTrigger expanded={expanded} />}
+              </button>
+            </DropdownMenuTrigger>
+          ) : (
+            <CollapsedDropdownIconTooltip label={groupLabel} variant="compact">
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+                    sidebarRowHoverClassName,
+                    sidebarDropdownTriggerOpenClassName,
+                    "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
+                  )}
+                >
+                  {workspaceSwitcherTrigger ? workspaceSwitcherTrigger({ expanded }) : <DefaultWorkspaceSwitcherTrigger expanded={expanded} />}
+                </button>
+              </DropdownMenuTrigger>
+            </CollapsedDropdownIconTooltip>
+          )}
           <DropdownMenuContent side="right" align="start" sideOffset={6} className="w-72 p-0">
             {workspaceSwitcherDropdown ?? <WorkspaceSwitcherDropdownPanel />}
           </DropdownMenuContent>
@@ -927,18 +1030,20 @@ function OkkeyAppSidebarInner({
                 ))}
                 <SidebarMenuItem>
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <SidebarMenuButton
-                        type="button"
-                        className={cn(
-                          "h-9 min-h-9 justify-center px-0",
-                          sidebarDropdownTriggerOpenClassName,
-                        )}
-                      >
-                        <NavSafesIcon />
-                        <span className="sr-only">{vaultTitle}</span>
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
+                    <CollapsedDropdownIconTooltip label={vaultTitle}>
+                      <DropdownMenuTrigger asChild>
+                        <SidebarMenuButton
+                          type="button"
+                          className={cn(
+                            "h-9 min-h-9 justify-center px-0",
+                            sidebarDropdownTriggerOpenClassName,
+                          )}
+                        >
+                          <NavSafesIcon />
+                          <span className="sr-only">{vaultTitle}</span>
+                        </SidebarMenuButton>
+                      </DropdownMenuTrigger>
+                    </CollapsedDropdownIconTooltip>
                     <DropdownMenuContent
                       side="right"
                       align="start"
@@ -951,7 +1056,7 @@ function OkkeyAppSidebarInner({
                         collapsibleGroupName="vaults-dd"
                         items={vaultData}
                         showHeaderPlus
-                        headerPlusAriaLabel="Add vault"
+                        headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                         linkComponent={vaultNavLink}
                       />
                     </DropdownMenuContent>
@@ -960,18 +1065,20 @@ function OkkeyAppSidebarInner({
                 {showFolders ? (
                   <SidebarMenuItem>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <SidebarMenuButton
-                          type="button"
-                          className={cn(
-                            "h-9 min-h-9 justify-center px-0",
-                            sidebarDropdownTriggerOpenClassName,
-                          )}
-                        >
-                          <FolderClosedIcon />
-                          <span className="sr-only">{folderTitle}</span>
-                        </SidebarMenuButton>
-                      </DropdownMenuTrigger>
+                      <CollapsedDropdownIconTooltip label={folderTitle}>
+                        <DropdownMenuTrigger asChild>
+                          <SidebarMenuButton
+                            type="button"
+                            className={cn(
+                              "h-9 min-h-9 justify-center px-0",
+                              sidebarDropdownTriggerOpenClassName,
+                            )}
+                          >
+                            <FolderClosedIcon />
+                            <span className="sr-only">{folderTitle}</span>
+                          </SidebarMenuButton>
+                        </DropdownMenuTrigger>
+                      </CollapsedDropdownIconTooltip>
                       <DropdownMenuContent
                         side="right"
                         align="start"
@@ -985,7 +1092,7 @@ function OkkeyAppSidebarInner({
                           tree={folderData}
                           leafIcon={<FolderClosedIcon />}
                           showHeaderPlus
-                          headerPlusAriaLabel="Add folder"
+                          headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                           linkComponent={folderNavLink}
                         />
                       </DropdownMenuContent>
@@ -1010,7 +1117,7 @@ function OkkeyAppSidebarInner({
                     onOpenChange={setSafesOpen}
                     items={vaultData}
                     showHeaderPlus
-                    headerPlusAriaLabel="Add vault"
+                    headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     linkComponent={vaultNavLink}
                   />
                   {showFolders ? (
@@ -1021,7 +1128,7 @@ function OkkeyAppSidebarInner({
                       tree={folderData}
                       leafIcon={<FolderClosedIcon />}
                       showHeaderPlus
-                      headerPlusAriaLabel="Add folder"
+                      headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                       linkComponent={folderNavLink}
                     />
                   ) : null}
@@ -1034,47 +1141,45 @@ function OkkeyAppSidebarInner({
         <div className="mt-auto shrink-0 p-2">
           {!expanded ? (
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                  <NavDocumentationIcon />
-                  <span className="sr-only">Documentation</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                  <NavHelpIcon />
-                  <span className="sr-only">Help</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {footerPlainItems.map((link) => (
+                <SidebarMenuItem key={link.id}>
+                  <SidebarCollapsedTooltip label={link.label}>
+                    <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
+                      {link.icon}
+                      <span className="sr-only">{link.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarCollapsedTooltip>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           ) : (
-            <OkkeySidebarPlainLinksMenu items={demoPlainLinkItems()} />
+            <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
           )}
         </div>
       </SidebarContent>
 
       <SidebarFooter>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
-                sidebarRowHoverClassName,
-                sidebarDropdownTriggerOpenClassName,
-                expanded ? "w-full gap-2 p-2" : "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
-              )}
-            >
-              <div
+          {expanded ? (
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
                 className={cn(
-                  "flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white",
-                  expanded ? "size-8" : "size-9",
+                  "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+                  sidebarRowHoverClassName,
+                  sidebarDropdownTriggerOpenClassName,
+                  "w-full gap-2 p-2",
                 )}
               >
-                <UserFooterShieldCheckIcon className="shrink-0" />
-                <span className="text-[10px] font-semibold leading-none">48</span>
-              </div>
-              {expanded ? (
+                <div
+                  className={cn(
+                    "flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white",
+                    "size-8",
+                  )}
+                >
+                  <UserFooterShieldCheckIcon className="shrink-0" />
+                  <span className="text-[10px] font-semibold leading-none">48</span>
+                </div>
                 <>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold leading-5 text-foreground">
@@ -1086,13 +1191,39 @@ function OkkeyAppSidebarInner({
                   </div>
                   <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
                 </>
-              ) : (
-                <span className="sr-only">
-                  {footerNameLine ? `${footerNameLine}, ${footerAccount.email}` : footerAccount.email}
-                </span>
-              )}
-            </button>
-          </DropdownMenuTrigger>
+              </button>
+            </DropdownMenuTrigger>
+          ) : (
+            <CollapsedDropdownIconTooltip
+              label={footerNameLine ? `${footerNameLine} · ${footerAccount.email}` : footerAccount.email}
+              variant="compact"
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+                    sidebarRowHoverClassName,
+                    sidebarDropdownTriggerOpenClassName,
+                    "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white",
+                      "size-9",
+                    )}
+                  >
+                    <UserFooterShieldCheckIcon className="shrink-0" />
+                    <span className="text-[10px] font-semibold leading-none">48</span>
+                  </div>
+                  <span className="sr-only">
+                    {footerNameLine ? `${footerNameLine}, ${footerAccount.email}` : footerAccount.email}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+            </CollapsedDropdownIconTooltip>
+          )}
           <DropdownMenuContent side="right" align="end" sideOffset={6} className="w-64 p-0">
             <ProfileAccountDropdownPanel
               firstName={footerAccount.firstName}
@@ -1129,27 +1260,35 @@ export function OkkeyAppSidebar({
   folderNavLink,
   folderSectionTitle,
   accountMenu,
+  footerPlainLinkLabels,
+  vaultHeaderPlusAriaLabel,
+  folderHeaderPlusAriaLabel,
 }: OkkeyAppSidebarProps) {
   return (
-    <SidebarProvider persistExpandedStorageKey={OKKEY_APP_SHELL_SIDEBAR_EXPANDED_KEY}>
-      <div className="flex h-full min-h-0 w-full">
-        <OkkeyAppSidebarInner
-          className={className}
-          workspaceNavItems={workspaceNavItems}
-          workspaceNavLink={workspaceNavLink}
-          workspaceNavGroupLabel={workspaceNavGroupLabel}
-          workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-          workspaceSwitcherDropdown={workspaceSwitcherDropdown}
-          vaultItems={vaultItems}
-          vaultNavLink={vaultNavLink}
-          vaultSectionTitle={vaultSectionTitle}
-          folderTree={folderTree}
-          folderNavLink={folderNavLink}
-          folderSectionTitle={folderSectionTitle}
-          accountMenu={accountMenu}
-        />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
-      </div>
-    </SidebarProvider>
+    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+      <SidebarProvider persistExpandedStorageKey={OKKEY_APP_SHELL_SIDEBAR_EXPANDED_KEY}>
+        <div className="flex h-full min-h-0 w-full">
+          <OkkeyAppSidebarInner
+            className={className}
+            workspaceNavItems={workspaceNavItems}
+            workspaceNavLink={workspaceNavLink}
+            workspaceNavGroupLabel={workspaceNavGroupLabel}
+            workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+            workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+            vaultItems={vaultItems}
+            vaultNavLink={vaultNavLink}
+            vaultSectionTitle={vaultSectionTitle}
+            folderTree={folderTree}
+            folderNavLink={folderNavLink}
+            folderSectionTitle={folderSectionTitle}
+            accountMenu={accountMenu}
+            footerPlainLinkLabels={footerPlainLinkLabels}
+            vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
+            folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+          />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+        </div>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

@@ -17,6 +17,13 @@ export {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu.js";
 export { Alert, AlertDescription, AlertTitle, alertVariants } from "./components/ui/alert.js";
+export {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  type TooltipContentProps,
+} from "./components/ui/tooltip.js";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
 export { Input, type InputProps } from "./components/ui/input.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
@@ -77,6 +84,7 @@ export {
 export {
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  type OkkeyAppSidebarToolbarProps,
   okkeyWorkspaceShellNavItems,
   workspaceSwitcherActiveItemClassName,
   type OkkeyAppSidebarAccountMenu,
