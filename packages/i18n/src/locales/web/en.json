@@ -18,6 +18,13 @@
   "web.shell.toolsTitle": "Tools",
   "web.shell.settingsTitle": "Settings",
 
+  "web.items.searchPlaceholder": "Search…",
+  "web.items.createRecord": "Create item",
+  "web.items.createRecordAria": "Create item",
+  "web.items.notificationsAriaLabel": "Notifications",
+  "web.items.notificationsTitle": "Notifications",
+  "web.items.notificationsEmpty": "No notifications yet.",
+
   "auth.email.title": "Welcome to Okkey",
   "auth.email.description": "Enter your email",
   "auth.email.labelEmail": "Email",

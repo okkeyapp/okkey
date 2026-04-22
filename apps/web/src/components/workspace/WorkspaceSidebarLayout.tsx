@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { BodyGradient } from "../BodyGradient";
 import { useLocale } from "../../locale/LocaleContext";
 import { WORKSPACES_PATH } from "../../routes/paths";
+import ItemsShellTopBar from "./ItemsShellTopBar";
 
 export type WorkspaceSidebarLayoutProps = {
   title: string;
@@ -82,7 +83,12 @@ export default function WorkspaceSidebarLayout({
           folderSectionTitle={folderSectionTitle}
           accountMenu={accountMenu}
         >
-          <OkkeyAppSidebarToolbar />
+          <div className="flex shrink-0 flex-row items-center gap-2 ps-2 pe-4 pt-2">
+            <OkkeyAppSidebarToolbar className="!p-0 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <ItemsShellTopBar />
+            </div>
+          </div>
           <div
             className={cn(
               "mt-2 mr-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto rounded-xl bg-background p-0 text-foreground",

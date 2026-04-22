@@ -178,7 +178,10 @@ export default function WorkspaceRoutesLayout() {
   );
 
   const accountMenu = useMemo((): OkkeyAppSidebarAccountMenu | undefined => {
-    const email = profile?.email?.trim();
+    if (!profile) {
+      return undefined;
+    }
+    const email = profile.email?.trim();
     if (!email) {
       return undefined;
     }
