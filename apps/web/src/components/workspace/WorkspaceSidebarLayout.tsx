@@ -76,6 +76,7 @@ export default function WorkspaceSidebarLayout({
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <OkkeyAppSidebar
           className="h-full min-h-0 border-0 bg-transparent"
+          mobileNavCloseLabel={t("web.nav.closeMobileNav")}
           workspaceNavItems={workspaceNavItems}
           workspaceNavLink={workspaceNavLink}
           workspaceNavGroupLabel={workspaceNavGroupLabel}
@@ -92,11 +93,12 @@ export default function WorkspaceSidebarLayout({
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
         >
-          <div className="flex shrink-0 flex-row items-center gap-2 ps-2 pe-4 pt-2">
+          <div className="flex shrink-0 flex-row items-center gap-2 ps-2 pe-2 pt-2 min-[991px]:pe-4">
             <OkkeyAppSidebarToolbar
               className="!p-0 shrink-0"
               expandSidebarLabel={t("web.nav.expandSidebar")}
               collapseSidebarLabel={t("web.nav.collapseSidebar")}
+              openMobileNavLabel={t("web.nav.openMobileNav")}
             />
             <div className="min-w-0 flex-1">
               <ItemsShellTopBar />
@@ -105,6 +107,7 @@ export default function WorkspaceSidebarLayout({
           <div
             className={cn(
               "mt-2 mr-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto rounded-xl bg-background p-0 text-foreground",
+              "ml-2 min-[991px]:ml-0",
               "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
             )}
           >

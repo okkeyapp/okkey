@@ -5,6 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  useOkkeyAppShellLayout,
 } from "@okkey/ui";
 import { useEffect, useMemo, useRef, type SVGProps } from "react";
 
@@ -106,6 +107,7 @@ function BellIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
  */
 export default function ItemsShellTopBar() {
   const { t } = useLocale();
+  const shell = useOkkeyAppShellLayout();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isApple = useMemo(() => isAppleLikePlatform(), []);
   const shortcutSegments = isApple ? WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_APPLE : WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_WIN;
@@ -116,6 +118,9 @@ export default function ItemsShellTopBar() {
   const notificationsLabel = t("web.items.notificationsTitle");
 
   useEffect(() => {
+    if (shell.isMobile) {
+      return;
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       if (!shouldTriggerWorkspaceSearchShortcut(e, isApple)) {
         return;
@@ -130,7 +135,7 @@ export default function ItemsShellTopBar() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isApple]);
+  }, [isApple, shell.isMobile]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-row items-center gap-2" data-testid="items-shell-topbar">
@@ -168,7 +173,7 @@ export default function ItemsShellTopBar() {
               "focus-visible:outline-none",
             )}
           />
-          <div className="flex shrink-0 items-center ps-1 pe-2.5">
+          <div className="hidden min-[991px]:flex shrink-0 items-center ps-1 pe-2.5">
             <kbd
               className={cn(
                 "inline-flex items-center gap-1 rounded-[4px] bg-background px-[6px] py-0.5 text-xs leading-4 text-muted-foreground",
@@ -219,11 +224,14 @@ export default function ItemsShellTopBar() {
         <Button
           type="button"
           variant="default"
-          className="h-9 shrink-0 gap-[4px] rounded-lg px-4 text-sm font-medium"
+          className={cn(
+            "h-9 shrink-0 rounded-lg text-sm font-medium",
+            shell.isMobile ? "size-9 min-h-9 min-w-9 p-0" : "gap-[4px] px-4",
+          )}
           aria-label={createRecordLabel}
         >
           <PlusIcon />
-          {createRecordLabel}
+          {shell.isMobile ? null : createRecordLabel}
         </Button>
       </div>
     </div>
