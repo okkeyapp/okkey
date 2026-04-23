@@ -34,6 +34,83 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip.js";
 import { cn } from "../../lib/utils.js";
 
+/** Viewport width strictly below 991px — mobile workspace shell (drawer nav). */
+const OKKEY_APP_SHELL_MOBILE_MQ = "(max-width: 990px)";
+
+function subscribeOkkeyAppShellMobile(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+  const mq = window.matchMedia(OKKEY_APP_SHELL_MOBILE_MQ);
+  mq.addEventListener("change", onStoreChange);
+  return () => mq.removeEventListener("change", onStoreChange);
+}
+
+function getOkkeyAppShellMobileSnapshot() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.matchMedia(OKKEY_APP_SHELL_MOBILE_MQ).matches;
+}
+
+function useOkkeyAppShellIsMobile() {
+  return React.useSyncExternalStore(subscribeOkkeyAppShellMobile, getOkkeyAppShellMobileSnapshot, () => false);
+}
+
+export type OkkeyAppShellLayoutContextValue = {
+  isMobile: boolean;
+  mobileDrawerOpen: boolean;
+  setMobileDrawerOpen: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+const OkkeyAppShellLayoutContext = React.createContext<OkkeyAppShellLayoutContextValue | null>(null);
+
+/**
+ * Mobile drawer / narrow viewport state for {@link OkkeyAppSidebar}.
+ * Safe to call outside the provider (e.g. storybook): returns non-mobile inert defaults.
+ */
+export function useOkkeyAppShellLayout(): OkkeyAppShellLayoutContextValue {
+  const ctx = React.useContext(OkkeyAppShellLayoutContext);
+  if (!ctx) {
+    return {
+      isMobile: false,
+      mobileDrawerOpen: false,
+      setMobileDrawerOpen: () => {},
+    };
+  }
+  return ctx;
+}
+
+function MenuBurgerIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path d="M2.66663 4H13.3333M2.66663 8H13.3333M2.66663 12H13.3333" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseNavIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ChevronsUpDownIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -785,6 +862,8 @@ export type OkkeyAppSidebarProps = {
   vaultHeaderPlusAriaLabel?: string;
   /** `aria-label` + tooltip for the folders section “+” (expanded + collapsed dropdown). Default: gallery English. */
   folderHeaderPlusAriaLabel?: string;
+  /** Narrow viewport: close control on the drawer panel (`aria-label`). Default: English. */
+  mobileNavCloseLabel?: string;
 };
 
 export type OkkeyAppSidebarToolbarProps = {
@@ -793,6 +872,11 @@ export type OkkeyAppSidebarToolbarProps = {
   expandSidebarLabel?: string;
   /** Shown when the sidebar is expanded (collapse action). Default: English. */
   collapseSidebarLabel?: string;
+  /**
+   * Narrow viewport (&lt; 991px): burger opens the drawer; this labels the control (tooltip + `aria-label`).
+   * Defaults to {@link expandSidebarLabel}.
+   */
+  openMobileNavLabel?: string;
 };
 
 /**
@@ -841,9 +925,42 @@ export function OkkeyAppSidebarToolbar({
   className,
   expandSidebarLabel = "Expand sidebar",
   collapseSidebarLabel = "Collapse sidebar",
+  openMobileNavLabel,
 }: OkkeyAppSidebarToolbarProps) {
+  const shell = useOkkeyAppShellLayout();
   const { expanded, toggleSidebar } = useSidebar();
   const toggleLabel = expanded ? collapseSidebarLabel : expandSidebarLabel;
+  const mobileNavLabel = openMobileNavLabel ?? expandSidebarLabel;
+
+  if (shell.isMobile) {
+    return (
+      <div className={cn("flex shrink-0 flex-col border-0 pb-0 pt-2 px-2", className)}>
+        <div className="flex h-9 min-h-9 items-center">
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <span className="inline-flex shrink-0">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className={sidebarSubtleControlSurfaceClassName}
+                  onClick={() => shell.setMobileDrawerOpen(true)}
+                  aria-expanded={shell.mobileDrawerOpen}
+                  aria-label={mobileNavLabel}
+                >
+                  <MenuBurgerIcon />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start">
+              {mobileNavLabel}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("flex shrink-0 flex-col border-0 pb-0 pt-2 px-2", className)}>
       <div className="flex h-9 min-h-9 items-center">
@@ -939,6 +1056,7 @@ function OkkeyAppSidebarInner({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
+  mobileNavCloseLabel = "Close menu",
 }: Pick<
   OkkeyAppSidebarProps,
   | "className"
@@ -957,8 +1075,11 @@ function OkkeyAppSidebarInner({
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "mobileNavCloseLabel"
 >) {
   const { expanded } = useSidebar();
+  const shell = useOkkeyAppShellLayout();
+  const showExpanded = shell.isMobile || expanded;
   const [safesOpen, setSafesOpen] = React.useState(true);
   const footerAccount = footerAccountFromProps(accountMenu);
   const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
@@ -980,10 +1101,22 @@ function OkkeyAppSidebarInner({
   const folderTitle = folderSectionTitle ?? "Folders";
 
   return (
-    <Sidebar className={cn("border-0 bg-transparent", className)}>
+    <div
+      className={cn(
+        "flex min-h-0 shrink-0 flex-col",
+        shell.isMobile ? "relative h-full w-full" : "h-full min-h-0",
+      )}
+    >
+      <Sidebar
+        className={cn(
+          "border-0 bg-transparent",
+          className,
+          shell.isMobile && "h-full min-h-0 !w-full shrink-0 bg-sidebar",
+        )}
+      >
       <SidebarHeader>
         <DropdownMenu>
-          {expanded ? (
+          {showExpanded ? (
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -994,7 +1127,11 @@ function OkkeyAppSidebarInner({
                   "w-full gap-2 p-2",
                 )}
               >
-                {workspaceSwitcherTrigger ? workspaceSwitcherTrigger({ expanded }) : <DefaultWorkspaceSwitcherTrigger expanded={expanded} />}
+                {workspaceSwitcherTrigger ? (
+                  workspaceSwitcherTrigger({ expanded: showExpanded })
+                ) : (
+                  <DefaultWorkspaceSwitcherTrigger expanded={showExpanded} />
+                )}
               </button>
             </DropdownMenuTrigger>
           ) : (
@@ -1009,12 +1146,27 @@ function OkkeyAppSidebarInner({
                     "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
                   )}
                 >
-                  {workspaceSwitcherTrigger ? workspaceSwitcherTrigger({ expanded }) : <DefaultWorkspaceSwitcherTrigger expanded={expanded} />}
+                  {workspaceSwitcherTrigger ? (
+                    workspaceSwitcherTrigger({ expanded: showExpanded })
+                  ) : (
+                    <DefaultWorkspaceSwitcherTrigger expanded={showExpanded} />
+                  )}
                 </button>
               </DropdownMenuTrigger>
             </CollapsedDropdownIconTooltip>
           )}
-          <DropdownMenuContent side="right" align="start" sideOffset={6} className="w-72 p-0">
+          <DropdownMenuContent
+            side={shell.isMobile ? "bottom" : "right"}
+            align="start"
+            sideOffset={shell.isMobile ? 4 : 6}
+            collisionPadding={shell.isMobile ? 12 : 8}
+            className={cn(
+              "p-0",
+              shell.isMobile
+                ? "max-h-[min(28rem,72dvh)] w-[min(18rem,calc(100vw-1.5rem))] overflow-y-auto"
+                : "w-72",
+            )}
+          >
             {workspaceSwitcherDropdown ?? <WorkspaceSwitcherDropdownPanel />}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1023,7 +1175,7 @@ function OkkeyAppSidebarInner({
       <SidebarContent className="flex min-h-0 flex-1 flex-col">
         <ScrollArea className="min-h-0 min-w-0 flex-1">
           <div className="flex flex-col gap-6 p-2">
-            {!expanded ? (
+            {!showExpanded ? (
               <SidebarMenu>
                 {primaryNav.map((item) => (
                   <CollapsedPrimaryNavRow key={item.id} item={item} linkComponent={workspaceNavLink} />
@@ -1139,7 +1291,7 @@ function OkkeyAppSidebarInner({
         </ScrollArea>
 
         <div className="mt-auto shrink-0 p-2">
-          {!expanded ? (
+          {!showExpanded ? (
             <SidebarMenu>
               {footerPlainItems.map((link) => (
                 <SidebarMenuItem key={link.id}>
@@ -1160,7 +1312,7 @@ function OkkeyAppSidebarInner({
 
       <SidebarFooter>
         <DropdownMenu>
-          {expanded ? (
+          {showExpanded ? (
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -1224,7 +1376,18 @@ function OkkeyAppSidebarInner({
               </DropdownMenuTrigger>
             </CollapsedDropdownIconTooltip>
           )}
-          <DropdownMenuContent side="right" align="end" sideOffset={6} className="w-64 p-0">
+          <DropdownMenuContent
+            side={shell.isMobile ? "bottom" : "right"}
+            align={shell.isMobile ? "start" : "end"}
+            sideOffset={shell.isMobile ? 4 : 6}
+            collisionPadding={shell.isMobile ? 12 : 8}
+            className={cn(
+              "p-0",
+              shell.isMobile
+                ? "max-h-[min(24rem,72dvh)] w-[min(16rem,calc(100vw-1.5rem))] overflow-y-auto"
+                : "w-64",
+            )}
+          >
             <ProfileAccountDropdownPanel
               firstName={footerAccount.firstName}
               lastName={footerAccount.lastName}
@@ -1235,6 +1398,7 @@ function OkkeyAppSidebarInner({
         </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
+    </div>
   );
 }
 
@@ -1263,31 +1427,120 @@ export function OkkeyAppSidebar({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  mobileNavCloseLabel,
 }: OkkeyAppSidebarProps) {
+  const isMobile = useOkkeyAppShellIsMobile();
+  const [mobileDrawerOpen, setMobileDrawerOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isMobile) {
+      setMobileDrawerOpen(false);
+    }
+  }, [isMobile]);
+
+  React.useEffect(() => {
+    if (!isMobile || !mobileDrawerOpen) {
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileDrawerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isMobile, mobileDrawerOpen]);
+
+  const shellLayoutValue = React.useMemo(
+    () => ({
+      isMobile,
+      mobileDrawerOpen,
+      setMobileDrawerOpen,
+    }),
+    [isMobile, mobileDrawerOpen],
+  );
+
   return (
     <TooltipProvider delayDuration={0} skipDelayDuration={0}>
       <SidebarProvider persistExpandedStorageKey={OKKEY_APP_SHELL_SIDEBAR_EXPANDED_KEY}>
-        <div className="flex h-full min-h-0 w-full">
-          <OkkeyAppSidebarInner
-            className={className}
-            workspaceNavItems={workspaceNavItems}
-            workspaceNavLink={workspaceNavLink}
-            workspaceNavGroupLabel={workspaceNavGroupLabel}
-            workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-            workspaceSwitcherDropdown={workspaceSwitcherDropdown}
-            vaultItems={vaultItems}
-            vaultNavLink={vaultNavLink}
-            vaultSectionTitle={vaultSectionTitle}
-            folderTree={folderTree}
-            folderNavLink={folderNavLink}
-            folderSectionTitle={folderSectionTitle}
-            accountMenu={accountMenu}
-            footerPlainLinkLabels={footerPlainLinkLabels}
-            vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
-            folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
-          />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
-        </div>
+        <OkkeyAppShellLayoutContext.Provider value={shellLayoutValue}>
+          <div className="relative flex h-full min-h-0 w-full">
+            {isMobile && mobileDrawerOpen ? (
+              <button
+                type="button"
+                className="fixed inset-0 z-[90] cursor-default border-0 bg-black/40 p-0"
+                aria-label={mobileNavCloseLabel ?? "Close menu"}
+                onClick={() => setMobileDrawerOpen(false)}
+              />
+            ) : null}
+            {!isMobile ? (
+              <div className="relative z-auto flex h-full min-h-0 w-auto shrink-0 flex-col">
+                <OkkeyAppSidebarInner
+                  className={className}
+                  workspaceNavItems={workspaceNavItems}
+                  workspaceNavLink={workspaceNavLink}
+                  workspaceNavGroupLabel={workspaceNavGroupLabel}
+                  workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+                  workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+                  vaultItems={vaultItems}
+                  vaultNavLink={vaultNavLink}
+                  vaultSectionTitle={vaultSectionTitle}
+                  folderTree={folderTree}
+                  folderNavLink={folderNavLink}
+                  folderSectionTitle={folderSectionTitle}
+                  accountMenu={accountMenu}
+                  footerPlainLinkLabels={footerPlainLinkLabels}
+                  vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
+                  folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                  mobileNavCloseLabel={mobileNavCloseLabel}
+                />
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "fixed inset-y-0 left-0 z-[100] flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
+                  !mobileDrawerOpen && "-translate-x-full pointer-events-none",
+                  mobileDrawerOpen && "translate-x-0 pointer-events-auto",
+                )}
+              >
+                <div className="relative h-full w-[min(255px,calc(100vw-52px))] max-w-[calc(100vw-52px)] shrink-0 overflow-hidden bg-sidebar shadow-xl">
+                  <OkkeyAppSidebarInner
+                    className={className}
+                    workspaceNavItems={workspaceNavItems}
+                    workspaceNavLink={workspaceNavLink}
+                    workspaceNavGroupLabel={workspaceNavGroupLabel}
+                    workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+                    workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+                    vaultItems={vaultItems}
+                    vaultNavLink={vaultNavLink}
+                    vaultSectionTitle={vaultSectionTitle}
+                    folderTree={folderTree}
+                    folderNavLink={folderNavLink}
+                    folderSectionTitle={folderSectionTitle}
+                    accountMenu={accountMenu}
+                    footerPlainLinkLabels={footerPlainLinkLabels}
+                    vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
+                    folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                    mobileNavCloseLabel={mobileNavCloseLabel}
+                  />
+                </div>
+                {mobileDrawerOpen ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="mt-2 ml-1.5 shrink-0 rounded-lg border-0 bg-transparent text-white shadow-none hover:bg-white/15 hover:text-white focus-visible:bg-white/15 focus-visible:text-white"
+                    onClick={() => setMobileDrawerOpen(false)}
+                    aria-label={mobileNavCloseLabel ?? "Close menu"}
+                  >
+                    <CloseNavIcon />
+                  </Button>
+                ) : null}
+              </div>
+            )}
+            <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+          </div>
+        </OkkeyAppShellLayoutContext.Provider>
       </SidebarProvider>
     </TooltipProvider>
   );

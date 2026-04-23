@@ -84,8 +84,10 @@ export {
 export {
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  type OkkeyAppShellLayoutContextValue,
   type OkkeyAppSidebarToolbarProps,
   okkeyWorkspaceShellNavItems,
+  useOkkeyAppShellLayout,
   workspaceSwitcherActiveItemClassName,
   type OkkeyAppSidebarAccountMenu,
   type OkkeyAppSidebarProps,
