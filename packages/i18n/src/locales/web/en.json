@@ -14,6 +14,8 @@
   "web.nav.foldersSection": "Folders",
   "web.nav.collapseSidebar": "Collapse sidebar",
   "web.nav.expandSidebar": "Expand sidebar",
+  "web.nav.openMobileNav": "Open menu",
+  "web.nav.closeMobileNav": "Close menu",
   "web.nav.createVault": "Create vault",
   "web.nav.createFolder": "Create folder",
   "web.nav.documentation": "Documentation",

@@ -14,6 +14,8 @@
   "web.nav.foldersSection": "Папки",
   "web.nav.collapseSidebar": "Свернуть сайдбар",
   "web.nav.expandSidebar": "Развернуть сайдбар",
+  "web.nav.openMobileNav": "Открыть меню",
+  "web.nav.closeMobileNav": "Закрыть меню",
   "web.nav.createVault": "Создать сейф",
   "web.nav.createFolder": "Создать папку",
   "web.nav.documentation": "Документация",
