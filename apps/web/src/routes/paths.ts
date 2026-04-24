@@ -88,7 +88,8 @@ export type DevUiGallerySegment =
   | "spinner"
   | "workspace-tile"
   | "alert"
-  | "tooltip";
+  | "tooltip"
+  | "favicon";
 
 export function devUiGalleryPath(segment?: DevUiGallerySegment): string {
   if (!segment) {

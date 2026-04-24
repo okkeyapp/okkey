@@ -18,6 +18,7 @@ import DevUISelectPage from "../pages/dev-ui/DevUISelectPage";
 import DevUISidebarPage from "../pages/dev-ui/DevUISidebarPage";
 import DevUISpinnerPage from "../pages/dev-ui/DevUISpinnerPage";
 import DevUISwitchPage from "../pages/dev-ui/DevUISwitchPage";
+import DevUIFaviconPage from "../pages/dev-ui/DevUIFaviconPage";
 import DevUIWorkspaceTilePage from "../pages/dev-ui/DevUIWorkspaceTilePage";
 import UnlockPasswordPage from "../pages/unlock/UnlockPasswordPage";
 import LegacyWorkspaceNestedRedirect from "../pages/workspace/LegacyWorkspaceNestedRedirect";
@@ -85,6 +86,7 @@ export default function AppRoutes() {
         <Route path="workspace-tile" element={<DevUIWorkspaceTilePage />} />
         <Route path="alert" element={<DevUIAlertPage />} />
         <Route path="tooltip" element={<DevUITooltipPage />} />
+        <Route path="favicon" element={<DevUIFaviconPage />} />
       </Route>
       <Route
         path={AUTH_EMAIL_PATH}
