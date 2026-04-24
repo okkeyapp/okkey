@@ -59,6 +59,13 @@ export {
   type PersonalWorkspaceMarkProps,
   type WorkspaceTileProps,
 } from "./components/ui/workspace-tile.js";
+export {
+  Favicon,
+  buildYandexCompositeFaviconUrl,
+  hostsFromUrls,
+  parseHostFromUrl,
+  type FaviconProps,
+} from "./components/ui/favicon.js";
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
 export {
   Sidebar,

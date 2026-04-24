@@ -1056,7 +1056,7 @@ function OkkeyAppSidebarInner({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
-  mobileNavCloseLabel = "Close menu",
+  mobileNavCloseLabel: _mobileNavCloseLabel = "Close menu",
 }: Pick<
   OkkeyAppSidebarProps,
   | "className"
