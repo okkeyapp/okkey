@@ -372,6 +372,7 @@ export default function WorkspaceRoutesLayout() {
     <WorkspaceSidebarLayout
       title={title}
       description={description}
+      mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
       workspaceNavItems={workspaceNavItems}
       workspaceNavLink={AppShellNavLink}
       workspaceNavGroupLabel={t("workspaces.shellTitle")}
