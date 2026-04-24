@@ -40,6 +40,8 @@ export const ITEMS_PATH = "/items";
  */
 export const VAULT_QUERY_PARAM = "vault";
 export const FOLDER_QUERY_PARAM = "folder";
+/** Selected item row on `/items` (master–detail); coexists with `workspace`, `vault`, or `folder`. */
+export const ITEM_QUERY_PARAM = "item";
 
 export function itemsPathWithVault(vaultId: string): string {
   return `${ITEMS_PATH}?${new URLSearchParams({ [VAULT_QUERY_PARAM]: vaultId }).toString()}`;
