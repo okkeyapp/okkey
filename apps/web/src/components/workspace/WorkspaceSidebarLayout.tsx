@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
   type OkkeyAppSidebarProps,
+  type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -49,7 +50,14 @@ export type WorkspaceSidebarLayoutProps = {
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
->;
+> & {
+  /** `/items` left pane: workspace vaults for scope label + filtering. */
+  itemsListVaults?: readonly { id: string; name: string; isPersonal: boolean }[];
+  /** `/items` left pane: set false until vault list fetch finished (placeholder label for vault scope). */
+  itemsListVaultsLoaded?: boolean;
+  /** `/items` left pane: folder labels (same tree as sidebar when wired). */
+  itemsListFolderTree?: readonly OkkeySidebarFolderTreeNode[];
+};
 
 function ShellMainHeader({
   locale,
@@ -100,7 +108,7 @@ function ShellMainHeader({
  * Authenticated workspace shell: {@link OkkeyAppSidebar} + main column (`/items`, `/capsules`, …).
  *
  * Folders: `folderTree` / `folderNavLink` are forwarded as-is. Real wiring lives in
- * {@link ../../workspace/WorkspaceRoutesLayout} (`itemsPathWithFolder`, query `folder`, active state).
+ * {@link ../../workspace/WorkspaceRoutesLayout} (`itemsPathWithFolderMerged`, query `folder`, active state).
  */
 export default function WorkspaceSidebarLayout({
   title,
@@ -122,6 +130,9 @@ export default function WorkspaceSidebarLayout({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  itemsListVaults,
+  itemsListVaultsLoaded,
+  itemsListFolderTree,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
 
@@ -175,7 +186,11 @@ export default function WorkspaceSidebarLayout({
                     "mt-0 w-[360px] max-w-full shrink-0 self-stretch overflow-hidden p-0",
                   )}
                 >
-                  <ItemsListLeftPane />
+                  <ItemsListLeftPane
+                    vaults={itemsListVaults ?? []}
+                    folderTree={itemsListFolderTree ?? []}
+                    itemsListVaultsLoaded={itemsListVaultsLoaded}
+                  />
                 </aside>
                 <div className={cn(mainPanelClassName, "min-w-0 flex-1 self-stretch")}>
                   <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />

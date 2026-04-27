@@ -7,9 +7,17 @@ import {
   DropdownMenuTrigger,
   useOkkeyAppShellLayout,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type SVGProps } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
+import {
+  FILTER_QUERY_PARAM,
+  FOLDER_QUERY_PARAM,
+  ITEMS_PATH,
+  SEARCH_QUERY_PARAM,
+  VAULT_QUERY_PARAM,
+} from "../../routes/paths";
 
 /** Same glyphs for every UI locale; platform picks modifier. */
 const WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_APPLE = ["⌘", "+", "K"] as const;
@@ -108,14 +116,32 @@ function BellIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
 export default function ItemsShellTopBar() {
   const { t } = useLocale();
   const shell = useOkkeyAppShellLayout();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isApple = useMemo(() => isAppleLikePlatform(), []);
+  const isItemsRoute = location.pathname === ITEMS_PATH;
+  const searchFromUrl = searchParams.get(SEARCH_QUERY_PARAM) ?? "";
   const shortcutSegments = isApple ? WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_APPLE : WORKSPACE_SEARCH_SHORTCUT_SEGMENTS_WIN;
   const shortcutAriaLabel = isApple ? WORKSPACE_SEARCH_SHORTCUT_ARIA_APPLE : WORKSPACE_SEARCH_SHORTCUT_ARIA_WIN;
 
   const searchFieldLabel = t("web.items.searchPlaceholder");
   const createRecordLabel = t("web.items.createRecord");
   const notificationsLabel = t("web.items.notificationsTitle");
+
+  useEffect(() => {
+    if (!isItemsRoute) {
+      return;
+    }
+    const el = searchInputRef.current;
+    if (!el) {
+      return;
+    }
+    if (document.activeElement === el) {
+      return;
+    }
+    el.value = searchFromUrl;
+  }, [isItemsRoute, searchFromUrl]);
 
   useEffect(() => {
     if (shell.isMobile) {
@@ -167,6 +193,28 @@ export default function ItemsShellTopBar() {
             aria-label={searchFieldLabel}
             autoComplete="off"
             data-testid="items-shell-search"
+            onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
+              if (e.key !== "Enter" || !isItemsRoute) {
+                return;
+              }
+              e.preventDefault();
+              const raw = e.currentTarget.value.trim();
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (raw) {
+                    next.set(SEARCH_QUERY_PARAM, raw);
+                    next.delete(VAULT_QUERY_PARAM);
+                    next.delete(FOLDER_QUERY_PARAM);
+                    next.delete(FILTER_QUERY_PARAM);
+                  } else {
+                    next.delete(SEARCH_QUERY_PARAM);
+                  }
+                  return next;
+                },
+                { replace: true },
+              );
+            }}
             className={cn(
               "min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm leading-5 text-foreground outline-none",
               "placeholder:text-muted-foreground",

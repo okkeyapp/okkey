@@ -34,14 +34,30 @@ export const WORKSPACE_QUERY_PARAM = "workspace";
 export const ITEMS_PATH = "/items";
 
 /**
- * `/items` filters: `vault` and `folder` must not appear together in the URL.
- * The shell (`WorkspaceRoutesLayout`) normalizes conflicts by dropping `folder` when `vault` is present.
- * Sidebar “active” rules treat “All items” as active only when neither param is set.
+ * `/items` scope: at most one of `vault`, `folder`, or `search` in the URL.
+ * The shell (`WorkspaceRoutesLayout`) normalizes conflicts (search clears vault/folder; vault clears folder).
+ * Sidebar “active” rules treat “All items” as active only when none of these are set.
  */
 export const VAULT_QUERY_PARAM = "vault";
 export const FOLDER_QUERY_PARAM = "folder";
 /** Selected item row on `/items` (master–detail); coexists with `workspace`, `vault`, or `folder`. */
 export const ITEM_QUERY_PARAM = "item";
+
+/** Non-default list filter on `/items` (`all` omits this param). */
+export const FILTER_QUERY_PARAM = "filter";
+export const FILTER_QUERY_FAVOURITES = "favourites";
+export const FILTER_QUERY_ARCHIVED = "archived";
+export const FILTER_QUERY_DELETED = "deleted";
+
+/** Non-default sort on `/items` (default `date-desc` omits this param). */
+export const SORT_QUERY_PARAM = "sort";
+export const SORT_QUERY_DATE_DESC = "date-desc";
+export const SORT_QUERY_DATE_ASC = "date-asc";
+export const SORT_QUERY_ALPH_ASC = "alph-asc";
+export const SORT_QUERY_ALPH_DESC = "alph-desc";
+
+/** Full-text-ish search on `/items` (top bar); coexists with other `?` params. */
+export const SEARCH_QUERY_PARAM = "search";
 
 export function itemsPathWithVault(vaultId: string): string {
   return `${ITEMS_PATH}?${new URLSearchParams({ [VAULT_QUERY_PARAM]: vaultId }).toString()}`;
@@ -50,6 +66,49 @@ export function itemsPathWithVault(vaultId: string): string {
 /** Same path shape as vault filter; use for folder leaves in `OkkeySidebarFolderTreeNode.to`. */
 export function itemsPathWithFolder(folderId: string): string {
   return `${ITEMS_PATH}?${new URLSearchParams({ [FOLDER_QUERY_PARAM]: folderId }).toString()}`;
+}
+
+/**
+ * Build `/items?…` from the current query, mutating a copy. Callers decide what to keep; typical
+ * merges preserve {@link ITEM_QUERY_PARAM} and `sort` while adjusting `vault`, `folder`, `search`,
+ * and/or `filter` (see {@link itemsPathAllWorkspaceMerged} vs vault/folder helpers).
+ */
+export function mergeItemsLocationSearch(
+  current: URLSearchParams,
+  mutate: (next: URLSearchParams) => void,
+): string {
+  const next = new URLSearchParams(current);
+  mutate(next);
+  const s = next.toString();
+  return s ? `${ITEMS_PATH}?${s}` : ITEMS_PATH;
+}
+
+export function itemsPathWithVaultMerged(current: URLSearchParams, vaultId: string): string {
+  return mergeItemsLocationSearch(current, (n) => {
+    n.set(VAULT_QUERY_PARAM, vaultId);
+    n.delete(FOLDER_QUERY_PARAM);
+    n.delete(SEARCH_QUERY_PARAM);
+    n.delete(FILTER_QUERY_PARAM);
+  });
+}
+
+export function itemsPathWithFolderMerged(current: URLSearchParams, folderId: string): string {
+  return mergeItemsLocationSearch(current, (n) => {
+    n.set(FOLDER_QUERY_PARAM, folderId);
+    n.delete(VAULT_QUERY_PARAM);
+    n.delete(SEARCH_QUERY_PARAM);
+    n.delete(FILTER_QUERY_PARAM);
+  });
+}
+
+/** Sidebar “All items”: drop vault, folder, search, and list filter; keep `item` and `sort`. */
+export function itemsPathAllWorkspaceMerged(current: URLSearchParams): string {
+  return mergeItemsLocationSearch(current, (n) => {
+    n.delete(VAULT_QUERY_PARAM);
+    n.delete(FOLDER_QUERY_PARAM);
+    n.delete(SEARCH_QUERY_PARAM);
+    n.delete(FILTER_QUERY_PARAM);
+  });
 }
 
 export const CAPSULES_PATH = "/capsules";

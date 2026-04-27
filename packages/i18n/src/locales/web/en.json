@@ -34,6 +34,8 @@
   "web.items.filter.favorites": "Favorites",
   "web.items.filter.archived": "Archived",
   "web.items.filter.recentlyDeleted": "Recently deleted",
+  "web.items.demoFolder.docs": "Documents",
+  "web.items.demoFolder.cards": "Cards",
   "web.items.sort.groupByDate": "By date:",
   "web.items.sort.groupByAlphabet": "By alphabet:",
   "web.items.sort.nameAsc": "Alphabet",
@@ -121,7 +123,7 @@
   "unlock.forgotPassword": "Forgot master password?",
   "unlock.errorTitle": "Error",
   "unlock.errorIncorrectPassword": "Incorrect master password",
-  "unlock.syncingVault": "Restoring vault data from the server…",
+  "unlock.syncingVault": "Restoring vault data from the server",
   "unlock.errorNoLocalVault": "This browser has no vault key data. If you cleared site data, we could not restore from the server (e.g. several trusted devices and a new browser fingerprint). Use another browser profile that still has Okkey data, or add recovery in a future release.",
 
   "account.restore.title": "Forgot master password?",

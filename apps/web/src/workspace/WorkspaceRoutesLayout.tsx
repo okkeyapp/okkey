@@ -5,7 +5,9 @@ import {
   DropdownMenuItem,
   okkeyWorkspaceShellNavItems,
   PersonalWorkspaceMark,
+  Spinner,
   type OkkeyAppSidebarAccountMenu,
+  type OkkeySidebarFolderTreeNode,
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
@@ -25,8 +27,11 @@ import {
   CAPSULES_PATH,
   FOLDER_QUERY_PARAM,
   ITEMS_PATH,
-  itemsPathWithVault,
+  itemsPathAllWorkspaceMerged,
+  itemsPathWithFolderMerged,
+  itemsPathWithVaultMerged,
   MONITORING_PATH,
+  SEARCH_QUERY_PARAM,
   SETTINGS_PATH,
   TOOLS_PATH,
   VAULT_QUERY_PARAM,
@@ -114,11 +119,13 @@ export default function WorkspaceRoutesLayout() {
   const workspaceParam = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
+  const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
 
   const [phase, setPhase] = useState<"loading" | "ready">("loading");
   const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(null);
   const [workspaceList, setWorkspaceList] = useState<Workspace[]>([]);
   const [vaults, setVaults] = useState<Vault[]>([]);
+  const [vaultsListReady, setVaultsListReady] = useState(false);
 
   const navPaths = useMemo(
     () => ({
@@ -147,7 +154,8 @@ export default function WorkspaceRoutesLayout() {
       if (isItemsEntry) {
         return {
           ...item,
-          isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ,
+          to: itemsPathAllWorkspaceMerged(searchParams),
+          isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !searchQ,
         };
       }
       return {
@@ -155,7 +163,7 @@ export default function WorkspaceRoutesLayout() {
         isActive: item.to === pathname,
       };
     });
-  }, [navPaths, pathname, t, vaultQ, folderQ]);
+  }, [navPaths, pathname, t, vaultQ, folderQ, searchQ, searchParams]);
 
   // Vault rows: each link is `/items?vault=…`. Active when that vault id matches the query and we are not in folder-only mode (`folder` is cleared if both were set).
   const vaultSidebarItems: OkkeySidebarVaultItem[] = useMemo(() => {
@@ -167,10 +175,31 @@ export default function WorkspaceRoutesLayout() {
         </span>
       ),
       label: v.name,
-      to: itemsPathWithVault(v.id),
-      isActive: pathname === ITEMS_PATH && vaultQ === v.id && !folderQ,
+      to: itemsPathWithVaultMerged(searchParams, v.id),
+      isActive: pathname === ITEMS_PATH && vaultQ === v.id && !folderQ && !searchQ,
     }));
-  }, [vaults, pathname, vaultQ, folderQ]);
+  }, [vaults, pathname, vaultQ, folderQ, searchQ, searchParams]);
+
+  const itemsDemoFolderDocsId = "fld-docs";
+  const itemsDemoFolderCardsId = "fld-cards";
+
+  const folderTreeForItems: OkkeySidebarFolderTreeNode[] = useMemo(
+    () => [
+      {
+        id: itemsDemoFolderDocsId,
+        label: t("web.items.demoFolder.docs"),
+        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderDocsId),
+        isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderDocsId && !vaultQ && !searchQ,
+      },
+      {
+        id: itemsDemoFolderCardsId,
+        label: t("web.items.demoFolder.cards"),
+        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderCardsId),
+        isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderCardsId && !vaultQ && !searchQ,
+      },
+    ],
+    [pathname, folderQ, vaultQ, searchQ, t, searchParams],
+  );
 
   const currentWorkspace = useMemo(
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
@@ -193,19 +222,30 @@ export default function WorkspaceRoutesLayout() {
     };
   }, [profile, logout]);
 
-  // Enforce mutual exclusion of `vault` and `folder` on `/items` (vault wins; see `paths.ts` JSDoc).
+  /**
+   * `/items`: at most one of `vault`, `folder`, or `search`. If `search` is set with vault/folder,
+   * drop vault and folder (search scope). If both vault and folder, drop folder (vault wins).
+   */
   useEffect(() => {
-    if (vaultQ && folderQ) {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete(FOLDER_QUERY_PARAM);
-          return next;
-        },
-        { replace: true },
-      );
+    const conflictSearch = Boolean(searchQ && (vaultQ || folderQ));
+    const conflictVaultFolder = Boolean(vaultQ && folderQ);
+    if (!conflictSearch && !conflictVaultFolder) {
+      return;
     }
-  }, [vaultQ, folderQ, setSearchParams]);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (searchQ) {
+          next.delete(VAULT_QUERY_PARAM);
+          next.delete(FOLDER_QUERY_PARAM);
+        } else if (vaultQ && folderQ) {
+          next.delete(FOLDER_QUERY_PARAM);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [vaultQ, folderQ, searchQ, setSearchParams]);
 
   useEffect(() => {
     if (!core || !userId) {
@@ -268,9 +308,11 @@ export default function WorkspaceRoutesLayout() {
 
   useEffect(() => {
     if (!core || !resolvedWorkspaceId) {
+      setVaultsListReady(false);
       return;
     }
     let cancelled = false;
+    setVaultsListReady(false);
     setVaults([]);
     void (async () => {
       try {
@@ -281,6 +323,10 @@ export default function WorkspaceRoutesLayout() {
       } catch {
         if (!cancelled) {
           setVaults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setVaultsListReady(true);
         }
       }
     })();
@@ -354,19 +400,18 @@ export default function WorkspaceRoutesLayout() {
 
   if (phase === "loading" || !resolvedWorkspaceId) {
     return (
-      <div className="flex min-h-[100dvh] w-full items-center justify-center okkey-body text-copy-secondary">
-        …
+      <div
+        className="flex min-h-[100dvh] w-full items-center justify-center okkey-body text-copy-secondary"
+        role="status"
+        aria-busy="true"
+      >
+        <Spinner />
       </div>
     );
   }
 
   const title = t(shellTitleKey(pathname));
   const description = currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
-
-  // Sidebar folders: `folderTree={[]}` hides the block (empty array is not demo data in `OkkeyAppSidebar`).
-  // When folders exist in the API/sync layer, pass `OkkeySidebarFolderTreeNode[]` with `to: itemsPathWithFolder(id)`,
-  // `isActive: pathname === ITEMS_PATH && folderQ === id && !vaultQ`, optional nested `children` for branches,
-  // and `folderNavLink={AppShellNavLink}` on this layout (same link pattern as vaults).
 
   return (
     <WorkspaceSidebarLayout
@@ -381,7 +426,8 @@ export default function WorkspaceRoutesLayout() {
       vaultItems={vaultSidebarItems}
       vaultNavLink={AppShellNavLink}
       vaultSectionTitle={t("web.nav.vaultsSection")}
-      folderTree={[]}
+      folderTree={folderTreeForItems}
+      folderNavLink={AppShellNavLink}
       folderSectionTitle={t("web.nav.foldersSection")}
       accountMenu={accountMenu}
       footerPlainLinkLabels={{
@@ -390,6 +436,9 @@ export default function WorkspaceRoutesLayout() {
       }}
       vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
       folderHeaderPlusAriaLabel={t("web.nav.createFolder")}
+      itemsListVaults={vaults}
+      itemsListVaultsLoaded={vaultsListReady}
+      itemsListFolderTree={folderTreeForItems}
     >
       <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
     </WorkspaceSidebarLayout>
