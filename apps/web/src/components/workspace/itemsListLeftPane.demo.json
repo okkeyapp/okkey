@@ -1,6 +1,8 @@
 [
   {
     "id": "cef8cde7-cbdc-4a39-a498-d61b764d3e42",
+    "vaultSlot": 0,
+    "folderId": "fld-docs",
     "urls": ["https://badexample.com", "https://google.com"],
     "title": "Google",
     "login": "personal@gmail.com",
@@ -11,6 +13,8 @@
   },
   {
     "id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+    "vaultSlot": 0,
+    "folderId": "fld-cards",
     "urls": ["https://yandex.ru"],
     "title": "Yandex",
     "login": "work@company.ru",
@@ -21,6 +25,8 @@
   },
   {
     "id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+    "vaultSlot": 0,
+    "folderId": "fld-docs",
     "urls": ["https://gog.com"],
     "title": "GOG.com",
     "login": "shadcn@vercel.com",
@@ -31,6 +37,8 @@
   },
   {
     "id": "c3d4e5f6-a7b8-4901-c234-567890abcdef",
+    "vaultSlot": 0,
+    "folderId": "fld-cards",
     "urls": ["https://vk.com"],
     "title": "VK",
     "login": "vk@mail.ru",
@@ -41,6 +49,8 @@
   },
   {
     "id": "d4e5f6a7-b8c9-4012-d345-67890abcdef0",
+    "vaultSlot": 0,
+    "folderId": "fld-docs",
     "urls": ["https://ok.ru"],
     "title": "Одноклассники",
     "login": "ok@mail.ru",
@@ -51,6 +61,8 @@
   },
   {
     "id": "e5f6a7b8-c9d0-4123-e456-7890abcdef01",
+    "vaultSlot": 1,
+    "folderId": "fld-docs",
     "urls": ["https://github.com"],
     "title": "Github",
     "login": "dev@github.com",
@@ -61,6 +73,8 @@
   },
   {
     "id": "f6a7b8c9-d0e1-4234-f567-890abcdef012",
+    "vaultSlot": 1,
+    "folderId": "fld-cards",
     "urls": ["https://docker.com"],
     "title": "Docker",
     "login": "ops@example.com",
@@ -71,6 +85,8 @@
   },
   {
     "id": "a7b8c9d0-e1f2-4345-a678-90abcdef0123",
+    "vaultSlot": 1,
+    "folderId": "fld-docs",
     "urls": ["https://jetbrains.com"],
     "title": "Jetbrains",
     "login": "ide@jetbrains.com",
@@ -81,6 +97,8 @@
   },
   {
     "id": "b8c9d0e1-f2a3-4456-b789-0abcdef01234",
+    "vaultSlot": 1,
+    "folderId": "fld-cards",
     "urls": ["https://99designs.com"],
     "title": "99designs",
     "login": "brand@99designs.com",
@@ -91,6 +109,8 @@
   },
   {
     "id": "c9d0e1f2-a3b4-4567-c890-1a2b3c4d5e6f",
+    "vaultSlot": 1,
+    "folderId": "fld-docs",
     "urls": ["https://alfabank.ru"],
     "title": "Альфа-Банк",
     "login": "client@alfabank.ru",

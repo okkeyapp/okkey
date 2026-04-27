@@ -1,3 +1,4 @@
+import { Spinner } from "@okkey/ui";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { accountLockWithRedirectQuery, AUTH_EMAIL_PATH } from "../routes/paths";
@@ -17,8 +18,12 @@ export default function ProtectedVaultLayout() {
 
   if (vaultUnlockBootstrapLoading) {
     return (
-      <div className="flex min-h-[50vh] w-full items-center justify-center okkey-body text-copy-secondary">
-        …
+      <div
+        className="flex min-h-[50vh] w-full items-center justify-center okkey-body text-copy-secondary"
+        role="status"
+        aria-busy="true"
+      >
+        <Spinner />
       </div>
     );
   }

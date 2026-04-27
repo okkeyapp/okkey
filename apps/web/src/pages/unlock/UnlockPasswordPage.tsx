@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent, type SVGProps } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { initCrypto } from "@okkey/crypto";
-import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
+import { Alert, AlertDescription, AlertTitle, Button, Input, Spinner } from "@okkey/ui";
 
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -81,7 +81,10 @@ export default function UnlockPasswordPage() {
         <AccountUserBar />
 
         {vaultUnlockBootstrapLoading ? (
-          <p className="okkey-small text-center text-copy-secondary">{t("unlock.syncingVault")}</p>
+          <div className="flex flex-col items-center gap-3 py-1" role="status" aria-busy="true">
+            <Spinner />
+            <p className="okkey-small text-center text-copy-secondary">{t("unlock.syncingVault")}</p>
+          </div>
         ) : null}
 
         <div className="flex w-full flex-col gap-3">

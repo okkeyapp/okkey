@@ -5,22 +5,34 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Favicon,
   ScrollArea,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   SidebarGroupLabel,
+  Spinner,
+  type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
-import { useEffect, useMemo, useState, type SVGProps } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type SVGProps } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
-import { ITEM_QUERY_PARAM } from "../../routes/paths";
+import {
+  FILTER_QUERY_ARCHIVED,
+  FILTER_QUERY_DELETED,
+  FILTER_QUERY_FAVOURITES,
+  FILTER_QUERY_PARAM,
+  FOLDER_QUERY_PARAM,
+  ITEM_QUERY_PARAM,
+  SEARCH_QUERY_PARAM,
+  SORT_QUERY_ALPH_ASC,
+  SORT_QUERY_ALPH_DESC,
+  SORT_QUERY_DATE_ASC,
+  SORT_QUERY_DATE_DESC,
+  SORT_QUERY_PARAM,
+  VAULT_QUERY_PARAM,
+} from "../../routes/paths";
 
 import itemsListDemoWire from "./itemsListLeftPane.demo.json";
 
@@ -35,6 +47,8 @@ const itemsPanelSelectTriggerClassName = cn(
 
 export type ItemsListRecordWire = {
   id: string;
+  vaultSlot?: number;
+  folderId?: string | null;
   urls: string[];
   title: string;
   login: string;
@@ -46,6 +60,8 @@ export type ItemsListRecordWire = {
 
 export type ItemsListRecord = {
   id: string;
+  vaultSlot: number;
+  folderId: string | null;
   urls: string[];
   title: string;
   login: string;
@@ -58,6 +74,8 @@ export type ItemsListRecord = {
 const ITEMS_LIST_DEMO: readonly ItemsListRecord[] = (itemsListDemoWire as readonly ItemsListRecordWire[]).map(
   (row) => ({
     id: row.id,
+    vaultSlot: row.vaultSlot ?? 0,
+    folderId: row.folderId ?? null,
     urls: row.urls ?? [],
     title: row.title,
     login: row.login,
@@ -68,18 +86,148 @@ const ITEMS_LIST_DEMO: readonly ItemsListRecord[] = (itemsListDemoWire as readon
   }),
 );
 
-function FilterGlyph({ className }: { className?: string }) {
+function findFolderLabelInTree(nodes: readonly OkkeySidebarFolderTreeNode[], id: string): string {
+  for (const n of nodes) {
+    if (n.id === id) {
+      return n.label;
+    }
+    if (n.children?.length) {
+      const nested = findFolderLabelInTree(n.children, id);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return "";
+}
+
+function filterRowsByVault(
+  rows: readonly ItemsListRecord[],
+  vaults: readonly { id: string }[],
+  vaultId: string,
+): ItemsListRecord[] {
+  if (!vaultId) {
+    return [...rows];
+  }
+  const idx = vaults.findIndex((v) => v.id === vaultId);
+  if (idx < 0) {
+    return [...rows];
+  }
+  const mod = Math.max(vaults.length, 1);
+  return rows.filter((r) => r.vaultSlot % mod === idx);
+}
+
+function filterRowsByFolder(rows: readonly ItemsListRecord[], folderId: string): ItemsListRecord[] {
+  if (!folderId) {
+    return [...rows];
+  }
+  return rows.filter((r) => r.folderId === folderId);
+}
+
+/** «Все записи» */
+function FilterIconAllRecords({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-[#22C55E]", className)} {...props}>
+      <path
+        d="M2 4.33333C2 4.63975 2.06035 4.94317 2.17761 5.22626C2.29488 5.50935 2.46675 5.76658 2.68342 5.98325C2.90009 6.19992 3.15731 6.37179 3.44041 6.48905C3.7235 6.60631 4.02692 6.66667 4.33333 6.66667C4.63975 6.66667 4.94317 6.60631 5.22626 6.48905C5.50935 6.37179 5.76658 6.19992 5.98325 5.98325C6.19992 5.76658 6.37179 5.50935 6.48905 5.22626C6.60631 4.94317 6.66667 4.63975 6.66667 4.33333C6.66667 4.02692 6.60631 3.7235 6.48905 3.44041C6.37179 3.15731 6.19992 2.90009 5.98325 2.68342C5.76658 2.46675 5.50935 2.29488 5.22626 2.17761C4.94317 2.06035 4.63975 2 4.33333 2C4.02692 2 3.7235 2.06035 3.44041 2.17761C3.15731 2.29488 2.90009 2.46675 2.68342 2.68342C2.46675 2.90009 2.29488 3.15731 2.17761 3.44041C2.06035 3.7235 2 4.02692 2 4.33333Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M1.66663 14.0002H6.99996L4.33329 9.3335L1.66663 14.0002Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 2L14 6.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 6.66667L14 2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 9.3335H14V14.0002H9.33337V9.3335Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FilterIconFavorites({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-[#F97316]", className)} {...props}>
+      <path
+        d="M8.00004 1.3335L10.06 5.50683L14.6667 6.18016L11.3334 9.42683L12.12 14.0135L8.00004 11.8468L3.88004 14.0135L4.66671 9.42683L1.33337 6.18016L5.94004 5.50683L8.00004 1.3335Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FilterIconArchived({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-muted-foreground", className)} {...props}>
+      <path
+        d="M2.5 5.50011V12.1668C2.5 12.5204 2.6295 12.8595 2.86002 13.1096C3.09053 13.3596 3.40318 13.5001 3.72917 13.5001H11.2708C12.5968 13.5001 12.9095 13.3596 13.14 13.1096C13.3705 12.8595 13.5 12.5204 13.5 12.1668V5.50011M6.49996 8.50011H9.49996M2.16667 2.0001L13.8333 2.00002C14.2015 2.00002 14.5 2.29849 14.5 2.66668V4.66668C14.5 5.03487 14.2015 5.50002 13.8333 5.50002L8 5.50011L2.16667 5.5001C1.79848 5.5001 1.5 5.03496 1.5 4.66677V2.66677C1.5 2.29858 1.79848 2.0001 2.16667 2.0001Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SearchGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-foreground", className)} {...props}>
+      <path
+        d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FilterIconDeleted({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-[#EF4444]", className)} {...props}>
+      <path
+        d="M2 4.00016H14M12.6667 4.00016V13.3335C12.6667 14.0002 12 14.6668 11.3333 14.6668H4.66667C4 14.6668 3.33333 14.0002 3.33333 13.3335V4.00016M5.33333 4.00016V2.66683C5.33333 2.00016 6 1.3335 6.66667 1.3335H9.33333C10 1.3335 10.6667 2.00016 10.6667 2.66683V4.00016M6.66667 7.3335V11.3335M9.33333 7.3335V11.3335"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FolderClosedGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-foreground", className)} {...props}>
+      <path
+        d="M1.5 6.5H14.5M13.1667 13.5C13.5203 13.5 13.8594 13.3595 14.1095 13.1095C14.3595 12.8594 14.5 12.5203 14.5 12.1667V5.83333C14.5 5.47971 14.3595 5.14057 14.1095 4.89052C13.8594 4.64048 13.5203 4.5 13.1667 4.5H8.06671C7.84372 4.50219 7.62374 4.44841 7.42691 4.34359C7.23008 4.23877 7.06268 4.08625 6.94004 3.9L6.40004 3.1C6.27863 2.91565 6.11336 2.76432 5.91904 2.6596C5.72472 2.55488 5.50745 2.50004 5.28671 2.5H2.83333C2.47971 2.5 2.14057 2.64048 1.89052 2.89052C1.64048 3.14057 1.5 3.47971 1.5 3.83333V12.1667C1.5 12.5203 1.64048 12.8594 1.89052 13.1095C2.14057 13.3595 2.47971 13.5 2.83333 13.5H13.1667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 opacity-60", className)} {...props}>
+      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FilterIconFrame({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
     <span
-      className={cn("flex size-6 shrink-0 items-center justify-center rounded bg-background", className)}
-      aria-hidden
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-[4px] bg-white p-1 dark:bg-muted",
+        /** 4px padding on all sides; wide inner row: 16 + 4 + 1 + 4 + 16 → 4 + 41 + 4 = 49px wide, 4 + 16 + 4 = 24px tall. */
+        wide ? "h-[24px] w-[49px]" : "h-[24px] w-[24px]",
+      )}
     >
-      <svg viewBox="0 0 16 16" className="size-4" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="1" y="1" width="6" height="6" rx="1" fill="#22c55e" />
-        <rect x="9" y="1" width="6" height="6" rx="1" fill="#ec4899" />
-        <rect x="1" y="9" width="6" height="6" rx="1" fill="#3b82f6" />
-        <rect x="9" y="9" width="6" height="6" rx="1" fill="#eab308" />
-      </svg>
+      {children}
     </span>
   );
 }
@@ -260,6 +408,131 @@ function IconClose16({ className }: { className?: string }) {
 export type ItemsListFilter = "all" | "favorites" | "archived" | "recently_deleted";
 export type ItemsListSort = "name_asc" | "name_desc" | "date_asc" | "date_desc";
 
+function filterIconForValue(value: ItemsListFilter, className?: string) {
+  const c = cn("shrink-0", className);
+  switch (value) {
+    case "all":
+      return <FilterIconAllRecords className={c} />;
+    case "favorites":
+      return <FilterIconFavorites className={c} />;
+    case "archived":
+      return <FilterIconArchived className={c} />;
+    case "recently_deleted":
+      return <FilterIconDeleted className={c} />;
+    default: {
+      const _ex: never = value;
+      return _ex;
+    }
+  }
+}
+
+/** Compact filter glyph for the filter dropdown trigger when a vault/folder/search scope is active. */
+function filterSecondaryGlyph(filter: ItemsListFilter): ReactNode {
+  const c = "size-4 shrink-0";
+  switch (filter) {
+    case "favorites":
+      return <FilterIconFavorites className={c} />;
+    case "archived":
+      return <FilterIconArchived className={c} />;
+    case "recently_deleted":
+      return <FilterIconDeleted className={c} />;
+    case "all":
+      return null;
+    default: {
+      const _ex: never = filter;
+      return _ex;
+    }
+  }
+}
+
+function scopeRowCloseAriaLabel(locale: WebLocale): string {
+  return locale === "ru" ? "Сбросить область списка" : "Clear list scope";
+}
+
+function ScopeRowCloseButton({ locale, onClear }: { locale: WebLocale; onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={scopeRowCloseAriaLabel(locale)}
+      className="absolute top-[2px] right-[2px] z-10 flex size-4 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClear();
+      }}
+    >
+      <svg viewBox="0 0 16 16" fill="none" className="size-2.5" aria-hidden>
+        <path d="M5 5L11 11M11 5L5 11" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+function filterFromSearchParam(raw: string): ItemsListFilter {
+  const x = raw.trim().toLowerCase();
+  if (x === FILTER_QUERY_FAVOURITES || x === "favorites") {
+    return "favorites";
+  }
+  if (x === FILTER_QUERY_ARCHIVED) {
+    return "archived";
+  }
+  if (x === FILTER_QUERY_DELETED || x === "deleted") {
+    return "recently_deleted";
+  }
+  return "all";
+}
+
+function filterToSearchParam(filter: ItemsListFilter): string | null {
+  switch (filter) {
+    case "all":
+      return null;
+    case "favorites":
+      return FILTER_QUERY_FAVOURITES;
+    case "archived":
+      return FILTER_QUERY_ARCHIVED;
+    case "recently_deleted":
+      return FILTER_QUERY_DELETED;
+    default: {
+      const _ex: never = filter;
+      return _ex;
+    }
+  }
+}
+
+function sortFromSearchParam(raw: string): ItemsListSort {
+  const x = raw.trim().toLowerCase();
+  if (x === SORT_QUERY_DATE_ASC || x === "date_asc") {
+    return "date_asc";
+  }
+  if (x === SORT_QUERY_ALPH_ASC || x === "name_asc" || x === "alph_asc") {
+    return "name_asc";
+  }
+  if (x === SORT_QUERY_ALPH_DESC || x === "name_desc" || x === "alph_desc") {
+    return "name_desc";
+  }
+  if (x === SORT_QUERY_DATE_DESC || x === "date_desc") {
+    return "date_desc";
+  }
+  return "date_desc";
+}
+
+function sortToSearchParam(sort: ItemsListSort): string | null {
+  switch (sort) {
+    case "date_desc":
+      return null;
+    case "date_asc":
+      return SORT_QUERY_DATE_ASC;
+    case "name_asc":
+      return SORT_QUERY_ALPH_ASC;
+    case "name_desc":
+      return SORT_QUERY_ALPH_DESC;
+    default: {
+      const _ex: never = sort;
+      return _ex;
+    }
+  }
+}
+
 function firstGrapheme(s: string): string {
   const t = s.trim();
   if (!t) {
@@ -326,23 +599,43 @@ function compareYearMonthKeys(a: string, b: string, ascending: boolean): number 
 
 function sortItems(items: readonly ItemsListRecord[], sort: ItemsListSort): ItemsListRecord[] {
   const copy = [...items];
-  copy.sort((a, b) => {
-    switch (sort) {
-      case "name_asc":
-        return a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
-      case "name_desc":
-        return b.title.localeCompare(a.title, "ru", { sensitivity: "base" });
-      case "date_asc":
-        return a.date.getTime() - b.date.getTime();
-      case "date_desc":
-        return b.date.getTime() - a.date.getTime();
-      default: {
-        const _ex: never = sort;
-        return _ex;
-      }
+  copy.sort((a, b) => compareTwoItemsSort(a, b, sort));
+  return copy;
+}
+
+function compareTwoItemsSort(a: ItemsListRecord, b: ItemsListRecord, sort: ItemsListSort): number {
+  switch (sort) {
+    case "name_asc":
+      return a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
+    case "name_desc":
+      return b.title.localeCompare(a.title, "ru", { sensitivity: "base" });
+    case "date_asc":
+      return a.date.getTime() - b.date.getTime();
+    case "date_desc":
+      return b.date.getTime() - a.date.getTime();
+    default: {
+      const _ex: never = sort;
+      return _ex;
+    }
+  }
+}
+
+/** Title weight 10; each URL index `i` contributes `10 / (i + 1)` if substring matches. */
+function searchScore(row: ItemsListRecord, needle: string): number {
+  const q = needle.trim().toLowerCase();
+  if (!q) {
+    return 0;
+  }
+  let s = 0;
+  if (row.title.toLowerCase().includes(q)) {
+    s += 10;
+  }
+  row.urls.forEach((url, i) => {
+    if (url.toLowerCase().includes(q)) {
+      s += 10 / (i + 1);
     }
   });
-  return copy;
+  return s;
 }
 
 function filterItems(items: readonly ItemsListRecord[], filter: ItemsListFilter): ItemsListRecord[] {
@@ -404,21 +697,107 @@ function buildSections(sorted: readonly ItemsListRecord[], sort: ItemsListSort, 
   });
 }
 
-export default function ItemsListLeftPane() {
+export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean };
+
+type ItemsListLeftPaneProps = {
+  vaults: readonly ItemsListPaneVault[];
+  folderTree: readonly OkkeySidebarFolderTreeNode[];
+  /** False until the workspace vault list has been fetched at least once (avoids vault ID flash in the filter trigger). */
+  itemsListVaultsLoaded?: boolean;
+};
+
+export default function ItemsListLeftPane({
+  vaults,
+  folderTree,
+  itemsListVaultsLoaded = true,
+}: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
+  const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
+  const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
+  const filter = filterFromSearchParam(searchParams.get(FILTER_QUERY_PARAM) ?? "");
+  const sort = sortFromSearchParam(searchParams.get(SORT_QUERY_PARAM) ?? "");
+  const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
 
-  const [filter, setFilter] = useState<ItemsListFilter>("all");
-  const [sort, setSort] = useState<ItemsListSort>("date_desc");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
+  const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
+  const folderTitle = folderQ ? findFolderLabelInTree(folderTree, folderQ) || folderQ : "";
+
+  const hasListScope = Boolean(searchQ || vaultQ || folderQ);
+  const secondaryFilterInTrigger = hasListScope && filterToSearchParam(filter) !== null;
+  const vaultScopeLoading = Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta);
+
+  const setFilterUrl = (next: ItemsListFilter) => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        const fp = filterToSearchParam(next);
+        if (fp) {
+          n.set(FILTER_QUERY_PARAM, fp);
+        } else {
+          n.delete(FILTER_QUERY_PARAM);
+        }
+        return n;
+      },
+      { replace: true },
+    );
+  };
+
+  const setSortUrl = (next: ItemsListSort) => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        const sp = sortToSearchParam(next);
+        if (sp) {
+          n.set(SORT_QUERY_PARAM, sp);
+        } else {
+          n.delete(SORT_QUERY_PARAM);
+        }
+        return n;
+      },
+      { replace: true },
+    );
+  };
+
+  /** Same as sidebar “All items”: drop vault, folder, search, and list filter; keep `item` and `sort`. */
+  const clearWorkspaceScopeFromUrl = () => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete(VAULT_QUERY_PARAM);
+        n.delete(FOLDER_QUERY_PARAM);
+        n.delete(SEARCH_QUERY_PARAM);
+        n.delete(FILTER_QUERY_PARAM);
+        return n;
+      },
+      { replace: true },
+    );
+  };
+
   const sections = useMemo(() => {
-    const filtered = filterItems(ITEMS_LIST_DEMO, filter);
-    const sorted = sortItems(filtered, sort);
+    const searchTrim = searchQ.trim();
+    let pool: ItemsListRecord[];
+    if (searchTrim) {
+      pool = ITEMS_LIST_DEMO.filter((r) => searchScore(r, searchTrim) > 0);
+    } else {
+      const inVault = filterRowsByVault(ITEMS_LIST_DEMO, vaults, vaultQ);
+      pool = filterRowsByFolder(inVault, folderQ);
+    }
+    const filtered = filterItems(pool, filter);
+    const sorted = searchTrim
+      ? [...filtered].sort((a, b) => {
+          const ds = searchScore(b, searchTrim) - searchScore(a, searchTrim);
+          if (ds !== 0) {
+            return ds;
+          }
+          return compareTwoItemsSort(a, b, sort);
+        })
+      : sortItems(filtered, sort);
     return buildSections(sorted, sort, locale);
-  }, [filter, sort, locale]);
+  }, [filter, sort, locale, vaultQ, folderQ, vaults, searchQ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
 
@@ -465,21 +844,151 @@ export default function ItemsListLeftPane() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-border p-2">
         <div className="flex w-full items-center gap-2">
-          <Select value={filter} onValueChange={(v) => setFilter(v as ItemsListFilter)}>
-            <SelectTrigger
-              aria-label={t("web.items.list.filterAria")}
-              className={cn(itemsPanelSelectTriggerClassName, "min-w-0 flex-1 gap-2 [&>svg]:shrink-0")}
-            >
-              <FilterGlyph />
-              <SelectValue placeholder={t("web.items.filter.all")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("web.items.filter.all")}</SelectItem>
-              <SelectItem value="favorites">{t("web.items.filter.favorites")}</SelectItem>
-              <SelectItem value="archived">{t("web.items.filter.archived")}</SelectItem>
-              <SelectItem value="recently_deleted">{t("web.items.filter.recentlyDeleted")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-busy={vaultScopeLoading}
+                aria-label={t("web.items.list.filterAria")}
+                className={cn(
+                  itemsPanelSelectTriggerClassName,
+                  "flex min-h-9 min-w-0 flex-1 cursor-default items-center justify-start gap-2 text-left outline-none",
+                )}
+              >
+                <FilterIconFrame wide={secondaryFilterInTrigger}>
+                  {hasListScope ? (
+                    <span className="flex h-4 items-center gap-1">
+                      {searchQ ? (
+                        <SearchGlyph />
+                      ) : vaultQ ? (
+                        vaultScopeLoading ? (
+                          <Spinner size="small" className="size-4 shrink-0" />
+                        ) : (
+                          <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
+                            <span className="text-[14px] leading-none">{vaultMeta?.isPersonal ? "🏠" : "💼"}</span>
+                          </span>
+                        )
+                      ) : (
+                        <FolderClosedGlyph />
+                      )}
+                      {secondaryFilterInTrigger ? (
+                        <>
+                          <span className="h-4 w-px shrink-0 bg-border/80" aria-hidden />
+                          {filterSecondaryGlyph(filter)}
+                        </>
+                      ) : null}
+                    </span>
+                  ) : (
+                    filterIconForValue(filter)
+                  )}
+                </FilterIconFrame>
+                <span className="min-w-0 flex-1 truncate text-left text-sm font-normal text-foreground">
+                  {searchQ
+                    ? searchQ
+                    : vaultQ
+                      ? vaultScopeLoading
+                        ? null
+                        : (vaultMeta?.name ?? vaultQ)
+                      : folderQ
+                        ? folderTitle
+                        : t(`web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`)}
+                </span>
+                <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[12.5rem] p-1">
+              {searchQ ? (
+                <>
+                  <DropdownMenuItem
+                    className={cn(
+                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                      "bg-muted/80 data-[highlighted]:bg-secondary",
+                    )}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <SearchGlyph className="size-4 shrink-0 text-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-left">{searchQ}</span>
+                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="mx-1 my-1" />
+                </>
+              ) : null}
+              {vaultQ ? (
+                <>
+                  <DropdownMenuItem
+                    className={cn(
+                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                      "bg-muted/80 data-[highlighted]:bg-secondary",
+                    )}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <span className="text-base leading-none" aria-hidden>
+                      {vaultMeta?.isPersonal ? "🏠" : "💼"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left">{vaultMeta?.name ?? vaultQ}</span>
+                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="mx-1 my-1" />
+                </>
+              ) : null}
+              {!vaultQ && folderQ ? (
+                <>
+                  <DropdownMenuItem
+                    className={cn(
+                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                      "bg-muted/80 data-[highlighted]:bg-secondary",
+                    )}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <FolderClosedGlyph />
+                    <span className="min-w-0 flex-1 truncate text-left">{folderTitle}</span>
+                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="mx-1 my-1" />
+                </>
+              ) : null}
+              <DropdownMenuItem
+                className={cn(
+                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                  filter === "all" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                )}
+                onSelect={() => setFilterUrl("all")}
+              >
+                <FilterIconAllRecords className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.all")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={cn(
+                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                  filter === "favorites" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                )}
+                onSelect={() => setFilterUrl("favorites")}
+              >
+                <FilterIconFavorites className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.favorites")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={cn(
+                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                  filter === "archived" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                )}
+                onSelect={() => setFilterUrl("archived")}
+              >
+                <FilterIconArchived className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.archived")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={cn(
+                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                  filter === "recently_deleted" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                )}
+                onSelect={() => setFilterUrl("recently_deleted")}
+              >
+                <FilterIconDeleted className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.recentlyDeleted")}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -505,7 +1014,7 @@ export default function ItemsListLeftPane() {
                     "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
                     sort === "date_desc" && "bg-muted/80 data-[highlighted]:bg-secondary",
                   )}
-                  onSelect={() => setSort("date_desc")}
+                  onSelect={() => setSortUrl("date_desc")}
                 >
                   <SortIconNewestFirst className="size-4 shrink-0 text-foreground" />
                   <span className="min-w-0 flex-1 truncate">{t("web.items.sort.dateDesc")}</span>
@@ -515,7 +1024,7 @@ export default function ItemsListLeftPane() {
                     "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
                     sort === "date_asc" && "bg-muted/80 data-[highlighted]:bg-secondary",
                   )}
-                  onSelect={() => setSort("date_asc")}
+                  onSelect={() => setSortUrl("date_asc")}
                 >
                   <SortIconOldestFirst className="size-4 shrink-0 text-foreground" />
                   <span className="min-w-0 flex-1 truncate">{t("web.items.sort.dateAsc")}</span>
@@ -528,7 +1037,7 @@ export default function ItemsListLeftPane() {
                     "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
                     sort === "name_asc" && "bg-muted/80 data-[highlighted]:bg-secondary",
                   )}
-                  onSelect={() => setSort("name_asc")}
+                  onSelect={() => setSortUrl("name_asc")}
                 >
                   <SortIconAlphaAsc className="size-4 shrink-0 text-foreground" />
                   <span className="min-w-0 flex-1 truncate">{t("web.items.sort.nameAsc")}</span>
@@ -538,7 +1047,7 @@ export default function ItemsListLeftPane() {
                     "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
                     sort === "name_desc" && "bg-muted/80 data-[highlighted]:bg-secondary",
                   )}
-                  onSelect={() => setSort("name_desc")}
+                  onSelect={() => setSortUrl("name_desc")}
                 >
                   <SortIconAlphaDesc className="size-4 shrink-0 text-foreground" />
                   <span className="min-w-0 flex-1 truncate">{t("web.items.sort.nameDesc")}</span>
