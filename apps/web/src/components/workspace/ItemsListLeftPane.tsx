@@ -3,6 +3,7 @@ import {
   cn,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
   Favicon,
@@ -12,6 +13,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SidebarGroupLabel,
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
 import { useEffect, useMemo, useState, type SVGProps } from "react";
@@ -82,20 +84,112 @@ function FilterGlyph({ className }: { className?: string }) {
   );
 }
 
-function SortGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
+/** Сначала новые — `date_desc` */
+function SortIconNewestFirst({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      className={cn("size-4 shrink-0 text-foreground", className)}
-      {...props}
-    >
-      <path d="M5 3v10M5 3l2 2M5 3L3 5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M11 13V3m0 10l2-2m-2 2l-2-2" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path d="M2.66663 10L4.66663 12L6.66663 10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 4V12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M11.3333 9.3335C11.687 9.3335 12.0261 9.47397 12.2761 9.72402C12.5262 9.97407 12.6667 10.3132 12.6667 10.6668V12.6668C12.6667 13.0205 12.5262 13.3596 12.2761 13.6096C12.0261 13.8597 11.687 14.0002 11.3333 14.0002C10.9797 14.0002 10.6406 13.8597 10.3905 13.6096C10.1405 13.3596 10 13.0205 10 12.6668V10.6668C10 10.3132 10.1405 9.97407 10.3905 9.72402C10.6406 9.47397 10.9797 9.3335 11.3333 9.3335Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 3.33333C10 3.68696 10.1405 4.02609 10.3905 4.27614C10.6406 4.52619 10.9797 4.66667 11.3333 4.66667C11.687 4.66667 12.0261 4.52619 12.2761 4.27614C12.5262 4.02609 12.6667 3.68696 12.6667 3.33333C12.6667 2.97971 12.5262 2.64057 12.2761 2.39052C12.0261 2.14048 11.687 2 11.3333 2C10.9797 2 10.6406 2.14048 10.3905 2.39052C10.1405 2.64057 10 2.97971 10 3.33333Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12.6667 3.3335V5.3335C12.6667 5.68712 12.5262 6.02626 12.2762 6.2763C12.0261 6.52635 11.687 6.66683 11.3334 6.66683H10.3334"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
+}
+
+/** Сначала старые — `date_asc` */
+function SortIconOldestFirst({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path d="M2.66663 10L4.66663 12L6.66663 10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 4V12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M11.3333 2C11.687 2 12.0261 2.14048 12.2761 2.39052C12.5262 2.64057 12.6667 2.97971 12.6667 3.33333V5.33333C12.6667 5.68696 12.5262 6.02609 12.2761 6.27614C12.0261 6.52619 11.687 6.66667 11.3333 6.66667C10.9797 6.66667 10.6406 6.52619 10.3905 6.27614C10.1405 6.02609 10 5.68696 10 5.33333V3.33333C10 2.97971 10.1405 2.64057 10.3905 2.39052C10.6406 2.14048 10.9797 2 11.3333 2Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 10.6668C10 11.0205 10.1405 11.3596 10.3905 11.6096C10.6406 11.8597 10.9797 12.0002 11.3333 12.0002C11.687 12.0002 12.0261 11.8597 12.2761 11.6096C12.5262 11.3596 12.6667 11.0205 12.6667 10.6668C12.6667 10.3132 12.5262 9.97407 12.2761 9.72402C12.0261 9.47397 11.687 9.3335 11.3333 9.3335C10.9797 9.3335 10.6406 9.47397 10.3905 9.72402C10.1405 9.97407 10 10.3132 10 10.6668Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12.6667 10.6665V12.6665C12.6667 13.0201 12.5262 13.3593 12.2762 13.6093C12.0261 13.8594 11.687 13.9998 11.3334 13.9998H10.3334"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Алфавит — `name_asc` */
+function SortIconAlphaAsc({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path
+        d="M10 6.66667V3.33333C10 2.41333 10.4133 2 11.3333 2C12.2533 2 12.6667 2.41333 12.6667 3.33333V6.66667M12.6667 4.66667H10"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12.6667 14.0002H10L12.6667 9.3335H10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.66663 10L4.66663 12L6.66663 10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 4V12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Обратный алфавит — `name_desc` */
+function SortIconAlphaDesc({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path
+        d="M10 14.0002V10.6668C10 9.74683 10.4133 9.3335 11.3333 9.3335C12.2533 9.3335 12.6667 9.74683 12.6667 10.6668V14.0002M12.6667 12.0002H10"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12.6667 6.66667H10L12.6667 2H10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.66663 10L4.66663 12L6.66663 10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 4V12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function sortIconForValue(value: ItemsListSort, className?: string) {
+  const common = { className: cn("text-foreground", className) };
+  switch (value) {
+    case "date_desc":
+      return <SortIconNewestFirst {...common} />;
+    case "date_asc":
+      return <SortIconOldestFirst {...common} />;
+    case "name_asc":
+      return <SortIconAlphaAsc {...common} />;
+    case "name_desc":
+      return <SortIconAlphaDesc {...common} />;
+    default: {
+      const _ex: never = value;
+      return _ex;
+    }
+  }
 }
 
 function MoreVerticalIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
@@ -387,25 +481,71 @@ export default function ItemsListLeftPane() {
             </SelectContent>
           </Select>
 
-          <Select value={sort} onValueChange={(v) => setSort(v as ItemsListSort)}>
-            <SelectTrigger
-              aria-label={t("web.items.list.sortAria")}
-              className={cn(
-                itemsPanelSelectTriggerClassName,
-                "w-[min(100%,9.5rem)] shrink-0 gap-1.5 px-2 sm:w-[10.5rem]",
-                "[&>svg]:shrink-0",
-              )}
-            >
-              <SortGlyph className="size-3.5" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="name_asc">{t("web.items.sort.nameAsc")}</SelectItem>
-              <SelectItem value="name_desc">{t("web.items.sort.nameDesc")}</SelectItem>
-              <SelectItem value="date_asc">{t("web.items.sort.dateAsc")}</SelectItem>
-              <SelectItem value="date_desc">{t("web.items.sort.dateDesc")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                aria-label={t("web.items.list.sortAria")}
+                className={cn(
+                  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-slate-100 p-0 text-foreground shadow-none dark:bg-muted",
+                  "hover:bg-slate-200/90 hover:text-foreground dark:hover:bg-muted/80",
+                  "focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                  "data-[state=open]:bg-slate-200/90 data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)] dark:data-[state=open]:bg-muted/90",
+                )}
+              >
+                {sortIconForValue(sort)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[12.5rem] p-1">
+              <DropdownMenuGroup className="p-0">
+                <SidebarGroupLabel className="pointer-events-none">{t("web.items.sort.groupByDate")}</SidebarGroupLabel>
+                <DropdownMenuItem
+                  className={cn(
+                    "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                    sort === "date_desc" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                  )}
+                  onSelect={() => setSort("date_desc")}
+                >
+                  <SortIconNewestFirst className="size-4 shrink-0 text-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{t("web.items.sort.dateDesc")}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className={cn(
+                    "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                    sort === "date_asc" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                  )}
+                  onSelect={() => setSort("date_asc")}
+                >
+                  <SortIconOldestFirst className="size-4 shrink-0 text-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{t("web.items.sort.dateAsc")}</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuGroup className="p-0">
+                <SidebarGroupLabel className="pointer-events-none">{t("web.items.sort.groupByAlphabet")}</SidebarGroupLabel>
+                <DropdownMenuItem
+                  className={cn(
+                    "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                    sort === "name_asc" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                  )}
+                  onSelect={() => setSort("name_asc")}
+                >
+                  <SortIconAlphaAsc className="size-4 shrink-0 text-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{t("web.items.sort.nameAsc")}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className={cn(
+                    "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
+                    sort === "name_desc" && "bg-muted/80 data-[highlighted]:bg-secondary",
+                  )}
+                  onSelect={() => setSort("name_desc")}
+                >
+                  <SortIconAlphaDesc className="size-4 shrink-0 text-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{t("web.items.sort.nameDesc")}</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
