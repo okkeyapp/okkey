@@ -194,18 +194,18 @@ export default function WorkspaceRoutesLayout() {
     () => [
       {
         id: itemsDemoFolderDocsId,
-        label: t("web.items.demoFolder.docs"),
+        label: "Documents",
         to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderDocsId),
         isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderDocsId && !vaultQ && !searchQ,
       },
       {
         id: itemsDemoFolderCardsId,
-        label: t("web.items.demoFolder.cards"),
+        label: "Cards",
         to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderCardsId),
         isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderCardsId && !vaultQ && !searchQ,
       },
     ],
-    [pathname, folderQ, vaultQ, searchQ, t, searchParams],
+    [pathname, folderQ, vaultQ, searchQ, searchParams],
   );
 
   const currentWorkspace = useMemo(
@@ -225,9 +225,11 @@ export default function WorkspaceRoutesLayout() {
       firstName: profile.firstName,
       lastName: profile.lastName,
       email,
+      settingsLabel: t("web.accountMenu.settings"),
+      logoutLabel: t("web.accountMenu.logout"),
       onLogout: logout,
     };
-  }, [profile, logout]);
+  }, [profile, logout, t]);
 
   /**
    * `/items`: at most one of `vault`, `folder`, or `search`. If `search` is set with vault/folder,

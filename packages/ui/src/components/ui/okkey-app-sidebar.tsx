@@ -580,11 +580,15 @@ function ProfileAccountDropdownPanel({
   lastName,
   email,
   onLogout,
+  settingsLabel = "My settings",
+  logoutLabel = "Log out",
 }: {
   firstName: string;
   lastName: string;
   email: string;
   onLogout?: () => void;
+  settingsLabel?: string;
+  logoutLabel?: string;
 }) {
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
   const titleLine = displayName.length > 0 ? displayName : email;
@@ -607,7 +611,7 @@ function ProfileAccountDropdownPanel({
       <div className="p-1">
         <DropdownMenuItem className="cursor-pointer gap-2">
           <NavSettingsIcon />
-          <span>My settings</span>
+          <span>{settingsLabel}</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           className="cursor-pointer gap-2"
@@ -616,7 +620,7 @@ function ProfileAccountDropdownPanel({
           }}
         >
           <LogOutMenuIcon />
-          <span>Log out</span>
+          <span>{logoutLabel}</span>
         </DropdownMenuItem>
       </div>
     </>
@@ -808,6 +812,8 @@ export type OkkeyAppSidebarAccountMenu = {
   firstName?: string;
   lastName?: string;
   email: string;
+  settingsLabel?: string;
+  logoutLabel?: string;
   onLogout: () => void;
 };
 
@@ -817,6 +823,8 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
       firstName: accountMenu.firstName ?? "",
       lastName: accountMenu.lastName ?? "",
       email: accountMenu.email.trim(),
+      settingsLabel: accountMenu.settingsLabel,
+      logoutLabel: accountMenu.logoutLabel,
       onLogout: accountMenu.onLogout,
     };
   }
@@ -824,6 +832,8 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
     firstName: DEMO_PROFILE.firstName,
     lastName: DEMO_PROFILE.lastName,
     email: DEMO_PROFILE.email,
+    settingsLabel: undefined,
+    logoutLabel: undefined,
     onLogout: undefined as (() => void) | undefined,
   };
 }
@@ -1392,6 +1402,8 @@ function OkkeyAppSidebarInner({
               firstName={footerAccount.firstName}
               lastName={footerAccount.lastName}
               email={footerAccount.email}
+              settingsLabel={footerAccount.settingsLabel}
+              logoutLabel={footerAccount.logoutLabel}
               onLogout={footerAccount.onLogout}
             />
           </DropdownMenuContent>
