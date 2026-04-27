@@ -11,7 +11,7 @@ import {
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
@@ -126,6 +126,13 @@ export default function WorkspaceRoutesLayout() {
   const [workspaceList, setWorkspaceList] = useState<Workspace[]>([]);
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [vaultsListReady, setVaultsListReady] = useState(false);
+  const navigateRef = useRef(navigate);
+  const setSearchParamsRef = useRef(setSearchParams);
+
+  useEffect(() => {
+    navigateRef.current = navigate;
+    setSearchParamsRef.current = setSearchParams;
+  }, [navigate, setSearchParams]);
 
   const navPaths = useMemo(
     () => ({
@@ -251,7 +258,14 @@ export default function WorkspaceRoutesLayout() {
     if (!core || !userId) {
       return;
     }
-    setPhase("loading");
+    const hasResolvedWorkspace = Boolean(resolvedWorkspaceId && workspaceList.length > 0);
+    if (!workspaceParam && hasResolvedWorkspace) {
+      return;
+    }
+
+    if (!hasResolvedWorkspace) {
+      setPhase("loading");
+    }
     let cancelled = false;
 
     void (async () => {
@@ -269,7 +283,7 @@ export default function WorkspaceRoutesLayout() {
 
         if (!resolved || !list.some((w) => w.id === resolved)) {
           clearStoredCurrentWorkspaceId(userId);
-          navigate(WORKSPACES_PATH, { replace: true });
+          navigateRef.current(WORKSPACES_PATH, { replace: true });
           return;
         }
 
@@ -277,7 +291,7 @@ export default function WorkspaceRoutesLayout() {
         setWorkspaceList(list);
 
         if (fromQuery) {
-          setSearchParams(
+          setSearchParamsRef.current(
             (prev) => {
               const next = new URLSearchParams(prev);
               next.delete(WORKSPACE_QUERY_PARAM);
@@ -294,9 +308,9 @@ export default function WorkspaceRoutesLayout() {
           return;
         }
         if (e instanceof ApiRequestError) {
-          navigate(WORKSPACES_PATH, { replace: true });
+          navigateRef.current(WORKSPACES_PATH, { replace: true });
         } else {
-          navigate(WORKSPACES_PATH, { replace: true });
+          navigateRef.current(WORKSPACES_PATH, { replace: true });
         }
       }
     })();
@@ -304,7 +318,7 @@ export default function WorkspaceRoutesLayout() {
     return () => {
       cancelled = true;
     };
-  }, [core, userId, workspaceParam, navigate, setSearchParams]);
+  }, [core, userId, workspaceParam, resolvedWorkspaceId, workspaceList.length]);
 
   useEffect(() => {
     if (!core || !resolvedWorkspaceId) {
@@ -374,6 +388,8 @@ export default function WorkspaceRoutesLayout() {
                 )}
                 onClick={() => {
                   writeStoredCurrentWorkspaceId(userId, ws.id);
+                  setResolvedWorkspaceId(ws.id);
+                  setPhase("ready");
                   navigate(ITEMS_PATH);
                 }}
               >
