@@ -350,6 +350,31 @@ function MoreVerticalIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+function IconActions16({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path
+        d="M7.99992 8.66675C8.36811 8.66675 8.66659 8.36827 8.66659 8.00008C8.66659 7.63189 8.36811 7.33341 7.99992 7.33341C7.63173 7.33341 7.33325 7.63189 7.33325 8.00008C7.33325 8.36827 7.63173 8.66675 7.99992 8.66675Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.99992 4.00008C8.36811 4.00008 8.66659 3.7016 8.66659 3.33341C8.66659 2.96522 8.36811 2.66675 7.99992 2.66675C7.63173 2.66675 7.33325 2.96522 7.33325 3.33341C7.33325 3.7016 7.63173 4.00008 7.99992 4.00008Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.99992 13.3334C8.36811 13.3334 8.66659 13.0349 8.66659 12.6667C8.66659 12.2986 8.36811 12.0001 7.99992 12.0001C7.63173 12.0001 7.33325 12.2986 7.33325 12.6667C7.33325 13.0349 7.63173 13.3334 7.99992 13.3334Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconEdit16({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
@@ -376,11 +401,70 @@ function IconSelect16({ className }: { className?: string }) {
   );
 }
 
+function IconUnfavorite16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6.67468 4.01047L7.99535 1.33447L10.0527 5.50314L14.6527 6.16981L11.7053 9.03914M11.7133 11.7125L12.1053 13.9965L8.00001 11.8331L3.88535 13.9965L4.67135 9.41447L1.33801 6.16981L5.55601 5.55847"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconUnarchive16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M5.33327 2.6665H12.6666C13.0202 2.6665 13.3594 2.80698 13.6094 3.05703C13.8595 3.30708 13.9999 3.64622 13.9999 3.99984C13.9999 4.35346 13.8595 4.6926 13.6094 4.94265C13.3594 5.19269 13.0202 5.33317 12.6666 5.33317H7.99994M5.33327 5.33317H3.33327C3.02844 5.33335 2.73274 5.22907 2.49546 5.03771C2.25818 4.84634 2.09363 4.57945 2.02923 4.28149C1.96484 3.98353 2.00449 3.67251 2.14157 3.40024C2.27866 3.12796 2.5049 2.91089 2.78261 2.78517"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.33337 5.3335V12.0002C3.33337 12.3538 3.47385 12.6929 3.7239 12.943C3.97395 13.193 4.31309 13.3335 4.66671 13.3335H11.3334C11.5903 13.3335 11.8418 13.2592 12.0575 13.1197C12.2732 12.9801 12.444 12.7812 12.5494 12.5468M12.6667 10.0002V5.3335"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M6.66663 8H7.99996" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function IconDelete16({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
       <path
         d="M2 3.99992H14M12.6667 3.99992V13.3333C12.6667 13.9999 12 14.6666 11.3333 14.6666H4.66667C4 14.6666 3.33333 13.9999 3.33333 13.3333V3.99992M5.33333 3.99992V2.66659C5.33333 1.99992 6 1.33325 6.66667 1.33325H9.33333C10 1.33325 10.6667 1.99992 10.6667 2.66659V3.99992M6.66667 7.33325V11.3333M9.33333 7.33325V11.3333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconRestore16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.66663 4.6665H4.66663M7.33329 4.6665H13.3333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6.66663 7.3335V11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 9.3335V11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M3.33337 4.6665L4.00004 12.6665C4.00004 13.0201 4.14052 13.3593 4.39056 13.6093C4.64061 13.8594 4.97975 13.9998 5.33337 13.9998H10.6667C11.0203 13.9998 11.3595 13.8594 11.6095 13.6093C11.8596 13.3593 12 13.0201 12 12.6665L12.0514 12.0512"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12.256 9.58184L12.6666 4.6665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6 3.33333V2.66667C6 2.48986 6.07024 2.32029 6.19526 2.19526C6.32029 2.07024 6.48986 2 6.66667 2H9.33333C9.51014 2 9.67971 2.07024 9.80474 2.19526C9.92976 2.32029 10 2.48986 10 2.66667V4.66667"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -800,6 +884,18 @@ export default function ItemsListLeftPane({
   }, [filter, sort, locale, vaultQ, folderQ, vaults, searchQ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
+  const selectedRows = useMemo(() => ITEMS_LIST_DEMO.filter((row) => selectedIds.has(row.id)), [selectedIds]);
+  const selectedActions = useMemo(
+    () => ({
+      canFavorite: selectedRows.some((row) => !row.favorite),
+      canUnfavorite: selectedRows.some((row) => row.favorite),
+      canArchive: selectedRows.some((row) => !row.archived),
+      canUnarchive: selectedRows.some((row) => row.archived),
+      canDelete: selectedRows.some((row) => !row.deleted),
+      canRestore: selectedRows.some((row) => row.deleted),
+    }),
+    [selectedRows],
+  );
 
   useEffect(() => {
     if (selectionMode && selectedIds.size === 0) {
@@ -1145,16 +1241,46 @@ export default function ItemsListLeftPane({
                                     <IconEdit16 />
                                     <span>{t("web.items.menu.edit")}</span>
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                    {row.favorite ? (
+                                      <IconUnfavorite16 className="text-foreground" />
+                                    ) : (
+                                      <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                                    )}
+                                    <span>
+                                      {row.favorite
+                                        ? t("web.items.menu.removeFromFavorites")
+                                        : t("web.items.menu.addToFavorites")}
+                                    </span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator className="mx-1 my-1" />
                                   <DropdownMenuItem className="gap-2" onSelect={() => enterSelectionModeWith(row.id)}>
                                     <IconSelect16 />
                                     <span>{t("web.items.menu.select")}</span>
                                   </DropdownMenuItem>
+                                  <DropdownMenuSeparator className="mx-1 my-1" />
+                                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                    {row.archived ? (
+                                      <IconUnarchive16 className="text-foreground" />
+                                    ) : (
+                                      <FilterIconArchived className="size-4 shrink-0 text-foreground" />
+                                    )}
+                                    <span>{row.archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                                    className={cn(
+                                      "gap-2",
+                                      !row.deleted &&
+                                        "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
+                                    )}
                                     onSelect={() => undefined}
                                   >
-                                    <IconDelete16 className="text-destructive" />
-                                    <span>{t("web.items.menu.delete")}</span>
+                                    {row.deleted ? (
+                                      <IconRestore16 className="text-foreground" />
+                                    ) : (
+                                      <IconDelete16 />
+                                    )}
+                                    <span>{row.deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -1186,10 +1312,66 @@ export default function ItemsListLeftPane({
           <p className="ms-2 min-w-0 flex-1 truncate text-left text-sm text-foreground">
             {t("web.items.list.selectionCount", { count: selectedIds.size })}
           </p>
-          <Button type="button" variant="destructive" size="sm" className="ms-auto shrink-0 gap-2">
-            <IconDelete16 />
-            {t("web.items.list.deleteMany")}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="secondary" size="sm" className="ms-auto shrink-0 gap-2">
+                <IconActions16 />
+                {t("web.items.list.actions")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 p-1">
+              {selectedActions.canFavorite ? (
+                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                  <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                  <span>{t("web.items.menu.addToFavorites")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {selectedActions.canUnfavorite ? (
+                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                  <IconUnfavorite16 />
+                  <span>{t("web.items.menu.removeFromFavorites")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {(selectedActions.canFavorite || selectedActions.canUnfavorite) &&
+              (selectedActions.canArchive ||
+                selectedActions.canUnarchive ||
+                selectedActions.canDelete ||
+                selectedActions.canRestore) ? (
+                <DropdownMenuSeparator className="mx-1 my-1" />
+              ) : null}
+              {selectedActions.canArchive ? (
+                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                  <FilterIconArchived className="size-4 shrink-0 text-foreground" />
+                  <span>{t("web.items.menu.archive")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {selectedActions.canUnarchive ? (
+                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                  <IconUnarchive16 />
+                  <span>{t("web.items.menu.unarchive")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {(selectedActions.canArchive || selectedActions.canUnarchive) &&
+              (selectedActions.canDelete || selectedActions.canRestore) ? (
+                <DropdownMenuSeparator className="mx-1 my-1" />
+              ) : null}
+              {selectedActions.canDelete ? (
+                <DropdownMenuItem
+                  className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                  onSelect={() => undefined}
+                >
+                  <IconDelete16 />
+                  <span>{t("web.items.menu.delete")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {selectedActions.canRestore ? (
+                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                  <IconRestore16 />
+                  <span>{t("web.items.menu.restore")}</span>
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ) : null}
     </div>
