@@ -447,6 +447,7 @@ export default function WorkspaceRoutesLayout() {
       folderTree={folderTreeForItems}
       folderNavLink={AppShellNavLink}
       folderSectionTitle={t("web.nav.foldersSection")}
+      folderEmptyLabel={t("web.nav.foldersEmpty")}
       accountMenu={accountMenu}
       footerPlainLinkLabels={{
         documentation: t("web.nav.documentation"),

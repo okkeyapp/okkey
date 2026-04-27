@@ -12,6 +12,7 @@
   "web.nav.addCapsule": "Создать капсулу",
   "web.nav.vaultsSection": "Сейфы",
   "web.nav.foldersSection": "Папки",
+  "web.nav.foldersEmpty": "Нет папок",
   "web.nav.collapseSidebar": "Свернуть сайдбар",
   "web.nav.expandSidebar": "Развернуть сайдбар",
   "web.nav.openMobileNav": "Открыть меню",

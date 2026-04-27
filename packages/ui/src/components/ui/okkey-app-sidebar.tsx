@@ -857,13 +857,15 @@ export type OkkeyAppSidebarProps = {
   vaultNavLink?: OkkeyWorkspaceNavLinkComponent;
   vaultSectionTitle?: string;
   /**
-   * Folder tree. `undefined` → built-in demo tree (gallery). `[]` → hide folders (`showFolders` is length-based).
+   * Folder tree. `undefined` → built-in demo tree (gallery). `[]` → empty folders section (header + “no folders”).
    * In the web app, pass real nodes with leaf `to` (e.g. `/items?folder=…`) and optional `children` for nested labels.
    */
   folderTree?: OkkeySidebarFolderTreeNode[];
   /** Required on leaves when `folderTree` nodes use `to` (e.g. React Router `Link` wrapper). */
   folderNavLink?: OkkeyWorkspaceNavLinkComponent;
   folderSectionTitle?: string;
+  /** Shown when `folderTree` is an empty array (host app supplies i18n). */
+  folderEmptyLabel?: string;
   /** Real user row + account dropdown + working logout; omit for gallery / demo footer copy. */
   accountMenu?: OkkeyAppSidebarAccountMenu;
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
@@ -1062,6 +1064,7 @@ function OkkeyAppSidebarInner({
   folderTree,
   folderNavLink,
   folderSectionTitle,
+  folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel = "Add vault",
@@ -1081,6 +1084,7 @@ function OkkeyAppSidebarInner({
   | "folderTree"
   | "folderNavLink"
   | "folderSectionTitle"
+  | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
@@ -1106,7 +1110,7 @@ function OkkeyAppSidebarInner({
   const groupLabel = workspaceNavGroupLabel ?? "Workspace";
   const vaultData = vaultItems ?? demoVaultItems();
   const folderData = folderTree === undefined ? DEMO_FOLDER_TREE : folderTree;
-  const showFolders = folderData.length > 0;
+  const showFolders = folderTree !== undefined || folderData.length > 0;
   const vaultTitle = vaultSectionTitle ?? "Vaults";
   const folderTitle = folderSectionTitle ?? "Folders";
 
@@ -1253,6 +1257,7 @@ function OkkeyAppSidebarInner({
                           collapsibleGroupName="folders-dd"
                           tree={folderData}
                           leafIcon={<FolderClosedIcon />}
+                          emptyLabel={folderEmptyLabel}
                           showHeaderPlus
                           headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                           linkComponent={folderNavLink}
@@ -1289,6 +1294,7 @@ function OkkeyAppSidebarInner({
                       collapsibleGroupName="collapsible-folders"
                       tree={folderData}
                       leafIcon={<FolderClosedIcon />}
+                      emptyLabel={folderEmptyLabel}
                       showHeaderPlus
                       headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                       linkComponent={folderNavLink}
@@ -1435,6 +1441,7 @@ export function OkkeyAppSidebar({
   folderTree,
   folderNavLink,
   folderSectionTitle,
+  folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
@@ -1500,6 +1507,7 @@ export function OkkeyAppSidebar({
                   folderTree={folderTree}
                   folderNavLink={folderNavLink}
                   folderSectionTitle={folderSectionTitle}
+                  folderEmptyLabel={folderEmptyLabel}
                   accountMenu={accountMenu}
                   footerPlainLinkLabels={footerPlainLinkLabels}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
@@ -1529,6 +1537,7 @@ export function OkkeyAppSidebar({
                     folderTree={folderTree}
                     folderNavLink={folderNavLink}
                     folderSectionTitle={folderSectionTitle}
+                    folderEmptyLabel={folderEmptyLabel}
                     accountMenu={accountMenu}
                     footerPlainLinkLabels={footerPlainLinkLabels}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}

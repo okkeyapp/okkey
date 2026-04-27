@@ -482,6 +482,8 @@ export type OkkeySidebarFoldersMenuProps = {
   collapsibleGroupName: string;
   tree: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
+  /** Shown under the section header when `tree` is empty (host app supplies i18n). */
+  emptyLabel?: string;
   showHeaderPlus?: boolean;
   headerPlusAriaLabel?: string;
   onHeaderPlusPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
@@ -772,6 +774,7 @@ export function OkkeySidebarFoldersMenu({
   collapsibleGroupName,
   tree,
   leafIcon,
+  emptyLabel = "No folders",
   showHeaderPlus,
   headerPlusAriaLabel,
   onHeaderPlusPointerDown,
@@ -779,6 +782,7 @@ export function OkkeySidebarFoldersMenu({
 }: OkkeySidebarFoldersMenuProps) {
   const gClass = collapsibleGroupClass(collapsibleGroupName);
   const [folderSectionOpen, setFolderSectionOpen] = React.useState(true);
+  const isEmpty = tree.length === 0;
 
   const headerRow = (
     <div className="flex h-8 w-full shrink-0 items-center gap-2">
@@ -833,7 +837,13 @@ export function OkkeySidebarFoldersMenu({
           ) : null}
         </div>
         <ScrollArea className="max-h-[360px]">
-          <FolderTopTreeDropdown nodes={tree} leafIcon={leafIcon} branchGroupName="foldd" linkComponent={linkComponent} />
+          {isEmpty ? (
+            <div className="px-3 py-3">
+              <p className="text-xs leading-4 text-muted-foreground">{emptyLabel}</p>
+            </div>
+          ) : (
+            <FolderTopTreeDropdown nodes={tree} leafIcon={leafIcon} branchGroupName="foldd" linkComponent={linkComponent} />
+          )}
         </ScrollArea>
       </>
     );
@@ -845,7 +855,15 @@ export function OkkeySidebarFoldersMenu({
         {headerRow}
         <CollapsibleContent>
           <SidebarMenu>
-            <FolderTopTreeSidebar nodes={tree} leafIcon={leafIcon} branchGroupName="folds" linkComponent={linkComponent} />
+            {isEmpty ? (
+              <SidebarMenuItem>
+                <div className="px-2 py-2">
+                  <p className="text-xs leading-4 text-muted-foreground">{emptyLabel}</p>
+                </div>
+              </SidebarMenuItem>
+            ) : (
+              <FolderTopTreeSidebar nodes={tree} leafIcon={leafIcon} branchGroupName="folds" linkComponent={linkComponent} />
+            )}
           </SidebarMenu>
         </CollapsibleContent>
       </SidebarGroup>

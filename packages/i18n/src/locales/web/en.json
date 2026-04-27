@@ -12,6 +12,7 @@
   "web.nav.addCapsule": "Create capsule",
   "web.nav.vaultsSection": "Vaults",
   "web.nav.foldersSection": "Folders",
+  "web.nav.foldersEmpty": "No folders",
   "web.nav.collapseSidebar": "Collapse sidebar",
   "web.nav.expandSidebar": "Expand sidebar",
   "web.nav.openMobileNav": "Open menu",

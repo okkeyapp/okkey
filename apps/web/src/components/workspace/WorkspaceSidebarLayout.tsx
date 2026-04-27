@@ -46,6 +46,7 @@ export type WorkspaceSidebarLayoutProps = {
   | "folderTree"
   | "folderNavLink"
   | "folderSectionTitle"
+  | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
@@ -126,6 +127,7 @@ export default function WorkspaceSidebarLayout({
   folderTree,
   folderNavLink,
   folderSectionTitle,
+  folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
@@ -155,6 +157,7 @@ export default function WorkspaceSidebarLayout({
           folderTree={folderTree}
           folderNavLink={folderNavLink}
           folderSectionTitle={folderSectionTitle}
+          folderEmptyLabel={folderEmptyLabel}
           accountMenu={accountMenu}
           footerPlainLinkLabels={footerPlainLinkLabels}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
