@@ -14,6 +14,7 @@ import DevUIControlGroupingPage from "../pages/dev-ui/DevUIControlGroupingPage";
 import DevUIFoundationPage from "../pages/dev-ui/DevUIFoundationPage";
 import DevUIGalleryLayout from "../pages/dev-ui/DevUIGalleryLayout";
 import DevUIInputPage from "../pages/dev-ui/DevUIInputPage";
+import DevUIPopupPage from "../pages/dev-ui/DevUIPopupPage";
 import DevUISelectPage from "../pages/dev-ui/DevUISelectPage";
 import DevUISidebarPage from "../pages/dev-ui/DevUISidebarPage";
 import DevUISpinnerPage from "../pages/dev-ui/DevUISpinnerPage";
@@ -84,6 +85,7 @@ export default function AppRoutes() {
         <Route path="control-grouping" element={<DevUIControlGroupingPage />} />
         <Route path="spinner" element={<DevUISpinnerPage />} />
         <Route path="workspace-tile" element={<DevUIWorkspaceTilePage />} />
+        <Route path="popup" element={<DevUIPopupPage />} />
         <Route path="alert" element={<DevUIAlertPage />} />
         <Route path="tooltip" element={<DevUITooltipPage />} />
         <Route path="favicon" element={<DevUIFaviconPage />} />

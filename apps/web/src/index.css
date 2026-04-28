@@ -155,6 +155,99 @@
 }
 
 @layer components {
+  .okkey-popup-overlay {
+    animation: okkey-popup-overlay-in 240ms ease-out;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .okkey-popup-overlay[data-state="closing"] {
+    animation: okkey-popup-overlay-out 240ms ease-in forwards;
+  }
+
+  .okkey-popup-panel {
+    animation: okkey-popup-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.1),
+      0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+
+  .okkey-popup-panel[data-state="closing"] {
+    animation: okkey-popup-panel-out 200ms ease-in forwards;
+  }
+
+  .dark .okkey-popup-panel {
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+
+  @media (max-width: 767px) {
+    .okkey-popup-panel {
+      animation: okkey-popup-sheet-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .okkey-popup-panel[data-state="closing"] {
+      animation: okkey-popup-sheet-out 200ms ease-in forwards;
+    }
+  }
+
+  @keyframes okkey-popup-overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes okkey-popup-overlay-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes okkey-popup-panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes okkey-popup-panel-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes okkey-popup-sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes okkey-popup-sheet-out {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+
   /** Design-system type roles — use these instead of ad-hoc text-* / font-* on screens */
   .okkey-heading-xl {
     @apply text-xl font-semibold leading-7 tracking-normal text-copy-primary;
