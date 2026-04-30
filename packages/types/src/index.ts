@@ -536,6 +536,36 @@ export interface AccountProfileUpdateRequestDto {
   billing_region?: string | null;
 }
 
+/** `POST /account/email-change/start` and `/resend` success body. */
+export interface AccountEmailChangeStartResponseDto {
+  challengeId: string;
+  expiresAt: string;
+  resendAvailableAt: string;
+}
+
+/** `POST /account/email-change/start` request body. */
+export interface AccountEmailChangeStartRequestDto {
+  email: string;
+  locale?: string;
+}
+
+/** `POST /account/email-change/resend` request body. */
+export interface AccountEmailChangeResendRequestDto {
+  challengeId: string;
+  locale?: string;
+}
+
+/** `POST /account/email-change/confirm` request body. */
+export interface AccountEmailChangeConfirmRequestDto {
+  challengeId: string;
+  code: string;
+}
+
+/** `POST /account/email-change/confirm` success body. */
+export interface AccountEmailChangeConfirmResponseDto {
+  email: string;
+}
+
 /** `GET /vault/unlock-bootstrap?device_fingerprint=...` (Bearer) — split-key material to re-hydrate the client. */
 export interface VaultUnlockBootstrapResponseDto {
   server_key_share: string;

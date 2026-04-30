@@ -21,6 +21,11 @@ import type {
   Workspace,
   AccountProfileResponseDto,
   AccountProfileUpdateRequestDto,
+  AccountEmailChangeConfirmRequestDto,
+  AccountEmailChangeConfirmResponseDto,
+  AccountEmailChangeResendRequestDto,
+  AccountEmailChangeStartRequestDto,
+  AccountEmailChangeStartResponseDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -175,6 +180,24 @@ export class CoreApiClient {
 
   updateAccountProfile(body: AccountProfileUpdateRequestDto): Promise<AccountProfileResponseDto> {
     return this.api.patch<AccountProfileResponseDto>("/account/profile", body);
+  }
+
+  startAccountEmailChange(
+    body: AccountEmailChangeStartRequestDto,
+  ): Promise<AccountEmailChangeStartResponseDto> {
+    return this.api.post<AccountEmailChangeStartResponseDto>("/account/email-change/start", body);
+  }
+
+  resendAccountEmailChangeCode(
+    body: AccountEmailChangeResendRequestDto,
+  ): Promise<AccountEmailChangeStartResponseDto> {
+    return this.api.post<AccountEmailChangeStartResponseDto>("/account/email-change/resend", body);
+  }
+
+  confirmAccountEmailChange(
+    body: AccountEmailChangeConfirmRequestDto,
+  ): Promise<AccountEmailChangeConfirmResponseDto> {
+    return this.api.post<AccountEmailChangeConfirmResponseDto>("/account/email-change/confirm", body);
   }
 
   listWorkspaceVaults(workspaceId: string): Promise<Vault[]> {

@@ -270,7 +270,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
-              <div className={cn(menu ? "pl-4 pr-4 pb-4" : "px-6 py-4 pr-4 max-md:px-4", contentClassName)}>
+              <div className={cn(menu ? "pl-4 pr-4 pb-4" : "p-6 max-md:p-4", contentClassName)}>
                 {children}
               </div>
             </ScrollArea>

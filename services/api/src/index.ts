@@ -1,4 +1,5 @@
 import { AuthService } from "./auth/service.ts";
+import { EmailChangeService } from "./account/email-change.ts";
 import { CapsuleService } from "./capsule/service.ts";
 import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
@@ -27,6 +28,12 @@ async function main(): Promise<void> {
     logger,
   });
   const authService = new AuthService({
+    redis: storage.redis,
+    users: storage.repositories.users,
+    emailTemplates,
+    config,
+  });
+  const emailChangeService = new EmailChangeService({
     redis: storage.redis,
     users: storage.repositories.users,
     emailTemplates,
@@ -94,6 +101,7 @@ async function main(): Promise<void> {
     readyCheck: () => storage.ping(),
     authService,
     registrationService,
+    emailChangeService,
     usersRepository: storage.repositories.users,
     vaultService,
     vaultUnlockBootstrapService,

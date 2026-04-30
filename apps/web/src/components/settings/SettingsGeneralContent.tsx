@@ -36,6 +36,7 @@ import {
   type ThemePreference,
 } from "../../theme/applyTheme";
 import { PAGE_BACKGROUND_GRADIENT_LIGHT } from "../../theme/pageBackgroundGradients";
+import SettingsEmailChangePopup from "./SettingsEmailChangePopup";
 
 const ACCENT_OPTIONS = [
   { id: "a1", light: "hsl(215 5% 9%)", dark: "hsl(215 4% 98%)" },
@@ -151,6 +152,7 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readStoredThemePreference());
   const [accent, setAccent] = useState<AccentId>(() => readAccentFromStorage());
   const [accentTintEnabled, setAccentTintEnabled] = useState(() => readAccentTintEnabled());
+  const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const firstNameDirtyRef = useRef(false);
   const lastNameDirtyRef = useRef(false);
 
@@ -318,7 +320,7 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
           />
         </Row>
         <Row label="Email" description={profile?.email ?? ""}>
-          <Button type="button" disabled>
+          <Button type="button" onClick={() => setEmailChangeOpen(true)}>
             {t("web.settingsPopup.general.changeEmail")}
           </Button>
         </Row>
@@ -442,6 +444,12 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
           />
         </Row>
       </section>
+      <SettingsEmailChangePopup
+        open={emailChangeOpen}
+        currentEmail={profile?.email ?? ""}
+        onClose={() => setEmailChangeOpen(false)}
+        t={t}
+      />
     </div>
   );
 }

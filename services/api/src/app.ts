@@ -49,6 +49,11 @@ import {
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
+  createAccountEmailChangeConfirmRoute,
+  createAccountEmailChangeResendRoute,
+  createAccountEmailChangeStartRoute,
+} from "./routes/account-email-change.ts";
+import {
   createVaultKeyGetRoute,
   createVaultKeyRotateRoute,
   createVaultMemberRoleUpdateRoute,
@@ -64,6 +69,7 @@ import type { VaultSharingService } from "./vault-sharing/service.ts";
 import type { CapsuleService } from "./capsule/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import type { UsersRepository } from "./storage/repositories.ts";
+import type { EmailChangeService } from "./account/email-change.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
@@ -73,6 +79,7 @@ export interface AppDeps {
   vaultUnlockBootstrapService?: VaultUnlockBootstrapService;
   /** When set with `sessionService`, exposes account profile routes (Bearer). */
   usersRepository?: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">;
+  emailChangeService?: EmailChangeService;
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
@@ -173,6 +180,23 @@ export function createApiApp(
       "PATCH",
       "/account/profile",
       createAccountProfileRoute(deps.usersRepository, resolveUserId),
+    );
+  }
+  if (deps.sessionService !== undefined && deps.emailChangeService) {
+    app.route(
+      "POST",
+      "/account/email-change/start",
+      createAccountEmailChangeStartRoute(deps.emailChangeService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/email-change/resend",
+      createAccountEmailChangeResendRoute(deps.emailChangeService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/email-change/confirm",
+      createAccountEmailChangeConfirmRoute(deps.emailChangeService, resolveUserId),
     );
   }
   if (deps.vaultService) {

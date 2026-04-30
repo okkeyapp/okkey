@@ -110,6 +110,25 @@ export class UsersRepository {
     return rows[0] ? mapUser(rows[0]) : null;
   }
 
+  async updateEmail(userId: string, email: string): Promise<UserRecord | null> {
+    try {
+      const rows = await this.db.query<
+        BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
+      >(
+        `
+          UPDATE users
+          SET email = $2::text, updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
+        `,
+        [userId, email],
+      );
+      return rows[0] ? mapUser(rows[0]) : null;
+    } catch (error) {
+      throw toUniqueError(error);
+    }
+  }
+
   /** Email + optional display names for authenticated client UI (not cryptographic). */
   async loadAccountProfile(userId: string): Promise<{
     email: string;
