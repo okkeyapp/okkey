@@ -579,6 +579,7 @@ function ProfileAccountDropdownPanel({
   firstName,
   lastName,
   email,
+  onSettings,
   onLogout,
   settingsLabel = "My settings",
   logoutLabel = "Log out",
@@ -586,6 +587,7 @@ function ProfileAccountDropdownPanel({
   firstName: string;
   lastName: string;
   email: string;
+  onSettings?: () => void;
   onLogout?: () => void;
   settingsLabel?: string;
   logoutLabel?: string;
@@ -609,7 +611,12 @@ function ProfileAccountDropdownPanel({
         </div>
       </div>
       <div className="p-1">
-        <DropdownMenuItem className="cursor-pointer gap-2">
+        <DropdownMenuItem
+          className="cursor-pointer gap-2"
+          onSelect={() => {
+            onSettings?.();
+          }}
+        >
           <NavSettingsIcon />
           <span>{settingsLabel}</span>
         </DropdownMenuItem>
@@ -814,6 +821,7 @@ export type OkkeyAppSidebarAccountMenu = {
   email: string;
   settingsLabel?: string;
   logoutLabel?: string;
+  onSettings?: () => void;
   onLogout: () => void;
 };
 
@@ -825,6 +833,7 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
       email: accountMenu.email.trim(),
       settingsLabel: accountMenu.settingsLabel,
       logoutLabel: accountMenu.logoutLabel,
+      onSettings: accountMenu.onSettings,
       onLogout: accountMenu.onLogout,
     };
   }
@@ -834,6 +843,7 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
     email: DEMO_PROFILE.email,
     settingsLabel: undefined,
     logoutLabel: undefined,
+    onSettings: undefined as (() => void) | undefined,
     onLogout: undefined as (() => void) | undefined,
   };
 }
@@ -1410,6 +1420,7 @@ function OkkeyAppSidebarInner({
               email={footerAccount.email}
               settingsLabel={footerAccount.settingsLabel}
               logoutLabel={footerAccount.logoutLabel}
+              onSettings={footerAccount.onSettings}
               onLogout={footerAccount.onLogout}
             />
           </DropdownMenuContent>

@@ -16,6 +16,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
+import SettingsPopup from "../components/settings/SettingsPopup";
 import {
   clearStoredCurrentWorkspaceId,
   readStoredCurrentWorkspaceId,
@@ -212,24 +213,6 @@ export default function WorkspaceRoutesLayout() {
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
     [workspaceList, resolvedWorkspaceId],
   );
-
-  const accountMenu = useMemo((): OkkeyAppSidebarAccountMenu | undefined => {
-    if (!profile) {
-      return undefined;
-    }
-    const email = profile.email?.trim();
-    if (!email) {
-      return undefined;
-    }
-    return {
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      email,
-      settingsLabel: t("web.accountMenu.settings"),
-      logoutLabel: t("web.accountMenu.logout"),
-      onLogout: logout,
-    };
-  }, [profile, logout, t]);
 
   /**
    * `/items`: at most one of `vault`, `folder`, or `search`. If `search` is set with vault/folder,
@@ -432,34 +415,53 @@ export default function WorkspaceRoutesLayout() {
   const description = currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
 
   return (
-    <WorkspaceSidebarLayout
-      title={title}
-      description={description}
-      mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
-      workspaceNavItems={workspaceNavItems}
-      workspaceNavLink={AppShellNavLink}
-      workspaceNavGroupLabel={t("workspaces.shellTitle")}
-      workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-      workspaceSwitcherDropdown={workspaceSwitcherDropdown}
-      vaultItems={vaultSidebarItems}
-      vaultNavLink={AppShellNavLink}
-      vaultSectionTitle={t("web.nav.vaultsSection")}
-      folderTree={folderTreeForItems}
-      folderNavLink={AppShellNavLink}
-      folderSectionTitle={t("web.nav.foldersSection")}
-      folderEmptyLabel={t("web.nav.foldersEmpty")}
-      accountMenu={accountMenu}
-      footerPlainLinkLabels={{
-        documentation: t("web.nav.documentation"),
-        help: t("web.nav.help"),
+    <SettingsPopup t={t}>
+      {({ openSettingsPopup }) => {
+        const email = profile?.email?.trim();
+        const accountMenu: OkkeyAppSidebarAccountMenu | undefined = email
+          ? {
+              firstName: profile?.firstName,
+              lastName: profile?.lastName,
+              email,
+              settingsLabel: t("web.accountMenu.settings"),
+              logoutLabel: t("web.accountMenu.logout"),
+              onSettings: openSettingsPopup,
+              onLogout: logout,
+            }
+          : undefined;
+
+        return (
+          <WorkspaceSidebarLayout
+            title={title}
+            description={description}
+            mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
+            workspaceNavItems={workspaceNavItems}
+            workspaceNavLink={AppShellNavLink}
+            workspaceNavGroupLabel={t("workspaces.shellTitle")}
+            workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+            workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+            vaultItems={vaultSidebarItems}
+            vaultNavLink={AppShellNavLink}
+            vaultSectionTitle={t("web.nav.vaultsSection")}
+            folderTree={folderTreeForItems}
+            folderNavLink={AppShellNavLink}
+            folderSectionTitle={t("web.nav.foldersSection")}
+            folderEmptyLabel={t("web.nav.foldersEmpty")}
+            accountMenu={accountMenu}
+            footerPlainLinkLabels={{
+              documentation: t("web.nav.documentation"),
+              help: t("web.nav.help"),
+            }}
+            vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
+            folderHeaderPlusAriaLabel={t("web.nav.createFolder")}
+            itemsListVaults={vaults}
+            itemsListVaultsLoaded={vaultsListReady}
+            itemsListFolderTree={folderTreeForItems}
+          >
+            <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
+          </WorkspaceSidebarLayout>
+        );
       }}
-      vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
-      folderHeaderPlusAriaLabel={t("web.nav.createFolder")}
-      itemsListVaults={vaults}
-      itemsListVaultsLoaded={vaultsListReady}
-      itemsListFolderTree={folderTreeForItems}
-    >
-      <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
-    </WorkspaceSidebarLayout>
+    </SettingsPopup>
   );
 }
