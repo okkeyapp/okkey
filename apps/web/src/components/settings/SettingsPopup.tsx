@@ -3,6 +3,7 @@ import type { ReactNode, SVGProps } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { WebMessageValues } from "@okkey/i18n";
+import SettingsGeneralContent from "./SettingsGeneralContent";
 
 const POPUP_QUERY_PARAM = "popup";
 const SETTINGS_POPUP_ID = "settings";
@@ -243,7 +244,11 @@ export default function SettingsPopup({ t, children }: SettingsPopupProps) {
           closeLabel={t("web.settingsPopup.close")}
           onClose={closePopup}
         >
-          <div className="min-h-[420px]" aria-label={heading} />
+          {activeItemId === "main" ? (
+            <SettingsGeneralContent t={t} />
+          ) : (
+            <div className="min-h-[420px]" aria-label={heading} />
+          )}
         </Popup>
       ) : null}
     </>

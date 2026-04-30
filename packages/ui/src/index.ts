@@ -54,6 +54,14 @@ export {
   type MultiSelectProps,
 } from "./components/ui/multi-select.js";
 export {
+  SearchableSelect,
+  SearchableSelectContent,
+  SearchableSelectItem,
+  SearchableSelectTrigger,
+  type SearchableSelectItemProps,
+  type SearchableSelectProps,
+} from "./components/ui/searchable-select.js";
+export {
   PersonalWorkspaceMark,
   WorkspaceTile,
   workspaceTileElevatedShadowClassName,

@@ -6,6 +6,8 @@ export type NormalizedAccountProfileWire = {
   email: string;
   first_name: string | null;
   last_name: string | null;
+  locale: string | null;
+  billing_region: string | null;
   vault_idle_lock_seconds: number;
 };
 
@@ -28,6 +30,8 @@ export function normalizeAccountProfileWire(raw: unknown): NormalizedAccountProf
 
   const first_name = pickTrimmedString(o, "first_name", "firstName");
   const last_name = pickTrimmedString(o, "last_name", "lastName");
+  const locale = pickTrimmedString(o, "locale", "locale");
+  const billing_region = pickTrimmedString(o, "billing_region", "billingRegion");
 
   const idleRaw = o.vault_idle_lock_seconds ?? o.vaultIdleLockSeconds;
   let vault_idle_lock_seconds = 900;
@@ -44,6 +48,8 @@ export function normalizeAccountProfileWire(raw: unknown): NormalizedAccountProf
     email,
     first_name,
     last_name,
+    locale,
+    billing_region,
     vault_idle_lock_seconds,
   };
 }

@@ -80,7 +80,7 @@ export type AuthVaultContextValue = {
   lockVault: () => void;
   touchActivity: () => void;
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
-  updateLocalProfile: (patch: Partial<LocalProfile> & { email?: string }) => void;
+  updateLocalProfile: (patch: { email?: string; firstName?: string | null; lastName?: string | null }) => void;
   tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean>;
   hasVaultBundle: boolean;
   /** While true, split-key is being fetched from the API after an empty local vault bundle. */
@@ -401,12 +401,16 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     [userId],
   );
 
-  const updateLocalProfile = useCallback((patch: Partial<LocalProfile> & { email?: string }) => {
+  const updateLocalProfile = useCallback((patch: { email?: string; firstName?: string | null; lastName?: string | null }) => {
     setProfile((prev) => {
       const next: LocalProfile = {
         email: patch.email ?? prev?.email ?? "",
-        firstName: patch.firstName ?? prev?.firstName,
-        lastName: patch.lastName ?? prev?.lastName,
+        firstName: Object.prototype.hasOwnProperty.call(patch, "firstName")
+          ? patch.firstName ?? undefined
+          : prev?.firstName,
+        lastName: Object.prototype.hasOwnProperty.call(patch, "lastName")
+          ? patch.lastName ?? undefined
+          : prev?.lastName,
       };
       if (next.email) {
         writeLocalProfile(next, userIdRef.current);

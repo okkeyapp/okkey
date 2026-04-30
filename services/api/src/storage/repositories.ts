@@ -115,16 +115,20 @@ export class UsersRepository {
     email: string;
     firstName: string | null;
     lastName: string | null;
+    locale: string | null;
+    billingRegion: string | null;
     vaultIdleLockSeconds: number;
   } | null> {
     const rows = await this.db.query<{
       email: string;
       first_name: string | null;
       last_name: string | null;
+      locale: string | null;
+      billing_region: string | null;
       vault_idle_lock_seconds: number;
     }>(
       `
-        SELECT email, first_name, last_name, vault_idle_lock_seconds
+        SELECT email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds
         FROM users
         WHERE id = $1::uuid
       `,
@@ -138,6 +142,66 @@ export class UsersRepository {
       email: row.email,
       firstName: row.first_name,
       lastName: row.last_name,
+      locale: row.locale,
+      billingRegion: row.billing_region,
+      vaultIdleLockSeconds: row.vault_idle_lock_seconds,
+    };
+  }
+
+  async updateAccountProfile(userId: string, patch: {
+    firstName?: string | null;
+    lastName?: string | null;
+    locale?: string | null;
+    billingRegion?: string | null;
+  }): Promise<{
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    locale: string | null;
+    billingRegion: string | null;
+    vaultIdleLockSeconds: number;
+  } | null> {
+    const rows = await this.db.query<{
+      email: string;
+      first_name: string | null;
+      last_name: string | null;
+      locale: string | null;
+      billing_region: string | null;
+      vault_idle_lock_seconds: number;
+    }>(
+      `
+        UPDATE users
+        SET
+          first_name = CASE WHEN $2::boolean THEN $3::text ELSE first_name END,
+          last_name = CASE WHEN $4::boolean THEN $5::text ELSE last_name END,
+          locale = CASE WHEN $6::boolean THEN $7::text ELSE locale END,
+          billing_region = CASE WHEN $8::boolean THEN $9::text ELSE billing_region END,
+          updated_at = now()
+        WHERE id = $1::uuid
+        RETURNING email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds
+      `,
+      [
+        userId,
+        Object.prototype.hasOwnProperty.call(patch, "firstName"),
+        patch.firstName ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "lastName"),
+        patch.lastName ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "locale"),
+        patch.locale ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "billingRegion"),
+        patch.billingRegion ?? null,
+      ],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      email: row.email,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      locale: row.locale,
+      billingRegion: row.billing_region,
       vaultIdleLockSeconds: row.vault_idle_lock_seconds,
     };
   }

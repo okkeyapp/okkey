@@ -4,6 +4,10 @@ import {
   MultiSelectContent,
   MultiSelectItem,
   MultiSelectTrigger,
+  SearchableSelect,
+  SearchableSelectContent,
+  SearchableSelectItem,
+  SearchableSelectTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -23,6 +27,7 @@ export default function DevUISelectPage() {
   const [multiFruits, setMultiFruits] = useState<string[]>([]);
   const [multiSummary, setMultiSummary] = useState<string[]>([]);
   const [multiUsers, setMultiUsers] = useState<string[]>([]);
+  const [searchUser, setSearchUser] = useState("u2");
 
   return (
     <div className="mx-auto max-w-4xl space-y-10">
@@ -220,6 +225,39 @@ export default function DevUISelectPage() {
         </div>
 
         <div className="space-y-4 rounded-lg border border-border bg-card p-6 text-card-foreground">
+          <div className="flex max-w-md flex-col gap-2">
+            <label htmlFor="dev-ui-searchable-users" className="text-sm font-medium">
+              User (search)
+            </label>
+            <SearchableSelect
+              value={searchUser}
+              onValueChange={setSearchUser}
+              selectedLabel={MOCK_USERS.find((u) => u.id === searchUser)?.email}
+              placeholder="Select user"
+              searchPlaceholder="Name, surname, or email..."
+              searchEmptyMessage="No users found"
+            >
+              <SearchableSelectTrigger id="dev-ui-searchable-users" />
+              <SearchableSelectContent className="min-w-[min(100vw-2rem,22rem)]">
+                {MOCK_USERS.map((u) => (
+                  <SearchableSelectItem
+                    key={u.id}
+                    value={u.id}
+                    label={u.email}
+                    searchText={`${u.first} ${u.last} ${u.email}`}
+                    className="items-start py-2"
+                  >
+                    <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
+                      <span className="font-medium text-foreground">
+                        {u.first} {u.last}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{u.email}</span>
+                    </span>
+                  </SearchableSelectItem>
+                ))}
+              </SearchableSelectContent>
+            </SearchableSelect>
+          </div>
           <div className="flex max-w-md flex-col gap-2">
             <label htmlFor="dev-ui-multiselect-users" className="text-sm font-medium">
               Users (search + chips by email)

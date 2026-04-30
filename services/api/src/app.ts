@@ -71,8 +71,8 @@ export interface AppDeps {
   registrationService?: RegistrationService;
   vaultService?: VaultService;
   vaultUnlockBootstrapService?: VaultUnlockBootstrapService;
-  /** When set with `sessionService`, exposes `GET /account/profile` (Bearer). */
-  usersRepository?: Pick<UsersRepository, "loadAccountProfile">;
+  /** When set with `sessionService`, exposes account profile routes (Bearer). */
+  usersRepository?: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">;
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
@@ -166,6 +166,11 @@ export function createApiApp(
   if (deps.sessionService !== undefined && deps.usersRepository) {
     app.route(
       "GET",
+      "/account/profile",
+      createAccountProfileRoute(deps.usersRepository, resolveUserId),
+    );
+    app.route(
+      "PATCH",
       "/account/profile",
       createAccountProfileRoute(deps.usersRepository, resolveUserId),
     );

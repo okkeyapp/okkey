@@ -522,8 +522,18 @@ export interface AccountProfileResponseDto {
   email: string;
   first_name: string | null;
   last_name: string | null;
+  locale: string | null;
+  billing_region: string | null;
   /** Inactivity timeout before vault locks on device (seconds); server default 900 (15 min). */
   vault_idle_lock_seconds: number;
+}
+
+/** `PATCH /account/profile` (Bearer) — non-sensitive account preferences. */
+export interface AccountProfileUpdateRequestDto {
+  first_name?: string | null;
+  last_name?: string | null;
+  locale?: string | null;
+  billing_region?: string | null;
 }
 
 /** `GET /vault/unlock-bootstrap?device_fingerprint=...` (Bearer) — split-key material to re-hydrate the client. */

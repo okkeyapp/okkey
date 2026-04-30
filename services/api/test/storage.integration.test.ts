@@ -44,6 +44,23 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
   await ensureVaultCryptoVersionColumn(db);
   await ensureUserProfileNameColumns(db);
   await ensureVaultIdleLockColumn(db);
+  await ensureUserBillingRegionColumn(db);
+}
+
+async function ensureUserBillingRegionColumn(db: PostgresDatabase): Promise<void> {
+  const columns = await db.query<{ column_name: string }>(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `,
+  );
+  const names = new Set(columns.map((column) => column.column_name));
+  if (!names.has("billing_region")) {
+    const migration0011 = path.resolve(__dirname, "../migrations/0011_user_billing_region.sql");
+    await db.query(readFileSync(migration0011, "utf8"));
+  }
 }
 
 async function ensureVaultIdleLockColumn(db: PostgresDatabase): Promise<void> {

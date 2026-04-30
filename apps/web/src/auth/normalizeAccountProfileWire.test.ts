@@ -15,12 +15,16 @@ describe("normalizeAccountProfileWire", () => {
         email: " a@b.co ",
         first_name: "Ann",
         last_name: "Bee",
+        locale: "ru",
+        billing_region: "DE",
         vault_idle_lock_seconds: 1200,
       }),
     ).toEqual({
       email: "a@b.co",
       first_name: "Ann",
       last_name: "Bee",
+      locale: "ru",
+      billing_region: "DE",
       vault_idle_lock_seconds: 1200,
     });
   });
@@ -31,12 +35,15 @@ describe("normalizeAccountProfileWire", () => {
         email: "x@y.z",
         firstName: "Foo",
         lastName: "Bar",
+        billingRegion: "US",
         vaultIdleLockSeconds: 600,
       }),
     ).toEqual({
       email: "x@y.z",
       first_name: "Foo",
       last_name: "Bar",
+      locale: null,
+      billing_region: "US",
       vault_idle_lock_seconds: 600,
     });
   });
@@ -52,6 +59,8 @@ describe("normalizeAccountProfileWire", () => {
       email: "",
       first_name: null,
       last_name: null,
+      locale: null,
+      billing_region: null,
       vault_idle_lock_seconds: 900,
     });
   });

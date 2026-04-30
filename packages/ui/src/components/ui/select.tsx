@@ -203,7 +203,7 @@ SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayNam
 const SelectContent = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => {
+>(({ className, children, position = "popper", onWheel, ...props }, ref) => {
   const { triggerVariant } = React.useContext(SelectUiContext);
 
   return (
@@ -211,7 +211,7 @@ const SelectContent = React.forwardRef<
       <SelectPrimitive.Content
         ref={ref}
         className={cn(
-          "relative z-50 max-h-96 overflow-hidden rounded-md border border-input bg-popover p-0 text-popover-foreground shadow-md",
+          "relative z-50 overflow-hidden rounded-md border border-input bg-popover p-0 text-popover-foreground shadow-md",
           triggerVariant === "inline"
             ? "min-w-[180px] w-max"
             : "w-[var(--radix-select-trigger-width)] min-w-[max(var(--radix-select-trigger-width),180px)]",
@@ -219,19 +219,33 @@ const SelectContent = React.forwardRef<
         )}
         position={position}
         sideOffset={2}
+        onWheel={(event) => {
+          onWheel?.(event);
+          if (event.defaultPrevented) {
+            return;
+          }
+          const viewport = event.currentTarget.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+          if (!viewport) {
+            return;
+          }
+          const before = viewport.scrollTop;
+          viewport.scrollTop += event.deltaY;
+          if (viewport.scrollTop !== before) {
+            event.preventDefault();
+          }
+        }}
         {...props}
       >
         <ScrollArea className="w-full max-h-[min(15rem,var(--radix-select-content-available-height,80vh))] shrink-0">
           <SelectPrimitive.Viewport
             className="w-full overflow-x-hidden p-1"
-            /* Let ScrollArea own scrolling; Radix defaults would double-scroll */
             style={{ flex: "none", overflow: "visible" }}
           >
             {children}
           </SelectPrimitive.Viewport>
         </ScrollArea>
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
   );
 });
 SelectContent.displayName = SelectPrimitive.Content.displayName;

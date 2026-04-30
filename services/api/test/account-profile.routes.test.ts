@@ -57,18 +57,36 @@ function createSessionServiceStub(): SessionService {
   } as unknown as SessionService;
 }
 
-function createUsersRepositoryStub(): Pick<UsersRepository, "loadAccountProfile"> {
+function createUsersRepositoryStub(): Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile"> {
+  let state = {
+    email: "user@example.com",
+    firstName: "Ann" as string | null,
+    lastName: "Bee" as string | null,
+    locale: "en" as string | null,
+    billingRegion: "US" as string | null,
+    vaultIdleLockSeconds: 900,
+  };
   return {
     async loadAccountProfile(userId: string) {
       if (userId !== "u1") {
         return null;
       }
-      return {
-        email: "user@example.com",
-        firstName: "Ann",
-        lastName: "Bee",
-        vaultIdleLockSeconds: 900,
+      return state;
+    },
+    async updateAccountProfile(userId, patch) {
+      if (userId !== "u1") {
+        return null;
+      }
+      state = {
+        ...state,
+        firstName: Object.prototype.hasOwnProperty.call(patch, "firstName") ? patch.firstName ?? null : state.firstName,
+        lastName: Object.prototype.hasOwnProperty.call(patch, "lastName") ? patch.lastName ?? null : state.lastName,
+        locale: Object.prototype.hasOwnProperty.call(patch, "locale") ? patch.locale ?? null : state.locale,
+        billingRegion: Object.prototype.hasOwnProperty.call(patch, "billingRegion")
+          ? patch.billingRegion ?? null
+          : state.billingRegion,
       };
+      return state;
     },
   };
 }
@@ -77,9 +95,10 @@ async function dispatch(input: {
   method: string;
   url: string;
   headers?: Record<string, string>;
+  body?: unknown;
   vaultService?: VaultService;
   sessionService?: SessionService;
-  usersRepository?: Pick<UsersRepository, "loadAccountProfile">;
+  usersRepository?: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">;
 }) {
   const app = createApiApp(config, loggerStub(), {
     vaultService: input.vaultService ?? createVaultServiceStub(),
@@ -90,6 +109,7 @@ async function dispatch(input: {
     method: input.method,
     url: input.url,
     headers: input.headers ?? {},
+    body: input.body,
   } as IncomingMessage;
   const res = new MockResponse();
 
@@ -133,10 +153,58 @@ test("GET /account/profile with auth returns profile", async () => {
     email: string;
     first_name: string | null;
     last_name: string | null;
+    locale: string | null;
+    billing_region: string | null;
     vault_idle_lock_seconds: number;
   };
   assert.equal(payload.email, "user@example.com");
   assert.equal(payload.first_name, "Ann");
   assert.equal(payload.last_name, "Bee");
+  assert.equal(payload.locale, "en");
+  assert.equal(payload.billing_region, "US");
   assert.equal(payload.vault_idle_lock_seconds, 900);
+});
+
+test("PATCH /account/profile updates display preferences", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: {
+      first_name: " Sasha ",
+      last_name: "",
+      locale: "ru",
+      billing_region: "de",
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as {
+    first_name: string | null;
+    last_name: string | null;
+    locale: string | null;
+    billing_region: string | null;
+  };
+  assert.equal(payload.first_name, "Sasha");
+  assert.equal(payload.last_name, null);
+  assert.equal(payload.locale, "ru");
+  assert.equal(payload.billing_region, "DE");
+});
+
+test("PATCH /account/profile rejects invalid payload", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: {
+      locale: "fr",
+      billing_region: "USA",
+    },
+  });
+
+  assert.equal(res.statusCode, 400);
 });

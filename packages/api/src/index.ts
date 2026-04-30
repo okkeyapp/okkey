@@ -20,6 +20,7 @@ import type {
   VaultUnlockBootstrapResponseDto,
   Workspace,
   AccountProfileResponseDto,
+  AccountProfileUpdateRequestDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -65,6 +66,10 @@ export class ApiClient {
 
   async post<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
     return this.request<T>("POST", path, body, options);
+  }
+
+  async patch<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
+    return this.request<T>("PATCH", path, body, options);
   }
 
   async request<T>(
@@ -166,6 +171,10 @@ export class CoreApiClient {
 
   getAccountProfile(): Promise<AccountProfileResponseDto> {
     return this.api.get<AccountProfileResponseDto>("/account/profile");
+  }
+
+  updateAccountProfile(body: AccountProfileUpdateRequestDto): Promise<AccountProfileResponseDto> {
+    return this.api.patch<AccountProfileResponseDto>("/account/profile", body);
   }
 
   listWorkspaceVaults(workspaceId: string): Promise<Vault[]> {
