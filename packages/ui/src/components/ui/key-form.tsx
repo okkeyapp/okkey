@@ -13,9 +13,8 @@ import { ScrollArea } from "./scroll-area.js";
 
 function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
-      <path d="M5 12h14" />
-      <path d="M12 5v14" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M3.33337 7.99992H12.6667M8.00004 3.33325V12.6666" stroke="#0A0A0A" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
