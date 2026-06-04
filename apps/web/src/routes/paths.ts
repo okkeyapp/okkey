@@ -149,6 +149,7 @@ export type DevUiGallerySegment =
   | "spinner"
   | "workspace-tile"
   | "popup"
+  | "key-form"
   | "alert"
   | "tooltip"
   | "favicon";

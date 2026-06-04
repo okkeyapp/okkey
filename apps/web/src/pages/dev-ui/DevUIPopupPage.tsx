@@ -215,6 +215,7 @@ export default function DevUIPopupPage() {
           <Popup
             id={CAPSULE_POPUP_ID}
             header="Новая капсула"
+            description="Настройте содержимое и ограничения доступа перед созданием ссылки."
             closeLabel="Закрыть"
             onClose={closePopup}
             footer={
@@ -235,6 +236,7 @@ export default function DevUIPopupPage() {
             id={SETTINGS_POPUP_ID}
             width={800}
             header={activeSettingsContent.heading}
+            description={activeSettingsContent.description}
             menu={settingsMenu}
             closeLabel="Закрыть"
             onClose={closePopup}
@@ -250,7 +252,11 @@ export default function DevUIPopupPage() {
             header={
               <div className="min-w-0">
                 <h3 className="truncate text-lg font-semibold leading-7 text-foreground">Карточка сейфа</h3>
-                <p className="truncate text-sm text-muted-foreground">Настройки доступа и видимости</p>
+              </div>
+            }
+            description={
+              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm leading-5 text-muted-foreground">
+                Настройки доступа и видимости
               </div>
             }
             closeLabel="Закрыть"

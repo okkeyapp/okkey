@@ -250,9 +250,16 @@ export default function SettingsEmailChangePopup({
     resendUntil > Date.now() ? Math.max(1, Math.ceil((resendUntil - Date.now()) / 1000)) : 0;
   const resendDisabled = resendWaitSec > 0;
   const title = t("web.settingsPopup.emailChange.title");
+  const description = step === "email" ? t("web.settingsPopup.emailChange.currentEmail", { email: currentEmail }) : undefined;
 
   return (
-    <Popup width={440} header={title} closeLabel={t("web.settingsPopup.close")} onClose={onClose}>
+    <Popup
+      width={440}
+      header={title}
+      description={description}
+      closeLabel={t("web.settingsPopup.close")}
+      onClose={onClose}
+    >
       {step === "email" ? (
         <form onSubmit={handleEmailSubmit} className="flex flex-col gap-5" noValidate>
           {error ? (
@@ -262,9 +269,6 @@ export default function SettingsEmailChangePopup({
             </Alert>
           ) : null}
           <div className="flex flex-col gap-2">
-            <p className="text-sm leading-5 text-muted-foreground">
-              {t("web.settingsPopup.emailChange.currentEmail", { email: currentEmail })}
-            </p>
             <label htmlFor="settings-email-change-email" className="text-sm font-medium text-foreground">
               {t("web.settingsPopup.emailChange.emailLabel")}
             </label>

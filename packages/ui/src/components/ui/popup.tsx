@@ -32,6 +32,7 @@ export type PopupMenu = {
 
 export type PopupProps = Omit<React.ComponentPropsWithoutRef<"div">, "title"> & {
   header: React.ReactNode;
+  description?: React.ReactNode;
   footer?: React.ReactNode;
   menu?: PopupMenu;
   width?: PopupWidth;
@@ -72,6 +73,14 @@ function PopupHeader({ header }: { header: React.ReactNode }) {
   }
 
   return <>{header}</>;
+}
+
+function PopupDescription({ description }: { description: React.ReactNode }) {
+  if (typeof description === "string") {
+    return <p className="text-sm leading-5 text-muted-foreground">{description}</p>;
+  }
+
+  return <>{description}</>;
 }
 
 function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar" | "dropdown" }) {
@@ -163,6 +172,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       panelClassName,
       contentClassName,
       header,
+      description,
       footer,
       menu,
       width = 720,
@@ -267,6 +277,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                   <PopupHeader header={header} />
                 </div>
               </div>
+              {description ? <PopupDescription description={description} /> : null}
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
