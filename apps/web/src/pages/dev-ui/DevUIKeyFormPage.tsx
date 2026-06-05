@@ -117,11 +117,13 @@ function ActionButton({
   label,
   children,
   destructive = false,
+  sectionVariant,
   onClick,
 }: {
   label: string;
   children: ReactNode;
   destructive?: boolean;
+  sectionVariant: DemoSectionVariant;
   onClick?: () => void;
 }) {
   return (
@@ -129,33 +131,16 @@ function ActionButton({
       type="button"
       variant="ghost"
       size="iconSm"
-      className={destructive ? "size-6 min-h-6 min-w-6 text-destructive hover:text-destructive" : "size-6 min-h-6 min-w-6 text-muted-foreground hover:text-foreground"}
+      className={cn(
+        destructive ? "size-6 min-h-6 min-w-6 text-destructive hover:text-destructive" : "size-6 min-h-6 min-w-6 text-muted-foreground hover:text-foreground",
+        sectionVariant === "additional" && "hover:!bg-card",
+      )}
       aria-label={label}
       onClick={onClick}
     >
       {children}
     </Button>
   );
-}
-
-function pointOnCircle(center: number, radius: number, angleDegrees: number) {
-  const angleRadians = (angleDegrees * Math.PI) / 180;
-  return {
-    x: center + radius * Math.cos(angleRadians),
-    y: center + radius * Math.sin(angleRadians),
-  };
-}
-
-function pieSegmentPath(index: number, totalSegments: number) {
-  const center = 8;
-  const radius = 6;
-  const segmentDegrees = 360 / totalSegments;
-  const startAngle = -90 + index * segmentDegrees + 0.35;
-  const endAngle = -90 + (index + 1) * segmentDegrees - 0.35;
-  const start = pointOnCircle(center, radius, startAngle);
-  const end = pointOnCircle(center, radius, endAngle);
-
-  return `M ${center} ${center} L ${start.x} ${start.y} A ${radius} ${radius} 0 0 1 ${end.x} ${end.y} Z`;
 }
 
 function PieIndicator({
@@ -171,6 +156,7 @@ function PieIndicator({
   const safeTotal = Math.max(1, total);
   const filled = Math.min(Math.max(value, 0), safeTotal);
   const filledSegments = Math.round((filled / safeTotal) * totalSegments);
+  const degrees = (filledSegments / totalSegments) * 360;
   const colorByTone = {
     success: "#65A30D",
     warning: "#D97706",
@@ -180,13 +166,14 @@ function PieIndicator({
 
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" data-value={value} data-total={total} data-filled-segments={filledSegments} aria-hidden>
-      {Array.from({ length: totalSegments }, (_, index) => (
-        <path
-          key={index}
-          d={pieSegmentPath(index, totalSegments)}
-          fill={index < filledSegments ? color : "hsl(var(--border))"}
+      <foreignObject x="2" y="2" width="12" height="12">
+        <div
+          className="size-3 rounded-full"
+          style={{
+            backgroundImage: `conic-gradient(from 0deg, ${color} 0deg ${degrees}deg, hsl(var(--border)) ${degrees}deg 360deg)`,
+          }}
         />
-      ))}
+      </foreignObject>
       <path d="M2 8C2 8.78793 2.15519 9.56815 2.45672 10.2961C2.75825 11.0241 3.20021 11.6855 3.75736 12.2426C4.31451 12.7998 4.97595 13.2417 5.7039 13.5433C6.43185 13.8448 7.21207 14 8 14C8.78793 14 9.56815 13.8448 10.2961 13.5433C11.0241 13.2417 11.6855 12.7998 12.2426 12.2426C12.7998 11.6855 13.2417 11.0241 13.5433 10.2961C13.8448 9.56815 14 8.78793 14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.4087 2 4.88258 2.63214 3.75736 3.75736C2.63214 4.88258 2 6.4087 2 8Z" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -329,19 +316,20 @@ type SortableFieldProps = {
   section: DemoSection;
   field: DemoField;
   mode: KeyFormMode;
+  reorderable: boolean;
   onLabelChange: (label: string) => void;
   onValueChange: (value: string) => void;
   actions: ReactNode;
 };
 
-function SortableField({ section, field, mode, onLabelChange, onValueChange, actions }: SortableFieldProps) {
+function SortableField({ section, field, mode, reorderable, onLabelChange, onValueChange, actions }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
     data: {
       type: "field",
       sectionId: section.id,
     } satisfies SortableItemData,
-    disabled: mode !== "edit",
+    disabled: mode !== "edit" || !reorderable,
   });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -356,15 +344,16 @@ function SortableField({ section, field, mode, onLabelChange, onValueChange, act
       mode={mode}
       editableLabel={field.editableLabel}
       editableValue={typeof field.value === "string"}
-      reorderable
+      reorderable={reorderable}
       meta={field.type === "password" ? null : metaForField(field.type, section.variant)}
       actions={actions}
       className={cn(isDragging && "relative z-10 opacity-0")}
       style={style}
       valueClassName={field.type === "note" ? "whitespace-normal" : undefined}
+      controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
-      dragHandleProps={mode === "edit" ? { ...attributes, ...listeners } : undefined}
+      dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
   );
 }
@@ -586,17 +575,17 @@ export default function DevUIKeyFormPage() {
       <>
         {field.type === "password" ? metaForField(field.type, section.variant) : null}
         {field.secret || field.type === "totp" ? (
-          <ActionButton label="Show value">
+          <ActionButton label="Show value" sectionVariant={section.variant}>
             <EyeIcon className="size-4" />
           </ActionButton>
         ) : null}
         {canEdit && field.type === "url" ? (
-          <ActionButton label="Field settings">
+          <ActionButton label="Field settings" sectionVariant={section.variant}>
             <SettingsIcon className="size-4" />
           </ActionButton>
         ) : null}
         {canEdit ? (
-          <ActionButton label="Delete field" destructive onClick={() => removeField(section.id, field.id)}>
+          <ActionButton label="Delete field" destructive sectionVariant={section.variant} onClick={() => removeField(section.id, field.id)}>
             <TrashIcon className="size-4" />
           </ActionButton>
         ) : null}
@@ -605,12 +594,15 @@ export default function DevUIKeyFormPage() {
   }
 
   function renderField(section: DemoSection, field: DemoField) {
+    const canReorderField = !(section.variant === "primary" && !section.title);
+
     return (
       <SortableField
         key={field.id}
         section={section}
         field={field}
         mode={mode}
+        reorderable={canReorderField}
         actions={renderActions(section, field)}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
@@ -636,6 +628,7 @@ export default function DevUIKeyFormPage() {
         }
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
         valueClassName={field.type === "note" ? "whitespace-normal" : undefined}
+        controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       />
     );
   }

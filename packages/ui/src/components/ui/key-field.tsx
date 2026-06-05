@@ -66,6 +66,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   actions?: React.ReactNode;
   labelClassName?: string;
   valueClassName?: string;
+  controlButtonClassName?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
 };
 
@@ -86,6 +87,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       actions,
       labelClassName,
       valueClassName,
+      controlButtonClassName,
       dragHandleProps,
       draggable,
       onDragStart,
@@ -181,7 +183,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 type="button"
                 variant="ghost"
                 size="iconSm"
-                className="size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground"
+                className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
                 onClick={() => setIsEditingLabel(true)}
                 aria-label="Редактировать лейбл поля"
               >
@@ -191,7 +193,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className={cn("min-w-0 text-sm leading-5 text-foreground", valueClassName)}>
+            <div className={cn("min-h-5 min-w-0 text-sm leading-5 text-foreground", valueClassName)}>
               {canEditValue ? (
                 <input
                   value={draftValue}

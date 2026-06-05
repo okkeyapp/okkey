@@ -114,7 +114,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
       >
         <div
           className={cn(
-            "overflow-hidden rounded-xl",
+            "rounded-xl",
             variant === "primary" && "border border-border bg-card text-card-foreground",
             variant === "additional" && "bg-secondary text-secondary-foreground",
           )}
@@ -134,60 +134,72 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                   <GripIcon className="size-4" />
                 </span>
               ) : null}
-              {isEditingTitle ? (
-                <input
-                  value={draftTitle}
-                  placeholder="Указать заголовок"
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  onBlur={commitTitle}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitTitle();
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      setDraftTitle(title ?? "");
-                      setIsEditingTitle(false);
-                    }
-                  }}
-                  autoFocus
-                  className="h-5 min-w-0 flex-1 bg-transparent p-0 text-sm font-semibold leading-5 text-foreground outline-none"
-                />
-              ) : (
-                <h3
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-foreground",
-                    !title && "text-muted-foreground",
-                  )}
-                >
-                  {title || "Указать заголовок"}
-                </h3>
-              )}
-              {canEditTitle && !isEditingTitle ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="iconSm"
-                  className="size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsEditingTitle(true)}
-                  aria-label="Редактировать название секции"
-                >
-                  <PencilIcon className="size-3.5" />
-                </Button>
-              ) : null}
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                {isEditingTitle ? (
+                  <input
+                    value={draftTitle}
+                    placeholder="Указать заголовок"
+                    onChange={(event) => setDraftTitle(event.target.value)}
+                    onBlur={commitTitle}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitTitle();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setDraftTitle(title ?? "");
+                        setIsEditingTitle(false);
+                      }
+                    }}
+                    autoFocus
+                    className="h-5 min-w-0 flex-1 bg-transparent p-0 text-sm font-semibold leading-5 text-foreground outline-none"
+                  />
+                ) : (
+                  <h3
+                    className={cn(
+                      "min-w-0 truncate text-sm font-semibold leading-5 text-foreground",
+                      !title && "text-muted-foreground",
+                    )}
+                  >
+                    {title || "Указать заголовок"}
+                  </h3>
+                )}
+                {canEditTitle && !isEditingTitle ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="iconSm"
+                    className={cn(
+                      "size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground",
+                      variant === "additional" && "hover:!bg-card",
+                    )}
+                    onClick={() => setIsEditingTitle(true)}
+                    aria-label="Редактировать название секции"
+                  >
+                    <PencilIcon className="size-3.5" />
+                  </Button>
+                ) : null}
+              </div>
               {headerActions}
             </div>
           ) : null}
 
-          <div className={cn(!canAddField && "[&>*:last-child]:border-b-0")}>{children}</div>
+          <div
+            className={cn(
+              !shouldShowHeader && "[&>*:first-child]:rounded-t-xl",
+              !canAddField && "[&>*:last-child]:rounded-b-xl [&>*:last-child]:border-b-0",
+            )}
+          >
+            {children}
+          </div>
 
           {canAddField && singleAddFieldType ? (
             <Button
               type="button"
               variant="secondary"
               className={cn(
-                "-mt-px h-8 w-full rounded-none border-t border-border bg-secondary px-3 font-medium text-foreground shadow-none",
+                "h-8 w-full rounded-b-xl rounded-t-none bg-secondary px-3 font-medium text-foreground shadow-none",
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
               )}
               onClick={() => onAddField?.(singleAddFieldType)}
@@ -202,7 +214,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                   type="button"
                   variant="secondary"
                   className={cn(
-                    "-mt-px h-8 w-full rounded-none border-t border-border bg-secondary px-3 font-medium text-foreground shadow-none",
+                    "h-8 w-full rounded-b-xl rounded-t-none bg-secondary px-3 font-medium text-foreground shadow-none",
                     "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                   )}
                 >
