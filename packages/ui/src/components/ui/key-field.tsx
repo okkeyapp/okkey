@@ -93,12 +93,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     ref,
   ) => {
     const [isEditingLabel, setIsEditingLabel] = React.useState(false);
+    const [isValueFocused, setIsValueFocused] = React.useState(false);
     const [draftLabel, setDraftLabel] = React.useState(label);
     const stringValue = typeof value === "string" ? value : undefined;
     const [draftValue, setDraftValue] = React.useState(stringValue ?? "");
     const canEditLabel = mode === "edit" && editableLabel;
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
+    const isFieldActive = isEditingLabel || isValueFocused;
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -122,7 +124,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       <div
         ref={ref}
         className={cn(
-          "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-y border-border px-4 py-2",
+          "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
+          isFieldActive && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
           className,
         )}
         draggable={canReorder ? draggable : false}
@@ -197,6 +200,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     setDraftValue(event.target.value);
                     onValueChange?.(event.target.value);
                   }}
+                  onFocus={() => setIsValueFocused(true)}
+                  onBlur={() => setIsValueFocused(false)}
                   className="h-5 min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
                 />
               ) : (

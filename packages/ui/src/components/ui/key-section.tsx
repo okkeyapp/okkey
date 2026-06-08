@@ -120,7 +120,12 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
           )}
         >
           {shouldShowHeader ? (
-            <div className="flex min-w-0 items-center gap-1.5 border-b border-border px-4 py-3">
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 rounded-t-xl border border-x-transparent border-b-border border-t-transparent px-4 py-3",
+                isEditingTitle && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+              )}
+            >
               {canReorder ? (
                 <span
                   className={cn(
@@ -199,8 +204,9 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
               type="button"
               variant="secondary"
               className={cn(
-                "h-8 w-full rounded-b-xl rounded-t-none bg-secondary px-3 font-medium text-foreground shadow-none",
+                "h-8 w-full rounded-b-xl rounded-t-none border border-transparent bg-secondary px-3 font-medium text-foreground shadow-none",
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
+                "focus:border-accent focus-visible:border-accent",
               )}
               onClick={() => onAddField?.(singleAddFieldType)}
             >
@@ -214,8 +220,9 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                   type="button"
                   variant="secondary"
                   className={cn(
-                    "h-8 w-full rounded-b-xl rounded-t-none bg-secondary px-3 font-medium text-foreground shadow-none",
+                    "h-8 w-full rounded-b-xl rounded-t-none border border-transparent bg-secondary px-3 font-medium text-foreground shadow-none",
                     "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
+                    "focus:border-accent focus-visible:border-accent",
                   )}
                 >
                   <PlusIcon className="size-4" />
