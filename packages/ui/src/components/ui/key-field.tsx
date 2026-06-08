@@ -48,19 +48,21 @@ function GripIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-function CopySuccessIcon(props: React.SVGProps<SVGSVGElement>) {
-  const clipPathId = React.useId();
-
+function CopyIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <g clipPath={`url(#${clipPathId})`}>
-        <path d="M6.00016 8.00016L7.3335 9.3335L10.0002 6.66683M14.6668 8.00016C14.6668 11.6821 11.6821 14.6668 8.00016 14.6668C4.31826 14.6668 1.3335 11.6821 1.3335 8.00016C1.3335 4.31826 4.31826 1.3335 8.00016 1.3335C11.6821 1.3335 14.6668 4.31826 14.6668 8.00016Z" stroke="#16A34A" strokeLinecap="round" strokeLinejoin="round" />
-      </g>
-      <defs>
-        <clipPath id={clipPathId}>
-          <rect width="16" height="16" fill="white" />
-        </clipPath>
-      </defs>
+      <path d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.67467 11.158C2.47023 11.0415 2.30018 10.873 2.18172 10.6697C2.06325 10.4663 2.00057 10.2353 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CopySuccessIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.67467 11.158C2.47 11.0417 2.29977 10.8733 2.18127 10.6699C2.06277 10.4665 2.00023 10.2354 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.33398 9.33333L8.66732 10.6667L11.334 8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -80,6 +82,9 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   copyValue?: string;
   copyLabel?: string;
   copySuccessLabel?: string | null;
+  copyIcon?: React.ReactNode;
+  copySuccessIcon?: React.ReactNode;
+  copyIconPosition?: "start" | "end";
   copyHoverClassName?: string;
   copyHoverActiveClassName?: string;
   copyOverlayClassName?: string;
@@ -111,6 +116,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyValue,
       copyLabel = "Copy",
       copySuccessLabel = "Coped",
+      copyIcon,
+      copySuccessIcon,
+      copyIconPosition = "start",
       copyHoverClassName,
       copyHoverActiveClassName,
       copyOverlayClassName,
@@ -144,6 +152,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canCopyValue = mode === "view" && typeof copyText === "string" && copyText.length > 0;
     const [isCopied, setIsCopied] = React.useState(false);
     const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const currentCopyIcon = isCopied
+      ? copySuccessIcon ?? <CopySuccessIcon className="size-4" />
+      : copyIcon ?? <CopyIcon className="size-4" />;
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -271,8 +282,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 copyTextClassName ?? "bg-card",
               )}
             >
-              {isCopied ? <CopySuccessIcon className="size-4" /> : null}
+              {copyIconPosition === "start" ? currentCopyIcon : null}
               {isCopied ? copySuccessLabel : copyLabel}
+              {copyIconPosition === "end" ? currentCopyIcon : null}
             </span>
           </button>
         ) : null}
