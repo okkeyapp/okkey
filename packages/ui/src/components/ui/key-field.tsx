@@ -88,12 +88,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       draggable,
       onDragStart,
       onDragEnd,
+      onClick,
       ...props
     },
     ref,
   ) => {
     const [isEditingLabel, setIsEditingLabel] = React.useState(false);
     const [isValueFocused, setIsValueFocused] = React.useState(false);
+    const valueInputRef = React.useRef<HTMLInputElement>(null);
     const [draftLabel, setDraftLabel] = React.useState(label);
     const stringValue = typeof value === "string" ? value : undefined;
     const [draftValue, setDraftValue] = React.useState(stringValue ?? "");
@@ -120,6 +122,31 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
     }
 
+    function handleFieldClick(event: React.MouseEvent<HTMLDivElement>) {
+      onClick?.(event);
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target?.closest(
+          "button,input,textarea,select,a,[role='button'],[data-key-field-drag-handle]",
+        )
+      ) {
+        return;
+      }
+
+      if (canEditValue) {
+        valueInputRef.current?.focus();
+        return;
+      }
+
+      if (canEditLabel) {
+        setIsEditingLabel(true);
+      }
+    }
+
     return (
       <div
         ref={ref}
@@ -131,6 +158,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         draggable={canReorder ? draggable : false}
         onDragStart={canReorder ? onDragStart : undefined}
         onDragEnd={canReorder ? onDragEnd : undefined}
+        onClick={handleFieldClick}
         {...props}
       >
         {canReorder ? (
@@ -141,6 +169,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               dragHandleProps?.className,
             )}
             aria-hidden
+            data-key-field-drag-handle
             {...dragHandleProps}
           >
             <GripIcon className="size-4" />
@@ -195,6 +224,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             <div className={cn("min-h-5 min-w-0 text-sm leading-5 text-foreground", valueClassName)}>
               {canEditValue ? (
                 <input
+                  ref={valueInputRef}
                   value={draftValue}
                   onChange={(event) => {
                     setDraftValue(event.target.value);
