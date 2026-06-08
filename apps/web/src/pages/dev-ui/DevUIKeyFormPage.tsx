@@ -19,7 +19,20 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button, KeyField, KeyForm, KeySection, cn, keyFieldTypeOptions, type KeyFieldTypeOption, type KeyFormMode } from "@okkey/ui";
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  KeyField,
+  KeyForm,
+  KeySection,
+  cn,
+  keyFieldTypeOptions,
+  type KeyFieldTypeOption,
+  type KeyFormMode,
+} from "@okkey/ui";
 
 type DemoSectionVariant = "primary" | "additional";
 
@@ -310,14 +323,34 @@ function createInitialSections(): DemoSection[] {
 type SortableFieldProps = {
   section: DemoSection;
   field: DemoField;
+  value: ReactNode;
   mode: KeyFormMode;
   reorderable: boolean;
   onLabelChange: (label: string) => void;
   onValueChange: (value: string) => void;
   actions: ReactNode;
+  floatingActions?: ReactNode;
+  isHoverLocked?: boolean;
+  copyLabel?: string;
+  copySuccessLabel?: string | null;
+  onCopyAction?: (value: string) => void | Promise<void>;
 };
 
-function SortableField({ section, field, mode, reorderable, onLabelChange, onValueChange, actions }: SortableFieldProps) {
+function SortableField({
+  section,
+  field,
+  value,
+  mode,
+  reorderable,
+  onLabelChange,
+  onValueChange,
+  actions,
+  floatingActions,
+  isHoverLocked,
+  copyLabel,
+  copySuccessLabel,
+  onCopyAction,
+}: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
     data: {
@@ -335,22 +368,31 @@ function SortableField({ section, field, mode, reorderable, onLabelChange, onVal
     <KeyField
       ref={setNodeRef}
       label={field.label}
-      value={field.value}
+      value={value}
       mode={mode}
       editableLabel={field.editableLabel}
-      editableValue={typeof field.value === "string"}
+      editableValue={typeof value === "string"}
       reorderable={reorderable}
       meta={field.type === "password" ? null : metaForField(field.type, section.variant)}
       actions={actions}
+      floatingActions={floatingActions}
+      isHoverLocked={isHoverLocked}
       className={cn(isDragging && "relative z-10 opacity-0")}
       style={style}
       valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       copyValue={field.copyValue}
+      copyLabel={copyLabel}
+      copySuccessLabel={copySuccessLabel}
       copyHoverClassName={
         section.variant === "additional"
           ? "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
           : "hover:bg-secondary"
+      }
+      copyHoverActiveClassName={
+        section.variant === "additional"
+          ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
+          : "bg-secondary"
       }
       copyOverlayClassName={
         section.variant === "additional"
@@ -362,6 +404,7 @@ function SortableField({ section, field, mode, reorderable, onLabelChange, onVal
           ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
           : "bg-secondary"
       }
+      onCopyAction={onCopyAction}
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
@@ -425,6 +468,8 @@ export default function DevUIKeyFormPage() {
   const [mode, setMode] = useState<KeyFormMode>("edit");
   const [sections, setSections] = useState<DemoSection[]>(() => createInitialSections());
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
+  const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const nextIdRef = useRef(1);
   const fieldTypes = useMemo(() => englishKeyFieldTypeOptions, []);
   const urlFieldTypes = useMemo(() => englishKeyFieldTypeOptions.filter((type) => type.id === "url"), []);
@@ -509,7 +554,14 @@ export default function DevUIKeyFormPage() {
     setSections((current) =>
       current.map((section) =>
         section.id === sectionId
-          ? { ...section, fields: section.fields.map((field) => (field.id === fieldId ? { ...field, value } : field)) }
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === fieldId
+                  ? { ...field, value, copyValue: field.secret ? field.copyValue : value }
+                  : field,
+              ),
+            }
           : section,
       ),
     );
@@ -584,7 +636,11 @@ export default function DevUIKeyFormPage() {
   function renderActions(section: DemoSection, field: DemoField) {
     const canEdit = mode === "edit";
     if (!canEdit) {
-      return field.type === "password" ? metaForField(field.type, section.variant) : null;
+      return field.type === "password" ? (
+        <span className={cn("transition-opacity group-hover/key-field:opacity-0", openFieldMenuId === field.id && "opacity-0")}>
+          {metaForField(field.type, section.variant)}
+        </span>
+      ) : null;
     }
 
     return (
@@ -609,17 +665,85 @@ export default function DevUIKeyFormPage() {
     );
   }
 
+  function togglePasswordVisibility(fieldId: string) {
+    setVisiblePasswordIds((current) => {
+      const next = new Set(current);
+      if (next.has(fieldId)) {
+        next.delete(fieldId);
+      } else {
+        next.add(fieldId);
+      }
+      return next;
+    });
+  }
+
+  function openWebsite(value: string) {
+    const openedWindow = window.open(value, "_blank", "noopener,noreferrer");
+    if (openedWindow) {
+      openedWindow.opener = null;
+    }
+  }
+
+  function valueForField(field: DemoField): ReactNode {
+    if (field.type === "password" && visiblePasswordIds.has(field.id)) {
+      return field.copyValue ?? field.value;
+    }
+    return field.value;
+  }
+
+  function renderFloatingActions(field: DemoField) {
+    if (mode !== "view" || (field.type !== "password" && field.type !== "url")) {
+      return null;
+    }
+
+    const isPasswordVisible = visiblePasswordIds.has(field.id);
+    const isOpen = openFieldMenuId === field.id;
+
+    return (
+      <DropdownMenu open={isOpen} onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="iconSm"
+            aria-label={`${field.label} settings`}
+          >
+            <SettingsIcon />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={6} className="min-w-[11rem] p-1">
+          {field.type === "password" ? (
+            <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
+              {isPasswordVisible ? "Hide password" : "Show password"}
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={() => field.copyValue && navigator.clipboard.writeText(field.copyValue)}>
+              Copy
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   function renderField(section: DemoSection, field: DemoField) {
     const canReorderField = !(section.variant === "primary" && !section.title);
+    const isWebsiteField = field.type === "url";
 
     return (
       <SortableField
         key={field.id}
         section={section}
         field={field}
+        value={valueForField(field)}
         mode={mode}
         reorderable={canReorderField}
         actions={renderActions(section, field)}
+        floatingActions={renderFloatingActions(field)}
+        isHoverLocked={openFieldMenuId === field.id}
+        copyLabel={isWebsiteField ? "Open website" : undefined}
+        copySuccessLabel={isWebsiteField ? null : undefined}
+        onCopyAction={isWebsiteField ? openWebsite : undefined}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
       />
@@ -630,10 +754,10 @@ export default function DevUIKeyFormPage() {
     return (
       <KeyField
         label={field.label}
-        value={field.value}
+        value={valueForField(field)}
         mode={mode}
         editableLabel={field.editableLabel}
-        editableValue={typeof field.value === "string"}
+        editableValue={typeof valueForField(field) === "string"}
         reorderable
         meta={field.type === "password" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
@@ -646,10 +770,17 @@ export default function DevUIKeyFormPage() {
         valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
         copyValue={field.copyValue}
+        copyLabel={field.type === "url" ? "Open website" : undefined}
+        copySuccessLabel={field.type === "url" ? null : undefined}
         copyHoverClassName={
           section.variant === "additional"
             ? "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
             : "hover:bg-secondary"
+        }
+        copyHoverActiveClassName={
+          section.variant === "additional"
+            ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
+            : "bg-secondary"
         }
         copyOverlayClassName={
           section.variant === "additional"
@@ -661,6 +792,7 @@ export default function DevUIKeyFormPage() {
             ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
             : "bg-secondary"
         }
+        onCopyAction={field.type === "url" ? openWebsite : undefined}
       />
     );
   }

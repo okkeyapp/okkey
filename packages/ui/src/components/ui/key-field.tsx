@@ -78,9 +78,15 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   copyValue?: string;
+  copyLabel?: string;
+  copySuccessLabel?: string | null;
   copyHoverClassName?: string;
+  copyHoverActiveClassName?: string;
   copyOverlayClassName?: string;
   copyTextClassName?: string;
+  floatingActions?: React.ReactNode;
+  isHoverLocked?: boolean;
+  onCopyAction?: (value: string) => void | Promise<void>;
   labelClassName?: string;
   valueClassName?: string;
   controlButtonClassName?: string;
@@ -103,9 +109,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       meta,
       actions,
       copyValue,
+      copyLabel = "Copy",
+      copySuccessLabel = "Coped",
       copyHoverClassName,
+      copyHoverActiveClassName,
       copyOverlayClassName,
       copyTextClassName,
+      floatingActions,
+      isHoverLocked = false,
+      onCopyAction,
       labelClassName,
       valueClassName,
       controlButtonClassName,
@@ -167,8 +179,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         return;
       }
 
-      await navigator.clipboard.writeText(copyText);
-      setIsCopied(true);
+      if (onCopyAction) {
+        await onCopyAction(copyText);
+      } else {
+        await navigator.clipboard.writeText(copyText);
+      }
+      if (copySuccessLabel !== null) {
+        setIsCopied(true);
+      }
       if (copyResetTimeoutRef.current) {
         clearTimeout(copyResetTimeoutRef.current);
       }
@@ -209,8 +227,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
           isFieldActive && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-          canCopyValue && "relative transition-colors",
+          (canCopyValue || floatingActions) && "relative transition-colors",
           canCopyValue && copyHoverClassName,
+          isHoverLocked && copyHoverActiveClassName,
           className,
         )}
         draggable={canReorder ? draggable : false}
@@ -241,6 +260,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
               "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
               "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+              isHoverLocked && "pointer-events-auto opacity-100",
               copyOverlayClassName ?? "bg-card/20",
             )}
             onClick={handleCopyClick}
@@ -252,9 +272,21 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               )}
             >
               {isCopied ? <CopySuccessIcon className="size-4" /> : null}
-              {isCopied ? "Coped" : "Copy"}
+              {isCopied ? copySuccessLabel : copyLabel}
             </span>
           </button>
+        ) : null}
+
+        {floatingActions ? (
+          <div
+            className={cn(
+              "pointer-events-none absolute right-4 top-1/2 z-20 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity",
+              "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
+              isHoverLocked && "pointer-events-auto opacity-100",
+            )}
+          >
+            {floatingActions}
+          </div>
         ) : null}
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
