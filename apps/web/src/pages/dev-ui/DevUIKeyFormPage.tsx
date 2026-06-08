@@ -28,6 +28,7 @@ type DemoField = {
   type: string;
   label: string;
   value: ReactNode;
+  copyValue?: string;
   editableLabel?: boolean;
   secret?: boolean;
 };
@@ -218,6 +219,21 @@ function fieldValueForType(type: KeyFieldTypeOption): ReactNode {
   }
 }
 
+function copyValueForType(type: KeyFieldTypeOption): string {
+  switch (type.id) {
+    case "password":
+      return "correct-horse-battery-staple";
+    case "recovery-codes":
+      return "2 remaining recovery codes";
+    case "totp":
+      return "873846";
+    default: {
+      const value = fieldValueForType(type);
+      return typeof value === "string" ? value : "";
+    }
+  }
+}
+
 function metaForField(type: string, sectionVariant: DemoSectionVariant): ReactNode {
   if (type === "password") {
     return (
@@ -249,8 +265,8 @@ function createInitialSections(): DemoSection[] {
       id: "credentials",
       variant: "primary",
       fields: [
-        { id: "login", type: "username", label: "login", value: "shadcn@vercel.com" },
-        { id: "password", type: "password", label: "password", value: "••••••••••", secret: true },
+        { id: "login", type: "username", label: "login", value: "shadcn@vercel.com", copyValue: "shadcn@vercel.com" },
+        { id: "password", type: "password", label: "password", value: "••••••••••", copyValue: "correct-horse-battery-staple", secret: true },
         {
           id: "totp",
           type: "totp",
@@ -260,6 +276,7 @@ function createInitialSections(): DemoSection[] {
               873 <span className="text-muted-foreground">•</span> 846
             </span>
           ),
+          copyValue: "873846",
         },
       ],
     },
@@ -267,8 +284,8 @@ function createInitialSections(): DemoSection[] {
       id: "websites",
       variant: "primary",
       fields: [
-        { id: "website-ru", type: "url", label: "website URL", value: "https://yandex.ru", editableLabel: true },
-        { id: "website-com", type: "url", label: "international website URL", value: "https://yandex.com", editableLabel: true },
+        { id: "website-ru", type: "url", label: "website URL", value: "https://yandex.ru", copyValue: "https://yandex.ru", editableLabel: true },
+        { id: "website-com", type: "url", label: "international website URL", value: "https://yandex.com", copyValue: "https://yandex.com", editableLabel: true },
       ],
     },
     {
@@ -281,6 +298,7 @@ function createInitialSections(): DemoSection[] {
           type: "recovery-codes",
           label: "recovery codes",
           value: "••••••••••",
+          copyValue: "2 remaining recovery codes",
           editableLabel: true,
           secret: true,
         },
@@ -328,6 +346,22 @@ function SortableField({ section, field, mode, reorderable, onLabelChange, onVal
       style={style}
       valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
+      copyValue={field.copyValue}
+      copyHoverClassName={
+        section.variant === "additional"
+          ? "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
+          : "hover:bg-secondary"
+      }
+      copyOverlayClassName={
+        section.variant === "additional"
+          ? "bg-[color-mix(in_hsl,color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)_40%,transparent)]"
+          : "bg-secondary/40"
+      }
+      copyTextClassName={
+        section.variant === "additional"
+          ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
+          : "bg-secondary"
+      }
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
@@ -430,6 +464,7 @@ export default function DevUIKeyFormPage() {
       type: type.id,
       label: type.label.toLowerCase(),
       value: fieldValueForType(type),
+      copyValue: copyValueForType(type),
       editableLabel: true,
       secret: ["password", "recovery-codes"].includes(type.id),
     };
@@ -548,6 +583,10 @@ export default function DevUIKeyFormPage() {
 
   function renderActions(section: DemoSection, field: DemoField) {
     const canEdit = mode === "edit";
+    if (!canEdit) {
+      return field.type === "password" ? metaForField(field.type, section.variant) : null;
+    }
+
     return (
       <>
         {field.type === "password" ? metaForField(field.type, section.variant) : null}
@@ -606,6 +645,22 @@ export default function DevUIKeyFormPage() {
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
         valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
+        copyValue={field.copyValue}
+        copyHoverClassName={
+          section.variant === "additional"
+            ? "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
+            : "hover:bg-secondary"
+        }
+        copyOverlayClassName={
+          section.variant === "additional"
+            ? "bg-[color-mix(in_hsl,color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)_40%,transparent)]"
+            : "bg-secondary/40"
+        }
+        copyTextClassName={
+          section.variant === "additional"
+            ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
+            : "bg-secondary"
+        }
       />
     );
   }

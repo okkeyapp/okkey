@@ -48,6 +48,23 @@ function GripIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+function CopySuccessIcon(props: React.SVGProps<SVGSVGElement>) {
+  const clipPathId = React.useId();
+
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <g clipPath={`url(#${clipPathId})`}>
+        <path d="M6.00016 8.00016L7.3335 9.3335L10.0002 6.66683M14.6668 8.00016C14.6668 11.6821 11.6821 14.6668 8.00016 14.6668C4.31826 14.6668 1.3335 11.6821 1.3335 8.00016C1.3335 4.31826 4.31826 1.3335 8.00016 1.3335C11.6821 1.3335 14.6668 4.31826 14.6668 8.00016Z" stroke="#16A34A" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+      <defs>
+        <clipPath id={clipPathId}>
+          <rect width="16" height="16" fill="white" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
 export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "children"> & {
   label: string;
   value?: React.ReactNode;
@@ -60,6 +77,10 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   onValueChange?: (value: string) => void;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
+  copyValue?: string;
+  copyHoverClassName?: string;
+  copyOverlayClassName?: string;
+  copyTextClassName?: string;
   labelClassName?: string;
   valueClassName?: string;
   controlButtonClassName?: string;
@@ -81,6 +102,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       onValueChange,
       meta,
       actions,
+      copyValue,
+      copyHoverClassName,
+      copyOverlayClassName,
+      copyTextClassName,
       labelClassName,
       valueClassName,
       controlButtonClassName,
@@ -103,6 +128,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
     const isFieldActive = isEditingLabel || isValueFocused;
+    const copyText = copyValue ?? stringValue;
+    const canCopyValue = mode === "view" && typeof copyText === "string" && copyText.length > 0;
+    const [isCopied, setIsCopied] = React.useState(false);
+    const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -112,6 +141,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       setDraftValue(stringValue ?? "");
     }, [stringValue]);
 
+    React.useEffect(
+      () => () => {
+        if (copyResetTimeoutRef.current) {
+          clearTimeout(copyResetTimeoutRef.current);
+        }
+      },
+      [],
+    );
+
     function commitLabel() {
       const nextLabel = draftLabel.trim();
       setIsEditingLabel(false);
@@ -120,6 +158,24 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       } else {
         setDraftLabel(label);
       }
+    }
+
+    async function handleCopyClick(event: React.MouseEvent<HTMLButtonElement>) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!canCopyValue) {
+        return;
+      }
+
+      await navigator.clipboard.writeText(copyText);
+      setIsCopied(true);
+      if (copyResetTimeoutRef.current) {
+        clearTimeout(copyResetTimeoutRef.current);
+      }
+      copyResetTimeoutRef.current = setTimeout(() => {
+        setIsCopied(false);
+        copyResetTimeoutRef.current = null;
+      }, 3000);
     }
 
     function handleFieldClick(event: React.MouseEvent<HTMLDivElement>) {
@@ -153,6 +209,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
           isFieldActive && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+          canCopyValue && "relative transition-colors",
+          canCopyValue && copyHoverClassName,
           className,
         )}
         draggable={canReorder ? draggable : false}
@@ -174,6 +232,29 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           >
             <GripIcon className="size-4" />
           </span>
+        ) : null}
+
+        {canCopyValue ? (
+          <button
+            type="button"
+            className={cn(
+              "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
+              "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
+              "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+              copyOverlayClassName ?? "bg-card/20",
+            )}
+            onClick={handleCopyClick}
+          >
+            <span
+              className={cn(
+                "inline-flex h-6 items-center justify-center gap-1.5 rounded-[50px] px-3 text-sm font-medium text-foreground",
+                copyTextClassName ?? "bg-card",
+              )}
+            >
+              {isCopied ? <CopySuccessIcon className="size-4" /> : null}
+              {isCopied ? "Coped" : "Copy"}
+            </span>
+          </button>
         ) : null}
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
