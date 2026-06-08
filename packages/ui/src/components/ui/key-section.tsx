@@ -6,10 +6,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { keyFieldTypeOptions, type KeyFieldTypeOption, type KeyFormMode } from "./key-field.js";
-import { ScrollArea } from "./scroll-area.js";
 
 function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -223,16 +223,17 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="center" className="min-w-[240px] p-1">
-                <ScrollArea className="max-h-[320px]">
-                  {fieldTypes.map((type) => (
-                    <DropdownMenuItem key={type.id} onSelect={() => onAddField?.(type)}>
+                {fieldTypes.map((type, index) => (
+                  <React.Fragment key={type.id}>
+                    {index > 0 && fieldTypes[index - 1]?.group !== type.group ? <DropdownMenuSeparator /> : null}
+                    <DropdownMenuItem onSelect={() => onAddField?.(type)}>
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{type.label}</span>
                         {type.description ? <span className="truncate text-xs text-muted-foreground">{type.description}</span> : null}
                       </span>
                     </DropdownMenuItem>
-                  ))}
-                </ScrollArea>
+                  </React.Fragment>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}

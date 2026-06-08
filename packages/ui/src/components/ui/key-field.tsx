@@ -9,25 +9,21 @@ export type KeyFieldTypeOption = {
   id: string;
   label: string;
   description?: string;
+  group?: "general" | "secret" | "file";
 };
 
 export const keyFieldTypeOptions: readonly KeyFieldTypeOption[] = [
-  { id: "text", label: "Текст" },
-  { id: "password", label: "Пароль" },
-  { id: "username", label: "Имя пользователя" },
-  { id: "email", label: "Email" },
-  { id: "url", label: "Website URL" },
-  { id: "totp", label: "Одноразовый пароль (TOTP)" },
-  { id: "note", label: "Заметка" },
-  { id: "phone", label: "Телефон" },
-  { id: "card-number", label: "Номер карты" },
-  { id: "card-expiry", label: "Срок действия карты" },
-  { id: "date", label: "Дата" },
-  { id: "file", label: "Файл" },
-  { id: "ssh-key", label: "SSH ключ" },
-  { id: "api-key", label: "API ключ" },
-  { id: "recovery-code", label: "Код восстановления" },
-  { id: "custom", label: "Произвольное поле" },
+  { id: "text", label: "Text", group: "general" },
+  { id: "email", label: "Email", group: "general" },
+  { id: "phone", label: "Phone", group: "general" },
+  { id: "address", label: "Address", group: "general" },
+  { id: "date", label: "Date", group: "general" },
+  { id: "url", label: "Website URL", group: "general" },
+  { id: "multiline-text", label: "Multiline text", group: "general" },
+  { id: "password", label: "Password", group: "secret" },
+  { id: "totp", label: "Totp", group: "secret" },
+  { id: "recovery-codes", label: "Recovery codes", group: "secret" },
+  { id: "file", label: "Attach a file", group: "file" },
 ];
 
 function PencilIcon(props: React.SVGProps<SVGSVGElement>) {

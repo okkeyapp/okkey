@@ -39,31 +39,7 @@ type DemoSection = {
   fields: DemoField[];
 };
 
-const englishKeyFieldTypeOptions: readonly KeyFieldTypeOption[] = keyFieldTypeOptions.map((type) => {
-  const labels: Record<string, string> = {
-    text: "Text",
-    password: "Password",
-    username: "Username",
-    email: "Email",
-    url: "Website URL",
-    totp: "One-time password (TOTP)",
-    note: "Note",
-    phone: "Phone",
-    "card-number": "Card number",
-    "card-expiry": "Card expiry",
-    date: "Date",
-    file: "File",
-    "ssh-key": "SSH key",
-    "api-key": "API key",
-    "recovery-code": "Recovery code",
-    custom: "Custom field",
-  };
-
-  return {
-    ...type,
-    label: labels[type.id] ?? type.label,
-  };
-});
+const englishKeyFieldTypeOptions = keyFieldTypeOptions;
 
 type SortableItemData =
   | {
@@ -208,9 +184,7 @@ function KeyCounter({
 function fieldValueForType(type: KeyFieldTypeOption): ReactNode {
   switch (type.id) {
     case "password":
-    case "api-key":
-    case "recovery-code":
-    case "ssh-key":
+    case "recovery-codes":
       return "••••••••••";
     case "url":
       return "https://example.com";
@@ -226,6 +200,8 @@ function fieldValueForType(type: KeyFieldTypeOption): ReactNode {
       );
     case "phone":
       return "+7 999 000-00-00";
+    case "address":
+      return "221B Baker Street, London";
     case "card-number":
       return "4242 4242 4242 4242";
     case "card-expiry":
@@ -233,7 +209,8 @@ function fieldValueForType(type: KeyFieldTypeOption): ReactNode {
     case "date":
       return "02.05.2026";
     case "file":
-      return "contract.pdf";
+      return "Attach a file";
+    case "multiline-text":
     case "note":
       return "Internal note for this item.";
     default:
@@ -256,7 +233,7 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant): ReactNo
       </KeyCounter>
     );
   }
-  if (type === "recovery-code") {
+  if (type === "recovery-codes") {
     return (
       <KeyCounter sectionVariant={sectionVariant} value={2} total={10} tone="warning">
         2 of 10
@@ -301,7 +278,7 @@ function createInitialSections(): DemoSection[] {
       fields: [
         {
           id: "recovery-codes",
-          type: "recovery-code",
+          type: "recovery-codes",
           label: "recovery codes",
           value: "••••••••••",
           editableLabel: true,
@@ -349,7 +326,7 @@ function SortableField({ section, field, mode, reorderable, onLabelChange, onVal
       actions={actions}
       className={cn(isDragging && "relative z-10 opacity-0")}
       style={style}
-      valueClassName={field.type === "note" ? "whitespace-normal" : undefined}
+      valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
@@ -454,7 +431,7 @@ export default function DevUIKeyFormPage() {
       label: type.label.toLowerCase(),
       value: fieldValueForType(type),
       editableLabel: true,
-      secret: ["password", "api-key", "recovery-code", "ssh-key"].includes(type.id),
+      secret: ["password", "recovery-codes"].includes(type.id),
     };
   }
 
@@ -627,7 +604,7 @@ export default function DevUIKeyFormPage() {
             : undefined
         }
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
-        valueClassName={field.type === "note" ? "whitespace-normal" : undefined}
+        valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       />
     );
