@@ -1,4 +1,4 @@
-import { Input } from "@okkey/ui";
+import { Checkbox, Input } from "@okkey/ui";
 
 export default function DevUIInputPage() {
   return (
@@ -25,6 +25,21 @@ export default function DevUIInputPage() {
               Disabled
             </label>
             <Input id="dev-ui-input-disabled" type="text" placeholder="Unavailable" disabled />
+          </div>
+          <div className="flex max-w-md flex-col gap-3">
+            <p className="text-sm font-medium">Checkbox</p>
+            <label htmlFor="dev-ui-checkbox-default" className="flex cursor-pointer select-none items-center gap-2 text-sm">
+              <Checkbox id="dev-ui-checkbox-default" defaultChecked />
+              Enabled option
+            </label>
+            <label htmlFor="dev-ui-checkbox-unchecked" className="flex cursor-pointer select-none items-center gap-2 text-sm">
+              <Checkbox id="dev-ui-checkbox-unchecked" />
+              Unchecked option
+            </label>
+            <label htmlFor="dev-ui-checkbox-disabled" className="flex select-none items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox id="dev-ui-checkbox-disabled" disabled />
+              Disabled option
+            </label>
           </div>
         </div>
       </section>

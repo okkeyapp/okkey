@@ -92,6 +92,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   copyTextClassName?: string;
   floatingActions?: React.ReactNode;
   isHoverLocked?: boolean;
+  forceActive?: boolean;
+  fieldOverlay?: React.ReactNode;
   concealValue?: boolean;
   concealedValue?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
@@ -129,6 +131,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyTextClassName,
       floatingActions,
       isHoverLocked = false,
+      forceActive = false,
+      fieldOverlay,
       concealValue = false,
       concealedValue = "••••••••••",
       onCopyAction,
@@ -153,7 +157,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditLabel = mode === "edit" && editableLabel;
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
-    const isFieldActive = isEditingLabel || isValueFocused;
+    const isFieldActive = isEditingLabel || isValueFocused || forceActive;
     const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
     const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
     const copyText = copyValue ?? stringValue;
@@ -265,6 +269,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
           isFieldActive && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+          fieldOverlay && "relative",
           (canCopyValue || floatingActions) && "relative transition-colors",
           canCopyValue && copyHoverClassName,
           isHoverLocked && copyHoverActiveClassName,
@@ -395,6 +400,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         </div>
 
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
+        {fieldOverlay}
       </div>
     );
   },

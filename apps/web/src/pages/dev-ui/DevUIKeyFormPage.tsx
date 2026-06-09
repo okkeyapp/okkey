@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type CSSProperties, type ReactNode, type SVGProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type SVGProps } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -21,6 +21,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Button,
+  Checkbox,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -28,6 +29,12 @@ import {
   KeyField,
   KeyForm,
   KeySection,
+  Separator,
+  Slider,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
   keyFieldTypeOptions,
   type KeyFieldTypeOption,
@@ -77,6 +84,33 @@ type ActiveDrag =
       width?: number;
     };
 
+type PasswordGeneratorSettings = {
+  uppercase: boolean;
+  lowercase: boolean;
+  numbers: boolean;
+  symbols: boolean;
+};
+
+type PasswordGeneratorPreferences = PasswordGeneratorSettings & {
+  length: number;
+};
+
+const defaultPasswordGeneratorSettings: PasswordGeneratorSettings = {
+  uppercase: true,
+  lowercase: true,
+  numbers: true,
+  symbols: false,
+};
+const defaultPasswordGeneratorLength = 16;
+const passwordGeneratorStorageKey = "okkey.devUi.passwordGenerator";
+
+const passwordGeneratorCharacterSets: Record<keyof PasswordGeneratorSettings, string> = {
+  uppercase: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  lowercase: "abcdefghijklmnopqrstuvwxyz",
+  numbers: "0123456789",
+  symbols: "!@#$%^&*",
+};
+
 function EyeIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
@@ -122,6 +156,16 @@ function CopyIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function CopySuccessIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.67467 11.158C2.47 11.0417 2.29977 10.8733 2.18127 10.6699C2.06277 10.4665 2.00023 10.2354 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.33398 9.33333L8.66732 10.6667L11.334 8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function OpenWebsiteIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
@@ -157,6 +201,14 @@ function GeneratePasswordIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M5.33398 7.33333V4.66667C5.33398 3.95942 5.61494 3.28115 6.11503 2.78105C6.61513 2.28095 7.29341 2 8.00065 2C8.7079 2 9.38617 2.28095 9.88627 2.78105C10.3864 3.28115 10.6673 3.95942 10.6673 4.66667V7.33333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M10.666 12.667H14.666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M12.666 10.667V14.667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function RegeneratePasswordIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.32263 2.00631 4.71265 2.66082 3.50667 3.82667L2 5.33333M5.33333 5.33333H2V2M2 8C2 9.5913 2.63214 11.1174 3.75736 12.2426C4.88258 13.3679 6.4087 14 8 14C9.67737 13.9937 11.2874 13.3392 12.4933 12.1733L14 10.6667M14 14V10.6667H10.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -203,7 +255,8 @@ function PieIndicator({
   const totalSegments = 60;
   const safeTotal = Math.max(1, total);
   const filled = Math.min(Math.max(value, 0), safeTotal);
-  const filledSegments = Math.round((filled / safeTotal) * totalSegments);
+  const filledRatio = filled / safeTotal;
+  const filledSegments = Math.round(filledRatio * totalSegments);
   const degrees = (filledSegments / totalSegments) * 360;
   const colorByTone = {
     success: "#65A30D",
@@ -223,6 +276,9 @@ function PieIndicator({
         />
       </foreignObject>
       <path d="M2 8C2 8.78793 2.15519 9.56815 2.45672 10.2961C2.75825 11.0241 3.20021 11.6855 3.75736 12.2426C4.31451 12.7998 4.97595 13.2417 5.7039 13.5433C6.43185 13.8448 7.21207 14 8 14C8.78793 14 9.56815 13.8448 10.2961 13.5433C11.0241 13.2417 11.6855 12.7998 12.2426 12.2426C12.7998 11.6855 13.2417 11.0241 13.5433 10.2961C13.8448 9.56815 14 8.78793 14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.4087 2 4.88258 2.63214 3.75736 3.75736C2.63214 4.88258 2 6.4087 2 8Z" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
+      {filled >= safeTotal ? (
+        <path d="M5.3335 8.16667L7.16683 10L10.6668 6.5" stroke="white" strokeLinecap="round" strokeLinejoin="round" />
+      ) : null}
     </svg>
   );
 }
@@ -309,11 +365,134 @@ function copyValueForType(type: KeyFieldTypeOption): string {
   }
 }
 
-function metaForField(type: string, sectionVariant: DemoSectionVariant): ReactNode {
+type PasswordStrength = {
+  label: string;
+  value: number;
+  tone: "success" | "warning" | "danger";
+  entropyBits: number;
+};
+
+const passwordStrengthTextClassName: Record<PasswordStrength["label"], string> = {
+  Weak: "text-destructive",
+  Fair: "text-amber-600",
+  Good: "text-amber-600",
+  Strong: "text-lime-600",
+  Excellent: "text-lime-700",
+};
+
+function getPasswordEntropyBits(password: string): number {
+  if (password.length === 0) {
+    return 0;
+  }
+
+  const hasLowercase = /[a-z]/.test(password);
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSymbols = /[^A-Za-z0-9]/.test(password);
+  const characterPoolSize =
+    (hasLowercase ? 26 : 0) +
+    (hasUppercase ? 26 : 0) +
+    (hasNumbers ? 10 : 0) +
+    (hasSymbols ? 16 : 0);
+  const uniqueRatio = new Set(password).size / password.length;
+  const hasPassphraseShape = /[A-Za-z0-9]+[-_\s][A-Za-z0-9]+[-_\s][A-Za-z0-9]+/.test(password);
+  const repeatedRuns = password.match(/(.)\1{2,}/g) ?? [];
+  const hasCommonSequence = /(1234|abcd|qwerty|password|admin|letmein)/i.test(password);
+  const hasKeyboardWalk = /(qwer|asdf|zxcv|йцу|фыв)/i.test(password);
+  const hasMostlySingleCharacter = uniqueRatio <= 0.25 && password.length >= 6;
+
+  let entropyBits = password.length * Math.log2(Math.max(characterPoolSize, 1));
+  entropyBits *= Math.max(0.35, Math.min(1, uniqueRatio + 0.25));
+  entropyBits += hasPassphraseShape ? 10 : 0;
+  entropyBits -= repeatedRuns.reduce((penalty, run) => penalty + run.length * 2, 0);
+  entropyBits -= hasCommonSequence ? 20 : 0;
+  entropyBits -= hasKeyboardWalk ? 14 : 0;
+  entropyBits -= hasMostlySingleCharacter ? 24 : 0;
+
+  return Math.max(1, entropyBits);
+}
+
+function getPasswordStrength(password: string): PasswordStrength | null {
+  if (password.length === 0) {
+    return null;
+  }
+
+  const entropyBits = getPasswordEntropyBits(password);
+  const value = Math.min(10, Math.max(1, Math.round(entropyBits / 8)));
+  if (entropyBits < 36) {
+    return { label: "Weak", value, tone: "danger", entropyBits };
+  }
+  if (entropyBits < 50) {
+    return { label: "Fair", value, tone: "warning", entropyBits };
+  }
+  if (entropyBits < 64) {
+    return { label: "Good", value, tone: "warning", entropyBits };
+  }
+  if (entropyBits < 80) {
+    return { label: "Strong", value, tone: "success", entropyBits };
+  }
+  return { label: "Excellent", value, tone: "success", entropyBits };
+}
+
+function estimatePasswordCrackTime(password: string): string {
+  if (!password) {
+    return "Instantly";
+  }
+
+  const entropyBits = getPasswordEntropyBits(password);
+  if (entropyBits < 28) return "Instantly";
+  if (entropyBits < 36) return "Hours";
+  if (entropyBits < 44) return "Days";
+  if (entropyBits < 52) return "Months";
+  if (entropyBits < 60) return "Years";
+  if (entropyBits < 72) return "Decades";
+  if (entropyBits < 84) return "Centuries";
+  return "Forever";
+}
+
+function normalizePasswordGeneratorPreferences(value: unknown): PasswordGeneratorPreferences {
+  if (!value || typeof value !== "object") {
+    return { ...defaultPasswordGeneratorSettings, length: defaultPasswordGeneratorLength };
+  }
+
+  const candidate = value as Partial<Record<keyof PasswordGeneratorPreferences, unknown>>;
+  const settings: PasswordGeneratorSettings = {
+    uppercase: typeof candidate.uppercase === "boolean" ? candidate.uppercase : defaultPasswordGeneratorSettings.uppercase,
+    lowercase: typeof candidate.lowercase === "boolean" ? candidate.lowercase : defaultPasswordGeneratorSettings.lowercase,
+    numbers: typeof candidate.numbers === "boolean" ? candidate.numbers : defaultPasswordGeneratorSettings.numbers,
+    symbols: typeof candidate.symbols === "boolean" ? candidate.symbols : defaultPasswordGeneratorSettings.symbols,
+  };
+  if (!Object.values(settings).some(Boolean)) {
+    settings.lowercase = true;
+  }
+
+  const length = typeof candidate.length === "number" ? candidate.length : defaultPasswordGeneratorLength;
+  return {
+    ...settings,
+      length: Math.min(128, Math.max(4, Math.round(length))),
+  };
+}
+
+function loadPasswordGeneratorPreferences(): PasswordGeneratorPreferences {
+  try {
+    return normalizePasswordGeneratorPreferences(
+      JSON.parse(window.localStorage.getItem(passwordGeneratorStorageKey) ?? "null"),
+    );
+  } catch {
+    return { ...defaultPasswordGeneratorSettings, length: defaultPasswordGeneratorLength };
+  }
+}
+
+function metaForField(type: string, sectionVariant: DemoSectionVariant, value?: ReactNode): ReactNode {
   if (type === "password") {
+    const strength = typeof value === "string" ? getPasswordStrength(value) : null;
+    if (!strength) {
+      return null;
+    }
+
     return (
-      <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={8} total={10} tone="success">
-        Good
+      <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={strength.value} total={10} tone={strength.tone}>
+        {strength.label}
       </KeyCounter>
     );
   }
@@ -332,6 +511,36 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant): ReactNo
     );
   }
   return null;
+}
+
+function generatePassword(settings: PasswordGeneratorSettings, length = 20): string {
+  const enabledSets = (Object.keys(settings) as Array<keyof PasswordGeneratorSettings>)
+    .filter((key) => settings[key])
+    .map((key) => passwordGeneratorCharacterSets[key]);
+  const pool = enabledSets.join("");
+
+  if (!pool) {
+    return "";
+  }
+
+  const targetLength = Math.max(length, enabledSets.length);
+  const values = new Uint32Array(targetLength);
+  window.crypto.getRandomValues(values);
+  const requiredCharacters = enabledSets.map((set, index) => set[values[index] % set.length]);
+  const remainingCharacters = Array.from(
+    values.slice(enabledSets.length),
+    (value) => pool[value % pool.length],
+  );
+  const characters = [...requiredCharacters, ...remainingCharacters];
+
+  const shuffleValues = new Uint32Array(characters.length);
+  window.crypto.getRandomValues(shuffleValues);
+  for (let index = characters.length - 1; index > 0; index -= 1) {
+    const swapIndex = shuffleValues[index] % (index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+
+  return characters.join("");
 }
 
 function createInitialSections(): DemoSection[] {
@@ -394,6 +603,8 @@ type SortableFieldProps = {
   actions: ReactNode;
   floatingActions?: ReactNode;
   isHoverLocked?: boolean;
+  forceActive?: boolean;
+  fieldOverlay?: ReactNode;
   copyLabel?: string;
   copySuccessLabel?: string | null;
   concealValue?: boolean;
@@ -412,6 +623,8 @@ function SortableField({
   actions,
   floatingActions,
   isHoverLocked,
+  forceActive,
+  fieldOverlay,
   copyLabel,
   copySuccessLabel,
   concealValue,
@@ -444,6 +657,8 @@ function SortableField({
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
+      forceActive={forceActive}
+      fieldOverlay={fieldOverlay}
       concealValue={concealValue}
       className={cn(isDragging && "relative z-10 opacity-0")}
       style={style}
@@ -541,7 +756,17 @@ export default function DevUIKeyFormPage() {
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
+  const [passwordGeneratorFieldId, setPasswordGeneratorFieldId] = useState<string | null>(null);
+  const [passwordGeneratorPreferences, setPasswordGeneratorPreferences] = useState<PasswordGeneratorPreferences>(
+    loadPasswordGeneratorPreferences,
+  );
+  const { length: passwordGeneratorLength, ...passwordGeneratorSettings } = passwordGeneratorPreferences;
+  const [generatedPassword, setGeneratedPassword] = useState(() =>
+    generatePassword(passwordGeneratorSettings, passwordGeneratorLength),
+  );
+  const [isGeneratedPasswordCopied, setIsGeneratedPasswordCopied] = useState(false);
   const nextIdRef = useRef(1);
+  const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fieldTypes = useMemo(() => englishKeyFieldTypeOptions, []);
   const urlFieldTypes = useMemo(() => englishKeyFieldTypeOptions.filter((type) => type.id === "url"), []);
   const sensors = useSensors(
@@ -572,6 +797,39 @@ export default function DevUIKeyFormPage() {
       droppableContainers,
     });
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(passwordGeneratorStorageKey, JSON.stringify(passwordGeneratorPreferences));
+  }, [passwordGeneratorPreferences]);
+
+  useEffect(
+    () => () => {
+      if (generatedPasswordCopyResetTimeoutRef.current) {
+        clearTimeout(generatedPasswordCopyResetTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!passwordGeneratorFieldId) {
+      return undefined;
+    }
+
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target?.closest("[data-password-generator-panel]") ||
+        target?.closest("[data-password-generator-trigger]")
+      ) {
+        return;
+      }
+      closePasswordGenerator();
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown);
+  }, [passwordGeneratorFieldId]);
 
   function createField(type: KeyFieldTypeOption): DemoField {
     const id = `field-${nextIdRef.current++}`;
@@ -655,6 +913,198 @@ export default function DevUIKeyFormPage() {
     );
   }
 
+  function openPasswordGenerator(fieldId: string) {
+    setOpenFieldMenuId(null);
+    setPasswordGeneratorFieldId(fieldId);
+    setGeneratedPassword(generatePassword(passwordGeneratorSettings, passwordGeneratorLength));
+  }
+
+  function updatePasswordGeneratorSetting(key: keyof PasswordGeneratorSettings, checked: boolean) {
+    setPasswordGeneratorPreferences((current) => {
+      const next = { ...current, [key]: checked };
+      const hasEnabledSet = next.uppercase || next.lowercase || next.numbers || next.symbols;
+      const safeNext = hasEnabledSet ? next : current;
+      const { length, ...settings } = safeNext;
+      setGeneratedPassword(generatePassword(settings, length));
+      return safeNext;
+    });
+  }
+
+  function updatePasswordGeneratorLength(length: number) {
+    setPasswordGeneratorPreferences((current) => {
+      const next = { ...current, length };
+      const { length: nextLength, ...settings } = next;
+      setGeneratedPassword(generatePassword(settings, nextLength));
+      return next;
+    });
+  }
+
+  function regeneratePassword() {
+    setGeneratedPassword(generatePassword(passwordGeneratorSettings, passwordGeneratorLength));
+  }
+
+  async function copyGeneratedPassword() {
+    await navigator.clipboard.writeText(generatedPassword);
+    setIsGeneratedPasswordCopied(true);
+    if (generatedPasswordCopyResetTimeoutRef.current) {
+      clearTimeout(generatedPasswordCopyResetTimeoutRef.current);
+    }
+    generatedPasswordCopyResetTimeoutRef.current = setTimeout(() => {
+      setIsGeneratedPasswordCopied(false);
+      generatedPasswordCopyResetTimeoutRef.current = null;
+    }, 3000);
+  }
+
+  function insertGeneratedPassword(sectionId: string, fieldId: string) {
+    updateFieldValue(sectionId, fieldId, generatedPassword);
+    closePasswordGenerator();
+  }
+
+  function closePasswordGenerator() {
+    setPasswordGeneratorFieldId(null);
+  }
+
+  function renderPasswordGeneratorPanel(section: DemoSection, field: DemoField) {
+    if (passwordGeneratorFieldId !== field.id) {
+      return null;
+    }
+
+    const options: Array<{ key: keyof PasswordGeneratorSettings; label: string }> = [
+      { key: "uppercase", label: "A-Z" },
+      { key: "lowercase", label: "a-z" },
+      { key: "numbers", label: "0-9" },
+      { key: "symbols", label: "!@#$%^&*" },
+    ];
+    const generatedStrength = getPasswordStrength(generatedPassword);
+    const crackTime = estimatePasswordCrackTime(generatedPassword);
+
+    return (
+      <div
+        data-password-generator-panel
+        className={cn(
+          "absolute left-10 top-full z-40 mt-2 w-[420px] rounded-md bg-popover p-3 text-popover-foreground",
+          "shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)]",
+          "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]",
+        )}
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span className="absolute -top-1.5 left-10 size-3 rotate-45 bg-popover shadow-[-1px_-1px_0_rgba(0,0,0,0.05)] dark:shadow-[-1px_-1px_0_rgba(255,255,255,0.1)]" aria-hidden />
+        <div className="relative flex flex-col gap-3">
+          <div className="flex flex-col gap-3 rounded-lg bg-secondary p-3">
+            <div className="flex items-center justify-between gap-4">
+              {options.map((option) => (
+                <label
+                  key={option.key}
+                  className="flex cursor-pointer select-none items-center gap-2 text-sm text-foreground"
+                >
+                  <Checkbox
+                    checked={passwordGeneratorSettings[option.key]}
+                    onCheckedChange={(checked) => updatePasswordGeneratorSetting(option.key, checked === true)}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+
+            <Separator className="-mx-3 w-auto self-stretch bg-border" />
+
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium text-foreground">Characters: {passwordGeneratorLength}</span>
+                <span className="text-xs text-muted-foreground">4-128</span>
+              </div>
+              <Slider
+                value={[passwordGeneratorLength]}
+                min={4}
+                max={128}
+                step={1}
+                onValueChange={(value) => updatePasswordGeneratorLength(value[0] ?? passwordGeneratorLength)}
+                aria-label="Password length"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+            <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold leading-5 text-foreground">{generatedPassword}</span>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="iconSm"
+                    className={cn(
+                      "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                      section.variant === "additional" && "hover:!bg-secondary",
+                    )}
+                    aria-label="Copy generated password"
+                    onClick={copyGeneratedPassword}
+                  >
+                    {isGeneratedPasswordCopied ? <CopySuccessIcon className="size-4" /> : <CopyIcon className="size-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isGeneratedPasswordCopied ? "Copied" : "Copy"}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="iconSm"
+                    className={cn(
+                      "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                      section.variant === "additional" && "hover:!bg-secondary",
+                    )}
+                    aria-label="Regenerate password"
+                    onClick={regeneratePassword}
+                  >
+                    <RegeneratePasswordIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Regenerate</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 px-3 text-sm">
+            <span className="min-w-0 truncate text-muted-foreground">
+              Strength:{" "}
+              {generatedStrength ? (
+                <span className={cn("font-medium", passwordStrengthTextClassName[generatedStrength.label])}>
+                  {generatedStrength.label}
+                </span>
+              ) : (
+                <span className="font-medium text-muted-foreground">Weak</span>
+              )}
+            </span>
+            <span className="shrink-0 text-muted-foreground">
+              Crack time:{" "}
+              <span
+                className={cn(
+                  "font-medium",
+                  generatedStrength ? passwordStrengthTextClassName[generatedStrength.label] : "text-muted-foreground",
+                )}
+              >
+                {crackTime}
+              </span>
+            </span>
+          </div>
+
+          <div className="mt-3 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={closePasswordGenerator}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => insertGeneratedPassword(section.id, field.id)}>
+              Insert
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
     const activeData = event.active.data.current as SortableItemData | undefined;
@@ -715,48 +1165,54 @@ export default function DevUIKeyFormPage() {
     const canEdit = mode === "edit";
     const isPasswordVisible = field.type === "password" && visiblePasswordIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
+    const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
+    const fieldMeta = metaForField(field.type, section.variant, valueForField(field));
     if (!canEdit) {
-      return field.type === "password" || field.type === "recovery-codes" ? (
+      return (field.type === "password" || field.type === "recovery-codes") && fieldMeta ? (
         <span className={cn("transition-opacity group-hover/key-field:opacity-0", isFieldMenuOpen && "opacity-0")}>
-          {metaForField(field.type, section.variant)}
+          {fieldMeta}
         </span>
       ) : null;
     }
 
     return (
       <>
-        {field.type === "password" || field.type === "recovery-codes" ? metaForField(field.type, section.variant) : null}
+        {field.type === "password" || field.type === "recovery-codes" ? fieldMeta : null}
         {field.type === "password" ? (
-          <DropdownMenu
-            open={isFieldMenuOpen}
-            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="iconSm"
-                className={cn(
-                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
-                  section.variant === "additional" && "hover:!bg-card",
-                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
-                )}
-                aria-label={`${field.label} settings`}
-              >
-                <GearIcon className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
-              <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
-                {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
-                {isPasswordVisible ? "Hide password" : "Show password"}
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <GeneratePasswordIcon className="size-4" />
-                Generate password
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <DropdownMenu
+              open={isFieldMenuOpen}
+              onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+            >
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="iconSm"
+                data-password-generator-trigger
+                  className={cn(
+                    "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                    section.variant === "additional" && "hover:!bg-card",
+                    (isFieldMenuOpen || isPasswordGeneratorOpen) &&
+                      "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                  )}
+                  aria-label={`${field.label} settings`}
+                >
+                  <GearIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
+                <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
+                  {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+                  {isPasswordVisible ? "Hide password" : "Show password"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => openPasswordGenerator(field.id)}>
+                  <GeneratePasswordIcon className="size-4" />
+                  Generate password
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         ) : field.secret || field.type === "totp" ? (
           <ActionButton label="Show value" sectionVariant={section.variant}>
             <EyeIcon className="size-4" />
@@ -839,6 +1295,7 @@ export default function DevUIKeyFormPage() {
   function renderField(section: DemoSection, field: DemoField) {
     const canReorderField = !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
+    const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
 
     return (
       <SortableField
@@ -852,9 +1309,11 @@ export default function DevUIKeyFormPage() {
         actions={renderActions(section, field)}
         floatingActions={renderFloatingActions(field)}
         isHoverLocked={openFieldMenuId === field.id}
+        forceActive={isPasswordGeneratorOpen}
+        fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
-        concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
+        concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
         onCopyAction={isWebsiteField ? openWebsite : undefined}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}

@@ -25,7 +25,10 @@ export {
   type TooltipContentProps,
 } from "./components/ui/tooltip.js";
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
+export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
 export { Input, type InputProps } from "./components/ui/input.js";
+export { Separator, type SeparatorProps } from "./components/ui/separator.js";
+export { Slider, type SliderProps } from "./components/ui/slider.js";
 export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";
 export { Popup, type PopupMenu, type PopupMenuItem, type PopupProps } from "./components/ui/popup.js";
