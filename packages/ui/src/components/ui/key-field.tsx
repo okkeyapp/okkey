@@ -74,6 +74,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   mode?: KeyFormMode;
   editableLabel?: boolean;
   editableValue?: boolean;
+  autoFocusValue?: boolean;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
   onValueChange?: (value: string) => void;
@@ -91,6 +92,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   copyTextClassName?: string;
   floatingActions?: React.ReactNode;
   isHoverLocked?: boolean;
+  concealValue?: boolean;
+  concealedValue?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
   labelClassName?: string;
   valueClassName?: string;
@@ -108,6 +111,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       mode = "view",
       editableLabel = false,
       editableValue = false,
+      autoFocusValue = false,
       reorderable = false,
       onLabelChange,
       onValueChange,
@@ -125,6 +129,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyTextClassName,
       floatingActions,
       isHoverLocked = false,
+      concealValue = false,
+      concealedValue = "••••••••••",
       onCopyAction,
       labelClassName,
       valueClassName,
@@ -148,6 +154,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
     const isFieldActive = isEditingLabel || isValueFocused;
+    const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
+    const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
     const copyText = copyValue ?? stringValue;
     const canCopyValue = mode === "view" && typeof copyText === "string" && copyText.length > 0;
     const [isCopied, setIsCopied] = React.useState(false);
@@ -163,6 +171,25 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     React.useEffect(() => {
       setDraftValue(stringValue ?? "");
     }, [stringValue]);
+
+    React.useEffect(() => {
+      if (autoFocusValue && canEditValue) {
+        const focusValueInput = () => {
+          valueInputRef.current?.focus();
+        };
+        const frameId = window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(focusValueInput);
+        });
+        const timeoutId = window.setTimeout(focusValueInput, 50);
+
+        return () => {
+          window.cancelAnimationFrame(frameId);
+          window.clearTimeout(timeoutId);
+        };
+      }
+
+      return undefined;
+    }, [autoFocusValue, canEditValue]);
 
     React.useEffect(
       () => () => {
@@ -346,21 +373,21 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className={cn("min-h-5 min-w-0 text-sm leading-5 text-foreground", valueClassName)}>
+            <div className={cn("min-h-5 min-w-0 flex-1 text-sm leading-5 text-foreground", valueClassName)}>
               {canEditValue ? (
                 <input
                   ref={valueInputRef}
-                  value={draftValue}
+                  value={shouldConcealValue ? concealedValue : draftValue}
                   onChange={(event) => {
                     setDraftValue(event.target.value);
                     onValueChange?.(event.target.value);
                   }}
                   onFocus={() => setIsValueFocused(true)}
                   onBlur={() => setIsValueFocused(false)}
-                  className="h-5 min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
+                  className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
                 />
               ) : (
-                children ?? value
+                displayedValue
               )}
             </div>
             {meta ? <div className="shrink-0">{meta}</div> : null}

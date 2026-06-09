@@ -104,6 +104,15 @@ function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function GearIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M8.14667 1.33325H7.85333C7.49971 1.33325 7.16057 1.47373 6.91053 1.72378C6.66048 1.97382 6.52 2.31296 6.52 2.66659V2.78659C6.51976 3.0204 6.45804 3.25005 6.34103 3.45248C6.22401 3.65491 6.05583 3.82301 5.85333 3.93992L5.56667 4.10659C5.36398 4.22361 5.13405 4.28522 4.9 4.28522C4.66595 4.28522 4.43603 4.22361 4.23333 4.10659L4.13333 4.05325C3.82738 3.87676 3.46389 3.82888 3.12267 3.92012C2.78145 4.01137 2.49037 4.23428 2.31333 4.53992L2.16667 4.79325C1.99018 5.09921 1.9423 5.46269 2.03354 5.80392C2.12478 6.14514 2.34769 6.43622 2.65333 6.61325L2.75333 6.67992C2.95485 6.79626 3.12241 6.96331 3.23937 7.16447C3.35632 7.36563 3.4186 7.5939 3.42 7.82658V8.16658C3.42093 8.40153 3.35977 8.63255 3.2427 8.83626C3.12563 9.03996 2.95681 9.20911 2.75333 9.32658L2.65333 9.38658C2.34769 9.56362 2.12478 9.8547 2.03354 10.1959C1.9423 10.5371 1.99018 10.9006 2.16667 11.2066L2.31333 11.4599C2.49037 11.7656 2.78145 11.9885 3.12267 12.0797C3.46389 12.171 3.82738 12.1231 4.13333 11.9466L4.23333 11.8933C4.43603 11.7762 4.66595 11.7146 4.9 11.7146C5.13405 11.7146 5.36398 11.7762 5.56667 11.8933L5.85333 12.0599C6.05583 12.1768 6.22401 12.3449 6.34103 12.5474C6.45804 12.7498 6.51976 12.9794 6.52 13.2133V13.3333C6.52 13.6869 6.66048 14.026 6.91053 14.2761C7.16057 14.5261 7.49971 14.6666 7.85333 14.6666H8.14667C8.50029 14.6666 8.83943 14.5261 9.08948 14.2761C9.33953 14.026 9.48 13.6869 9.48 13.3333V13.2133C9.48024 12.9794 9.54196 12.7498 9.65898 12.5474C9.77599 12.3449 9.94418 12.1768 10.1467 12.0599L10.4333 11.8933C10.636 11.7762 10.866 11.7146 11.1 11.7146C11.3341 11.7146 11.564 11.7762 11.7667 11.8933L11.8667 11.9466C12.1726 12.1231 12.5361 12.171 12.8773 12.0797C13.2186 11.9885 13.5096 11.7656 13.6867 11.4599L13.8333 11.1999C14.0098 10.894 14.0577 10.5305 13.9665 10.1893C13.8752 9.84803 13.6523 9.55695 13.3467 9.37992L13.2467 9.32658C13.0432 9.20911 12.8744 9.03996 12.7573 8.83626C12.6402 8.63255 12.5791 8.40153 12.58 8.16658V7.83325C12.5791 7.5983 12.6402 7.36728 12.7573 7.16358C12.8744 6.95988 13.0432 6.79072 13.2467 6.67325L13.3467 6.61325C13.6523 6.43622 13.8752 6.14514 13.9665 5.80392C14.0577 5.46269 14.0098 5.09921 13.8333 4.79325L13.6867 4.53992C13.5096 4.23428 13.2186 4.01137 12.8773 3.92012C12.5361 3.82888 12.1726 3.87676 11.8667 4.05325L11.7667 4.10659C11.564 4.22361 11.3341 4.28522 11.1 4.28522C10.866 4.28522 10.636 4.22361 10.4333 4.10659L10.1467 3.93992C9.94418 3.82301 9.77599 3.65491 9.65898 3.45248C9.54196 3.25005 9.48024 3.0204 9.48 2.78659V2.66659C9.48 2.31296 9.33953 1.97382 9.08948 1.72378C8.83943 1.47373 8.50029 1.33325 8.14667 1.33325Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 9.99992C9.10457 9.99992 10 9.10449 10 7.99992C10 6.89535 9.10457 5.99992 8 5.99992C6.89543 5.99992 6 6.89535 6 7.99992C6 9.10449 6.89543 9.99992 8 9.99992Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function CopyIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
@@ -140,6 +149,18 @@ function HidePasswordIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function GeneratePasswordIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M8.33398 13.9997H4.66732C4.3137 13.9997 3.97456 13.8592 3.72451 13.6091C3.47446 13.3591 3.33398 13.02 3.33398 12.6663V8.66634C3.33398 8.31272 3.47446 7.97358 3.72451 7.72353C3.97456 7.47348 4.3137 7.33301 4.66732 7.33301H11.334C11.5697 7.33288 11.8013 7.39525 12.005 7.51377C12.2088 7.63229 12.3775 7.80271 12.494 8.00767" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.33398 10.6667C7.33398 10.8435 7.40422 11.013 7.52925 11.1381C7.65427 11.2631 7.82384 11.3333 8.00065 11.3333C8.17746 11.3333 8.34703 11.2631 8.47206 11.1381C8.59708 11.013 8.66732 10.8435 8.66732 10.6667C8.66732 10.4899 8.59708 10.3203 8.47206 10.1953C8.34703 10.0702 8.17746 10 8.00065 10C7.82384 10 7.65427 10.0702 7.52925 10.1953C7.40422 10.3203 7.33398 10.4899 7.33398 10.6667Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.33398 7.33333V4.66667C5.33398 3.95942 5.61494 3.28115 6.11503 2.78105C6.61513 2.28095 7.29341 2 8.00065 2C8.7079 2 9.38617 2.28095 9.88627 2.78105C10.3864 3.28115 10.6673 3.95942 10.6673 4.66667V7.33333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.666 12.667H14.666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.666 10.667V14.667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ActionButton({
   label,
   children,
@@ -159,7 +180,7 @@ function ActionButton({
       variant="ghost"
       size="iconSm"
       className={cn(
-        destructive ? "size-6 min-h-6 min-w-6 text-destructive hover:text-destructive" : "size-6 min-h-6 min-w-6 text-muted-foreground hover:text-foreground",
+        destructive ? "size-8 min-h-8 min-w-8 text-destructive hover:text-destructive" : "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
         sectionVariant === "additional" && "hover:!bg-card",
       )}
       aria-label={label}
@@ -208,12 +229,14 @@ function PieIndicator({
 
 function KeyCounter({
   children,
+  className,
   sectionVariant,
   value,
   total,
   tone = "success",
 }: {
   children: ReactNode;
+  className?: string;
   sectionVariant: DemoSectionVariant;
   value: number;
   total: number;
@@ -224,6 +247,7 @@ function KeyCounter({
       className={cn(
         "inline-flex h-5 items-center gap-1 rounded-full px-2 pr-1 text-xs leading-5 text-foreground",
         sectionVariant === "additional" ? "bg-card" : "bg-secondary",
+        className,
       )}
     >
       {children}
@@ -235,6 +259,7 @@ function KeyCounter({
 function fieldValueForType(type: KeyFieldTypeOption): ReactNode {
   switch (type.id) {
     case "password":
+      return "correct-horse-battery-staple";
     case "recovery-codes":
       return "••••••••••";
     case "url":
@@ -287,7 +312,7 @@ function copyValueForType(type: KeyFieldTypeOption): string {
 function metaForField(type: string, sectionVariant: DemoSectionVariant): ReactNode {
   if (type === "password") {
     return (
-      <KeyCounter sectionVariant={sectionVariant} value={8} total={10} tone="success">
+      <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={8} total={10} tone="success">
         Good
       </KeyCounter>
     );
@@ -301,7 +326,7 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant): ReactNo
   }
   if (type === "recovery-codes") {
     return (
-      <KeyCounter sectionVariant={sectionVariant} value={2} total={10} tone="warning">
+      <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={2} total={10} tone="warning">
         2 of 10
       </KeyCounter>
     );
@@ -316,7 +341,7 @@ function createInitialSections(): DemoSection[] {
       variant: "primary",
       fields: [
         { id: "login", type: "username", label: "login", value: "shadcn@vercel.com", copyValue: "shadcn@vercel.com" },
-        { id: "password", type: "password", label: "password", value: "••••••••••", copyValue: "correct-horse-battery-staple", secret: true },
+        { id: "password", type: "password", label: "password", value: "correct-horse-battery-staple", copyValue: "correct-horse-battery-staple", secret: true },
         {
           id: "totp",
           type: "totp",
@@ -363,6 +388,7 @@ type SortableFieldProps = {
   value: ReactNode;
   mode: KeyFormMode;
   reorderable: boolean;
+  autoFocusValue?: boolean;
   onLabelChange: (label: string) => void;
   onValueChange: (value: string) => void;
   actions: ReactNode;
@@ -370,6 +396,7 @@ type SortableFieldProps = {
   isHoverLocked?: boolean;
   copyLabel?: string;
   copySuccessLabel?: string | null;
+  concealValue?: boolean;
   onCopyAction?: (value: string) => void | Promise<void>;
 };
 
@@ -379,6 +406,7 @@ function SortableField({
   value,
   mode,
   reorderable,
+  autoFocusValue,
   onLabelChange,
   onValueChange,
   actions,
@@ -386,6 +414,7 @@ function SortableField({
   isHoverLocked,
   copyLabel,
   copySuccessLabel,
+  concealValue,
   onCopyAction,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -409,11 +438,13 @@ function SortableField({
       mode={mode}
       editableLabel={field.editableLabel}
       editableValue={typeof value === "string"}
+      autoFocusValue={autoFocusValue}
       reorderable={reorderable}
-      meta={field.type === "password" ? null : metaForField(field.type, section.variant)}
+      meta={field.type === "password" || field.type === "recovery-codes" ? null : metaForField(field.type, section.variant)}
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
+      concealValue={concealValue}
       className={cn(isDragging && "relative z-10 opacity-0")}
       style={style}
       valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
@@ -509,6 +540,7 @@ export default function DevUIKeyFormPage() {
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
+  const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
   const nextIdRef = useRef(1);
   const fieldTypes = useMemo(() => englishKeyFieldTypeOptions, []);
   const urlFieldTypes = useMemo(() => englishKeyFieldTypeOptions.filter((type) => type.id === "url"), []);
@@ -547,8 +579,8 @@ export default function DevUIKeyFormPage() {
       id,
       type: type.id,
       label: type.label.toLowerCase(),
-      value: fieldValueForType(type),
-      copyValue: copyValueForType(type),
+      value: "",
+      copyValue: "",
       editableLabel: true,
       secret: ["password", "recovery-codes"].includes(type.id),
     };
@@ -556,21 +588,25 @@ export default function DevUIKeyFormPage() {
 
   function addSection(type: KeyFieldTypeOption) {
     const sectionId = `section-${nextIdRef.current++}`;
+    const field = createField(type);
+    setActiveValueFieldId(field.id);
     setSections((current) => [
       ...current,
       {
         id: sectionId,
         variant: "additional",
         title: type.label,
-        fields: [createField(type)],
+        fields: [field],
       },
     ]);
   }
 
   function addField(sectionId: string, type: KeyFieldTypeOption) {
+    const field = createField(type);
+    setActiveValueFieldId(field.id);
     setSections((current) =>
       current.map((section) =>
-        section.id === sectionId ? { ...section, fields: [...section.fields, createField(type)] } : section,
+        section.id === sectionId ? { ...section, fields: [...section.fields, field] } : section,
       ),
     );
   }
@@ -590,6 +626,9 @@ export default function DevUIKeyFormPage() {
   }
 
   function updateFieldValue(sectionId: string, fieldId: string, value: string) {
+    if (activeValueFieldId === fieldId) {
+      setActiveValueFieldId(null);
+    }
     setSections((current) =>
       current.map((section) =>
         section.id === sectionId
@@ -597,7 +636,7 @@ export default function DevUIKeyFormPage() {
               ...section,
               fields: section.fields.map((field) =>
                 field.id === fieldId
-                  ? { ...field, value, copyValue: field.secret ? field.copyValue : value }
+                  ? { ...field, value, copyValue: field.type === "password" ? value : field.secret ? field.copyValue : value }
                   : field,
               ),
             }
@@ -674,9 +713,11 @@ export default function DevUIKeyFormPage() {
 
   function renderActions(section: DemoSection, field: DemoField) {
     const canEdit = mode === "edit";
+    const isPasswordVisible = field.type === "password" && visiblePasswordIds.has(field.id);
+    const isFieldMenuOpen = openFieldMenuId === field.id;
     if (!canEdit) {
-      return field.type === "password" ? (
-        <span className={cn("transition-opacity group-hover/key-field:opacity-0", openFieldMenuId === field.id && "opacity-0")}>
+      return field.type === "password" || field.type === "recovery-codes" ? (
+        <span className={cn("transition-opacity group-hover/key-field:opacity-0", isFieldMenuOpen && "opacity-0")}>
           {metaForField(field.type, section.variant)}
         </span>
       ) : null;
@@ -684,8 +725,39 @@ export default function DevUIKeyFormPage() {
 
     return (
       <>
-        {field.type === "password" ? metaForField(field.type, section.variant) : null}
-        {field.secret || field.type === "totp" ? (
+        {field.type === "password" || field.type === "recovery-codes" ? metaForField(field.type, section.variant) : null}
+        {field.type === "password" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={`${field.label} settings`}
+              >
+                <GearIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
+              <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
+                {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+                {isPasswordVisible ? "Hide password" : "Show password"}
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <GeneratePasswordIcon className="size-4" />
+                Generate password
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : field.secret || field.type === "totp" ? (
           <ActionButton label="Show value" sectionVariant={section.variant}>
             <EyeIcon className="size-4" />
           </ActionButton>
@@ -724,9 +796,6 @@ export default function DevUIKeyFormPage() {
   }
 
   function valueForField(field: DemoField): ReactNode {
-    if (field.type === "password" && visiblePasswordIds.has(field.id)) {
-      return field.copyValue ?? field.value;
-    }
     return field.value;
   }
 
@@ -779,11 +848,13 @@ export default function DevUIKeyFormPage() {
         value={valueForField(field)}
         mode={mode}
         reorderable={canReorderField}
+        autoFocusValue={activeValueFieldId === field.id}
         actions={renderActions(section, field)}
         floatingActions={renderFloatingActions(field)}
         isHoverLocked={openFieldMenuId === field.id}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
+        concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
         onCopyAction={isWebsiteField ? openWebsite : undefined}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
@@ -800,8 +871,9 @@ export default function DevUIKeyFormPage() {
         editableLabel={field.editableLabel}
         editableValue={typeof valueForField(field) === "string"}
         reorderable
-        meta={field.type === "password" ? null : metaForField(field.type, section.variant)}
+        meta={field.type === "password" || field.type === "recovery-codes" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
+        concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
         className={
           isDraggedField
             ? cn("rounded-lg border border-border shadow-lg", section.variant === "additional" ? "bg-secondary" : "bg-card")
