@@ -624,6 +624,7 @@ type SortableFieldProps = {
   forceActive?: boolean;
   isInvalid?: boolean;
   fieldOverlay?: ReactNode;
+  copyValue?: string;
   copyLabel?: string;
   copySuccessLabel?: string | null;
   concealValue?: boolean;
@@ -645,6 +646,7 @@ function SortableField({
   forceActive,
   isInvalid,
   fieldOverlay,
+  copyValue,
   copyLabel,
   copySuccessLabel,
   concealValue,
@@ -689,7 +691,7 @@ function SortableField({
       style={style}
       valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
-      copyValue={field.copyValue}
+      copyValue={copyValue ?? field.copyValue}
       copyLabel={copyLabel}
       copySuccessLabel={copySuccessLabel}
       copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
@@ -1277,11 +1279,6 @@ export default function DevUIKeyFormPage() {
             <EyeIcon className="size-4" />
           </ActionButton>
         ) : null}
-        {canEdit && field.type === "url" ? (
-          <ActionButton label="Field settings" sectionVariant={section.variant}>
-            <SettingsIcon className="size-4" />
-          </ActionButton>
-        ) : null}
         {canEdit ? (
           <ActionButton label="Delete field" destructive sectionVariant={section.variant} onClick={() => removeField(section.id, field.id)}>
             <TrashIcon className="size-4" />
@@ -1337,6 +1334,14 @@ export default function DevUIKeyFormPage() {
 
   function isInvalidTotpField(field: DemoField): boolean {
     return field.type === "totp" && typeof field.value === "string" && field.value.trim().length > 0 && !createTotp(field.value);
+  }
+
+  function copyValueForField(field: DemoField): string | undefined {
+    if (field.type === "totp" && typeof field.value === "string") {
+      return getTotpTokenState(field.value, totpTimestamp)?.token;
+    }
+
+    return field.copyValue;
   }
 
   function renderFloatingActions(field: DemoField) {
@@ -1397,6 +1402,7 @@ export default function DevUIKeyFormPage() {
         forceActive={isPasswordGeneratorOpen}
         isInvalid={isTotpInvalid}
         fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
+        copyValue={copyValueForField(field)}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
