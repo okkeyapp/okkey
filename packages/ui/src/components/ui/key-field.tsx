@@ -93,6 +93,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   floatingActions?: React.ReactNode;
   isHoverLocked?: boolean;
   forceActive?: boolean;
+  isInvalid?: boolean;
   fieldOverlay?: React.ReactNode;
   concealValue?: boolean;
   concealedValue?: string;
@@ -132,6 +133,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       floatingActions,
       isHoverLocked = false,
       forceActive = false,
+      isInvalid = false,
       fieldOverlay,
       concealValue = false,
       concealedValue = "••••••••••",
@@ -157,7 +159,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditLabel = mode === "edit" && editableLabel;
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
-    const isFieldActive = isEditingLabel || isValueFocused || forceActive;
+    const isFieldActive = isEditingLabel || isValueFocused || forceActive || isInvalid;
     const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
     const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
     const copyText = copyValue ?? stringValue;
@@ -268,12 +270,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         ref={ref}
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
-          isFieldActive && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
           fieldOverlay && "relative",
           (canCopyValue || floatingActions) && "relative transition-colors",
           canCopyValue && copyHoverClassName,
           isHoverLocked && copyHoverActiveClassName,
           className,
+          isFieldActive &&
+            (isInvalid
+              ? "relative z-10 border-x-destructive border-y-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]"
+              : "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]"),
         )}
         draggable={canReorder ? draggable : false}
         onDragStart={canReorder ? onDragStart : undefined}

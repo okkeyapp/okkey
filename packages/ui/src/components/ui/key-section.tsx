@@ -115,7 +115,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
         <div
           className={cn(
             "rounded-xl",
-            variant === "primary" && "border border-border bg-card text-card-foreground",
+            variant === "primary" && "bg-card text-card-foreground",
             variant === "additional" && "bg-secondary text-secondary-foreground",
           )}
         >
@@ -192,8 +192,10 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
 
           <div
             className={cn(
+              shouldShowHeader && "[&>*:first-child]:-mt-px",
+              "[&>*+*]:-mt-px",
               !shouldShowHeader && "[&>*:first-child]:rounded-t-xl",
-              !canAddField && "[&>*:last-child]:rounded-b-xl [&>*:last-child]:border-b-0",
+              !canAddField && "[&>*:last-child]:rounded-b-xl",
             )}
           >
             {children}
@@ -204,7 +206,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
               type="button"
               variant="secondary"
               className={cn(
-                "h-8 w-full rounded-b-xl rounded-t-none border border-transparent bg-secondary px-3 font-medium text-foreground shadow-none",
+                "-mt-px h-8 w-full rounded-b-xl rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
+                variant === "additional" && "border-x-transparent border-b-transparent",
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                 "focus:border-accent focus-visible:border-accent",
               )}
@@ -220,7 +223,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                   type="button"
                   variant="secondary"
                   className={cn(
-                    "h-8 w-full rounded-b-xl rounded-t-none border border-transparent bg-secondary px-3 font-medium text-foreground shadow-none",
+                    "-mt-px h-8 w-full rounded-b-xl rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
+                    variant === "additional" && "border-x-transparent border-b-transparent",
                     "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                     "focus:border-accent focus-visible:border-accent",
                   )}

@@ -19,6 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import * as OTPAuth from "otpauth";
 import {
   Button,
   Checkbox,
@@ -312,59 +313,6 @@ function KeyCounter({
   );
 }
 
-function fieldValueForType(type: KeyFieldTypeOption): ReactNode {
-  switch (type.id) {
-    case "password":
-      return "correct-horse-battery-staple";
-    case "recovery-codes":
-      return "••••••••••";
-    case "url":
-      return "https://example.com";
-    case "email":
-      return "user@example.com";
-    case "username":
-      return "okkey-user";
-    case "totp":
-      return (
-        <span className="font-mono text-[15px]">
-          873 <span className="text-muted-foreground">•</span> 846
-        </span>
-      );
-    case "phone":
-      return "+7 999 000-00-00";
-    case "address":
-      return "221B Baker Street, London";
-    case "card-number":
-      return "4242 4242 4242 4242";
-    case "card-expiry":
-      return "12/30";
-    case "date":
-      return "02.05.2026";
-    case "file":
-      return "Attach a file";
-    case "multiline-text":
-    case "note":
-      return "Internal note for this item.";
-    default:
-      return "New value";
-  }
-}
-
-function copyValueForType(type: KeyFieldTypeOption): string {
-  switch (type.id) {
-    case "password":
-      return "correct-horse-battery-staple";
-    case "recovery-codes":
-      return "2 remaining recovery codes";
-    case "totp":
-      return "873846";
-    default: {
-      const value = fieldValueForType(type);
-      return typeof value === "string" ? value : "";
-    }
-  }
-}
-
 type PasswordStrength = {
   label: string;
   value: number;
@@ -496,13 +444,6 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant, value?: 
       </KeyCounter>
     );
   }
-  if (type === "totp") {
-    return (
-      <KeyCounter sectionVariant={sectionVariant} value={21} total={60} tone="success">
-        21
-      </KeyCounter>
-    );
-  }
   if (type === "recovery-codes") {
     return (
       <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={2} total={10} tone="warning">
@@ -564,6 +505,66 @@ function renderGeneratedPassword(password: string): ReactNode {
   });
 }
 
+type TotpTokenState = {
+  token: string;
+  remainingSeconds: number;
+  period: number;
+};
+
+function createTotp(value: string): OTPAuth.TOTP | null {
+  const secret = value.trim();
+  if (!secret) {
+    return null;
+  }
+
+  try {
+    const parsed = OTPAuth.URI.parse(secret);
+    return parsed instanceof OTPAuth.TOTP ? parsed : null;
+  } catch {
+    try {
+      const normalizedSecret = secret.replace(/\s+/g, "").replace(/=+$/g, "").toUpperCase();
+      if (!/^[A-Z2-7]+$/.test(normalizedSecret) || normalizedSecret.length < 16) {
+        return null;
+      }
+
+      return new OTPAuth.TOTP({
+        secret: OTPAuth.Secret.fromBase32(normalizedSecret),
+        digits: 6,
+        period: 60,
+      });
+    } catch {
+      return null;
+    }
+  }
+}
+
+function getTotpTokenState(value: string, timestamp: number): TotpTokenState | null {
+  const totp = createTotp(value);
+  if (!totp) {
+    return null;
+  }
+
+  const remainingMs = totp.remaining({ timestamp });
+  return {
+    token: totp.generate({ timestamp }).padStart(6, "0"),
+    remainingSeconds: Math.max(0, Math.ceil(remainingMs / 1000) - 1),
+    period: totp.period,
+  };
+}
+
+function renderTotpToken(token: string): ReactNode {
+  const first = token.slice(0, 3);
+  const second = token.slice(3);
+
+  return (
+    <span className="font-mono text-[15px] tabular-nums">
+      {first}
+      <span className="mx-1 text-muted-foreground">•</span>
+      {second}
+    </span>
+  );
+}
+
 function createInitialSections(): DemoSection[] {
   return [
     {
@@ -576,12 +577,8 @@ function createInitialSections(): DemoSection[] {
           id: "totp",
           type: "totp",
           label: "one-time password (totp)",
-          value: (
-            <span className="font-mono text-[15px]">
-              873 <span className="text-muted-foreground">•</span> 846
-            </span>
-          ),
-          copyValue: "873846",
+          value: "",
+          copyValue: "",
         },
       ],
     },
@@ -625,6 +622,7 @@ type SortableFieldProps = {
   floatingActions?: ReactNode;
   isHoverLocked?: boolean;
   forceActive?: boolean;
+  isInvalid?: boolean;
   fieldOverlay?: ReactNode;
   copyLabel?: string;
   copySuccessLabel?: string | null;
@@ -645,6 +643,7 @@ function SortableField({
   floatingActions,
   isHoverLocked,
   forceActive,
+  isInvalid,
   fieldOverlay,
   copyLabel,
   copySuccessLabel,
@@ -674,14 +673,19 @@ function SortableField({
       editableValue={typeof value === "string"}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
-      meta={field.type === "password" || field.type === "recovery-codes" ? null : metaForField(field.type, section.variant)}
+      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
       forceActive={forceActive}
+      isInvalid={isInvalid}
       fieldOverlay={fieldOverlay}
       concealValue={concealValue}
-      className={cn(isDragging && "relative z-10 opacity-0")}
+      className={cn(
+        section.variant === "primary" && "border-x-border",
+        section.variant === "additional" && "border-x-transparent border-b-transparent",
+        isDragging && "relative z-10 opacity-0",
+      )}
       style={style}
       valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
@@ -786,6 +790,7 @@ export default function DevUIKeyFormPage() {
     generatePassword(passwordGeneratorSettings, passwordGeneratorLength),
   );
   const [isGeneratedPasswordCopied, setIsGeneratedPasswordCopied] = useState(false);
+  const [totpTimestamp, setTotpTimestamp] = useState(() => Date.now());
   const nextIdRef = useRef(1);
   const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fieldTypes = useMemo(() => englishKeyFieldTypeOptions, []);
@@ -831,6 +836,11 @@ export default function DevUIKeyFormPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTotpTimestamp(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!passwordGeneratorFieldId) {
@@ -1189,7 +1199,7 @@ export default function DevUIKeyFormPage() {
     const isPasswordVisible = field.type === "password" && visiblePasswordIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
-    const fieldMeta = metaForField(field.type, section.variant, valueForField(field));
+    const fieldMeta = metaForField(field.type, section.variant, valueForField(section, field));
     if (!canEdit) {
       return (field.type === "password" || field.type === "recovery-codes") && fieldMeta ? (
         <span className={cn("transition-opacity group-hover/key-field:opacity-0", isFieldMenuOpen && "opacity-0")}>
@@ -1236,7 +1246,33 @@ export default function DevUIKeyFormPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </>
-        ) : field.secret || field.type === "totp" ? (
+        ) : field.type === "totp" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={`${field.label} settings`}
+              >
+                <GearIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
+              <DropdownMenuItem onSelect={() => resetTotpSecret(section.id, field.id)}>
+                Enter new TOTP secret
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : field.secret ? (
           <ActionButton label="Show value" sectionVariant={section.variant}>
             <EyeIcon className="size-4" />
           </ActionButton>
@@ -1267,6 +1303,12 @@ export default function DevUIKeyFormPage() {
     });
   }
 
+  function resetTotpSecret(sectionId: string, fieldId: string) {
+    setOpenFieldMenuId(null);
+    updateFieldValue(sectionId, fieldId, "");
+    setActiveValueFieldId(fieldId);
+  }
+
   function openWebsite(value: string) {
     const openedWindow = window.open(value, "_blank", "noopener,noreferrer");
     if (openedWindow) {
@@ -1274,8 +1316,27 @@ export default function DevUIKeyFormPage() {
     }
   }
 
-  function valueForField(field: DemoField): ReactNode {
+  function valueForField(section: DemoSection, field: DemoField): ReactNode {
+    if (field.type === "totp" && typeof field.value === "string") {
+      const tokenState = getTotpTokenState(field.value, totpTimestamp);
+      if (tokenState) {
+        const timerTone = tokenState.remainingSeconds <= 2 ? "danger" : tokenState.remainingSeconds <= 5 ? "warning" : "success";
+        return (
+          <span className="inline-flex items-center gap-2">
+            {renderTotpToken(tokenState.token)}
+            <KeyCounter className="font-mono tabular-nums" sectionVariant={section.variant} value={tokenState.remainingSeconds} total={tokenState.period} tone={timerTone}>
+              {tokenState.remainingSeconds}
+            </KeyCounter>
+          </span>
+        );
+      }
+    }
+
     return field.value;
+  }
+
+  function isInvalidTotpField(field: DemoField): boolean {
+    return field.type === "totp" && typeof field.value === "string" && field.value.trim().length > 0 && !createTotp(field.value);
   }
 
   function renderFloatingActions(field: DemoField) {
@@ -1319,13 +1380,14 @@ export default function DevUIKeyFormPage() {
     const canReorderField = !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
+    const isTotpInvalid = isInvalidTotpField(field);
 
     return (
       <SortableField
         key={field.id}
         section={section}
         field={field}
-        value={valueForField(field)}
+        value={valueForField(section, field)}
         mode={mode}
         reorderable={canReorderField}
         autoFocusValue={activeValueFieldId === field.id}
@@ -1333,6 +1395,7 @@ export default function DevUIKeyFormPage() {
         floatingActions={renderFloatingActions(field)}
         isHoverLocked={openFieldMenuId === field.id}
         forceActive={isPasswordGeneratorOpen}
+        isInvalid={isTotpInvalid}
         fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
@@ -1348,19 +1411,24 @@ export default function DevUIKeyFormPage() {
     return (
       <KeyField
         label={field.label}
-        value={valueForField(field)}
+        value={valueForField(section, field)}
         mode={mode}
         editableLabel={field.editableLabel}
-        editableValue={typeof valueForField(field) === "string"}
+        editableValue={typeof valueForField(section, field) === "string"}
         reorderable
-        meta={field.type === "password" || field.type === "recovery-codes" ? null : metaForField(field.type, section.variant)}
+        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
+        isInvalid={isInvalidTotpField(field)}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
-        className={
-          isDraggedField
-            ? cn("rounded-lg border border-border shadow-lg", section.variant === "additional" ? "bg-secondary" : "bg-card")
-            : undefined
-        }
+        className={cn(
+          !isDraggedField && section.variant === "primary" && "border-x-border",
+          !isDraggedField && section.variant === "additional" && "border-x-transparent border-b-transparent",
+          isDraggedField &&
+            cn(
+              "rounded-lg border border-border shadow-lg",
+              section.variant === "additional" ? "bg-secondary" : "bg-card",
+            ),
+        )}
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
         valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
