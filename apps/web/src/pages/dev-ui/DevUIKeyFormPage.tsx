@@ -543,6 +543,27 @@ function generatePassword(settings: PasswordGeneratorSettings, length = 20): str
   return characters.join("");
 }
 
+function renderGeneratedPassword(password: string): ReactNode {
+  return Array.from(password).map((character, index) => {
+    const key = `${character}-${index}`;
+    if (/\d/.test(character)) {
+      return (
+        <span key={key} className="text-lime-600">
+          {character}
+        </span>
+      );
+    }
+    if (passwordGeneratorCharacterSets.symbols.includes(character)) {
+      return (
+        <span key={key} className="text-orange-600">
+          {character}
+        </span>
+      );
+    }
+    return <span key={key}>{character}</span>;
+  });
+}
+
 function createInitialSections(): DemoSection[] {
   return [
     {
@@ -1027,7 +1048,9 @@ export default function DevUIKeyFormPage() {
           </div>
 
           <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-            <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold leading-5 text-foreground">{generatedPassword}</span>
+            <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold leading-5 text-foreground">
+              {renderGeneratedPassword(generatedPassword)}
+            </span>
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
