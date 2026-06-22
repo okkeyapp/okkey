@@ -39,6 +39,7 @@ export {
   keyFieldTypeOptions,
   type KeyFieldProps,
   type KeyFieldTypeOption,
+  type KeyFieldValueTransformContext,
   type KeyFormMode,
   type KeyFormProps,
   type KeySectionProps,

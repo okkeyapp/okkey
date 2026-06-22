@@ -5,6 +5,12 @@ import { Button } from "./button.js";
 
 export type KeyFormMode = "view" | "edit";
 
+export type KeyFieldValueTransformContext = {
+  previousValue: string;
+  selectionStart: number | null;
+  inputType?: string;
+};
+
 export type KeyFieldTypeOption = {
   id: string;
   label: string;
@@ -79,6 +85,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
   onValueChange?: (value: string) => void;
+  transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   copyValue?: string;
@@ -120,6 +127,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       reorderable = false,
       onLabelChange,
       onValueChange,
+      transformValueInput,
       meta,
       actions,
       copyValue,
@@ -250,6 +258,19 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       } else {
         setDraftLabel(label);
       }
+    }
+
+    function handleValueChange(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+      const nativeEvent = event.nativeEvent instanceof InputEvent ? event.nativeEvent : undefined;
+      const nextValue = transformValueInput
+        ? transformValueInput(event.target.value, {
+            previousValue: draftValue,
+            selectionStart: event.currentTarget.selectionStart,
+            inputType: nativeEvent?.inputType,
+          })
+        : event.target.value;
+      setDraftValue(nextValue);
+      onValueChange?.(nextValue);
     }
 
     async function handleCopyClick(event: React.MouseEvent<HTMLButtonElement>) {
@@ -426,10 +447,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     ref={setValueTextareaRef}
                     value={draftValue}
                     rows={2}
-                    onChange={(event) => {
-                      setDraftValue(event.target.value);
-                      onValueChange?.(event.target.value);
-                    }}
+                    onChange={handleValueChange}
                     onFocus={() => {
                       setIsValueFocused(true);
                       resizeTextarea();
@@ -441,10 +459,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                   <input
                     ref={valueInputRef}
                     value={shouldConcealValue ? concealedValue : draftValue}
-                    onChange={(event) => {
-                      setDraftValue(event.target.value);
-                      onValueChange?.(event.target.value);
-                    }}
+                    onChange={handleValueChange}
                     onFocus={() => setIsValueFocused(true)}
                     onBlur={() => setIsValueFocused(false)}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"

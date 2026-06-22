@@ -38,6 +38,7 @@ import {
   TooltipTrigger,
   cn,
   keyFieldTypeOptions,
+  type KeyFieldValueTransformContext,
   type KeyFieldTypeOption,
   type KeyFormMode,
 } from "@okkey/ui";
@@ -197,11 +198,40 @@ function HidePasswordIcon(props: SVGProps<SVGSVGElement>) {
 function GeneratePasswordIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M8.33398 13.9997H4.66732C4.3137 13.9997 3.97456 13.8592 3.72451 13.6091C3.47446 13.3591 3.33398 13.02 3.33398 12.6663V8.66634C3.33398 8.31272 3.47446 7.97358 3.72451 7.72353C3.97456 7.47348 4.3137 7.33301 4.66732 7.33301H11.334C11.5697 7.33288 11.8013 7.39525 12.005 7.51377C12.2088 7.63229 12.3775 7.80271 12.494 8.00767" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.33398 10.6667C7.33398 10.8435 7.40422 11.013 7.52925 11.1381C7.65427 11.2631 7.82384 11.3333 8.00065 11.3333C8.17746 11.3333 8.34703 11.2631 8.47206 11.1381C8.59708 11.013 8.66732 10.8435 8.66732 10.6667C8.66732 10.4899 8.59708 10.3203 8.47206 10.1953C8.34703 10.0702 8.17746 10 8.00065 10C7.82384 10 7.65427 10.0702 7.52925 10.1953C7.40422 10.3203 7.33398 10.4899 7.33398 10.6667Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.33398 7.33333V4.66667C5.33398 3.95942 5.61494 3.28115 6.11503 2.78105C6.61513 2.28095 7.29341 2 8.00065 2C8.7079 2 9.38617 2.28095 9.88627 2.78105C10.3864 3.28115 10.6673 3.95942 10.6673 4.66667V7.33333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M10.666 12.667H14.666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.666 10.667V14.667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.33337 14.0002H4.66671C4.31309 14.0002 3.97395 13.8597 3.7239 13.6096C3.47385 13.3596 3.33337 13.0205 3.33337 12.6668V8.66683C3.33337 8.31321 3.47385 7.97407 3.7239 7.72402C3.97395 7.47397 4.31309 7.3335 4.66671 7.3335H10.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.33337 7.33333V4.66667C5.33337 3.95942 5.61433 3.28115 6.11442 2.78105C6.61452 2.28095 7.2928 2 8.00004 2C8.70728 2 9.38556 2.28095 9.88566 2.78105C10.3858 3.28115 10.6667 3.95942 10.6667 4.66667V7.33333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.8667 13.878L10.4187 14.6367C10.3757 14.659 10.3274 14.669 10.2791 14.6655C10.2308 14.662 10.1844 14.6451 10.1451 14.6167C10.1058 14.5884 10.0752 14.5497 10.0566 14.5049C10.0381 14.4602 10.0323 14.4111 10.04 14.3633L10.3167 12.756L9.14537 11.618C9.11041 11.5842 9.08565 11.5412 9.07393 11.494C9.06221 11.4468 9.06399 11.3973 9.07908 11.3511C9.09416 11.3049 9.12194 11.2638 9.15924 11.2326C9.19655 11.2014 9.24187 11.1813 9.29004 11.1746L10.9087 10.94L11.6327 9.47798C11.6544 9.43444 11.6877 9.3978 11.7291 9.37219C11.7704 9.34658 11.8181 9.33301 11.8667 9.33301C11.9153 9.33301 11.963 9.34658 12.0043 9.37219C12.0457 9.3978 12.0791 9.43444 12.1007 9.47798L12.8247 10.94L14.4434 11.1746C14.4914 11.1816 14.5365 11.2018 14.5737 11.233C14.6108 11.2642 14.6385 11.3052 14.6535 11.3513C14.6686 11.3975 14.6704 11.4469 14.6588 11.494C14.6473 11.5411 14.6227 11.5841 14.588 11.618L13.4167 12.756L13.6927 14.3627C13.701 14.4106 13.6957 14.4598 13.6774 14.5049C13.659 14.5499 13.6285 14.5889 13.5891 14.6175C13.5497 14.646 13.5032 14.6629 13.4546 14.6663C13.4061 14.6697 13.3577 14.6594 13.3147 14.6367L11.8667 13.878Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EnterTotpSecretIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M8.33337 14.0002H4.66671C4.31309 14.0002 3.97395 13.8597 3.7239 13.6096C3.47385 13.3596 3.33337 13.0205 3.33337 12.6668V8.66683C3.33337 8.31321 3.47385 7.97407 3.7239 7.72402C3.97395 7.47397 4.31309 7.3335 4.66671 7.3335H11.3334C11.5691 7.33337 11.8007 7.39574 12.0044 7.51426C12.2082 7.63278 12.3769 7.8032 12.4934 8.00816" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.33337 10.6667C7.33337 10.8435 7.40361 11.013 7.52864 11.1381C7.65366 11.2631 7.82323 11.3333 8.00004 11.3333C8.17685 11.3333 8.34642 11.2631 8.47145 11.1381C8.59647 11.013 8.66671 10.8435 8.66671 10.6667C8.66671 10.4899 8.59647 10.3203 8.47145 10.1953C8.34642 10.0702 8.17685 10 8.00004 10C7.82323 10 7.65366 10.0702 7.52864 10.1953C7.40361 10.3203 7.33337 10.4899 7.33337 10.6667Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.33337 7.33333V4.66667C5.33337 3.95942 5.61433 3.28115 6.11442 2.78105C6.61452 2.28095 7.2928 2 8.00004 2C8.70728 2 9.38556 2.28095 9.88566 2.78105C10.3858 3.28115 10.6667 3.95942 10.6667 4.66667V7.33333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.6666 12.6665H14.6666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.6666 10.6665V14.6665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DisableMaskIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M12.9466 12.9398C12.8226 13.0646 12.6751 13.1636 12.5126 13.2311C12.3501 13.2986 12.1759 13.3333 12 13.3332H3.99996C3.64634 13.3332 3.3072 13.1927 3.05715 12.9426C2.8071 12.6926 2.66663 12.3535 2.66663 11.9998V3.99984C2.66663 3.6305 2.81663 3.2965 3.05863 3.05517M5.33329 2.6665H12C12.3536 2.6665 12.6927 2.80698 12.9428 3.05703C13.1928 3.30708 13.3333 3.64622 13.3333 3.99984V10.6665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6.59001 6.58114C6.40193 6.76642 6.25238 6.98709 6.15001 7.23045C6.04764 7.4738 5.99446 7.73502 5.99354 7.99903C5.99263 8.26304 6.04399 8.52461 6.14467 8.76867C6.24535 9.01273 6.39336 9.23444 6.58015 9.42102C6.76694 9.60759 6.98883 9.75534 7.23301 9.85573C7.47718 9.95612 7.73882 10.0072 8.00283 10.0059C8.26684 10.0047 8.52799 9.95123 8.77123 9.84857C9.01446 9.74591 9.23496 9.59611 9.42001 9.40781M9.80801 7.14381C9.60863 6.72402 9.26982 6.38639 8.84934 6.18848" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EnableMaskIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M6 8C6 8.53043 6.21071 9.03914 6.58579 9.41421C6.96086 9.78929 7.46957 10 8 10C8.53043 10 9.03914 9.78929 9.41421 9.41421C9.78929 9.03914 10 8.53043 10 8C10 7.46957 9.78929 6.96086 9.41421 6.58579C9.03914 6.21071 8.53043 6 8 6C7.46957 6 6.96086 6.21071 6.58579 6.58579C6.21071 6.96086 6 7.46957 6 8Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.66663 3.99984C2.66663 3.64622 2.8071 3.30708 3.05715 3.05703C3.3072 2.80698 3.64634 2.6665 3.99996 2.6665H12C12.3536 2.6665 12.6927 2.80698 12.9428 3.05703C13.1928 3.30708 13.3333 3.64622 13.3333 3.99984V11.9998C13.3333 12.3535 13.1928 12.6926 12.9428 12.9426C12.6927 13.1927 12.3536 13.3332 12 13.3332H3.99996C3.64634 13.3332 3.3072 13.1927 3.05715 12.9426C2.8071 12.6926 2.66663 12.3535 2.66663 11.9998V3.99984Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -565,6 +595,265 @@ function renderTotpToken(token: string): ReactNode {
   );
 }
 
+function normalizePhoneValue(value: string): string {
+  const hasLeadingPlus = value.trimStart().startsWith("+");
+  const digits = value.replace(/\D/g, "");
+  return `${hasLeadingPlus ? "+" : ""}${digits}`;
+}
+
+const knownCallingCodes = [
+  "1",
+  "7",
+  "8",
+  "20",
+  "27",
+  "30",
+  "31",
+  "32",
+  "33",
+  "34",
+  "36",
+  "39",
+  "40",
+  "41",
+  "43",
+  "44",
+  "45",
+  "46",
+  "47",
+  "48",
+  "49",
+  "52",
+  "55",
+  "61",
+  "64",
+  "65",
+  "81",
+  "82",
+  "84",
+  "86",
+  "90",
+  "91",
+  "92",
+  "93",
+  "94",
+  "95",
+  "98",
+  "212",
+  "213",
+  "216",
+  "218",
+  "220",
+  "221",
+  "222",
+  "223",
+  "224",
+  "225",
+  "226",
+  "227",
+  "228",
+  "229",
+  "230",
+  "231",
+  "232",
+  "233",
+  "234",
+  "235",
+  "236",
+  "237",
+  "238",
+  "239",
+  "240",
+  "241",
+  "242",
+  "243",
+  "244",
+  "245",
+  "246",
+  "248",
+  "249",
+  "250",
+  "251",
+  "252",
+  "253",
+  "254",
+  "255",
+  "256",
+  "257",
+  "258",
+  "260",
+  "261",
+  "262",
+  "263",
+  "264",
+  "265",
+  "266",
+  "267",
+  "268",
+  "269",
+  "290",
+  "291",
+  "297",
+  "298",
+  "299",
+  "350",
+  "351",
+  "352",
+  "353",
+  "354",
+  "355",
+  "356",
+  "357",
+  "358",
+  "359",
+  "370",
+  "371",
+  "372",
+  "373",
+  "374",
+  "375",
+  "376",
+  "377",
+  "378",
+  "380",
+  "381",
+  "382",
+  "383",
+  "385",
+  "386",
+  "387",
+  "389",
+  "420",
+  "421",
+  "423",
+  "500",
+  "501",
+  "502",
+  "503",
+  "504",
+  "505",
+  "506",
+  "507",
+  "508",
+  "509",
+  "590",
+  "591",
+  "592",
+  "593",
+  "594",
+  "595",
+  "596",
+  "597",
+  "598",
+  "599",
+  "670",
+  "672",
+  "673",
+  "674",
+  "675",
+  "676",
+  "677",
+  "678",
+  "679",
+  "680",
+  "681",
+  "682",
+  "683",
+  "685",
+  "686",
+  "687",
+  "688",
+  "689",
+  "690",
+  "691",
+  "692",
+  "850",
+  "852",
+  "853",
+  "855",
+  "856",
+  "880",
+  "886",
+  "960",
+  "961",
+  "962",
+  "963",
+  "964",
+  "965",
+  "966",
+  "967",
+  "968",
+  "970",
+  "971",
+  "972",
+  "973",
+  "974",
+  "975",
+  "976",
+  "977",
+  "992",
+  "993",
+  "994",
+  "995",
+  "996",
+  "998",
+].sort((a, b) => b.length - a.length);
+
+function getPhoneCountryCode(digits: string): string {
+  return knownCallingCodes.find((code) => digits.startsWith(code)) ?? digits.slice(0, Math.min(3, digits.length));
+}
+
+function removePhoneDigitAtIndex(value: string, digitIndex: number): string {
+  const normalizedValue = normalizePhoneValue(value);
+  const hasPlus = normalizedValue.startsWith("+");
+  const digits = hasPlus ? normalizedValue.slice(1) : normalizedValue;
+  if (!digits) {
+    return normalizedValue;
+  }
+
+  const safeDigitIndex = Math.max(0, Math.min(digitIndex, digits.length - 1));
+  return `${hasPlus ? "+" : ""}${digits.slice(0, safeDigitIndex)}${digits.slice(safeDigitIndex + 1)}`;
+}
+
+function formatPhoneValue(value: string): string {
+  const normalizedValue = normalizePhoneValue(value);
+  const hasPlus = normalizedValue.startsWith("+");
+  const digits = hasPlus ? normalizedValue.slice(1) : normalizedValue;
+  if (!digits) {
+    return hasPlus ? "+" : "";
+  }
+
+  const countryCode = getPhoneCountryCode(digits);
+  const nationalNumber = digits.slice(countryCode.length);
+  const area = nationalNumber.slice(0, 3);
+  const first = nationalNumber.slice(3, 6);
+  const second = nationalNumber.slice(6, 8);
+  const third = nationalNumber.slice(8, 10);
+  const rest = nationalNumber.slice(10);
+  const prefix = `${hasPlus ? "+" : ""}${countryCode}`;
+  const areaPart = area ? `(${area}${area.length === 3 ? ")" : ""}` : "";
+  const localPart = [first, second ? `-${second}` : "", third ? `-${third}` : ""].join("");
+  const parts = [areaPart, localPart, rest].filter(Boolean);
+
+  return `${prefix}${parts.length > 0 ? " " : ""}${parts.join(" ")}`.trimEnd();
+}
+
+function formatMaskedPhoneInput(value: string, context: KeyFieldValueTransformContext): string {
+  const normalizedValue = normalizePhoneValue(value);
+  const previousNormalizedValue = normalizePhoneValue(context.previousValue);
+  if (
+    context.inputType?.startsWith("delete") &&
+    normalizedValue === previousNormalizedValue &&
+    value.length < context.previousValue.length
+  ) {
+    const valueBeforeCursor = value.slice(0, context.selectionStart ?? value.length);
+    const digitsBeforeCursor = valueBeforeCursor.replace(/\D/g, "").length;
+    return formatPhoneValue(removePhoneDigitAtIndex(previousNormalizedValue, digitsBeforeCursor - 1));
+  }
+
+  return formatPhoneValue(value);
+}
+
 function createInitialSections(): DemoSection[] {
   return [
     {
@@ -631,6 +920,7 @@ type SortableFieldProps = {
   copyLabel?: string;
   copySuccessLabel?: string | null;
   concealValue?: boolean;
+  transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   onCopyAction?: (value: string) => void | Promise<void>;
 };
 
@@ -656,6 +946,7 @@ function SortableField({
   copyLabel,
   copySuccessLabel,
   concealValue,
+  transformValueInput,
   onCopyAction,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -690,6 +981,7 @@ function SortableField({
       isInvalid={isInvalid}
       fieldOverlay={fieldOverlay}
       concealValue={concealValue}
+      transformValueInput={transformValueInput}
       className={cn(
         section.variant === "primary" && "border-x-transparent",
         section.variant === "additional" && "border-x-transparent",
@@ -791,6 +1083,7 @@ export default function DevUIKeyFormPage() {
   const [sections, setSections] = useState<DemoSection[]>(() => createInitialSections());
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [unmaskedPhoneIds, setUnmaskedPhoneIds] = useState<ReadonlySet<string>>(() => new Set());
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
   const [passwordGeneratorFieldId, setPasswordGeneratorFieldId] = useState<string | null>(null);
@@ -930,16 +1223,34 @@ export default function DevUIKeyFormPage() {
     if (activeValueFieldId === fieldId) {
       setActiveValueFieldId(null);
     }
+
+    function updateField(field: DemoField): DemoField {
+      if (field.id !== fieldId) {
+        return field;
+      }
+
+      const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
+      const nextValue = isPhoneMaskEnabled ? normalizePhoneValue(value) : value;
+      return {
+        ...field,
+        value: nextValue,
+        copyValue:
+          field.type === "password"
+            ? value
+            : field.type === "phone"
+              ? nextValue
+              : field.secret
+                ? field.copyValue
+                : value,
+      };
+    }
+
     setSections((current) =>
       current.map((section) =>
         section.id === sectionId
           ? {
               ...section,
-              fields: section.fields.map((field) =>
-                field.id === fieldId
-                  ? { ...field, value, copyValue: field.type === "password" ? value : field.secret ? field.copyValue : value }
-                  : field,
-              ),
+              fields: section.fields.map(updateField),
             }
           : section,
       ),
@@ -1280,7 +1591,35 @@ export default function DevUIKeyFormPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
               <DropdownMenuItem onSelect={() => resetTotpSecret(section.id, field.id)}>
+                <EnterTotpSecretIcon className="size-4" />
                 Enter new TOTP secret
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : field.type === "phone" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={`${field.label} settings`}
+              >
+                <GearIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
+              <DropdownMenuItem onSelect={() => togglePhoneMask(field.id)}>
+                {unmaskedPhoneIds.has(field.id) ? <EnableMaskIcon className="size-4" /> : <DisableMaskIcon className="size-4" />}
+                {unmaskedPhoneIds.has(field.id) ? "Enable mask" : "Disable mask"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1316,6 +1655,18 @@ export default function DevUIKeyFormPage() {
     setActiveValueFieldId(fieldId);
   }
 
+  function togglePhoneMask(fieldId: string) {
+    setUnmaskedPhoneIds((current) => {
+      const next = new Set(current);
+      if (next.has(fieldId)) {
+        next.delete(fieldId);
+      } else {
+        next.add(fieldId);
+      }
+      return next;
+    });
+  }
+
   function openWebsite(value: string) {
     const openedWindow = window.open(value, "_blank", "noopener,noreferrer");
     if (openedWindow) {
@@ -1324,6 +1675,10 @@ export default function DevUIKeyFormPage() {
   }
 
   function valueForField(section: DemoSection, field: DemoField): ReactNode {
+    if (field.type === "phone" && typeof field.value === "string" && !unmaskedPhoneIds.has(field.id)) {
+      return formatPhoneValue(field.value);
+    }
+
     if (field.type === "totp" && typeof field.value === "string") {
       const tokenState = getTotpTokenState(field.value, totpTimestamp);
       if (tokenState) {
@@ -1404,6 +1759,10 @@ export default function DevUIKeyFormPage() {
       return getTotpTokenState(field.value, totpTimestamp)?.token;
     }
 
+    if (field.type === "phone" && typeof field.value === "string") {
+      return unmaskedPhoneIds.has(field.id) ? field.value : normalizePhoneValue(field.value);
+    }
+
     return field.copyValue;
   }
 
@@ -1453,6 +1812,7 @@ export default function DevUIKeyFormPage() {
     const isFirstField = section.fields[0]?.id === field.id;
     const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
     const hasAddFieldButton = mode === "edit" && section.id === "websites";
+    const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
 
     return (
       <SortableField
@@ -1476,6 +1836,7 @@ export default function DevUIKeyFormPage() {
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
+        transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
         onCopyAction={isWebsiteField ? openWebsite : undefined}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}

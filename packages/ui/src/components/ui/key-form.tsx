@@ -9,7 +9,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
-import { keyFieldTypeOptions, type KeyFieldTypeOption, type KeyFormMode } from "./key-field.js";
+import {
+  keyFieldTypeOptions,
+  type KeyFieldTypeOption,
+  type KeyFormMode,
+} from "./key-field.js";
 
 function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -79,4 +83,11 @@ export const KeyForm = React.forwardRef<HTMLDivElement, KeyFormProps>(
 KeyForm.displayName = "KeyForm";
 
 export { KeySection, type KeySectionProps, type KeySectionVariant } from "./key-section.js";
-export { KeyField, keyFieldTypeOptions, type KeyFieldProps, type KeyFieldTypeOption, type KeyFormMode } from "./key-field.js";
+export {
+  KeyField,
+  keyFieldTypeOptions,
+  type KeyFieldProps,
+  type KeyFieldTypeOption,
+  type KeyFieldValueTransformContext,
+  type KeyFormMode,
+} from "./key-field.js";
