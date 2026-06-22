@@ -74,6 +74,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   mode?: KeyFormMode;
   editableLabel?: boolean;
   editableValue?: boolean;
+  multilineValue?: boolean;
   autoFocusValue?: boolean;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
@@ -114,6 +115,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       mode = "view",
       editableLabel = false,
       editableValue = false,
+      multilineValue = false,
       autoFocusValue = false,
       reorderable = false,
       onLabelChange,
@@ -152,7 +154,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
   ) => {
     const [isEditingLabel, setIsEditingLabel] = React.useState(false);
     const [isValueFocused, setIsValueFocused] = React.useState(false);
-    const valueInputRef = React.useRef<HTMLInputElement>(null);
+    const valueInputRef = React.useRef<HTMLInputElement | null>(null);
+    const valueTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
     const [draftLabel, setDraftLabel] = React.useState(label);
     const stringValue = typeof value === "string" ? value : undefined;
     const [draftValue, setDraftValue] = React.useState(stringValue ?? "");
@@ -170,6 +173,36 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       ? copySuccessIcon ?? <CopySuccessIcon className="size-4" />
       : copyIcon ?? <CopyIcon className="size-4" />;
 
+    const resizeTextarea = React.useCallback(() => {
+      const valueControl = valueTextareaRef.current;
+      if (!valueControl) {
+        return;
+      }
+
+      valueControl.style.height = "auto";
+      valueControl.style.height = `${valueControl.scrollHeight}px`;
+    }, []);
+
+    const setValueTextareaRef = React.useCallback(
+      (node: HTMLTextAreaElement | null) => {
+        valueTextareaRef.current = node;
+        if (node) {
+          resizeTextarea();
+          window.requestAnimationFrame(resizeTextarea);
+        }
+      },
+      [resizeTextarea],
+    );
+
+    const focusValueControl = React.useCallback(() => {
+      if (multilineValue) {
+        valueTextareaRef.current?.focus();
+        return;
+      }
+
+      valueInputRef.current?.focus();
+    }, [multilineValue]);
+
     React.useEffect(() => {
       setDraftLabel(label);
     }, [label]);
@@ -178,15 +211,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       setDraftValue(stringValue ?? "");
     }, [stringValue]);
 
+    React.useLayoutEffect(() => {
+      if (multilineValue) {
+        resizeTextarea();
+      }
+    }, [draftValue, multilineValue, resizeTextarea]);
+
     React.useEffect(() => {
       if (autoFocusValue && canEditValue) {
-        const focusValueInput = () => {
-          valueInputRef.current?.focus();
-        };
         const frameId = window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(focusValueInput);
+          window.requestAnimationFrame(focusValueControl);
         });
-        const timeoutId = window.setTimeout(focusValueInput, 50);
+        const timeoutId = window.setTimeout(focusValueControl, 50);
 
         return () => {
           window.cancelAnimationFrame(frameId);
@@ -195,7 +231,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       return undefined;
-    }, [autoFocusValue, canEditValue]);
+    }, [autoFocusValue, canEditValue, focusValueControl]);
 
     React.useEffect(
       () => () => {
@@ -256,7 +292,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       if (canEditValue) {
-        valueInputRef.current?.focus();
+        focusValueControl();
         return;
       }
 
@@ -385,17 +421,35 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <div className={cn("min-h-5 min-w-0 flex-1 text-sm leading-5 text-foreground", valueClassName)}>
               {canEditValue ? (
-                <input
-                  ref={valueInputRef}
-                  value={shouldConcealValue ? concealedValue : draftValue}
-                  onChange={(event) => {
-                    setDraftValue(event.target.value);
-                    onValueChange?.(event.target.value);
-                  }}
-                  onFocus={() => setIsValueFocused(true)}
-                  onBlur={() => setIsValueFocused(false)}
-                  className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
-                />
+                multilineValue ? (
+                  <textarea
+                    ref={setValueTextareaRef}
+                    value={draftValue}
+                    rows={2}
+                    onChange={(event) => {
+                      setDraftValue(event.target.value);
+                      onValueChange?.(event.target.value);
+                    }}
+                    onFocus={() => {
+                      setIsValueFocused(true);
+                      resizeTextarea();
+                    }}
+                    onBlur={() => setIsValueFocused(false)}
+                    className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
+                  />
+                ) : (
+                  <input
+                    ref={valueInputRef}
+                    value={shouldConcealValue ? concealedValue : draftValue}
+                    onChange={(event) => {
+                      setDraftValue(event.target.value);
+                      onValueChange?.(event.target.value);
+                    }}
+                    onFocus={() => setIsValueFocused(true)}
+                    onBlur={() => setIsValueFocused(false)}
+                    className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
+                  />
+                )
               ) : (
                 displayedValue
               )}

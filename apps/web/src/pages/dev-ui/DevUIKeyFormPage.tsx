@@ -624,6 +624,7 @@ type SortableFieldProps = {
   forceActive?: boolean;
   isInvalid?: boolean;
   fieldOverlay?: ReactNode;
+  showBottomBorder?: boolean;
   copyValue?: string;
   copyLabel?: string;
   copySuccessLabel?: string | null;
@@ -646,6 +647,7 @@ function SortableField({
   forceActive,
   isInvalid,
   fieldOverlay,
+  showBottomBorder,
   copyValue,
   copyLabel,
   copySuccessLabel,
@@ -673,6 +675,7 @@ function SortableField({
       mode={mode}
       editableLabel={field.editableLabel}
       editableValue={typeof value === "string"}
+      multilineValue={field.type === "multiline-text"}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
       meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
@@ -685,11 +688,12 @@ function SortableField({
       concealValue={concealValue}
       className={cn(
         section.variant === "primary" && "border-x-border",
-        section.variant === "additional" && "border-x-transparent border-b-transparent",
+        section.variant === "additional" && "border-x-transparent",
+        section.variant === "additional" && (showBottomBorder ? "border-b-border" : "border-b-transparent"),
         isDragging && "relative z-10 opacity-0",
       )}
       style={style}
-      valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
+      valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-pre-wrap break-words" : undefined}
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       copyValue={copyValue ?? field.copyValue}
       copyLabel={copyLabel}
@@ -1382,7 +1386,7 @@ export default function DevUIKeyFormPage() {
   }
 
   function renderField(section: DemoSection, field: DemoField) {
-    const canReorderField = !(section.variant === "primary" && !section.title);
+    const canReorderField = section.id === "websites" || !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
     const isTotpInvalid = isInvalidTotpField(field);
@@ -1402,6 +1406,7 @@ export default function DevUIKeyFormPage() {
         forceActive={isPasswordGeneratorOpen}
         isInvalid={isTotpInvalid}
         fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
+        showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         copyValue={copyValueForField(field)}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
@@ -1421,6 +1426,7 @@ export default function DevUIKeyFormPage() {
         mode={mode}
         editableLabel={field.editableLabel}
         editableValue={typeof valueForField(section, field) === "string"}
+        multilineValue={field.type === "multiline-text"}
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
@@ -1431,12 +1437,12 @@ export default function DevUIKeyFormPage() {
           !isDraggedField && section.variant === "additional" && "border-x-transparent border-b-transparent",
           isDraggedField &&
             cn(
-              "rounded-lg border border-border shadow-lg",
+              "rounded-lg border border-x-border border-y-border shadow-lg",
               section.variant === "additional" ? "bg-secondary" : "bg-card",
             ),
         )}
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
-        valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-normal" : undefined}
+        valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-pre-wrap break-words" : undefined}
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
         copyValue={field.copyValue}
         copyLabel={field.type === "url" ? "Open website" : undefined}
