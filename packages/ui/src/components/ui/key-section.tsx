@@ -146,7 +146,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 {isEditingTitle ? (
                   <input
                     value={draftTitle}
-                    placeholder="Указать заголовок"
+                    placeholder="Add title"
                     onChange={(event) => setDraftTitle(event.target.value)}
                     onBlur={commitTitle}
                     onKeyDown={(event) => {
@@ -170,7 +170,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                       !title && "text-muted-foreground",
                     )}
                   >
-                    {title || "Указать заголовок"}
+                    {title || "Add title"}
                   </h3>
                 )}
                 {canEditTitle && !isEditingTitle ? (
