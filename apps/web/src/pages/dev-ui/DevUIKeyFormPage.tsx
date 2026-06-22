@@ -1346,6 +1346,59 @@ export default function DevUIKeyFormPage() {
     return field.type === "totp" && typeof field.value === "string" && field.value.trim().length > 0 && !createTotp(field.value);
   }
 
+  function isInvalidEmailField(field: DemoField): boolean {
+    if (field.type !== "email" || typeof field.value !== "string") {
+      return false;
+    }
+
+    const value = field.value.trim();
+    if (!value) {
+      return false;
+    }
+
+    if (value.length > 254 || /\s/.test(value)) {
+      return true;
+    }
+
+    const parts = value.split("@");
+    if (parts.length !== 2) {
+      return true;
+    }
+
+    const [localPart, domainPart] = parts;
+    if (!localPart || !domainPart || localPart.length > 64 || domainPart.length > 253) {
+      return true;
+    }
+
+    if (
+      localPart.startsWith(".") ||
+      localPart.endsWith(".") ||
+      localPart.includes("..") ||
+      !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(localPart)
+    ) {
+      return true;
+    }
+
+    const domainLabels = domainPart.split(".");
+    if (domainLabels.length < 2) {
+      return true;
+    }
+
+    return domainLabels.some(
+      (label, index) =>
+        !label ||
+        label.length > 63 ||
+        label.startsWith("-") ||
+        label.endsWith("-") ||
+        !/^[A-Za-z0-9-]+$/.test(label) ||
+        (index === domainLabels.length - 1 && label.length < 2),
+    );
+  }
+
+  function isInvalidField(field: DemoField): boolean {
+    return mode === "edit" && (isInvalidTotpField(field) || isInvalidEmailField(field));
+  }
+
   function copyValueForField(field: DemoField): string | undefined {
     if (field.type === "totp" && typeof field.value === "string") {
       return getTotpTokenState(field.value, totpTimestamp)?.token;
@@ -1395,7 +1448,7 @@ export default function DevUIKeyFormPage() {
     const canReorderField = section.id === "websites" || !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
-    const isTotpInvalid = isInvalidTotpField(field);
+    const isFieldInvalid = isInvalidField(field);
     const isFieldDraggingInSection = activeDrag?.type === "field" && activeDrag.sectionId === section.id;
     const isFirstField = section.fields[0]?.id === field.id;
     const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
@@ -1414,7 +1467,7 @@ export default function DevUIKeyFormPage() {
         floatingActions={renderFloatingActions(field)}
         isHoverLocked={openFieldMenuId === field.id}
         forceActive={isPasswordGeneratorOpen}
-        isInvalid={isTotpInvalid}
+        isInvalid={isFieldInvalid}
         fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
@@ -1442,7 +1495,7 @@ export default function DevUIKeyFormPage() {
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
-        isInvalid={isInvalidTotpField(field)}
+        isInvalid={isInvalidField(field)}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
         className={cn(
           !isDraggedField && section.variant === "primary" && "border-x-transparent",
