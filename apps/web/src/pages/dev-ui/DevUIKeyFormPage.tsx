@@ -987,6 +987,7 @@ function SortableField({
         section.variant === "additional" && "border-x-transparent",
         section.variant === "additional" && (showBottomBorder ? "border-b-border" : "border-b-transparent"),
         hideTopBorder && "border-t-transparent",
+        hideTopBorder && "!mt-0",
         hideBottomBorder && "border-b-transparent",
         isDragging && "relative z-10 opacity-0",
       )}

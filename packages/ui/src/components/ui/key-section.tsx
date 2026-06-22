@@ -198,6 +198,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
               shouldShowHeader && "[&>*:first-child]:-mt-px",
               "[&>*+*]:-mt-px",
               !shouldShowHeader && "[&>*:first-child]:rounded-t-xl",
+              variant === "additional" && !shouldShowHeader && "[&>*:first-child]:border-t-transparent",
               !canAddField && "[&>*:last-child]:rounded-b-xl",
               variant === "primary" &&
                 isFieldDragging &&
