@@ -49,6 +49,7 @@ export type KeySectionProps = Omit<React.ComponentPropsWithoutRef<"section">, "t
   mode?: KeyFormMode;
   editableTitle?: boolean;
   reorderable?: boolean;
+  isFieldDragging?: boolean;
   onTitleChange?: (title: string) => void;
   addFieldLabel?: string;
   fieldTypes?: readonly KeyFieldTypeOption[];
@@ -66,6 +67,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
       mode = "view",
       editableTitle = false,
       reorderable = false,
+      isFieldDragging = false,
       onTitleChange,
       addFieldLabel = "Добавить поле",
       fieldTypes = keyFieldTypeOptions,
@@ -115,7 +117,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
         <div
           className={cn(
             "rounded-xl",
-            variant === "primary" && "bg-card text-card-foreground",
+            variant === "primary" && "border border-border bg-card text-card-foreground",
+            variant === "primary" && isFieldDragging && "overflow-hidden",
             variant === "additional" && "bg-secondary text-secondary-foreground",
           )}
         >
@@ -196,6 +199,10 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
               "[&>*+*]:-mt-px",
               !shouldShowHeader && "[&>*:first-child]:rounded-t-xl",
               !canAddField && "[&>*:last-child]:rounded-b-xl",
+              variant === "primary" &&
+                isFieldDragging &&
+                "[&>*]:!rounded-none [&>*]:!border-x-transparent [&>*:first-child]:!border-t-border",
+              variant === "primary" && isFieldDragging && !canAddField && "[&>*:last-child]:!border-b-transparent",
             )}
           >
             {children}
@@ -207,6 +214,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
               variant="secondary"
               className={cn(
                 "-mt-px h-8 w-full rounded-b-xl rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
+                variant === "primary" && "border-x-transparent border-b-transparent",
+                variant === "primary" && isFieldDragging && "!rounded-none !border-x-transparent !border-b-transparent",
                 variant === "additional" && "border-x-transparent border-b-transparent",
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                 "focus:border-accent focus-visible:border-accent",
@@ -224,6 +233,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                   variant="secondary"
                   className={cn(
                     "-mt-px h-8 w-full rounded-b-xl rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
+                    variant === "primary" && "border-x-transparent border-b-transparent",
+                    variant === "primary" && isFieldDragging && "!rounded-none !border-x-transparent !border-b-transparent",
                     variant === "additional" && "border-x-transparent border-b-transparent",
                     "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                     "focus:border-accent focus-visible:border-accent",

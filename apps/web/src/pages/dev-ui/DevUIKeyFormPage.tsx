@@ -625,6 +625,8 @@ type SortableFieldProps = {
   isInvalid?: boolean;
   fieldOverlay?: ReactNode;
   showBottomBorder?: boolean;
+  hideTopBorder?: boolean;
+  hideBottomBorder?: boolean;
   copyValue?: string;
   copyLabel?: string;
   copySuccessLabel?: string | null;
@@ -648,6 +650,8 @@ function SortableField({
   isInvalid,
   fieldOverlay,
   showBottomBorder,
+  hideTopBorder,
+  hideBottomBorder,
   copyValue,
   copyLabel,
   copySuccessLabel,
@@ -687,9 +691,11 @@ function SortableField({
       fieldOverlay={fieldOverlay}
       concealValue={concealValue}
       className={cn(
-        section.variant === "primary" && "border-x-border",
+        section.variant === "primary" && "border-x-transparent",
         section.variant === "additional" && "border-x-transparent",
         section.variant === "additional" && (showBottomBorder ? "border-b-border" : "border-b-transparent"),
+        hideTopBorder && "border-t-transparent",
+        hideBottomBorder && "border-b-transparent",
         isDragging && "relative z-10 opacity-0",
       )}
       style={style}
@@ -1390,6 +1396,10 @@ export default function DevUIKeyFormPage() {
     const isWebsiteField = field.type === "url";
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
     const isTotpInvalid = isInvalidTotpField(field);
+    const isFieldDraggingInSection = activeDrag?.type === "field" && activeDrag.sectionId === section.id;
+    const isFirstField = section.fields[0]?.id === field.id;
+    const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
+    const hasAddFieldButton = mode === "edit" && section.id === "websites";
 
     return (
       <SortableField
@@ -1407,6 +1417,8 @@ export default function DevUIKeyFormPage() {
         isInvalid={isTotpInvalid}
         fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
+        hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
+        hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
         copyValue={copyValueForField(field)}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
@@ -1433,7 +1445,7 @@ export default function DevUIKeyFormPage() {
         isInvalid={isInvalidTotpField(field)}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
         className={cn(
-          !isDraggedField && section.variant === "primary" && "border-x-border",
+          !isDraggedField && section.variant === "primary" && "border-x-transparent",
           !isDraggedField && section.variant === "additional" && "border-x-transparent border-b-transparent",
           isDraggedField &&
             cn(
@@ -1574,6 +1586,7 @@ export default function DevUIKeyFormPage() {
                       mode={mode}
                       editableTitle
                       reorderable
+                      isFieldDragging={activeDrag?.type === "field" && activeDrag.sectionId === section.id}
                       fieldTypes={addableFieldTypes}
                       addFieldLabel={section.id === "websites" ? "Add URL" : "Add field"}
                       onAddField={section.id === "websites" ? (type) => addField(section.id, type) : undefined}
