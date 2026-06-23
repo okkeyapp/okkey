@@ -40,11 +40,18 @@ import {
   cn,
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
+  emptyKeyFieldRecoveryCodesValue,
   formatKeyFieldAddressCopyValue,
+  getFirstUnusedKeyFieldRecoveryCode,
+  getKeyFieldRecoveryCodesRemainingCount,
+  getKeyFieldRecoveryCodesUsedCount,
   isValidKeyFieldDateValue,
   keyFieldTypeOptions,
+  markFirstUnusedKeyFieldRecoveryCodeUsed,
   parseKeyFieldAddressValue,
+  parseKeyFieldRecoveryCodesValue,
   serializeKeyFieldAddressValue,
+  serializeKeyFieldRecoveryCodesValue,
   type KeyFieldValueTransformContext,
   type KeyFieldTypeOption,
   type KeyFormMode,
@@ -313,23 +320,25 @@ function PieIndicator({
   value,
   total,
   tone = "success",
+  exhausted = false,
 }: {
   value: number;
   total: number;
   tone?: "success" | "warning" | "danger";
+  exhausted?: boolean;
 }) {
   const totalSegments = 60;
   const safeTotal = Math.max(1, total);
   const filled = Math.min(Math.max(value, 0), safeTotal);
   const filledRatio = filled / safeTotal;
   const filledSegments = Math.round(filledRatio * totalSegments);
-  const degrees = (filledSegments / totalSegments) * 360;
+  const degrees = exhausted ? 360 : (filledSegments / totalSegments) * 360;
   const colorByTone = {
     success: "#65A30D",
     warning: "#D97706",
     danger: "#DC2626",
   };
-  const color = colorByTone[tone];
+  const color = exhausted ? colorByTone.danger : colorByTone[tone];
 
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" data-value={value} data-total={total} data-filled-segments={filledSegments} aria-hidden>
@@ -342,7 +351,12 @@ function PieIndicator({
         />
       </foreignObject>
       <path d="M2 8C2 8.78793 2.15519 9.56815 2.45672 10.2961C2.75825 11.0241 3.20021 11.6855 3.75736 12.2426C4.31451 12.7998 4.97595 13.2417 5.7039 13.5433C6.43185 13.8448 7.21207 14 8 14C8.78793 14 9.56815 13.8448 10.2961 13.5433C11.0241 13.2417 11.6855 12.7998 12.2426 12.2426C12.7998 11.6855 13.2417 11.0241 13.5433 10.2961C13.8448 9.56815 14 8.78793 14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.4087 2 4.88258 2.63214 3.75736 3.75736C2.63214 4.88258 2 6.4087 2 8Z" stroke={color} strokeLinecap="round" strokeLinejoin="round" />
-      {filled >= safeTotal ? (
+      {exhausted ? (
+        <>
+          <path d="M8 4.66667V8" stroke="white" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8 10.6667H8.00667" stroke="white" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : filled >= safeTotal ? (
         <path d="M5.3335 8.16667L7.16683 10L10.6668 6.5" stroke="white" strokeLinecap="round" strokeLinejoin="round" />
       ) : null}
     </svg>
@@ -354,15 +368,19 @@ function KeyCounter({
   className,
   sectionVariant,
   value,
+  pieValue,
   total,
   tone = "success",
+  exhausted = false,
 }: {
   children: ReactNode;
   className?: string;
   sectionVariant: DemoSectionVariant;
   value: number;
+  pieValue?: number;
   total: number;
   tone?: "success" | "warning" | "danger";
+  exhausted?: boolean;
 }) {
   return (
     <span
@@ -373,7 +391,7 @@ function KeyCounter({
       )}
     >
       {children}
-      <PieIndicator value={value} total={total} tone={tone} />
+      <PieIndicator value={pieValue ?? value} total={total} tone={tone} exhausted={exhausted} />
     </span>
   );
 }
@@ -509,10 +527,28 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant, value?: 
       </KeyCounter>
     );
   }
-  if (type === "recovery-codes") {
+  if (type === "recovery-codes" && typeof value === "string") {
+    const codes = parseKeyFieldRecoveryCodesValue(value);
+    const usedCount = getKeyFieldRecoveryCodesUsedCount(codes);
+    const remainingCount = getKeyFieldRecoveryCodesRemainingCount(codes);
+    const total = codes.length;
+    if (total === 0) {
+      return null;
+    }
+
+    const allUsed = remainingCount === 0;
+
     return (
-      <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={2} total={10} tone="warning">
-        2 of 10
+      <KeyCounter
+        className="mr-2"
+        sectionVariant={sectionVariant}
+        value={usedCount}
+        pieValue={remainingCount}
+        total={total}
+        tone={allUsed ? "danger" : remainingCount <= total / 2 ? "warning" : "success"}
+        exhausted={allUsed}
+      >
+        {usedCount} of {total}
       </KeyCounter>
     );
   }
@@ -927,6 +963,23 @@ function formatMaskedPhoneInput(value: string, context: KeyFieldValueTransformCo
   return formatPhoneValue(value);
 }
 
+function createDemoRecoveryCodesValue(): string {
+  const codes = [
+    "a1b2c3d4e5",
+    "f6g7h8i9j0",
+    "k1l2m3n4o5",
+    "p6q7r8s9t0",
+    "u1v2w3x4y5",
+    "z6a7b8c9d0",
+    "e1f2g3h4i5",
+    "j6k7l8m9n0",
+    "o1p2q3r4s5",
+    "t6u7v8w9x0",
+  ].map((code, index) => ({ code, used: index < 2 }));
+
+  return serializeKeyFieldRecoveryCodesValue(codes);
+}
+
 function createInitialSections(): DemoSection[] {
   return [
     {
@@ -961,10 +1014,8 @@ function createInitialSections(): DemoSection[] {
           id: "recovery-codes",
           type: "recovery-codes",
           label: "recovery codes",
-          value: "••••••••••",
-          copyValue: "2 remaining recovery codes",
+          value: createDemoRecoveryCodesValue(),
           editableLabel: true,
-          secret: true,
         },
       ],
     },
@@ -996,6 +1047,9 @@ type SortableFieldProps = {
   transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   dateValue?: boolean;
   addressValue?: boolean;
+  recoveryCodesValue?: boolean;
+  recoveryCodesRevealed?: boolean;
+  statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
 };
 
@@ -1024,6 +1078,9 @@ function SortableField({
   transformValueInput,
   dateValue,
   addressValue,
+  recoveryCodesValue,
+  recoveryCodesRevealed,
+  statusOverlayLabel,
   onCopyAction,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1050,6 +1107,8 @@ function SortableField({
       multilineValue={field.type === "multiline-text"}
       dateValue={dateValue}
       addressValue={addressValue}
+      recoveryCodesValue={recoveryCodesValue}
+      recoveryCodesRevealed={recoveryCodesRevealed}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
       meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
@@ -1072,7 +1131,7 @@ function SortableField({
       )}
       style={style}
       valueClassName={
-        field.type === "multiline-text" || field.type === "note" || field.type === "address"
+        field.type === "multiline-text" || field.type === "note" || field.type === "address" || field.type === "recovery-codes"
           ? "whitespace-pre-wrap break-words"
           : undefined
       }
@@ -1080,6 +1139,7 @@ function SortableField({
       copyValue={copyValue ?? field.copyValue}
       copyLabel={copyLabel}
       copySuccessLabel={copySuccessLabel}
+      statusOverlayLabel={statusOverlayLabel}
       copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
       copyIconPosition={field.type === "url" ? "end" : undefined}
       copyHoverClassName={
@@ -1167,6 +1227,7 @@ export default function DevUIKeyFormPage() {
   const [sections, setSections] = useState<DemoSection[]>(() => createInitialSections());
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [visibleRecoveryCodesIds, setVisibleRecoveryCodesIds] = useState<ReadonlySet<string>>(() => new Set());
   const [unmaskedPhoneIds, setUnmaskedPhoneIds] = useState<ReadonlySet<string>>(() => new Set());
   const [disabledMultilineCopyIds, setDisabledMultilineCopyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
@@ -1217,6 +1278,16 @@ export default function DevUIKeyFormPage() {
     window.localStorage.setItem(passwordGeneratorStorageKey, JSON.stringify(passwordGeneratorPreferences));
   }, [passwordGeneratorPreferences]);
 
+  const previousModeRef = useRef<KeyFormMode>(mode);
+
+  useEffect(() => {
+    if (mode === "edit" && previousModeRef.current !== "edit") {
+      setVisibleRecoveryCodesIds(new Set());
+    }
+
+    previousModeRef.current = mode;
+  }, [mode]);
+
   useEffect(
     () => () => {
       if (generatedPasswordCopyResetTimeoutRef.current) {
@@ -1248,7 +1319,12 @@ export default function DevUIKeyFormPage() {
 
   function createField(type: KeyFieldTypeOption): DemoField {
     const id = `field-${nextIdRef.current++}`;
-    const initialValue = type.id === "address" ? serializeKeyFieldAddressValue(emptyKeyFieldAddressValue()) : "";
+    const initialValue =
+      type.id === "address"
+        ? serializeKeyFieldAddressValue(emptyKeyFieldAddressValue())
+        : type.id === "recovery-codes"
+          ? serializeKeyFieldRecoveryCodesValue(emptyKeyFieldRecoveryCodesValue())
+          : "";
     return {
       id,
       type: type.id,
@@ -1256,7 +1332,7 @@ export default function DevUIKeyFormPage() {
       value: initialValue,
       copyValue: "",
       editableLabel: true,
-      secret: ["password", "recovery-codes"].includes(type.id),
+      secret: type.id === "password",
     };
   }
 
@@ -1589,11 +1665,13 @@ export default function DevUIKeyFormPage() {
   function renderActions(section: DemoSection, field: DemoField) {
     const canEdit = mode === "edit";
     const isPasswordVisible = field.type === "password" && visiblePasswordIds.has(field.id);
+    const isRecoveryCodesRevealed = field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
     const fieldMeta = metaForField(field.type, section.variant, valueForField(section, field));
     if (!canEdit) {
-      return (field.type === "password" || field.type === "recovery-codes") && fieldMeta ? (
+      const showRecoveryCodesMeta = field.type === "recovery-codes" && !isRecoveryCodesRevealed;
+      return (field.type === "password" || showRecoveryCodesMeta) && fieldMeta ? (
         <span className={cn("transition-opacity group-hover/key-field:opacity-0", isFieldMenuOpen && "opacity-0")}>
           {fieldMeta}
         </span>
@@ -1602,7 +1680,7 @@ export default function DevUIKeyFormPage() {
 
     return (
       <>
-        {field.type === "password" || field.type === "recovery-codes" ? fieldMeta : null}
+        {field.type === "password" ? fieldMeta : null}
         {field.type === "password" ? (
           <>
             <DropdownMenu
@@ -1745,6 +1823,18 @@ export default function DevUIKeyFormPage() {
     });
   }
 
+  function toggleRecoveryCodesVisibility(fieldId: string) {
+    setVisibleRecoveryCodesIds((current) => {
+      const next = new Set(current);
+      if (next.has(fieldId)) {
+        next.delete(fieldId);
+      } else {
+        next.add(fieldId);
+      }
+      return next;
+    });
+  }
+
   function resetTotpSecret(sectionId: string, fieldId: string) {
     setOpenFieldMenuId(null);
     updateFieldValue(sectionId, fieldId, "");
@@ -1773,6 +1863,18 @@ export default function DevUIKeyFormPage() {
       }
       return next;
     });
+  }
+
+  async function copyRecoveryCode(sectionId: string, field: DemoField, copiedValue: string) {
+    if (field.type !== "recovery-codes" || typeof field.value !== "string") {
+      return;
+    }
+
+    const nextValue = serializeKeyFieldRecoveryCodesValue(
+      markFirstUnusedKeyFieldRecoveryCodeUsed(parseKeyFieldRecoveryCodesValue(field.value)),
+    );
+    updateFieldValue(sectionId, field.id, nextValue);
+    await navigator.clipboard.writeText(copiedValue);
   }
 
   function openAddressInMaps(field: DemoField) {
@@ -1887,15 +1989,20 @@ export default function DevUIKeyFormPage() {
       return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value));
     }
 
+    if (field.type === "recovery-codes" && typeof field.value === "string") {
+      return getFirstUnusedKeyFieldRecoveryCode(parseKeyFieldRecoveryCodesValue(field.value));
+    }
+
     return field.copyValue;
   }
 
   function renderFloatingActions(field: DemoField) {
-    if (mode !== "view" || (field.type !== "password" && field.type !== "url" && field.type !== "address")) {
+    if (mode !== "view" || (field.type !== "password" && field.type !== "url" && field.type !== "address" && field.type !== "recovery-codes")) {
       return null;
     }
 
     const isPasswordVisible = visiblePasswordIds.has(field.id);
+    const isRecoveryCodesVisible = visibleRecoveryCodesIds.has(field.id);
     const isOpen = openFieldMenuId === field.id;
 
     return (
@@ -1921,10 +2028,15 @@ export default function DevUIKeyFormPage() {
               <CopyIcon className="size-4" />
               Copy
             </DropdownMenuItem>
-          ) : (
+          ) : field.type === "address" ? (
             <DropdownMenuItem onSelect={() => openAddressInMaps(field)}>
               <OpenMapIcon className="size-4" />
               Open map
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={() => toggleRecoveryCodesVisibility(field.id)}>
+              {isRecoveryCodesVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+              {isRecoveryCodesVisible ? "Hide codes" : "Show codes"}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -1943,6 +2055,16 @@ export default function DevUIKeyFormPage() {
     const hasAddFieldButton = mode === "edit" && section.id === "websites";
     const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
     const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
+    const isRecoveryCodesField = field.type === "recovery-codes";
+    const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
+    const isRecoveryCodesExhausted =
+      isRecoveryCodesField &&
+      !isRecoveryCodesRevealed &&
+      typeof field.value === "string" &&
+      (() => {
+        const codes = parseKeyFieldRecoveryCodesValue(field.value);
+        return codes.length > 0 && getKeyFieldRecoveryCodesRemainingCount(codes) === 0;
+      })();
 
     return (
       <SortableField
@@ -1962,14 +2084,23 @@ export default function DevUIKeyFormPage() {
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
-        copyValue={isMultilineCopyDisabled ? "" : copyValueForField(field)}
+        copyValue={isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted ? "" : copyValueForField(field)}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
+        statusOverlayLabel={isRecoveryCodesExhausted ? "All codes used" : undefined}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
+        recoveryCodesValue={isRecoveryCodesField}
+        recoveryCodesRevealed={isRecoveryCodesRevealed}
         transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
-        onCopyAction={isWebsiteField ? openWebsite : undefined}
+        onCopyAction={
+          isRecoveryCodesField
+            ? (value) => copyRecoveryCode(section.id, field, value)
+            : isWebsiteField
+              ? openWebsite
+              : undefined
+        }
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
       />
@@ -1987,6 +2118,8 @@ export default function DevUIKeyFormPage() {
         multilineValue={field.type === "multiline-text"}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
+        recoveryCodesValue={field.type === "recovery-codes"}
+        recoveryCodesRevealed={field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id)}
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
@@ -2003,7 +2136,7 @@ export default function DevUIKeyFormPage() {
         )}
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
         valueClassName={
-          field.type === "multiline-text" || field.type === "note" || field.type === "address"
+          field.type === "multiline-text" || field.type === "note" || field.type === "address" || field.type === "recovery-codes"
             ? "whitespace-pre-wrap break-words"
             : undefined
         }

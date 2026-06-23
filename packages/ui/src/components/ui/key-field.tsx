@@ -3,10 +3,18 @@ import * as React from "react";
 import { cn } from "../../lib/utils.js";
 import { isKeyFieldDatePickerInteractionTarget } from "../../lib/key-field-date-picker.js";
 import { formatKeyFieldAddressCopyValue, parseKeyFieldAddressValue } from "../../lib/key-field-address.js";
+import {
+  parseKeyFieldRecoveryCodesValue,
+} from "../../lib/key-field-recovery-codes.js";
 import { Button } from "./button.js";
 import { KeyFieldAddressInput } from "./key-field-address-input.js";
 import { KeyFieldDateInput } from "./key-field-date-input.js";
 import { KeyFieldDatePickerPanel } from "./key-field-date-picker-panel.js";
+import { KeyFieldRecoveryCodesInput } from "./key-field-recovery-codes-input.js";
+import {
+  KeyFieldRecoveryCodesChecklistView,
+  KeyFieldRecoveryCodesConcealedView,
+} from "./key-field-recovery-codes-view.js";
 
 export type KeyFormMode = "view" | "edit";
 
@@ -88,6 +96,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   multilineValue?: boolean;
   dateValue?: boolean;
   addressValue?: boolean;
+  recoveryCodesValue?: boolean;
+  recoveryCodesRevealed?: boolean;
   autoFocusValue?: boolean;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
@@ -105,6 +115,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   copyHoverActiveClassName?: string;
   copyOverlayClassName?: string;
   copyTextClassName?: string;
+  statusOverlayLabel?: string;
   floatingActions?: React.ReactNode;
   isHoverLocked?: boolean;
   forceActive?: boolean;
@@ -132,6 +143,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       multilineValue = false,
       dateValue = false,
       addressValue = false,
+      recoveryCodesValue = false,
+      recoveryCodesRevealed = false,
       autoFocusValue = false,
       reorderable = false,
       onLabelChange,
@@ -149,6 +162,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyHoverActiveClassName,
       copyOverlayClassName,
       copyTextClassName,
+      statusOverlayLabel,
       floatingActions,
       isHoverLocked = false,
       forceActive = false,
@@ -189,8 +203,16 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       addressValue && typeof stringValue === "string"
         ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue))
         : "";
+    const parsedRecoveryCodesValue =
+      recoveryCodesValue && typeof stringValue === "string" ? parseKeyFieldRecoveryCodesValue(stringValue) : [];
+    const canShowStatusOverlay =
+      mode === "view" && Boolean(statusOverlayLabel) && !(recoveryCodesValue && recoveryCodesRevealed);
     const copyText = copyValue ?? stringValue;
-    const canCopyValue = mode === "view" && typeof copyText === "string" && copyText.length > 0;
+    const canCopyValue =
+      mode === "view" &&
+      typeof copyText === "string" &&
+      copyText.length > 0 &&
+      !(recoveryCodesValue && recoveryCodesRevealed);
     const [isCopied, setIsCopied] = React.useState(false);
     const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const currentCopyIcon = isCopied
@@ -219,7 +241,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     );
 
     const focusValueControl = React.useCallback(() => {
-      if (multilineValue) {
+      if (multilineValue || recoveryCodesValue) {
         valueTextareaRef.current?.focus();
         return;
       }
@@ -235,7 +257,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       valueInputRef.current?.focus();
-    }, [addressValue, dateValue, multilineValue]);
+    }, [addressValue, dateValue, multilineValue, recoveryCodesValue]);
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -246,10 +268,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     }, [stringValue]);
 
     React.useLayoutEffect(() => {
-      if (multilineValue) {
+      if (multilineValue || recoveryCodesValue) {
         resizeTextarea();
       }
-    }, [draftValue, multilineValue, resizeTextarea]);
+    }, [draftValue, multilineValue, recoveryCodesValue, resizeTextarea]);
 
     React.useEffect(() => {
       if (!autoFocusValue) {
@@ -262,7 +284,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       hasAutoFocusedValueRef.current = true;
-      if (!addressValue) {
+      if (!addressValue && !recoveryCodesValue) {
         setIsValueFocused(true);
       }
       if (dateValue) {
@@ -270,7 +292,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       function focusValueControlIfNeeded() {
-        const valueControl = multilineValue ? valueTextareaRef.current : valueInputRef.current;
+        const valueControl =
+          multilineValue || recoveryCodesValue ? valueTextareaRef.current : valueInputRef.current;
         if (!valueControl || document.activeElement === valueControl) {
           return;
         }
@@ -290,7 +313,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         window.clearTimeout(fallbackTimeoutId);
         hasAutoFocusedValueRef.current = false;
       };
-    }, [autoFocusValue, canEditValue, addressValue, dateValue, multilineValue]);
+    }, [autoFocusValue, canEditValue, addressValue, dateValue, multilineValue, recoveryCodesValue]);
 
     React.useEffect(() => {
       if (canEditValue) {
@@ -421,7 +444,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       const target = event.target instanceof Element ? event.target : null;
       if (
         target?.closest(
-          "button,input,textarea,select,a,[role='button'],[data-key-field-drag-handle]",
+          "button,input,textarea,select,a,[role='button'],[role='checkbox'],label,[data-key-field-drag-handle]",
         )
       ) {
         return;
@@ -438,8 +461,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
           fieldOverlay && "relative",
-          (canCopyValue || floatingActions) && "relative transition-colors",
-          canCopyValue && copyHoverClassName,
+          (canCopyValue || canShowStatusOverlay || floatingActions) && "relative transition-colors",
+          (canCopyValue || canShowStatusOverlay) && copyHoverClassName,
           isHoverLocked && copyHoverActiveClassName,
           className,
           isFieldActive &&
@@ -493,6 +516,26 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </button>
         ) : null}
 
+        {canShowStatusOverlay ? (
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
+              "group-hover/key-field:opacity-100",
+              isHoverLocked && "opacity-100",
+              copyOverlayClassName ?? "bg-card/20",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-flex h-6 items-center justify-center rounded-[50px] px-3 text-sm font-medium text-foreground",
+                copyTextClassName ?? "bg-card",
+              )}
+            >
+              {statusOverlayLabel}
+            </span>
+          </div>
+        ) : null}
+
         {floatingActions ? (
           <div
             className={cn(
@@ -543,7 +586,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 size="iconSm"
                 className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
                 onClick={() => {
-                  if (addressValue) {
+                  if (addressValue || recoveryCodesValue) {
                     setIsValueFocused(false);
                   }
                   setIsEditingLabel(true);
@@ -570,6 +613,20 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     }}
                     onBlur={() => setIsValueFocused(false)}
                     className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
+                  />
+                ) : recoveryCodesValue ? (
+                  <KeyFieldRecoveryCodesInput
+                    textareaRef={setValueTextareaRef}
+                    value={draftValue}
+                    onValueChange={(nextValue) => {
+                      setDraftValue(nextValue);
+                      onValueChange?.(nextValue);
+                    }}
+                    onFocus={() => {
+                      setIsValueFocused(true);
+                      resizeTextarea();
+                    }}
+                    onBlur={() => setIsValueFocused(false)}
                   />
                 ) : addressValue ? (
                   <KeyFieldAddressInput
@@ -602,6 +659,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onBlur={() => setIsValueFocused(false)}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
                   />
+                )
+              ) : recoveryCodesValue ? (
+                recoveryCodesRevealed ? (
+                  <KeyFieldRecoveryCodesChecklistView codes={parsedRecoveryCodesValue} readOnly />
+                ) : (
+                  <KeyFieldRecoveryCodesConcealedView codes={parsedRecoveryCodesValue} />
                 )
               ) : addressValue ? (
                 formattedAddressValue

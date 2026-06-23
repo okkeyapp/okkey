@@ -9,6 +9,26 @@ export {
 } from "./lib/key-field-address.js";
 export { getKeyFieldCountryName, keyFieldCountries, type KeyFieldCountryOption } from "./lib/key-field-countries.js";
 export {
+  emptyKeyFieldRecoveryCodesValue,
+  getFirstUnusedKeyFieldRecoveryCode,
+  getKeyFieldRecoveryCodesRemainingCount,
+  getKeyFieldRecoveryCodesUsedCount,
+  markFirstUnusedKeyFieldRecoveryCodeUsed,
+  mergeKeyFieldRecoveryCodesEditorLines,
+  normalizeKeyFieldRecoveryCodesRows,
+  normalizeRecoveryCodeEditorRows,
+  normalizeRecoveryCodesEditorText,
+  parseKeyFieldRecoveryCodesValue,
+  resetKeyFieldRecoveryCodesUsedState,
+  serializeKeyFieldRecoveryCodesValue,
+  setKeyFieldRecoveryCodeUsed,
+  splitRecoveryCodesPasteText,
+  transformKeyFieldRecoveryCodesInput,
+  withTrailingEmptyRecoveryCodeRow,
+  type KeyFieldRecoveryCode,
+  type KeyFieldRecoveryCodesValue,
+} from "./lib/key-field-recovery-codes.js";
+export {
   formatKeyFieldDateValue,
   isValidKeyFieldDateValue,
   keyFieldDateDisplayFormat,
@@ -110,6 +130,13 @@ export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./component
 export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 export { KeyFieldAddressInput, type KeyFieldAddressInputProps } from "./components/ui/key-field-address-input.js";
+export { KeyFieldRecoveryCodesInput, type KeyFieldRecoveryCodesInputProps } from "./components/ui/key-field-recovery-codes-input.js";
+export {
+  KeyFieldRecoveryCodesChecklistView,
+  KeyFieldRecoveryCodesConcealedView,
+  type KeyFieldRecoveryCodesChecklistViewProps,
+  type KeyFieldRecoveryCodesConcealedViewProps,
+} from "./components/ui/key-field-recovery-codes-view.js";
 export { KeyFieldDateInput, type KeyFieldDateInputProps } from "./components/ui/key-field-date-input.js";
 export { KeyFieldDatePickerPanel, type KeyFieldDatePickerPanelProps } from "./components/ui/key-field-date-picker-panel.js";
 export {
