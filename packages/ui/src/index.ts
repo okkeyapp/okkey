@@ -1,5 +1,11 @@
 export { cn } from "./lib/utils.js";
 export {
+  formatKeyFieldDateValue,
+  isValidKeyFieldDateValue,
+  keyFieldDateDisplayFormat,
+  parseKeyFieldDateValue,
+} from "./lib/date-field.js";
+export {
   ControlGroup,
   controlGroupClassName,
   controlGroupItemFixedClassName,
@@ -92,6 +98,15 @@ export {
   type FaviconProps,
 } from "./components/ui/favicon.js";
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
+export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
+export { KeyFieldDateInput, type KeyFieldDateInputProps } from "./components/ui/key-field-date-input.js";
+export { KeyFieldDatePickerPanel, type KeyFieldDatePickerPanelProps } from "./components/ui/key-field-date-picker-panel.js";
+export {
+  KeyFieldOverlayPanel,
+  keyFieldOverlayPanelClassName,
+  type KeyFieldOverlayPanelProps,
+} from "./components/ui/key-field-overlay-panel.js";
 export {
   Sidebar,
   SidebarContent,

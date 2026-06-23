@@ -1,7 +1,10 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
+import { isKeyFieldDatePickerInteractionTarget } from "../../lib/key-field-date-picker.js";
 import { Button } from "./button.js";
+import { KeyFieldDateInput } from "./key-field-date-input.js";
+import { KeyFieldDatePickerPanel } from "./key-field-date-picker-panel.js";
 
 export type KeyFormMode = "view" | "edit";
 
@@ -81,6 +84,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   editableLabel?: boolean;
   editableValue?: boolean;
   multilineValue?: boolean;
+  dateValue?: boolean;
   autoFocusValue?: boolean;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
@@ -123,6 +127,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       editableLabel = false,
       editableValue = false,
       multilineValue = false,
+      dateValue = false,
       autoFocusValue = false,
       reorderable = false,
       onLabelChange,
@@ -162,6 +167,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
   ) => {
     const [isEditingLabel, setIsEditingLabel] = React.useState(false);
     const [isValueFocused, setIsValueFocused] = React.useState(false);
+    const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+    const hasAutoFocusedValueRef = React.useRef(false);
     const valueInputRef = React.useRef<HTMLInputElement | null>(null);
     const valueTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
     const [draftLabel, setDraftLabel] = React.useState(label);
@@ -170,7 +177,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditLabel = mode === "edit" && editableLabel;
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
-    const isFieldActive = isEditingLabel || isValueFocused || forceActive || isInvalid;
+    const isFieldActive =
+      isEditingLabel || isValueFocused || (dateValue && isDatePickerOpen) || forceActive || isInvalid;
     const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
     const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
     const copyText = copyValue ?? stringValue;
@@ -208,8 +216,13 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         return;
       }
 
+      if (dateValue) {
+        valueInputRef.current?.focus();
+        return;
+      }
+
       valueInputRef.current?.focus();
-    }, [multilineValue]);
+    }, [dateValue, multilineValue]);
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -226,20 +239,31 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     }, [draftValue, multilineValue, resizeTextarea]);
 
     React.useEffect(() => {
-      if (autoFocusValue && canEditValue) {
-        const frameId = window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(focusValueControl);
-        });
-        const timeoutId = window.setTimeout(focusValueControl, 50);
-
-        return () => {
-          window.cancelAnimationFrame(frameId);
-          window.clearTimeout(timeoutId);
-        };
+      if (!autoFocusValue) {
+        hasAutoFocusedValueRef.current = false;
+        return undefined;
       }
 
-      return undefined;
-    }, [autoFocusValue, canEditValue, focusValueControl]);
+      if (!canEditValue || hasAutoFocusedValueRef.current) {
+        return undefined;
+      }
+
+      hasAutoFocusedValueRef.current = true;
+      const frameId = window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(focusValueControl);
+      });
+      const timeoutId = window.setTimeout(focusValueControl, 50);
+
+      if (dateValue) {
+        setIsDatePickerOpen(true);
+        setIsValueFocused(true);
+      }
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.clearTimeout(timeoutId);
+      };
+    }, [autoFocusValue, canEditValue, dateValue, focusValueControl]);
 
     React.useEffect(
       () => () => {
@@ -249,6 +273,61 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       },
       [],
     );
+
+    const closeDatePicker = React.useCallback(() => {
+      setIsDatePickerOpen(false);
+      setIsValueFocused(false);
+      valueInputRef.current?.blur();
+    }, []);
+
+    const handleDatePickerValueChange = React.useCallback(
+      (nextValue: string) => {
+        setDraftValue(nextValue);
+        onValueChange?.(nextValue);
+      },
+      [onValueChange],
+    );
+
+    const handleDateInputFocus = React.useCallback(() => {
+      setIsValueFocused(true);
+      setIsDatePickerOpen(true);
+    }, []);
+
+    const handleDateInputBlur = React.useCallback(() => {
+      window.setTimeout(() => {
+        const activeElement = document.activeElement;
+        if (isKeyFieldDatePickerInteractionTarget(activeElement)) {
+          return;
+        }
+        closeDatePicker();
+      }, 0);
+    }, [closeDatePicker]);
+
+    React.useEffect(() => {
+      if (!dateValue || !isDatePickerOpen) {
+        return undefined;
+      }
+
+      function handleDocumentPointerDown(event: PointerEvent) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (isKeyFieldDatePickerInteractionTarget(target)) {
+          return;
+        }
+        if (valueInputRef.current && target && valueInputRef.current.contains(target)) {
+          return;
+        }
+        closeDatePicker();
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        document.addEventListener("pointerdown", handleDocumentPointerDown);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+        document.removeEventListener("pointerdown", handleDocumentPointerDown);
+      };
+    }, [closeDatePicker, dateValue, isDatePickerOpen]);
 
     function commitLabel() {
       const nextLabel = draftLabel.trim();
@@ -455,6 +534,17 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onBlur={() => setIsValueFocused(false)}
                     className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
                   />
+                ) : dateValue ? (
+                  <KeyFieldDateInput
+                    inputRef={valueInputRef}
+                    value={draftValue}
+                    onValueChange={(nextValue) => {
+                      setDraftValue(nextValue);
+                      onValueChange?.(nextValue);
+                    }}
+                    onFocus={handleDateInputFocus}
+                    onBlur={handleDateInputBlur}
+                  />
                 ) : (
                   <input
                     ref={valueInputRef}
@@ -474,6 +564,13 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         </div>
 
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
+        {dateValue && canEditValue && isDatePickerOpen ? (
+          <KeyFieldDatePickerPanel
+            value={draftValue}
+            onValueChange={handleDatePickerValueChange}
+            onClose={closeDatePicker}
+          />
+        ) : null}
         {fieldOverlay}
       </div>
     );

@@ -28,6 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   KeyField,
+  KeyFieldOverlayPanel,
   KeyForm,
   KeySection,
   Separator,
@@ -37,6 +38,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  isValidKeyFieldDateValue,
   keyFieldTypeOptions,
   type KeyFieldValueTransformContext,
   type KeyFieldTypeOption,
@@ -614,6 +616,44 @@ function renderTotpToken(token: string): ReactNode {
   );
 }
 
+function TotpFieldDisplay({
+  secret,
+  sectionVariant,
+}: {
+  secret: string;
+  sectionVariant: DemoSectionVariant;
+}) {
+  const [timestamp, setTimestamp] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTimestamp(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const tokenState = getTotpTokenState(secret, timestamp);
+  if (!tokenState) {
+    return null;
+  }
+
+  const timerTone =
+    tokenState.remainingSeconds <= 2 ? "danger" : tokenState.remainingSeconds <= 5 ? "warning" : "success";
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      {renderTotpToken(tokenState.token)}
+      <KeyCounter
+        className="font-mono tabular-nums"
+        sectionVariant={sectionVariant}
+        value={tokenState.remainingSeconds}
+        total={tokenState.period}
+        tone={timerTone}
+      >
+        {tokenState.remainingSeconds}
+      </KeyCounter>
+    </span>
+  );
+}
+
 function normalizePhoneValue(value: string): string {
   const hasLeadingPlus = value.trimStart().startsWith("+");
   const digits = value.replace(/\D/g, "");
@@ -940,6 +980,7 @@ type SortableFieldProps = {
   copySuccessLabel?: string | null;
   concealValue?: boolean;
   transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
+  dateValue?: boolean;
   onCopyAction?: (value: string) => void | Promise<void>;
 };
 
@@ -966,6 +1007,7 @@ function SortableField({
   copySuccessLabel,
   concealValue,
   transformValueInput,
+  dateValue,
   onCopyAction,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -990,6 +1032,7 @@ function SortableField({
       editableLabel={field.editableLabel}
       editableValue={typeof value === "string"}
       multilineValue={field.type === "multiline-text"}
+      dateValue={dateValue}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
       meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
@@ -1116,7 +1159,6 @@ export default function DevUIKeyFormPage() {
     generatePassword(passwordGeneratorSettings, passwordGeneratorLength),
   );
   const [isGeneratedPasswordCopied, setIsGeneratedPasswordCopied] = useState(false);
-  const [totpTimestamp, setTotpTimestamp] = useState(() => Date.now());
   const nextIdRef = useRef(1);
   const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fieldTypes = useMemo(() => englishKeyFieldTypeOptions, []);
@@ -1162,11 +1204,6 @@ export default function DevUIKeyFormPage() {
     },
     [],
   );
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => setTotpTimestamp(Date.now()), 1000);
-    return () => window.clearInterval(intervalId);
-  }, []);
 
   useEffect(() => {
     if (!passwordGeneratorFieldId) {
@@ -1354,19 +1391,8 @@ export default function DevUIKeyFormPage() {
     const crackTime = estimatePasswordCrackTime(generatedPassword);
 
     return (
-      <div
-        data-password-generator-panel
-        className={cn(
-          "absolute left-10 top-full z-40 mt-2 w-[420px] rounded-md bg-popover p-3 text-popover-foreground",
-          "shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)]",
-          "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]",
-        )}
-        onPointerDown={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <span className="absolute -top-1.5 left-10 size-3 rotate-45 bg-popover shadow-[-1px_-1px_0_rgba(0,0,0,0.05)] dark:shadow-[-1px_-1px_0_rgba(255,255,255,0.1)]" aria-hidden />
-        <div className="relative flex flex-col gap-3">
+      <KeyFieldOverlayPanel data-password-generator-panel className="w-[420px]">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 rounded-lg bg-secondary p-3">
             <div className="flex items-center justify-between gap-4">
               {options.map((option) => (
@@ -1478,7 +1504,7 @@ export default function DevUIKeyFormPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </KeyFieldOverlayPanel>
     );
   }
 
@@ -1740,18 +1766,7 @@ export default function DevUIKeyFormPage() {
     }
 
     if (field.type === "totp" && typeof field.value === "string") {
-      const tokenState = getTotpTokenState(field.value, totpTimestamp);
-      if (tokenState) {
-        const timerTone = tokenState.remainingSeconds <= 2 ? "danger" : tokenState.remainingSeconds <= 5 ? "warning" : "success";
-        return (
-          <span className="inline-flex items-center gap-2">
-            {renderTotpToken(tokenState.token)}
-            <KeyCounter className="font-mono tabular-nums" sectionVariant={section.variant} value={tokenState.remainingSeconds} total={tokenState.period} tone={timerTone}>
-              {tokenState.remainingSeconds}
-            </KeyCounter>
-          </span>
-        );
-      }
+      return <TotpFieldDisplay secret={field.value} sectionVariant={section.variant} />;
     }
 
     return field.value;
@@ -1810,13 +1825,21 @@ export default function DevUIKeyFormPage() {
     );
   }
 
+  function isInvalidDateField(field: DemoField): boolean {
+    if (field.type !== "date" || typeof field.value !== "string") {
+      return false;
+    }
+
+    return !isValidKeyFieldDateValue(field.value);
+  }
+
   function isInvalidField(field: DemoField): boolean {
-    return mode === "edit" && (isInvalidTotpField(field) || isInvalidEmailField(field));
+    return mode === "edit" && (isInvalidTotpField(field) || isInvalidEmailField(field) || isInvalidDateField(field));
   }
 
   function copyValueForField(field: DemoField): string | undefined {
     if (field.type === "totp" && typeof field.value === "string") {
-      return getTotpTokenState(field.value, totpTimestamp)?.token;
+      return getTotpTokenState(field.value, Date.now())?.token;
     }
 
     if (field.type === "phone" && typeof field.value === "string") {
@@ -1897,6 +1920,7 @@ export default function DevUIKeyFormPage() {
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
+        dateValue={field.type === "date"}
         transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
         onCopyAction={isWebsiteField ? openWebsite : undefined}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
@@ -1914,6 +1938,7 @@ export default function DevUIKeyFormPage() {
         editableLabel={field.editableLabel}
         editableValue={typeof valueForField(section, field) === "string"}
         multilineValue={field.type === "multiline-text"}
+        dateValue={field.type === "date"}
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
