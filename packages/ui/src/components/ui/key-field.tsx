@@ -535,7 +535,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className={cn("min-h-5 min-w-0 flex-1 text-sm leading-5 text-foreground", valueClassName)}>
+            <div className={cn("relative min-h-5 min-w-0 flex-1 text-sm leading-5 text-foreground", valueClassName)}>
               {canEditValue ? (
                 multilineValue ? (
                   <textarea
@@ -574,20 +574,20 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               ) : (
                 displayedValue
               )}
+              {dateValue && canEditValue && isDatePickerOpen ? (
+                <KeyFieldDatePickerPanel
+                  value={draftValue}
+                  onValueChange={handleDatePickerValueChange}
+                  onClose={closeDatePicker}
+                />
+              ) : null}
+              {fieldOverlay}
             </div>
             {meta ? <div className="shrink-0">{meta}</div> : null}
           </div>
         </div>
 
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
-        {dateValue && canEditValue && isDatePickerOpen ? (
-          <KeyFieldDatePickerPanel
-            value={draftValue}
-            onValueChange={handleDatePickerValueChange}
-            onClose={closeDatePicker}
-          />
-        ) : null}
-        {fieldOverlay}
       </div>
     );
   },

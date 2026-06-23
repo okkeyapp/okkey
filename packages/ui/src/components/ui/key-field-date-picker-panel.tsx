@@ -41,7 +41,7 @@ function KeyFieldDatePickerPanelComponent({
   }
 
   return (
-    <KeyFieldOverlayPanel data-key-field-date-picker-panel className="w-auto overflow-hidden p-0">
+    <KeyFieldOverlayPanel data-key-field-date-picker-panel className="w-auto p-0">
       <Calendar
         mode="single"
         captionLayout="label"

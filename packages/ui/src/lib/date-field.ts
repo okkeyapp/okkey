@@ -1,8 +1,8 @@
 import { format, isValid, parse } from "date-fns";
 
-export const keyFieldDateDisplayFormat = "dd.MM.yyyy";
+export const keyFieldDateDisplayFormat = "dd/MM/yyyy";
 
-const keyFieldDateInputFormats = [keyFieldDateDisplayFormat, "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy"] as const;
+const keyFieldDateInputFormats = [keyFieldDateDisplayFormat, "dd.MM.yyyy", "yyyy-MM-dd", "MM/dd/yyyy"] as const;
 
 export function formatKeyFieldDateValue(date: Date): string {
   return format(date, keyFieldDateDisplayFormat);
