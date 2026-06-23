@@ -38,8 +38,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  buildKeyFieldAddressMapsUrl,
+  emptyKeyFieldAddressValue,
+  formatKeyFieldAddressCopyValue,
   isValidKeyFieldDateValue,
   keyFieldTypeOptions,
+  parseKeyFieldAddressValue,
+  serializeKeyFieldAddressValue,
   type KeyFieldValueTransformContext,
   type KeyFieldTypeOption,
   type KeyFormMode,
@@ -128,6 +133,15 @@ function TrashIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
       <path d="M2 3.99992H14M12.6667 3.99992V13.3333C12.6667 13.9999 12 14.6666 11.3333 14.6666H4.66667C4 14.6666 3.33333 13.9999 3.33333 13.3333V3.99992M5.33333 3.99992V2.66659C5.33333 1.99992 6 1.33325 6.66667 1.33325H9.33333C10 1.33325 10.6667 1.99992 10.6667 2.66659V3.99992M6.66667 7.33325V11.3333M9.33333 7.33325V11.3333" stroke="#EF4444" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function OpenMapIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M6 7.3335C6 7.86393 6.21071 8.37264 6.58579 8.74771C6.96086 9.12278 7.46957 9.3335 8 9.3335C8.53043 9.3335 9.03914 9.12278 9.41421 8.74771C9.78929 8.37264 10 7.86393 10 7.3335C10 6.80306 9.78929 6.29436 9.41421 5.91928C9.03914 5.54421 8.53043 5.3335 8 5.3335C7.46957 5.3335 6.96086 5.54421 6.58579 5.91928C6.21071 6.29436 6 6.80306 6 7.3335Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.7713 11.1045L8.94263 13.9331C8.69262 14.1829 8.35368 14.3232 8.0003 14.3232C7.64691 14.3232 7.30797 14.1829 7.05796 13.9331L4.22863 11.1045C3.48278 10.3586 2.97485 9.40827 2.76909 8.37371C2.56332 7.33916 2.66896 6.26681 3.07263 5.29229C3.47631 4.31777 4.15989 3.48483 5.03695 2.89881C5.91401 2.31279 6.94514 2 7.99996 2C9.05478 2 10.0859 2.31279 10.963 2.89881C11.84 3.48483 12.5236 4.31777 12.9273 5.29229C13.331 6.26681 13.4366 7.33916 13.2308 8.37371C13.0251 9.40827 12.5171 10.3586 11.7713 11.1045Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -981,6 +995,7 @@ type SortableFieldProps = {
   concealValue?: boolean;
   transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   dateValue?: boolean;
+  addressValue?: boolean;
   onCopyAction?: (value: string) => void | Promise<void>;
 };
 
@@ -1008,6 +1023,7 @@ function SortableField({
   concealValue,
   transformValueInput,
   dateValue,
+  addressValue,
   onCopyAction,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1033,6 +1049,7 @@ function SortableField({
       editableValue={typeof value === "string"}
       multilineValue={field.type === "multiline-text"}
       dateValue={dateValue}
+      addressValue={addressValue}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
       meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
@@ -1054,7 +1071,11 @@ function SortableField({
         isDragging && "relative z-10 opacity-0",
       )}
       style={style}
-      valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-pre-wrap break-words" : undefined}
+      valueClassName={
+        field.type === "multiline-text" || field.type === "note" || field.type === "address"
+          ? "whitespace-pre-wrap break-words"
+          : undefined
+      }
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       copyValue={copyValue ?? field.copyValue}
       copyLabel={copyLabel}
@@ -1227,11 +1248,12 @@ export default function DevUIKeyFormPage() {
 
   function createField(type: KeyFieldTypeOption): DemoField {
     const id = `field-${nextIdRef.current++}`;
+    const initialValue = type.id === "address" ? serializeKeyFieldAddressValue(emptyKeyFieldAddressValue()) : "";
     return {
       id,
       type: type.id,
       label: type.label.toLowerCase(),
-      value: "",
+      value: initialValue,
       copyValue: "",
       editableLabel: true,
       secret: ["password", "recovery-codes"].includes(type.id),
@@ -1753,6 +1775,18 @@ export default function DevUIKeyFormPage() {
     });
   }
 
+  function openAddressInMaps(field: DemoField) {
+    if (field.type !== "address" || typeof field.value !== "string") {
+      return;
+    }
+
+    const url = buildKeyFieldAddressMapsUrl(parseKeyFieldAddressValue(field.value));
+    const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (openedWindow) {
+      openedWindow.opener = null;
+    }
+  }
+
   function openWebsite(value: string) {
     const openedWindow = window.open(value, "_blank", "noopener,noreferrer");
     if (openedWindow) {
@@ -1849,11 +1883,15 @@ export default function DevUIKeyFormPage() {
       return unmaskedPhoneIds.has(field.id) ? field.value : normalizePhoneValue(field.value);
     }
 
+    if (field.type === "address" && typeof field.value === "string") {
+      return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value));
+    }
+
     return field.copyValue;
   }
 
   function renderFloatingActions(field: DemoField) {
-    if (mode !== "view" || (field.type !== "password" && field.type !== "url")) {
+    if (mode !== "view" || (field.type !== "password" && field.type !== "url" && field.type !== "address")) {
       return null;
     }
 
@@ -1878,10 +1916,15 @@ export default function DevUIKeyFormPage() {
               {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
               {isPasswordVisible ? "Hide password" : "Show password"}
             </DropdownMenuItem>
-          ) : (
+          ) : field.type === "url" ? (
             <DropdownMenuItem onSelect={() => field.copyValue && navigator.clipboard.writeText(field.copyValue)}>
               <CopyIcon className="size-4" />
               Copy
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={() => openAddressInMaps(field)}>
+              <OpenMapIcon className="size-4" />
+              Open map
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -1924,6 +1967,7 @@ export default function DevUIKeyFormPage() {
         copySuccessLabel={isWebsiteField ? null : undefined}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
         dateValue={field.type === "date"}
+        addressValue={field.type === "address"}
         transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
         onCopyAction={isWebsiteField ? openWebsite : undefined}
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
@@ -1942,6 +1986,7 @@ export default function DevUIKeyFormPage() {
         editableValue={typeof valueForField(section, field) === "string"}
         multilineValue={field.type === "multiline-text"}
         dateValue={field.type === "date"}
+        addressValue={field.type === "address"}
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
@@ -1957,7 +2002,11 @@ export default function DevUIKeyFormPage() {
             ),
         )}
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
-        valueClassName={field.type === "multiline-text" || field.type === "note" ? "whitespace-pre-wrap break-words" : undefined}
+        valueClassName={
+          field.type === "multiline-text" || field.type === "note" || field.type === "address"
+            ? "whitespace-pre-wrap break-words"
+            : undefined
+        }
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
         copyValue={field.copyValue}
         copyLabel={field.type === "url" ? "Open website" : undefined}

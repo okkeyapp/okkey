@@ -48,6 +48,7 @@ export type SearchableSelectProps = {
   searchEmptyMessage?: string;
   /** Label for current value when content items have not mounted yet. */
   selectedLabel?: React.ReactNode;
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 };
 
@@ -61,6 +62,7 @@ function SearchableSelect({
   searchPlaceholder = "Search...",
   searchEmptyMessage = "No items found",
   selectedLabel,
+  onOpenChange,
   children,
 }: SearchableSelectProps) {
   const [open, setOpenState] = React.useState(false);
@@ -72,12 +74,16 @@ function SearchableSelect({
   const listId = React.useId();
   const searchInputId = React.useId();
 
-  const setOpen = React.useCallback((next: boolean) => {
-    setOpenState(next);
-    if (!next) {
-      setSearchQuery("");
-    }
-  }, []);
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      setOpenState(next);
+      if (!next) {
+        setSearchQuery("");
+      }
+      onOpenChange?.(next);
+    },
+    [onOpenChange],
+  );
 
   const setValue = React.useCallback(
     (next: string) => {

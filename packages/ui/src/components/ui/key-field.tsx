@@ -2,7 +2,9 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
 import { isKeyFieldDatePickerInteractionTarget } from "../../lib/key-field-date-picker.js";
+import { formatKeyFieldAddressCopyValue, parseKeyFieldAddressValue } from "../../lib/key-field-address.js";
 import { Button } from "./button.js";
+import { KeyFieldAddressInput } from "./key-field-address-input.js";
 import { KeyFieldDateInput } from "./key-field-date-input.js";
 import { KeyFieldDatePickerPanel } from "./key-field-date-picker-panel.js";
 
@@ -85,6 +87,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   editableValue?: boolean;
   multilineValue?: boolean;
   dateValue?: boolean;
+  addressValue?: boolean;
   autoFocusValue?: boolean;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
@@ -128,6 +131,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       editableValue = false,
       multilineValue = false,
       dateValue = false,
+      addressValue = false,
       autoFocusValue = false,
       reorderable = false,
       onLabelChange,
@@ -181,6 +185,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       isEditingLabel || isValueFocused || (dateValue && isDatePickerOpen) || forceActive || isInvalid;
     const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
     const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
+    const formattedAddressValue =
+      addressValue && typeof stringValue === "string"
+        ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue))
+        : "";
     const copyText = copyValue ?? stringValue;
     const canCopyValue = mode === "view" && typeof copyText === "string" && copyText.length > 0;
     const [isCopied, setIsCopied] = React.useState(false);
@@ -221,8 +229,13 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         return;
       }
 
+      if (addressValue) {
+        valueInputRef.current?.focus();
+        return;
+      }
+
       valueInputRef.current?.focus();
-    }, [dateValue, multilineValue]);
+    }, [addressValue, dateValue, multilineValue]);
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -249,7 +262,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       hasAutoFocusedValueRef.current = true;
-      setIsValueFocused(true);
+      if (!addressValue) {
+        setIsValueFocused(true);
+      }
       if (dateValue) {
         setIsDatePickerOpen(true);
       }
@@ -275,7 +290,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         window.clearTimeout(fallbackTimeoutId);
         hasAutoFocusedValueRef.current = false;
       };
-    }, [autoFocusValue, canEditValue, dateValue, multilineValue]);
+    }, [autoFocusValue, canEditValue, addressValue, dateValue, multilineValue]);
 
     React.useEffect(() => {
       if (canEditValue) {
@@ -494,6 +509,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           <div className="flex min-w-0 items-center gap-1.5">
             {isEditingLabel ? (
               <input
+                data-key-field-label-input
                 value={draftLabel}
                 onChange={(event) => setDraftLabel(event.target.value)}
                 onBlur={commitLabel}
@@ -526,7 +542,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 variant="ghost"
                 size="iconSm"
                 className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
-                onClick={() => setIsEditingLabel(true)}
+                onClick={() => {
+                  if (addressValue) {
+                    setIsValueFocused(false);
+                  }
+                  setIsEditingLabel(true);
+                }}
                 aria-label="Редактировать лейбл поля"
               >
                 <PencilIcon className="size-3.5" />
@@ -550,6 +571,17 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onBlur={() => setIsValueFocused(false)}
                     className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
                   />
+                ) : addressValue ? (
+                  <KeyFieldAddressInput
+                    streetInputRef={valueInputRef}
+                    value={draftValue}
+                    onValueChange={(nextValue) => {
+                      setDraftValue(nextValue);
+                      onValueChange?.(nextValue);
+                    }}
+                    onFocus={() => setIsValueFocused(true)}
+                    onBlur={() => setIsValueFocused(false)}
+                  />
                 ) : dateValue ? (
                   <KeyFieldDateInput
                     inputRef={valueInputRef}
@@ -571,6 +603,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
                   />
                 )
+              ) : addressValue ? (
+                formattedAddressValue
               ) : (
                 displayedValue
               )}

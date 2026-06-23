@@ -1,5 +1,14 @@
 export { cn } from "./lib/utils.js";
 export {
+  buildKeyFieldAddressMapsUrl,
+  emptyKeyFieldAddressValue,
+  formatKeyFieldAddressCopyValue,
+  parseKeyFieldAddressValue,
+  serializeKeyFieldAddressValue,
+  type KeyFieldAddressValue,
+} from "./lib/key-field-address.js";
+export { getKeyFieldCountryName, keyFieldCountries, type KeyFieldCountryOption } from "./lib/key-field-countries.js";
+export {
   formatKeyFieldDateValue,
   isValidKeyFieldDateValue,
   keyFieldDateDisplayFormat,
@@ -100,6 +109,7 @@ export {
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
 export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
+export { KeyFieldAddressInput, type KeyFieldAddressInputProps } from "./components/ui/key-field-address-input.js";
 export { KeyFieldDateInput, type KeyFieldDateInputProps } from "./components/ui/key-field-date-input.js";
 export { KeyFieldDatePickerPanel, type KeyFieldDatePickerPanelProps } from "./components/ui/key-field-date-picker-panel.js";
 export {
