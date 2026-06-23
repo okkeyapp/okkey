@@ -168,6 +168,25 @@ function CopySuccessIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function EnableCopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M4.66663 6.4445C4.66663 5.97295 4.85395 5.52071 5.18739 5.18727C5.52083 4.85383 5.97307 4.6665 6.44463 4.6665H12.222C12.4554 4.6665 12.6867 4.71249 12.9024 4.80185C13.1181 4.8912 13.3141 5.02217 13.4792 5.18727C13.6443 5.35237 13.7753 5.54838 13.8646 5.76409C13.954 5.97981 14 6.21101 14 6.4445V12.2218C14 12.4553 13.954 12.6865 13.8646 12.9022C13.7753 13.118 13.6443 13.314 13.4792 13.4791C13.3141 13.6442 13.1181 13.7751 12.9024 13.8645C12.6867 13.9538 12.4554 13.9998 12.222 13.9998H6.44463C6.21114 13.9998 5.97993 13.9538 5.76421 13.8645C5.5485 13.7751 5.35249 13.6442 5.18739 13.4791C5.02229 13.314 4.89132 13.118 4.80197 12.9022C4.71262 12.6865 4.66663 12.4553 4.66663 12.2218V6.4445Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.67467 11.158C2.47023 11.0415 2.30018 10.873 2.18172 10.6697C2.06325 10.4663 2.00057 10.2353 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DisableCopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M12.9427 12.9435C12.6926 13.1933 12.3535 13.3336 12 13.3335H6.66671C6.31309 13.3335 5.97395 13.193 5.7239 12.943C5.47385 12.6929 5.33337 12.3538 5.33337 12.0002V6.66683C5.33337 6.2975 5.48337 5.9635 5.72604 5.72216M8.00004 5.3335H12C12.3537 5.3335 12.6928 5.47397 12.9428 5.72402C13.1929 5.97407 13.3334 6.31321 13.3334 6.66683V10.6668" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.6666 5.33317V3.99984C10.6666 3.64622 10.5262 3.30708 10.2761 3.05703C10.0261 2.80698 9.68691 2.6665 9.33329 2.6665H5.33329M3.05463 3.05984C2.81463 3.29984 2.66663 3.63317 2.66663 3.99984V9.33317C2.66663 9.68679 2.8071 10.0259 3.05715 10.276C3.3072 10.526 3.64634 10.6665 3.99996 10.6665H5.33329" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function OpenWebsiteIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
@@ -1085,6 +1104,7 @@ export default function DevUIKeyFormPage() {
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
   const [unmaskedPhoneIds, setUnmaskedPhoneIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [disabledMultilineCopyIds, setDisabledMultilineCopyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
   const [passwordGeneratorFieldId, setPasswordGeneratorFieldId] = useState<string | null>(null);
@@ -1624,6 +1644,33 @@ export default function DevUIKeyFormPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        ) : field.type === "multiline-text" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={`${field.label} settings`}
+              >
+                <GearIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1">
+              <DropdownMenuItem onSelect={() => toggleMultilineCopy(field.id)}>
+                {disabledMultilineCopyIds.has(field.id) ? <EnableCopyIcon className="size-4" /> : <DisableCopyIcon className="size-4" />}
+                {disabledMultilineCopyIds.has(field.id) ? "Enable full text copy" : "Disable full text copy"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : field.secret ? (
           <ActionButton label="Show value" sectionVariant={section.variant}>
             <EyeIcon className="size-4" />
@@ -1658,6 +1705,18 @@ export default function DevUIKeyFormPage() {
 
   function togglePhoneMask(fieldId: string) {
     setUnmaskedPhoneIds((current) => {
+      const next = new Set(current);
+      if (next.has(fieldId)) {
+        next.delete(fieldId);
+      } else {
+        next.add(fieldId);
+      }
+      return next;
+    });
+  }
+
+  function toggleMultilineCopy(fieldId: string) {
+    setDisabledMultilineCopyIds((current) => {
       const next = new Set(current);
       if (next.has(fieldId)) {
         next.delete(fieldId);
@@ -1814,6 +1873,7 @@ export default function DevUIKeyFormPage() {
     const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
     const hasAddFieldButton = mode === "edit" && section.id === "websites";
     const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
+    const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
 
     return (
       <SortableField
@@ -1833,7 +1893,7 @@ export default function DevUIKeyFormPage() {
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
-        copyValue={copyValueForField(field)}
+        copyValue={isMultilineCopyDisabled ? "" : copyValueForField(field)}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
