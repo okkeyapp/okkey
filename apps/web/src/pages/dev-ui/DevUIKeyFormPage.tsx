@@ -925,7 +925,7 @@ function createInitialSections(): DemoSection[] {
           id: "totp",
           type: "totp",
           label: "one-time password (totp)",
-          value: "",
+          value: "JBSWY3DPEHPK3PXP",
           copyValue: "",
         },
       ],
@@ -1766,7 +1766,10 @@ export default function DevUIKeyFormPage() {
     }
 
     if (field.type === "totp" && typeof field.value === "string") {
-      return <TotpFieldDisplay secret={field.value} sectionVariant={section.variant} />;
+      const tokenState = getTotpTokenState(field.value, Date.now());
+      if (tokenState) {
+        return <TotpFieldDisplay secret={field.value} sectionVariant={section.variant} />;
+      }
     }
 
     return field.value;
@@ -2027,7 +2030,8 @@ export default function DevUIKeyFormPage() {
             <h2 className="text-lg font-medium">Key form</h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Demo for vault item forms: primary white sections, additional gray sections, editable labels, arbitrary field
-              actions, dropdown creation, and native drag/drop ordering in edit mode.
+              actions, dropdown creation, and native drag/drop ordering in edit mode. Demo TOTP secret for pasting into other
+              fields: JBSWY3DPEHPK3PXP.
             </p>
           </div>
 

@@ -90,10 +90,16 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
     const canAddField = isEditMode && Boolean(onAddField);
     const singleAddFieldType = fieldTypes.length === 1 ? fieldTypes[0] : undefined;
     const shouldShowHeader = Boolean(title) || canEditTitle || Boolean(headerActions);
+    const addFieldButtonRef = React.useRef<HTMLButtonElement>(null);
 
     React.useEffect(() => {
       setDraftTitle(title ?? "");
     }, [title]);
+
+    function handleAddField(type: KeyFieldTypeOption) {
+      onAddField?.(type);
+      addFieldButtonRef.current?.blur();
+    }
 
     function commitTitle() {
       const nextTitle = draftTitle.trim();
@@ -211,6 +217,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
 
           {canAddField && singleAddFieldType ? (
             <Button
+              ref={addFieldButtonRef}
               type="button"
               variant="secondary"
               className={cn(
@@ -221,7 +228,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                 "focus:border-accent focus-visible:border-accent",
               )}
-              onClick={() => onAddField?.(singleAddFieldType)}
+              onClick={() => handleAddField(singleAddFieldType)}
             >
               <PlusIcon className="size-4" />
               {addFieldLabel}
@@ -230,6 +237,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
+                  ref={addFieldButtonRef}
                   type="button"
                   variant="secondary"
                   className={cn(
@@ -245,11 +253,15 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                   {addFieldLabel}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="min-w-[240px] p-1">
+              <DropdownMenuContent
+                align="center"
+                className="min-w-[240px] p-1"
+                onCloseAutoFocus={(event) => event.preventDefault()}
+              >
                 {fieldTypes.map((type, index) => (
                   <React.Fragment key={type.id}>
                     {index > 0 && fieldTypes[index - 1]?.group !== type.group ? <DropdownMenuSeparator /> : null}
-                    <DropdownMenuItem onSelect={() => onAddField?.(type)}>
+                    <DropdownMenuItem onSelect={() => handleAddField(type)}>
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{type.label}</span>
                         {type.description ? <span className="truncate text-xs text-muted-foreground">{type.description}</span> : null}

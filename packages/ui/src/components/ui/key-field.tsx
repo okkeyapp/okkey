@@ -249,21 +249,42 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       hasAutoFocusedValueRef.current = true;
-      const frameId = window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(focusValueControl);
-      });
-      const timeoutId = window.setTimeout(focusValueControl, 50);
-
+      setIsValueFocused(true);
       if (dateValue) {
         setIsDatePickerOpen(true);
-        setIsValueFocused(true);
       }
+
+      function focusValueControlIfNeeded() {
+        const valueControl = multilineValue ? valueTextareaRef.current : valueInputRef.current;
+        if (!valueControl || document.activeElement === valueControl) {
+          return;
+        }
+
+        valueControl.focus();
+      }
+
+      const frameId = window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(focusValueControlIfNeeded);
+      });
+      const timeoutId = window.setTimeout(focusValueControlIfNeeded, 50);
+      const fallbackTimeoutId = window.setTimeout(focusValueControlIfNeeded, 150);
 
       return () => {
         window.cancelAnimationFrame(frameId);
         window.clearTimeout(timeoutId);
+        window.clearTimeout(fallbackTimeoutId);
+        hasAutoFocusedValueRef.current = false;
       };
-    }, [autoFocusValue, canEditValue, dateValue, focusValueControl]);
+    }, [autoFocusValue, canEditValue, dateValue, multilineValue]);
+
+    React.useEffect(() => {
+      if (canEditValue) {
+        return;
+      }
+
+      setIsValueFocused(false);
+      setIsDatePickerOpen(false);
+    }, [canEditValue]);
 
     React.useEffect(
       () => () => {
@@ -393,11 +414,6 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
       if (canEditValue) {
         focusValueControl();
-        return;
-      }
-
-      if (canEditLabel) {
-        setIsEditingLabel(true);
       }
     }
 
