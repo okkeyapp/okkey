@@ -70,6 +70,12 @@ import type { CapsuleService } from "./capsule/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import type { UsersRepository } from "./storage/repositories.ts";
 import type { EmailChangeService } from "./account/email-change.ts";
+import type { KeyFieldFileStorage } from "./storage/key-field-file-storage.ts";
+import {
+  createDevKeyFieldFileDeleteRoute,
+  createDevKeyFieldFileGetRoute,
+  createDevKeyFieldFileUploadRoute,
+} from "./routes/dev-key-field-files.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
@@ -86,6 +92,7 @@ export interface AppDeps {
   sessionService?: SessionService;
   twoFactorService?: TwoFactorService;
   capsuleService?: CapsuleService;
+  keyFieldFileStorage?: KeyFieldFileStorage;
 }
 
 export function createApiApp(
@@ -289,6 +296,23 @@ export function createApiApp(
       "POST",
       "/capsules/:capsuleId/revoke",
       createCapsuleRevokeRoute(deps.capsuleService, resolveUserId),
+    );
+  }
+  if (deps.keyFieldFileStorage) {
+    app.route(
+      "POST",
+      "/dev/key-field-files",
+      createDevKeyFieldFileUploadRoute(deps.keyFieldFileStorage, config),
+    );
+    app.route(
+      "GET",
+      "/dev/key-field-files/:attachmentId",
+      createDevKeyFieldFileGetRoute(deps.keyFieldFileStorage, config),
+    );
+    app.route(
+      "DELETE",
+      "/dev/key-field-files/:attachmentId",
+      createDevKeyFieldFileDeleteRoute(deps.keyFieldFileStorage, config),
     );
   }
 

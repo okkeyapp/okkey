@@ -29,6 +29,22 @@ export {
   type KeyFieldRecoveryCodesValue,
 } from "./lib/key-field-recovery-codes.js";
 export {
+  buildKeyFieldFileDownloadUrl,
+  defaultKeyFieldFileUploadConstraints,
+  formatKeyFieldFileMeta,
+  formatKeyFieldFileSize,
+  formatKeyFieldFileUploadHint,
+  getKeyFieldFileExtensionColor,
+  getKeyFieldFileExtensionLabel,
+  hasKeyFieldFileAttachment,
+  isKeyFieldFileImageMimeType,
+  parseKeyFieldFileValue,
+  serializeKeyFieldFileValue,
+  validateKeyFieldFileUpload,
+  type KeyFieldFileUploadConstraints,
+  type KeyFieldFileValue,
+} from "./lib/key-field-file.js";
+export {
   formatKeyFieldDateValue,
   isValidKeyFieldDateValue,
   keyFieldDateDisplayFormat,
@@ -137,6 +153,16 @@ export {
   type KeyFieldRecoveryCodesChecklistViewProps,
   type KeyFieldRecoveryCodesConcealedViewProps,
 } from "./components/ui/key-field-recovery-codes-view.js";
+export {
+  KeyFieldFileControl,
+  KeyFieldFileInput,
+  KeyFieldFileView,
+  type KeyFieldFileControlProps,
+  type KeyFieldFileInputProps,
+  type KeyFieldFileUploadHandler,
+  type KeyFieldFileViewProps,
+} from "./components/ui/key-field-file-control.js";
+export { KeyFieldFileLightbox, type KeyFieldFileLightboxProps } from "./components/ui/key-field-file-lightbox.js";
 export { KeyFieldDateInput, type KeyFieldDateInputProps } from "./components/ui/key-field-date-input.js";
 export { KeyFieldDatePickerPanel, type KeyFieldDatePickerPanelProps } from "./components/ui/key-field-date-picker-panel.js";
 export {

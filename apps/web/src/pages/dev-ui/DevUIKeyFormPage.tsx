@@ -55,7 +55,9 @@ import {
   type KeyFieldValueTransformContext,
   type KeyFieldTypeOption,
   type KeyFormMode,
+  type KeyFieldFileValue,
 } from "@okkey/ui";
+import { deleteDevKeyFieldFile, uploadDevKeyFieldFile } from "../../api/key-field-files";
 
 type DemoSectionVariant = "primary" | "additional";
 
@@ -1019,6 +1021,20 @@ function createInitialSections(): DemoSection[] {
         },
       ],
     },
+    {
+      id: "attachments",
+      variant: "additional",
+      title: "Attachments",
+      fields: [
+        {
+          id: "attachment",
+          type: "file",
+          label: "file",
+          value: "",
+          editableLabel: true,
+        },
+      ],
+    },
   ];
 }
 
@@ -1049,6 +1065,9 @@ type SortableFieldProps = {
   addressValue?: boolean;
   recoveryCodesValue?: boolean;
   recoveryCodesRevealed?: boolean;
+  fileValue?: boolean;
+  onFileUpload?: (file: File, onProgress: (percent: number) => void) => Promise<KeyFieldFileValue>;
+  onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
   statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
 };
@@ -1080,6 +1099,9 @@ function SortableField({
   addressValue,
   recoveryCodesValue,
   recoveryCodesRevealed,
+  fileValue,
+  onFileUpload,
+  onFileDelete,
   statusOverlayLabel,
   onCopyAction,
 }: SortableFieldProps) {
@@ -1109,9 +1131,12 @@ function SortableField({
       addressValue={addressValue}
       recoveryCodesValue={recoveryCodesValue}
       recoveryCodesRevealed={recoveryCodesRevealed}
+      fileValue={fileValue}
+      onFileUpload={onFileUpload}
+      onFileDelete={onFileDelete}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
-      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
+      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant)}
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
@@ -1273,6 +1298,12 @@ export default function DevUIKeyFormPage() {
       droppableContainers,
     });
   }, []);
+
+  const handleKeyFieldFileUpload = useCallback(
+    (file: File, onProgress: (percent: number) => void) => uploadDevKeyFieldFile(file, onProgress),
+    [],
+  );
+  const handleKeyFieldFileDelete = useCallback(async (file: KeyFieldFileValue) => deleteDevKeyFieldFile(file), []);
 
   useEffect(() => {
     window.localStorage.setItem(passwordGeneratorStorageKey, JSON.stringify(passwordGeneratorPreferences));
@@ -2056,6 +2087,7 @@ export default function DevUIKeyFormPage() {
     const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
     const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
     const isRecoveryCodesField = field.type === "recovery-codes";
+    const isFileField = field.type === "file";
     const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
     const isRecoveryCodesExhausted =
       isRecoveryCodesField &&
@@ -2084,7 +2116,7 @@ export default function DevUIKeyFormPage() {
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
-        copyValue={isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted ? "" : copyValueForField(field)}
+        copyValue={isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted || isFileField ? "" : copyValueForField(field)}
         copyLabel={isWebsiteField ? "Open website" : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
         statusOverlayLabel={isRecoveryCodesExhausted ? "All codes used" : undefined}
@@ -2093,6 +2125,9 @@ export default function DevUIKeyFormPage() {
         addressValue={field.type === "address"}
         recoveryCodesValue={isRecoveryCodesField}
         recoveryCodesRevealed={isRecoveryCodesRevealed}
+        fileValue={isFileField}
+        onFileUpload={handleKeyFieldFileUpload}
+        onFileDelete={handleKeyFieldFileDelete}
         transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
         onCopyAction={
           isRecoveryCodesField
@@ -2120,8 +2155,11 @@ export default function DevUIKeyFormPage() {
         addressValue={field.type === "address"}
         recoveryCodesValue={field.type === "recovery-codes"}
         recoveryCodesRevealed={field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id)}
+        fileValue={field.type === "file"}
+        onFileUpload={handleKeyFieldFileUpload}
+        onFileDelete={handleKeyFieldFileDelete}
         reorderable
-        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" ? null : metaForField(field.type, section.variant)}
+        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant)}
         actions={renderActions(section, field)}
         isInvalid={isInvalidField(field)}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}

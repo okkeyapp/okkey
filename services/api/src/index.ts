@@ -15,6 +15,10 @@ import { TwoFactorService } from "./two-factor/service.ts";
 import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
+import {
+  KeyFieldFileStorage,
+  loadKeyFieldFileStorageConfigFromEnv,
+} from "./storage/key-field-file-storage.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -97,6 +101,17 @@ async function main(): Promise<void> {
     emailTemplates,
     log: logger,
   });
+  const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();
+  const keyFieldFileStorage = keyFieldFileStorageConfig
+    ? new KeyFieldFileStorage(keyFieldFileStorageConfig)
+    : undefined;
+  if (keyFieldFileStorage) {
+    await keyFieldFileStorage.ensureBucket();
+    logger.info("key field file storage initialized", {
+      bucket: keyFieldFileStorageConfig?.bucket,
+      endpoint: keyFieldFileStorageConfig?.endpoint,
+    });
+  }
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),
     authService,
@@ -111,6 +126,7 @@ async function main(): Promise<void> {
     sessionService,
     twoFactorService,
     capsuleService,
+    keyFieldFileStorage,
   });
 
   const server = createServer(app.handler());

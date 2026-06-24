@@ -4,12 +4,21 @@ import { cn } from "../../lib/utils.js";
 import { isKeyFieldDatePickerInteractionTarget } from "../../lib/key-field-date-picker.js";
 import { formatKeyFieldAddressCopyValue, parseKeyFieldAddressValue } from "../../lib/key-field-address.js";
 import {
+  defaultKeyFieldFileUploadConstraints,
+  isKeyFieldFileImageMimeType,
+  parseKeyFieldFileValue,
+  type KeyFieldFileUploadConstraints,
+  type KeyFieldFileValue,
+} from "../../lib/key-field-file.js";
+import {
   parseKeyFieldRecoveryCodesValue,
 } from "../../lib/key-field-recovery-codes.js";
 import { Button } from "./button.js";
 import { KeyFieldAddressInput } from "./key-field-address-input.js";
 import { KeyFieldDateInput } from "./key-field-date-input.js";
 import { KeyFieldDatePickerPanel } from "./key-field-date-picker-panel.js";
+import { KeyFieldFileInput, KeyFieldFileView, type KeyFieldFileUploadHandler } from "./key-field-file-control.js";
+import { KeyFieldFileLightbox } from "./key-field-file-lightbox.js";
 import { KeyFieldRecoveryCodesInput } from "./key-field-recovery-codes-input.js";
 import {
   KeyFieldRecoveryCodesChecklistView,
@@ -42,7 +51,7 @@ export const keyFieldTypeOptions: readonly KeyFieldTypeOption[] = [
   { id: "password", label: "Password", group: "secret" },
   { id: "totp", label: "Totp", group: "secret" },
   { id: "recovery-codes", label: "Recovery codes", group: "secret" },
-  { id: "file", label: "Attach a file", group: "file" },
+  { id: "file", label: "File", group: "file" },
 ];
 
 function PencilIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -86,6 +95,44 @@ function CopySuccessIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+function ClearFileIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M9.33337 2V4.66667C9.33337 4.84348 9.40361 5.01305 9.52864 5.13807C9.65366 5.2631 9.82323 5.33333 10 5.33333H12.6667"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11.3334 14H4.66671C4.31309 14 3.97395 13.8595 3.7239 13.6095C3.47385 13.3594 3.33337 13.0203 3.33337 12.6667V3.33333C3.33337 2.97971 3.47385 2.64057 3.7239 2.39052C3.97395 2.14048 4.31309 2 4.66671 2H9.33337L12.6667 5.33333V12.6667C12.6667 13.0203 12.5262 13.3594 12.2762 13.6095C12.0261 13.8595 11.687 14 11.3334 14Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6.66663 8L9.33329 10.6667M9.33329 8L6.66663 10.6667"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M9.33341 1.33325V3.99992C9.33341 4.35354 9.47389 4.69268 9.72394 4.94273C9.97399 5.19278 10.3131 5.33325 10.6667 5.33325H13.3334M10.0001 1.33325H4.00008C3.64646 1.33325 3.30732 1.47373 3.05727 1.72378C2.80722 1.97382 2.66675 2.31296 2.66675 2.66659V13.3333C2.66675 13.6869 2.80722 14.026 3.05727 14.2761C3.30732 14.5261 3.64646 14.6666 4.00008 14.6666H12.0001C12.3537 14.6666 12.6928 14.5261 12.9429 14.2761C13.1929 14.026 13.3334 13.6869 13.3334 13.3333V4.66659L10.0001 1.33325Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "children"> & {
   label: string;
   value?: React.ReactNode;
@@ -98,6 +145,10 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   addressValue?: boolean;
   recoveryCodesValue?: boolean;
   recoveryCodesRevealed?: boolean;
+  fileValue?: boolean;
+  fileUploadConstraints?: KeyFieldFileUploadConstraints;
+  onFileUpload?: KeyFieldFileUploadHandler;
+  onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
   autoFocusValue?: boolean;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
@@ -145,6 +196,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       addressValue = false,
       recoveryCodesValue = false,
       recoveryCodesRevealed = false,
+      fileValue = false,
+      fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
+      onFileUpload,
+      onFileDelete,
       autoFocusValue = false,
       reorderable = false,
       onLabelChange,
@@ -195,8 +250,6 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditLabel = mode === "edit" && editableLabel;
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
-    const isFieldActive =
-      isEditingLabel || isValueFocused || (dateValue && isDatePickerOpen) || forceActive || isInvalid;
     const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
     const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
     const formattedAddressValue =
@@ -205,13 +258,26 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         : "";
     const parsedRecoveryCodesValue =
       recoveryCodesValue && typeof stringValue === "string" ? parseKeyFieldRecoveryCodesValue(stringValue) : [];
+    const parsedFileValue = fileValue ? parseKeyFieldFileValue(draftValue) : null;
+    const [isFileClearing, setIsFileClearing] = React.useState(false);
+    const [fileValidationError, setFileValidationError] = React.useState(false);
+    const [fileLightboxOpen, setFileLightboxOpen] = React.useState(false);
+    const isFieldActive =
+      isEditingLabel ||
+      isValueFocused ||
+      (dateValue && isDatePickerOpen) ||
+      forceActive ||
+      isInvalid ||
+      (fileValue && fileValidationError);
     const canShowStatusOverlay =
       mode === "view" && Boolean(statusOverlayLabel) && !(recoveryCodesValue && recoveryCodesRevealed);
+    const canOpenFileValue = mode === "view" && fileValue && parsedFileValue !== null;
     const copyText = copyValue ?? stringValue;
     const canCopyValue =
       mode === "view" &&
       typeof copyText === "string" &&
       copyText.length > 0 &&
+      !fileValue &&
       !(recoveryCodesValue && recoveryCodesRevealed);
     const [isCopied, setIsCopied] = React.useState(false);
     const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -241,6 +307,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     );
 
     const focusValueControl = React.useCallback(() => {
+      if (fileValue) {
+        return;
+      }
       if (multilineValue || recoveryCodesValue) {
         valueTextareaRef.current?.focus();
         return;
@@ -257,7 +326,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       valueInputRef.current?.focus();
-    }, [addressValue, dateValue, multilineValue, recoveryCodesValue]);
+    }, [addressValue, dateValue, fileValue, multilineValue, recoveryCodesValue]);
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -284,7 +353,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       hasAutoFocusedValueRef.current = true;
-      if (!addressValue && !recoveryCodesValue) {
+      if (!addressValue && !recoveryCodesValue && !fileValue) {
         setIsValueFocused(true);
       }
       if (dateValue) {
@@ -313,7 +382,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         window.clearTimeout(fallbackTimeoutId);
         hasAutoFocusedValueRef.current = false;
       };
-    }, [autoFocusValue, canEditValue, addressValue, dateValue, multilineValue, recoveryCodesValue]);
+    }, [autoFocusValue, canEditValue, addressValue, dateValue, fileValue, multilineValue, recoveryCodesValue]);
 
     React.useEffect(() => {
       if (canEditValue) {
@@ -435,6 +504,42 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }, 3000);
     }
 
+    function handleOpenFileClick(event: React.MouseEvent<HTMLButtonElement>) {
+      event.preventDefault();
+      event.stopPropagation();
+      handleOpenFile();
+    }
+
+    function handleOpenFile() {
+      if (!parsedFileValue) {
+        return;
+      }
+
+      if (isKeyFieldFileImageMimeType(parsedFileValue.mimeType)) {
+        setFileLightboxOpen(true);
+        return;
+      }
+
+      window.open(parsedFileValue.url, "_blank", "noopener,noreferrer");
+    }
+
+    function handleFileClear() {
+      if (!parsedFileValue || !onFileDelete) {
+        return;
+      }
+
+      void (async () => {
+        setIsFileClearing(true);
+        try {
+          await onFileDelete(parsedFileValue);
+          setDraftValue("");
+          onValueChange?.("");
+        } finally {
+          setIsFileClearing(false);
+        }
+      })();
+    }
+
     function handleFieldClick(event: React.MouseEvent<HTMLDivElement>) {
       onClick?.(event);
       if (event.defaultPrevented) {
@@ -461,12 +566,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
           fieldOverlay && "relative",
-          (canCopyValue || canShowStatusOverlay || floatingActions) && "relative transition-colors",
-          (canCopyValue || canShowStatusOverlay) && copyHoverClassName,
+          (canCopyValue || canOpenFileValue || canShowStatusOverlay || floatingActions) && "relative transition-colors",
+          (canCopyValue || canOpenFileValue || canShowStatusOverlay) && copyHoverClassName,
           isHoverLocked && copyHoverActiveClassName,
           className,
           isFieldActive &&
-            (isInvalid
+            (isInvalid || (fileValue && fileValidationError)
               ? "relative z-10 border-x-destructive border-y-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]"
               : "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]"),
         )}
@@ -512,6 +617,30 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               {copyIconPosition === "start" ? currentCopyIcon : null}
               {isCopied ? copySuccessLabel : copyLabel}
               {copyIconPosition === "end" ? currentCopyIcon : null}
+            </span>
+          </button>
+        ) : null}
+
+        {canOpenFileValue ? (
+          <button
+            type="button"
+            className={cn(
+              "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
+              "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
+              "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+              isHoverLocked && "pointer-events-auto opacity-100",
+              copyOverlayClassName ?? "bg-card/20",
+            )}
+            onClick={handleOpenFileClick}
+          >
+            <span
+              className={cn(
+                "inline-flex h-6 items-center justify-center gap-1.5 rounded-[50px] px-3 text-sm font-medium text-foreground",
+                copyTextClassName ?? "bg-card",
+              )}
+            >
+              <OpenFileIcon className="size-4" />
+              Open
             </span>
           </button>
         ) : null}
@@ -586,7 +715,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 size="iconSm"
                 className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
                 onClick={() => {
-                  if (addressValue || recoveryCodesValue) {
+                  if (addressValue || recoveryCodesValue || fileValue) {
                     setIsValueFocused(false);
                   }
                   setIsEditingLabel(true);
@@ -599,7 +728,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className={cn("relative min-h-5 min-w-0 flex-1 text-sm leading-5 text-foreground", valueClassName)}>
+            <div className={cn("relative min-w-0 flex-1 text-sm leading-5 text-foreground", fileValue ? "min-h-20" : "min-h-5", valueClassName)}>
               {canEditValue ? (
                 multilineValue ? (
                   <textarea
@@ -627,6 +756,17 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       resizeTextarea();
                     }}
                     onBlur={() => setIsValueFocused(false)}
+                  />
+                ) : fileValue ? (
+                  <KeyFieldFileInput
+                    value={draftValue}
+                    onValueChange={(nextValue) => {
+                      setDraftValue(nextValue);
+                      onValueChange?.(nextValue);
+                    }}
+                    onUploadFile={onFileUpload}
+                    uploadConstraints={fileUploadConstraints}
+                    onValidationErrorChange={setFileValidationError}
                   />
                 ) : addressValue ? (
                   <KeyFieldAddressInput
@@ -666,6 +806,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 ) : (
                   <KeyFieldRecoveryCodesConcealedView codes={parsedRecoveryCodesValue} />
                 )
+              ) : fileValue ? (
+                <KeyFieldFileView value={draftValue} onOpen={mode === "view" ? handleOpenFile : undefined} />
               ) : addressValue ? (
                 formattedAddressValue
               ) : (
@@ -684,7 +826,27 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
         </div>
 
-        {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
+        {canEditValue && parsedFileValue && fileValue ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isFileClearing}
+              className={cn("h-8 px-3", controlButtonClassName)}
+              onClick={handleFileClear}
+            >
+              <ClearFileIcon className="size-4" />
+              Clear
+            </Button>
+            {actions}
+          </div>
+        ) : actions ? (
+          <div className="flex shrink-0 items-center gap-1">{actions}</div>
+        ) : null}
+        {fileLightboxOpen && parsedFileValue && isKeyFieldFileImageMimeType(parsedFileValue.mimeType) ? (
+          <KeyFieldFileLightbox file={parsedFileValue} onClose={() => setFileLightboxOpen(false)} />
+        ) : null}
       </div>
     );
   },
