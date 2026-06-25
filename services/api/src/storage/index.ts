@@ -13,6 +13,7 @@ import {
   VaultsRepository,
   WorkspacesRepository,
 } from "./repositories.ts";
+import { WorkspaceMemberItemCategoryPreferencesRepository } from "./workspace-member-item-category-preferences.ts";
 
 export interface StorageLayer {
   postgres: PostgresDatabase;
@@ -27,6 +28,7 @@ export interface StorageLayer {
     devices: DevicesRepository;
     sessions: SessionsRepository;
     twoFactor: TwoFactorRepository;
+    workspaceMemberItemCategoryPreferences: WorkspaceMemberItemCategoryPreferencesRepository;
   };
   ping(): Promise<void>;
   close(): Promise<void>;
@@ -49,6 +51,7 @@ export async function createStorageLayer(
     devices: new DevicesRepository(postgres),
     sessions: new SessionsRepository(postgres),
     twoFactor: new TwoFactorRepository(postgres),
+    workspaceMemberItemCategoryPreferences: new WorkspaceMemberItemCategoryPreferencesRepository(postgres),
   };
 
   logger.info("storage initialized", {

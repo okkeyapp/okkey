@@ -3,10 +3,14 @@ import type { ReactNode, SVGProps } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { WebMessageValues } from "@okkey/i18n";
+import {
+  POPUP_QUERY_PARAM,
+  SETTINGS_POPUP_ID,
+  buildPopupQueryValue,
+  parsePopupQueryValue,
+  popupQuerySearch,
+} from "../../routes/popupQuery";
 import SettingsGeneralContent from "./SettingsGeneralContent";
-
-const POPUP_QUERY_PARAM = "popup";
-const SETTINGS_POPUP_ID = "settings";
 
 export type SettingsPopupItemId = "main" | "vault" | "login" | "twoFactor" | "recovery" | "devices";
 
@@ -135,36 +139,6 @@ function DevicesIcon(props: SVGProps<SVGSVGElement>) {
 
 function isSettingsPopupItemId(itemId: string): itemId is SettingsPopupItemId {
   return ["main", "vault", "login", "twoFactor", "recovery", "devices"].includes(itemId);
-}
-
-function parsePopupQueryValue(value: string | null): { popupId: string; menuItemId?: string } | null {
-  if (!value) {
-    return null;
-  }
-
-  const [popupId, menuItemId] = value.split("|");
-  if (!popupId) {
-    return null;
-  }
-
-  return { popupId, menuItemId };
-}
-
-function buildPopupQueryValue(popupId: string, menuItemId?: string): string {
-  return menuItemId ? `${popupId}|${menuItemId}` : popupId;
-}
-
-function popupQuerySearch(currentSearch: string, value: string | null): string {
-  const params = new URLSearchParams(currentSearch);
-  params.delete(POPUP_QUERY_PARAM);
-  const baseSearch = params.toString();
-
-  if (!value) {
-    return baseSearch ? `?${baseSearch}` : "";
-  }
-
-  const popupSearch = `${POPUP_QUERY_PARAM}=${encodeURIComponent(value).replaceAll("%7C", "|")}`;
-  return baseSearch ? `?${baseSearch}&${popupSearch}` : `?${popupSearch}`;
 }
 
 export default function SettingsPopup({ t, children }: SettingsPopupProps) {

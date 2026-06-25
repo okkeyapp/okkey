@@ -26,6 +26,8 @@ import type {
   AccountEmailChangeResendRequestDto,
   AccountEmailChangeStartRequestDto,
   AccountEmailChangeStartResponseDto,
+  WorkspaceItemCategoryPreferencesResponseDto,
+  WorkspaceItemCategoryPreferencesUpdateRequestDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -75,6 +77,10 @@ export class ApiClient {
 
   async patch<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
     return this.request<T>("PATCH", path, body, options);
+  }
+
+  async put<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
+    return this.request<T>("PUT", path, body, options);
   }
 
   async request<T>(
@@ -202,6 +208,24 @@ export class CoreApiClient {
 
   listWorkspaceVaults(workspaceId: string): Promise<Vault[]> {
     return this.api.get<Vault[]>(`/workspaces/${encodeURIComponent(workspaceId)}/vaults`);
+  }
+
+  getWorkspaceItemCategoryPreferences(
+    workspaceId: string,
+  ): Promise<WorkspaceItemCategoryPreferencesResponseDto> {
+    return this.api.get<WorkspaceItemCategoryPreferencesResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/item-category-preferences`,
+    );
+  }
+
+  updateWorkspaceItemCategoryPreferences(
+    workspaceId: string,
+    body: WorkspaceItemCategoryPreferencesUpdateRequestDto,
+  ): Promise<WorkspaceItemCategoryPreferencesResponseDto> {
+    return this.api.put<WorkspaceItemCategoryPreferencesResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/item-category-preferences`,
+      body,
+    );
   }
 
   getVault(vaultId: string): Promise<Vault> {

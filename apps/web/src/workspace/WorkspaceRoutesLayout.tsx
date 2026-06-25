@@ -11,12 +11,13 @@ import {
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
 import SettingsPopup from "../components/settings/SettingsPopup";
+import NewItemPopup from "../components/items/NewItemPopup";
 import {
   clearStoredCurrentWorkspaceId,
   readStoredCurrentWorkspaceId,
@@ -40,6 +41,7 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
+import { NEW_ITEM_POPUP_ID, popupQuerySearch } from "../routes/popupQuery";
 import { planTierLabel } from "./planTierLabel";
 
 const PERSONAL_WORKSPACE_TILE_COLOR = "#3B82F6";
@@ -146,6 +148,17 @@ export default function WorkspaceRoutesLayout() {
     [],
   );
 
+  const openNewItemPopup = useCallback(() => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, NEW_ITEM_POPUP_ID),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }, [navigate, location]);
+
   const workspaceNavItems = useMemo(() => {
     const labels = {
       allItems: t("web.nav.allItems"),
@@ -164,6 +177,10 @@ export default function WorkspaceRoutesLayout() {
           ...item,
           to: itemsPathAllWorkspaceMerged(searchParams),
           isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !searchQ,
+          onAddPointerDown: (e) => {
+            e.preventDefault();
+            openNewItemPopup();
+          },
         };
       }
       return {
@@ -171,7 +188,7 @@ export default function WorkspaceRoutesLayout() {
         isActive: item.to === pathname,
       };
     });
-  }, [navPaths, pathname, t, vaultQ, folderQ, searchQ, searchParams]);
+  }, [navPaths, pathname, t, vaultQ, folderQ, searchQ, searchParams, openNewItemPopup]);
 
   // Vault rows: each link is `/items?vault=…`. Active when that vault id matches the query and we are not in folder-only mode (`folder` is cleared if both were set).
   const vaultSidebarItems: OkkeySidebarVaultItem[] = useMemo(() => {
@@ -431,7 +448,9 @@ export default function WorkspaceRoutesLayout() {
           : undefined;
 
         return (
-          <WorkspaceSidebarLayout
+          <>
+            <NewItemPopup t={t} workspaceId={resolvedWorkspaceId} />
+            <WorkspaceSidebarLayout
             title={title}
             description={description}
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
@@ -460,6 +479,7 @@ export default function WorkspaceRoutesLayout() {
           >
             <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
           </WorkspaceSidebarLayout>
+          </>
         );
       }}
     </SettingsPopup>

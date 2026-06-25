@@ -15,6 +15,7 @@ import { TwoFactorService } from "./two-factor/service.ts";
 import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
+import { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
 import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
@@ -69,6 +70,10 @@ async function main(): Promise<void> {
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
   });
+  const itemCategoryPreferencesService = new ItemCategoryPreferencesService({
+    preferences: storage.repositories.workspaceMemberItemCategoryPreferences,
+    workspaces: storage.repositories.workspaces,
+  });
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -119,6 +124,7 @@ async function main(): Promise<void> {
     emailChangeService,
     usersRepository: storage.repositories.users,
     vaultService,
+    itemCategoryPreferencesService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,

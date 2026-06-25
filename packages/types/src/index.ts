@@ -574,3 +574,13 @@ export interface VaultUnlockBootstrapResponseDto {
   password_kdf_params_version: number;
   encrypted_private_key: EncryptedBlobDto;
 }
+
+/** `GET /workspaces/:workspaceId/item-category-preferences` (Bearer). */
+export interface WorkspaceItemCategoryPreferencesResponseDto {
+  favorite_category_ids: string[];
+}
+
+/** `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer). */
+export interface WorkspaceItemCategoryPreferencesUpdateRequestDto {
+  favorite_category_ids: string[];
+}

@@ -69,6 +69,15 @@ const config: Config = {
         /** OKKEY: `rounded-sm` / tighter controls */
         sm: "6px",
       },
+      keyframes: {
+        "category-wiggle": {
+          "0%, 100%": { transform: "rotate(-0.45deg)" },
+          "50%": { transform: "rotate(0.45deg)" },
+        },
+      },
+      animation: {
+        "category-wiggle": "category-wiggle 0.34s ease-in-out infinite",
+      },
     },
   },
   plugins: [],

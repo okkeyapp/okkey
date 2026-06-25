@@ -8,9 +8,10 @@ import {
   useOkkeyAppShellLayout,
 } from "@okkey/ui";
 import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type SVGProps } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
+import { NEW_ITEM_POPUP_ID, popupQuerySearch } from "../../routes/popupQuery";
 import {
   FILTER_QUERY_PARAM,
   FOLDER_QUERY_PARAM,
@@ -117,6 +118,7 @@ export default function ItemsShellTopBar() {
   const { t } = useLocale();
   const shell = useOkkeyAppShellLayout();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isApple = useMemo(() => isAppleLikePlatform(), []);
@@ -128,6 +130,17 @@ export default function ItemsShellTopBar() {
   const searchFieldLabel = t("web.items.searchPlaceholder");
   const createRecordLabel = t("web.items.createRecord");
   const notificationsLabel = t("web.items.notificationsTitle");
+
+  function openNewItemPopup() {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, NEW_ITEM_POPUP_ID),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
 
   useEffect(() => {
     if (!isItemsRoute) {
@@ -277,6 +290,7 @@ export default function ItemsShellTopBar() {
             shell.isMobile ? "size-9 min-h-9 min-w-9 p-0" : "gap-[4px] px-4",
           )}
           aria-label={createRecordLabel}
+          onClick={openNewItemPopup}
         >
           <PlusIcon />
           {shell.isMobile ? null : createRecordLabel}
