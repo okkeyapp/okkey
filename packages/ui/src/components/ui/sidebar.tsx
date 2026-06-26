@@ -280,7 +280,7 @@ export const SidebarMenuSub = React.forwardRef<HTMLUListElement, React.Component
       ref={ref}
       data-sidebar="menu-sub"
       className={cn(
-        "ml-3.5 mr-0 flex min-w-0 translate-x-px flex-col gap-0 border-l border-sidebar-border py-0.5 pl-2.5 pr-0",
+        "ml-3.5 mr-0 flex min-w-0 translate-x-px flex-col gap-0 border-l border-sidebar-border py-0.5 pl-[7px] pr-0",
         className,
       )}
       {...props}

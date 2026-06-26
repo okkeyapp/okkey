@@ -63,7 +63,7 @@ export function itemsPathWithVault(vaultId: string): string {
   return `${ITEMS_PATH}?${new URLSearchParams({ [VAULT_QUERY_PARAM]: vaultId }).toString()}`;
 }
 
-/** Same path shape as vault filter; use for folder leaves in `OkkeySidebarFolderTreeNode.to`. */
+/** Same path shape as vault filter; use for folder nodes in `OkkeySidebarFolderTreeNode.to`. */
 export function itemsPathWithFolder(folderId: string): string {
   return `${ITEMS_PATH}?${new URLSearchParams({ [FOLDER_QUERY_PARAM]: folderId }).toString()}`;
 }

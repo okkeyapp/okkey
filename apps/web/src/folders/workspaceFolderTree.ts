@@ -75,16 +75,12 @@ export function toSidebarFolderTree(
     const children = node.children?.length
       ? toSidebarFolderTree(node.children, toPath, activeFolderId)
       : undefined;
-    const isLeaf = !children?.length;
     return {
       id: node.id,
       label: node.label,
-      ...(isLeaf
-        ? {
-            to: toPath(node.id),
-            isActive: activeFolderId === node.id,
-          }
-        : { children }),
+      to: toPath(node.id),
+      isActive: activeFolderId === node.id,
+      ...(children ? { children } : {}),
     };
   });
 }

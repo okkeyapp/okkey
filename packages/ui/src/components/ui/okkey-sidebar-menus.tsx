@@ -80,11 +80,119 @@ function sidebarSectionPlusButton(className?: string) {
 /** Chevron points down when open, right when closed; `group` lives on the CollapsibleTrigger surface. */
 const folderTreeChevronClassName = "size-4 shrink-0 transition group-data-[state=closed]:-rotate-90";
 
+/** Vertical stack spacing in folder tree (sibling rows). */
+const folderTreeGapClassName = "gap-0";
+
+const folderTreeCollapsibleClassName = cn("flex flex-col", folderTreeGapClassName);
+
+const folderTreeSubMenuClassName = cn(folderTreeGapClassName, "py-0");
+
+/** Pull nested rows back so label buttons align with the parent row while `SidebarMenuSub` keeps its left guide. */
+const folderTreeSubMenuRowOutdentClassName =
+  "-ml-[calc(0.875rem+7px+1px)] w-[calc(100%+0.875rem+7px+1px)] pl-[calc(0.875rem+7px+1px)]";
+
+function folderTreeRowClassName(nestedInBranch: boolean) {
+  return cn(
+    "relative isolate flex h-8 min-w-0 w-full items-center",
+    nestedInBranch && folderTreeSubMenuRowOutdentClassName,
+  );
+}
+
+/** Split branch row: folder control tucks under chevron; hovered control stacks above. */
+const folderTreeRowControlClassName = "relative z-[1] hover:z-[2] focus-visible:z-[2]";
+
+const folderTreeChevronControlClassName = "relative z-[1] hover:z-[3] focus-visible:z-[3]";
+
+const folderTreeLabelOverlapClassName = "-ml-[3px]";
+
+function folderTreeSubRowLabelClassName(isActive?: boolean) {
+  return cn(
+    "h-8 min-w-0 flex-1 cursor-pointer",
+    folderTreeRowControlClassName,
+    folderTreeLabelOverlapClassName,
+    isActive && "z-[2]",
+  );
+}
+
+function folderTreeSubRowLeafLabelClassName(isActive?: boolean) {
+  return cn("h-8 min-w-0 w-full cursor-pointer", folderTreeRowControlClassName, isActive && "z-[2]");
+}
+
+function folderTreeTopRowLabelClassName(isActive?: boolean) {
+  return cn(
+    "h-8 min-w-0 flex-1 cursor-pointer",
+    folderTreeRowControlClassName,
+    folderTreeLabelOverlapClassName,
+    isActive && "z-[2]",
+  );
+}
+
+function folderDropdownBranchLinkClassName(isActive?: boolean) {
+  return cn(
+    folderDropdownInteractiveRowClassName,
+    "h-8 min-w-0 flex-1 py-0",
+    folderTreeRowControlClassName,
+    folderTreeLabelOverlapClassName,
+    isActive && "z-[2]",
+  );
+}
+
+function folderDropdownLeafLinkClassName(isActive?: boolean) {
+  return cn(
+    folderDropdownInteractiveRowClassName,
+    "h-8 min-w-0 w-full py-0",
+    folderTreeRowControlClassName,
+    isActive && "z-[2]",
+  );
+}
+
+/** Same surface as `SidebarMenuButton` / `SidebarMenuSubButton` rows. */
+const folderTreeRowInteractiveClassName =
+  "bg-transparent text-sidebar-foreground outline-none ring-sidebar-ring transition-[background-color,color] hover:bg-[rgba(0,0,0,0.05)] hover:text-sidebar-foreground focus-visible:ring-2 dark:hover:bg-[rgba(255,255,255,0.08)] dark:hover:text-sidebar-foreground";
+
+const folderTreeChevronHoverClassName =
+  "border border-transparent hover:border-input hover:bg-background hover:shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:hover:bg-background dark:hover:shadow-[0_1px_2px_rgba(255,255,255,0.05)]";
+
+const folderTreeChevronButtonClassName = cn(
+  "group inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-transparent text-sidebar-foreground outline-none ring-sidebar-ring transition-[background-color,color,box-shadow,border-color] focus-visible:ring-2",
+  folderTreeChevronControlClassName,
+  folderTreeChevronHoverClassName,
+  "ml-0.5",
+);
+
+function resolveFolderNavLink(
+  node: OkkeySidebarFolderTreeNode,
+  linkComponent?: OkkeyWorkspaceNavLinkComponent,
+) {
+  const href = node.to;
+  const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
+  return { href, LinkC };
+}
+
+function folderLeafBody(leafIcon: React.ReactNode, label: string, withIcon = true) {
+  return (
+    <>
+      {withIcon ? leafIcon : null}
+      <span className="truncate text-sm leading-5">{label}</span>
+    </>
+  );
+}
+
 const folderDropdownInteractiveRowClassName = cn(
   "group relative flex w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground outline-none transition-[background-color,color]",
   sidebarRowHoverClassName,
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 );
+
+const folderDropdownChevronButtonClassName = cn(
+  "group inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-transparent text-foreground outline-none transition-[background-color,color,box-shadow,border-color] focus-visible:ring-2 focus-visible:ring-ring",
+  folderTreeChevronControlClassName,
+  folderTreeChevronHoverClassName,
+  "ml-0.5",
+);
+
+const folderDropdownBranchLinkActiveClassName =
+  "bg-[rgba(0,0,0,0.05)] text-foreground dark:bg-[rgba(255,255,255,0.08)]";
 
 /**
  * Radix menu only drives `data-[highlighted]` from pointer move when `pointerType === "mouse"` (`whenMouse` in @radix-ui/react-menu),
@@ -463,14 +571,15 @@ export function OkkeySidebarVaultsMenu({
 // —— Folders (tree) ———————————————————————————————————————————————
 
 /**
- * Tree for the Folders sidebar / dropdown. Branches use `children` only; leaves should set `to` + `isActive`
- * when integrated with routing (web: `itemsPathWithFolder` + current `folder` query param).
+ * Tree for the Folders sidebar / dropdown. Nodes with `children` expose a chevron to expand the subtree
+ * and a separate label control; set `to` + `isActive` on any node when integrated with routing
+ * (web: `itemsPathWithFolder` + current `folder` query param).
  */
 export type OkkeySidebarFolderTreeNode = {
   id: string;
   label: string;
   defaultOpen?: boolean;
-  /** Leaf navigation target (no `children`), e.g. `/items?folder=…`. */
+  /** Folder filter navigation target, e.g. `/items?folder=…`. */
   to?: string;
   isActive?: boolean;
   children?: OkkeySidebarFolderTreeNode[];
@@ -495,37 +604,55 @@ function FolderSubTreeSidebar({
   leafIcon,
   branchGroupName,
   linkComponent,
+  nestedInBranch = false,
 }: {
   nodes: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
   branchGroupName: string;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
+  nestedInBranch?: boolean;
 }) {
   return (
     <>
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
+          const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
             <SidebarMenuSubItem key={node.id}>
-              <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuSubButton
-                    type="button"
-                    className="group cursor-pointer"
-                    onPointerDown={(e) => e.preventDefault()}
-                  >
-                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
-                    <span className="truncate">{node.label}</span>
-                  </SidebarMenuSubButton>
-                </CollapsibleTrigger>
+              <Collapsible defaultOpen={false} className={folderTreeCollapsibleClassName}>
+                <div className={folderTreeRowClassName(nestedInBranch)}>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className={folderTreeChevronButtonClassName}
+                      onPointerDown={(e) => e.preventDefault()}
+                    >
+                      <ChevronDownMenuIcon className={folderTreeChevronClassName} />
+                    </button>
+                  </CollapsibleTrigger>
+                  {LinkC && href ? (
+                    <SidebarMenuSubButton asChild isActive={node.isActive} className={folderTreeSubRowLabelClassName(node.isActive)}>
+                      <LinkC to={href}>{folderLeafBody(leafIcon, node.label, false)}</LinkC>
+                    </SidebarMenuSubButton>
+                  ) : (
+                    <SidebarMenuSubButton
+                      type="button"
+                      isActive={node.isActive}
+                      className={folderTreeSubRowLabelClassName(node.isActive)}
+                    >
+                      {folderLeafBody(leafIcon, node.label, false)}
+                    </SidebarMenuSubButton>
+                  )}
+                </div>
                 <CollapsibleContent>
-                  <SidebarMenuSub>
+                  <SidebarMenuSub className={folderTreeSubMenuClassName}>
                     <FolderSubTreeSidebar
                       nodes={node.children}
                       leafIcon={leafIcon}
                       branchGroupName={gName}
                       linkComponent={linkComponent}
+                      nestedInBranch
                     />
                   </SidebarMenuSub>
                 </CollapsibleContent>
@@ -533,25 +660,21 @@ function FolderSubTreeSidebar({
             </SidebarMenuSubItem>
           );
         }
-        const href = node.to;
-        const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
-        const leafBody = (
-          <>
-            {leafIcon}
-            <span className="truncate">{node.label}</span>
-          </>
-        );
+        const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
+        const leafBody = folderLeafBody(leafIcon, node.label);
         return (
           <SidebarMenuSubItem key={node.id}>
-            {LinkC && href ? (
-              <SidebarMenuSubButton asChild isActive={node.isActive} className="cursor-pointer">
-                <LinkC to={href}>{leafBody}</LinkC>
-              </SidebarMenuSubButton>
-            ) : (
-              <SidebarMenuSubButton type="button" className="cursor-pointer">
-                {leafBody}
-              </SidebarMenuSubButton>
-            )}
+            <div className={folderTreeRowClassName(nestedInBranch)}>
+              {LinkC && href ? (
+                <SidebarMenuSubButton asChild isActive={node.isActive} className={folderTreeSubRowLeafLabelClassName(node.isActive)}>
+                  <LinkC to={href}>{leafBody}</LinkC>
+                </SidebarMenuSubButton>
+              ) : (
+                <SidebarMenuSubButton type="button" className={folderTreeSubRowLeafLabelClassName(node.isActive)}>
+                  {leafBody}
+                </SidebarMenuSubButton>
+              )}
+            </div>
           </SidebarMenuSubItem>
         );
       })}
@@ -575,22 +698,42 @@ function FolderTopTreeSidebar({
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
+          const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
             <SidebarMenuItem key={node.id}>
-              <Collapsible defaultOpen={node.defaultOpen}>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton type="button" className="group cursor-pointer" onPointerDown={(e) => e.preventDefault()}>
-                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
-                    <span className="truncate">{node.label}</span>
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>
+              <Collapsible defaultOpen={node.defaultOpen} className={folderTreeCollapsibleClassName}>
+                <div className={folderTreeRowClassName(false)}>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className={folderTreeChevronButtonClassName}
+                      onPointerDown={(e) => e.preventDefault()}
+                    >
+                      <ChevronDownMenuIcon className={folderTreeChevronClassName} />
+                    </button>
+                  </CollapsibleTrigger>
+                  {LinkC && href ? (
+                    <SidebarMenuButton asChild isActive={node.isActive} className={folderTreeTopRowLabelClassName(node.isActive)}>
+                      <LinkC to={href}>{folderLeafBody(leafIcon, node.label, false)}</LinkC>
+                    </SidebarMenuButton>
+                  ) : (
+                    <SidebarMenuButton
+                      type="button"
+                      isActive={node.isActive}
+                      className={folderTreeTopRowLabelClassName(node.isActive)}
+                    >
+                      {folderLeafBody(leafIcon, node.label, false)}
+                    </SidebarMenuButton>
+                  )}
+                </div>
                 <CollapsibleContent>
-                  <SidebarMenuSub>
+                  <SidebarMenuSub className={folderTreeSubMenuClassName}>
                     <FolderSubTreeSidebar
                       nodes={node.children}
                       leafIcon={leafIcon}
                       branchGroupName={gName}
                       linkComponent={linkComponent}
+                      nestedInBranch
                     />
                   </SidebarMenuSub>
                 </CollapsibleContent>
@@ -598,14 +741,8 @@ function FolderTopTreeSidebar({
             </SidebarMenuItem>
           );
         }
-        const href = node.to;
-        const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
-        const leafBody = (
-          <>
-            {leafIcon}
-            <span className="truncate">{node.label}</span>
-          </>
-        );
+        const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
+        const leafBody = folderLeafBody(leafIcon, node.label);
         return (
           <SidebarMenuItem key={node.id}>
             {LinkC && href ? (
@@ -629,37 +766,63 @@ function FolderSubTreeDropdown({
   leafIcon,
   branchGroupName,
   linkComponent,
+  nestedInBranch = false,
 }: {
   nodes: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
   branchGroupName: string;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
+  nestedInBranch?: boolean;
 }) {
   return (
     <>
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
+          const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
             <SidebarMenuSubItem key={node.id}>
-              <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className={folderDropdownInteractiveRowClassName}
-                    onPointerDown={(e) => e.preventDefault()}
-                  >
-                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
-                    <span className="truncate">{node.label}</span>
-                  </button>
-                </CollapsibleTrigger>
+              <Collapsible defaultOpen={false} className={folderTreeCollapsibleClassName}>
+                <div className={folderTreeRowClassName(nestedInBranch)}>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className={folderDropdownChevronButtonClassName}
+                      onPointerDown={(e) => e.preventDefault()}
+                    >
+                      <ChevronDownMenuIcon className={folderTreeChevronClassName} />
+                    </button>
+                  </CollapsibleTrigger>
+                  {LinkC && href ? (
+                    <LinkC
+                      to={href}
+                      className={cn(
+                        folderDropdownBranchLinkClassName(node.isActive),
+                        node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                      )}
+                    >
+                      {folderLeafBody(leafIcon, node.label, false)}
+                    </LinkC>
+                  ) : (
+                    <button
+                      type="button"
+                      className={cn(
+                        folderDropdownBranchLinkClassName(node.isActive),
+                        node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                      )}
+                    >
+                      {folderLeafBody(leafIcon, node.label, false)}
+                    </button>
+                  )}
+                </div>
                 <CollapsibleContent>
-                  <SidebarMenuSub>
+                  <SidebarMenuSub className={folderTreeSubMenuClassName}>
                     <FolderSubTreeDropdown
                       nodes={node.children}
                       leafIcon={leafIcon}
                       branchGroupName={gName}
                       linkComponent={linkComponent}
+                      nestedInBranch
                     />
                   </SidebarMenuSub>
                 </CollapsibleContent>
@@ -667,31 +830,27 @@ function FolderSubTreeDropdown({
             </SidebarMenuSubItem>
           );
         }
-        const href = node.to;
-        const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
-        const leafBody = (
-          <>
-            {leafIcon}
-            <span className="truncate">{node.label}</span>
-          </>
-        );
-        if (LinkC && href) {
-          return (
-            <SidebarMenuSubItem key={node.id}>
-              <DropdownMenuItem asChild className={cn(folderDropdownMenuItemClassName, "p-0")}>
-                <LinkC to={href} className="flex items-center gap-2 px-2 py-2">
-                  {leafBody}
-                </LinkC>
-              </DropdownMenuItem>
-            </SidebarMenuSubItem>
-          );
-        }
+        const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
+        const leafBody = folderLeafBody(leafIcon, node.label);
         return (
           <SidebarMenuSubItem key={node.id}>
-            <DropdownMenuItem className={folderDropdownMenuItemClassName}>
-              {leafIcon}
-              <span className="truncate">{node.label}</span>
-            </DropdownMenuItem>
+            <div className={folderTreeRowClassName(nestedInBranch)}>
+              {LinkC && href ? (
+                <LinkC
+                  to={href}
+                  className={cn(
+                    folderDropdownLeafLinkClassName(node.isActive),
+                    node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                  )}
+                >
+                  {leafBody}
+                </LinkC>
+              ) : (
+                <button type="button" className={folderDropdownLeafLinkClassName(node.isActive)}>
+                  {leafBody}
+                </button>
+              )}
+            </div>
           </SidebarMenuSubItem>
         );
       })}
@@ -711,43 +870,61 @@ function FolderTopTreeDropdown({
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
 }) {
   return (
-    <div className="flex flex-col gap-0 px-2 py-1">
+    <div className={cn("flex flex-col px-2 py-0", folderTreeGapClassName)}>
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
+          const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
-            <Collapsible key={node.id} defaultOpen={node.defaultOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className={folderDropdownInteractiveRowClassName}
-                  onPointerDown={(e) => e.preventDefault()}
-                >
-                  <ChevronDownMenuIcon className={folderTreeChevronClassName} />
-                  <span className="truncate">{node.label}</span>
-                </button>
-              </CollapsibleTrigger>
+            <Collapsible key={node.id} defaultOpen={node.defaultOpen} className={folderTreeCollapsibleClassName}>
+              <div className={folderTreeRowClassName(false)}>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className={folderDropdownChevronButtonClassName}
+                    onPointerDown={(e) => e.preventDefault()}
+                  >
+                    <ChevronDownMenuIcon className={folderTreeChevronClassName} />
+                  </button>
+                </CollapsibleTrigger>
+                {LinkC && href ? (
+                  <LinkC
+                    to={href}
+                    className={cn(
+                      folderDropdownBranchLinkClassName(node.isActive),
+                      node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                    )}
+                  >
+                    {folderLeafBody(leafIcon, node.label, false)}
+                  </LinkC>
+                ) : (
+                  <button
+                    type="button"
+                    className={cn(
+                      folderDropdownBranchLinkClassName(node.isActive),
+                      node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                    )}
+                  >
+                    {folderLeafBody(leafIcon, node.label, false)}
+                  </button>
+                )}
+              </div>
               <CollapsibleContent>
-                <SidebarMenuSub>
+                <SidebarMenuSub className={folderTreeSubMenuClassName}>
                   <FolderSubTreeDropdown
                     nodes={node.children}
                     leafIcon={leafIcon}
                     branchGroupName={gName}
                     linkComponent={linkComponent}
+                    nestedInBranch
                   />
                 </SidebarMenuSub>
               </CollapsibleContent>
             </Collapsible>
           );
         }
-        const href = node.to;
-        const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
-        const leafBody = (
-          <>
-            {leafIcon}
-            <span className="truncate">{node.label}</span>
-          </>
-        );
+        const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
+        const leafBody = folderLeafBody(leafIcon, node.label);
         if (LinkC && href) {
           return (
             <DropdownMenuItem key={node.id} asChild className={cn(folderDropdownMenuItemClassName, "p-0")}>
@@ -854,7 +1031,7 @@ export function OkkeySidebarFoldersMenu({
       <SidebarGroup className="p-0">
         {headerRow}
         <CollapsibleContent>
-          <SidebarMenu>
+          <SidebarMenu className={folderTreeGapClassName}>
             {isEmpty ? (
               <SidebarMenuItem>
                 <div className="px-2 py-2">
