@@ -29,7 +29,7 @@ type SearchableSelectContextValue = {
 
 const SearchableSelectContext = React.createContext<SearchableSelectContextValue | null>(null);
 
-function useSearchableSelectContext(component: string): SearchableSelectContextValue {
+export function useSearchableSelectContext(component: string): SearchableSelectContextValue {
   const ctx = React.useContext(SearchableSelectContext);
   if (!ctx) {
     throw new Error(`${component} must be used within <SearchableSelect>`);

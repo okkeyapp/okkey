@@ -1,4 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
+import type { Vault } from "@okkey/types";
 import { Input } from "@okkey/ui";
 import { useMemo, useState } from "react";
 
@@ -7,18 +8,25 @@ import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
 import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
 import { ItemCategoryIcon } from "./itemCategoryIcons";
+import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
+import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 
 type NewItemFormProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   categoryId: string;
+  workspaceName: string;
+  vaults: readonly Vault[];
+  vaultsListReady: boolean;
 };
 
-export default function NewItemForm({ t, categoryId }: NewItemFormProps) {
+export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaultsListReady }: NewItemFormProps) {
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
   const [recordName, setRecordName] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [vaultId, setVaultId] = useSyncedNewItemVaultId(vaults, vaultsListReady);
+  const [folderId, setFolderId] = useState(NO_FOLDER_VALUE);
   const initialSections = useMemo(
     () => (category ? getDefaultSectionsForCategory(category.id) : []),
     [category],
@@ -56,6 +64,17 @@ export default function NewItemForm({ t, categoryId }: NewItemFormProps) {
       />
 
       <NewItemTagsSection tags={tags} onTagsChange={setTags} t={t} />
+
+      <NewItemSaveLocationSection
+        t={t}
+        workspaceName={workspaceName}
+        vaults={vaults}
+        vaultsListReady={vaultsListReady}
+        vaultId={vaultId}
+        onVaultIdChange={setVaultId}
+        folderId={folderId}
+        onFolderIdChange={setFolderId}
+      />
     </div>
   );
 }

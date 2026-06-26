@@ -125,6 +125,7 @@ export {
   SearchableSelectContent,
   SearchableSelectItem,
   SearchableSelectTrigger,
+  useSearchableSelectContext,
   type SearchableSelectItemProps,
   type SearchableSelectProps,
 } from "./components/ui/searchable-select.js";

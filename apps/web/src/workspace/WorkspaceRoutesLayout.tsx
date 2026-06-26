@@ -16,6 +16,8 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
+import { WorkspaceFoldersProvider, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
+import { toSidebarFolderTree } from "../folders/workspaceFolderTree";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
 import {
@@ -211,30 +213,21 @@ export default function WorkspaceRoutesLayout() {
     }));
   }, [vaults, pathname, vaultQ, folderQ, searchQ, searchParams, itemsPathMergeOptions]);
 
-  const itemsDemoFolderDocsId = "fld-docs";
-  const itemsDemoFolderCardsId = "fld-cards";
-
-  const folderTreeForItems: OkkeySidebarFolderTreeNode[] = useMemo(
-    () => [
-      {
-        id: itemsDemoFolderDocsId,
-        label: "Documents",
-        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderDocsId, itemsPathMergeOptions),
-        isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderDocsId && !vaultQ && !searchQ,
-      },
-      {
-        id: itemsDemoFolderCardsId,
-        label: "Cards",
-        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderCardsId, itemsPathMergeOptions),
-        isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderCardsId && !vaultQ && !searchQ,
-      },
-    ],
-    [pathname, folderQ, vaultQ, searchQ, searchParams, itemsPathMergeOptions],
-  );
-
   const currentWorkspace = useMemo(
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
     [workspaceList, resolvedWorkspaceId],
+  );
+
+  const workspaceFoldersState = useWorkspaceFoldersState(userId ?? "", resolvedWorkspaceId ?? "");
+
+  const folderTreeForItems: OkkeySidebarFolderTreeNode[] = useMemo(
+    () =>
+      toSidebarFolderTree(
+        workspaceFoldersState.folderTree,
+        (folderId) => itemsPathWithFolderMerged(searchParams, folderId, itemsPathMergeOptions),
+        folderQ,
+      ),
+    [workspaceFoldersState.folderTree, searchParams, itemsPathMergeOptions, folderQ],
   );
 
   /**
@@ -454,9 +447,16 @@ export default function WorkspaceRoutesLayout() {
           : undefined;
 
         return (
-          <>
-            <NewItemPopup t={t} workspaceId={resolvedWorkspaceId} />
-            <WorkspaceSidebarLayout
+          <WorkspaceFoldersProvider value={workspaceFoldersState}>
+            <>
+              <NewItemPopup
+                t={t}
+                workspaceId={resolvedWorkspaceId}
+                workspaceName={currentWorkspace?.name ?? ""}
+                vaults={vaults}
+                vaultsListReady={vaultsListReady}
+              />
+              <WorkspaceSidebarLayout
             title={title}
             description={description}
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
@@ -485,7 +485,8 @@ export default function WorkspaceRoutesLayout() {
           >
             <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
           </WorkspaceSidebarLayout>
-          </>
+            </>
+          </WorkspaceFoldersProvider>
         );
       }}
     </SettingsPopup>

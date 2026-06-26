@@ -1,4 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
+import type { Vault } from "@okkey/types";
 import { Button, Popup } from "@okkey/ui";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -19,9 +20,12 @@ import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 type NewItemPopupProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   workspaceId: string;
+  workspaceName: string;
+  vaults: readonly Vault[];
+  vaultsListReady: boolean;
 };
 
-export default function NewItemPopup({ t, workspaceId }: NewItemPopupProps) {
+export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, vaultsListReady }: NewItemPopupProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -120,7 +124,13 @@ export default function NewItemPopup({ t, workspaceId }: NewItemPopupProps) {
       }
     >
       {selectedCategoryId ? (
-        <NewItemForm t={t} categoryId={selectedCategoryId} />
+        <NewItemForm
+          t={t}
+          categoryId={selectedCategoryId}
+          workspaceName={workspaceName}
+          vaults={vaults}
+          vaultsListReady={vaultsListReady}
+        />
       ) : (
         <NewItemCategoryPicker
           t={t}
