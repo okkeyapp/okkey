@@ -28,6 +28,13 @@ pkg.name = "@okkey/crypto-wasm";
 pkg.type = "module";
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
+const idDir = join(root, "packages", "id");
+execFileSync("yarn", ["tsc", "-p", "tsconfig.json"], {
+  cwd: idDir,
+  stdio: "inherit",
+  env,
+});
+
 const typesDir = join(root, "packages", "types");
 execFileSync("yarn", ["tsc", "-p", "tsconfig.json"], {
   cwd: typesDir,
