@@ -40,7 +40,7 @@ export default function NewItemForm({ t, categoryId }: NewItemFormProps) {
           value={recordName}
           onChange={(event) => setRecordName(event.target.value)}
           placeholder={t("web.newItemPopup.recordNamePlaceholder", { category: categoryLabel })}
-          className="h-10 min-w-0 flex-1 text-xl leading-6"
+          className="h-10 min-w-0 flex-1 text-xl font-semibold leading-6"
           aria-label={t("web.newItemPopup.recordNameLabel")}
         />
       </div>
