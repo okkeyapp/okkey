@@ -7,6 +7,7 @@ import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
 import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
 import { ItemCategoryIcon } from "./itemCategoryIcons";
+import NewItemTagsSection from "./NewItemTagsSection";
 
 type NewItemFormProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -17,6 +18,7 @@ export default function NewItemForm({ t, categoryId }: NewItemFormProps) {
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
   const [recordName, setRecordName] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const initialSections = useMemo(
     () => (category ? getDefaultSectionsForCategory(category.id) : []),
     [category],
@@ -52,6 +54,8 @@ export default function NewItemForm({ t, categoryId }: NewItemFormProps) {
         addSectionLabel={t("web.newItemPopup.addSectionWithField")}
         addFieldLabel={t("web.newItemPopup.addField")}
       />
+
+      <NewItemTagsSection tags={tags} onTagsChange={setTags} t={t} />
     </div>
   );
 }
