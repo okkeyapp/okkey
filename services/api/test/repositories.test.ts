@@ -269,7 +269,7 @@ test("EventsRepository.append throws VersionConflictError", async () => {
 });
 
 test("EventsRepository.append returns existing row when idempotency_key matches", async () => {
-  const idem = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+  const idem = "1156820912149301";
   const existing = {
     id: "e-dedup",
     vault_id: "v1",

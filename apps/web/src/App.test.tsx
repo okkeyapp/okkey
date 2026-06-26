@@ -22,7 +22,7 @@ function renderWithRouter(ui: ReactElement, initialEntries: string[]) {
 function seedBearerSession() {
   const payload = JSON.stringify({
     access_token: "test-token",
-    user_id: "00000000-0000-4000-8000-000000000001",
+    user_id: "1156820912149601",
     expires_at: new Date(Date.now() + 3_600_000).toISOString(),
   });
   if (typeof localStorage?.setItem === "function") {

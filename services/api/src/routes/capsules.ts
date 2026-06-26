@@ -23,7 +23,7 @@ interface OpenCapsuleBody {
   keyTransportMode?: string;
 }
 
-const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+import { isEntityId } from "../entity-id.ts";
 
 export function createCapsuleCreateRoute(
   capsuleService: CapsuleService,
@@ -106,7 +106,7 @@ export function createCapsuleMetadataRoute(capsuleService: CapsuleService): Rout
       return;
     }
     const capsuleId = ctx.params.capsuleId;
-    if (!capsuleId || !UUID_RE.test(capsuleId)) {
+    if (!capsuleId || !isEntityId(capsuleId)) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "capsuleId is required", ctx.requestId));
       return;
     }
@@ -134,7 +134,7 @@ export function createCapsuleOpenRoute(capsuleService: CapsuleService): RouteHan
       return;
     }
     const capsuleId = ctx.params.capsuleId;
-    if (!capsuleId || !UUID_RE.test(capsuleId)) {
+    if (!capsuleId || !isEntityId(capsuleId)) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "capsuleId is required", ctx.requestId));
       return;
     }
@@ -179,7 +179,7 @@ export function createCapsuleRevokeRoute(
       return;
     }
     const capsuleId = ctx.params.capsuleId;
-    if (!capsuleId || !UUID_RE.test(capsuleId)) {
+    if (!capsuleId || !isEntityId(capsuleId)) {
       json(ctx.res, 400, errorPayload("BAD_REQUEST", "capsuleId is required", ctx.requestId));
       return;
     }

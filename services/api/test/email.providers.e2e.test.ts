@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { formatEmailMessage } from "@okkey/i18n";
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { SMTPServer } from "smtp-server";
 import { AuthService } from "../src/auth/service.ts";
 import { createApiApp } from "../src/app.ts";
@@ -80,7 +80,7 @@ async function startApiForEmailProvider(config: ApiConfig): Promise<{
     emailTemplates: templateService,
     config,
     generateCode: () => "123456",
-    generateId: () => randomUUID(),
+    generateId: () => testEntityId(),
   });
 
   const app = createApiApp(config, logger, {

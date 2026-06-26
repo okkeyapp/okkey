@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,11 +10,8 @@ import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
-import {
-  ensureUserProfileNameColumns,
-  ensureVaultCryptoVersionColumn,
-  ensureVaultIdleLockColumn,
-} from "./two-factor-test-helpers.ts";
+import { ENTITY_ID_RE } from "../../../packages/types/dist/index.js";
+import { applyMigrations } from "./two-factor-test-helpers.ts";
 
 function createLoggerStub() {
   return {
@@ -41,37 +38,10 @@ function mkEncryptedPrivateKeyBlob(byte: number) {
 test("integration: registration completes user, workspace, vault, trusted device", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
-  const migration0002 = readFileSync(
-    path.resolve(testDir, "../migrations/0002_user_password_kdf.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0002);
-  const migration0003 = readFileSync(
-    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0003);
-  const migration0004 = readFileSync(
-    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0004);
-  const migration0005 = readFileSync(
-    path.resolve(testDir, "../migrations/0005_events_sync_envelope.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0005);
-  const migration0007 = readFileSync(
-    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0007);
-  await ensureVaultCryptoVersionColumn(storage);
-  await ensureUserProfileNameColumns(storage);
-  await ensureVaultIdleLockColumn(storage);
-  const suffix = randomUUID();
+  await applyMigrations(storage);
+  const suffix = testEntityId();
   const email = `reg-${suffix}@okkey.local`;
-  const authStateId = randomUUID();
+  const authStateId = testEntityId();
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
@@ -157,7 +127,7 @@ test("integration: registration completes user, workspace, vault, trusted device
   });
 
   assert.equal(result.deviceStatus, "trusted");
-  assert.match(result.userId, /^[0-9a-f-]{36}$/i);
+  assert.match(result.userId, ENTITY_ID_RE);
 
   const userRows = await storage.postgres.query<{ id: string }>(
     "SELECT id FROM users WHERE email = $1",
@@ -204,37 +174,10 @@ test("integration: registration completes user, workspace, vault, trusted device
 test("integration: parallel completeRegistration creates single user", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
-  const migration0002 = readFileSync(
-    path.resolve(testDir, "../migrations/0002_user_password_kdf.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0002);
-  const migration0003 = readFileSync(
-    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0003);
-  const migration0004b = readFileSync(
-    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0004b);
-  const migration0005b = readFileSync(
-    path.resolve(testDir, "../migrations/0005_events_sync_envelope.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0005b);
-  const migration0007b = readFileSync(
-    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0007b);
-  await ensureVaultCryptoVersionColumn(storage);
-  await ensureUserProfileNameColumns(storage);
-  await ensureVaultIdleLockColumn(storage);
-  const suffix = randomUUID();
+  await applyMigrations(storage);
+  const suffix = testEntityId();
   const email = `reg-parallel-${suffix}@okkey.local`;
-  const authStateId = randomUUID();
+  const authStateId = testEntityId();
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
@@ -350,34 +293,7 @@ test("integration: parallel completeRegistration creates single user", async (t)
 test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
-  const migration0002 = readFileSync(
-    path.resolve(testDir, "../migrations/0002_user_password_kdf.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0002);
-  const migration0003 = readFileSync(
-    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0003);
-  const migration0004c = readFileSync(
-    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0004c);
-  const migration0005c = readFileSync(
-    path.resolve(testDir, "../migrations/0005_events_sync_envelope.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0005c);
-  const migration0007c = readFileSync(
-    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0007c);
-  await ensureVaultCryptoVersionColumn(storage);
-  await ensureUserProfileNameColumns(storage);
-  await ensureVaultIdleLockColumn(storage);
+  await applyMigrations(storage);
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
@@ -410,7 +326,7 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
     await storage.close();
   });
 
-  const missingStateId = randomUUID();
+  const missingStateId = testEntityId();
   await assert.rejects(
     () =>
       registrationService.completeRegistration({
@@ -449,38 +365,11 @@ test("integration: strict rollout rejects registration without PQ-capable device
   const baseConfig = loadConfig();
   const config = { ...baseConfig, cryptoRolloutMode: "strict" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
-  const migration0002 = readFileSync(
-    path.resolve(testDir, "../migrations/0002_user_password_kdf.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0002);
-  const migration0003 = readFileSync(
-    path.resolve(testDir, "../migrations/0003_two_factor_sessions.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0003);
-  const migration0004 = readFileSync(
-    path.resolve(testDir, "../migrations/0004_user_locale.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0004);
-  const migration0005 = readFileSync(
-    path.resolve(testDir, "../migrations/0005_events_sync_envelope.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0005);
-  const migration0007 = readFileSync(
-    path.resolve(testDir, "../migrations/0007_user_public_pq_key.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0007);
-  await ensureVaultCryptoVersionColumn(storage);
-  await ensureUserProfileNameColumns(storage);
-  await ensureVaultIdleLockColumn(storage);
+  await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `reg-strict-${suffix}@okkey.local`;
-  const authStateId = randomUUID();
+  const authStateId = testEntityId();
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,

@@ -1,4 +1,5 @@
 import type { OkkeySidebarFolderTreeNode } from "@okkey/ui";
+import { generateEntityId } from "@okkey/types";
 
 export type WorkspaceFolderNode = {
   id: string;
@@ -17,13 +18,13 @@ export const NO_FOLDER_VALUE = "__none__";
 export function defaultWorkspaceFolderTree(): WorkspaceFolderNode[] {
   return [
     {
-      id: "fld-my",
+      id: "1156820912149001",
       label: "Моя папка",
       children: [
         {
-          id: "fld-web",
+          id: "1156820912149002",
           label: "Web",
-          children: [{ id: "fld-design", label: "Дизайн" }],
+          children: [{ id: "1156820912149003", label: "Дизайн" }],
         },
       ],
     },
@@ -58,7 +59,7 @@ export function createWorkspaceFolderAtRoot(
   label: string,
 ): { tree: WorkspaceFolderNode[]; id: string } {
   const trimmed = label.trim();
-  const id = `fld-${crypto.randomUUID()}`;
+  const id = generateEntityId();
   return {
     tree: [...tree, { id, label: trimmed }],
     id,

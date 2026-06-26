@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
@@ -25,7 +25,7 @@ test("integration: sync append/list ACCESS_DENIED for user without vault access"
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `sync-access-a-${suffix}@okkey.local`;
   const emailB = `sync-access-b-${suffix}@okkey.local`;
 
@@ -66,7 +66,7 @@ test("integration: sync append/list ACCESS_DENIED for user without vault access"
     eventType: "ITEM_CREATE" as const,
     encryptedBlob: mkBlob("x", 1),
     baseVersion: 0,
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
   };
 
   await assert.rejects(
@@ -85,7 +85,7 @@ test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `sync-access-vnf-${suffix}@okkey.local`;
 
   const syncService = new SyncService({
@@ -102,7 +102,7 @@ test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async
   });
 
   const { userId } = await registerUser(storage, config, email);
-  const missingVaultId = randomUUID();
+  const missingVaultId = testEntityId();
 
   await assert.rejects(
     () =>
@@ -110,7 +110,7 @@ test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async
         eventType: "ITEM_CREATE",
         encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
-        idempotencyKey: randomUUID(),
+        idempotencyKey: testEntityId(),
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "VAULT_NOT_FOUND",
   );
@@ -126,7 +126,7 @@ test("integration: sync write path blocks v1 when policy allows only v2", async 
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `sync-policy-v2-only-${suffix}@okkey.local`;
 
   const syncService = new SyncService({
@@ -160,7 +160,7 @@ test("integration: sync write path blocks v1 when policy allows only v2", async 
         eventType: "ITEM_CREATE",
         encryptedBlob: mkBlob("legacy-write", 1),
         baseVersion: 0,
-        idempotencyKey: randomUUID(),
+        idempotencyKey: testEntityId(),
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "CRYPTO_PROFILE_NOT_ALLOWED",
   );

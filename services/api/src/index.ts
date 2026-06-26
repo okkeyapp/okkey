@@ -20,9 +20,11 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { initEntityIdGenerator } from "./entity-id.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  initEntityIdGenerator(config.snowflakeNodeId);
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
   const emailSender = await createEmailSender(config, logger);

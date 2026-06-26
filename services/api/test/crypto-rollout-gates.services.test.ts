@@ -181,7 +181,7 @@ test("vault share gate blocks write path and emits blocked metric", async () => 
   await assert.rejects(
     () =>
       service.shareVault("v1", "u1", {
-        recipientUserId: "00000000-0000-0000-0000-000000000001",
+        recipientUserId: "1156820912149401",
         encryptedVaultKey: {
           crypto_version: 2,
           algorithm: "opaque",

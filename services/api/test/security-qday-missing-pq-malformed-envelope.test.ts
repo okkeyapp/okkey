@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { loadConfig } from "../src/config.ts";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
@@ -27,19 +27,14 @@ function errorChainCode(error: unknown): string | undefined {
   return undefined;
 }
 
-const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+import { isEntityId } from "../src/entity-id.ts";
 
-/** Normalise ids returned by `pg` (string / Buffer) for SQL parameters. */
-function pgWireUuid(value: unknown): string {
-  if (typeof value === "string") {
-    const t = value.trim();
-    return UUID_RE.test(t) ? t.toLowerCase() : t;
+function pgWireEntityId(value: unknown): string {
+  const s = String(value).trim();
+  if (!isEntityId(s)) {
+    throw new Error(`expected entity id from database, got: ${s}`);
   }
-  if (Buffer.isBuffer(value) && value.length === 16) {
-    const h = value.toString("hex");
-    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`.toLowerCase();
-  }
-  return String(value).trim();
+  return s;
 }
 
 async function userIdByEmail(
@@ -51,7 +46,7 @@ async function userIdByEmail(
     [email],
   );
   assert.ok(rows[0], `expected user row for ${email}`);
-  return pgWireUuid(rows[0].id);
+  return pgWireEntityId(rows[0].id);
 }
 
 function mkBlob(input: string, cryptoVersion = 2) {
@@ -80,7 +75,7 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `sec-pq-owner-${suffix}@okkey.local`;
   const emailB = `sec-pq-recipient-${suffix}@okkey.local`;
 
@@ -98,7 +93,7 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
   const ownerId = await userIdByEmail(storage, emailA);
   const recipientId = await userIdByEmail(storage, emailB);
   const cleared = await storage.postgres.query<{ public_pq_key: string | null }>(
-    "UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid RETURNING public_pq_key",
+    "UPDATE users SET public_pq_key = NULL WHERE id = $1::bigint RETURNING public_pq_key",
     [recipientId],
   );
   assert.ok(cleared[0], "UPDATE must match recipient id (use uuid string from registration)");
@@ -108,15 +103,15 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
   );
 
   const workspaceRows = await storage.postgres.query<{ id: string }>(
-    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
     [ownerId],
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
 
-  const wsId = pgWireUuid(workspaceId);
+  const wsId = pgWireEntityId(workspaceId);
   const vaultRows = await storage.postgres.query<{ id: unknown }>(
-    "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
+    "SELECT id FROM vaults WHERE workspace_id = $1::bigint LIMIT 1",
     [wsId],
   );
   const vaultId = vaultRows[0]?.id;
@@ -124,11 +119,11 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
 
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1::uuid, $2::uuid)
+      INSERT INTO workspace_members (id, workspace_id, user_id)
+      VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [wsId, recipientId],
+    [testEntityId(), wsId, recipientId],
   );
 
   const sharing = new VaultSharingService({
@@ -141,7 +136,7 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
   });
 
   try {
-    await sharing.shareVault(pgWireUuid(vaultId), ownerId, {
+    await sharing.shareVault(pgWireEntityId(vaultId), ownerId, {
       recipientUserId: recipientId,
       encryptedVaultKey: mkHybridWrapBlob("wrapped-key", recipientId),
       encryptedPayload: mkBlob("share-event", 2),
@@ -162,7 +157,7 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `sec-malformed-wrap-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -176,15 +171,15 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
   await registerUser(storage, baseConfig, email);
   const ownerId = await userIdByEmail(storage, email);
   const workspaceRows = await storage.postgres.query<{ id: string }>(
-    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
     [ownerId],
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
 
-  const wsId = pgWireUuid(workspaceId);
+  const wsId = pgWireEntityId(workspaceId);
   const vaultRows = await storage.postgres.query<{ id: unknown }>(
-    "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
+    "SELECT id FROM vaults WHERE workspace_id = $1::bigint LIMIT 1",
     [wsId],
   );
   const vaultId = vaultRows[0]?.id;
@@ -200,7 +195,7 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
   });
 
   try {
-    await sharing.rotateVaultKey(pgWireUuid(vaultId), ownerId, {
+    await sharing.rotateVaultKey(pgWireEntityId(vaultId), ownerId, {
       rotatedVaultKeys: [
         {
           userId: ownerId,
@@ -240,7 +235,7 @@ test("security: strict rollout rejects share without recipient PQ capability (no
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `sec-strict-owner-${suffix}@okkey.local`;
   const emailB = `sec-strict-recipient-${suffix}@okkey.local`;
 
@@ -258,27 +253,27 @@ test("security: strict rollout rejects share without recipient PQ capability (no
   const ownerId = await userIdByEmail(storage, emailA);
   const recipientId = await userIdByEmail(storage, emailB);
   await storage.postgres.query(
-    "UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid",
+    "UPDATE users SET public_pq_key = NULL WHERE id = $1::bigint",
     [recipientId],
   );
 
   const workspaceRows = await storage.postgres.query<{ id: string }>(
-    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
     [ownerId],
   );
-  const wsId = pgWireUuid(workspaceRows[0]?.id);
+  const wsId = pgWireEntityId(workspaceRows[0]?.id);
   const vaultRows = await storage.postgres.query<{ id: unknown }>(
-    "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
+    "SELECT id FROM vaults WHERE workspace_id = $1::bigint LIMIT 1",
     [wsId],
   );
-  const vaultId = pgWireUuid(vaultRows[0]?.id);
+  const vaultId = pgWireEntityId(vaultRows[0]?.id);
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id)
-     VALUES ($1::uuid, $2::uuid)
+    `INSERT INTO workspace_members (id, workspace_id, user_id)
+     VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [wsId, recipientId],
+    [testEntityId(), wsId, recipientId],
   );
 
   const sharing = new VaultSharingService({
@@ -313,7 +308,7 @@ test("security: strict rollout rejects sync append without actor PQ capability",
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `sec-strict-sync-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -326,17 +321,17 @@ test("security: strict rollout rejects sync append without actor PQ capability",
 
   await registerUser(storage, baseConfig, email);
   const userId = await userIdByEmail(storage, email);
-  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid", [userId]);
+  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::bigint", [userId]);
   const workspaceRows = await storage.postgres.query<{ id: string }>(
-    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
     [userId],
   );
-  const wsId = pgWireUuid(workspaceRows[0]?.id);
+  const wsId = pgWireEntityId(workspaceRows[0]?.id);
   const vaultRows = await storage.postgres.query<{ id: unknown }>(
-    "SELECT id FROM vaults WHERE workspace_id = $1::uuid LIMIT 1",
+    "SELECT id FROM vaults WHERE workspace_id = $1::bigint LIMIT 1",
     [wsId],
   );
-  const vaultId = pgWireUuid(vaultRows[0]?.id);
+  const vaultId = pgWireEntityId(vaultRows[0]?.id);
   assert.ok(vaultId);
 
   const sync = new SyncService({
@@ -367,7 +362,7 @@ test("security: strict rollout rejects capsule create without actor PQ capabilit
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `sec-strict-capsule-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -380,12 +375,12 @@ test("security: strict rollout rejects capsule create without actor PQ capabilit
 
   await registerUser(storage, baseConfig, email);
   const userId = await userIdByEmail(storage, email);
-  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::uuid", [userId]);
+  await storage.postgres.query("UPDATE users SET public_pq_key = NULL WHERE id = $1::bigint", [userId]);
   const workspaceRows = await storage.postgres.query<{ id: string }>(
-    "SELECT id FROM workspaces WHERE owner_id = $1::uuid LIMIT 1",
+    "SELECT id FROM workspaces WHERE owner_id = $1::bigint LIMIT 1",
     [userId],
   );
-  const wsId = pgWireUuid(workspaceRows[0]?.id);
+  const wsId = pgWireEntityId(workspaceRows[0]?.id);
   assert.ok(wsId);
 
   const capsule = new CapsuleService({

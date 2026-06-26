@@ -1,4 +1,4 @@
-import type { UUID } from "../uuid.js";
+import type { EntityId } from "../entity-id.js";
 import type { ItemFieldV2, ItemSectionV2, ItemPlaintextV2 } from "./types.js";
 import {
   ITEM_CATEGORY_CREDIT_CARD,
@@ -70,8 +70,8 @@ export function getCategoryDefinition(categoryId: string): CategoryDefinition | 
  */
 export function createPresetItemPlaintextV2(params: {
   categoryId: string;
-  itemId: UUID;
-  vaultId: UUID;
+  itemId: EntityId;
+  vaultId: EntityId;
   title: string;
   nowMs?: number;
 }): ItemPlaintextV2 {

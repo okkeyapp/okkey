@@ -106,7 +106,7 @@ test("openCapsule rejects unsafe key transport mode before storage access", asyn
   await assert.rejects(
     () =>
       service.openCapsule(
-        "00000000-0000-0000-0000-000000000001",
+        "1156820912149501",
         "127.0.0.1",
         undefined,
         undefined,

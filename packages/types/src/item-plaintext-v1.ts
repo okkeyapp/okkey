@@ -1,4 +1,4 @@
-import type { UUID } from "./uuid.js";
+import type { EntityId } from "./entity-id.js";
 
 /**
  * Plaintext item model v1 (client-only). Serialized to JSON, then encrypted with VaultKey for sync payloads.
@@ -9,8 +9,8 @@ export const ITEM_PLAINTEXT_SCHEMA_VERSION = 1 as const;
 
 export interface ItemPlaintextV1 {
   schemaVersion: typeof ITEM_PLAINTEXT_SCHEMA_VERSION;
-  itemId: UUID;
-  vaultId: UUID;
+  itemId: EntityId;
+  vaultId: EntityId;
   /** User-visible label; v2 keeps title; field catalog is in {@link import("./item-schema/types.js").ItemPlaintextV2} */
   title: string;
   /** Epoch ms for deterministic replay ordering */

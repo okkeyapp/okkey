@@ -1,8 +1,15 @@
-export type { UUID } from "./uuid.js";
-import type { UUID } from "./uuid.js";
+export type { EntityId, UUID } from "./entity-id.js";
+export {
+  ENTITY_ID_RE,
+  assertEntityId,
+  entityIdFromDb,
+  generateEntityId,
+  isEntityId,
+} from "./entity-id.js";
+import type { EntityId } from "./entity-id.js";
 
 export interface User {
-  id: UUID;
+  id: EntityId;
   email: string;
   publicKey: string;
   createdAt: string;
@@ -10,20 +17,20 @@ export interface User {
 }
 
 export interface Workspace {
-  id: UUID;
+  id: EntityId;
   name: string;
-  ownerId: UUID;
+  ownerId: EntityId;
   planTier: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface Vault {
-  id: UUID;
-  workspaceId: UUID;
+  id: EntityId;
+  workspaceId: EntityId;
   name: string;
   isPersonal: boolean;
-  ownerId?: UUID | null;
+  ownerId?: EntityId | null;
   /** Vault crypto profile floor; never decreases (server-enforced). */
   cryptoVersion: number;
   createdAt: string;
@@ -31,8 +38,8 @@ export interface Vault {
 }
 
 export interface Item {
-  id: UUID;
-  vaultId: UUID;
+  id: EntityId;
+  vaultId: EntityId;
   encryptedData: string;
   version: number;
   createdAt: string;
@@ -75,8 +82,8 @@ export {
 } from "./folder-schema/index.js";
 
 export interface Device {
-  id: UUID;
-  userId: UUID;
+  id: EntityId;
+  userId: EntityId;
   deviceName: string;
   devicePublicKey: string;
   createdAt: string;
@@ -99,9 +106,9 @@ export function isClientPqCapable(
 }
 
 export interface Session {
-  id: UUID;
-  userId: UUID;
-  deviceId?: UUID | null;
+  id: EntityId;
+  userId: EntityId;
+  deviceId?: EntityId | null;
   expiresAt: string;
   createdAt: string;
 }
@@ -128,20 +135,20 @@ export type EventPayloadEncoding = "base64";
 export type SyncConflictCode = "VERSION_MISMATCH" | "EVENT_GAP";
 
 export interface EventActor {
-  userId: UUID;
-  deviceId?: UUID | null;
+  userId: EntityId;
+  deviceId?: EntityId | null;
 }
 
 export interface SyncEvent {
-  id: UUID;
-  workspaceId: UUID;
-  vaultId: UUID;
+  id: EntityId;
+  workspaceId: EntityId;
+  vaultId: EntityId;
   eventType: EventType;
   actor: EventActor;
   payloadCiphertext: string;
   payloadEncoding: EventPayloadEncoding;
   payloadSchemaVersion: number;
-  idempotencyKey: UUID;
+  idempotencyKey: EntityId;
   baseVersion: number;
   version: number;
   createdAt: string;
@@ -151,25 +158,25 @@ export interface SyncEvent {
 export type EventLogEntry = SyncEvent;
 
 export interface FetchEventsQuery {
-  vaultId: UUID;
+  vaultId: EntityId;
   afterVersion: number;
   limit?: number;
 }
 
 export interface FetchEventsResult {
-  vaultId: UUID;
+  vaultId: EntityId;
   events: SyncEvent[];
   latestVersion: number;
   hasMore: boolean;
 }
 
 export interface AppendEventRequest {
-  vaultId: UUID;
+  vaultId: EntityId;
   eventType: EventType;
   payloadCiphertext: string;
   payloadEncoding: EventPayloadEncoding;
   payloadSchemaVersion: number;
-  idempotencyKey: UUID;
+  idempotencyKey: EntityId;
   baseVersion: number;
   clientCreatedAt?: string | null;
 }
@@ -181,7 +188,7 @@ export interface AppendEventResult {
 
 export interface SyncConflictErrorDetails {
   code: SyncConflictCode;
-  vaultId: UUID;
+  vaultId: EntityId;
   expectedBaseVersion: number;
   latestVersion: number;
 }
@@ -248,7 +255,7 @@ export interface EmailAuthConfirmResponse {
 export interface AccessTokenResponseDto {
   access_token: string;
   expires_at: string;
-  user_id: UUID;
+  user_id: EntityId;
   token_type: "Bearer";
 }
 
@@ -292,13 +299,13 @@ export interface BackupCodesPlaintextResponseDto {
 
 /** One event as returned by sync HTTP API (opaque base64 payload). */
 export interface SyncEventWireDto {
-  id: UUID;
-  vaultId: UUID;
-  actorId: UUID | null;
+  id: EntityId;
+  vaultId: EntityId;
+  actorId: EntityId | null;
   eventType: string;
   encryptedBlob: EncryptedBlobDto;
   signature?: HybridSignatureEnvelopeDto;
-  idempotencyKey: UUID | null;
+  idempotencyKey: EntityId | null;
   clientCreatedAt: string | null;
   version: number;
   createdAt: string;
@@ -306,7 +313,7 @@ export interface SyncEventWireDto {
 
 /** `GET /vaults/:vaultId/events` success body. */
 export interface SyncEventsListResponseDto {
-  vaultId: UUID;
+  vaultId: EntityId;
   afterVersion: number;
   events: SyncEventWireDto[];
 }
@@ -318,7 +325,7 @@ export interface SyncAppendEventRequestDto {
   /** Required for integrity-critical event types (`VAULT_SHARE`, `VAULT_KEY_ROTATION`). */
   signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
-  /** Required for `ITEM_CREATE`; optional for other types. Must be UUID when set. */
+  /** Required for `ITEM_CREATE`; optional for other types. Must be EntityId when set. */
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
@@ -329,7 +336,7 @@ export interface VaultKeyGetResponseDto {
 }
 
 export interface VaultShareMemberDto {
-  userId: UUID;
+  userId: EntityId;
   email: string;
   /** Ed25519 public key (base64). */
   publicKey: string;
@@ -341,13 +348,13 @@ export interface VaultShareMemberDto {
 
 /** `GET /vaults/:vaultId/shares` success body. */
 export interface VaultSharesListResponseDto {
-  vaultId: UUID;
+  vaultId: EntityId;
   members: VaultShareMemberDto[];
 }
 
 /** `POST /vaults/:vaultId/shares` request body. */
 export interface VaultShareUpsertRequestDto {
-  recipientUserId: UUID;
+  recipientUserId: EntityId;
   /**
    * Recipient wrapped vault key.
    * Production hybrid-by-default contract expects:
@@ -365,14 +372,14 @@ export interface VaultShareUpsertRequestDto {
 }
 
 export interface VaultRotatedKeyDto {
-  userId: UUID;
+  userId: EntityId;
   /** Same hybrid-by-default constraints as `VaultShareUpsertRequestDto.encryptedVaultKey`. */
   encryptedVaultKey: EncryptedBlobDto;
 }
 
 /** `POST /vaults/:vaultId/shares/revoke` request body. */
 export interface VaultShareRevokeRequestDto {
-  recipientUserId: UUID;
+  recipientUserId: EntityId;
   rotatedVaultKeys: VaultRotatedKeyDto[];
   encryptedPayload: EncryptedBlobDto;
   /** Required. */
@@ -415,7 +422,7 @@ export interface VaultMemberRoleUpdateRequestDto {
 }
 
 export interface CapsuleMetadataDto {
-  capsuleId: UUID;
+  capsuleId: EntityId;
   type: "item" | "field" | "file";
   expiresAt: string | null;
   maxViews: number | null;
@@ -467,19 +474,19 @@ export interface DeviceRegisterRequestDto {
 
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
-  device_id: UUID;
+  device_id: EntityId;
   status: "trusted" | "pending_approval";
 }
 
 /** `POST /devices/:deviceId/reject` success body. */
 export interface DeviceRejectResponseDto {
-  device_id: UUID;
+  device_id: EntityId;
   status: "revoked";
 }
 
 /** `POST /auth/register/complete` request body (snake_case on wire). */
 export interface RegisterCompleteRequestDto {
-  auth_state_id: UUID;
+  auth_state_id: EntityId;
   user_public_key: string;
   /** ML-KEM-768 encapsulation key (1184 raw bytes), standard base64. */
   user_public_pq_key: string;
@@ -507,10 +514,10 @@ export interface RegisterCompleteRequestDto {
 
 /** `POST /auth/register/complete` success body (snake_case on wire). */
 export interface RegisterCompleteResponseDto {
-  user_id: UUID;
-  workspace_id: UUID;
-  vault_id: UUID;
-  device_id: UUID;
+  user_id: EntityId;
+  workspace_id: EntityId;
+  vault_id: EntityId;
+  device_id: EntityId;
   device_status: "trusted";
   access_token: string;
   expires_at: string;

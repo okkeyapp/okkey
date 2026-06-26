@@ -65,6 +65,8 @@ export interface ApiConfig {
   cryptoRolloutEnabled: boolean;
   cryptoRolloutState: CryptoRolloutState;
   cryptoRolloutStopWritePaths: string[];
+  /** Snowflake worker id for server-generated entity ids (0–1023). */
+  snowflakeNodeId: number;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -320,5 +322,6 @@ export function loadConfig(): ApiConfig {
     cryptoRolloutEnabled,
     cryptoRolloutState,
     cryptoRolloutStopWritePaths,
+    snowflakeNodeId: parsePositiveInt(process.env.SNOWFLAKE_NODE_ID, 1) % 1024,
   };
 }

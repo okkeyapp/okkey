@@ -38,6 +38,7 @@ import {
   parseHybridSignatureEnvelope,
   verifyHybridSignatureForPayload,
 } from "../crypto/hybrid-signature.ts";
+import { isEntityId } from "../entity-id.ts";
 
 const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
@@ -59,12 +60,6 @@ const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTAT
 
 /** Max decoded ciphertext size per event (DoS guard). */
 export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
-
-const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
-
-function isUuid(value: string): boolean {
-  return UUID_RE.test(value);
-}
 
 export class SyncServiceError extends Error {
   readonly code: string;
@@ -330,7 +325,7 @@ export class SyncService {
     }
 
     if (input.idempotencyKey !== undefined && input.idempotencyKey !== "") {
-      if (!isUuid(input.idempotencyKey)) {
+      if (!isEntityId(input.idempotencyKey)) {
         throw new SyncServiceError(
           "SYNC_BAD_REQUEST",
           400,

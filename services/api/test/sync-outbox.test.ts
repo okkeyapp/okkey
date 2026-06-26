@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import {
   InMemoryOutboxStore,
   SyncOutboxClient,
@@ -19,13 +19,13 @@ function mkReq(baseVersion: number, eventType = "ITEM_UPDATE"): SyncAppendEventR
       meta: {},
     },
     baseVersion,
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
   };
 }
 
 function mkEvent(vaultId: string, version: number): SyncEventWireDto {
   return {
-    id: randomUUID(),
+    id: testEntityId(),
     vaultId,
     actorId: null,
     eventType: "ITEM_UPDATE",
@@ -35,7 +35,7 @@ function mkEvent(vaultId: string, version: number): SyncEventWireDto {
       payload: Buffer.from(
         JSON.stringify({
           schemaVersion: 2,
-          itemId: randomUUID(),
+          itemId: testEntityId(),
           vaultId,
           title: `v${version}`,
           categoryId: "login",
@@ -48,7 +48,7 @@ function mkEvent(vaultId: string, version: number): SyncEventWireDto {
       ).toString("base64"),
       meta: {},
     },
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
     clientCreatedAt: null,
     version,
     createdAt: new Date(version * 1000).toISOString(),
@@ -66,7 +66,7 @@ test("computeBackoffDelayMs grows exponentially", () => {
 });
 
 test("outbox drains FIFO after offline failures", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
   let online = false;
   const sent: number[] = [];
@@ -108,7 +108,7 @@ test("outbox drains FIFO after offline failures", async () => {
 });
 
 test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
   let appendCalls = 0;
   const transport: OutboxTransport = {
@@ -162,7 +162,7 @@ test("outbox resolves VERSION_MISMATCH via rebase and retry", async () => {
 });
 
 test("outbox resolves VERSION_MISMATCH for VAULT_KEY_ROTATION without item rebase", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
   const originalPayload = Buffer.from("rotation-payload", "utf8").toString("base64");
   let appendCalls = 0;
@@ -220,7 +220,7 @@ test("outbox resolves VERSION_MISMATCH for VAULT_KEY_ROTATION without item rebas
         meta: {},
       },
       baseVersion: 4,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
     },
   });
   await outbox.drain(vaultId);
@@ -230,7 +230,7 @@ test("outbox resolves VERSION_MISMATCH for VAULT_KEY_ROTATION without item rebas
 });
 
 test("outbox survives restart via persisted store", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
   const transport: OutboxTransport = {
     async appendVaultEvent(_vaultId, body) {
@@ -252,7 +252,7 @@ test("outbox survives restart via persisted store", async () => {
 });
 
 test("outbox marks entry dead after max attempts and emits stall hook", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const store = new InMemoryOutboxStore();
   let stalled = 0;
   const transport: OutboxTransport = {

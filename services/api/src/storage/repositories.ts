@@ -3,6 +3,7 @@ import {
   assertVaultCryptoFloor,
   DEFAULT_NEW_VAULT_CRYPTO_VERSION,
 } from "../crypto/downgrade.ts";
+import { entityIdFromDb, generateEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "./postgres.ts";
 import {
   EntityNotFoundError,
@@ -57,11 +58,13 @@ export class UsersRepository {
     passwordKdfParamsVersion: number;
   }): Promise<UserRecord> {
     try {
+      const id = generateEntityId();
       const rows = await this.db.query<
         BaseRow & { email: string; public_key: string; public_pq_key: string | null }
       >(
         `
           INSERT INTO users (
+            id,
             email,
             public_key,
             public_pq_key,
@@ -70,10 +73,11 @@ export class UsersRepository {
             password_kdf_salt,
             password_kdf_params_version
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
         `,
         [
+          id,
           input.email,
           input.publicKey,
           input.publicPqKey,
@@ -118,7 +122,7 @@ export class UsersRepository {
         `
           UPDATE users
           SET email = $2::text, updated_at = now()
-          WHERE id = $1::uuid
+          WHERE id = $1::bigint
           RETURNING id, email, public_key, public_pq_key, locale, created_at, updated_at
         `,
         [userId, email],
@@ -149,7 +153,7 @@ export class UsersRepository {
       `
         SELECT email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds
         FROM users
-        WHERE id = $1::uuid
+        WHERE id = $1::bigint
       `,
       [userId],
     );
@@ -196,7 +200,7 @@ export class UsersRepository {
           locale = CASE WHEN $6::boolean THEN $7::text ELSE locale END,
           billing_region = CASE WHEN $8::boolean THEN $9::text ELSE billing_region END,
           updated_at = now()
-        WHERE id = $1::uuid
+        WHERE id = $1::bigint
         RETURNING email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds
       `,
       [
@@ -249,7 +253,7 @@ export class UsersRepository {
       `
         SELECT encrypted_private_key, server_key_share, password_kdf_salt, password_kdf_params_version
         FROM users
-        WHERE id = $1::uuid
+        WHERE id = $1::bigint
       `,
       [userId],
     );
@@ -301,15 +305,16 @@ export class WorkspacesRepository {
     ownerId: string;
     planTier?: string;
   }): Promise<WorkspaceRecord> {
+    const id = generateEntityId();
     const rows = await this.db.query<
       BaseRow & { name: string; owner_id: string; plan_tier: string }
     >(
       `
-        INSERT INTO workspaces (name, owner_id, plan_tier)
-        VALUES ($1, $2, $3)
+        INSERT INTO workspaces (id, name, owner_id, plan_tier)
+        VALUES ($1, $2, $3, $4)
         RETURNING id, name, owner_id, plan_tier, created_at, updated_at
       `,
-      [input.name, input.ownerId, input.planTier ?? "FREE"],
+      [id, input.name, input.ownerId, input.planTier ?? "FREE"],
     );
     return mapWorkspace(rows[0]);
   }
@@ -406,6 +411,7 @@ export class VaultsRepository {
     isPersonal?: boolean;
     ownerId?: string | null;
   }): Promise<VaultRecord> {
+    const id = generateEntityId();
     const rows = await this.db.query<
       BaseRow & {
         workspace_id: string;
@@ -416,11 +422,12 @@ export class VaultsRepository {
       }
     >(
       `
-        INSERT INTO vaults (workspace_id, name, is_personal, owner_id, crypto_version)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
       `,
       [
+        id,
         input.workspaceId,
         input.name,
         input.isPersonal ?? false,
@@ -614,6 +621,7 @@ export class DevicesRepository {
     now: string;
   }): Promise<DeviceRecord> {
     try {
+      const id = generateEntityId();
       const rows = await this.db.query<{
         id: string;
         user_id: string;
@@ -640,6 +648,7 @@ export class DevicesRepository {
       }>(
         `
           INSERT INTO devices (
+            id,
             user_id,
             device_fingerprint,
             device_name,
@@ -670,7 +679,8 @@ export class DevicesRepository {
             $10,
             $11,
             $12,
-            $12,
+            $13,
+            $13,
             'pending',
             NULL,
             NULL
@@ -710,7 +720,7 @@ export class DevicesRepository {
               ELSE NULL
             END,
             last_seen_at = CASE
-              WHEN devices.status = 'trusted' THEN $13::timestamptz
+              WHEN devices.status = 'trusted' THEN $14::timestamptz
               ELSE devices.last_seen_at
             END,
             ip_last = CASE
@@ -742,6 +752,7 @@ export class DevicesRepository {
             revoked_at
         `,
         [
+          id,
           input.userId,
           input.deviceFingerprint,
           input.deviceName,
@@ -779,7 +790,7 @@ export class DevicesRepository {
         `
           SELECT device_share
           FROM devices
-          WHERE user_id = $1::uuid
+          WHERE user_id = $1::bigint
             AND device_fingerprint = $2
             AND status = 'trusted'
           ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
@@ -796,7 +807,7 @@ export class DevicesRepository {
       `
         SELECT COUNT(*)::text AS n
         FROM devices
-        WHERE user_id = $1::uuid AND status = 'trusted'
+        WHERE user_id = $1::bigint AND status = 'trusted'
       `,
       [userId],
     );
@@ -809,7 +820,7 @@ export class DevicesRepository {
       `
         SELECT device_share
         FROM devices
-        WHERE user_id = $1::uuid AND status = 'trusted'
+        WHERE user_id = $1::bigint AND status = 'trusted'
         LIMIT 1
       `,
       [userId],
@@ -1115,15 +1126,16 @@ export class ItemsRepository {
     encryptedData: Uint8Array;
     version?: number;
   }): Promise<ItemRecord> {
+    const id = generateEntityId();
     const rows = await this.db.query<
       BaseRow & { vault_id: string; encrypted_data: Buffer; version: number }
     >(
       `
-        INSERT INTO items (vault_id, encrypted_data, version)
-        VALUES ($1, $2, $3)
+        INSERT INTO items (id, vault_id, encrypted_data, version)
+        VALUES ($1, $2, $3, $4)
         RETURNING id, vault_id, encrypted_data, version, created_at, updated_at
       `,
-      [input.vaultId, Buffer.from(input.encryptedData), input.version ?? 1],
+      [id, input.vaultId, Buffer.from(input.encryptedData), input.version ?? 1],
     );
     return mapItem(rows[0]);
   }
@@ -1217,7 +1229,7 @@ export class EventsRepository {
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
                    payload_schema_version, idempotency_key, client_created_at, version, created_at
             FROM events
-            WHERE vault_id = $1 AND idempotency_key = $2::uuid
+            WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
           `,
           [input.vaultId, input.idempotencyKey],
@@ -1267,25 +1279,27 @@ export class EventsRepository {
             SELECT id, vault_id, actor_id, event_type, encrypted_payload,
                    payload_schema_version, idempotency_key, client_created_at, version, created_at
             FROM events
-            WHERE vault_id = $1 AND idempotency_key = $2::uuid
+            WHERE vault_id = $1 AND idempotency_key = $2::bigint
             FOR UPDATE
           `,
           [input.vaultId, input.idempotencyKey!],
         );
 
       let rows: EventRow[];
+      const eventId = generateEntityId();
       try {
         rows = await tx.query<EventRow>(
           `
           INSERT INTO events (
-            vault_id, actor_id, event_type, encrypted_payload, version,
+            id, vault_id, actor_id, event_type, encrypted_payload, version,
             payload_schema_version, idempotency_key, client_created_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
                     payload_schema_version, idempotency_key, client_created_at, version, created_at
         `,
           [
+            eventId,
             input.vaultId,
             input.actorId ?? null,
             input.eventType,
@@ -1430,8 +1444,8 @@ export class TwoFactorRepository {
     const ex = executor ?? this.db;
     for (const h of codeHashes) {
       await ex.query(
-        "INSERT INTO user_backup_codes (user_id, code_hash) VALUES ($1, $2)",
-        [userId, h],
+        "INSERT INTO user_backup_codes (id, user_id, code_hash) VALUES ($1, $2, $3)",
+        [generateEntityId(), userId, h],
       );
     }
   }
@@ -1486,13 +1500,14 @@ export class SessionsRepository {
     tokenHash: string;
     expiresAtIso: string;
   }): Promise<{ id: string }> {
+    const id = generateEntityId();
     const rows = await this.db.query<{ id: string }>(
       `
-        INSERT INTO sessions (user_id, device_id, token_hash, expires_at)
-        VALUES ($1, NULL, $2, $3::timestamptz)
+        INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at)
+        VALUES ($1, $2, NULL, $3, $4::timestamptz)
         RETURNING id
       `,
-      [input.userId, input.tokenHash, input.expiresAtIso],
+      [id, input.userId, input.tokenHash, input.expiresAtIso],
     );
     const row = rows[0];
     if (!row) {

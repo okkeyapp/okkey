@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -28,8 +28,8 @@ function baseWire(
   partial: Partial<SyncEventWireDto> & Pick<SyncEventWireDto, "eventType" | "version">,
 ): SyncEventWireDto {
   return {
-    id: partial.id ?? randomUUID(),
-    vaultId: partial.vaultId ?? "00000000-0000-4000-8000-000000000001",
+    id: partial.id ?? testEntityId(),
+    vaultId: partial.vaultId ?? "1156820912149101",
     actorId: partial.actorId ?? null,
     eventType: partial.eventType,
     encryptedPayload: partial.encryptedPayload ?? opaqueJson({}),
@@ -73,8 +73,8 @@ function materializeFixtureEvents(events: FixtureStreamEvent[]): SyncEventWireDt
 }
 
 test("replayVaultEvents sorts events by version deterministically", async () => {
-  const vaultId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
   const created = {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     itemId,
@@ -114,7 +114,7 @@ test("replayVaultEvents sorts events by version deterministically", async () => 
 });
 
 test("SyncReplayEngine rejects version gap", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const engine = new SyncReplayEngine({
     vaultId,
     decryptItemPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
@@ -127,7 +127,7 @@ test("SyncReplayEngine rejects version gap", async () => {
       version: 2,
       encryptedPayload: opaqueJson({
         schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-        itemId: randomUUID(),
+        itemId: testEntityId(),
         vaultId,
         title: "A",
         categoryId: "login",
@@ -146,9 +146,9 @@ test("SyncReplayEngine rejects version gap", async () => {
 });
 
 test("SyncReplayEngine deduplicates repeated event id", async () => {
-  const vaultId = randomUUID();
-  const itemId = randomUUID();
-  const eventId = randomUUID();
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const eventId = testEntityId();
   const row = {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     itemId,
@@ -190,11 +190,11 @@ test("SyncReplayEngine deduplicates repeated event id", async () => {
 });
 
 test("SyncReplayEngine applies folder and assignment only for current actor", async () => {
-  const vaultId = randomUUID();
-  const currentUserId = randomUUID();
-  const otherUserId = randomUUID();
-  const folderId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const currentUserId = testEntityId();
+  const otherUserId = testEntityId();
+  const folderId = testEntityId();
+  const itemId = testEntityId();
   const now = Date.now();
 
   const folder = {
@@ -252,7 +252,7 @@ test("SyncReplayEngine applies folder and assignment only for current actor", as
 });
 
 test("SyncReplayEngine supports unknown event quarantine policy and fetch loop", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const pages: SyncEventWireDto[][] = [
     [
       baseWire({ vaultId, eventType: "UNKNOWN_FUTURE_EVENT", version: 1 }),
@@ -287,7 +287,7 @@ test("SyncReplayEngine supports unknown event quarantine policy and fetch loop",
 });
 
 test("SyncReplayEngine updates VAULT_* and DEVICE_* lifecycle handlers", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const state = await replayVaultEvents(
     [
       baseWire({ vaultId, eventType: "VAULT_CREATE", version: 1 }),
@@ -306,8 +306,8 @@ test("SyncReplayEngine updates VAULT_* and DEVICE_* lifecycle handlers", async (
 });
 
 test("SyncReplayEngine converges deterministically for VAULT_SHARE + VAULT_KEY_ROTATION stream", async () => {
-  const vaultId = randomUUID();
-  const duplicateRotationId = randomUUID();
+  const vaultId = testEntityId();
+  const duplicateRotationId = testEntityId();
 
   const ordered = [
     baseWire({ vaultId, eventType: "VAULT_CREATE", version: 1 }),
@@ -334,7 +334,7 @@ test("SyncReplayEngine converges deterministically for VAULT_SHARE + VAULT_KEY_R
 });
 
 test("SyncReplayEngine supports unknown event ignore policy", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const state = await replayVaultEvents(
     [baseWire({ vaultId, eventType: "UNKNOWN_EVENT", version: 1 })],
     { vaultId, unknownEventPolicy: "ignore" },
@@ -344,8 +344,8 @@ test("SyncReplayEngine supports unknown event ignore policy", async () => {
 });
 
 test("SyncReplayEngine quarantines and ignores unsupported schemas by policy", async () => {
-  const vaultId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
   const row = {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
     itemId,
@@ -428,7 +428,7 @@ test("fixture stream JSON replays to expected materialized state", async () => {
 });
 
 test("SyncReplayEngine enforces signature policy when requiredSignatureEventTypes is configured", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const engine = new SyncReplayEngine({
     vaultId,
     requiredSignatureEventTypes: ["VAULT_SHARE"],
@@ -448,7 +448,7 @@ test("SyncReplayEngine enforces signature policy when requiredSignatureEventType
 });
 
 test("SyncReplayEngine rejects altered signature when verify hook is enabled", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const event = baseWire({
     vaultId,
     eventType: "VAULT_SHARE",

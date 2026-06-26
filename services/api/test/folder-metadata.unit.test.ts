@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import {
   replayFolderAndAssignEvents,
   wouldIntroduceFolderParentCycle,
@@ -18,10 +18,10 @@ function opaqueJson(obj: unknown): string {
 function baseWire(
   partial: Partial<SyncEventWireDto> & Pick<SyncEventWireDto, "eventType" | "version" | "actorId">,
 ): SyncEventWireDto {
-  const id = partial.id ?? randomUUID();
+  const id = partial.id ?? testEntityId();
   return {
     id,
-    vaultId: partial.vaultId ?? "00000000-0000-4000-8000-000000000001",
+    vaultId: partial.vaultId ?? "1156820912149101",
     actorId: partial.actorId,
     eventType: partial.eventType,
     encryptedPayload: partial.encryptedPayload ?? opaqueJson({}),
@@ -34,9 +34,9 @@ function baseWire(
 }
 
 test("wouldIntroduceFolderParentCycle detects self and ancestor loop", () => {
-  const a = randomUUID();
-  const b = randomUUID();
-  const c = randomUUID();
+  const a = testEntityId();
+  const b = testEntityId();
+  const c = testEntityId();
   const m = new Map([
     [a, { parentFolderId: null as string | null }],
     [b, { parentFolderId: a }],
@@ -49,10 +49,10 @@ test("wouldIntroduceFolderParentCycle detects self and ancestor loop", () => {
 });
 
 test("replayFolderAndAssignEvents applies folder and assign for matching actor", async () => {
-  const vaultId = randomUUID();
-  const userId = randomUUID();
-  const folderId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const userId = testEntityId();
+  const folderId = testEntityId();
+  const itemId = testEntityId();
   const now = Date.now();
 
   const folderRow = {
@@ -80,7 +80,7 @@ test("replayFolderAndAssignEvents applies folder and assign for matching actor",
       encryptedPayload: opaqueJson(folderRow),
       payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       version: 1,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
     }),
     baseWire({
       eventType: "ITEM_FOLDER_ASSIGN",
@@ -100,10 +100,10 @@ test("replayFolderAndAssignEvents applies folder and assign for matching actor",
 });
 
 test("replayFolderAndAssignEvents skips events from other actors", async () => {
-  const vaultId = randomUUID();
-  const userId = randomUUID();
-  const other = randomUUID();
-  const folderId = randomUUID();
+  const vaultId = testEntityId();
+  const userId = testEntityId();
+  const other = testEntityId();
+  const folderId = testEntityId();
   const now = Date.now();
   const folderRow = {
     schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
@@ -123,7 +123,7 @@ test("replayFolderAndAssignEvents skips events from other actors", async () => {
       encryptedPayload: opaqueJson(folderRow),
       payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       version: 1,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
     }),
   ];
 
@@ -134,10 +134,10 @@ test("replayFolderAndAssignEvents skips events from other actors", async () => {
 });
 
 test("replayFolderAndAssignEvents preserves nested parentFolderId", async () => {
-  const vaultId = randomUUID();
-  const userId = randomUUID();
-  const parentId = randomUUID();
-  const childId = randomUUID();
+  const vaultId = testEntityId();
+  const userId = testEntityId();
+  const parentId = testEntityId();
+  const childId = testEntityId();
   const now = Date.now();
 
   const parentRow = {
@@ -167,7 +167,7 @@ test("replayFolderAndAssignEvents preserves nested parentFolderId", async () => 
       encryptedPayload: opaqueJson(parentRow),
       payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       version: 1,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
     }),
     baseWire({
       eventType: "FOLDER_CREATE",
@@ -176,7 +176,7 @@ test("replayFolderAndAssignEvents preserves nested parentFolderId", async () => 
       encryptedPayload: opaqueJson(childRow),
       payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       version: 2,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
     }),
   ];
 
@@ -188,10 +188,10 @@ test("replayFolderAndAssignEvents preserves nested parentFolderId", async () => 
 });
 
 test("replayFolderAndAssignEvents clears assignments when folder is deleted", async () => {
-  const vaultId = randomUUID();
-  const userId = randomUUID();
-  const folderId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const userId = testEntityId();
+  const folderId = testEntityId();
+  const itemId = testEntityId();
   const now = Date.now();
 
   const folderRow = {
@@ -225,7 +225,7 @@ test("replayFolderAndAssignEvents clears assignments when folder is deleted", as
       encryptedPayload: opaqueJson(folderRow),
       payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
       version: 1,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
     }),
     baseWire({
       eventType: "ITEM_FOLDER_ASSIGN",

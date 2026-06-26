@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import {
   EventGapError,
   InMemoryOutboxStore,
@@ -24,13 +24,13 @@ function mkReq(baseVersion: number, payload = `payload-${baseVersion}`): SyncApp
       meta: {},
     },
     baseVersion,
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
   };
 }
 
 function mkEvent(vaultId: string, version: number, eventType = "ITEM_UPDATE"): SyncEventWireDto {
   return {
-    id: randomUUID(),
+    id: testEntityId(),
     vaultId,
     actorId: null,
     eventType,
@@ -40,7 +40,7 @@ function mkEvent(vaultId: string, version: number, eventType = "ITEM_UPDATE"): S
       payload: Buffer.from(`cipher-v${version}`, "utf8").toString("base64"),
       meta: {},
     },
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
     clientCreatedAt: null,
     version,
     createdAt: new Date(version * 1000).toISOString(),
@@ -48,7 +48,7 @@ function mkEvent(vaultId: string, version: number, eventType = "ITEM_UPDATE"): S
 }
 
 test("security: mixed-device stale session resolves VERSION_MISMATCH after remote rotation", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const deviceAStore = new InMemoryOutboxStore();
   const remoteEvents: SyncEventWireDto[] = [
     mkEvent(vaultId, 1, "VAULT_SHARE"),
@@ -114,7 +114,7 @@ test("security: mixed-device stale session resolves VERSION_MISMATCH after remot
 });
 
 test("security: replay rollback edge with missing version fails fast with EventGapError", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const engine = new SyncReplayEngine({ vaultId });
 
   await assert.rejects(
@@ -132,7 +132,7 @@ test("security: replay rollback edge with missing version fails fast with EventG
 });
 
 test("security: replay quarantines stale non-duplicate event during rollback-like stream", async () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const engine = new SyncReplayEngine({ vaultId });
 
   await engine.applyEvents([mkEvent(vaultId, 1, "VAULT_CREATE"), mkEvent(vaultId, 2, "VAULT_SHARE")]);

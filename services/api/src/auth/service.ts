@@ -1,4 +1,5 @@
-import { createHash, randomInt, randomUUID } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
+import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
@@ -132,7 +133,7 @@ export class AuthService {
     this.config = deps.config;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
-    this.generateId = deps.generateId ?? randomUUID;
+    this.generateId = deps.generateId ?? generateEntityId;
   }
 
   async startEmailLogin(input: EmailStartInput): Promise<EmailStartResult> {

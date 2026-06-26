@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { replayItemPlaintextEvents } from "../../../packages/sync/dist/index.js";
 import {
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
@@ -41,7 +41,7 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `item-sync-${suffix}@okkey.local`;
 
   const syncService = new SyncService({
@@ -75,8 +75,8 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   assert.ok(vaults.length >= 1);
   const vaultId = vaults[0].id;
 
-  const itemId = randomUUID();
-  const idem = randomUUID();
+  const itemId = testEntityId();
+  const idem = testEntityId();
   const now = Date.now();
   const item: ItemPlaintextV2 = createPresetItemPlaintextV2({
     categoryId: ITEM_CATEGORY_LOGIN,
@@ -181,7 +181,7 @@ test("integration: sync rejects payload schema downgrade after higher version in
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `item-sync-downgrade-${suffix}@okkey.local`;
 
   const syncService = new SyncService({
@@ -218,8 +218,8 @@ test("integration: sync rejects payload schema downgrade after higher version in
   const vaults = await vaultService.listWorkspaceVaults(workspaceId, userId);
   const vaultId = vaults[0].id;
 
-  const itemId = randomUUID();
-  const idem = randomUUID();
+  const itemId = testEntityId();
+  const idem = testEntityId();
   const now = Date.now();
   const item: ItemPlaintextV2 = createPresetItemPlaintextV2({
     categoryId: ITEM_CATEGORY_LOGIN,

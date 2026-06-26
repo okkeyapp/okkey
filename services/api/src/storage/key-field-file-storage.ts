@@ -6,7 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { randomUUID } from "node:crypto";
+import { generateEntityId } from "../entity-id.ts";
 
 export interface KeyFieldFileStorageConfig {
   endpoint: string;
@@ -83,7 +83,7 @@ export class KeyFieldFileStorage {
   }
 
   async upload(fileName: string, mimeType: string, body: Uint8Array): Promise<StoredKeyFieldFile> {
-    const attachmentId = randomUUID();
+    const attachmentId = generateEntityId();
     const safeName = sanitizeFileName(fileName);
     const contentType = mimeType.trim() || "application/octet-stream";
 

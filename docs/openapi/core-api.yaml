@@ -102,7 +102,8 @@ components:
           type: string
         auth_state_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
 
     AccessTokenResponse:
       type: object
@@ -115,7 +116,8 @@ components:
           format: date-time
         user_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         token_type:
           type: string
           enum: [Bearer]
@@ -148,7 +150,8 @@ components:
       properties:
         enrollmentId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         secretBase32:
           type: string
         otpauthUri:
@@ -167,7 +170,8 @@ components:
       properties:
         enrollmentId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         code:
           type: string
 
@@ -218,7 +222,8 @@ components:
       properties:
         auth_state_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         user_public_key:
           type: string
         user_public_pq_key:
@@ -281,16 +286,20 @@ components:
       properties:
         user_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         workspace_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         vault_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         device_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         device_status:
           type: string
           enum: [trusted]
@@ -301,17 +310,20 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         workspaceId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         name:
           type: string
         isPersonal:
           type: boolean
         ownerId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
           nullable: true
         cryptoVersion:
           type: integer
@@ -331,12 +343,14 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         name:
           type: string
         ownerId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         planTier:
           type: string
         createdAt:
@@ -363,13 +377,16 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         vaultId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         actorId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
           nullable: true
         eventType:
           type: string
@@ -393,7 +410,8 @@ components:
           nullable: true
         idempotencyKey:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
           nullable: true
         clientCreatedAt:
           type: string
@@ -412,7 +430,8 @@ components:
       properties:
         vaultId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         afterVersion:
           type: integer
           minimum: 0
@@ -439,7 +458,8 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         clientCreatedAt:
           type: string
           format: date-time
@@ -457,7 +477,8 @@ components:
       properties:
         userId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         email:
           type: string
           format: email
@@ -480,7 +501,8 @@ components:
       properties:
         vaultId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         members:
           type: array
           items:
@@ -492,7 +514,8 @@ components:
       properties:
         recipientUserId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         encryptedVaultKey:
           $ref: "#/components/schemas/EncryptedBlob"
           description: >
@@ -510,7 +533,8 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         clientCreatedAt:
           type: string
           format: date-time
@@ -523,7 +547,8 @@ components:
       properties:
         recipientUserId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         rotatedVaultKeys:
           type: array
           minItems: 1
@@ -533,7 +558,8 @@ components:
             properties:
               userId:
                 type: string
-                format: uuid
+                pattern: '^d{10,20}
+
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
@@ -551,7 +577,8 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         clientCreatedAt:
           type: string
           format: date-time
@@ -581,7 +608,8 @@ components:
             properties:
               userId:
                 type: string
-                format: uuid
+                pattern: '^d{10,20}
+
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
@@ -599,7 +627,8 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         clientCreatedAt:
           type: string
           format: date-time
@@ -624,7 +653,8 @@ components:
             properties:
               userId:
                 type: string
-                format: uuid
+                pattern: '^d{10,20}
+
               encryptedVaultKey:
                 $ref: "#/components/schemas/EncryptedBlob"
                 description: >
@@ -641,7 +671,8 @@ components:
           minimum: 0
         idempotencyKey:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         clientCreatedAt:
           type: string
           format: date-time
@@ -653,7 +684,8 @@ components:
       properties:
         capsuleId:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         type:
           type: string
           enum: [item, field, file]
@@ -820,7 +852,8 @@ components:
       properties:
         device_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         status:
           type: string
           enum: [trusted, pending_approval]
@@ -831,7 +864,8 @@ components:
       properties:
         device_id:
           type: string
-          format: uuid
+          pattern: '^d{10,20}
+
         status:
           type: string
           enum: [trusted, revoked]
@@ -853,14 +887,16 @@ components:
         `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`.
       schema:
         type: string
-        format: uuid
+        pattern: '^d{10,20}
+
     HeaderDeviceId:
       name: X-Device-Id
       in: header
       required: true
       schema:
         type: string
-        format: uuid
+        pattern: '^d{10,20}
+
 
 paths:
   /health:
@@ -1230,7 +1266,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1272,7 +1309,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1312,7 +1350,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1352,7 +1391,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1390,7 +1430,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: true
         content:
@@ -1441,7 +1482,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: true
         content:
@@ -1493,7 +1535,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: true
         content:
@@ -1545,13 +1588,15 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
         - name: userId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: true
         content:
@@ -1602,7 +1647,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
         - name: afterVersion
           in: query
           schema:
@@ -1647,7 +1693,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: true
         content:
@@ -1701,7 +1748,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: true
         content:
@@ -1744,7 +1792,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1777,7 +1826,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         required: false
         content:
@@ -1843,7 +1893,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1912,7 +1963,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       responses:
         "200":
           content:
@@ -1963,7 +2015,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: '^d{10,20}
+
       requestBody:
         content:
           application/json:

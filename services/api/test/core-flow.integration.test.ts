@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { loadConfig } from "../src/config.ts";
 import type { EmailMessage } from "../src/email/service.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
@@ -32,7 +32,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `core-flow-${suffix}@okkey.local`;
 
   const sent: EmailMessage[] = [];
@@ -139,7 +139,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
     eventType: "ITEM_CREATE",
     encryptedBlob: mkBlob("opaque-event-payload", 2),
     baseVersion: 0,
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
   });
   assert.equal(created.eventType, "ITEM_CREATE");
   assert.equal(created.version, 1);

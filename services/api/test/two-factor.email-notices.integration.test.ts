@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatEmailMessage } from "@okkey/i18n";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { AuthService } from "../src/auth/service.ts";
 import { loadConfig, type ApiConfig } from "../src/config.ts";
 import { EmailTemplateService, type EmailMessage } from "../src/email/service.ts";
@@ -26,7 +26,7 @@ test("integration: after TOTP enroll confirm, transport receives two_factor_enab
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-mail-enroll-${suffix}@okkey.local`;
 
   const sent: EmailMessage[] = [];
@@ -107,7 +107,7 @@ test("integration: after backup regeneration, transport receives two_factor_back
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 3 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-mail-regen-${suffix}@okkey.local`;
 
   const sent: EmailMessage[] = [];

@@ -1,4 +1,4 @@
-import type { UUID } from "../uuid.js";
+import type { EntityId } from "../entity-id.js";
 
 /** Wire schema version inside encrypted JSON (`schemaVersion`). */
 export const ITEM_PLAINTEXT_SCHEMA_VERSION_V1 = 1 as const;
@@ -105,8 +105,8 @@ export interface ItemFieldV2 {
  */
 export interface ItemPlaintextV2 {
   schemaVersion: typeof ITEM_PLAINTEXT_SCHEMA_VERSION_V2;
-  itemId: UUID;
-  vaultId: UUID;
+  itemId: EntityId;
+  vaultId: EntityId;
   title: string;
   categoryId: ItemCategoryId;
   createdAtMs: number;

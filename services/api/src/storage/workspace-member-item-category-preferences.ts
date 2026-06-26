@@ -1,3 +1,4 @@
+import { generateEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "./postgres.ts";
 
 export type WorkspaceMemberItemCategoryPreferencesRecord = {
@@ -56,21 +57,23 @@ export class WorkspaceMemberItemCategoryPreferencesRepository {
     userId: string;
     favoriteCategoryIds: string[];
   }): Promise<WorkspaceMemberItemCategoryPreferencesRecord> {
+    const id = generateEntityId();
     const rows = await this.db.query<PreferencesRow>(
       `
         INSERT INTO workspace_member_item_category_preferences (
+          id,
           workspace_id,
           user_id,
           favorite_category_ids
         )
-        VALUES ($1, $2, $3::jsonb)
+        VALUES ($1, $2, $3, $4::jsonb)
         ON CONFLICT (workspace_id, user_id)
         DO UPDATE SET
           favorite_category_ids = EXCLUDED.favorite_category_ids,
           updated_at = now()
         RETURNING workspace_id, user_id, favorite_category_ids, created_at, updated_at
       `,
-      [input.workspaceId, input.userId, JSON.stringify(input.favoriteCategoryIds)],
+      [id, input.workspaceId, input.userId, JSON.stringify(input.favoriteCategoryIds)],
     );
     return mapPreferencesRow(rows[0]);
   }

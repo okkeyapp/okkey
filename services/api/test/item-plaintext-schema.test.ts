@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import {
   ITEM_CATEGORY_CREDIT_CARD,
   ITEM_CATEGORY_LOGIN,
@@ -18,8 +18,8 @@ import type { SyncEventWireDto } from "../../../packages/types/dist/index.js";
 test("v1 → v2 migration maps title to secure_note preset", () => {
   const v2 = migrateItemPlaintextV1ToV2({
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
-    itemId: randomUUID(),
-    vaultId: randomUUID(),
+    itemId: testEntityId(),
+    vaultId: testEntityId(),
     title: "Hello",
     createdAtMs: 10,
     updatedAtMs: 20,
@@ -37,7 +37,7 @@ test("v1 → v2 migration maps title to secure_note preset", () => {
 });
 
 test("preset factories: login, secure_note, credit_card round-trip JSON", () => {
-  const vaultId = randomUUID();
+  const vaultId = testEntityId();
   const now = 1_700_000_000_000;
   for (const cat of [
     ITEM_CATEGORY_LOGIN,
@@ -46,7 +46,7 @@ test("preset factories: login, secure_note, credit_card round-trip JSON", () => 
   ] as const) {
     const item = createPresetItemPlaintextV2({
       categoryId: cat,
-      itemId: randomUUID(),
+      itemId: testEntityId(),
       vaultId,
       title: `t-${cat}`,
       nowMs: now,
@@ -64,8 +64,8 @@ test("preset factories: login, secure_note, credit_card round-trip JSON", () => 
 test("unknown field type is preserved as unknown value bucket", () => {
   const raw = {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-    itemId: randomUUID(),
-    vaultId: randomUUID(),
+    itemId: testEntityId(),
+    vaultId: testEntityId(),
     title: "x",
     categoryId: ITEM_CATEGORY_LOGIN,
     createdAtMs: 1,
@@ -90,8 +90,8 @@ test("unknown field type is preserved as unknown value bucket", () => {
 });
 
 test("replay accepts v1 and v2 wire schema versions", async () => {
-  const vaultId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
   const v1 = {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
     itemId,
@@ -102,31 +102,31 @@ test("replay accepts v1 and v2 wire schema versions", async () => {
   };
   const v2 = createPresetItemPlaintextV2({
     categoryId: ITEM_CATEGORY_LOGIN,
-    itemId: randomUUID(),
+    itemId: testEntityId(),
     vaultId,
     title: "New",
   });
   const events: SyncEventWireDto[] = [
     {
-      id: randomUUID(),
+      id: testEntityId(),
       vaultId,
       actorId: null,
       eventType: "ITEM_CREATE",
       encryptedPayload: Buffer.from(JSON.stringify(v1), "utf8").toString("base64"),
       payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
       clientCreatedAt: null,
       version: 1,
       createdAt: new Date().toISOString(),
     },
     {
-      id: randomUUID(),
+      id: testEntityId(),
       vaultId,
       actorId: null,
       eventType: "ITEM_CREATE",
       encryptedPayload: Buffer.from(JSON.stringify(v2), "utf8").toString("base64"),
       payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
       clientCreatedAt: null,
       version: 2,
       createdAt: new Date().toISOString(),
@@ -140,8 +140,8 @@ test("replay accepts v1 and v2 wire schema versions", async () => {
 });
 
 test("replay ITEM_UPDATE applies reordered sections and fields (sync via ITEM_UPDATE)", async () => {
-  const vaultId = randomUUID();
-  const itemId = randomUUID();
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
   const base = createPresetItemPlaintextV2({
     categoryId: ITEM_CATEGORY_LOGIN,
     itemId,
@@ -192,19 +192,19 @@ test("replay ITEM_UPDATE applies reordered sections and fields (sync via ITEM_UP
 
   const events: SyncEventWireDto[] = [
     {
-      id: randomUUID(),
+      id: testEntityId(),
       vaultId,
       actorId: null,
       eventType: "ITEM_CREATE",
       encryptedPayload: Buffer.from(JSON.stringify(withExtra), "utf8").toString("base64"),
       payloadSchemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-      idempotencyKey: randomUUID(),
+      idempotencyKey: testEntityId(),
       clientCreatedAt: null,
       version: 1,
       createdAt: new Date().toISOString(),
     },
     {
-      id: randomUUID(),
+      id: testEntityId(),
       vaultId,
       actorId: null,
       eventType: "ITEM_UPDATE",

@@ -1,4 +1,5 @@
-import { createHash, randomInt, randomUUID } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
+import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
@@ -122,7 +123,7 @@ export class EmailChangeService {
     this.config = deps.config;
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
-    this.generateId = deps.generateId ?? randomUUID;
+    this.generateId = deps.generateId ?? generateEntityId;
   }
 
   async start(input: EmailChangeStartInput): Promise<EmailChangeStartResult> {

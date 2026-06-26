@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { replayFolderAndAssignEvents } from "../../../packages/sync/dist/index.js";
 import {
   FOLDER_PLAINTEXT_SCHEMA_VERSION,
@@ -38,7 +38,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `folder-sync-${suffix}@okkey.local`;
 
   const syncService = new SyncService({
@@ -72,8 +72,8 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   assert.ok(vaults.length >= 1);
   const vaultId = vaults[0].id;
 
-  const folderId = randomUUID();
-  const idem = randomUUID();
+  const folderId = testEntityId();
+  const idem = testEntityId();
   const now = Date.now();
   const folderRow = {
     schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
@@ -114,7 +114,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
     (e: unknown) => e instanceof SyncServiceError && e.code === "SYNC_BAD_REQUEST",
   );
 
-  const itemId = randomUUID();
+  const itemId = testEntityId();
   const assign = {
     schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
     itemId,
@@ -142,7 +142,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `folder-sync-nested-${suffix}@okkey.local`;
 
   const syncService = new SyncService({
@@ -175,8 +175,8 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   const vaults = await vaultService.listWorkspaceVaults(workspaceId, userId);
   const vaultId = vaults[0]!.id;
 
-  const parentId = randomUUID();
-  const childId = randomUUID();
+  const parentId = testEntityId();
+  const childId = testEntityId();
   const now = Date.now();
 
   const parentRow = {
@@ -192,7 +192,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
     eventType: "FOLDER_CREATE",
     encryptedBlob: mkBlobFromJson(parentRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
   });
 
   const childRow = {
@@ -208,7 +208,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
     eventType: "FOLDER_CREATE",
     encryptedBlob: mkBlobFromJson(childRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 1,
-    idempotencyKey: randomUUID(),
+    idempotencyKey: testEntityId(),
   });
 
   const listedMid = await syncService.listEvents(vaultId, userId, 0);

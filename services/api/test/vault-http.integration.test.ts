@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { createApiApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
@@ -36,7 +36,7 @@ test("integration: HTTP GET workspace vaults and vault by id return cryptoVersio
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `vault-http-crypto-${suffix}@okkey.local`;
 
   const vaultService = new VaultService({

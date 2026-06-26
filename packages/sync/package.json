@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@okkey/crypto": "0.0.1",
+    "@okkey/id": "0.0.1",
     "@okkey/types": "0.0.1"
   },
   "scripts": {

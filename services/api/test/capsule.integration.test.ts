@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import test from "node:test";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import { loadConfig } from "../src/config.ts";
@@ -25,7 +25,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-owner-${randomUUID()}@okkey.local`;
+  const email = `capsule-owner-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);
@@ -106,7 +106,7 @@ test("integration: file capsule persists encrypted blob in object storage", asyn
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-file-${randomUUID()}@okkey.local`;
+  const email = `capsule-file-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);
@@ -146,7 +146,7 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-expired-${randomUUID()}@okkey.local`;
+  const email = `capsule-expired-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);
@@ -192,7 +192,7 @@ test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t)
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-revoked-${randomUUID()}@okkey.local`;
+  const email = `capsule-revoked-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);
@@ -240,7 +240,7 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-rl-${randomUUID()}@okkey.local`;
+  const email = `capsule-rl-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);
@@ -270,7 +270,7 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
     encryptedPayload: mkBlob("x"),
   });
 
-  const requestIp = `ip-${randomUUID()}`;
+  const requestIp = `ip-${testEntityId()}`;
   await storage.redis.del(`capsule:open:ip:${requestIp}`);
 
   await capsules.openCapsule(created.capsuleId, requestIp);
@@ -286,7 +286,7 @@ test("integration: file capsule open tolerates missing object storage blob", asy
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-missing-blob-${randomUUID()}@okkey.local`;
+  const email = `capsule-missing-blob-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);
@@ -335,7 +335,7 @@ test("integration: capsule create is blocked on FREE plan", async (t) => {
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const email = `capsule-free-${randomUUID()}@okkey.local`;
+  const email = `capsule-free-${testEntityId()}@okkey.local`;
   t.after(async () => {
     try {
       await cleanupUserData(storage, email);

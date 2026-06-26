@@ -36,7 +36,7 @@ attachments
 
 Users table.
 ```text
-id (uuid)
+id (snowflake bigint string)
 email
 public_key
 public_pq_key (nullable for legacy rows; ML-KEM-768 encapsulation key, base64 text on wire)
@@ -52,7 +52,7 @@ updated_at
 
 Registered devices.
 ```text
-id (uuid)
+id (snowflake bigint string)
 user_id
 device_fingerprint
 device_name
@@ -84,7 +84,7 @@ Unique key:
 
 Active user sessions.
 ```text
-id (uuid)
+id (snowflake bigint string)
 user_id
 device_id
 token_hash
@@ -96,7 +96,7 @@ created_at
 
 Logical vault group.
 ```text
-id (uuid)
+id (snowflake bigint string)
 name
 owner_id
 plan_tier
@@ -107,7 +107,7 @@ created_at
 
 Members of a workspace with assigned roles.
 ```text
-id (uuid)
+id (snowflake bigint string)
 workspace_id
 user_id
 role_id
@@ -118,7 +118,7 @@ created_at
 
 Workspace roles and their permissions.
 ```text
-id (uuid)
+id (snowflake bigint string)
 workspace_id
 name
 permissions_json
@@ -131,7 +131,7 @@ updated_at
 
 Vault access profiles for items, fields, and actions.
 ```text
-id (uuid)
+id (snowflake bigint string)
 workspace_id
 name
 permissions_json
@@ -144,7 +144,7 @@ updated_at
 
 Vault is a safe.
 ```text
-id (uuid)
+id (snowflake bigint string)
 workspace_id
 name
 is_personal
@@ -158,7 +158,7 @@ updated_at
 
 Users who have access to the vault.
 ```text
-id (uuid)
+id (snowflake bigint string)
 vault_id
 user_id
 role
@@ -169,7 +169,7 @@ created_at
 
 Profile assignments per user per vault.
 ```text
-id (uuid)
+id (snowflake bigint string)
 vault_id
 user_id
 profile_id
@@ -180,7 +180,7 @@ created_at
 
 Encrypted vault keys for users.
 ```text
-id (uuid)
+id (snowflake bigint string)
 vault_id
 user_id
 encrypted_vault_key
@@ -193,7 +193,7 @@ Each user has **their own copy of the vault key**.
 
 Items inside vault.
 ```text
-id (uuid)
+id (snowflake bigint string)
 vault_id
 encrypted_data
 created_at
@@ -215,7 +215,7 @@ tags
 
 Secure share links and their encrypted payloads.
 ```text
-id (uuid)
+id (snowflake bigint string)
 workspace_id
 creator_id
 type
@@ -231,7 +231,7 @@ created_at
 
 Event log for synchronization.
 ```text
-id (uuid)
+id (snowflake bigint string)
 vault_id
 actor_id
 event_type
@@ -263,7 +263,7 @@ DEVICE_REMOVE
 
 Attachments are stored separately.
 ```text
-id (uuid)
+id (snowflake bigint string)
 vault_id
 item_id
 storage_key

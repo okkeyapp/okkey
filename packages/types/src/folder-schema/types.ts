@@ -1,4 +1,4 @@
-import type { UUID } from "../uuid.js";
+import type { EntityId } from "../entity-id.js";
 
 /** Encrypted JSON inside FOLDER_* event ciphertext. */
 export const FOLDER_PLAINTEXT_SCHEMA_VERSION = 1 as const;
@@ -8,10 +8,10 @@ export const ITEM_FOLDER_ASSIGN_SCHEMA_VERSION = 1 as const;
 
 export interface FolderPlaintextV1 {
   schemaVersion: typeof FOLDER_PLAINTEXT_SCHEMA_VERSION;
-  folderId: UUID;
-  vaultId: UUID;
+  folderId: EntityId;
+  vaultId: EntityId;
   name: string;
-  parentFolderId: UUID | null;
+  parentFolderId: EntityId | null;
   createdAtMs: number;
   updatedAtMs: number;
   /** Tombstone for FOLDER_DELETE / FOLDER_UPDATE delete. */
@@ -20,8 +20,8 @@ export interface FolderPlaintextV1 {
 
 export interface ItemFolderAssignPlaintextV1 {
   schemaVersion: typeof ITEM_FOLDER_ASSIGN_SCHEMA_VERSION;
-  itemId: UUID;
-  vaultId: UUID;
+  itemId: EntityId;
+  vaultId: EntityId;
   /** `null` = not in any folder (vault root). */
-  folderId: UUID | null;
+  folderId: EntityId | null;
 }

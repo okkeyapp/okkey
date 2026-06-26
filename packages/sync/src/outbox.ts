@@ -1,4 +1,5 @@
 import type { SyncAppendEventRequestDto, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
+import { generateEntityId } from "@okkey/id";
 import { replayVaultEvents, type ReplayEngineOptions, type SyncMaterializedState } from "./replay-engine.js";
 
 export type OutboxEntryStatus = "pending" | "sending" | "failed" | "dead";
@@ -192,7 +193,7 @@ export class SyncOutboxClient {
     }
     const now = this.nowMs();
     const entry: OutboxEntry = {
-      id: globalThis.crypto.randomUUID(),
+      id: generateEntityId(),
       vaultId: payload.vaultId,
       request: { ...payload.request },
       status: "pending",

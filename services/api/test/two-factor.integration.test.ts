@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { authStateRedisKey, AuthService } from "../src/auth/service.ts";
 import { loadConfig, type ApiConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
@@ -21,7 +21,7 @@ test("integration: email-equivalent auth state → TOTP verify → session row",
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-totp-${suffix}@okkey.local`;
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
@@ -69,7 +69,7 @@ test("integration: email-equivalent auth state → TOTP verify → session row",
     code,
   });
 
-  const loginStateId = randomUUID();
+  const loginStateId = testEntityId();
   await storage.redis.setWithTtl(
     authStateRedisKey(loginStateId),
     JSON.stringify({
@@ -110,7 +110,7 @@ test("integration: 2FA verify with backup code then reject reuse", async (t) => 
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-backup-${suffix}@okkey.local`;
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
@@ -159,7 +159,7 @@ test("integration: 2FA verify with backup code then reject reuse", async (t) => 
   assert.equal(backupCodes.length, 4);
   const oneBackup = backupCodes[0]!;
 
-  const loginStateId = randomUUID();
+  const loginStateId = testEntityId();
   await storage.redis.setWithTtl(
     authStateRedisKey(loginStateId),
     JSON.stringify({
@@ -178,7 +178,7 @@ test("integration: 2FA verify with backup code then reject reuse", async (t) => 
     requestIp: "127.0.0.1",
   });
 
-  const loginStateId2 = randomUUID();
+  const loginStateId2 = testEntityId();
   await storage.redis.setWithTtl(
     authStateRedisKey(loginStateId2),
     JSON.stringify({
@@ -208,7 +208,7 @@ test("integration: disable 2FA with TOTP", async (t) => {
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 3 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-off-${suffix}@okkey.local`;
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
@@ -270,7 +270,7 @@ test("integration: TWO_FACTOR_BACKUP_DEPLETED when no backup codes left", async 
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 1 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-depl-${suffix}@okkey.local`;
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
@@ -317,9 +317,9 @@ test("integration: TWO_FACTOR_BACKUP_DEPLETED when no backup codes left", async 
     code: enrollTotp,
   });
 
-  await storage.postgres.query("DELETE FROM user_backup_codes WHERE user_id = $1::uuid", [userId]);
+  await storage.postgres.query("DELETE FROM user_backup_codes WHERE user_id = $1::bigint", [userId]);
 
-  const loginStateId = randomUUID();
+  const loginStateId = testEntityId();
   await storage.redis.setWithTtl(
     authStateRedisKey(loginStateId),
     JSON.stringify({
@@ -349,7 +349,7 @@ test("integration: 2FA verify rate limit per auth state", async (t) => {
   const config: ApiConfig = { ...base, twoFactorVerifyMaxAttemptsPerState: 2 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-rl-${suffix}@okkey.local`;
   let loginStateId = "";
 
@@ -400,7 +400,7 @@ test("integration: 2FA verify rate limit per auth state", async (t) => {
     code: enrollTotp,
   });
 
-  loginStateId = randomUUID();
+  loginStateId = testEntityId();
   await storage.redis.setWithTtl(
     authStateRedisKey(loginStateId),
     JSON.stringify({
@@ -442,7 +442,7 @@ test("integration: 2FA verify rate limit per IP", async (t) => {
   const config: ApiConfig = { ...base, authRateLimitTwoFactorVerifyPerIp: 2 };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `2fa-ip-${suffix}@okkey.local`;
   /** Stable per run, unique vs other tests / stale Redis (TEST-NET-2, RFC 5737). */
   let h = 0;
@@ -496,7 +496,7 @@ test("integration: 2FA verify rate limit per IP", async (t) => {
   });
 
   const makeState = async (): Promise<string> => {
-    const id = randomUUID();
+    const id = testEntityId();
     await storage.redis.setWithTtl(
       authStateRedisKey(id),
       JSON.stringify({

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { generateEntityId } from "./entity-id.ts";
 
 export interface RequestContext {
   requestId: string;
@@ -40,7 +40,7 @@ export class HttpApp {
   handler() {
     return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       const ctx: RequestContext = {
-        requestId: randomUUID(),
+        requestId: generateEntityId(),
         req,
         res,
         params: {},

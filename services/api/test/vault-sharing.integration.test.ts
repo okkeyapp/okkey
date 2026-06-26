@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { decodeEncryptedBlobFromStorage } from "../src/crypto/encrypted-blob.ts";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
@@ -37,7 +37,7 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-a-${suffix}@okkey.local`;
   const emailB = `vault-share-b-${suffix}@okkey.local`;
 
@@ -69,11 +69,10 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
 
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -123,7 +122,7 @@ test("integration: sharing rejects crypto profile blocked by policy", async (t) 
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-policy-a-${suffix}@okkey.local`;
   const emailB = `vault-share-policy-b-${suffix}@okkey.local`;
 
@@ -152,11 +151,10 @@ test("integration: sharing rejects crypto profile blocked by policy", async (t) 
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -185,7 +183,7 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-down-a-${suffix}@okkey.local`;
   const emailB = `vault-share-down-b-${suffix}@okkey.local`;
   const emailC = `vault-share-down-c-${suffix}@okkey.local`;
@@ -220,11 +218,10 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
 
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2), ($1, $3)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3), ($4, $2, $5)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId, userC.userId],
+    [testEntityId(), workspaceId, userB.userId, testEntityId(), userC.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -261,7 +258,7 @@ test("integration: prod sharing requires recipient PQ key", async (t) => {
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-pq-a-${suffix}@okkey.local`;
   const emailB = `vault-share-pq-b-${suffix}@okkey.local`;
 
@@ -292,11 +289,10 @@ test("integration: prod sharing requires recipient PQ key", async (t) => {
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -327,7 +323,7 @@ test("integration: strict rollout blocks share for recipient without PQ key", as
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-strict-a-${suffix}@okkey.local`;
   const emailB = `vault-share-strict-b-${suffix}@okkey.local`;
 
@@ -358,11 +354,10 @@ test("integration: strict rollout blocks share for recipient without PQ key", as
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -394,7 +389,7 @@ test("integration: compat rollout allows share for recipient without PQ key", as
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-compat-a-${suffix}@okkey.local`;
   const emailB = `vault-share-compat-b-${suffix}@okkey.local`;
 
@@ -425,11 +420,10 @@ test("integration: compat rollout allows share for recipient without PQ key", as
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -455,7 +449,7 @@ test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-wrap-a-${suffix}@okkey.local`;
   const emailB = `vault-share-wrap-b-${suffix}@okkey.local`;
 
@@ -485,11 +479,10 @@ test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -520,7 +513,7 @@ test("integration: prod sharing overwrites client-spoofed recipient_user_id in w
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-wrong-recipient-a-${suffix}@okkey.local`;
   const emailB = `vault-share-wrong-recipient-b-${suffix}@okkey.local`;
 
@@ -549,11 +542,10 @@ test("integration: prod sharing overwrites client-spoofed recipient_user_id in w
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -592,7 +584,7 @@ test("integration: sharing rejects corrupted envelope payload", async (t) => {
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `vault-share-corrupt-a-${suffix}@okkey.local`;
   const emailB = `vault-share-corrupt-b-${suffix}@okkey.local`;
 
@@ -621,11 +613,10 @@ test("integration: sharing rejects corrupted envelope payload", async (t) => {
   assert.ok(vaultId);
   await storage.postgres.query(
     `
-      INSERT INTO workspace_members (workspace_id, user_id)
-      VALUES ($1, $2)
+      INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
       ON CONFLICT (workspace_id, user_id) DO NOTHING
     `,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -661,7 +652,7 @@ test("integration: rotateVaultKey (standalone manual rotation)", async (t) => {
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `rotate-a-${suffix}@okkey.local`;
   const emailB = `rotate-b-${suffix}@okkey.local`;
 
@@ -692,9 +683,9 @@ test("integration: rotateVaultKey (standalone manual rotation)", async (t) => {
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -742,7 +733,7 @@ test("integration: rotateVaultKey rejects missing recipient in rotatedVaultKeys"
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `rotate-miss-a-${suffix}@okkey.local`;
   const emailB = `rotate-miss-b-${suffix}@okkey.local`;
 
@@ -772,9 +763,9 @@ test("integration: rotateVaultKey rejects missing recipient in rotatedVaultKeys"
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -808,7 +799,7 @@ test("integration: rotateVaultKey rejects unknown recipient in rotatedVaultKeys"
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `rotate-unknown-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -843,7 +834,7 @@ test("integration: rotateVaultKey rejects unknown recipient in rotatedVaultKeys"
       sharing.rotateVaultKey(vaultId, userA.userId, {
         rotatedVaultKeys: [
           { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-rotated") },
-          { userId: randomUUID(), encryptedVaultKey: mkBlob("wrapped-key-unknown") },
+          { userId: testEntityId(), encryptedVaultKey: mkBlob("wrapped-key-unknown") },
         ],
         encryptedPayload: mkBlob("rotation-event"),
         baseVersion: 0,
@@ -858,7 +849,7 @@ test("integration: updateVaultMemberRole changes role and rotates keys", async (
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `role-upd-a-${suffix}@okkey.local`;
   const emailB = `role-upd-b-${suffix}@okkey.local`;
 
@@ -888,9 +879,9 @@ test("integration: updateVaultMemberRole changes role and rotates keys", async (
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -945,7 +936,7 @@ test("integration: updateVaultMemberRole rejects non-member", async (t) => {
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `role-nonmember-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -978,7 +969,7 @@ test("integration: updateVaultMemberRole rejects non-member", async (t) => {
   await assert.rejects(
     () =>
       sharing.updateVaultMemberRole(vaultId, userA.userId, {
-        memberId: randomUUID(),
+        memberId: testEntityId(),
         newRole: "admin",
         rotatedVaultKeys: [
           { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a") },
@@ -996,7 +987,7 @@ test("security: revoked user cannot read vault key after subsequent rotateVaultK
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `sec-rot-a-${suffix}@okkey.local`;
   const emailB = `sec-rot-b-${suffix}@okkey.local`;
 
@@ -1026,9 +1017,9 @@ test("security: revoked user cannot read vault key after subsequent rotateVaultK
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1080,7 +1071,7 @@ test("security: rotateVaultKey does not leave stale wrapped keys in vault_keys",
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `stale-rot-a-${suffix}@okkey.local`;
   const emailB = `stale-rot-b-${suffix}@okkey.local`;
 
@@ -1110,9 +1101,9 @@ test("security: rotateVaultKey does not leave stale wrapped keys in vault_keys",
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1159,7 +1150,7 @@ test("concurrency: parallel rotateVaultKey calls with same baseVersion → secon
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `concurrent-rot-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -1192,14 +1183,14 @@ test("concurrency: parallel rotateVaultKey calls with same baseVersion → secon
   const results = await Promise.allSettled([
     sharing.rotateVaultKey(vaultId, userA.userId, {
       rotatedVaultKeys: [
-        { userId: userA.userId, encryptedVaultKey: mkBlob(`wrapped-a-${randomUUID()}`) },
+        { userId: userA.userId, encryptedVaultKey: mkBlob(`wrapped-a-${testEntityId()}`) },
       ],
       encryptedPayload: mkBlob("rotation-event-1"),
       baseVersion: 0,
     }),
     sharing.rotateVaultKey(vaultId, userA.userId, {
       rotatedVaultKeys: [
-        { userId: userA.userId, encryptedVaultKey: mkBlob(`wrapped-a-${randomUUID()}`) },
+        { userId: userA.userId, encryptedVaultKey: mkBlob(`wrapped-a-${testEntityId()}`) },
       ],
       encryptedPayload: mkBlob("rotation-event-2"),
       baseVersion: 0,
@@ -1224,7 +1215,7 @@ test("integration: rotateVaultKey idempotent retry is no-op and keeps event log 
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `rot-idem-a-${suffix}@okkey.local`;
   const emailB = `rot-idem-b-${suffix}@okkey.local`;
 
@@ -1254,9 +1245,9 @@ test("integration: rotateVaultKey idempotent retry is no-op and keeps event log 
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1271,7 +1262,7 @@ test("integration: rotateVaultKey idempotent retry is no-op and keeps event log 
     baseVersion: 0,
   });
 
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = testEntityId();
   const rotateInput = {
     rotatedVaultKeys: [
       { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
@@ -1300,7 +1291,7 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `rot-idem-conflict-a-${suffix}@okkey.local`;
   const emailB = `rot-idem-conflict-b-${suffix}@okkey.local`;
 
@@ -1330,9 +1321,9 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1347,7 +1338,7 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
     baseVersion: 0,
   });
 
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = testEntityId();
   await sharing.rotateVaultKey(vaultId, userA.userId, {
     rotatedVaultKeys: [
       { userId: userA.userId, encryptedVaultKey: mkBlob("wrapped-key-a-v2") },
@@ -1387,7 +1378,7 @@ test("integration: revokeVaultAccess idempotent retry is no-op and keeps event l
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `revoke-idem-a-${suffix}@okkey.local`;
   const emailB = `revoke-idem-b-${suffix}@okkey.local`;
 
@@ -1417,9 +1408,9 @@ test("integration: revokeVaultAccess idempotent retry is no-op and keeps event l
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1434,7 +1425,7 @@ test("integration: revokeVaultAccess idempotent retry is no-op and keeps event l
     baseVersion: 0,
   });
 
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = testEntityId();
   const revokeInput = {
     recipientUserId: userB.userId,
     rotatedVaultKeys: [
@@ -1470,7 +1461,7 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `role-idem-conflict-a-${suffix}@okkey.local`;
   const emailB = `role-idem-conflict-b-${suffix}@okkey.local`;
 
@@ -1500,9 +1491,9 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1518,7 +1509,7 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
     role: "member",
   });
 
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = testEntityId();
   await sharing.updateVaultMemberRole(vaultId, userA.userId, {
     memberId: userB.userId,
     newRole: "admin",
@@ -1569,7 +1560,7 @@ test("integration: failed rotation validation leaves keys and events unchanged",
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `rot-atomic-fail-a-${suffix}@okkey.local`;
   const emailB = `rot-atomic-fail-b-${suffix}@okkey.local`;
 
@@ -1599,9 +1590,9 @@ test("integration: failed rotation validation leaves keys and events unchanged",
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({
@@ -1642,7 +1633,7 @@ test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", asyn
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `prod-rotate-scheme-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -1693,7 +1684,7 @@ test("integration: prod rotateVaultKey rejects wrap without recipient PQ key", a
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `prod-rotate-pq-${suffix}@okkey.local`;
 
   t.after(async () => {
@@ -1747,7 +1738,7 @@ test("integration: prod updateVaultMemberRole rejects wrap without hybrid scheme
   const storage = await createStorageLayer(baseConfig, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const emailA = `prod-role-scheme-a-${suffix}@okkey.local`;
   const emailB = `prod-role-scheme-b-${suffix}@okkey.local`;
 
@@ -1777,9 +1768,9 @@ test("integration: prod updateVaultMemberRole rejects wrap without hybrid scheme
   assert.ok(vaultId);
 
   await storage.postgres.query(
-    `INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+    `INSERT INTO workspace_members (id, workspace_id, user_id) VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-    [workspaceId, userB.userId],
+    [testEntityId(), workspaceId, userB.userId],
   );
 
   const sharing = new VaultSharingService({

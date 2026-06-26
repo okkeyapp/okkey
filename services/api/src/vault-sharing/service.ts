@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { generateEntityId, isEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { CryptoDowngradeInvariantError } from "../storage/errors.ts";
 import type { VaultsRepository } from "../storage/repositories.ts";
@@ -138,12 +139,8 @@ interface VaultAclMeta {
   vaultCryptoVersion: number;
 }
 
-const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
-
-/** Canonical wire form for UUID user/vault ids (pg may return mixed case; JS Set/Map is case-sensitive). */
 function normalizeWireUserId(raw: string): string {
-  const s = String(raw).trim();
-  return UUID_RE.test(s) ? s.toLowerCase() : s;
+  return String(raw).trim();
 }
 
 const SHARE_MANAGER_ROLES = new Set(["owner", "admin"]);
@@ -261,11 +258,11 @@ export class VaultSharingService {
     try {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
     const recipientUserId = normalizeWireUserId(input.recipientUserId);
-    if (!UUID_RE.test(recipientUserId)) {
+    if (!isEntityId(recipientUserId)) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_INVALID_RECIPIENT",
         400,
-        "recipientUserId must be uuid",
+        "recipientUserId must be entity id",
       );
     }
     const wsOwner = normalizeWireUserId(acl.workspaceOwnerId);
@@ -357,22 +354,22 @@ export class VaultSharingService {
     await this.db.transaction(async (tx) => {
       await tx.query(
         `
-          INSERT INTO vault_members (vault_id, user_id, role)
-          VALUES ($1, $2, $3)
+          INSERT INTO vault_members (id, vault_id, user_id, role)
+          VALUES ($1, $2, $3, $4)
           ON CONFLICT (vault_id, user_id)
           DO UPDATE SET role = EXCLUDED.role
         `,
-        [vaultId, recipientUserId, input.role ?? "member"],
+        [generateEntityId(), vaultId, recipientUserId, input.role ?? "member"],
       );
       await tx.query(
         `
-          INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
-          VALUES ($1, $2, $3)
+          INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
+          VALUES ($1, $2, $3, $4)
           ON CONFLICT (vault_id, user_id)
           DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                         created_at = now()
         `,
-        [vaultId, recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(normalizedWrappedKeyBlob))],
+        [generateEntityId(), vaultId, recipientUserId, Buffer.from(serializeEncryptedBlobToStorage(normalizedWrappedKeyBlob))],
       );
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_SHARE", normalizedPayloadBlob, input);
     });
@@ -443,11 +440,11 @@ export class VaultSharingService {
     const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
     for (const keyEntry of input.rotatedVaultKeys) {
       const uid = normalizeWireUserId(keyEntry.userId);
-      if (!UUID_RE.test(uid)) {
+      if (!isEntityId(uid)) {
         throw new VaultSharingServiceError(
           "VAULT_SHARE_INVALID_RECIPIENT",
           400,
-          "rotatedVaultKeys.userId must be uuid",
+          "rotatedVaultKeys.userId must be entity id",
         );
       }
       const merged = mergeEncryptedBlobMeta(
@@ -536,18 +533,18 @@ export class VaultSharingService {
       }
 
       const membership = await tx.query<{ id: string }>(
-        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2::uuid",
+        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2::bigint",
         [vaultId, recipientUserId],
       );
       if (!membership[0]) {
         throw new VaultSharingServiceError("MEMBERSHIP_CONFLICT", 409, "recipient is not a vault member");
       }
 
-      await tx.query("DELETE FROM vault_members WHERE vault_id = $1 AND user_id = $2::uuid", [
+      await tx.query("DELETE FROM vault_members WHERE vault_id = $1 AND user_id = $2::bigint", [
         vaultId,
         recipientUserId,
       ]);
-      await tx.query("DELETE FROM vault_keys WHERE vault_id = $1 AND user_id = $2::uuid", [
+      await tx.query("DELETE FROM vault_keys WHERE vault_id = $1 AND user_id = $2::bigint", [
         vaultId,
         recipientUserId,
       ]);
@@ -587,13 +584,13 @@ export class VaultSharingService {
         );
         await tx.query(
           `
-            INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
-            VALUES ($1, $2, $3)
+            INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (vault_id, user_id)
             DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                           created_at = now()
           `,
-          [vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
+          [generateEntityId(), vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
         );
       }
       await this.appendVaultEventTx(
@@ -668,11 +665,11 @@ export class VaultSharingService {
     const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
     for (const keyEntry of input.rotatedVaultKeys) {
       const uid = normalizeWireUserId(keyEntry.userId);
-      if (!UUID_RE.test(uid)) {
+      if (!isEntityId(uid)) {
         throw new VaultSharingServiceError(
           "VAULT_SHARE_INVALID_RECIPIENT",
           400,
-          "rotatedVaultKeys.userId must be uuid",
+          "rotatedVaultKeys.userId must be entity id",
         );
       }
       const merged = mergeEncryptedBlobMeta(
@@ -796,13 +793,13 @@ export class VaultSharingService {
         );
         await tx.query(
           `
-            INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
-            VALUES ($1, $2, $3)
+            INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (vault_id, user_id)
             DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                           created_at = now()
           `,
-          [vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
+          [generateEntityId(), vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
         );
       }
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_KEY_ROTATION", payloadBlob, input);
@@ -864,11 +861,11 @@ export class VaultSharingService {
     try {
     const acl = await this.ensureCanManageShares(vaultId, actorId);
     const memberId = normalizeWireUserId(input.memberId);
-    if (!UUID_RE.test(memberId)) {
+    if (!isEntityId(memberId)) {
       throw new VaultSharingServiceError(
         "VAULT_SHARE_INVALID_RECIPIENT",
         400,
-        "memberId must be uuid",
+        "memberId must be entity id",
       );
     }
     const wsOwnerUm = normalizeWireUserId(acl.workspaceOwnerId);
@@ -895,11 +892,11 @@ export class VaultSharingService {
     const normalizedRotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlob }> = [];
     for (const keyEntry of input.rotatedVaultKeys) {
       const uid = normalizeWireUserId(keyEntry.userId);
-      if (!UUID_RE.test(uid)) {
+      if (!isEntityId(uid)) {
         throw new VaultSharingServiceError(
           "VAULT_SHARE_INVALID_RECIPIENT",
           400,
-          "rotatedVaultKeys.userId must be uuid",
+          "rotatedVaultKeys.userId must be entity id",
         );
       }
       const merged = mergeEncryptedBlobMeta(
@@ -989,7 +986,7 @@ export class VaultSharingService {
       }
 
       const membership = await tx.query<{ id: string }>(
-        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2::uuid",
+        "SELECT id FROM vault_members WHERE vault_id = $1 AND user_id = $2::bigint",
         [vaultId, memberId],
       );
       if (!membership[0]) {
@@ -1000,7 +997,7 @@ export class VaultSharingService {
         `
           UPDATE vault_members
           SET role = $3
-          WHERE vault_id = $1 AND user_id = $2::uuid
+          WHERE vault_id = $1 AND user_id = $2::bigint
         `,
         [vaultId, memberId, input.newRole],
       );
@@ -1041,13 +1038,13 @@ export class VaultSharingService {
         );
         await tx.query(
           `
-            INSERT INTO vault_keys (vault_id, user_id, encrypted_vault_key)
-            VALUES ($1, $2, $3)
+            INSERT INTO vault_keys (id, vault_id, user_id, encrypted_vault_key)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (vault_id, user_id)
             DO UPDATE SET encrypted_vault_key = EXCLUDED.encrypted_vault_key,
                           created_at = now()
           `,
-          [vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
+          [generateEntityId(), vaultId, userId, Buffer.from(serializeEncryptedBlobToStorage(rotatedMap.get(userId)!))],
         );
       }
       await this.appendVaultEventTx(tx, vaultId, actorId, "VAULT_KEY_ROTATION", payloadBlob, input);
@@ -1105,7 +1102,7 @@ export class VaultSharingService {
           SELECT id
           FROM events
           WHERE vault_id = $1
-            AND idempotency_key = $2::uuid
+            AND idempotency_key = $2::bigint
           FOR UPDATE
         `,
         [vaultId, input.idempotencyKey],
@@ -1205,12 +1202,13 @@ export class VaultSharingService {
     await tx.query(
       `
         INSERT INTO events (
-          vault_id, actor_id, event_type, encrypted_payload, version,
+          id, vault_id, actor_id, event_type, encrypted_payload, version,
           payload_schema_version, idempotency_key, client_created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `,
       [
+        generateEntityId(),
         vaultId,
         actorId,
         eventType,
@@ -1257,7 +1255,7 @@ export class VaultSharingService {
           SELECT event_type, encrypted_payload
           FROM events
           WHERE vault_id = $1
-            AND idempotency_key = $2::uuid
+            AND idempotency_key = $2::bigint
           FOR UPDATE
         `,
         [vaultId, idempotencyKey],
@@ -1416,7 +1414,7 @@ export class VaultSharingService {
   private async getUserPublicPqKey(userId: string): Promise<string | null> {
     const canonical = normalizeWireUserId(userId);
     const rows = await this.db.query<{ public_pq_key: string | null }>(
-      "SELECT public_pq_key FROM users WHERE id = $1::uuid",
+      "SELECT public_pq_key FROM users WHERE id = $1::bigint",
       [canonical],
     );
     return rows[0]?.public_pq_key ?? null;
@@ -1425,7 +1423,7 @@ export class VaultSharingService {
   private async getUserSigningKeys(userId: string): Promise<{ publicKey: string; publicPqKey: string }> {
     const canonical = normalizeWireUserId(userId);
     const rows = await this.db.query<{ public_key: string; public_pq_key: string | null }>(
-      "SELECT public_key, public_pq_key FROM users WHERE id = $1::uuid",
+      "SELECT public_key, public_pq_key FROM users WHERE id = $1::bigint",
       [canonical],
     );
     if (!rows[0]?.public_key || !rows[0]?.public_pq_key) {
@@ -1448,7 +1446,7 @@ export class VaultSharingService {
     }
     const canonical = [...new Set(userIds.map((id) => normalizeWireUserId(id)))];
     const rows = await this.db.query<{ id: string; public_pq_key: string | null }>(
-      "SELECT id, public_pq_key FROM users WHERE id = ANY($1::uuid[])",
+      "SELECT id, public_pq_key FROM users WHERE id = ANY($1::bigint[])",
       [canonical],
     );
     for (const row of rows) {
@@ -1568,7 +1566,7 @@ export class VaultSharingService {
     );
     return rows
       .map((row) => normalizeWireUserId(String(row.user_id)))
-      .filter((id) => UUID_RE.test(id));
+      .filter((id) => isEntityId(id));
   }
 }
 

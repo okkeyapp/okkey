@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,9 +85,9 @@ test("integration: registration + first unlock decrypts stored hybrid identity b
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const email = `reg-unlock-${suffix}@okkey.local`;
-  const authStateId = randomUUID();
+  const authStateId = testEntityId();
 
   t.after(async () => {
     try {

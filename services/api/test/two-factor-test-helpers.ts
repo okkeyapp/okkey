@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authStateRedisKey, AuthService } from "../src/auth/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { initEntityIdGenerator } from "../src/entity-id.ts";
 import { base32Decode, totpAt } from "../src/crypto/totp-rfc6238.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationService } from "../src/registration/service.ts";
@@ -20,75 +21,31 @@ export function createLoggerStub() {
   };
 }
 
-/** Applies `0008_vault_crypto_version` only when the column is missing (shared Postgres in integration tests). */
-export async function ensureVaultCryptoVersionColumn(
-  storage: Awaited<ReturnType<typeof createStorageLayer>>,
-): Promise<void> {
-  const columns = await storage.postgres.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'vaults'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("crypto_version")) {
-    const migration0008 = readFileSync(
-      path.resolve(helpersDir, "../migrations/0008_vault_crypto_version.sql"),
-      "utf8",
-    );
-    await storage.postgres.query(migration0008);
-  }
-}
-
-/** Applies `0009_user_profile_names` when `users.first_name` is missing. */
-export async function ensureUserProfileNameColumns(
-  storage: Awaited<ReturnType<typeof createStorageLayer>>,
-): Promise<void> {
-  const columns = await storage.postgres.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("first_name")) {
-    const migration0009 = readFileSync(
-      path.resolve(helpersDir, "../migrations/0009_user_profile_names.sql"),
-      "utf8",
-    );
-    await storage.postgres.query(migration0009);
-  }
-}
-
-/** Applies `0010_user_vault_idle_lock` when `users.vault_idle_lock_seconds` is missing. */
-export async function ensureVaultIdleLockColumn(
-  storage: Awaited<ReturnType<typeof createStorageLayer>>,
-): Promise<void> {
-  const columns = await storage.postgres.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("vault_idle_lock_seconds")) {
-    const migration0010 = readFileSync(
-      path.resolve(helpersDir, "../migrations/0010_user_vault_idle_lock.sql"),
-      "utf8",
-    );
-    await storage.postgres.query(migration0010);
-  }
-}
-
 export async function applyMigrations(
   storage: Awaited<ReturnType<typeof createStorageLayer>>,
 ): Promise<void> {
+  initEntityIdGenerator(1);
+  const usersTable = await storage.postgres.query<{ regclass: string | null }>(
+    "SELECT to_regclass('public.users') AS regclass",
+  );
+  const usersExists = Boolean(usersTable[0]?.regclass);
+
+  if (usersExists) {
+    const idColumn = await storage.postgres.query<{ data_type: string }>(
+      `
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'id'
+      `,
+    );
+    if (idColumn[0]?.data_type !== "bigint") {
+      await storage.postgres.query("DROP SCHEMA public CASCADE");
+      await storage.postgres.query("CREATE SCHEMA public");
+    }
+  }
+
   const baseSchema = await storage.postgres.query<{ exists: boolean }>(
     "SELECT to_regclass('public.users') IS NOT NULL AS exists",
   );
@@ -99,40 +56,6 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0001);
   }
-
-  const migration0002 = readFileSync(
-    path.resolve(helpersDir, "../migrations/0002_user_password_kdf.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0002);
-  const migration0003 = readFileSync(
-    path.resolve(helpersDir, "../migrations/0003_two_factor_sessions.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0003);
-  const migration0004 = readFileSync(
-    path.resolve(helpersDir, "../migrations/0004_user_locale.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0004);
-  const migration0005 = readFileSync(
-    path.resolve(helpersDir, "../migrations/0005_events_sync_envelope.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0005);
-  const migration0006 = readFileSync(
-    path.resolve(helpersDir, "../migrations/0006_capsule_files.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0006);
-  const migration0007 = readFileSync(
-    path.resolve(helpersDir, "../migrations/0007_user_public_pq_key.sql"),
-    "utf8",
-  );
-  await storage.postgres.query(migration0007);
-  await ensureVaultCryptoVersionColumn(storage);
-  await ensureUserProfileNameColumns(storage);
-  await ensureVaultIdleLockColumn(storage);
 }
 
 export async function cleanupUserData(
@@ -175,7 +98,7 @@ export async function registerUser(
   config: ApiConfig,
   email: string,
 ): Promise<RegisteredUser> {
-  const authStateId = randomUUID();
+  const authStateId = testEntityId();
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
     from: config.emailFrom,
     defaultLocale: config.defaultEmailLocale,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import test from "node:test";
 import { createApiApp } from "../src/app.ts";
 import { CapsuleServiceError, type CapsuleService } from "../src/capsule/service.ts";
@@ -53,7 +53,7 @@ function mkBlob(payload = "x", cryptoVersion = 2) {
 }
 
 function createCapsuleServiceStub(overrides?: Partial<CapsuleService>): CapsuleService {
-  const capsuleId = randomUUID();
+  const capsuleId = testEntityId();
   return {
     createCapsule: async () => ({
       capsuleId,
@@ -120,7 +120,7 @@ test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
 });
 
 test("GET /capsules/:capsuleId returns metadata", async () => {
-  const capsuleId = randomUUID();
+  const capsuleId = testEntityId();
   const res = await dispatch({
     method: "GET",
     url: `/capsules/${capsuleId}`,
@@ -142,7 +142,7 @@ test("GET /capsules/:capsuleId returns metadata", async () => {
 });
 
 test("capsules routes map domain errors", async () => {
-  const capsuleId = randomUUID();
+  const capsuleId = testEntityId();
   const res = await dispatch({
     method: "POST",
     url: `/capsules/${capsuleId}/open`,
@@ -159,7 +159,7 @@ test("capsules routes map domain errors", async () => {
 });
 
 test("capsules routes reject unsafe key transport in URL query", async () => {
-  const capsuleId = randomUUID();
+  const capsuleId = testEntityId();
   const res = await dispatch({
     method: "POST",
     url: `/capsules/${capsuleId}/open?key=raw-secret`,
@@ -171,7 +171,7 @@ test("capsules routes reject unsafe key transport in URL query", async () => {
 });
 
 test("request logger redacts sensitive key transport query values", async () => {
-  const capsuleId = randomUUID();
+  const capsuleId = testEntityId();
   const logs: Array<Record<string, unknown>> = [];
   const res = await dispatch({
     method: "GET",

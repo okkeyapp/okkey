@@ -1,4 +1,5 @@
 import { DEFAULT_NEW_VAULT_CRYPTO_VERSION } from "../crypto/downgrade.ts";
+import { generateEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 
@@ -40,9 +41,11 @@ export async function insertRegistrationBundle(
   tx: QueryExecutor,
   input: RegistrationBundleInput,
 ): Promise<RegistrationBundleResult> {
+  const userId = generateEntityId();
   const userRows = await tx.query<{ id: string }>(
     `
       INSERT INTO users (
+        id,
         email,
         public_key,
         public_pq_key,
@@ -53,10 +56,11 @@ export async function insertRegistrationBundle(
         first_name,
         last_name
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id
     `,
     [
+      userId,
       input.email,
       input.publicKey,
       input.publicPqKey,
@@ -68,42 +72,46 @@ export async function insertRegistrationBundle(
       input.lastName ?? null,
     ],
   );
-  const userId = userRows[0]?.id;
-  if (!userId) {
+  const insertedUserId = userRows[0]?.id;
+  if (!insertedUserId) {
     throw new Error("user insert returned no id");
   }
 
   const workspaceLabel = input.personalWorkspaceName?.trim() || "Personal";
+  const workspaceId = generateEntityId();
 
   const workspaceRows = await tx.query<{ id: string }>(
     `
-      INSERT INTO workspaces (name, owner_id, plan_tier)
-      VALUES ($1, $2, 'FREE')
+      INSERT INTO workspaces (id, name, owner_id, plan_tier)
+      VALUES ($1, $2, $3, 'FREE')
       RETURNING id
     `,
-    [workspaceLabel, userId],
+    [workspaceId, workspaceLabel, insertedUserId],
   );
-  const workspaceId = workspaceRows[0]?.id;
-  if (!workspaceId) {
+  const insertedWorkspaceId = workspaceRows[0]?.id;
+  if (!insertedWorkspaceId) {
     throw new Error("workspace insert returned no id");
   }
 
+  const vaultId = generateEntityId();
   const vaultRows = await tx.query<{ id: string }>(
     `
-      INSERT INTO vaults (workspace_id, name, is_personal, owner_id, crypto_version)
-      VALUES ($1, $2, true, $3, $4)
+      INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
+      VALUES ($1, $2, $3, true, $4, $5)
       RETURNING id
     `,
-    [workspaceId, workspaceLabel, userId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
+    [vaultId, insertedWorkspaceId, workspaceLabel, insertedUserId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
   );
-  const vaultId = vaultRows[0]?.id;
-  if (!vaultId) {
+  const insertedVaultId = vaultRows[0]?.id;
+  if (!insertedVaultId) {
     throw new Error("vault insert returned no id");
   }
 
+  const deviceId = generateEntityId();
   const deviceRows = await tx.query<{ id: string }>(
     `
       INSERT INTO devices (
+        id,
         user_id,
         device_fingerprint,
         device_name,
@@ -122,17 +130,18 @@ export async function insertRegistrationBundle(
         revoked_at
       )
       VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10, $11,
-        $12, $12,
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12,
+        $13, $13,
         'trusted',
-        $13::timestamptz,
+        $14::timestamptz,
         NULL
       )
       RETURNING id
     `,
     [
-      userId,
+      deviceId,
+      insertedUserId,
       input.deviceFingerprint,
       input.deviceName,
       input.devicePublicKey,
@@ -147,10 +156,15 @@ export async function insertRegistrationBundle(
       input.nowIso,
     ],
   );
-  const deviceId = deviceRows[0]?.id;
-  if (!deviceId) {
+  const insertedDeviceId = deviceRows[0]?.id;
+  if (!insertedDeviceId) {
     throw new Error("device insert returned no id");
   }
 
-  return { userId, workspaceId, vaultId, deviceId };
+  return {
+    userId: insertedUserId,
+    workspaceId: insertedWorkspaceId,
+    vaultId: insertedVaultId,
+    deviceId: insertedDeviceId,
+  };
 }

@@ -8,7 +8,7 @@ import {
   touchVaultUnlockSession,
 } from "./vaultUnlockSessionStorage";
 
-const userId = "00000000-0000-4000-8000-000000000001";
+const userId = "1156820912149601";
 const vaultKey = new Uint8Array(32).fill(7);
 
 describe("vaultUnlockSessionStorage", () => {

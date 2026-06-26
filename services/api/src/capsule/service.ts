@@ -1,4 +1,5 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import {
   CRYPTO_CAPABILITY_REQUIRED,
@@ -252,9 +253,11 @@ export class CapsuleService {
     );
 
     const rows = await this.db.transaction(async (tx) => {
+      const capsuleId = generateEntityId();
       const inserted = await tx.query<CapsuleRow>(
         `
           INSERT INTO capsules (
+            id,
             workspace_id,
             creator_id,
             type,
@@ -264,12 +267,13 @@ export class CapsuleService {
             view_limit,
             view_count
           )
-          VALUES ($1, $2, $3, $4, $5::jsonb, $6::timestamptz, $7, 0)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::timestamptz, $8, 0)
           RETURNING
             id, workspace_id, creator_id, type, encrypted_payload, access_policy,
             expires_at, view_limit, view_count, created_at
         `,
         [
+          capsuleId,
           workspaceId,
           creatorId,
           input.type,
@@ -286,10 +290,10 @@ export class CapsuleService {
         await this.objectStorage.putObject(storageKey, filePayload);
         await tx.query(
           `
-            INSERT INTO capsule_files (capsule_id, storage_key, size_bytes)
-            VALUES ($1, $2, $3)
+            INSERT INTO capsule_files (id, capsule_id, storage_key, size_bytes)
+            VALUES ($1, $2, $3, $4)
           `,
-          [created.id, storageKey, filePayload.length],
+          [generateEntityId(), created.id, storageKey, filePayload.length],
         );
         await tx.query(
           `

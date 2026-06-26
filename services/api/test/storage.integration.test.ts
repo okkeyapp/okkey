@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { testEntityId } from "./test-entity-id.ts";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "../src/config.ts";
+import { initEntityIdGenerator } from "../src/entity-id.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
+import { applyMigrations } from "./two-factor-test-helpers.ts";
+import { loadConfig } from "../src/config.ts";
 import {
   DevicesRepository,
   EventsRepository,
@@ -28,265 +30,33 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationPath = path.resolve(__dirname, "../migrations/0001_init.sql");
 
 async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
+  initEntityIdGenerator(1);
+  const usersTable = await db.query<{ regclass: string | null }>(
+    "SELECT to_regclass('public.users') AS regclass",
+  );
+  if (usersTable[0]?.regclass) {
+    const idColumn = await db.query<{ data_type: string }>(
+      `
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'id'
+      `,
+    );
+    if (idColumn[0]?.data_type !== "bigint") {
+      await db.query("DROP SCHEMA public CASCADE");
+      await db.query("CREATE SCHEMA public");
+    }
+  }
   const check = await db.query<{ regclass: string | null }>(
     "SELECT to_regclass('public.users') AS regclass",
   );
   if (!check[0]?.regclass) {
-    const migrationSql = readFileSync(migrationPath, "utf8");
-    await db.query(migrationSql);
-  }
-
-  await ensureDevicesSchema(db);
-  await ensureUserKdfColumns(db);
-  await ensureUserLocaleColumn(db);
-  await ensureEventsSyncEnvelope(db);
-  await ensureUserPublicPqKeyColumn(db);
-  await ensureVaultCryptoVersionColumn(db);
-  await ensureUserProfileNameColumns(db);
-  await ensureVaultIdleLockColumn(db);
-  await ensureUserBillingRegionColumn(db);
-}
-
-async function ensureUserBillingRegionColumn(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("billing_region")) {
-    const migration0011 = path.resolve(__dirname, "../migrations/0011_user_billing_region.sql");
-    await db.query(readFileSync(migration0011, "utf8"));
+    await db.query(readFileSync(migrationPath, "utf8"));
   }
 }
 
-async function ensureVaultIdleLockColumn(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("vault_idle_lock_seconds")) {
-    const migration0010 = path.resolve(__dirname, "../migrations/0010_user_vault_idle_lock.sql");
-    await db.query(readFileSync(migration0010, "utf8"));
-  }
-}
-
-async function ensureUserProfileNameColumns(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("first_name")) {
-    const migration0009 = path.resolve(__dirname, "../migrations/0009_user_profile_names.sql");
-    await db.query(readFileSync(migration0009, "utf8"));
-  }
-}
-
-async function ensureUserPublicPqKeyColumn(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("public_pq_key")) {
-    const migration0007 = path.resolve(__dirname, "../migrations/0007_user_public_pq_key.sql");
-    await db.query(readFileSync(migration0007, "utf8"));
-  }
-}
-
-async function ensureVaultCryptoVersionColumn(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'vaults'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("crypto_version")) {
-    const migration0008 = path.resolve(__dirname, "../migrations/0008_vault_crypto_version.sql");
-    await db.query(readFileSync(migration0008, "utf8"));
-  }
-}
-
-async function ensureEventsSyncEnvelope(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'events'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("payload_schema_version")) {
-    const migration0005 = path.resolve(__dirname, "../migrations/0005_events_sync_envelope.sql");
-    await db.query(readFileSync(migration0005, "utf8"));
-  }
-}
-
-async function ensureUserKdfColumns(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("password_kdf_salt")) {
-    const migration0002 = path.resolve(__dirname, "../migrations/0002_user_password_kdf.sql");
-    await db.query(readFileSync(migration0002, "utf8"));
-  }
-}
-
-async function ensureUserLocaleColumn(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("locale")) {
-    const migration0004 = path.resolve(__dirname, "../migrations/0004_user_locale.sql");
-    await db.query(readFileSync(migration0004, "utf8"));
-  }
-}
-
-async function ensureDevicesSchema(db: PostgresDatabase): Promise<void> {
-  const columns = await db.query<{ column_name: string }>(
-    `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'devices'
-    `,
-  );
-  const names = new Set(columns.map((column) => column.column_name));
-  if (!names.has("device_fingerprint")) {
-    await db.query("ALTER TABLE devices ADD COLUMN device_fingerprint text");
-    await db.query("UPDATE devices SET device_fingerprint = md5(id::text)");
-    await db.query("ALTER TABLE devices ALTER COLUMN device_fingerprint SET NOT NULL");
-  }
-  if (!names.has("platform")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN platform text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("os_name")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN os_name text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("os_version")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN os_version text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("app_version")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN app_version text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("client_type")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN client_type text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("user_agent")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN user_agent text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("ip_first")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN ip_first text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("ip_last")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN ip_last text NOT NULL DEFAULT 'unknown'",
-    );
-  }
-  if (!names.has("status")) {
-    await db.query(
-      "ALTER TABLE devices ADD COLUMN status text NOT NULL DEFAULT 'pending'",
-    );
-  }
-  if (!names.has("revoked_at")) {
-    await db.query("ALTER TABLE devices ADD COLUMN revoked_at timestamptz");
-  }
-  if (!names.has("approved_by")) {
-    await db.query("ALTER TABLE devices ADD COLUMN approved_by uuid");
-  }
-  if (!names.has("approved_at")) {
-    await db.query("ALTER TABLE devices ADD COLUMN approved_at timestamptz");
-  }
-  if (!names.has("rejected_at")) {
-    await db.query("ALTER TABLE devices ADD COLUMN rejected_at timestamptz");
-  }
-  if (!names.has("rejection_reason")) {
-    await db.query("ALTER TABLE devices ADD COLUMN rejection_reason text");
-  }
-
-  await db.query(
-    `
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM pg_constraint
-          WHERE conname = 'devices_user_id_device_fingerprint_device_public_key_key'
-        ) THEN
-          ALTER TABLE devices
-          ADD CONSTRAINT devices_user_id_device_fingerprint_device_public_key_key
-          UNIQUE (user_id, device_fingerprint, device_public_key);
-        END IF;
-      END
-      $$;
-    `,
-  );
-
-  await db.query(
-    `
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM pg_indexes
-          WHERE schemaname = 'public'
-            AND tablename = 'devices'
-            AND indexname = 'idx_devices_user_id_status'
-        ) THEN
-          CREATE INDEX idx_devices_user_id_status ON devices(user_id, status);
-        END IF;
-      END
-      $$;
-    `,
-  );
-}
 
 test("integration: createStorageLayer ping succeeds with postgres and redis", async (t) => {
   const config = loadConfig();
@@ -320,7 +90,7 @@ test("integration: EventsRepository.append persists event and detects version co
   const vaults = new VaultsRepository(db);
   const events = new EventsRepository(db);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const user = await users.create({
     email: `integration-${suffix}@okkey.local`,
     publicKey: `pk-${suffix}`,
@@ -414,7 +184,7 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
   const users = new UsersRepository(db);
   const devices = new DevicesRepository(db);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const user = await users.create({
     email: `device-${suffix}@okkey.local`,
     publicKey: `pk-${suffix}`,
@@ -516,7 +286,7 @@ test("integration: DevicesRepository approval transitions are consistent", async
   const users = new UsersRepository(db);
   const devices = new DevicesRepository(db);
 
-  const suffix = randomUUID();
+  const suffix = testEntityId();
   const user = await users.create({
     email: `approval-${suffix}@okkey.local`,
     publicKey: `pk-${suffix}`,

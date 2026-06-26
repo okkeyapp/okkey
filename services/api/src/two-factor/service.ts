@@ -1,4 +1,5 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { generateEntityId } from "../entity-id.ts";
 import type { AuthService, AuthStatePayload } from "../auth/service.ts";
 import type { ApiConfig } from "../config.ts";
 import type { EmailTemplateService } from "../email/service.ts";
@@ -314,7 +315,7 @@ export class TwoFactorService {
 
     const secret = randomBytes(20);
     const secretBase32 = base32Encode(secret);
-    const enrollmentId = randomUUID();
+    const enrollmentId = generateEntityId();
     const payload: PendingTotpPayload = {
       userId,
       secretB64: Buffer.from(secret).toString("base64"),
