@@ -16,6 +16,7 @@ jobs:
       RUST_TOOLCHAIN: 1.86.0
       RUST_NIGHTLY_TOOLCHAIN: nightly-2026-03-20
       WASM_PACK_VERSION: 0.13.1
+      CARGO_FUZZ_VERSION: 0.12.0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
