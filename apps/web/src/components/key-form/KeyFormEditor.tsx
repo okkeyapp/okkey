@@ -2175,7 +2175,8 @@ export function KeyFormEditor({
           mode={mode}
           editableTitle
           reorderable
-          fieldTypes={fieldTypes}
+          fieldTypes={section.id === "websites" ? urlFieldTypes : fieldTypes}
+          addFieldLabel={section.id === "websites" ? "Add URL" : addFieldLabel}
           onAddField={() => undefined}
           className="rounded-xl shadow-lg"
           style={activeDrag.width ? { width: activeDrag.width } : undefined}

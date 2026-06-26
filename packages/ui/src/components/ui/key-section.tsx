@@ -69,7 +69,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
       reorderable = false,
       isFieldDragging = false,
       onTitleChange,
-      addFieldLabel = "Добавить поле",
+      addFieldLabel = "Add field",
       fieldTypes = keyFieldTypeOptions,
       onAddField,
       headerActions,
