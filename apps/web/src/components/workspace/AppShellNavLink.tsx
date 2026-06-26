@@ -1,5 +1,6 @@
 import { type ComponentProps, forwardRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { useOkkeyAppShellLayout } from "@okkey/ui";
 
 /**
  * Narrow `react-router` `Link` for `@okkey/ui` shell nav (`to` is a path string).
@@ -16,8 +17,20 @@ const AppShellNavLink = forwardRef<HTMLAnchorElement, AppShellNavLinkProps>(func
   { to, className, children, "aria-current": ariaCurrent },
   ref,
 ) {
+  const shell = useOkkeyAppShellLayout();
+
   return (
-    <Link ref={ref} to={to} className={className} aria-current={ariaCurrent}>
+    <Link
+      ref={ref}
+      to={to}
+      className={className}
+      aria-current={ariaCurrent}
+      onClick={() => {
+        if (shell.isMobile) {
+          shell.setMobileDrawerOpen(false);
+        }
+      }}
+    >
       {children}
     </Link>
   );

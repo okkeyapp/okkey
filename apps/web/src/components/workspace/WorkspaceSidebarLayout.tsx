@@ -1,8 +1,10 @@
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
 import {
+  Button,
   cn,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  ScrollArea,
   Select,
   SelectContent,
   SelectItem,
@@ -12,11 +14,11 @@ import {
   type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { BodyGradient } from "../BodyGradient";
 import { useLocale } from "../../locale/LocaleContext";
-import { WORKSPACES_PATH } from "../../routes/paths";
+import { ITEM_QUERY_PARAM, WORKSPACES_PATH } from "../../routes/paths";
 import ItemsListLeftPane from "./ItemsListLeftPane";
 import ItemsShellTopBar from "./ItemsShellTopBar";
 
@@ -24,6 +26,8 @@ const mainPanelChromeClassName = cn(
   "flex min-h-0 min-w-0 flex-col rounded-xl bg-background text-foreground",
   "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
 );
+
+const itemsMobilePanelChromeClassName = "max-md:rounded-none max-md:shadow-none";
 
 const mainPanelClassName = cn(mainPanelChromeClassName, "overflow-y-auto");
 
@@ -105,6 +109,17 @@ function ShellMainHeader({
   );
 }
 
+function ItemsMobileDetailBackBar({ label, onBack }: { label: string; onBack: () => void }) {
+  return (
+    <div className="shrink-0 border-b border-border px-3 py-2 md:hidden">
+      <Button type="button" variant="ghost" size="sm" className="gap-1.5 px-2" onClick={onBack}>
+        <span aria-hidden>←</span>
+        {label}
+      </Button>
+    </div>
+  );
+}
+
 /**
  * Authenticated workspace shell: {@link OkkeyAppSidebar} + main column (`/items`, `/capsules`, …).
  *
@@ -137,6 +152,21 @@ export default function WorkspaceSidebarLayout({
   itemsListFolderTree,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
+  const isItemsTwoPane = mainColumnLayout === "items-two-pane";
+  const showMobileItemDetail = isItemsTwoPane && Boolean(activeItemId);
+
+  const clearActiveItem = () => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(ITEM_QUERY_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  };
 
   return (
     <div className="relative isolate flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -178,15 +208,17 @@ export default function WorkspaceSidebarLayout({
             className={cn(
               "mt-2 mr-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col p-0",
               "ml-2 min-[991px]:ml-0",
-              mainColumnLayout === "items-two-pane" ? "gap-2 min-[991px]:flex-row" : undefined,
+              isItemsTwoPane ? "gap-2 md:flex-row max-md:mb-0 max-md:ms-0 max-md:me-0 max-md:gap-0" : undefined,
             )}
           >
-            {mainColumnLayout === "items-two-pane" ? (
+            {isItemsTwoPane ? (
               <>
                 <aside
                   className={cn(
                     mainPanelChromeClassName,
-                    "mt-0 w-[360px] max-w-full shrink-0 self-stretch overflow-hidden p-0",
+                    itemsMobilePanelChromeClassName,
+                    "mt-0 flex min-h-0 w-full max-w-full shrink-0 flex-col self-stretch overflow-hidden p-0 md:w-[360px]",
+                    showMobileItemDetail ? "max-md:hidden" : "max-md:flex-1",
                   )}
                 >
                   <ItemsListLeftPane
@@ -195,10 +227,24 @@ export default function WorkspaceSidebarLayout({
                     itemsListVaultsLoaded={itemsListVaultsLoaded}
                   />
                 </aside>
-                <div className={cn(mainPanelClassName, "min-w-0 flex-1 self-stretch")}>
-                  <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
+                <div
+                  className={cn(
+                    mainPanelChromeClassName,
+                    itemsMobilePanelChromeClassName,
+                    "flex min-h-0 min-w-0 flex-1 flex-col self-stretch overflow-hidden",
+                    showMobileItemDetail ? "max-md:flex-1" : "max-md:hidden",
+                  )}
+                >
+                  {showMobileItemDetail ? (
+                    <ItemsMobileDetailBackBar label={t("web.items.detail.back")} onBack={clearActiveItem} />
+                  ) : null}
+                  <div className={cn(showMobileItemDetail && "max-md:hidden")}>
+                    <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
+                  </div>
 
-                  <div className="min-h-0 flex-1">{children}</div>
+                  <ScrollArea className="min-h-0 min-w-0 flex-1">
+                    <div className="min-h-0">{children}</div>
+                  </ScrollArea>
                 </div>
               </>
             ) : (

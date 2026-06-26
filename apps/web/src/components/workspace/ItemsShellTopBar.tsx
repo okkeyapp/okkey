@@ -11,10 +11,12 @@ import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, t
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
+import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import { NEW_ITEM_POPUP_ID, popupQuerySearch } from "../../routes/popupQuery";
 import {
   FILTER_QUERY_PARAM,
   FOLDER_QUERY_PARAM,
+  ITEM_QUERY_PARAM,
   ITEMS_PATH,
   SEARCH_QUERY_PARAM,
   VAULT_QUERY_PARAM,
@@ -117,6 +119,7 @@ function BellIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
 export default function ItemsShellTopBar() {
   const { t } = useLocale();
   const shell = useOkkeyAppShellLayout();
+  const isItemsMobileListView = useItemsMobileListView();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -220,6 +223,9 @@ export default function ItemsShellTopBar() {
                     next.delete(VAULT_QUERY_PARAM);
                     next.delete(FOLDER_QUERY_PARAM);
                     next.delete(FILTER_QUERY_PARAM);
+                    if (isItemsMobileListView) {
+                      next.delete(ITEM_QUERY_PARAM);
+                    }
                   } else {
                     next.delete(SEARCH_QUERY_PARAM);
                   }

@@ -538,7 +538,7 @@ function ScopeRowCloseButton({ locale, onClear }: { locale: WebLocale; onClear: 
     <button
       type="button"
       aria-label={scopeRowCloseAriaLabel(locale)}
-      className="absolute top-[2px] right-[2px] z-10 flex size-4 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="absolute right-1.5 top-1/2 z-10 flex size-4 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();

@@ -73,42 +73,75 @@ export function itemsPathWithFolder(folderId: string): string {
  * merges preserve {@link ITEM_QUERY_PARAM} and `sort` while adjusting `vault`, `folder`, `search`,
  * and/or `filter` (see {@link itemsPathAllWorkspaceMerged} vs vault/folder helpers).
  */
+export type MergeItemsLocationOptions = {
+  /** Drop selected item row (mobile list-only view). */
+  clearItem?: boolean;
+};
+
+function applyMergeItemsLocationOptions(next: URLSearchParams, options?: MergeItemsLocationOptions) {
+  if (options?.clearItem) {
+    next.delete(ITEM_QUERY_PARAM);
+  }
+}
+
 export function mergeItemsLocationSearch(
   current: URLSearchParams,
   mutate: (next: URLSearchParams) => void,
+  options?: MergeItemsLocationOptions,
 ): string {
   const next = new URLSearchParams(current);
   mutate(next);
+  applyMergeItemsLocationOptions(next, options);
   const s = next.toString();
   return s ? `${ITEMS_PATH}?${s}` : ITEMS_PATH;
 }
 
-export function itemsPathWithVaultMerged(current: URLSearchParams, vaultId: string): string {
-  return mergeItemsLocationSearch(current, (n) => {
-    n.set(VAULT_QUERY_PARAM, vaultId);
-    n.delete(FOLDER_QUERY_PARAM);
-    n.delete(SEARCH_QUERY_PARAM);
-    n.delete(FILTER_QUERY_PARAM);
-  });
+export function itemsPathWithVaultMerged(
+  current: URLSearchParams,
+  vaultId: string,
+  options?: MergeItemsLocationOptions,
+): string {
+  return mergeItemsLocationSearch(
+    current,
+    (n) => {
+      n.set(VAULT_QUERY_PARAM, vaultId);
+      n.delete(FOLDER_QUERY_PARAM);
+      n.delete(SEARCH_QUERY_PARAM);
+      n.delete(FILTER_QUERY_PARAM);
+    },
+    options,
+  );
 }
 
-export function itemsPathWithFolderMerged(current: URLSearchParams, folderId: string): string {
-  return mergeItemsLocationSearch(current, (n) => {
-    n.set(FOLDER_QUERY_PARAM, folderId);
-    n.delete(VAULT_QUERY_PARAM);
-    n.delete(SEARCH_QUERY_PARAM);
-    n.delete(FILTER_QUERY_PARAM);
-  });
+export function itemsPathWithFolderMerged(
+  current: URLSearchParams,
+  folderId: string,
+  options?: MergeItemsLocationOptions,
+): string {
+  return mergeItemsLocationSearch(
+    current,
+    (n) => {
+      n.set(FOLDER_QUERY_PARAM, folderId);
+      n.delete(VAULT_QUERY_PARAM);
+      n.delete(SEARCH_QUERY_PARAM);
+      n.delete(FILTER_QUERY_PARAM);
+    },
+    options,
+  );
 }
 
 /** Sidebar “All items”: drop vault, folder, search, and list filter; keep `item` and `sort`. */
-export function itemsPathAllWorkspaceMerged(current: URLSearchParams): string {
-  return mergeItemsLocationSearch(current, (n) => {
-    n.delete(VAULT_QUERY_PARAM);
-    n.delete(FOLDER_QUERY_PARAM);
-    n.delete(SEARCH_QUERY_PARAM);
-    n.delete(FILTER_QUERY_PARAM);
-  });
+export function itemsPathAllWorkspaceMerged(current: URLSearchParams, options?: MergeItemsLocationOptions): string {
+  return mergeItemsLocationSearch(
+    current,
+    (n) => {
+      n.delete(VAULT_QUERY_PARAM);
+      n.delete(FOLDER_QUERY_PARAM);
+      n.delete(SEARCH_QUERY_PARAM);
+      n.delete(FILTER_QUERY_PARAM);
+    },
+    options,
+  );
 }
 
 export const CAPSULES_PATH = "/capsules";

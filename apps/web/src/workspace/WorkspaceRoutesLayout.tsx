@@ -24,6 +24,7 @@ import {
   writeStoredCurrentWorkspaceId,
 } from "../auth/workspaceStorage";
 import WorkspaceSidebarLayout from "../components/workspace/WorkspaceSidebarLayout";
+import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
   CAPSULES_PATH,
@@ -123,6 +124,11 @@ export default function WorkspaceRoutesLayout() {
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
+  const isItemsMobileListView = useItemsMobileListView();
+  const itemsPathMergeOptions = useMemo(
+    () => (isItemsMobileListView ? { clearItem: true as const } : undefined),
+    [isItemsMobileListView],
+  );
 
   const [phase, setPhase] = useState<"loading" | "ready">("loading");
   const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(null);
@@ -175,7 +181,7 @@ export default function WorkspaceRoutesLayout() {
       if (isItemsEntry) {
         return {
           ...item,
-          to: itemsPathAllWorkspaceMerged(searchParams),
+          to: itemsPathAllWorkspaceMerged(searchParams, itemsPathMergeOptions),
           isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !searchQ,
           onAddPointerDown: (e) => {
             e.preventDefault();
@@ -188,7 +194,7 @@ export default function WorkspaceRoutesLayout() {
         isActive: item.to === pathname,
       };
     });
-  }, [navPaths, pathname, t, vaultQ, folderQ, searchQ, searchParams, openNewItemPopup]);
+  }, [navPaths, pathname, t, vaultQ, folderQ, searchQ, searchParams, openNewItemPopup, itemsPathMergeOptions]);
 
   // Vault rows: each link is `/items?vault=…`. Active when that vault id matches the query and we are not in folder-only mode (`folder` is cleared if both were set).
   const vaultSidebarItems: OkkeySidebarVaultItem[] = useMemo(() => {
@@ -200,10 +206,10 @@ export default function WorkspaceRoutesLayout() {
         </span>
       ),
       label: v.name,
-      to: itemsPathWithVaultMerged(searchParams, v.id),
+      to: itemsPathWithVaultMerged(searchParams, v.id, itemsPathMergeOptions),
       isActive: pathname === ITEMS_PATH && vaultQ === v.id && !folderQ && !searchQ,
     }));
-  }, [vaults, pathname, vaultQ, folderQ, searchQ, searchParams]);
+  }, [vaults, pathname, vaultQ, folderQ, searchQ, searchParams, itemsPathMergeOptions]);
 
   const itemsDemoFolderDocsId = "fld-docs";
   const itemsDemoFolderCardsId = "fld-cards";
@@ -213,17 +219,17 @@ export default function WorkspaceRoutesLayout() {
       {
         id: itemsDemoFolderDocsId,
         label: "Documents",
-        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderDocsId),
+        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderDocsId, itemsPathMergeOptions),
         isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderDocsId && !vaultQ && !searchQ,
       },
       {
         id: itemsDemoFolderCardsId,
         label: "Cards",
-        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderCardsId),
+        to: itemsPathWithFolderMerged(searchParams, itemsDemoFolderCardsId, itemsPathMergeOptions),
         isActive: pathname === ITEMS_PATH && folderQ === itemsDemoFolderCardsId && !vaultQ && !searchQ,
       },
     ],
-    [pathname, folderQ, vaultQ, searchQ, searchParams],
+    [pathname, folderQ, vaultQ, searchQ, searchParams, itemsPathMergeOptions],
   );
 
   const currentWorkspace = useMemo(

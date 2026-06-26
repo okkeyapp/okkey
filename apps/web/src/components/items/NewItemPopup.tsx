@@ -9,9 +9,11 @@ import {
   parsePopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
-import { isItemCategoryId } from "./itemCategoryCatalog";
+import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
+import { getCategoryLabel } from "./NewItemCategoryCard";
 import NewItemCategoryPicker from "./NewItemCategoryPicker";
-import NewItemFormPlaceholder from "./NewItemFormPlaceholder";
+import NewItemForm from "./NewItemForm";
+import { BackChevronIcon } from "./itemCategoryIcons";
 import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
 type NewItemPopupProps = {
@@ -70,23 +72,55 @@ export default function NewItemPopup({ t, workspaceId }: NewItemPopupProps) {
     return null;
   }
 
-  const title = t("web.items.createRecord");
+  const selectedCategory = selectedCategoryId ? getItemCategoryDefinition(selectedCategoryId) : null;
+  const selectedCategoryLabel = selectedCategory ? getCategoryLabel(t, selectedCategory) : null;
+
+  const header = selectedCategoryId ? (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <Button
+        type="button"
+        variant="secondary"
+        size="iconSm"
+        className="!size-7 !min-h-7 !min-w-7 shrink-0 rounded-md"
+        aria-label={t("web.newItemPopup.backToCategories")}
+        onClick={backToCategories}
+      >
+        <BackChevronIcon />
+      </Button>
+      <h2 className="min-w-0 flex-1 truncate text-lg font-semibold leading-7 text-foreground">
+        {t("web.newItemPopup.newRecordTitle", { category: selectedCategoryLabel ?? selectedCategoryId })}
+      </h2>
+    </div>
+  ) : (
+    t("web.items.createRecord")
+  );
 
   return (
     <Popup
       id={NEW_ITEM_POPUP_ID}
-      header={title}
+      header={header}
       closeLabel={t("web.settingsPopup.close")}
       onClose={closePopup}
       panelClassName="min-h-[720px]"
       footer={
-        <Button type="button" variant="outline" onClick={closePopup}>
-          {t("web.newItemPopup.cancel")}
-        </Button>
+        selectedCategoryId ? (
+          <>
+            <Button type="button" variant="outline" onClick={closePopup}>
+              {t("web.newItemPopup.cancel")}
+            </Button>
+            <Button type="button" onClick={() => undefined}>
+              {t("web.newItemPopup.save")}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" variant="outline" onClick={closePopup}>
+            {t("web.newItemPopup.cancel")}
+          </Button>
+        )
       }
     >
       {selectedCategoryId ? (
-        <NewItemFormPlaceholder t={t} categoryId={selectedCategoryId} onBack={backToCategories} />
+        <NewItemForm t={t} categoryId={selectedCategoryId} />
       ) : (
         <NewItemCategoryPicker
           t={t}
