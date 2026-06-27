@@ -285,7 +285,8 @@ export default function WorkspaceRoutesLayout() {
     }
 
     const unknownVault = Boolean(vaultQ && vaultsListReady && !vaults.some((vault) => vault.id === vaultQ));
-    const foldersReady = vaultUnlocked && !workspaceFoldersState.loading;
+    const foldersReady =
+      vaultUnlocked && workspaceFoldersState.bootstrapped && !workspaceFoldersState.loading;
     const unknownFolder = Boolean(
       folderQ &&
         foldersReady &&
@@ -316,6 +317,7 @@ export default function WorkspaceRoutesLayout() {
     vaults,
     vaultsListReady,
     vaultUnlocked,
+    workspaceFoldersState.bootstrapped,
     workspaceFoldersState.loading,
     workspaceFoldersState.folderTree,
     setSearchParams,
@@ -550,6 +552,7 @@ export default function WorkspaceRoutesLayout() {
             itemsListVaults={vaults}
             itemsListVaultsLoaded={vaultsListReady}
             itemsListFolderTree={folderTreeForItems}
+            itemsListFoldersLoaded={workspaceFoldersState.bootstrapped}
           >
             <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
           </WorkspaceSidebarLayout>

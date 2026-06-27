@@ -22,6 +22,8 @@ export type WorkspaceFoldersContextValue = {
   folderTree: WorkspaceFolderNode[];
   flatFolders: FlatWorkspaceFolder[];
   loading: boolean;
+  /** True after the first folder sync bootstrap completes for the current workspace session. */
+  bootstrapped: boolean;
   error: string | null;
   syncVersion: number;
   createFolder: (label: string) => Promise<string>;
@@ -42,6 +44,7 @@ export function useWorkspaceFoldersState(input: {
   const { userId, workspaceId, core, passwordShareC, vaultUnlocked } = input;
   const [folderTree, setFolderTree] = useState<WorkspaceFolderNode[]>([]);
   const [loading, setLoading] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncVersion, setSyncVersion] = useState(0);
   const controllerRef = useRef<WorkspaceFoldersSyncController | null>(null);
@@ -62,6 +65,7 @@ export function useWorkspaceFoldersState(input: {
     controllerRef.current?.dispose();
     controllerRef.current = null;
     setFolderTree([]);
+    setBootstrapped(false);
     setError(null);
 
     if (!userId || !workspaceId || !core || !vaultUnlocked || !passwordShareC) {
@@ -94,6 +98,7 @@ export function useWorkspaceFoldersState(input: {
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+          setBootstrapped(true);
         }
       });
 
@@ -173,6 +178,7 @@ export function useWorkspaceFoldersState(input: {
       folderTree,
       flatFolders,
       loading,
+      bootstrapped,
       error,
       syncVersion,
       createFolder,
@@ -184,6 +190,7 @@ export function useWorkspaceFoldersState(input: {
       folderTree,
       flatFolders,
       loading,
+      bootstrapped,
       error,
       syncVersion,
       createFolder,

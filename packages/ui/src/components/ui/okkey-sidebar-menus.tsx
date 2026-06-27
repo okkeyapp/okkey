@@ -692,7 +692,7 @@ function FolderSubTreeSidebar({
           const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
             <SidebarMenuSubItem key={node.id}>
-              <Collapsible defaultOpen={false} className={folderTreeCollapsibleClassName}>
+              <Collapsible defaultOpen={node.defaultOpen ?? false} className={folderTreeCollapsibleClassName}>
                 <div className={folderTreeRowClassName(nestedInBranch)}>
                   <CollapsibleTrigger asChild>
                     <button
@@ -773,7 +773,7 @@ function FolderTopTreeSidebar({
           const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
             <SidebarMenuItem key={node.id}>
-              <Collapsible defaultOpen={node.defaultOpen} className={folderTreeCollapsibleClassName}>
+              <Collapsible defaultOpen={node.defaultOpen ?? false} className={folderTreeCollapsibleClassName}>
                 <div className={folderTreeRowClassName(false)}>
                   <CollapsibleTrigger asChild>
                     <button
@@ -854,7 +854,7 @@ function FolderSubTreeDropdown({
           const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
             <SidebarMenuSubItem key={node.id}>
-              <Collapsible defaultOpen={false} className={folderTreeCollapsibleClassName}>
+              <Collapsible defaultOpen={node.defaultOpen ?? false} className={folderTreeCollapsibleClassName}>
                 <div className={folderTreeRowClassName(nestedInBranch)}>
                   <CollapsibleTrigger asChild>
                     <button
@@ -948,7 +948,7 @@ function FolderTopTreeDropdown({
           const gName = `${branchGroupName}-${node.id}`;
           const { href, LinkC } = resolveFolderNavLink(node, linkComponent);
           return (
-            <Collapsible key={node.id} defaultOpen={node.defaultOpen} className={folderTreeCollapsibleClassName}>
+            <Collapsible key={node.id} defaultOpen={node.defaultOpen ?? false} className={folderTreeCollapsibleClassName}>
               <div className={folderTreeRowClassName(false)}>
                 <CollapsibleTrigger asChild>
                   <button

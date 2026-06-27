@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, type ReactNode, type SVGProps } from "rea
 import { useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
+import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import {
   FILTER_QUERY_ARCHIVED,
   FILTER_QUERY_DELETED,
@@ -85,21 +86,6 @@ const ITEMS_LIST_DEMO: readonly ItemsListRecord[] = (itemsListDemoWire as readon
     deleted: Boolean(row.deleted),
   }),
 );
-
-function findFolderLabelInTree(nodes: readonly OkkeySidebarFolderTreeNode[], id: string): string {
-  for (const n of nodes) {
-    if (n.id === id) {
-      return n.label;
-    }
-    if (n.children?.length) {
-      const nested = findFolderLabelInTree(n.children, id);
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-  return "";
-}
 
 function filterRowsByVault(
   rows: readonly ItemsListRecord[],
@@ -788,12 +774,15 @@ type ItemsListLeftPaneProps = {
   folderTree: readonly OkkeySidebarFolderTreeNode[];
   /** False until the workspace vault list has been fetched at least once (avoids vault ID flash in the filter trigger). */
   itemsListVaultsLoaded?: boolean;
+  /** False until workspace folder sync bootstrap completes (avoids folder ID flash in the filter trigger). */
+  itemsListFoldersLoaded?: boolean;
 };
 
 export default function ItemsListLeftPane({
   vaults,
   folderTree,
   itemsListVaultsLoaded = true,
+  itemsListFoldersLoaded = true,
 }: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -808,11 +797,14 @@ export default function ItemsListLeftPane({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
-  const folderTitle = folderQ ? findFolderLabelInTree(folderTree, folderQ) || folderQ : "";
+  const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
+  const folderScopeLoading = Boolean(folderQ && !itemsListFoldersLoaded && !folderPath);
+  const folderTitle = folderPath || (folderScopeLoading ? "" : folderQ);
 
   const hasListScope = Boolean(searchQ || vaultQ || folderQ);
   const secondaryFilterInTrigger = hasListScope && filterToSearchParam(filter) !== null;
   const vaultScopeLoading = Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta);
+  const scopeTriggerLoading = vaultScopeLoading || folderScopeLoading;
 
   const setFilterUrl = (next: ItemsListFilter) => {
     setSearchParams(
@@ -944,7 +936,7 @@ export default function ItemsListLeftPane({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-busy={vaultScopeLoading}
+                aria-busy={scopeTriggerLoading}
                 aria-label={t("web.items.list.filterAria")}
                 className={cn(
                   itemsPanelSelectTriggerClassName,
@@ -963,6 +955,12 @@ export default function ItemsListLeftPane({
                           <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
                             <span className="text-[14px] leading-none">{vaultMeta?.isPersonal ? "🏠" : "💼"}</span>
                           </span>
+                        )
+                      ) : folderQ ? (
+                        folderScopeLoading ? (
+                          <Spinner size="small" className="size-4 shrink-0" />
+                        ) : (
+                          <FolderClosedGlyph />
                         )
                       ) : (
                         <FolderClosedGlyph />
@@ -986,7 +984,9 @@ export default function ItemsListLeftPane({
                         ? null
                         : (vaultMeta?.name ?? vaultQ)
                       : folderQ
-                        ? folderTitle
+                        ? folderScopeLoading
+                          ? null
+                          : folderTitle
                         : t(`web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`)}
                 </span>
                 <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
@@ -1037,7 +1037,9 @@ export default function ItemsListLeftPane({
                     onSelect={(e) => e.preventDefault()}
                   >
                     <FolderClosedGlyph />
-                    <span className="min-w-0 flex-1 truncate text-left">{folderTitle}</span>
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {folderScopeLoading ? null : folderTitle}
+                    </span>
                     <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="mx-1 my-1" />

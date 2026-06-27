@@ -263,6 +263,9 @@ function FolderRowSurface({
       <div
         className={cn(
           "flex h-full min-h-[56px] items-center gap-0 rounded-xl border border-border bg-background pl-0 pr-4",
+          "transition-[color,box-shadow,border-color]",
+          isEditing &&
+            "focus-within:border-accent focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
           className,
         )}
       >

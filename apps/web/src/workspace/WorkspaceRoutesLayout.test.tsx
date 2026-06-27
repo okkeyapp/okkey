@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   logout: vi.fn(),
   folderTree: [] as Array<{ id: string; label: string; children?: Array<{ id: string; label: string }> }>,
   foldersLoading: false,
+  foldersBootstrapped: false,
   core: null as null | {
     listWorkspaces: ReturnType<typeof vi.fn>;
     listWorkspaceVaults: ReturnType<typeof vi.fn>;
@@ -43,6 +44,7 @@ vi.mock("../folders/WorkspaceFoldersContext", () => ({
   useWorkspaceFoldersState: () => ({
     folderTree: mocks.folderTree,
     loading: mocks.foldersLoading,
+    bootstrapped: mocks.foldersBootstrapped,
     error: null,
     syncVersion: 0,
     createFolder: vi.fn(),
@@ -144,6 +146,7 @@ describe("WorkspaceRoutesLayout", () => {
     mocks.logout.mockReset();
     mocks.folderTree = [];
     mocks.foldersLoading = false;
+    mocks.foldersBootstrapped = false;
     mocks.listWorkspaces.mockResolvedValue([workspace]);
     mocks.listWorkspaceVaults.mockResolvedValue([]);
     mocks.core = {
@@ -185,6 +188,7 @@ describe("WorkspaceRoutesLayout", () => {
   });
 
   it("removes unknown folder query param after folders load", async () => {
+    mocks.foldersBootstrapped = true;
     renderWorkspaceShell(`${ITEMS_PATH}?${FOLDER_QUERY_PARAM}=missing-folder`);
 
     await flushReactEffects();
@@ -213,7 +217,18 @@ describe("WorkspaceRoutesLayout", () => {
     expect(search).toContain(`${VAULT_QUERY_PARAM}=vault-1`);
   });
 
+  it("keeps folder query param before folders bootstrap completes", async () => {
+    mocks.foldersBootstrapped = false;
+    renderWorkspaceShell(`${ITEMS_PATH}?${FOLDER_QUERY_PARAM}=folder-1`);
+
+    await flushReactEffects();
+
+    const search = screen.getByTestId("search-query").textContent ?? "";
+    expect(search).toContain(`${FOLDER_QUERY_PARAM}=folder-1`);
+  });
+
   it("keeps known folder query param", async () => {
+    mocks.foldersBootstrapped = true;
     mocks.folderTree = [{ id: "folder-1", label: "Docs" }];
 
     renderWorkspaceShell(`${ITEMS_PATH}?${FOLDER_QUERY_PARAM}=folder-1`);

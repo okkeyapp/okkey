@@ -27,6 +27,32 @@ export function flattenWorkspaceFolders(
   });
 }
 
+type FolderPathLookupNode = {
+  id: string;
+  label: string;
+  children?: readonly FolderPathLookupNode[];
+};
+
+export function findWorkspaceFolderPathById(
+  nodes: readonly FolderPathLookupNode[],
+  folderId: string,
+  parentPath = "",
+): string {
+  for (const node of nodes) {
+    const path = parentPath ? `${parentPath} / ${node.label}` : node.label;
+    if (node.id === folderId) {
+      return path;
+    }
+    if (node.children?.length) {
+      const nested = findWorkspaceFolderPathById(node.children, folderId, path);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return "";
+}
+
 export function workspaceFolderIdExists(
   nodes: readonly WorkspaceFolderNode[],
   folderId: string,
@@ -40,6 +66,28 @@ export function workspaceFolderIdExists(
     }
   }
   return false;
+}
+
+function workspaceFolderSubtreeContainsId(
+  nodes: readonly WorkspaceFolderNode[],
+  folderId: string,
+): boolean {
+  for (const node of nodes) {
+    if (node.id === folderId) {
+      return true;
+    }
+    if (node.children?.length && workspaceFolderSubtreeContainsId(node.children, folderId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function shouldDefaultOpenFolderBranch(node: WorkspaceFolderNode, activeFolderId: string): boolean {
+  if (!activeFolderId || !node.children?.length) {
+    return false;
+  }
+  return workspaceFolderSubtreeContainsId(node.children, activeFolderId);
 }
 
 export function folderPathExists(folders: readonly FlatWorkspaceFolder[], query: string): boolean {
@@ -74,11 +122,13 @@ export function toSidebarFolderTree(
     const children = node.children?.length
       ? toSidebarFolderTree(node.children, toPath, activeFolderId)
       : undefined;
+    const defaultOpen = shouldDefaultOpenFolderBranch(node, activeFolderId);
     return {
       id: node.id,
       label: node.label,
       to: toPath(node.id),
       isActive: activeFolderId === node.id,
+      ...(defaultOpen ? { defaultOpen: true } : {}),
       ...(children ? { children } : {}),
     };
   });

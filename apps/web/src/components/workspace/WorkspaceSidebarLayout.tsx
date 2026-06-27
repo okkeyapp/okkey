@@ -61,6 +61,8 @@ export type WorkspaceSidebarLayoutProps = {
   itemsListVaults?: readonly { id: string; name: string; isPersonal: boolean }[];
   /** `/items` left pane: set false until vault list fetch finished (placeholder label for vault scope). */
   itemsListVaultsLoaded?: boolean;
+  /** `/items` left pane: set false until folder sync bootstrap finished (placeholder label for folder scope). */
+  itemsListFoldersLoaded?: boolean;
   /** `/items` left pane: folder labels (same tree as sidebar when wired). */
   itemsListFolderTree?: readonly OkkeySidebarFolderTreeNode[];
 };
@@ -152,6 +154,7 @@ export default function WorkspaceSidebarLayout({
   itemsListVaults,
   itemsListVaultsLoaded,
   itemsListFolderTree,
+  itemsListFoldersLoaded,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -228,6 +231,7 @@ export default function WorkspaceSidebarLayout({
                     vaults={itemsListVaults ?? []}
                     folderTree={itemsListFolderTree ?? []}
                     itemsListVaultsLoaded={itemsListVaultsLoaded}
+                    itemsListFoldersLoaded={itemsListFoldersLoaded}
                   />
                 </aside>
                 <div
