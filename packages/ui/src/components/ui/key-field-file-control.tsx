@@ -74,6 +74,7 @@ export type KeyFieldFileControlProps = {
   onValidationErrorChange?: (hasError: boolean) => void;
   onOpen?: () => void;
   className?: string;
+  uploadLabel?: string;
 };
 
 function FileThumbnail({
@@ -116,6 +117,7 @@ export function KeyFieldFileControl({
   onValidationErrorChange,
   onOpen,
   className,
+  uploadLabel = "Upload file",
 }: KeyFieldFileControlProps) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -254,7 +256,7 @@ export function KeyFieldFileControl({
           <>
             <div className="flex items-center gap-2">
               <UploadFileIcon className="size-6 shrink-0" />
-              <span className="text-sm font-medium">Upload file</span>
+              <span className="text-sm font-medium">{uploadLabel}</span>
             </div>
             <p className={cn("text-xs", hasValidationError ? "text-destructive" : "text-muted-foreground")}>{uploadHint}</p>
           </>

@@ -4,6 +4,7 @@ export { formatEmailMessage, type EmailMessageValues } from "./email-format.js";
 export type { WebLocale, WebMessageValues } from "./web-format.js";
 export {
   formatWebMessage,
+  getWebMessagePattern,
   getWebLocaleNativeName,
   isWebLocale,
   WEB_LOCALES,

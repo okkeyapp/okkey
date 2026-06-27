@@ -3,7 +3,9 @@ import type { Vault } from "@okkey/types";
 import { Input } from "@okkey/ui";
 import { useMemo, useState } from "react";
 
+import { useLocale } from "../../locale/LocaleContext";
 import { KeyFormEditor } from "../key-form/KeyFormEditor";
+import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
 import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
 import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
@@ -21,6 +23,7 @@ type NewItemFormProps = {
 };
 
 export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaultsListReady }: NewItemFormProps) {
+  const { locale } = useLocale();
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
   const [recordName, setRecordName] = useState("");
@@ -31,6 +34,8 @@ export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaul
     () => (category ? getDefaultSectionsForCategory(category.id) : []),
     [category],
   );
+  const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+  const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
 
   if (!category) {
     return null;
@@ -61,6 +66,8 @@ export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaul
         initialSections={initialSections}
         addSectionLabel={t("web.newItemPopup.addSectionWithField")}
         addFieldLabel={t("web.newItemPopup.addField")}
+        fieldTypes={keyFormFieldTypes}
+        messages={keyFormMessages}
       />
 
       <NewItemTagsSection tags={tags} onTagsChange={setTags} t={t} />

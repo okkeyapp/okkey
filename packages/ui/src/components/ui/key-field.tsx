@@ -179,6 +179,18 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   valueClassName?: string;
   controlButtonClassName?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
+  addressFieldPlaceholders?: {
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+  };
+  addressSearchCountriesPlaceholder?: string;
+  addressNoCountriesFoundMessage?: string;
+  recoveryCodesPlaceholder?: string;
+  fileUploadLabel?: string;
+  valuePlaceholder?: string;
 };
 
 export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
@@ -230,6 +242,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       valueClassName,
       controlButtonClassName,
       dragHandleProps,
+      addressFieldPlaceholders,
+      addressSearchCountriesPlaceholder,
+      addressNoCountriesFoundMessage,
+      recoveryCodesPlaceholder,
+      fileUploadLabel,
+      valuePlaceholder,
       draggable,
       onDragStart,
       onDragEnd,
@@ -735,13 +753,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     ref={setValueTextareaRef}
                     value={draftValue}
                     rows={2}
+                    placeholder={valuePlaceholder}
                     onChange={handleValueChange}
                     onFocus={() => {
                       setIsValueFocused(true);
                       resizeTextarea();
                     }}
                     onBlur={() => setIsValueFocused(false)}
-                    className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
+                    className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 ) : recoveryCodesValue ? (
                   <KeyFieldRecoveryCodesInput
@@ -756,6 +775,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       resizeTextarea();
                     }}
                     onBlur={() => setIsValueFocused(false)}
+                    placeholder={recoveryCodesPlaceholder ?? valuePlaceholder}
                   />
                 ) : fileValue ? (
                   <KeyFieldFileInput
@@ -767,6 +787,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onUploadFile={onFileUpload}
                     uploadConstraints={fileUploadConstraints}
                     onValidationErrorChange={setFileValidationError}
+                    uploadLabel={fileUploadLabel}
                   />
                 ) : addressValue ? (
                   <KeyFieldAddressInput
@@ -778,6 +799,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     }}
                     onFocus={() => setIsValueFocused(true)}
                     onBlur={() => setIsValueFocused(false)}
+                    fieldPlaceholders={addressFieldPlaceholders}
+                    searchCountriesPlaceholder={addressSearchCountriesPlaceholder}
+                    noCountriesFoundMessage={addressNoCountriesFoundMessage}
                   />
                 ) : dateValue ? (
                   <KeyFieldDateInput
@@ -789,15 +813,17 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     }}
                     onFocus={handleDateInputFocus}
                     onBlur={handleDateInputBlur}
+                    placeholder={valuePlaceholder}
                   />
                 ) : (
                   <input
                     ref={valueInputRef}
                     value={shouldConcealValue ? concealedValue : draftValue}
+                    placeholder={shouldConcealValue && draftValue.length > 0 ? undefined : valuePlaceholder}
                     onChange={handleValueChange}
                     onFocus={() => setIsValueFocused(true)}
                     onBlur={() => setIsValueFocused(false)}
-                    className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none"
+                    className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 )
               ) : recoveryCodesValue ? (

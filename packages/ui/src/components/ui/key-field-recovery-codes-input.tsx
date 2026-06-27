@@ -23,6 +23,7 @@ export type KeyFieldRecoveryCodesInputProps = {
   onBlur?: () => void;
   textareaRef?: React.Ref<HTMLTextAreaElement>;
   className?: string;
+  placeholder?: string;
 };
 
 function editorLinesFromValue(value: string): KeyFieldRecoveryCode[] {
@@ -59,6 +60,7 @@ export function KeyFieldRecoveryCodesInput({
   onBlur,
   textareaRef,
   className,
+  placeholder = "One recovery code per line",
 }: KeyFieldRecoveryCodesInputProps) {
   const [lines, setLines] = React.useState<KeyFieldRecoveryCode[]>(() => editorLinesFromValue(value));
   const internalTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -209,7 +211,7 @@ export function KeyFieldRecoveryCodesInput({
         ref={setTextareaRef}
         value={textareaValue}
         rows={Math.max(2, lines.length)}
-        placeholder="One recovery code per line"
+        placeholder={placeholder}
         onChange={handleTextareaChange}
         onKeyDown={handleTextareaKeyDown}
         onPaste={handleTextareaPaste}

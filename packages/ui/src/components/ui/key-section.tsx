@@ -56,6 +56,8 @@ export type KeySectionProps = Omit<React.ComponentPropsWithoutRef<"section">, "t
   onAddField?: (type: KeyFieldTypeOption) => void;
   headerActions?: React.ReactNode;
   dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
+  sectionTitlePlaceholder?: string;
+  editSectionTitleAriaLabel?: string;
 };
 
 export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
@@ -74,6 +76,8 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
       onAddField,
       headerActions,
       dragHandleProps,
+      sectionTitlePlaceholder = "Add title",
+      editSectionTitleAriaLabel = "Edit section title",
       children,
       draggable,
       onDragStart,
@@ -152,7 +156,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 {isEditingTitle ? (
                   <input
                     value={draftTitle}
-                    placeholder="Add title"
+                    placeholder={sectionTitlePlaceholder}
                     onChange={(event) => setDraftTitle(event.target.value)}
                     onBlur={commitTitle}
                     onKeyDown={(event) => {
@@ -176,7 +180,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                       !title && "text-muted-foreground",
                     )}
                   >
-                    {title || "Add title"}
+                    {title || sectionTitlePlaceholder}
                   </h3>
                 )}
                 {canEditTitle && !isEditingTitle ? (
@@ -189,7 +193,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                       variant === "additional" && "hover:!bg-card",
                     )}
                     onClick={() => setIsEditingTitle(true)}
-                    aria-label="Редактировать название секции"
+                    aria-label={editSectionTitleAriaLabel}
                   >
                     <PencilIcon className="size-3.5" />
                   </Button>

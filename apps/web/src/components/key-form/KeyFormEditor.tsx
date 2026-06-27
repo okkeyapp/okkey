@@ -46,7 +46,6 @@ import {
   getKeyFieldRecoveryCodesRemainingCount,
   getKeyFieldRecoveryCodesUsedCount,
   isValidKeyFieldDateValue,
-  keyFieldTypeOptions,
   markFirstUnusedKeyFieldRecoveryCodeUsed,
   parseKeyFieldAddressValue,
   parseKeyFieldRecoveryCodesValue,
@@ -58,6 +57,14 @@ import {
   type KeyFieldFileValue,
 } from "@okkey/ui";
 import { deleteDevKeyFieldFile, uploadDevKeyFieldFile } from "../../api/key-field-files";
+import {
+  englishKeyFieldTypes,
+  englishKeyFormEditorMessages,
+  formatKeyFormMessage,
+  type CrackTimeLabelKey,
+  type KeyFormEditorMessages,
+  type PasswordStrengthLabelKey,
+} from "./keyFormI18n";
 
 export type KeyFormEditorSectionVariant = "primary" | "additional";
 
@@ -83,6 +90,8 @@ export type KeyFormEditorProps = {
   mode?: KeyFormMode;
   addSectionLabel?: string;
   addFieldLabel?: string;
+  fieldTypes?: readonly KeyFieldTypeOption[];
+  messages?: KeyFormEditorMessages;
   className?: string;
 };
 
@@ -91,8 +100,6 @@ type DemoSectionVariant = KeyFormEditorSectionVariant;
 type DemoField = KeyFormEditorField;
 
 type DemoSection = KeyFormEditorSection;
-
-const englishKeyFieldTypeOptions = keyFieldTypeOptions;
 
 type SortableItemData =
   | {
@@ -413,18 +420,18 @@ function KeyCounter({
 }
 
 type PasswordStrength = {
-  label: string;
+  labelKey: PasswordStrengthLabelKey;
   value: number;
   tone: "success" | "warning" | "danger";
   entropyBits: number;
 };
 
-const passwordStrengthTextClassName: Record<PasswordStrength["label"], string> = {
-  Weak: "text-destructive",
-  Fair: "text-amber-600",
-  Good: "text-amber-600",
-  Strong: "text-lime-600",
-  Excellent: "text-lime-700",
+const passwordStrengthTextClassName: Record<PasswordStrengthLabelKey, string> = {
+  weak: "text-destructive",
+  fair: "text-amber-600",
+  good: "text-amber-600",
+  strong: "text-lime-600",
+  excellent: "text-lime-700",
 };
 
 function getPasswordEntropyBits(password: string): number {
@@ -467,34 +474,34 @@ function getPasswordStrength(password: string): PasswordStrength | null {
   const entropyBits = getPasswordEntropyBits(password);
   const value = Math.min(10, Math.max(1, Math.round(entropyBits / 8)));
   if (entropyBits < 36) {
-    return { label: "Weak", value, tone: "danger", entropyBits };
+    return { labelKey: "weak", value, tone: "danger", entropyBits };
   }
   if (entropyBits < 50) {
-    return { label: "Fair", value, tone: "warning", entropyBits };
+    return { labelKey: "fair", value, tone: "warning", entropyBits };
   }
   if (entropyBits < 64) {
-    return { label: "Good", value, tone: "warning", entropyBits };
+    return { labelKey: "good", value, tone: "warning", entropyBits };
   }
   if (entropyBits < 80) {
-    return { label: "Strong", value, tone: "success", entropyBits };
+    return { labelKey: "strong", value, tone: "success", entropyBits };
   }
-  return { label: "Excellent", value, tone: "success", entropyBits };
+  return { labelKey: "excellent", value, tone: "success", entropyBits };
 }
 
-function estimatePasswordCrackTime(password: string): string {
+function estimatePasswordCrackTimeKey(password: string): CrackTimeLabelKey {
   if (!password) {
-    return "Instantly";
+    return "instantly";
   }
 
   const entropyBits = getPasswordEntropyBits(password);
-  if (entropyBits < 28) return "Instantly";
-  if (entropyBits < 36) return "Hours";
-  if (entropyBits < 44) return "Days";
-  if (entropyBits < 52) return "Months";
-  if (entropyBits < 60) return "Years";
-  if (entropyBits < 72) return "Decades";
-  if (entropyBits < 84) return "Centuries";
-  return "Forever";
+  if (entropyBits < 28) return "instantly";
+  if (entropyBits < 36) return "hours";
+  if (entropyBits < 44) return "days";
+  if (entropyBits < 52) return "months";
+  if (entropyBits < 60) return "years";
+  if (entropyBits < 72) return "decades";
+  if (entropyBits < 84) return "centuries";
+  return "forever";
 }
 
 function normalizePasswordGeneratorPreferences(value: unknown): PasswordGeneratorPreferences {
@@ -530,7 +537,12 @@ function loadPasswordGeneratorPreferences(): PasswordGeneratorPreferences {
   }
 }
 
-function metaForField(type: string, sectionVariant: DemoSectionVariant, value?: ReactNode): ReactNode {
+function metaForField(
+  type: string,
+  sectionVariant: DemoSectionVariant,
+  messages: KeyFormEditorMessages,
+  value?: ReactNode,
+): ReactNode {
   if (type === "password") {
     const strength = typeof value === "string" ? getPasswordStrength(value) : null;
     if (!strength) {
@@ -539,7 +551,7 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant, value?: 
 
     return (
       <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={strength.value} total={10} tone={strength.tone}>
-        {strength.label}
+        {messages.passwordStrengthLabels[strength.labelKey]}
       </KeyCounter>
     );
   }
@@ -564,14 +576,14 @@ function metaForField(type: string, sectionVariant: DemoSectionVariant, value?: 
         tone={allUsed ? "danger" : remainingCount <= total / 2 ? "warning" : "success"}
         exhausted={allUsed}
       >
-        {usedCount} of {total}
+        {formatKeyFormMessage(messages.recoveryCodesCounter, { used: usedCount, total })}
       </KeyCounter>
     );
   }
   return null;
 }
 
-function generatePassword(settings: PasswordGeneratorSettings, length = 20): string {
+function generatePassword(settings: PasswordGeneratorSettings, length: number): string {
   const enabledSets = (Object.keys(settings) as Array<keyof PasswordGeneratorSettings>)
     .filter((key) => settings[key])
     .map((key) => passwordGeneratorCharacterSets[key]);
@@ -950,12 +962,25 @@ function formatPhoneValue(value: string): string {
 
   const countryCode = getPhoneCountryCode(digits);
   const nationalNumber = digits.slice(countryCode.length);
+  const prefix = `${hasPlus ? "+" : ""}${countryCode}`;
+
+  if (countryCode === "1") {
+    const area = nationalNumber.slice(0, 3);
+    const exchange = nationalNumber.slice(3, 6);
+    const subscriber = nationalNumber.slice(6, 10);
+    const rest = nationalNumber.slice(10);
+    const areaPart = area ? `(${area}${area.length === 3 ? ")" : ""}` : "";
+    const localPart = [exchange, subscriber ? `-${subscriber}` : ""].join("");
+    const parts = [areaPart, localPart, rest].filter(Boolean);
+
+    return `${prefix}${parts.length > 0 ? " " : ""}${parts.join(" ")}`.trimEnd();
+  }
+
   const area = nationalNumber.slice(0, 3);
   const first = nationalNumber.slice(3, 6);
   const second = nationalNumber.slice(6, 8);
   const third = nationalNumber.slice(8, 10);
   const rest = nationalNumber.slice(10);
-  const prefix = `${hasPlus ? "+" : ""}${countryCode}`;
   const areaPart = area ? `(${area}${area.length === 3 ? ")" : ""}` : "";
   const localPart = [first, second ? `-${second}` : "", third ? `-${third}` : ""].join("");
   const parts = [areaPart, localPart, rest].filter(Boolean);
@@ -1011,6 +1036,10 @@ type SortableFieldProps = {
   onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
   statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
+  messages: KeyFormEditorMessages;
+  addressFieldPlaceholders?: KeyFormEditorMessages["address"];
+  recoveryCodesPlaceholder?: string;
+  fileUploadLabel?: string;
 };
 
 function SortableField({
@@ -1045,6 +1074,10 @@ function SortableField({
   onFileDelete,
   statusOverlayLabel,
   onCopyAction,
+  messages,
+  addressFieldPlaceholders,
+  recoveryCodesPlaceholder,
+  fileUploadLabel,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
@@ -1077,7 +1110,7 @@ function SortableField({
       onFileDelete={onFileDelete}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
-      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant)}
+      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined)}
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
@@ -1103,8 +1136,8 @@ function SortableField({
       }
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       copyValue={copyValue ?? field.copyValue}
-      copyLabel={copyLabel}
-      copySuccessLabel={copySuccessLabel}
+      copyLabel={copyLabel ?? messages.copy}
+      copySuccessLabel={copySuccessLabel ?? messages.copied}
       statusOverlayLabel={statusOverlayLabel}
       copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
       copyIconPosition={field.type === "url" ? "end" : undefined}
@@ -1131,6 +1164,12 @@ function SortableField({
       onCopyAction={onCopyAction}
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
+      addressFieldPlaceholders={addressFieldPlaceholders ?? messages.address}
+      addressSearchCountriesPlaceholder={(addressFieldPlaceholders ?? messages.address).searchCountries}
+      addressNoCountriesFoundMessage={(addressFieldPlaceholders ?? messages.address).noCountriesFound}
+      recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
+      fileUploadLabel={fileUploadLabel ?? messages.file.upload}
+      valuePlaceholder={messages.fieldPlaceholders[field.type]}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
   );
@@ -1141,6 +1180,8 @@ type SortableSectionProps = {
   mode: KeyFormMode;
   fieldTypes: readonly KeyFieldTypeOption[];
   addFieldLabel: string;
+  sectionTitlePlaceholder: string;
+  editSectionTitleAriaLabel: string;
   onAddField?: (type: KeyFieldTypeOption) => void;
   onTitleChange: (title: string) => void;
   children: ReactNode;
@@ -1151,6 +1192,8 @@ function SortableSection({
   mode,
   fieldTypes,
   addFieldLabel,
+  sectionTitlePlaceholder,
+  editSectionTitleAriaLabel,
   onAddField,
   onTitleChange,
   children,
@@ -1177,6 +1220,8 @@ function SortableSection({
       reorderable
       fieldTypes={fieldTypes}
       addFieldLabel={addFieldLabel}
+      sectionTitlePlaceholder={sectionTitlePlaceholder}
+      editSectionTitleAriaLabel={editSectionTitleAriaLabel}
       className={cn(isDragging && "relative z-10 opacity-0")}
       style={style}
       onAddField={onAddField}
@@ -1193,8 +1238,12 @@ export function KeyFormEditor({
   mode = "edit",
   addSectionLabel = "Add section with field",
   addFieldLabel = "Add field",
+  fieldTypes: fieldTypesProp,
+  messages: messagesProp,
   className,
 }: KeyFormEditorProps) {
+  const messages = messagesProp ?? englishKeyFormEditorMessages;
+  const fieldTypes = fieldTypesProp ?? englishKeyFieldTypes;
   const [sections, setSections] = useState<DemoSection[]>(() => [...initialSections]);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -1214,8 +1263,7 @@ export function KeyFormEditor({
   const [isGeneratedPasswordCopied, setIsGeneratedPasswordCopied] = useState(false);
   const nextIdRef = useRef(1);
   const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fieldTypes = useMemo(() => englishKeyFieldTypeOptions, []);
-  const urlFieldTypes = useMemo(() => englishKeyFieldTypeOptions.filter((type) => type.id === "url"), []);
+  const urlFieldTypes = useMemo(() => fieldTypes.filter((type) => type.id === "url"), [fieldTypes]);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -1305,7 +1353,7 @@ export function KeyFormEditor({
     return {
       id,
       type: type.id,
-      label: type.label.toLowerCase(),
+      label: messages.fieldLabels[type.id] ?? type.label.toLowerCase(),
       value: initialValue,
       copyValue: "",
       editableLabel: true,
@@ -1457,13 +1505,13 @@ export function KeyFormEditor({
     }
 
     const options: Array<{ key: keyof PasswordGeneratorSettings; label: string }> = [
-      { key: "uppercase", label: "A-Z" },
-      { key: "lowercase", label: "a-z" },
-      { key: "numbers", label: "0-9" },
-      { key: "symbols", label: "!@#$%^&*" },
+      { key: "uppercase", label: messages.passwordGenerator.uppercase },
+      { key: "lowercase", label: messages.passwordGenerator.lowercase },
+      { key: "numbers", label: messages.passwordGenerator.numbers },
+      { key: "symbols", label: messages.passwordGenerator.symbols },
     ];
     const generatedStrength = getPasswordStrength(generatedPassword);
-    const crackTime = estimatePasswordCrackTime(generatedPassword);
+    const crackTimeKey = estimatePasswordCrackTimeKey(generatedPassword);
 
     return (
       <KeyFieldOverlayPanel data-password-generator-panel className="w-[420px]">
@@ -1488,8 +1536,12 @@ export function KeyFormEditor({
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-medium text-foreground">Characters: {passwordGeneratorLength}</span>
-                <span className="text-xs text-muted-foreground">4-128</span>
+                <span className="font-medium text-foreground">
+                  {formatKeyFormMessage(messages.passwordGenerator.charactersTemplate, {
+                    count: passwordGeneratorLength,
+                  })}
+                </span>
+                <span className="text-xs text-muted-foreground">{messages.passwordGenerator.lengthRange}</span>
               </div>
               <Slider
                 value={[passwordGeneratorLength]}
@@ -1497,7 +1549,7 @@ export function KeyFormEditor({
                 max={128}
                 step={1}
                 onValueChange={(value) => updatePasswordGeneratorLength(value[0] ?? passwordGeneratorLength)}
-                aria-label="Password length"
+                aria-label={messages.passwordGenerator.lengthAria}
               />
             </div>
           </div>
@@ -1517,13 +1569,13 @@ export function KeyFormEditor({
                       "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
                       section.variant === "additional" && "hover:!bg-secondary",
                     )}
-                    aria-label="Copy generated password"
+                    aria-label={messages.passwordGenerator.copyGeneratedAria}
                     onClick={copyGeneratedPassword}
                   >
                     {isGeneratedPasswordCopied ? <CopySuccessIcon className="size-4" /> : <CopyIcon className="size-4" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{isGeneratedPasswordCopied ? "Copied" : "Copy"}</TooltipContent>
+                <TooltipContent>{isGeneratedPasswordCopied ? messages.copied : messages.copy}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1535,47 +1587,51 @@ export function KeyFormEditor({
                       "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
                       section.variant === "additional" && "hover:!bg-secondary",
                     )}
-                    aria-label="Regenerate password"
+                    aria-label={messages.passwordGenerator.regenerateAria}
                     onClick={regeneratePassword}
                   >
                     <RegeneratePasswordIcon className="size-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Regenerate</TooltipContent>
+                <TooltipContent>{messages.passwordGenerator.regenerate}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
 
           <div className="flex items-center justify-between gap-3 px-3 text-sm">
             <span className="min-w-0 truncate text-muted-foreground">
-              Strength:{" "}
+              {messages.passwordGenerator.strength}{" "}
               {generatedStrength ? (
-                <span className={cn("font-medium", passwordStrengthTextClassName[generatedStrength.label])}>
-                  {generatedStrength.label}
+                <span className={cn("font-medium", passwordStrengthTextClassName[generatedStrength.labelKey])}>
+                  {messages.passwordStrengthLabels[generatedStrength.labelKey]}
                 </span>
               ) : (
-                <span className="font-medium text-muted-foreground">Weak</span>
+                <span className="font-medium text-muted-foreground">
+                  {messages.passwordStrengthLabels.weak}
+                </span>
               )}
             </span>
             <span className="shrink-0 text-muted-foreground">
-              Crack time:{" "}
+              {messages.passwordGenerator.crackTime}{" "}
               <span
                 className={cn(
                   "font-medium",
-                  generatedStrength ? passwordStrengthTextClassName[generatedStrength.label] : "text-muted-foreground",
+                  generatedStrength
+                    ? passwordStrengthTextClassName[generatedStrength.labelKey]
+                    : "text-muted-foreground",
                 )}
               >
-                {crackTime}
+                {messages.crackTimeLabels[crackTimeKey]}
               </span>
             </span>
           </div>
 
           <div className="mt-3 flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={closePasswordGenerator}>
-              Cancel
+              {messages.passwordGenerator.cancel}
             </Button>
             <Button type="button" onClick={() => insertGeneratedPassword(section.id, field.id)}>
-              Insert
+              {messages.passwordGenerator.insert}
             </Button>
           </div>
         </div>
@@ -1645,7 +1701,7 @@ export function KeyFormEditor({
     const isRecoveryCodesRevealed = field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
-    const fieldMeta = metaForField(field.type, section.variant, valueForField(section, field));
+    const fieldMeta = metaForField(field.type, section.variant, valueForField(section, field), messages);
     if (!canEdit) {
       const showRecoveryCodesMeta = field.type === "recovery-codes" && !isRecoveryCodesRevealed;
       return (field.type === "password" || showRecoveryCodesMeta) && fieldMeta ? (
@@ -1676,7 +1732,7 @@ export function KeyFormEditor({
                     (isFieldMenuOpen || isPasswordGeneratorOpen) &&
                       "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
                   )}
-                  aria-label={`${field.label} settings`}
+                  aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
                 >
                   <GearIcon className="size-4" />
                 </Button>
@@ -1684,11 +1740,11 @@ export function KeyFormEditor({
               <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
                 <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
                   {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
-                  {isPasswordVisible ? "Hide password" : "Show password"}
+                  {isPasswordVisible ? messages.hidePassword : messages.showPassword}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openPasswordGenerator(field.id)}>
                   <GeneratePasswordIcon className="size-4" />
-                  Generate password
+                  {messages.generatePassword}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1708,7 +1764,7 @@ export function KeyFormEditor({
                   section.variant === "additional" && "hover:!bg-card",
                   isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
                 )}
-                aria-label={`${field.label} settings`}
+                aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
               </Button>
@@ -1716,7 +1772,7 @@ export function KeyFormEditor({
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
               <DropdownMenuItem onSelect={() => resetTotpSecret(section.id, field.id)}>
                 <EnterTotpSecretIcon className="size-4" />
-                Enter new TOTP secret
+                {messages.enterNewTotpSecret}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1735,7 +1791,7 @@ export function KeyFormEditor({
                   section.variant === "additional" && "hover:!bg-card",
                   isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
                 )}
-                aria-label={`${field.label} settings`}
+                aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
               </Button>
@@ -1743,7 +1799,7 @@ export function KeyFormEditor({
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
               <DropdownMenuItem onSelect={() => togglePhoneMask(field.id)}>
                 {unmaskedPhoneIds.has(field.id) ? <EnableMaskIcon className="size-4" /> : <DisableMaskIcon className="size-4" />}
-                {unmaskedPhoneIds.has(field.id) ? "Enable mask" : "Disable mask"}
+                {unmaskedPhoneIds.has(field.id) ? messages.enableMask : messages.disableMask}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1762,7 +1818,7 @@ export function KeyFormEditor({
                   section.variant === "additional" && "hover:!bg-card",
                   isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
                 )}
-                aria-label={`${field.label} settings`}
+                aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
               </Button>
@@ -1770,17 +1826,17 @@ export function KeyFormEditor({
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1">
               <DropdownMenuItem onSelect={() => toggleMultilineCopy(field.id)}>
                 {disabledMultilineCopyIds.has(field.id) ? <EnableCopyIcon className="size-4" /> : <DisableCopyIcon className="size-4" />}
-                {disabledMultilineCopyIds.has(field.id) ? "Enable full text copy" : "Disable full text copy"}
+                {disabledMultilineCopyIds.has(field.id) ? messages.enableFullTextCopy : messages.disableFullTextCopy}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : field.secret ? (
-          <ActionButton label="Show value" sectionVariant={section.variant}>
+          <ActionButton label={messages.showValue} sectionVariant={section.variant}>
             <EyeIcon className="size-4" />
           </ActionButton>
         ) : null}
         {canEdit ? (
-          <ActionButton label="Delete field" destructive sectionVariant={section.variant} onClick={() => removeField(section.id, field.id)}>
+          <ActionButton label={messages.deleteField} destructive sectionVariant={section.variant} onClick={() => removeField(section.id, field.id)}>
             <TrashIcon className="size-4" />
           </ActionButton>
         ) : null}
@@ -1989,7 +2045,7 @@ export function KeyFormEditor({
             type="button"
             variant="outline"
             size="iconSm"
-            aria-label={`${field.label} settings`}
+            aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
           >
             <SettingsIcon />
           </Button>
@@ -1998,22 +2054,22 @@ export function KeyFormEditor({
           {field.type === "password" ? (
             <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
               {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
-              {isPasswordVisible ? "Hide password" : "Show password"}
+              {isPasswordVisible ? messages.hidePassword : messages.showPassword}
             </DropdownMenuItem>
           ) : field.type === "url" ? (
             <DropdownMenuItem onSelect={() => field.copyValue && navigator.clipboard.writeText(field.copyValue)}>
               <CopyIcon className="size-4" />
-              Copy
+              {messages.copy}
             </DropdownMenuItem>
           ) : field.type === "address" ? (
             <DropdownMenuItem onSelect={() => openAddressInMaps(field)}>
               <OpenMapIcon className="size-4" />
-              Open map
+              {messages.openMap}
             </DropdownMenuItem>
           ) : (
             <DropdownMenuItem onSelect={() => toggleRecoveryCodesVisibility(field.id)}>
               {isRecoveryCodesVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
-              {isRecoveryCodesVisible ? "Hide codes" : "Show codes"}
+              {isRecoveryCodesVisible ? messages.hideCodes : messages.showCodes}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -2063,9 +2119,10 @@ export function KeyFormEditor({
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
         copyValue={isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted || isFileField ? "" : copyValueForField(field)}
-        copyLabel={isWebsiteField ? "Open website" : undefined}
+        copyLabel={isWebsiteField ? messages.openWebsite : undefined}
         copySuccessLabel={isWebsiteField ? null : undefined}
-        statusOverlayLabel={isRecoveryCodesExhausted ? "All codes used" : undefined}
+        statusOverlayLabel={isRecoveryCodesExhausted ? messages.allCodesUsed : undefined}
+        messages={messages}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
@@ -2089,23 +2146,34 @@ export function KeyFormEditor({
   }
 
   function renderFieldPreview(section: DemoSection, field: DemoField, isDraggedField = false) {
+    const fieldValue = valueForField(section, field);
+    const isWebsiteField = field.type === "url";
+    const isRecoveryCodesField = field.type === "recovery-codes";
+    const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
+
     return (
       <KeyField
         label={field.label}
-        value={valueForField(section, field)}
+        value={fieldValue}
         mode={mode}
         editableLabel={field.editableLabel}
-        editableValue={typeof valueForField(section, field) === "string"}
+        editableValue={typeof fieldValue === "string"}
         multilineValue={field.type === "multiline-text"}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
-        recoveryCodesValue={field.type === "recovery-codes"}
-        recoveryCodesRevealed={field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id)}
+        recoveryCodesValue={isRecoveryCodesField}
+        recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={field.type === "file"}
         onFileUpload={handleKeyFieldFileUpload}
         onFileDelete={handleKeyFieldFileDelete}
+        addressFieldPlaceholders={messages.address}
+        addressSearchCountriesPlaceholder={messages.address.searchCountries}
+        addressNoCountriesFoundMessage={messages.address.noCountriesFound}
+        recoveryCodesPlaceholder={messages.recoveryCodesPlaceholder}
+        fileUploadLabel={messages.file.upload}
+        valuePlaceholder={messages.fieldPlaceholders[field.type]}
         reorderable
-        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant)}
+        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined)}
         actions={renderActions(section, field)}
         isInvalid={isInvalidField(field)}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
@@ -2126,8 +2194,8 @@ export function KeyFormEditor({
         }
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
         copyValue={field.copyValue}
-        copyLabel={field.type === "url" ? "Open website" : undefined}
-        copySuccessLabel={field.type === "url" ? null : undefined}
+        copyLabel={isWebsiteField ? messages.openWebsite : undefined}
+        copySuccessLabel={isWebsiteField ? null : undefined}
         copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
         copyIconPosition={field.type === "url" ? "end" : undefined}
         copyHoverClassName={
@@ -2176,7 +2244,9 @@ export function KeyFormEditor({
           editableTitle
           reorderable
           fieldTypes={section.id === "websites" ? urlFieldTypes : fieldTypes}
-          addFieldLabel={section.id === "websites" ? "Add URL" : addFieldLabel}
+          addFieldLabel={section.id === "websites" ? messages.addUrl : addFieldLabel}
+          sectionTitlePlaceholder={messages.sectionTitlePlaceholder}
+          editSectionTitleAriaLabel={messages.editSectionTitleAria}
           onAddField={() => undefined}
           className="rounded-xl shadow-lg"
           style={activeDrag.width ? { width: activeDrag.width } : undefined}
@@ -2223,7 +2293,9 @@ export function KeyFormEditor({
                   section={section}
                   mode={mode}
                   fieldTypes={addableFieldTypes}
-                  addFieldLabel={section.id === "websites" ? "Add URL" : addFieldLabel}
+                  addFieldLabel={section.id === "websites" ? messages.addUrl : addFieldLabel}
+                  sectionTitlePlaceholder={messages.sectionTitlePlaceholder}
+                  editSectionTitleAriaLabel={messages.editSectionTitleAria}
                   onAddField={(type) => addField(section.id, type)}
                   onTitleChange={(title) => updateSectionTitle(section.id, title)}
                 >
@@ -2242,7 +2314,9 @@ export function KeyFormEditor({
                 reorderable
                 isFieldDragging={activeDrag?.type === "field" && activeDrag.sectionId === section.id}
                 fieldTypes={addableFieldTypes}
-                addFieldLabel={section.id === "websites" ? "Add URL" : addFieldLabel}
+                addFieldLabel={section.id === "websites" ? messages.addUrl : addFieldLabel}
+                sectionTitlePlaceholder={messages.sectionTitlePlaceholder}
+                editSectionTitleAriaLabel={messages.editSectionTitleAria}
                 onAddField={section.id === "websites" ? (type) => addField(section.id, type) : undefined}
                 onTitleChange={(title) => updateSectionTitle(section.id, title)}
               >

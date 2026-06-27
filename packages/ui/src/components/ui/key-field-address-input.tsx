@@ -21,13 +21,16 @@ export type KeyFieldAddressInputProps = {
   onBlur?: () => void;
   streetInputRef?: React.Ref<HTMLInputElement>;
   className?: string;
+  fieldPlaceholders?: Record<AddressFieldKey, string>;
+  searchCountriesPlaceholder?: string;
+  noCountriesFoundMessage?: string;
 };
 
 type AddressFieldKey = keyof KeyFieldAddressValue;
 
 const addressFieldOrder: AddressFieldKey[] = ["street", "city", "state", "postalCode"];
 
-const addressFieldPlaceholders: Record<AddressFieldKey, string> = {
+const defaultAddressFieldPlaceholders: Record<AddressFieldKey, string> = {
   street: "Street",
   city: "City/Town/Suburb",
   state: "State/Province",
@@ -42,8 +45,12 @@ export function KeyFieldAddressInput({
   onBlur,
   streetInputRef,
   className,
+  fieldPlaceholders,
+  searchCountriesPlaceholder = "Search countries",
+  noCountriesFoundMessage = "No countries found",
 }: KeyFieldAddressInputProps) {
   const address = React.useMemo(() => parseKeyFieldAddressValue(value), [value]);
+  const addressFieldPlaceholders = fieldPlaceholders ?? defaultAddressFieldPlaceholders;
   const panelRef = React.useRef<HTMLDivElement>(null);
   const cityInputRef = React.useRef<HTMLInputElement>(null);
   const stateInputRef = React.useRef<HTMLInputElement>(null);
@@ -215,8 +222,8 @@ export function KeyFieldAddressInput({
         onOpenChange={handleCountryOpenChange}
         placeholder={addressFieldPlaceholders.country}
         variant="inline"
-        searchPlaceholder="Search countries"
-        searchEmptyMessage="No countries found"
+        searchPlaceholder={searchCountriesPlaceholder}
+        searchEmptyMessage={noCountriesFoundMessage}
         selectedLabel={address.country ? keyFieldCountries.find((country) => country.code === address.country)?.name : undefined}
       >
         <SearchableSelectTrigger

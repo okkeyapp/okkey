@@ -11,6 +11,19 @@ export type WebMessageValues = Record<
 >;
 
 /**
+ * Raw ICU pattern for a web UI key (no variable substitution). Use with runtime values via {@link formatWebMessage}.
+ */
+export function getWebMessagePattern(locale: WebLocale, messageKey: string): string {
+  const bundle = webBundles[locale] as Record<string, string>;
+  const primary = bundle[messageKey];
+  const pattern = primary ?? (webBundles.en as Record<string, string>)[messageKey];
+  if (pattern === undefined) {
+    throw new Error(`Missing web i18n key: ${messageKey}`);
+  }
+  return pattern;
+}
+
+/**
  * Format a web UI string (ICU MessageFormat). Falls back to English if the key is missing in the locale.
  */
 export function formatWebMessage(
