@@ -110,20 +110,24 @@ function filterRowsByFolder(rows: readonly ItemsListRecord[], folderId: string):
   return rows.filter((r) => r.folderId === folderId);
 }
 
-/** «Все записи» */
+/** «Все записи» — two-block records glyph (matches sidebar nav), green for filter menu. */
 function FilterIconAllRecords({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-[#22C55E]", className)} {...props}>
       <path
-        d="M2 4.33333C2 4.63975 2.06035 4.94317 2.17761 5.22626C2.29488 5.50935 2.46675 5.76658 2.68342 5.98325C2.90009 6.19992 3.15731 6.37179 3.44041 6.48905C3.7235 6.60631 4.02692 6.66667 4.33333 6.66667C4.63975 6.66667 4.94317 6.60631 5.22626 6.48905C5.50935 6.37179 5.76658 6.19992 5.98325 5.98325C6.19992 5.76658 6.37179 5.50935 6.48905 5.22626C6.60631 4.94317 6.66667 4.63975 6.66667 4.33333C6.66667 4.02692 6.60631 3.7235 6.48905 3.44041C6.37179 3.15731 6.19992 2.90009 5.98325 2.68342C5.76658 2.46675 5.50935 2.29488 5.22626 2.17761C4.94317 2.06035 4.63975 2 4.33333 2C4.02692 2 3.7235 2.06035 3.44041 2.17761C3.15731 2.29488 2.90009 2.46675 2.68342 2.68342C2.46675 2.90009 2.29488 3.15731 2.17761 3.44041C2.06035 3.7235 2 4.02692 2 4.33333Z"
+        d="M2.50001 3.83334C2.50001 3.47972 2.64048 3.14058 2.89053 2.89054C3.14058 2.64049 3.47972 2.50001 3.83334 2.50001L12.1667 2.49999C12.5203 2.49999 12.8594 2.64047 13.1095 2.89052C13.3595 3.14056 13.5 3.4797 13.5 3.83333V5.16666C13.5 5.52028 13.3595 5.85942 13.1095 6.10947C12.8594 6.35952 12.5203 6.49999 12.1667 6.49999L3.83334 6.50001C3.47972 6.50001 3.14058 6.35954 2.89053 6.10949C2.64048 5.85944 2.50001 5.5203 2.50001 5.16668V3.83334Z"
         stroke="currentColor"
+        strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M1.66663 14.0002H6.99996L4.33329 9.3335L1.66663 14.0002Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.33337 2L14 6.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.33337 6.66667L14 2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.33337 9.3335H14V14.0002H9.33337V9.3335Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M2.37801 10.8333C2.37801 10.4797 2.51848 10.1406 2.76853 9.89052C3.01858 9.64048 3.35772 9.5 3.71134 9.5L12.1667 9.5C12.5203 9.5 12.8594 9.64048 13.1095 9.89052C13.3595 10.1406 13.5 10.4797 13.5 10.8333V12.1667C13.5 12.5203 13.3595 12.8594 13.1095 13.1095C12.8594 13.3595 12.5203 13.5 12.1667 13.5H3.71134C3.35772 13.5 3.01858 13.3595 2.76853 13.1095C2.51848 12.8594 2.37801 12.5203 2.37801 12.1667V10.8333Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
