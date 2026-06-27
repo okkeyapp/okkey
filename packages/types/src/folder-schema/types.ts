@@ -40,6 +40,8 @@ export interface FolderPlaintextV2 {
   parentFolderId: EntityId | null;
   createdAtMs: number;
   updatedAtMs: number;
+  /** Sibling order under `parentFolderId` (0-based). */
+  sortOrder?: number;
   /** Tombstone for FOLDER_DELETE / FOLDER_UPDATE delete. */
   deleted?: boolean;
 }

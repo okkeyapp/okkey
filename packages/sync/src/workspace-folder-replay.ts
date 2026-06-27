@@ -159,7 +159,13 @@ export function buildFolderTreeFromFlat(
   const buildLevel = (parentId: string | null): WorkspaceFolderTreeNode[] => {
     const rows = childrenByParent.get(parentId) ?? [];
     return rows
-      .sort((a, b) => a.name.localeCompare(b.name) || a.folderId.localeCompare(b.folderId))
+      .sort((a, b) => {
+        const order = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        if (order !== 0) {
+          return order;
+        }
+        return a.name.localeCompare(b.name) || a.folderId.localeCompare(b.folderId);
+      })
       .map((row) => ({
         id: row.folderId,
         label: row.name,

@@ -245,12 +245,16 @@ export function createWorkspaceFoldersSyncController(input: {
       const key = await ensureMetadataKey();
       const nowMs = Date.now();
       const id = generateEntityId();
+      const rootSiblingCount = [...state.folders.values()].filter(
+        (folder) => folder.parentFolderId === null,
+      ).length;
       const folder: FolderPlaintextV2 = {
         schemaVersion: 2,
         folderId: id,
         workspaceId: input.workspaceId,
         name: trimmed,
         parentFolderId: null,
+        sortOrder: rootSiblingCount,
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
       };

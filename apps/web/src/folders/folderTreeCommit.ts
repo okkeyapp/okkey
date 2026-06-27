@@ -8,26 +8,36 @@ export type FolderRowSnapshot = {
   folderId: string;
   name: string;
   parentFolderId: string | null;
+  sortOrder: number;
 };
+
+export function compareFolderSiblingOrder(a: FolderPlaintextV2, b: FolderPlaintextV2): number {
+  const order = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  if (order !== 0) {
+    return order;
+  }
+  return a.name.localeCompare(b.name) || a.folderId.localeCompare(b.folderId);
+}
 
 export function workspaceTreeToRowMap(tree: readonly WorkspaceFolderNode[]): Map<string, FolderRowSnapshot> {
   const map = new Map<string, FolderRowSnapshot>();
 
   function walk(nodes: readonly WorkspaceFolderNode[], parentId: string | null) {
-    for (const node of nodes) {
+    nodes.forEach((node, index) => {
       const name = node.label.trim();
       if (!name) {
-        continue;
+        return;
       }
       map.set(node.id, {
         folderId: node.id,
         name,
         parentFolderId: parentId,
+        sortOrder: index,
       });
       if (node.children?.length) {
         walk(node.children, node.id);
       }
-    }
+    });
   }
 
   walk(tree, null);
@@ -45,7 +55,7 @@ export function rowsToWorkspaceTree(rows: Map<string, FolderPlaintextV2>): Works
   const build = (parentId: string | null): WorkspaceFolderNode[] => {
     const level = childrenByParent.get(parentId) ?? [];
     return level
-      .sort((a, b) => a.name.localeCompare(b.name) || a.folderId.localeCompare(b.folderId))
+      .sort(compareFolderSiblingOrder)
       .map((row) => {
         const children = build(row.folderId);
         return children.length
@@ -83,19 +93,25 @@ export function diffWorkspaceFolderTrees(input: {
           workspaceId: input.workspaceId,
           name: snapshot.name,
           parentFolderId: snapshot.parentFolderId,
+          sortOrder: snapshot.sortOrder,
           createdAtMs: input.nowMs,
           updatedAtMs: input.nowMs,
         },
       });
       continue;
     }
-    if (existing.name !== snapshot.name || existing.parentFolderId !== snapshot.parentFolderId) {
+    if (
+      existing.name !== snapshot.name ||
+      existing.parentFolderId !== snapshot.parentFolderId ||
+      (existing.sortOrder ?? 0) !== snapshot.sortOrder
+    ) {
       mutations.push({
         kind: "update",
         folder: {
           ...existing,
           name: snapshot.name,
           parentFolderId: snapshot.parentFolderId,
+          sortOrder: snapshot.sortOrder,
           updatedAtMs: input.nowMs,
         },
       });

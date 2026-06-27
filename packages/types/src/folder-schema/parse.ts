@@ -93,6 +93,12 @@ export function parseFolderPlaintextV2Utf8(bytes: Uint8Array): FolderPlaintextV2
   if (typeof raw.createdAtMs !== "number" || !Number.isFinite(raw.createdAtMs)) return undefined;
   if (typeof raw.updatedAtMs !== "number" || !Number.isFinite(raw.updatedAtMs)) return undefined;
   if (raw.deleted !== undefined && typeof raw.deleted !== "boolean") return undefined;
+  if (
+    raw.sortOrder !== undefined &&
+    (typeof raw.sortOrder !== "number" || !Number.isInteger(raw.sortOrder) || raw.sortOrder < 0)
+  ) {
+    return undefined;
+  }
 
   return {
     schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
@@ -102,6 +108,7 @@ export function parseFolderPlaintextV2Utf8(bytes: Uint8Array): FolderPlaintextV2
     parentFolderId: (raw.parentFolderId as EntityId | null) ?? null,
     createdAtMs: raw.createdAtMs,
     updatedAtMs: raw.updatedAtMs,
+    ...(typeof raw.sortOrder === "number" ? { sortOrder: raw.sortOrder } : {}),
     ...(raw.deleted === true ? { deleted: true } : {}),
   };
 }
