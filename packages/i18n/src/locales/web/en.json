@@ -111,7 +111,7 @@
   "web.newItemPopup.folderSearchEmpty": "No folders found",
   "web.newItemPopup.createFolder": "Create folder \"{name}\"",
   "web.foldersPopup.title": "Folders",
-  "web.foldersPopup.description": "Folders help you organize items and are visible only to you. Create as many folders as you need, reorder them, and nest them without limits. Changes to folder structure do not affect your items.",
+  "web.foldersPopup.description": "Folders help you organize items. Create as many folders as you need, reorder them, and nest them without limits. Changes to folder structure do not affect your items. Only you can see your folders.",
   "web.foldersPopup.addFolder": "Add folder",
   "web.foldersPopup.cancel": "Cancel",
   "web.foldersPopup.save": "Save",

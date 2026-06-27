@@ -603,7 +603,7 @@ Per-vault encrypted event stream. Server stores encrypted payloads in canonical 
 
 Allowed `eventType` values (must match exactly):
 
-`ITEM_CREATE`, `ITEM_UPDATE`, `ITEM_DELETE`, `FOLDER_CREATE`, `FOLDER_UPDATE`, `FOLDER_DELETE`, `ITEM_FOLDER_ASSIGN`, `VAULT_CREATE`, `VAULT_SHARE`, `VAULT_KEY_ROTATION`, `DEVICE_ADD`, `DEVICE_REMOVE`
+`ITEM_CREATE`, `ITEM_UPDATE`, `ITEM_DELETE`, `VAULT_CREATE`, `VAULT_SHARE`, `VAULT_KEY_ROTATION`, `DEVICE_ADD`, `DEVICE_REMOVE`
 
 ### `GET /vaults/:vaultId/events?afterVersion=<n>`
 
@@ -665,7 +665,7 @@ Appends one event if `baseVersion` matches current stream head.
 | `encryptedBlob` | object (`EncryptedBlob`) | Yes | Canonical encrypted envelope; `payload` decoded length must be &gt; 0 and ≤ 512 KiB. |
 | `signature` | object (`HybridSignatureEnvelope`) | Conditional | Required for critical event types `VAULT_SHARE` and `VAULT_KEY_ROTATION`; optional for other event types. Context must be `sync.append`. |
 | `baseVersion` | integer | Yes | Non-negative; must equal current latest version for append. |
-| `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE` and `FOLDER_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
+| `idempotencyKey` | string (UUID) | **Required** for `ITEM_CREATE`; optional otherwise | Dedup per vault; same key returns the stored event without a new version. |
 | `clientCreatedAt` | string | No | ISO-8601 client timestamp (optional). |
 
 **Response `201`:** Single event object (same shape as an element of `events` in the GET response).
@@ -674,7 +674,7 @@ Appends one event if `baseVersion` matches current stream head.
 
 | `error` | HTTP | When |
 |---------|------|------|
-| `SYNC_BAD_REQUEST` | 400 | Invalid JSON; missing fields; invalid `baseVersion` type/range; `ITEM_CREATE` or `FOLDER_CREATE` without `idempotencyKey`; invalid UUID for `idempotencyKey`; invalid `clientCreatedAt`. |
+| `SYNC_BAD_REQUEST` | 400 | Invalid JSON; missing fields; invalid `baseVersion` type/range; `ITEM_CREATE` without `idempotencyKey`; invalid UUID for `idempotencyKey`; invalid `clientCreatedAt`. |
 | `SYNC_INVALID_EVENT_TYPE` | 400 | Unknown `eventType`. |
 | `SYNC_INVALID_PAYLOAD` | 400 | Not valid base64 or empty payload. |
 | `CRYPTO_PROFILE_NOT_ALLOWED` | 400 | Requested crypto profile is forbidden by environment policy. `details` may include `reason: "policy"`, `requestedVersion`, `allowedVersions`. |
@@ -688,7 +688,55 @@ Appends one event if `baseVersion` matches current stream head.
 | `VAULT_NOT_FOUND` | 404 | Unknown vault. |
 | `ACCESS_DENIED` | 403 | User cannot read vault. |
 
-**Idempotency:** If `idempotencyKey` is set and an event with the same `(vaultId, idempotencyKey)` exists, the server returns that event (`201`) without appending again — use for `ITEM_CREATE` and `FOLDER_CREATE` retries.
+**Idempotency:** If `idempotencyKey` is set and an event with the same `(vaultId, idempotencyKey)` exists, the server returns that event (`201`) without appending again — use for `ITEM_CREATE` retries.
+
+### `GET /workspaces/:workspaceId/personal-events?afterVersion=<n>`
+
+**Auth:** Bearer required.
+
+Per-user workspace personal metadata stream (folders, item→folder assignments). Same envelope shape as vault events except `workspaceId` instead of `vaultId`.
+
+**Response `200`:**
+
+```json
+{
+  "workspaceId": "uuid",
+  "userId": "uuid",
+  "afterVersion": 0,
+  "events": [
+    {
+      "id": "uuid",
+      "workspaceId": "uuid",
+      "actorId": "uuid",
+      "eventType": "FOLDER_CREATE",
+      "encryptedBlob": {
+        "crypto_version": 2,
+        "algorithm": "opaque",
+        "payload": "base64",
+        "meta": {}
+      },
+      "idempotencyKey": "uuid-or-null",
+      "clientCreatedAt": null,
+      "version": 1,
+      "createdAt": "2026-01-01T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+Allowed `eventType` values: `FOLDER_CREATE`, `FOLDER_UPDATE`, `FOLDER_DELETE`, `ITEM_FOLDER_ASSIGN`.
+
+**Errors:** `SYNC_BAD_REQUEST`, `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`.
+
+### `POST /workspaces/:workspaceId/personal-events`
+
+Appends one personal metadata event if `baseVersion` matches the current stream head for `(workspaceId, userId)`.
+
+**Request body:** Same fields as vault append (`eventType`, `encryptedBlob`, `baseVersion`, optional `idempotencyKey`, optional `clientCreatedAt`). `idempotencyKey` is **required** for `FOLDER_CREATE`.
+
+**Response `201`:** Single event object.
+
+**Errors:** Same family as vault append (`VERSION_MISMATCH`, `SYNC_INVALID_EVENT_TYPE`, `PAYLOAD_TOO_LARGE`, etc.) plus `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`.
 
 ---
 

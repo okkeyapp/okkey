@@ -72,13 +72,23 @@ export {
   ITEM_CATEGORY_DEFINITIONS,
 } from "./item-schema/index.js";
 
-export type { FolderPlaintextV1, ItemFolderAssignPlaintextV1 } from "./folder-schema/types.js";
+export type {
+  FolderPlaintextV1,
+  FolderPlaintextV2,
+  ItemFolderAssignPlaintextV1,
+  ItemFolderAssignPlaintextV2,
+} from "./folder-schema/types.js";
 export {
   FOLDER_PLAINTEXT_SCHEMA_VERSION,
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
   parseFolderPlaintextUtf8,
+  parseFolderPlaintextV2Utf8,
   parseItemFolderAssignPlaintextUtf8,
+  parseItemFolderAssignPlaintextV2Utf8,
   createFolderDeleteTombstoneV1,
+  createFolderDeleteTombstoneV2,
 } from "./folder-schema/index.js";
 
 export interface Device {
@@ -316,6 +326,27 @@ export interface SyncEventsListResponseDto {
   vaultId: EntityId;
   afterVersion: number;
   events: SyncEventWireDto[];
+}
+
+/** Workspace personal metadata event on the wire. */
+export interface WorkspacePersonalEventWireDto {
+  id: EntityId;
+  workspaceId: EntityId;
+  actorId: EntityId;
+  eventType: string;
+  encryptedBlob: EncryptedBlobDto;
+  idempotencyKey: EntityId | null;
+  clientCreatedAt: string | null;
+  version: number;
+  createdAt: string;
+}
+
+/** `GET /workspaces/:workspaceId/personal-events` success body. */
+export interface WorkspacePersonalEventsListResponseDto {
+  workspaceId: EntityId;
+  userId: EntityId;
+  afterVersion: number;
+  events: WorkspacePersonalEventWireDto[];
 }
 
 /** `POST /vaults/:vaultId/events` request body. */

@@ -12,6 +12,8 @@ import type {
   SyncAppendEventRequestDto,
   SyncEventWireDto,
   SyncEventsListResponseDto,
+  WorkspacePersonalEventWireDto,
+  WorkspacePersonalEventsListResponseDto,
   VaultKeyGetResponseDto,
   VaultShareRevokeRequestDto,
   VaultShareUpsertRequestDto,
@@ -243,6 +245,27 @@ export class CoreApiClient {
     this.assertStrictWritePathCapability(body.encryptedBlob, "sync.append");
     return this.api.post<SyncEventWireDto>(
       `/vaults/${encodeURIComponent(vaultId)}/events`,
+      body,
+    );
+  }
+
+  listWorkspacePersonalEvents(
+    workspaceId: string,
+    afterVersion = 0,
+  ): Promise<WorkspacePersonalEventsListResponseDto> {
+    const q = new URLSearchParams({ afterVersion: String(afterVersion) });
+    return this.api.get<WorkspacePersonalEventsListResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/personal-events?${q.toString()}`,
+    );
+  }
+
+  appendWorkspacePersonalEvent(
+    workspaceId: string,
+    body: SyncAppendEventRequestDto,
+  ): Promise<WorkspacePersonalEventWireDto> {
+    this.assertStrictWritePathCapability(body.encryptedBlob, "workspace-personal-sync.append");
+    return this.api.post<WorkspacePersonalEventWireDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/personal-events`,
       body,
     );
   }

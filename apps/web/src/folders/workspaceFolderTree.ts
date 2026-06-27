@@ -15,22 +15,6 @@ export type FlatWorkspaceFolder = {
 
 export const NO_FOLDER_VALUE = "__none__";
 
-export function defaultWorkspaceFolderTree(): WorkspaceFolderNode[] {
-  return [
-    {
-      id: "1156820912149001",
-      label: "Моя папка",
-      children: [
-        {
-          id: "1156820912149002",
-          label: "Web",
-          children: [{ id: "1156820912149003", label: "Дизайн" }],
-        },
-      ],
-    },
-  ];
-}
-
 export function flattenWorkspaceFolders(
   nodes: readonly WorkspaceFolderNode[],
   parentPath = "",

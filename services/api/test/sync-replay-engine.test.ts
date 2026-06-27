@@ -189,66 +189,27 @@ test("SyncReplayEngine deduplicates repeated event id", async () => {
   assert.equal(state.lastAppliedVersion, 1);
 });
 
-test("SyncReplayEngine applies folder and assignment only for current actor", async () => {
+test("SyncReplayEngine quarantines legacy folder events on vault stream", async () => {
   const vaultId = testEntityId();
-  const currentUserId = testEntityId();
-  const otherUserId = testEntityId();
-  const folderId = testEntityId();
-  const itemId = testEntityId();
-  const now = Date.now();
-
-  const folder = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-    folderId,
+  const engine = new SyncReplayEngine({
     vaultId,
-    name: "Private",
-    parentFolderId: null,
-    createdAtMs: now,
-    updatedAtMs: now,
-  };
-  const assign = {
-    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
-    itemId,
-    vaultId,
-    folderId,
-  };
+    unknownEventPolicy: "quarantine",
+  });
 
-  const state = await replayVaultEvents(
-    [
-      baseWire({
-        vaultId,
-        actorId: otherUserId,
-        eventType: "FOLDER_CREATE",
-        version: 1,
-        payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-        encryptedPayload: opaqueJson(folder),
-      }),
-      baseWire({
-        vaultId,
-        actorId: currentUserId,
-        eventType: "FOLDER_CREATE",
-        version: 2,
-        payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-        encryptedPayload: opaqueJson(folder),
-      }),
-      baseWire({
-        vaultId,
-        actorId: currentUserId,
-        eventType: "ITEM_FOLDER_ASSIGN",
-        version: 3,
-        payloadSchemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
-        encryptedPayload: opaqueJson(assign),
-      }),
-    ],
-    {
+  await engine.applyEvents([
+    baseWire({
       vaultId,
-      currentUserId,
-      decryptPersonalMetadataPayload: async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
-    },
-  );
+      actorId: testEntityId(),
+      eventType: "FOLDER_CREATE",
+      version: 1,
+      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+      encryptedPayload: opaqueJson({}),
+    }),
+  ]);
 
-  assert.equal(state.folders.get(folderId)?.name, "Private");
-  assert.equal(state.itemFolder.get(itemId), folderId);
+  const state = engine.getStateSnapshot();
+  assert.equal(state.quarantined.length, 1);
+  assert.equal(state.quarantined[0]?.reason, "UNKNOWN_EVENT_TYPE");
 });
 
 test("SyncReplayEngine supports unknown event quarantine policy and fetch loop", async () => {
@@ -391,8 +352,6 @@ test("fixture stream JSON replays to expected materialized state", async () => {
   const expected = await readJsonFixture<{
     lastAppliedVersion: number;
     items: Array<{ itemId: string; title: string }>;
-    folders: Array<{ folderId: string; name: string }>;
-    itemFolder: Array<{ itemId: string; folderId: string | null }>;
     vaultLifecycle: { latestShareVersion: number | null };
     deviceLifecycle: { latestAddVersion: number | null };
     quarantinedReasons: string[];
@@ -408,17 +367,9 @@ test("fixture stream JSON replays to expected materialized state", async () => {
   const items = [...state.items.values()]
     .map((it) => ({ itemId: it.itemId, title: it.title }))
     .sort((a, b) => a.itemId.localeCompare(b.itemId));
-  const folders = [...state.folders.values()]
-    .map((f) => ({ folderId: f.folderId, name: f.name }))
-    .sort((a, b) => a.folderId.localeCompare(b.folderId));
-  const itemFolder = [...state.itemFolder.entries()]
-    .map(([itemId, folderId]) => ({ itemId, folderId }))
-    .sort((a, b) => a.itemId.localeCompare(b.itemId));
 
   assert.equal(state.lastAppliedVersion, expected.lastAppliedVersion);
   assert.deepEqual(items, expected.items);
-  assert.deepEqual(folders, expected.folders);
-  assert.deepEqual(itemFolder, expected.itemFolder);
   assert.equal(state.vaultLifecycle.latestShareVersion, expected.vaultLifecycle.latestShareVersion);
   assert.equal(state.deviceLifecycle.latestAddVersion, expected.deviceLifecycle.latestAddVersion);
   assert.deepEqual(

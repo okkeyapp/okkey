@@ -2,30 +2,35 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import {
-  replayFolderAndAssignEvents,
+  replayWorkspaceFolderEvents,
   wouldIntroduceFolderParentCycle,
 } from "../../../packages/sync/dist/index.js";
 import {
-  FOLDER_PLAINTEXT_SCHEMA_VERSION,
-  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
 } from "../../../packages/types/dist/index.js";
-import type { SyncEventWireDto } from "../../../packages/types/dist/index.js";
+import type { WorkspacePersonalEventWireDto } from "../../../packages/types/dist/index.js";
 
 function opaqueJson(obj: unknown): string {
   return Buffer.from(JSON.stringify(obj), "utf8").toString("base64");
 }
 
 function baseWire(
-  partial: Partial<SyncEventWireDto> & Pick<SyncEventWireDto, "eventType" | "version" | "actorId">,
-): SyncEventWireDto {
+  partial: Partial<WorkspacePersonalEventWireDto> &
+    Pick<WorkspacePersonalEventWireDto, "eventType" | "version" | "actorId">,
+): WorkspacePersonalEventWireDto {
   const id = partial.id ?? testEntityId();
   return {
     id,
-    vaultId: partial.vaultId ?? "1156820912149101",
+    workspaceId: partial.workspaceId ?? "1156820912149101",
     actorId: partial.actorId,
     eventType: partial.eventType,
-    encryptedPayload: partial.encryptedPayload ?? opaqueJson({}),
-    payloadSchemaVersion: partial.payloadSchemaVersion ?? 1,
+    encryptedBlob: partial.encryptedBlob ?? {
+      crypto_version: 2,
+      algorithm: "opaque",
+      payload: opaqueJson({}),
+      meta: {},
+    },
     idempotencyKey: partial.idempotencyKey ?? null,
     clientCreatedAt: partial.clientCreatedAt ?? null,
     version: partial.version,
@@ -48,17 +53,17 @@ test("wouldIntroduceFolderParentCycle detects self and ancestor loop", () => {
   assert.equal(wouldIntroduceFolderParentCycle(m, c, a), false);
 });
 
-test("replayFolderAndAssignEvents applies folder and assign for matching actor", async () => {
-  const vaultId = testEntityId();
+test("replayWorkspaceFolderEvents applies folder and assign events", async () => {
+  const workspaceId = testEntityId();
   const userId = testEntityId();
   const folderId = testEntityId();
   const itemId = testEntityId();
   const now = Date.now();
 
   const folderRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId,
-    vaultId,
+    workspaceId,
     name: "Work",
     parentFolderId: null,
     createdAtMs: now,
@@ -66,188 +71,287 @@ test("replayFolderAndAssignEvents applies folder and assign for matching actor",
   };
 
   const assignRow = {
-    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
     itemId,
-    vaultId,
+    workspaceId,
     folderId,
   };
 
-  const events: SyncEventWireDto[] = [
+  const events: WorkspacePersonalEventWireDto[] = [
     baseWire({
       eventType: "FOLDER_CREATE",
       actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(folderRow),
-      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+      workspaceId,
+      encryptedBlob: {
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: opaqueJson(folderRow),
+        meta: {},
+      },
       version: 1,
       idempotencyKey: testEntityId(),
     }),
     baseWire({
       eventType: "ITEM_FOLDER_ASSIGN",
       actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(assignRow),
-      payloadSchemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+      workspaceId,
+      encryptedBlob: {
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: opaqueJson(assignRow),
+        meta: {},
+      },
       version: 2,
     }),
   ];
 
-  const state = await replayFolderAndAssignEvents(events, vaultId, userId, async (b64) =>
+  const state = await replayWorkspaceFolderEvents(events, workspaceId, async (b64) =>
     Uint8Array.from(Buffer.from(b64, "base64")),
   );
   assert.equal(state.folders.get(folderId)?.name, "Work");
   assert.equal(state.itemFolder.get(itemId), folderId);
 });
 
-test("replayFolderAndAssignEvents skips events from other actors", async () => {
-  const vaultId = testEntityId();
+test("replayWorkspaceFolderEvents ignores other workspace ids", async () => {
+  const workspaceId = testEntityId();
+  const otherWorkspaceId = testEntityId();
   const userId = testEntityId();
-  const other = testEntityId();
   const folderId = testEntityId();
   const now = Date.now();
+
   const folderRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId,
-    vaultId,
-    name: "Hidden",
+    workspaceId: otherWorkspaceId,
+    name: "Foreign",
     parentFolderId: null,
     createdAtMs: now,
     updatedAtMs: now,
   };
 
-  const events: SyncEventWireDto[] = [
-    baseWire({
-      eventType: "FOLDER_CREATE",
-      actorId: other,
-      vaultId,
-      encryptedPayload: opaqueJson(folderRow),
-      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-      version: 1,
-      idempotencyKey: testEntityId(),
-    }),
-  ];
-
-  const state = await replayFolderAndAssignEvents(events, vaultId, userId, async (b64) =>
-    Uint8Array.from(Buffer.from(b64, "base64")),
+  const state = await replayWorkspaceFolderEvents(
+    [
+      baseWire({
+        eventType: "FOLDER_CREATE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(folderRow),
+          meta: {},
+        },
+        version: 1,
+      }),
+    ],
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
   );
+
   assert.equal(state.folders.size, 0);
 });
 
-test("replayFolderAndAssignEvents preserves nested parentFolderId", async () => {
-  const vaultId = testEntityId();
+test("replayWorkspaceFolderEvents supports nested folders", async () => {
+  const workspaceId = testEntityId();
   const userId = testEntityId();
   const parentId = testEntityId();
   const childId = testEntityId();
   const now = Date.now();
 
   const parentRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId: parentId,
-    vaultId,
-    name: "P",
+    workspaceId,
+    name: "Parent",
     parentFolderId: null,
     createdAtMs: now,
     updatedAtMs: now,
   };
   const childRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId: childId,
-    vaultId,
-    name: "C",
+    workspaceId,
+    name: "Child",
     parentFolderId: parentId,
     createdAtMs: now,
     updatedAtMs: now,
   };
 
-  const events: SyncEventWireDto[] = [
-    baseWire({
-      eventType: "FOLDER_CREATE",
-      actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(parentRow),
-      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-      version: 1,
-      idempotencyKey: testEntityId(),
-    }),
-    baseWire({
-      eventType: "FOLDER_CREATE",
-      actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(childRow),
-      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-      version: 2,
-      idempotencyKey: testEntityId(),
-    }),
-  ];
-
-  const state = await replayFolderAndAssignEvents(events, vaultId, userId, async (b64) =>
-    Uint8Array.from(Buffer.from(b64, "base64")),
+  const state = await replayWorkspaceFolderEvents(
+    [
+      baseWire({
+        eventType: "FOLDER_CREATE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(parentRow),
+          meta: {},
+        },
+        version: 1,
+      }),
+      baseWire({
+        eventType: "FOLDER_CREATE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(childRow),
+          meta: {},
+        },
+        version: 2,
+      }),
+    ],
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
   );
-  assert.equal(state.folders.get(parentId)?.name, "P");
+
   assert.equal(state.folders.get(childId)?.parentFolderId, parentId);
 });
 
-test("replayFolderAndAssignEvents clears assignments when folder is deleted", async () => {
-  const vaultId = testEntityId();
+test("replayWorkspaceFolderEvents delete clears assignments", async () => {
+  const workspaceId = testEntityId();
   const userId = testEntityId();
   const folderId = testEntityId();
   const itemId = testEntityId();
   const now = Date.now();
 
   const folderRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId,
-    vaultId,
-    name: "Tmp",
+    workspaceId,
+    name: "Temp",
     parentFolderId: null,
     createdAtMs: now,
     updatedAtMs: now,
+    deleted: true,
   };
   const assignRow = {
-    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
     itemId,
-    vaultId,
+    workspaceId,
     folderId,
   };
+
+  const state = await replayWorkspaceFolderEvents(
+    [
+      baseWire({
+        eventType: "FOLDER_CREATE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson({
+            ...folderRow,
+            deleted: undefined,
+          }),
+          meta: {},
+        },
+        version: 1,
+      }),
+      baseWire({
+        eventType: "ITEM_FOLDER_ASSIGN",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(assignRow),
+          meta: {},
+        },
+        version: 2,
+      }),
+      baseWire({
+        eventType: "FOLDER_DELETE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(folderRow),
+          meta: {},
+        },
+        version: 3,
+      }),
+    ],
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+  );
+
+  assert.equal(state.folders.has(folderId), false);
+  assert.equal(state.itemFolder.get(itemId), null);
+});
+
+test("replayWorkspaceFolderEvents applies delete on top of initial materialized state", async () => {
+  const workspaceId = testEntityId();
+  const userId = testEntityId();
+  const folderId = testEntityId();
+  const keepId = testEntityId();
+  const now = Date.now();
+
+  const initialFolders = new Map([
+    [
+      folderId,
+      {
+        schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+        folderId,
+        workspaceId,
+        name: "Gone",
+        parentFolderId: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      },
+    ],
+    [
+      keepId,
+      {
+        schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+        folderId: keepId,
+        workspaceId,
+        name: "Keep",
+        parentFolderId: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      },
+    ],
+  ]);
+
   const tombstone = {
-    ...folderRow,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+    folderId,
+    workspaceId,
     name: "",
+    parentFolderId: null,
     createdAtMs: 0,
     updatedAtMs: now + 1,
     deleted: true,
   };
 
-  const events: SyncEventWireDto[] = [
-    baseWire({
-      eventType: "FOLDER_CREATE",
-      actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(folderRow),
-      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-      version: 1,
-      idempotencyKey: testEntityId(),
-    }),
-    baseWire({
-      eventType: "ITEM_FOLDER_ASSIGN",
-      actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(assignRow),
-      payloadSchemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
-      version: 2,
-    }),
-    baseWire({
-      eventType: "FOLDER_DELETE",
-      actorId: userId,
-      vaultId,
-      encryptedPayload: opaqueJson(tombstone),
-      payloadSchemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
-      version: 3,
-    }),
-  ];
-
-  const state = await replayFolderAndAssignEvents(events, vaultId, userId, async (b64) =>
-    Uint8Array.from(Buffer.from(b64, "base64")),
+  const state = await replayWorkspaceFolderEvents(
+    [
+      baseWire({
+        eventType: "FOLDER_DELETE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(tombstone),
+          meta: {},
+        },
+        version: 2,
+      }),
+    ],
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+    1,
+    { folders: initialFolders, itemFolder: new Map() },
   );
+
   assert.equal(state.folders.has(folderId), false);
-  assert.equal(state.itemFolder.get(itemId), null);
+  assert.equal(state.folders.get(keepId)?.name, "Keep");
+  assert.equal(state.lastAppliedVersion, 2);
 });

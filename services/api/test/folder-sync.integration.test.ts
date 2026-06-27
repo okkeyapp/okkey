@@ -1,15 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
-import { replayFolderAndAssignEvents } from "../../../packages/sync/dist/index.js";
+import { replayWorkspaceFolderEvents } from "../../../packages/sync/dist/index.js";
 import {
-  FOLDER_PLAINTEXT_SCHEMA_VERSION,
-  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
 } from "../../../packages/types/dist/index.js";
 import { loadConfig } from "../src/config.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
-import { SyncService, SyncServiceError } from "../src/sync/service.ts";
-import { VaultService } from "../src/vault/service.ts";
+import {
+  WorkspacePersonalSyncService,
+  WorkspacePersonalSyncServiceError,
+} from "../src/workspace-personal-sync/service.ts";
 import {
   applyMigrations,
   cleanupUserData,
@@ -21,7 +23,6 @@ function encodeFolderOpaqueBase64(payload: unknown): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
 }
 
-/** Envelope crypto profile (v2 for new vaults); plaintext inside JSON has its own `schemaVersion`. */
 const FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION = 2;
 
 function mkBlobFromJson(payload: unknown, cryptoVersion: number) {
@@ -33,7 +34,33 @@ function mkBlobFromJson(payload: unknown, cryptoVersion: number) {
   };
 }
 
-test("integration: folder events append, idempotency, list, replay", async (t) => {
+function toWireEvents(
+  workspaceId: string,
+  listed: Array<{
+    id: string;
+    actorId: string;
+    eventType: string;
+    encryptedBlob: { crypto_version: number; payload: string };
+    idempotencyKey: string | null;
+    clientCreatedAt: string | null;
+    version: number;
+    createdAt: string;
+  }>,
+) {
+  return listed.map((event) => ({
+    id: event.id,
+    workspaceId,
+    actorId: event.actorId,
+    eventType: event.eventType,
+    encryptedBlob: event.encryptedBlob,
+    idempotencyKey: event.idempotencyKey,
+    clientCreatedAt: event.clientCreatedAt,
+    version: event.version,
+    createdAt: event.createdAt,
+  }));
+}
+
+test("integration: workspace personal folder events append, idempotency, list, replay", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
@@ -41,14 +68,9 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   const suffix = testEntityId();
   const email = `folder-sync-${suffix}@okkey.local`;
 
-  const syncService = new SyncService({
-    vaults: storage.repositories.vaults,
-    events: storage.repositories.events,
-  });
-
-  const vaultService = new VaultService({
-    vaults: storage.repositories.vaults,
+  const syncService = new WorkspacePersonalSyncService({
     workspaces: storage.repositories.workspaces,
+    events: storage.repositories.workspacePersonalEvents,
   });
 
   t.after(async () => {
@@ -68,24 +90,20 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   const workspaceId = wsRows[0]?.id;
   assert.ok(workspaceId);
 
-  const vaults = await vaultService.listWorkspaceVaults(workspaceId, userId);
-  assert.ok(vaults.length >= 1);
-  const vaultId = vaults[0].id;
-
   const folderId = testEntityId();
   const idem = testEntityId();
   const now = Date.now();
   const folderRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId,
-    vaultId,
+    workspaceId,
     name: "Docs",
     parentFolderId: null,
     createdAtMs: now,
     updatedAtMs: now,
   };
 
-  const created = await syncService.appendEvent(vaultId, userId, {
+  const created = await syncService.appendEvent(workspaceId, userId, {
     eventType: "FOLDER_CREATE",
     encryptedBlob: mkBlobFromJson(folderRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
@@ -95,7 +113,7 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
   assert.equal(created.version, 1);
   assert.equal(created.actorId, userId);
 
-  const retry = await syncService.appendEvent(vaultId, userId, {
+  const retry = await syncService.appendEvent(workspaceId, userId, {
     eventType: "FOLDER_CREATE",
     encryptedBlob: mkBlobFromJson(folderRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
@@ -106,38 +124,40 @@ test("integration: folder events append, idempotency, list, replay", async (t) =
 
   await assert.rejects(
     () =>
-      syncService.appendEvent(vaultId, userId, {
+      syncService.appendEvent(workspaceId, userId, {
         eventType: "FOLDER_CREATE",
         encryptedBlob: mkBlobFromJson(folderRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
         baseVersion: 0,
       }),
-    (e: unknown) => e instanceof SyncServiceError && e.code === "SYNC_BAD_REQUEST",
+    (e: unknown) => e instanceof WorkspacePersonalSyncServiceError && e.code === "SYNC_BAD_REQUEST",
   );
 
   const itemId = testEntityId();
   const assign = {
-    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
     itemId,
-    vaultId,
+    workspaceId,
     folderId,
   };
-  await syncService.appendEvent(vaultId, userId, {
+  await syncService.appendEvent(workspaceId, userId, {
     eventType: "ITEM_FOLDER_ASSIGN",
     encryptedBlob: mkBlobFromJson(assign, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 1,
   });
 
-  const listed = await syncService.listEvents(vaultId, userId, 0);
+  const listed = await syncService.listEvents(workspaceId, userId, 0);
   assert.equal(listed.length, 2);
 
-  const replay = await replayFolderAndAssignEvents(listed, vaultId, userId, async (b64) =>
-    Uint8Array.from(Buffer.from(b64, "base64")),
+  const replay = await replayWorkspaceFolderEvents(
+    toWireEvents(workspaceId, listed),
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
   );
   assert.equal(replay.folders.get(folderId)?.name, "Docs");
   assert.equal(replay.itemFolder.get(itemId), folderId);
 });
 
-test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", async (t) => {
+test("integration: nested workspace folders and VERSION_MISMATCH on stale baseVersion", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
@@ -145,14 +165,9 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   const suffix = testEntityId();
   const email = `folder-sync-nested-${suffix}@okkey.local`;
 
-  const syncService = new SyncService({
-    vaults: storage.repositories.vaults,
-    events: storage.repositories.events,
-  });
-
-  const vaultService = new VaultService({
-    vaults: storage.repositories.vaults,
+  const syncService = new WorkspacePersonalSyncService({
     workspaces: storage.repositories.workspaces,
+    events: storage.repositories.workspacePersonalEvents,
   });
 
   t.after(async () => {
@@ -172,23 +187,20 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   const workspaceId = wsRows[0]?.id;
   assert.ok(workspaceId);
 
-  const vaults = await vaultService.listWorkspaceVaults(workspaceId, userId);
-  const vaultId = vaults[0]!.id;
-
   const parentId = testEntityId();
   const childId = testEntityId();
   const now = Date.now();
 
   const parentRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId: parentId,
-    vaultId,
+    workspaceId,
     name: "Parent",
     parentFolderId: null,
     createdAtMs: now,
     updatedAtMs: now,
   };
-  await syncService.appendEvent(vaultId, userId, {
+  await syncService.appendEvent(workspaceId, userId, {
     eventType: "FOLDER_CREATE",
     encryptedBlob: mkBlobFromJson(parentRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 0,
@@ -196,30 +208,32 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
   });
 
   const childRow = {
-    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION,
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
     folderId: childId,
-    vaultId,
+    workspaceId,
     name: "Child",
     parentFolderId: parentId,
     createdAtMs: now,
     updatedAtMs: now,
   };
-  await syncService.appendEvent(vaultId, userId, {
+  await syncService.appendEvent(workspaceId, userId, {
     eventType: "FOLDER_CREATE",
     encryptedBlob: mkBlobFromJson(childRow, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 1,
     idempotencyKey: testEntityId(),
   });
 
-  const listedMid = await syncService.listEvents(vaultId, userId, 0);
+  const listedMid = await syncService.listEvents(workspaceId, userId, 0);
   assert.equal(listedMid.length, 2);
-  const replayMid = await replayFolderAndAssignEvents(listedMid, vaultId, userId, async (b64) =>
-    Uint8Array.from(Buffer.from(b64, "base64")),
+  const replayMid = await replayWorkspaceFolderEvents(
+    toWireEvents(workspaceId, listedMid),
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
   );
   assert.equal(replayMid.folders.get(childId)?.parentFolderId, parentId);
 
   const renamedParent = { ...parentRow, name: "ParentRenamed", updatedAtMs: now + 1 };
-  await syncService.appendEvent(vaultId, userId, {
+  await syncService.appendEvent(workspaceId, userId, {
     eventType: "FOLDER_UPDATE",
     encryptedBlob: mkBlobFromJson(renamedParent, FOLDER_SYNC_ENVELOPE_CRYPTO_VERSION),
     baseVersion: 2,
@@ -227,7 +241,7 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
 
   await assert.rejects(
     () =>
-      syncService.appendEvent(vaultId, userId, {
+      syncService.appendEvent(workspaceId, userId, {
         eventType: "FOLDER_UPDATE",
         encryptedBlob: mkBlobFromJson(
           {
@@ -239,13 +253,16 @@ test("integration: nested folders and VERSION_MISMATCH on stale baseVersion", as
         ),
         baseVersion: 2,
       }),
-    (e: unknown) => e instanceof SyncServiceError && e.code === "VERSION_MISMATCH",
+    (e: unknown) =>
+      e instanceof WorkspacePersonalSyncServiceError && e.code === "VERSION_MISMATCH",
   );
 
-  const listed = await syncService.listEvents(vaultId, userId, 0);
+  const listed = await syncService.listEvents(workspaceId, userId, 0);
   assert.equal(listed.length, 3);
-  const replay = await replayFolderAndAssignEvents(listed, vaultId, userId, async (b64) =>
-    Uint8Array.from(Buffer.from(b64, "base64")),
+  const replay = await replayWorkspaceFolderEvents(
+    toWireEvents(workspaceId, listed),
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
   );
   assert.equal(replay.folders.get(parentId)?.name, "ParentRenamed");
 });

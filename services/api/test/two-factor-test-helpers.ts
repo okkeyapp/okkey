@@ -56,6 +56,17 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0001);
   }
+
+  const personalEventsTable = await storage.postgres.query<{ exists: boolean }>(
+    "SELECT to_regclass('public.workspace_personal_events') IS NOT NULL AS exists",
+  );
+  if (!personalEventsTable[0]?.exists) {
+    const migration0002 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0002_workspace_personal_events.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0002);
+  }
 }
 
 export async function cleanupUserData(

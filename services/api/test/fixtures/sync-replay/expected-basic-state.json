@@ -6,18 +6,6 @@
       "title": "Email Account Updated"
     }
   ],
-  "folders": [
-    {
-      "folderId": "1156820912149104",
-      "name": "Work"
-    }
-  ],
-  "itemFolder": [
-    {
-      "itemId": "1156820912149103",
-      "folderId": "1156820912149104"
-    }
-  ],
   "vaultLifecycle": {
     "latestShareVersion": 5
   },
@@ -25,6 +13,8 @@
     "latestAddVersion": 6
   },
   "quarantinedReasons": [
+    "UNKNOWN_EVENT_TYPE",
+    "UNKNOWN_EVENT_TYPE",
     "UNKNOWN_EVENT_TYPE"
   ]
 }

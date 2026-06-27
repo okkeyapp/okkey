@@ -80,11 +80,19 @@ function FolderSelectCreateRow({
 }: {
   flatFolders: readonly FlatWorkspaceFolder[];
   createFolderLabel: (name: string) => string;
-  onCreateFolder: (name: string) => string;
+  onCreateFolder: (name: string) => string | Promise<string>;
 }) {
   const ctx = useSearchableSelectContext("FolderSelectCreateRow");
   const query = ctx.searchQuery.trim();
   const showCreate = query.length > 0 && !folderPathExists(flatFolders, query);
+
+  const applyCreated = (id: string | Promise<string>) => {
+    void Promise.resolve(id).then((resolved) => {
+      if (resolved) {
+        ctx.setValue(resolved);
+      }
+    });
+  };
 
   if (!showCreate) {
     return null;
@@ -95,14 +103,12 @@ function FolderSelectCreateRow({
       role="option"
       className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-2 text-sm text-foreground outline-none hover:bg-secondary hover:text-foreground"
       onClick={() => {
-        const id = onCreateFolder(query);
-        ctx.setValue(id);
+        applyCreated(onCreateFolder(query));
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          const id = onCreateFolder(query);
-          ctx.setValue(id);
+          applyCreated(onCreateFolder(query));
         }
       }}
       tabIndex={0}

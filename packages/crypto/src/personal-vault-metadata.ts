@@ -50,6 +50,28 @@ export async function derivePersonalVaultMetadataKey(
   return sha256(input);
 }
 
+/**
+ * Deterministic 32-byte key: SHA-256( C ‖ domain ‖ workspaceId UTF-8 ).
+ * Used for workspace-scoped personal folder metadata.
+ */
+export async function derivePersonalWorkspaceMetadataKey(
+  passwordShareC: Uint8Array,
+  workspaceId: string,
+): Promise<Uint8Array> {
+  await ensureWasm();
+  if (passwordShareC.length !== 32) {
+    throw new Error("passwordShareC must be 32 bytes");
+  }
+  const enc = new TextEncoder();
+  const domain = enc.encode("okkey-personal-workspace-metadata-key-v1|");
+  const wid = enc.encode(workspaceId);
+  const input = new Uint8Array(32 + domain.length + wid.length);
+  input.set(passwordShareC, 0);
+  input.set(domain, 32);
+  input.set(wid, 32 + domain.length);
+  return sha256(input);
+}
+
 export async function encryptPersonalVaultMetadataPayload(
   metadataKey: Uint8Array,
   plaintext: Uint8Array,

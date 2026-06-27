@@ -14,6 +14,7 @@ export type VaultUnlockTabRecord = {
   v: typeof VERSION;
   user_id: string;
   vault_key_b64: string;
+  password_share_c_b64?: string;
   last_activity_at: number;
 };
 
@@ -35,7 +36,11 @@ function parseRecord(raw: string | null): VaultUnlockTabRecord | null {
   }
 }
 
-export function persistVaultUnlockSession(userId: string, vaultKey: Uint8Array): void {
+export function persistVaultUnlockSession(
+  userId: string,
+  vaultKey: Uint8Array,
+  passwordShareC?: Uint8Array,
+): void {
   if (typeof sessionStorage === "undefined") {
     return;
   }
@@ -43,6 +48,7 @@ export function persistVaultUnlockSession(userId: string, vaultKey: Uint8Array):
     v: VERSION,
     user_id: userId,
     vault_key_b64: bytesToBase64(vaultKey),
+    ...(passwordShareC ? { password_share_c_b64: bytesToBase64(passwordShareC) } : {}),
     last_activity_at: Date.now(),
   };
   sessionStorage.setItem(VAULT_UNLOCK_TAB_KEY, JSON.stringify(rec));
@@ -66,7 +72,7 @@ export function touchVaultUnlockSession(userId: string): void {
 export function readVaultUnlockSessionIfFresh(
   userId: string,
   idleMs: number,
-): { vaultKey: Uint8Array; lastActivityAt: number } | null {
+): { vaultKey: Uint8Array; passwordShareC: Uint8Array | null; lastActivityAt: number } | null {
   if (typeof sessionStorage === "undefined") {
     return null;
   }
@@ -81,7 +87,10 @@ export function readVaultUnlockSessionIfFresh(
   }
   try {
     const vaultKey = base64ToBytes(rec.vault_key_b64);
-    return { vaultKey, lastActivityAt: rec.last_activity_at };
+    const passwordShareC = rec.password_share_c_b64
+      ? base64ToBytes(rec.password_share_c_b64)
+      : null;
+    return { vaultKey, passwordShareC, lastActivityAt: rec.last_activity_at };
   } catch {
     sessionStorage.removeItem(VAULT_UNLOCK_TAB_KEY);
     return null;
@@ -91,15 +100,17 @@ export function readVaultUnlockSessionIfFresh(
 /** Synchronous read on app startup (before first paint), default idle aligned with server. */
 export function readInitialTabVaultSession(userId: string): {
   vaultKey: Uint8Array | null;
+  passwordShareC: Uint8Array | null;
   lastActivityAt: number;
   unlocked: boolean;
 } {
   const r = readVaultUnlockSessionIfFresh(userId, DEFAULT_VAULT_IDLE_LOCK_MS);
   if (!r) {
-    return { vaultKey: null, lastActivityAt: Date.now(), unlocked: false };
+    return { vaultKey: null, passwordShareC: null, lastActivityAt: Date.now(), unlocked: false };
   }
   return {
     vaultKey: r.vaultKey,
+    passwordShareC: r.passwordShareC,
     lastActivityAt: r.lastActivityAt,
     unlocked: true,
   };

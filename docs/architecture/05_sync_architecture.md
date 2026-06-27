@@ -11,10 +11,10 @@ Goals:
 
 ## Core Model
 
-Sync stream scope: per vault.
+Vault items and lifecycle use **per-vault** streams. Personal folder metadata uses a separate **per-workspace, per-user** stream (`GET/POST /workspaces/:workspaceId/personal-events`).
 
-Every accepted event gets a strictly increasing `version` inside its vault stream.
-Clients rebuild vault state by replaying events in ascending `version`.
+Every accepted event gets a strictly increasing `version` inside its stream.
+Clients rebuild state by replaying events in ascending `version`.
 
 ```text
 append encrypted event
@@ -55,34 +55,35 @@ For integrity-critical operations, signature metadata is stored with event paylo
 
 ## Event Types (Core v1)
 
-**Items (ciphertext = item plaintext JSON, encrypted with VaultKey):**
+**Vault stream (`/vaults/:vaultId/events`):**
 
 - `ITEM_CREATE`
 - `ITEM_UPDATE`
 - `ITEM_DELETE`
-
-**Personal folder metadata (ciphertext encrypted with per-user metadata key — see below):**
-
-- `FOLDER_CREATE` — new folder row (`idempotencyKey` **required**, same semantics as `ITEM_CREATE`)
-- `FOLDER_UPDATE` — full folder row replace (rename and/or `parentFolderId` change); clients must reject moves that introduce a cycle in the folder tree before append
-- `FOLDER_DELETE` — remove folder from materialized state; items are **not** deleted; assignments pointing at this folder become “unassigned” (`null`) on replay
-- `ITEM_FOLDER_ASSIGN` — set or clear which folder contains an item for **this user** (`folderId: null` = vault root)
-
-**Other:**
-
 - `VAULT_CREATE`
 - `VAULT_SHARE`
 - `VAULT_KEY_ROTATION`
 - `DEVICE_ADD`
 - `DEVICE_REMOVE`
 
+**Workspace personal metadata stream (`/workspaces/:workspaceId/personal-events`) — per user, encrypted with personal metadata key:**
+
+- `FOLDER_CREATE` — new folder row (`idempotencyKey` **required**)
+- `FOLDER_UPDATE` — full folder row replace (rename and/or `parentFolderId` change); clients must reject moves that introduce a cycle before append
+- `FOLDER_DELETE` — remove folder from materialized state; items are **not** deleted; assignments pointing at this folder become “unassigned” (`null`) on replay
+- `ITEM_FOLDER_ASSIGN` — set or clear which folder contains an item for **this user** within the workspace (`folderId: null` = no folder)
+
+**Other (vault stream only):**
+
+- see vault lifecycle events above
+
 Unknown event types must be ignored safely by old clients if payload schema/version is unsupported.
 
 ### Personal metadata encryption (folders & assignments)
 
-- Payload JSON schemas: `@okkey/types` — `FolderPlaintextV1` / `ItemFolderAssignPlaintextV1` (`payloadSchemaVersion` **1** for both families on the wire).
-- Key: `derivePersonalVaultMetadataKey(passwordShareC, vaultId)` in `@okkey/crypto` (32-byte **C** from split-key registration + `vaultId`; **not** the shared VaultKey). Encrypt/decrypt: `encryptPersonalVaultMetadataPayload` / `decryptPersonalVaultMetadataPayload`.
-- Rationale: shared vault members all hold the same VaultKey for item ciphertext; personal folders must stay private per user while still using one vault stream and version counter.
+- Payload JSON schemas: `@okkey/types` — `FolderPlaintextV2` / `ItemFolderAssignPlaintextV2` (`schemaVersion` **2**).
+- Key: `derivePersonalWorkspaceMetadataKey(passwordShareC, workspaceId)` in `@okkey/crypto` (32-byte **C** from split-key registration + `workspaceId`; **not** the shared VaultKey). Encrypt/decrypt: `encryptPersonalVaultMetadataPayload` / `decryptPersonalVaultMetadataPayload`.
+- Scope: folders belong to a **workspace**, not a vault. Items from any vault in the workspace can be assigned to folders via `itemId`.
 
 ### Field sections and order inside an item
 
@@ -104,9 +105,9 @@ Requirements:
 - side effects are idempotent for repeated processing
 - signature policy (when enabled) must fail-fast for invalid or missing signatures on critical event types
 
-**`ITEM_*` replay:** decrypt with VaultKey; see `@okkey/sync` `replayItemPlaintextEvents`.
+**`ITEM_*` replay (vault stream):** decrypt with VaultKey; see `@okkey/sync` `replayItemPlaintextEvents`.
 
-**Folder / assignment replay:** `@okkey/sync` `replayFolderAndAssignEvents` — for each event, require `actorId === currentUserId` before decrypting (other users’ folder rows stay opaque). Decrypt with the personal metadata key; unsupported `payloadSchemaVersion` or malformed JSON is skipped (forward compatibility). Removing a folder clears `item → folder` mappings that referenced that folder id.
+**Folder / assignment replay (workspace personal stream):** `@okkey/sync` `replayWorkspaceFolderEvents` — decrypt with `derivePersonalWorkspaceMetadataKey`; unsupported `schemaVersion` or malformed JSON is skipped. Removing a folder clears `item → folder` mappings that referenced that folder id.
 
 ### Signature validation in replay (6.18)
 

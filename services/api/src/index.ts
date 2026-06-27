@@ -11,6 +11,7 @@ import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
+import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
 import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
@@ -93,6 +94,13 @@ async function main(): Promise<void> {
     config,
     log: logger,
   });
+  const workspacePersonalSyncService = new WorkspacePersonalSyncService({
+    workspaces: storage.repositories.workspaces,
+    events: storage.repositories.workspacePersonalEvents,
+    users: storage.repositories.users,
+    config,
+    log: logger,
+  });
   const capsuleService = new CapsuleService({
     db: storage.postgres,
     redis: storage.redis,
@@ -130,6 +138,7 @@ async function main(): Promise<void> {
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,
+    workspacePersonalSyncService,
     deviceService,
     sessionService,
     twoFactorService,

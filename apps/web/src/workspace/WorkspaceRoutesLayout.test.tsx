@@ -23,6 +23,8 @@ vi.mock("../auth/AuthVaultContext", () => ({
     userId: "user-1",
     profile: { email: "sasha@okkey.local", firstName: "Sasha", lastName: "Okkey" },
     logout: mocks.logout,
+    passwordShareC: new Uint8Array(32),
+    vaultUnlocked: true,
   }),
   useAuthenticatedCoreClient: () => mocks.core,
 }));
@@ -32,6 +34,36 @@ vi.mock("../locale/LocaleContext", () => ({
     locale: "en",
     t: (key: string, params?: Record<string, string>) => (params?.id ? `${key}:${params.id}` : key),
   }),
+}));
+
+vi.mock("../folders/WorkspaceFoldersContext", () => ({
+  WorkspaceFoldersProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useWorkspaceFoldersState: () => ({
+    folderTree: [],
+    loading: false,
+    error: null,
+    syncVersion: 0,
+    createFolder: vi.fn(),
+    commitFolderTree: vi.fn().mockResolvedValue(undefined),
+    assignItemToFolder: vi.fn(),
+  }),
+}));
+
+vi.mock("../components/items/NewItemPopup", () => ({
+  default: () => null,
+}));
+
+vi.mock("../components/folders/FoldersSettingsPopup", () => ({
+  default: () => null,
+}));
+
+vi.mock("../components/settings/SettingsPopup", () => ({
+  default: ({
+    children,
+  }: {
+    children: (args: { openSettingsPopup: () => void }) => ReactNode;
+    t: unknown;
+  }) => children({ openSettingsPopup: () => {} }),
 }));
 
 vi.mock("@okkey/ui", () => ({
@@ -112,6 +144,13 @@ describe("WorkspaceRoutesLayout", () => {
     mocks.core = {
       listWorkspaces: mocks.listWorkspaces,
       listWorkspaceVaults: mocks.listWorkspaceVaults,
+      listWorkspacePersonalEvents: vi.fn().mockResolvedValue({
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        afterVersion: 0,
+        events: [],
+      }),
+      appendWorkspacePersonalEvent: vi.fn(),
     };
   });
 

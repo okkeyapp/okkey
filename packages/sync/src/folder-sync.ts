@@ -1,12 +1,12 @@
 import type {
   EncryptedBlobDto,
-  FolderPlaintextV1,
-  ItemFolderAssignPlaintextV1,
+  FolderPlaintextV2,
+  ItemFolderAssignPlaintextV2,
   SyncAppendEventRequestDto,
 } from "@okkey/types";
 import {
-  FOLDER_PLAINTEXT_SCHEMA_VERSION,
-  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
 } from "@okkey/types";
 import { encryptPersonalVaultMetadataPayload, wipeBytes } from "@okkey/crypto";
 
@@ -38,7 +38,7 @@ function assertBytes(value: Uint8Array | undefined, fieldName: string): Uint8Arr
 
 export async function buildFolderCreateAppendRequest(
   personalMetadataKey: Uint8Array,
-  folder: FolderPlaintextV1,
+  folder: FolderPlaintextV2,
   baseVersion: number,
   idempotencyKey: string,
   clientCreatedAt?: string,
@@ -52,7 +52,7 @@ export async function buildFolderCreateAppendRequest(
       eventType: "FOLDER_CREATE",
       encryptedBlob: toEncryptedBlob(
         uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
-        FOLDER_PLAINTEXT_SCHEMA_VERSION,
+        FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
       ),
       baseVersion,
       idempotencyKey,
@@ -66,7 +66,7 @@ export async function buildFolderCreateAppendRequest(
 
 export async function buildFolderUpdateAppendRequest(
   personalMetadataKey: Uint8Array,
-  folder: FolderPlaintextV1,
+  folder: FolderPlaintextV2,
   baseVersion: number,
   idempotencyKey?: string,
   clientCreatedAt?: string,
@@ -80,7 +80,7 @@ export async function buildFolderUpdateAppendRequest(
       eventType: "FOLDER_UPDATE",
       encryptedBlob: toEncryptedBlob(
         uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
-        FOLDER_PLAINTEXT_SCHEMA_VERSION,
+        FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
       ),
       baseVersion,
       ...(idempotencyKey ? { idempotencyKey } : {}),
@@ -94,7 +94,7 @@ export async function buildFolderUpdateAppendRequest(
 
 export async function buildFolderDeleteAppendRequest(
   personalMetadataKey: Uint8Array,
-  tombstone: FolderPlaintextV1,
+  tombstone: FolderPlaintextV2,
   baseVersion: number,
   idempotencyKey?: string,
   clientCreatedAt?: string,
@@ -108,7 +108,7 @@ export async function buildFolderDeleteAppendRequest(
       eventType: "FOLDER_DELETE",
       encryptedBlob: toEncryptedBlob(
         uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
-        FOLDER_PLAINTEXT_SCHEMA_VERSION,
+        FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
       ),
       baseVersion,
       ...(idempotencyKey ? { idempotencyKey } : {}),
@@ -122,7 +122,7 @@ export async function buildFolderDeleteAppendRequest(
 
 export async function buildItemFolderAssignAppendRequest(
   personalMetadataKey: Uint8Array,
-  assign: ItemFolderAssignPlaintextV1,
+  assign: ItemFolderAssignPlaintextV2,
   baseVersion: number,
   idempotencyKey?: string,
   clientCreatedAt?: string,
@@ -136,7 +136,7 @@ export async function buildItemFolderAssignAppendRequest(
       eventType: "ITEM_FOLDER_ASSIGN",
       encryptedBlob: toEncryptedBlob(
         uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
-        ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+        ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
       ),
       baseVersion,
       ...(idempotencyKey ? { idempotencyKey } : {}),

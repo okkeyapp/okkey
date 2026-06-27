@@ -99,6 +99,31 @@ export async function buildRegistrationCryptoArtifacts(
 }
 
 /**
+ * Recover the 32-byte password share **C** from master password and KDF salt.
+ */
+export async function derivePasswordShareC(input: {
+  masterPasswordUtf8: Uint8Array;
+  passwordKdfSalt: Uint8Array;
+  passwordKdfParamsVersion: number;
+}): Promise<Uint8Array> {
+  await ensureWasm();
+  if (input.passwordKdfSalt.length !== KDF_SALT_LEN) {
+    throw new Error("passwordKdfSalt must be 16 bytes");
+  }
+  if (input.passwordKdfParamsVersion !== 1 && input.passwordKdfParamsVersion !== 2) {
+    throw new Error("unsupported passwordKdfParamsVersion for unlock");
+  }
+  return kdf_derive(
+    input.masterPasswordUtf8,
+    input.passwordKdfSalt,
+    OKKEY_PASSWORD_KDF_PARAMS_V1.mCost,
+    OKKEY_PASSWORD_KDF_PARAMS_V1.tCost,
+    OKKEY_PASSWORD_KDF_PARAMS_V1.pCost,
+    SHARE_LEN,
+  );
+}
+
+/**
  * Recover `VaultKey` from master password and split-key shares (same XOR model as registration).
  * `passwordKdfParamsVersion` must be supported on the wire (`1` or `2`); Argon2id parameters match {@link OKKEY_PASSWORD_KDF_PARAMS_V1} for both in current Core.
  */
@@ -113,21 +138,12 @@ export async function reconstructVaultKeyWithMasterPassword(input: {
   if (input.serverKeyShare.length !== SHARE_LEN || input.deviceShare.length !== SHARE_LEN) {
     throw new Error("serverKeyShare and deviceShare must be 32 bytes");
   }
-  if (input.passwordKdfSalt.length !== KDF_SALT_LEN) {
-    throw new Error("passwordKdfSalt must be 16 bytes");
-  }
-  if (input.passwordKdfParamsVersion !== 1 && input.passwordKdfParamsVersion !== 2) {
-    throw new Error("unsupported passwordKdfParamsVersion for unlock");
-  }
 
-  const passwordShareC = kdf_derive(
-    input.masterPasswordUtf8,
-    input.passwordKdfSalt,
-    OKKEY_PASSWORD_KDF_PARAMS_V1.mCost,
-    OKKEY_PASSWORD_KDF_PARAMS_V1.tCost,
-    OKKEY_PASSWORD_KDF_PARAMS_V1.pCost,
-    SHARE_LEN,
-  );
+  const passwordShareC = await derivePasswordShareC({
+    masterPasswordUtf8: input.masterPasswordUtf8,
+    passwordKdfSalt: input.passwordKdfSalt,
+    passwordKdfParamsVersion: input.passwordKdfParamsVersion,
+  });
 
   return xor32(input.serverKeyShare, input.deviceShare, passwordShareC);
 }

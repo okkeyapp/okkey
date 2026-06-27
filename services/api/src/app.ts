@@ -44,6 +44,10 @@ import {
 import {
   createWorkspaceItemCategoryPreferencesRoute,
 } from "./routes/workspace-item-category-preferences.ts";
+import {
+  createWorkspacePersonalEventsAppendRoute,
+  createWorkspacePersonalEventsListRoute,
+} from "./routes/workspace-personal-sync.ts";
 import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
   createVaultGetRoute,
@@ -66,6 +70,7 @@ import {
 } from "./routes/vault-sharing.ts";
 import type { SessionService } from "./session/service.ts";
 import type { SyncService } from "./sync/service.ts";
+import type { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import type { TwoFactorService } from "./two-factor/service.ts";
 import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
@@ -97,6 +102,7 @@ export interface AppDeps {
   twoFactorService?: TwoFactorService;
   capsuleService?: CapsuleService;
   itemCategoryPreferencesService?: ItemCategoryPreferencesService;
+  workspacePersonalSyncService?: WorkspacePersonalSyncService;
   keyFieldFileStorage?: KeyFieldFileStorage;
 }
 
@@ -232,6 +238,18 @@ export function createApiApp(
         "PUT",
         "/workspaces/:workspaceId/item-category-preferences",
         createWorkspaceItemCategoryPreferencesRoute(deps.itemCategoryPreferencesService, resolveUserId),
+      );
+    }
+    if (deps.workspacePersonalSyncService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/personal-events",
+        createWorkspacePersonalEventsListRoute(deps.workspacePersonalSyncService, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/personal-events",
+        createWorkspacePersonalEventsAppendRoute(deps.workspacePersonalSyncService, resolveUserId),
       );
     }
     app.route(

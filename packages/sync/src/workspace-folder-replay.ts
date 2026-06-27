@@ -1,0 +1,172 @@
+import type { FolderPlaintextV2, WorkspacePersonalEventWireDto } from "@okkey/types";
+import {
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  parseFolderPlaintextV2Utf8,
+  parseItemFolderAssignPlaintextV2Utf8,
+} from "@okkey/types";
+
+const FOLDER_ROW_TYPES = new Set(["FOLDER_CREATE", "FOLDER_UPDATE", "FOLDER_DELETE"]);
+
+const FOLDER_AND_ASSIGN_TYPES = new Set([
+  ...FOLDER_ROW_TYPES,
+  "ITEM_FOLDER_ASSIGN",
+]);
+
+const SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS = new Set<number>([
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+  2,
+]);
+
+const SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS = new Set<number>([
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  2,
+]);
+
+function getEventBlob(event: WorkspacePersonalEventWireDto): { crypto_version: number; payload: string } {
+  return {
+    crypto_version: event.encryptedBlob.crypto_version ?? 2,
+    payload: event.encryptedBlob.payload,
+  };
+}
+
+export interface WorkspaceFolderReplayState {
+  folders: Map<string, FolderPlaintextV2>;
+  itemFolder: Map<string, string | null>;
+  lastAppliedVersion: number;
+}
+
+export type WorkspaceFolderTreeNode = {
+  id: string;
+  label: string;
+  children?: WorkspaceFolderTreeNode[];
+};
+
+function clearAssignmentsToFolder(
+  itemFolder: Map<string, string | null>,
+  folderId: string,
+): void {
+  for (const [itemId, fid] of itemFolder) {
+    if (fid === folderId) {
+      itemFolder.set(itemId, null);
+    }
+  }
+}
+
+function removeFolder(state: WorkspaceFolderReplayState, folderId: string): void {
+  state.folders.delete(folderId);
+  clearAssignmentsToFolder(state.itemFolder, folderId);
+}
+
+function sortEvents(events: WorkspacePersonalEventWireDto[]): WorkspacePersonalEventWireDto[] {
+  return [...events].sort((a, b) => {
+    if (a.version !== b.version) return a.version - b.version;
+    if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
+    return a.id.localeCompare(b.id);
+  });
+}
+
+/**
+ * Deterministic replay of workspace personal folder metadata for one user stream.
+ */
+export async function replayWorkspaceFolderEvents(
+  events: WorkspacePersonalEventWireDto[],
+  workspaceId: string,
+  decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
+  initialLastAppliedVersion = 0,
+  initialState?: Pick<WorkspaceFolderReplayState, "folders" | "itemFolder">,
+): Promise<WorkspaceFolderReplayState> {
+  const state: WorkspaceFolderReplayState = {
+    folders: new Map(initialState?.folders),
+    itemFolder: new Map(initialState?.itemFolder),
+    lastAppliedVersion: initialLastAppliedVersion,
+  };
+
+  for (const ev of sortEvents(events)) {
+    if (ev.workspaceId !== workspaceId) {
+      continue;
+    }
+    if (!FOLDER_AND_ASSIGN_TYPES.has(ev.eventType)) {
+      continue;
+    }
+    if (ev.version <= state.lastAppliedVersion) {
+      continue;
+    }
+
+    let plaintextBytes: Uint8Array;
+    try {
+      plaintextBytes = await decryptWirePayload(getEventBlob(ev).payload);
+    } catch {
+      continue;
+    }
+
+    if (ev.eventType === "ITEM_FOLDER_ASSIGN") {
+      if (!SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
+        continue;
+      }
+      const assign = parseItemFolderAssignPlaintextV2Utf8(plaintextBytes);
+      if (!assign || assign.workspaceId !== workspaceId) {
+        continue;
+      }
+      state.itemFolder.set(assign.itemId, assign.folderId);
+      state.lastAppliedVersion = ev.version;
+      continue;
+    }
+
+    if (!SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
+      continue;
+    }
+
+    const row = parseFolderPlaintextV2Utf8(plaintextBytes);
+    if (!row || row.workspaceId !== workspaceId) {
+      continue;
+    }
+
+    switch (ev.eventType) {
+      case "FOLDER_CREATE":
+      case "FOLDER_UPDATE": {
+        if (row.deleted) {
+          removeFolder(state, row.folderId);
+        } else {
+          state.folders.set(row.folderId, row);
+        }
+        break;
+      }
+      case "FOLDER_DELETE": {
+        removeFolder(state, row.folderId);
+        break;
+      }
+      default:
+        break;
+    }
+    state.lastAppliedVersion = ev.version;
+  }
+
+  return state;
+}
+
+export function buildFolderTreeFromFlat(
+  folders: Map<string, FolderPlaintextV2>,
+): WorkspaceFolderTreeNode[] {
+  const childrenByParent = new Map<string | null, FolderPlaintextV2[]>();
+  for (const folder of folders.values()) {
+    const parent = folder.parentFolderId;
+    const list = childrenByParent.get(parent) ?? [];
+    list.push(folder);
+    childrenByParent.set(parent, list);
+  }
+
+  const buildLevel = (parentId: string | null): WorkspaceFolderTreeNode[] => {
+    const rows = childrenByParent.get(parentId) ?? [];
+    return rows
+      .sort((a, b) => a.name.localeCompare(b.name) || a.folderId.localeCompare(b.folderId))
+      .map((row) => ({
+        id: row.folderId,
+        label: row.name,
+        children: buildLevel(row.folderId),
+      }))
+      .map((node) => (node.children?.length ? node : { id: node.id, label: node.label }));
+  };
+
+  return buildLevel(null);
+}

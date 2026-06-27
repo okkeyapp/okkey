@@ -24,6 +24,23 @@ export {
   type FolderVaultReplayState,
 } from "./folder-replay.js";
 
+export {
+  replayWorkspaceFolderEvents,
+  buildFolderTreeFromFlat,
+  type WorkspaceFolderReplayState,
+  type WorkspaceFolderTreeNode,
+} from "./workspace-folder-replay.js";
+
+export {
+  WorkspacePersonalOutboxClient,
+  InMemoryWorkspacePersonalOutboxStore,
+  computeWorkspacePersonalBackoffDelayMs,
+  type WorkspacePersonalOutboxEntry,
+  type WorkspacePersonalOutboxEntryPayload,
+  type WorkspacePersonalOutboxStore,
+  type WorkspacePersonalOutboxTransport,
+} from "./workspace-personal-outbox.js";
+
 export { wouldIntroduceFolderParentCycle, type FolderParentRef } from "./folder-tree.js";
 
 export {
@@ -56,3 +73,10 @@ export {
 
 export { IndexedDbOutboxStore, type IndexedDbOutboxStoreOptions } from "./outbox-store-indexeddb.js";
 export { SqliteOutboxStore, type SqliteDriver, type SqliteOutboxStoreOptions } from "./outbox-store-sqlite.js";
+
+export {
+  buildFolderCreateAppendRequest,
+  buildFolderUpdateAppendRequest,
+  buildFolderDeleteAppendRequest,
+  buildItemFolderAssignAppendRequest,
+} from "./folder-sync.js";

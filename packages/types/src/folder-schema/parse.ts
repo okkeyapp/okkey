@@ -2,9 +2,13 @@ import type { EntityId } from "../entity-id.js";
 import { isEntityId } from "../entity-id.js";
 import {
   FOLDER_PLAINTEXT_SCHEMA_VERSION,
+  FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
+  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
   type FolderPlaintextV1,
+  type FolderPlaintextV2,
   type ItemFolderAssignPlaintextV1,
+  type ItemFolderAssignPlaintextV2,
 } from "./types.js";
 
 function isEntityIdField(value: string): boolean {
@@ -67,6 +71,62 @@ export function parseItemFolderAssignPlaintextUtf8(
     schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
     itemId: raw.itemId as EntityId,
     vaultId: raw.vaultId as EntityId,
+    folderId: (raw.folderId as EntityId | null) ?? null,
+  };
+}
+
+export function parseFolderPlaintextV2Utf8(bytes: Uint8Array): FolderPlaintextV2 | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(raw)) return undefined;
+  if (raw.schemaVersion !== FOLDER_PLAINTEXT_SCHEMA_VERSION_V2) return undefined;
+  if (typeof raw.folderId !== "string" || !isEntityIdField(raw.folderId)) return undefined;
+  if (typeof raw.workspaceId !== "string" || !isEntityIdField(raw.workspaceId)) return undefined;
+  if (typeof raw.name !== "string") return undefined;
+  if (raw.parentFolderId !== null && (typeof raw.parentFolderId !== "string" || !isEntityIdField(raw.parentFolderId))) {
+    return undefined;
+  }
+  if (typeof raw.createdAtMs !== "number" || !Number.isFinite(raw.createdAtMs)) return undefined;
+  if (typeof raw.updatedAtMs !== "number" || !Number.isFinite(raw.updatedAtMs)) return undefined;
+  if (raw.deleted !== undefined && typeof raw.deleted !== "boolean") return undefined;
+
+  return {
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+    folderId: raw.folderId as EntityId,
+    workspaceId: raw.workspaceId as EntityId,
+    name: raw.name,
+    parentFolderId: (raw.parentFolderId as EntityId | null) ?? null,
+    createdAtMs: raw.createdAtMs,
+    updatedAtMs: raw.updatedAtMs,
+    ...(raw.deleted === true ? { deleted: true } : {}),
+  };
+}
+
+export function parseItemFolderAssignPlaintextV2Utf8(
+  bytes: Uint8Array,
+): ItemFolderAssignPlaintextV2 | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(raw)) return undefined;
+  if (raw.schemaVersion !== ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2) return undefined;
+  if (typeof raw.itemId !== "string" || !isEntityIdField(raw.itemId)) return undefined;
+  if (typeof raw.workspaceId !== "string" || !isEntityIdField(raw.workspaceId)) return undefined;
+  if (raw.folderId !== null && (typeof raw.folderId !== "string" || !isEntityIdField(raw.folderId))) {
+    return undefined;
+  }
+
+  return {
+    schemaVersion: ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+    itemId: raw.itemId as EntityId,
+    workspaceId: raw.workspaceId as EntityId,
     folderId: (raw.folderId as EntityId | null) ?? null,
   };
 }

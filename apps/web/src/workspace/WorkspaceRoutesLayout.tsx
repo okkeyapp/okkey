@@ -121,7 +121,7 @@ function shellTitleKey(pathname: WorkspaceAppShellPath): string {
 
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
-  const { userId, profile, logout } = useAuthVault();
+  const { userId, profile, logout, passwordShareC, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -224,7 +224,13 @@ export default function WorkspaceRoutesLayout() {
     [workspaceList, resolvedWorkspaceId],
   );
 
-  const workspaceFoldersState = useWorkspaceFoldersState(userId ?? "", resolvedWorkspaceId ?? "");
+  const workspaceFoldersState = useWorkspaceFoldersState({
+    userId: userId ?? "",
+    workspaceId: resolvedWorkspaceId ?? "",
+    core,
+    passwordShareC,
+    vaultUnlocked,
+  });
 
   const openFoldersSettingsPopup = useCallback(() => {
     navigate(

@@ -1,22 +1,14 @@
-import type { FolderPlaintextV1, ItemPlaintextV2, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
+import type { ItemPlaintextV2, SyncEventWireDto, SyncEventsListResponseDto } from "@okkey/types";
 import {
-  FOLDER_PLAINTEXT_SCHEMA_VERSION,
-  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
   ITEM_PLAINTEXT_SCHEMA_VERSION,
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   parseAndNormalizeItemPlaintextUtf8,
-  parseFolderPlaintextUtf8,
-  parseItemFolderAssignPlaintextUtf8,
 } from "@okkey/types";
 
 type CoreEventType =
   | "ITEM_CREATE"
   | "ITEM_UPDATE"
   | "ITEM_DELETE"
-  | "FOLDER_CREATE"
-  | "FOLDER_UPDATE"
-  | "FOLDER_DELETE"
-  | "ITEM_FOLDER_ASSIGN"
   | "VAULT_CREATE"
   | "VAULT_SHARE"
   | "VAULT_KEY_ROTATION"
@@ -28,26 +20,10 @@ const SUPPORTED_ITEM_SCHEMAS = new Set<number>([
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
 ]);
 
-/** EncryptedBlob.crypto_profile on wire; inner folder JSON still uses `FOLDER_PLAINTEXT_SCHEMA_VERSION`. */
-const SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS = new Set<number>([
-  FOLDER_PLAINTEXT_SCHEMA_VERSION,
-  2,
-]);
-
-/** EncryptedBlob.crypto_profile for assign events; inner JSON uses `ITEM_FOLDER_ASSIGN_SCHEMA_VERSION`. */
-const SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS = new Set<number>([
-  ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
-  2,
-]);
-
 const CORE_EVENT_TYPES = new Set<CoreEventType>([
   "ITEM_CREATE",
   "ITEM_UPDATE",
   "ITEM_DELETE",
-  "FOLDER_CREATE",
-  "FOLDER_UPDATE",
-  "FOLDER_DELETE",
-  "ITEM_FOLDER_ASSIGN",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",
@@ -92,8 +68,6 @@ export interface ReplayQuarantineRecord {
 
 export interface SyncMaterializedState {
   items: Map<string, ItemPlaintextV2>;
-  folders: Map<string, FolderPlaintextV1>;
-  itemFolder: Map<string, string | null>;
   vaultLifecycle: {
     latestCreateVersion: number | null;
     latestShareVersion: number | null;
@@ -172,8 +146,6 @@ function getEventBlob(event: SyncEventWireDto): {
 function createInitialState(initialLastAppliedVersion: number): SyncMaterializedState {
   return {
     items: new Map<string, ItemPlaintextV2>(),
-    folders: new Map<string, FolderPlaintextV1>(),
-    itemFolder: new Map<string, string | null>(),
     vaultLifecycle: {
       latestCreateVersion: null,
       latestShareVersion: null,
@@ -187,19 +159,6 @@ function createInitialState(initialLastAppliedVersion: number): SyncMaterialized
     appliedEventIds: new Set<string>(),
     quarantined: [],
   };
-}
-
-function clearAssignmentsToFolder(itemFolder: Map<string, string | null>, folderId: string): void {
-  for (const [itemId, assignedFolderId] of itemFolder.entries()) {
-    if (assignedFolderId === folderId) {
-      itemFolder.set(itemId, null);
-    }
-  }
-}
-
-function removeFolder(state: SyncMaterializedState, folderId: string): void {
-  state.folders.delete(folderId);
-  clearAssignmentsToFolder(state.itemFolder, folderId);
 }
 
 function sortForDeterministicReplay(events: SyncEventWireDto[]): SyncEventWireDto[] {
@@ -273,8 +232,6 @@ export class SyncReplayEngine {
     return {
       ...this.state,
       items: new Map(this.state.items),
-      folders: new Map(this.state.folders),
-      itemFolder: new Map(this.state.itemFolder),
       appliedEventIds: new Set(this.state.appliedEventIds),
       quarantined: [...this.state.quarantined],
       vaultLifecycle: { ...this.state.vaultLifecycle },
@@ -414,72 +371,6 @@ export class SyncReplayEngine {
     this.registerHandler("ITEM_CREATE", itemHandler);
     this.registerHandler("ITEM_UPDATE", itemHandler);
     this.registerHandler("ITEM_DELETE", itemHandler);
-
-    const folderHandler: EventHandler = async (state, event) => {
-      const blob = getEventBlob(event);
-      if (!SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS.has(blob.crypto_version)) {
-        return this.quarantineUnsupported(event);
-      }
-      if (!this.options.currentUserId || event.actorId !== this.options.currentUserId) {
-        return "ignored";
-      }
-      if (!this.options.decryptPersonalMetadataPayload) {
-        return "ignored";
-      }
-
-      let plaintext: Uint8Array;
-      try {
-        plaintext = await this.options.decryptPersonalMetadataPayload(blob.payload);
-      } catch {
-        state.quarantined.push({ event, reason: "DECRYPT_FAILED" });
-        return "quarantined";
-      }
-
-      const row = parseFolderPlaintextUtf8(plaintext);
-      if (!row || row.vaultId !== this.options.vaultId) {
-        state.quarantined.push({ event, reason: "INVALID_PAYLOAD" });
-        return "quarantined";
-      }
-
-      if (event.eventType === "FOLDER_DELETE" || row.deleted) {
-        removeFolder(state, row.folderId);
-      } else {
-        state.folders.set(row.folderId, row);
-      }
-      return "applied";
-    };
-    this.registerHandler("FOLDER_CREATE", folderHandler);
-    this.registerHandler("FOLDER_UPDATE", folderHandler);
-    this.registerHandler("FOLDER_DELETE", folderHandler);
-
-    this.registerHandler("ITEM_FOLDER_ASSIGN", async (state, event) => {
-      const blob = getEventBlob(event);
-      if (!SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS.has(blob.crypto_version)) {
-        return this.quarantineUnsupported(event);
-      }
-      if (!this.options.currentUserId || event.actorId !== this.options.currentUserId) {
-        return "ignored";
-      }
-      if (!this.options.decryptPersonalMetadataPayload) {
-        return "ignored";
-      }
-
-      let plaintext: Uint8Array;
-      try {
-        plaintext = await this.options.decryptPersonalMetadataPayload(blob.payload);
-      } catch {
-        state.quarantined.push({ event, reason: "DECRYPT_FAILED" });
-        return "quarantined";
-      }
-
-      const assign = parseItemFolderAssignPlaintextUtf8(plaintext);
-      if (!assign || assign.vaultId !== this.options.vaultId) {
-        state.quarantined.push({ event, reason: "INVALID_PAYLOAD" });
-        return "quarantined";
-      }
-      state.itemFolder.set(assign.itemId, assign.folderId);
-      return "applied";
-    });
 
     this.registerHandler("VAULT_CREATE", async (state, event) => {
       state.vaultLifecycle.latestCreateVersion = event.version;

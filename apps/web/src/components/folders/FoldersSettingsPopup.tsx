@@ -36,6 +36,7 @@ import {
 } from "../../folders/folderSettingsTree";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import type { WorkspaceFolderNode } from "../../folders/workspaceFolderTree";
+import { normalizeWorkspaceFolderTreeForSave } from "../../folders/folderTreeCommit";
 import {
   FOLDERS_POPUP_ID,
   POPUP_QUERY_PARAM,
@@ -105,20 +106,6 @@ function PlusIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M3.333 8H12.667M8 3.333V12.667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
-}
-
-function normalizeTreeForSave(tree: readonly WorkspaceFolderNode[]): WorkspaceFolderNode[] {
-  return tree
-    .map((node) => {
-      const label = node.label.trim();
-      const children = node.children?.length ? normalizeTreeForSave(node.children) : undefined;
-      return {
-        id: node.id,
-        label,
-        ...(children?.length ? { children } : {}),
-      };
-    })
-    .filter((node) => node.label.length > 0);
 }
 
 type SortableFolderRowProps = {
@@ -351,7 +338,7 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { folderTree, replaceFolderTree } = useWorkspaceFolders();
+  const { folderTree, commitFolderTree } = useWorkspaceFolders();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const open = activePopup?.popupId === FOLDERS_POPUP_ID;
 
@@ -465,9 +452,12 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
       nextTree = result.tree;
       nextCommitted = result.labels;
     }
-    replaceFolderTree(normalizeTreeForSave(nextTree));
-    setCommittedLabels(nextCommitted);
-    closePopup();
+    void commitFolderTree(normalizeWorkspaceFolderTreeForSave(nextTree))
+      .then(() => {
+        setCommittedLabels(nextCommitted);
+        closePopup();
+      })
+      .catch(() => undefined);
   }
 
   function handleDragStart(event: DragStartEvent) {

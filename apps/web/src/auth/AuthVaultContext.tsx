@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   decryptUserIdentityFromEncryptedBlob,
   reconstructVaultKeyWithMasterPassword,
+  derivePasswordShareC,
   wipeBytes,
 } from "@okkey/crypto";
 
@@ -62,6 +63,8 @@ export type AuthVaultContextValue = {
   accessToken: string | null;
   userId: string | null;
   vaultUnlocked: boolean;
+  /** 32-byte password share C while vault is unlocked (for workspace personal metadata key). */
+  passwordShareC: Uint8Array | null;
   pendingEmail: string | null;
   emailChallengeId: string | null;
   /** ISO time from last start/resend until another resend is allowed */
@@ -184,15 +187,22 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [initialTabVault] = useState(() => {
     const uid = readStoredSession()?.user_id ?? null;
     if (!uid) {
-      return { vaultKey: null as Uint8Array | null, lastActivityAt: Date.now(), unlocked: false };
+      return {
+        vaultKey: null as Uint8Array | null,
+        passwordShareC: null as Uint8Array | null,
+        lastActivityAt: Date.now(),
+        unlocked: false,
+      };
     }
     return readInitialTabVaultSession(uid);
   });
 
   const vaultKeyRef = useRef<Uint8Array | null>(initialTabVault.vaultKey);
+  const passwordShareCRef = useRef<Uint8Array | null>(initialTabVault.passwordShareC);
   const lastActivityRef = useRef(initialTabVault.lastActivityAt);
   const vaultUnlockedRef = useRef(initialTabVault.unlocked);
   const [vaultUnlocked, setVaultUnlocked] = useState(initialTabVault.unlocked);
+  const [passwordShareC, setPasswordShareC] = useState<Uint8Array | null>(initialTabVault.passwordShareC);
   const [vaultIdleLockMs, setVaultIdleLockMsState] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
@@ -212,6 +222,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     vaultUnlockedRef.current = vaultUnlocked;
   }, [vaultUnlocked]);
 
+  const clearPasswordShareSecrets = useCallback(() => {
+    if (passwordShareCRef.current) {
+      wipeBytes(passwordShareCRef.current);
+      passwordShareCRef.current = null;
+    }
+    setPasswordShareC(null);
+  }, []);
+
   useLayoutEffect(() => {
     if (!accessToken || !userId) {
       return;
@@ -227,6 +245,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(vaultKeyRef.current);
     }
     vaultKeyRef.current = restored.vaultKey;
+    if (passwordShareCRef.current) {
+      wipeBytes(passwordShareCRef.current);
+    }
+    passwordShareCRef.current = restored.passwordShareC;
+    setPasswordShareC(restored.passwordShareC);
     lastActivityRef.current = restored.lastActivityAt;
     vaultUnlockedRef.current = true;
     setVaultUnlocked(true);
@@ -327,6 +350,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(vaultKeyRef.current);
       vaultKeyRef.current = null;
     }
+    clearPasswordShareSecrets();
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
     setAccessToken(dto.access_token);
@@ -359,6 +383,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(vaultKeyRef.current);
       vaultKeyRef.current = null;
     }
+    clearPasswordShareSecrets();
     setPendingEmail(null);
     setEmailChallengeId(null);
     setEmailResendAvailableAt(null);
@@ -366,7 +391,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setTwoFactorAuthStateIdState(null);
     setProfile(null);
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
-  }, []);
+  }, [clearPasswordShareSecrets]);
 
   const lockVault = useCallback(() => {
     clearVaultUnlockSession();
@@ -374,9 +399,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(vaultKeyRef.current);
       vaultKeyRef.current = null;
     }
+    clearPasswordShareSecrets();
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
-  }, []);
+  }, [clearPasswordShareSecrets]);
 
   const touchActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -430,6 +456,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const serverA = base64ToBytes(bundle.server_key_share_b64);
       const deviceB = base64ToBytes(bundle.device_share_b64);
       const salt = base64ToBytes(bundle.password_kdf_salt_b64);
+      const shareC = await derivePasswordShareC({
+        masterPasswordUtf8: pwd,
+        passwordKdfSalt: salt,
+        passwordKdfParamsVersion: bundle.password_kdf_params_version,
+      });
       const vaultKey = await reconstructVaultKeyWithMasterPassword({
         masterPasswordUtf8: pwd,
         serverKeyShare: serverA,
@@ -441,12 +472,17 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (vaultKeyRef.current) {
         wipeBytes(vaultKeyRef.current);
       }
+      if (passwordShareCRef.current) {
+        wipeBytes(passwordShareCRef.current);
+      }
       vaultKeyRef.current = vaultKey;
+      passwordShareCRef.current = shareC;
+      setPasswordShareC(shareC);
       vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
       lastActivityRef.current = Date.now();
       if (userId) {
-        persistVaultUnlockSession(userId, vaultKey);
+        persistVaultUnlockSession(userId, vaultKey, shareC);
       }
       wipeBytes(pwd);
       wipeBytes(serverA);
@@ -466,6 +502,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       accessToken,
       userId,
       vaultUnlocked,
+      passwordShareC,
       pendingEmail,
       emailChallengeId,
       emailResendAvailableAt,
@@ -492,6 +529,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       accessToken,
       userId,
       vaultUnlocked,
+      passwordShareC,
       pendingEmail,
       emailChallengeId,
       emailResendAvailableAt,

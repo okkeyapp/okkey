@@ -125,7 +125,7 @@ test("appendEvent maps version conflict", async () => {
   );
 });
 
-test("appendEvent requires idempotencyKey for FOLDER_CREATE", async () => {
+test("appendEvent rejects FOLDER_CREATE on vault stream", async () => {
   const service = new SyncService({
     vaults: {
       findById: async () => ({
@@ -154,10 +154,11 @@ test("appendEvent requires idempotencyKey for FOLDER_CREATE", async () => {
         eventType: "FOLDER_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
+        idempotencyKey: "1156820912149001",
       }),
     (error: unknown) =>
       error instanceof SyncServiceError &&
-      error.code === "SYNC_BAD_REQUEST",
+      error.code === "SYNC_INVALID_EVENT_TYPE",
   );
 });
 

@@ -4,25 +4,19 @@ import {
   buildCapabilityPolicyDetails,
   evaluateCapabilityDecision,
 } from "../crypto/capability-policy.ts";
-import {
-  CRYPTO_DOWNGRADE_NOT_ALLOWED,
-  CRYPTO_DOWNGRADE_STATUS_CODE,
-  buildCryptoDowngradeDetails,
-} from "../crypto/downgrade.ts";
 import { getCryptoRolloutGateViolation } from "../crypto/rollout-gates.ts";
 import { logCryptoPolicyViolation } from "../crypto/policy-log.ts";
-import {
-  getCryptoWritePolicyViolation,
-} from "../crypto/policy.ts";
+import { getCryptoWritePolicyViolation } from "../crypto/policy.ts";
 import type { Logger } from "../logger.ts";
 import {
   recordCapabilityDecision,
   recordCryptoOperationOutcome,
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
-import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
-import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import { VersionConflictError } from "../storage/errors.ts";
+import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
+import type { WorkspacePersonalEventsRepository } from "../storage/workspace-personal-events.ts";
 import type { ApiConfig } from "../config.ts";
 import {
   decodeEncryptedBlobFromStorage,
@@ -31,33 +25,20 @@ import {
   serializeEncryptedBlobToStorage,
   type EncryptedBlob,
 } from "../crypto/encrypted-blob.ts";
-import {
-  SIGNATURE_INVALID,
-  SIGNATURE_REQUIRED,
-  SIGNATURE_STATUS_CODE,
-  parseHybridSignatureEnvelope,
-  verifyHybridSignatureForPayload,
-} from "../crypto/hybrid-signature.ts";
 import { isEntityId } from "../entity-id.ts";
 
-const SYNC_EVENT_TYPES = new Set([
-  "ITEM_CREATE",
-  "ITEM_UPDATE",
-  "ITEM_DELETE",
-  "VAULT_CREATE",
-  "VAULT_SHARE",
-  "VAULT_KEY_ROTATION",
-  "DEVICE_ADD",
-  "DEVICE_REMOVE",
+const WORKSPACE_PERSONAL_EVENT_TYPES = new Set([
+  "FOLDER_CREATE",
+  "FOLDER_UPDATE",
+  "FOLDER_DELETE",
+  "ITEM_FOLDER_ASSIGN",
 ]);
 
-const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["ITEM_CREATE"]);
-const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
+const EVENT_TYPES_REQUIRING_IDEMPOTENCY = new Set(["FOLDER_CREATE"]);
 
-/** Max decoded ciphertext size per event (DoS guard). */
-export const SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
+export const WORKSPACE_PERSONAL_SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024;
 
-export class SyncServiceError extends Error {
+export class WorkspacePersonalSyncServiceError extends Error {
   readonly code: string;
   readonly statusCode: number;
   readonly details?: Record<string, unknown>;
@@ -75,9 +56,9 @@ export class SyncServiceError extends Error {
   }
 }
 
-export interface SyncServiceDeps {
-  vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
-  events: Pick<EventsRepository, "listAfterVersion" | "append">;
+export interface WorkspacePersonalSyncServiceDeps {
+  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  events: Pick<WorkspacePersonalEventsRepository, "listAfterVersion" | "append">;
   users?: Pick<UsersRepository, "findById">;
   config?: Partial<
     Pick<
@@ -93,32 +74,59 @@ export interface SyncServiceDeps {
   log?: Logger;
 }
 
-export interface SyncEventResponse {
+export interface WorkspacePersonalEventResponse {
   id: string;
-  vaultId: string;
-  actorId: string | null;
+  workspaceId: string;
+  actorId: string;
   eventType: string;
   encryptedBlob: EncryptedBlob;
-  signature?: unknown;
   idempotencyKey: string | null;
   clientCreatedAt: string | null;
   version: number;
   createdAt: string;
 }
 
-export interface SyncAppendEventInput {
+export interface WorkspacePersonalAppendEventInput {
   eventType: string;
   encryptedBlob: unknown;
-  signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
 }
 
-export class SyncService {
-  private readonly vaults: SyncServiceDeps["vaults"];
-  private readonly events: SyncServiceDeps["events"];
-  private readonly users: SyncServiceDeps["users"];
+function mapEventToResponse(record: {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  eventType: string;
+  encryptedPayload: Uint8Array;
+  payloadSchemaVersion: number;
+  idempotencyKey: string | null;
+  clientCreatedAt: string | null;
+  version: number;
+  createdAt: string;
+}): WorkspacePersonalEventResponse {
+  const encryptedBlob = decodeEncryptedBlobFromStorage(
+    record.encryptedPayload,
+    record.payloadSchemaVersion,
+  );
+  return {
+    id: record.id,
+    workspaceId: record.workspaceId,
+    actorId: record.userId,
+    eventType: record.eventType,
+    encryptedBlob,
+    idempotencyKey: record.idempotencyKey,
+    clientCreatedAt: record.clientCreatedAt,
+    version: record.version,
+    createdAt: record.createdAt,
+  };
+}
+
+export class WorkspacePersonalSyncService {
+  private readonly workspaces: WorkspacePersonalSyncServiceDeps["workspaces"];
+  private readonly events: WorkspacePersonalSyncServiceDeps["events"];
+  private readonly users: WorkspacePersonalSyncServiceDeps["users"];
   private readonly config: Pick<
     ApiConfig,
     | "allowedCryptoProfileVersions"
@@ -130,8 +138,8 @@ export class SyncService {
   >;
   private readonly log: Logger | undefined;
 
-  constructor(deps: SyncServiceDeps) {
-    this.vaults = deps.vaults;
+  constructor(deps: WorkspacePersonalSyncServiceDeps) {
+    this.workspaces = deps.workspaces;
     this.events = deps.events;
     this.users = deps.users;
     this.config = {
@@ -147,29 +155,28 @@ export class SyncService {
   }
 
   async listEvents(
-    vaultId: string,
+    workspaceId: string,
     userId: string,
     afterVersion: number,
-  ): Promise<SyncEventResponse[]> {
+  ): Promise<WorkspacePersonalEventResponse[]> {
     if (!Number.isInteger(afterVersion) || afterVersion < 0) {
-      throw new SyncServiceError(
+      throw new WorkspacePersonalSyncServiceError(
         "SYNC_BAD_REQUEST",
         400,
         "afterVersion must be a non-negative integer",
       );
     }
-
-    await this.ensureVaultReadable(vaultId, userId);
-    const events = await this.events.listAfterVersion(vaultId, afterVersion);
+    await this.ensureWorkspaceAccess(workspaceId, userId);
+    const events = await this.events.listAfterVersion(workspaceId, userId, afterVersion);
     return events.map(mapEventToResponse);
   }
 
   async appendEvent(
-    vaultId: string,
+    workspaceId: string,
     userId: string,
-    input: SyncAppendEventInput,
-  ): Promise<SyncEventResponse> {
-    const operation = "sync.append";
+    input: WorkspacePersonalAppendEventInput,
+  ): Promise<WorkspacePersonalEventResponse> {
+    const operation = "workspace-personal-sync.append";
     const stopTimer = startCryptoOperationTimer(this.log, {
       operation,
       deployEnv: this.config.deployEnv,
@@ -185,20 +192,21 @@ export class SyncService {
         code: rolloutGateViolation.code,
       });
       stopTimer();
-      throw new SyncServiceError(
+      throw new WorkspacePersonalSyncServiceError(
         rolloutGateViolation.code,
         rolloutGateViolation.statusCode,
         rolloutGateViolation.message,
         rolloutGateViolation.details,
       );
     }
-    await this.ensureVaultReadable(vaultId, userId);
 
-    if (!SYNC_EVENT_TYPES.has(input.eventType)) {
-      throw new SyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
+    await this.ensureWorkspaceAccess(workspaceId, userId);
+
+    if (!WORKSPACE_PERSONAL_EVENT_TYPES.has(input.eventType)) {
+      throw new WorkspacePersonalSyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
     }
     if (!Number.isInteger(input.baseVersion) || input.baseVersion < 0) {
-      throw new SyncServiceError(
+      throw new WorkspacePersonalSyncServiceError(
         "SYNC_BAD_REQUEST",
         400,
         "baseVersion must be a non-negative integer",
@@ -209,82 +217,22 @@ export class SyncService {
     try {
       parsedBlob = parseEncryptedBlobInput(input.encryptedBlob, {
         fieldName: "encryptedBlob",
-        maxPayloadBytes: SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES,
+        maxPayloadBytes: WORKSPACE_PERSONAL_SYNC_MAX_ENCRYPTED_PAYLOAD_BYTES,
         allowLegacyString: false,
       });
     } catch (error) {
       const message = (error as Error).message;
       if (message.includes("exceeds")) {
-        throw new SyncServiceError("PAYLOAD_TOO_LARGE", 413, message);
+        throw new WorkspacePersonalSyncServiceError("PAYLOAD_TOO_LARGE", 413, message);
       }
-      throw new SyncServiceError("SYNC_BAD_REQUEST", 400, message);
+      throw new WorkspacePersonalSyncServiceError("SYNC_BAD_REQUEST", 400, message);
     }
+
     const normalizedBlob = mergeEncryptedBlobMeta(parsedBlob.blob, {
-      entity: "sync_event",
+      entity: "workspace_personal_event",
       event_type: input.eventType,
     });
-    const signatureIsRequired =
-      EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) &&
-      this.config.cryptoRolloutMode === "strict";
-    if (EVENT_TYPES_REQUIRING_SIGNATURE.has(input.eventType) && (input.signature || signatureIsRequired)) {
-      if (!input.signature) {
-        throw new SyncServiceError(
-          SIGNATURE_REQUIRED,
-          SIGNATURE_STATUS_CODE,
-          "signature is required for this eventType",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const actor = this.users ? await this.users.findById(userId) : null;
-      if (!actor?.publicKey || !actor.publicPqKey) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signer keys are unavailable",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      let envelope;
-      try {
-        envelope = parseHybridSignatureEnvelope(input.signature, "sync.append");
-      } catch (error) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          (error as Error).message,
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      if (envelope.signer_pq_public_key !== actor.publicPqKey) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature signer_pq_public_key mismatch",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      const verified = verifyHybridSignatureForPayload({
-        envelope,
-        payload: {
-          vaultId,
-          eventType: input.eventType,
-          encryptedBlob: normalizedBlob,
-        },
-        signerPublicKeyBase64: actor.publicKey,
-      });
-      if (!verified) {
-        throw new SyncServiceError(
-          SIGNATURE_INVALID,
-          SIGNATURE_STATUS_CODE,
-          "signature verification failed",
-          { context: "sync.append", eventType: input.eventType },
-        );
-      }
-      normalizedBlob.meta = {
-        ...normalizedBlob.meta,
-        signature: envelope,
-      };
-    }
+
     const policyViolation = getCryptoWritePolicyViolation(
       this.config,
       normalizedBlob.crypto_version,
@@ -293,11 +241,11 @@ export class SyncService {
       logCryptoPolicyViolation(this.log, {
         reason: "policy",
         deployEnv: this.config.deployEnv ?? "dev",
-        vaultId,
+        vaultId: workspaceId,
         actorId: userId,
         requestedVersion: normalizedBlob.crypto_version,
       });
-      throw new SyncServiceError(
+      throw new WorkspacePersonalSyncServiceError(
         policyViolation.code,
         policyViolation.statusCode,
         policyViolation.message,
@@ -306,23 +254,21 @@ export class SyncService {
     }
     await this.assertActorCapabilityForWrite(
       userId,
-      "sync.append",
+      "workspace-personal-sync.append",
       normalizedBlob.crypto_version,
     );
 
-    if (EVENT_TYPES_REQUIRING_IDEMPOTENCY.has(input.eventType)) {
-      if (!input.idempotencyKey) {
-        throw new SyncServiceError(
-          "SYNC_BAD_REQUEST",
-          400,
-          "idempotencyKey is required for this eventType",
-        );
-      }
+    if (EVENT_TYPES_REQUIRING_IDEMPOTENCY.has(input.eventType) && !input.idempotencyKey) {
+      throw new WorkspacePersonalSyncServiceError(
+        "SYNC_BAD_REQUEST",
+        400,
+        "idempotencyKey is required for this eventType",
+      );
     }
 
     if (input.idempotencyKey !== undefined && input.idempotencyKey !== "") {
       if (!isEntityId(input.idempotencyKey)) {
-        throw new SyncServiceError(
+        throw new WorkspacePersonalSyncServiceError(
           "SYNC_BAD_REQUEST",
           400,
           "idempotencyKey must be a UUID",
@@ -334,7 +280,7 @@ export class SyncService {
     if (input.clientCreatedAt !== undefined && input.clientCreatedAt !== "") {
       const parsed = Date.parse(input.clientCreatedAt);
       if (Number.isNaN(parsed)) {
-        throw new SyncServiceError(
+        throw new WorkspacePersonalSyncServiceError(
           "SYNC_BAD_REQUEST",
           400,
           "clientCreatedAt must be a valid ISO-8601 date-time string",
@@ -345,8 +291,8 @@ export class SyncService {
 
     try {
       const created = await this.events.append({
-        vaultId,
-        actorId: userId,
+        workspaceId,
+        userId,
         eventType: input.eventType,
         encryptedPayload: serializeEncryptedBlobToStorage(normalizedBlob),
         baseVersion: input.baseVersion,
@@ -360,10 +306,12 @@ export class SyncService {
         rolloutMode: this.config.cryptoRolloutMode,
         outcome: "success",
       });
+      stopTimer();
       return mapEventToResponse(created);
     } catch (error) {
+      stopTimer();
       if (error instanceof VersionConflictError) {
-        throw new SyncServiceError(
+        throw new WorkspacePersonalSyncServiceError(
           "VERSION_MISMATCH",
           409,
           "baseVersion is stale",
@@ -373,48 +321,18 @@ export class SyncService {
           },
         );
       }
-      if (error instanceof CryptoDowngradeInvariantError) {
-        logCryptoPolicyViolation(this.log, {
-          reason: "downgrade",
-          deployEnv: this.config.deployEnv ?? "dev",
-          vaultId,
-          actorId: userId,
-          requestedVersion: error.requestedVersion,
-          establishedMaxVersion: error.establishedMaxVersion,
-        });
-        throw new SyncServiceError(
-          CRYPTO_DOWNGRADE_NOT_ALLOWED,
-          CRYPTO_DOWNGRADE_STATUS_CODE,
-          `crypto profile downgrade blocked: vault stream requires at least v${error.establishedMaxVersion}`,
-          buildCryptoDowngradeDetails(
-            vaultId,
-            error.establishedMaxVersion,
-            error.requestedVersion,
-          ),
-        );
-      }
-      recordCryptoOperationOutcome(this.log, {
-        operation,
-        deployEnv: this.config.deployEnv,
-        rolloutMode: this.config.cryptoRolloutMode,
-        outcome: "error",
-        code: error instanceof SyncServiceError ? error.code : "UNEXPECTED",
-      });
       throw error;
-    } finally {
-      stopTimer();
     }
   }
 
-  private async ensureVaultReadable(vaultId: string, userId: string): Promise<void> {
-    const vault = await this.vaults.findById(vaultId);
-    if (!vault) {
-      throw new SyncServiceError("VAULT_NOT_FOUND", 404, "vault not found");
+  private async ensureWorkspaceAccess(workspaceId: string, userId: string): Promise<void> {
+    const workspace = await this.workspaces.findById(workspaceId);
+    if (!workspace) {
+      throw new WorkspacePersonalSyncServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
     }
-
-    const canRead = await this.vaults.canReadVault(vaultId, userId);
-    if (!canRead) {
-      throw new SyncServiceError("ACCESS_DENIED", 403, "access denied");
+    const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
+    if (!hasAccess) {
+      throw new WorkspacePersonalSyncServiceError("ACCESS_DENIED", 403, "access denied");
     }
   }
 
@@ -449,7 +367,7 @@ export class SyncService {
       rolloutMode: capabilityDecision.mode,
       missingCapabilities: capabilityDecision.missing,
     });
-    throw new SyncServiceError(
+    throw new WorkspacePersonalSyncServiceError(
       CRYPTO_CAPABILITY_REQUIRED,
       CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
       "strict rollout mode requires PQ-capable actor",
@@ -461,28 +379,4 @@ export class SyncService {
       }),
     );
   }
-}
-
-function mapEventToResponse(event: EventRecord): SyncEventResponse {
-  const encryptedBlob = decodeEncryptedBlobFromStorage(event.encryptedPayload, event.payloadSchemaVersion);
-  const signature =
-    encryptedBlob.meta &&
-    typeof encryptedBlob.meta === "object" &&
-    !Array.isArray(encryptedBlob.meta)
-      ? encryptedBlob.meta.signature
-      : undefined;
-  return {
-    id: event.id,
-    vaultId: event.vaultId,
-    actorId: event.actorId,
-    eventType: event.eventType,
-    encryptedBlob,
-    signature,
-    encryptedPayload: encryptedBlob.payload,
-    payloadSchemaVersion: encryptedBlob.crypto_version,
-    idempotencyKey: event.idempotencyKey,
-    clientCreatedAt: event.clientCreatedAt,
-    version: event.version,
-    createdAt: event.createdAt,
-  } as SyncEventResponse;
 }

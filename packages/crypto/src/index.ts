@@ -198,6 +198,7 @@ export {
   reconstructVaultKeyWithMasterPassword,
   OKKEY_PASSWORD_KDF_PARAMS_V1,
   OKKEY_PASSWORD_KDF_PARAMS_VERSION,
+  derivePasswordShareC,
   registrationArtifactsToWire,
   type RegistrationSplitKeyMaterial,
   type RegistrationUserKeyMaterial,
@@ -212,6 +213,7 @@ export {
 
 export {
   derivePersonalVaultMetadataKey,
+  derivePersonalWorkspaceMetadataKey,
   encryptPersonalVaultMetadataPayload,
   decryptPersonalVaultMetadataPayload,
 } from "./personal-vault-metadata.js";
