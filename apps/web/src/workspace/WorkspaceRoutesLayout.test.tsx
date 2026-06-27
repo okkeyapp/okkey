@@ -5,13 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Workspace } from "@okkey/types";
 
-import { ITEM_QUERY_PARAM, ITEMS_PATH } from "../routes/paths";
+import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, VAULT_QUERY_PARAM } from "../routes/paths";
 import WorkspaceRoutesLayout from "./WorkspaceRoutesLayout";
 
 const mocks = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
   listWorkspaceVaults: vi.fn(),
   logout: vi.fn(),
+  folderTree: [] as Array<{ id: string; label: string; children?: Array<{ id: string; label: string }> }>,
+  foldersLoading: false,
   core: null as null | {
     listWorkspaces: ReturnType<typeof vi.fn>;
     listWorkspaceVaults: ReturnType<typeof vi.fn>;
@@ -39,8 +41,8 @@ vi.mock("../locale/LocaleContext", () => ({
 vi.mock("../folders/WorkspaceFoldersContext", () => ({
   WorkspaceFoldersProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useWorkspaceFoldersState: () => ({
-    folderTree: [],
-    loading: false,
+    folderTree: mocks.folderTree,
+    loading: mocks.foldersLoading,
     error: null,
     syncVersion: 0,
     createFolder: vi.fn(),
@@ -102,6 +104,7 @@ function QueryParamProbe() {
         Select item
       </button>
       <div data-testid="item-query">{itemId}</div>
+      <div data-testid="search-query">{searchParams.toString()}</div>
     </>
   );
 }
@@ -139,6 +142,8 @@ describe("WorkspaceRoutesLayout", () => {
     mocks.listWorkspaces.mockReset();
     mocks.listWorkspaceVaults.mockReset();
     mocks.logout.mockReset();
+    mocks.folderTree = [];
+    mocks.foldersLoading = false;
     mocks.listWorkspaces.mockResolvedValue([workspace]);
     mocks.listWorkspaceVaults.mockResolvedValue([]);
     mocks.core = {
@@ -168,5 +173,54 @@ describe("WorkspaceRoutesLayout", () => {
     expect(screen.getByTestId("item-query")).toHaveTextContent("item-1");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(mocks.listWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes unknown vault query param after vaults load", async () => {
+    renderWorkspaceShell(`${ITEMS_PATH}?${VAULT_QUERY_PARAM}=missing-vault`);
+
+    await flushReactEffects();
+
+    const search = screen.getByTestId("search-query").textContent ?? "";
+    expect(search).not.toContain(`${VAULT_QUERY_PARAM}=missing-vault`);
+  });
+
+  it("removes unknown folder query param after folders load", async () => {
+    renderWorkspaceShell(`${ITEMS_PATH}?${FOLDER_QUERY_PARAM}=missing-folder`);
+
+    await flushReactEffects();
+
+    const search = screen.getByTestId("search-query").textContent ?? "";
+    expect(search).not.toContain(`${FOLDER_QUERY_PARAM}=missing-folder`);
+  });
+
+  it("keeps known vault query param", async () => {
+    mocks.listWorkspaceVaults.mockResolvedValue([
+      {
+        id: "vault-1",
+        name: "Personal",
+        workspaceId: "workspace-1",
+        isPersonal: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    renderWorkspaceShell(`${ITEMS_PATH}?${VAULT_QUERY_PARAM}=vault-1`);
+
+    await flushReactEffects();
+
+    const search = screen.getByTestId("search-query").textContent ?? "";
+    expect(search).toContain(`${VAULT_QUERY_PARAM}=vault-1`);
+  });
+
+  it("keeps known folder query param", async () => {
+    mocks.folderTree = [{ id: "folder-1", label: "Docs" }];
+
+    renderWorkspaceShell(`${ITEMS_PATH}?${FOLDER_QUERY_PARAM}=folder-1`);
+
+    await flushReactEffects();
+
+    const search = screen.getByTestId("search-query").textContent ?? "";
+    expect(search).toContain(`${FOLDER_QUERY_PARAM}=folder-1`);
   });
 });

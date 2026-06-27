@@ -17,7 +17,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
 import { WorkspaceFoldersProvider, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
-import { toSidebarFolderTree } from "../folders/workspaceFolderTree";
+import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspaceFolderTree";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
@@ -277,6 +277,49 @@ export default function WorkspaceRoutesLayout() {
       { replace: true },
     );
   }, [vaultQ, folderQ, searchQ, setSearchParams]);
+
+  /** Drop stale `vault` / `folder` query params when the id is unknown in the current workspace. */
+  useEffect(() => {
+    if (pathname !== ITEMS_PATH) {
+      return;
+    }
+
+    const unknownVault = Boolean(vaultQ && vaultsListReady && !vaults.some((vault) => vault.id === vaultQ));
+    const foldersReady = vaultUnlocked && !workspaceFoldersState.loading;
+    const unknownFolder = Boolean(
+      folderQ &&
+        foldersReady &&
+        !workspaceFolderIdExists(workspaceFoldersState.folderTree, folderQ),
+    );
+
+    if (!unknownVault && !unknownFolder) {
+      return;
+    }
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (unknownVault) {
+          next.delete(VAULT_QUERY_PARAM);
+        }
+        if (unknownFolder) {
+          next.delete(FOLDER_QUERY_PARAM);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    pathname,
+    vaultQ,
+    folderQ,
+    vaults,
+    vaultsListReady,
+    vaultUnlocked,
+    workspaceFoldersState.loading,
+    workspaceFoldersState.folderTree,
+    setSearchParams,
+  ]);
 
   useEffect(() => {
     if (!core || !userId) {

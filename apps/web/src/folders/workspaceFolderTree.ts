@@ -27,6 +27,21 @@ export function flattenWorkspaceFolders(
   });
 }
 
+export function workspaceFolderIdExists(
+  nodes: readonly WorkspaceFolderNode[],
+  folderId: string,
+): boolean {
+  for (const node of nodes) {
+    if (node.id === folderId) {
+      return true;
+    }
+    if (node.children?.length && workspaceFolderIdExists(node.children, folderId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function folderPathExists(folders: readonly FlatWorkspaceFolder[], query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
