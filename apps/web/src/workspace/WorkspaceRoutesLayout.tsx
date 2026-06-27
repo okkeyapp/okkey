@@ -18,8 +18,15 @@ import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
 import { WorkspaceFoldersProvider, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
 import { toSidebarFolderTree } from "../folders/workspaceFolderTree";
+import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
+import {
+  buildPopupQueryValue,
+  FOLDERS_POPUP_ID,
+  NEW_ITEM_POPUP_ID,
+  popupQuerySearch,
+} from "../routes/popupQuery";
 import {
   clearStoredCurrentWorkspaceId,
   readStoredCurrentWorkspaceId,
@@ -44,7 +51,6 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
-import { NEW_ITEM_POPUP_ID, popupQuerySearch } from "../routes/popupQuery";
 import { planTierLabel } from "./planTierLabel";
 
 const PERSONAL_WORKSPACE_TILE_COLOR = "#3B82F6";
@@ -219,6 +225,17 @@ export default function WorkspaceRoutesLayout() {
   );
 
   const workspaceFoldersState = useWorkspaceFoldersState(userId ?? "", resolvedWorkspaceId ?? "");
+
+  const openFoldersSettingsPopup = useCallback(() => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(FOLDERS_POPUP_ID)),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   const folderTreeForItems: OkkeySidebarFolderTreeNode[] = useMemo(
     () =>
@@ -456,6 +473,7 @@ export default function WorkspaceRoutesLayout() {
                 vaults={vaults}
                 vaultsListReady={vaultsListReady}
               />
+              <FoldersSettingsPopup t={t} />
               <WorkspaceSidebarLayout
             title={title}
             description={description}
@@ -478,7 +496,8 @@ export default function WorkspaceRoutesLayout() {
               help: t("web.nav.help"),
             }}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
-            folderHeaderPlusAriaLabel={t("web.nav.createFolder")}
+            folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
+            onFolderHeaderActionClick={openFoldersSettingsPopup}
             itemsListVaults={vaults}
             itemsListVaultsLoaded={vaultsListReady}
             itemsListFolderTree={folderTreeForItems}

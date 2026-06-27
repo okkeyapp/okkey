@@ -55,6 +55,7 @@ export type WorkspaceSidebarLayoutProps = {
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "onFolderHeaderActionClick"
 > & {
   /** `/items` left pane: workspace vaults for scope label + filtering. */
   itemsListVaults?: readonly { id: string; name: string; isPersonal: boolean }[];
@@ -147,6 +148,7 @@ export default function WorkspaceSidebarLayout({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  onFolderHeaderActionClick,
   itemsListVaults,
   itemsListVaultsLoaded,
   itemsListFolderTree,
@@ -192,6 +194,7 @@ export default function WorkspaceSidebarLayout({
           footerPlainLinkLabels={footerPlainLinkLabels}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+          onFolderHeaderActionClick={onFolderHeaderActionClick}
         >
           <div className="flex shrink-0 flex-row items-center gap-2 ps-2 pe-2 pt-2 min-[991px]:pe-4">
             <OkkeyAppSidebarToolbar

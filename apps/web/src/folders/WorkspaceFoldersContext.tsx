@@ -12,6 +12,7 @@ export type WorkspaceFoldersContextValue = {
   folderTree: WorkspaceFolderNode[];
   flatFolders: FlatWorkspaceFolder[];
   createFolder: (label: string) => string;
+  replaceFolderTree: (tree: WorkspaceFolderNode[]) => void;
 };
 
 const WorkspaceFoldersContext = createContext<WorkspaceFoldersContextValue | null>(null);
@@ -51,6 +52,13 @@ export function useWorkspaceFoldersState(userId: string, workspaceId: string): W
     [folderTree, persistTree],
   );
 
+  const replaceFolderTree = useCallback(
+    (next: WorkspaceFolderNode[]) => {
+      persistTree(next);
+    },
+    [persistTree],
+  );
+
   const flatFolders = useMemo(() => flattenWorkspaceFolders(folderTree), [folderTree]);
 
   return useMemo(
@@ -58,8 +66,9 @@ export function useWorkspaceFoldersState(userId: string, workspaceId: string): W
       folderTree,
       flatFolders,
       createFolder,
+      replaceFolderTree,
     }),
-    [folderTree, flatFolders, createFolder],
+    [folderTree, flatFolders, createFolder, replaceFolderTree],
   );
 }
 
