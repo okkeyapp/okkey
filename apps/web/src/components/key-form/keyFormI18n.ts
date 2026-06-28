@@ -15,6 +15,8 @@ export type CrackTimeLabelKey =
   | "centuries"
   | "forever";
 
+export type KeyFormUrlAutofillScope = "entire-site" | "exact-url" | "none";
+
 export type KeyFormEditorMessages = {
   copy: string;
   copied: string;
@@ -35,6 +37,7 @@ export type KeyFormEditorMessages = {
   showCodes: string;
   allCodesUsed: string;
   addUrl: string;
+  addTotp: string;
   sectionTitlePlaceholder: string;
   editSectionTitleAria: string;
   recoveryCodesPlaceholder: string;
@@ -43,6 +46,7 @@ export type KeyFormEditorMessages = {
   crackTimeLabels: Record<CrackTimeLabelKey, string>;
   fieldLabels: Record<string, string>;
   fieldPlaceholders: Record<string, string>;
+  urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
     street: string;
     city: string;
@@ -93,7 +97,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
   const t: Translate = (messageKey) => formatWebMessage(locale, messageKey);
   const template: Translate = (messageKey) => getWebMessagePattern(locale, messageKey);
   const fieldLabels = Object.fromEntries(
-    KEY_FIELD_TYPE_IDS.map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
+    [...KEY_FIELD_TYPE_IDS, "login"].map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
   );
   const fieldPlaceholders = Object.fromEntries(
     KEY_FIELD_TYPE_IDS.map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
@@ -119,6 +123,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     showCodes: t("web.keyForm.showCodes"),
     allCodesUsed: t("web.keyForm.allCodesUsed"),
     addUrl: t("web.keyForm.addUrl"),
+    addTotp: t("web.keyForm.addTotp"),
     sectionTitlePlaceholder: t("web.keyForm.sectionTitlePlaceholder"),
     editSectionTitleAria: t("web.keyForm.editSectionTitleAria"),
     recoveryCodesPlaceholder: t("web.keyForm.recoveryCodesPlaceholder"),
@@ -142,6 +147,11 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     },
     fieldLabels,
     fieldPlaceholders,
+    urlAutofillScope: {
+      "entire-site": t("web.keyForm.urlAutofill.entireSite"),
+      "exact-url": t("web.keyForm.urlAutofill.exactUrl"),
+      none: t("web.keyForm.urlAutofill.none"),
+    },
     address: {
       street: t("web.keyForm.address.street"),
       city: t("web.keyForm.address.city"),

@@ -63,8 +63,11 @@ import {
   formatKeyFormMessage,
   type CrackTimeLabelKey,
   type KeyFormEditorMessages,
+  type KeyFormUrlAutofillScope,
   type PasswordStrengthLabelKey,
 } from "./keyFormI18n";
+
+export type { KeyFormUrlAutofillScope } from "./keyFormI18n";
 
 export type KeyFormEditorSectionVariant = "primary" | "additional";
 
@@ -76,6 +79,9 @@ export type KeyFormEditorField = {
   copyValue?: string;
   editableLabel?: boolean;
   secret?: boolean;
+  deletable?: boolean;
+  required?: boolean;
+  urlAutofillScope?: KeyFormUrlAutofillScope;
 };
 
 export type KeyFormEditorSection = {
@@ -93,6 +99,8 @@ export type KeyFormEditorProps = {
   fieldTypes?: readonly KeyFieldTypeOption[];
   messages?: KeyFormEditorMessages;
   className?: string;
+  onSectionsChange?: (sections: KeyFormEditorSection[]) => void;
+  onWebsiteUrlsBlur?: (sections: KeyFormEditorSection[]) => void;
 };
 
 type DemoSectionVariant = KeyFormEditorSectionVariant;
@@ -307,6 +315,48 @@ function RegeneratePasswordIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.32263 2.00631 4.71265 2.66082 3.50667 3.82667L2 5.33333M5.33333 5.33333H2V2M2 8C2 9.5913 2.63214 11.1174 3.75736 12.2426C4.88258 13.3679 6.4087 14 8 14C9.67737 13.9937 11.2874 13.3392 12.4933 12.1733L14 10.6667M14 14V10.6667H10.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const URL_AUTOFILL_SCOPES: KeyFormUrlAutofillScope[] = ["entire-site", "exact-url", "none"];
+
+function sectionHasTotpField(section: DemoSection): boolean {
+  return section.fields.some((field) => field.type === "totp");
+}
+
+function canDeleteField(section: DemoSection, field: DemoField): boolean {
+  if (field.deletable === false) {
+    return false;
+  }
+
+  if (section.id === "websites" && field.type === "url") {
+    return section.fields.filter((item) => item.type === "url").length > 1;
+  }
+
+  return true;
+}
+
+function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): boolean {
+  if (mode !== "edit") {
+    return false;
+  }
+
+  if (section.id === "websites") {
+    return true;
+  }
+
+  if (section.id === "credentials") {
+    return !sectionHasTotpField(section);
+  }
+
+  return false;
 }
 
 function ActionButton({
@@ -1036,6 +1086,7 @@ type SortableFieldProps = {
   onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
   statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
+  onValueBlur?: () => void;
   messages: KeyFormEditorMessages;
   addressFieldPlaceholders?: KeyFormEditorMessages["address"];
   recoveryCodesPlaceholder?: string;
@@ -1074,6 +1125,7 @@ function SortableField({
   onFileDelete,
   statusOverlayLabel,
   onCopyAction,
+  onValueBlur,
   messages,
   addressFieldPlaceholders,
   recoveryCodesPlaceholder,
@@ -1164,6 +1216,7 @@ function SortableField({
       onCopyAction={onCopyAction}
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
+      onValueBlur={onValueBlur}
       addressFieldPlaceholders={addressFieldPlaceholders ?? messages.address}
       addressSearchCountriesPlaceholder={(addressFieldPlaceholders ?? messages.address).searchCountries}
       addressNoCountriesFoundMessage={(addressFieldPlaceholders ?? messages.address).noCountriesFound}
@@ -1241,10 +1294,58 @@ export function KeyFormEditor({
   fieldTypes: fieldTypesProp,
   messages: messagesProp,
   className,
+  onSectionsChange,
+  onWebsiteUrlsBlur,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
   const fieldTypes = fieldTypesProp ?? englishKeyFieldTypes;
   const [sections, setSections] = useState<DemoSection[]>(() => [...initialSections]);
+  const sectionsRef = useRef(sections);
+  sectionsRef.current = sections;
+
+  useEffect(() => {
+    onSectionsChange?.(sections);
+  }, [sections, onSectionsChange]);
+
+  const notifyWebsiteUrlsBlur = useCallback(() => {
+    onWebsiteUrlsBlur?.(sectionsRef.current);
+  }, [onWebsiteUrlsBlur]);
+
+  const websitesUrlFieldOrderKey = useMemo(() => {
+    const websitesSection = sections.find((section) => section.id === "websites");
+    if (!websitesSection) {
+      return "";
+    }
+    return websitesSection.fields
+      .filter((field) => field.type === "url")
+      .map((field) => field.id)
+      .join("\u0001");
+  }, [sections]);
+  const prevWebsiteUrlFieldOrderKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const nextKey = websitesUrlFieldOrderKey;
+    const prevKey = prevWebsiteUrlFieldOrderKeyRef.current;
+
+    if (prevKey === null) {
+      prevWebsiteUrlFieldOrderKeyRef.current = nextKey;
+      return;
+    }
+
+    prevWebsiteUrlFieldOrderKeyRef.current = nextKey;
+
+    const prevIds = prevKey ? prevKey.split("\u0001") : [];
+    const nextIds = nextKey ? nextKey.split("\u0001") : [];
+    const isReorder =
+      prevIds.length === nextIds.length &&
+      prevIds.length > 0 &&
+      prevIds.some((id, index) => id !== nextIds[index]);
+
+    if (isReorder) {
+      onWebsiteUrlsBlur?.(sections);
+    }
+  }, [websitesUrlFieldOrderKey, sections, onWebsiteUrlsBlur]);
+
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
   const [visibleRecoveryCodesIds, setVisibleRecoveryCodesIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -1264,6 +1365,7 @@ export function KeyFormEditor({
   const nextIdRef = useRef(1);
   const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const urlFieldTypes = useMemo(() => fieldTypes.filter((type) => type.id === "url"), [fieldTypes]);
+  const totpFieldTypes = useMemo(() => fieldTypes.filter((type) => type.id === "totp"), [fieldTypes]);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -1377,11 +1479,45 @@ export function KeyFormEditor({
   }
 
   function addField(sectionId: string, type: KeyFieldTypeOption) {
-    const field = createField(type);
+    let field = createField(type);
+
+    if (sectionId === "credentials" && type.id === "totp") {
+      field = {
+        ...field,
+        editableLabel: false,
+        deletable: true,
+      };
+    }
+
+    if (sectionId === "websites" && type.id === "url") {
+      field = {
+        ...field,
+        editableLabel: true,
+        deletable: true,
+        urlAutofillScope: "entire-site",
+      };
+    }
+
     setActiveValueFieldId(field.id);
     setSections((current) =>
       current.map((section) =>
         section.id === sectionId ? { ...section, fields: [...section.fields, field] } : section,
+      ),
+    );
+  }
+
+  function updateUrlAutofillScope(sectionId: string, fieldId: string, scope: KeyFormUrlAutofillScope) {
+    setOpenFieldMenuId(null);
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === fieldId ? { ...field, urlAutofillScope: scope } : field,
+              ),
+            }
+          : section,
       ),
     );
   }
@@ -1439,13 +1575,40 @@ export function KeyFormEditor({
   }
 
   function removeField(sectionId: string, fieldId: string) {
-    setSections((current) =>
-      current
-        .map((section) =>
-          section.id === sectionId ? { ...section, fields: section.fields.filter((field) => field.id !== fieldId) } : section,
-        )
-        .filter((section) => section.fields.length > 0),
-    );
+    let nextSections: DemoSection[] | null = null;
+    let shouldSyncWebsiteUrls = false;
+
+    setSections((current) => {
+      const section = current.find((item) => item.id === sectionId);
+      const field = section?.fields.find((item) => item.id === fieldId);
+      shouldSyncWebsiteUrls = Boolean(
+        section &&
+          field &&
+          section.id === "websites" &&
+          field.type === "url" &&
+          canDeleteField(section, field),
+      );
+
+      nextSections = current
+        .map((item) => {
+          if (item.id !== sectionId) {
+            return item;
+          }
+
+          if (!field || !canDeleteField(item, field)) {
+            return item;
+          }
+
+          return { ...item, fields: item.fields.filter((entry) => entry.id !== fieldId) };
+        })
+        .filter((item) => item.fields.length > 0);
+
+      return nextSections;
+    });
+
+    if (shouldSyncWebsiteUrls && nextSections) {
+      onWebsiteUrlsBlur?.(nextSections);
+    }
   }
 
   function openPasswordGenerator(fieldId: string) {
@@ -1701,7 +1864,12 @@ export function KeyFormEditor({
     const isRecoveryCodesRevealed = field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
-    const fieldMeta = metaForField(field.type, section.variant, valueForField(section, field), messages);
+    const fieldMeta = metaForField(
+      field.type,
+      section.variant,
+      messages,
+      typeof field.value === "string" ? field.value : undefined,
+    );
     if (!canEdit) {
       const showRecoveryCodesMeta = field.type === "recovery-codes" && !isRecoveryCodesRevealed;
       return (field.type === "password" || showRecoveryCodesMeta) && fieldMeta ? (
@@ -1776,6 +1944,41 @@ export function KeyFormEditor({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        ) : field.type === "url" && section.id === "websites" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
+              >
+                <GearIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[15rem] p-1">
+              {URL_AUTOFILL_SCOPES.map((scope) => {
+                const selected = (field.urlAutofillScope ?? "entire-site") === scope;
+                return (
+                  <DropdownMenuItem
+                    key={scope}
+                    onSelect={() => updateUrlAutofillScope(section.id, field.id, scope)}
+                  >
+                    {selected ? <CheckIcon className="size-4" /> : <span className="size-4 shrink-0" aria-hidden />}
+                    {messages.urlAutofillScope[scope]}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : field.type === "phone" ? (
           <DropdownMenu
             open={isFieldMenuOpen}
@@ -1835,7 +2038,7 @@ export function KeyFormEditor({
             <EyeIcon className="size-4" />
           </ActionButton>
         ) : null}
-        {canEdit ? (
+        {canEdit && canDeleteField(section, field) ? (
           <ActionButton label={messages.deleteField} destructive sectionVariant={section.variant} onClick={() => removeField(section.id, field.id)}>
             <TrashIcon className="size-4" />
           </ActionButton>
@@ -2080,12 +2283,13 @@ export function KeyFormEditor({
   function renderField(section: DemoSection, field: DemoField) {
     const canReorderField = section.id === "websites" || !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
+    const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
     const isFieldInvalid = isInvalidField(field);
     const isFieldDraggingInSection = activeDrag?.type === "field" && activeDrag.sectionId === section.id;
     const isFirstField = section.fields[0]?.id === field.id;
     const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
-    const hasAddFieldButton = mode === "edit" && section.id === "websites";
+    const hasAddFieldButton = sectionHasAddFieldButton(section, mode);
     const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
     const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
     const isRecoveryCodesField = field.type === "recovery-codes";
@@ -2141,6 +2345,7 @@ export function KeyFormEditor({
         }
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
+        onValueBlur={isWebsitesSectionUrlField ? notifyWebsiteUrlsBlur : undefined}
       />
     );
   }
@@ -2279,7 +2484,27 @@ export function KeyFormEditor({
           strategy={verticalListSortingStrategy}
         >
           {sections.map((section) => {
-            const addableFieldTypes = section.id === "websites" ? urlFieldTypes : fieldTypes;
+            const hasTotpField = section.id === "credentials" && sectionHasTotpField(section);
+            const addableFieldTypes =
+              section.variant === "additional"
+                ? fieldTypes
+                : section.id === "websites"
+                  ? urlFieldTypes
+                  : section.id === "credentials" && !hasTotpField
+                    ? totpFieldTypes
+                    : [];
+            const sectionAddFieldLabel =
+              section.id === "websites"
+                ? messages.addUrl
+                : section.id === "credentials"
+                  ? messages.addTotp
+                  : addFieldLabel;
+            const sectionOnAddField =
+              section.variant === "additional"
+                ? (type: KeyFieldTypeOption) => addField(section.id, type)
+                : section.id === "websites" || (section.id === "credentials" && !hasTotpField)
+                  ? (type: KeyFieldTypeOption) => addField(section.id, type)
+                  : undefined;
             const fields = (
               <SortableContext items={section.fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
                 {section.fields.map((field) => renderField(section, field))}
@@ -2293,10 +2518,10 @@ export function KeyFormEditor({
                   section={section}
                   mode={mode}
                   fieldTypes={addableFieldTypes}
-                  addFieldLabel={section.id === "websites" ? messages.addUrl : addFieldLabel}
+                  addFieldLabel={sectionAddFieldLabel}
                   sectionTitlePlaceholder={messages.sectionTitlePlaceholder}
                   editSectionTitleAriaLabel={messages.editSectionTitleAria}
-                  onAddField={(type) => addField(section.id, type)}
+                  onAddField={sectionOnAddField}
                   onTitleChange={(title) => updateSectionTitle(section.id, title)}
                 >
                   {fields}
@@ -2314,10 +2539,10 @@ export function KeyFormEditor({
                 reorderable
                 isFieldDragging={activeDrag?.type === "field" && activeDrag.sectionId === section.id}
                 fieldTypes={addableFieldTypes}
-                addFieldLabel={section.id === "websites" ? messages.addUrl : addFieldLabel}
+                addFieldLabel={sectionAddFieldLabel}
                 sectionTitlePlaceholder={messages.sectionTitlePlaceholder}
                 editSectionTitleAriaLabel={messages.editSectionTitleAria}
-                onAddField={section.id === "websites" ? (type) => addField(section.id, type) : undefined}
+                onAddField={sectionOnAddField}
                 onTitleChange={(title) => updateSectionTitle(section.id, title)}
               >
                 {fields}

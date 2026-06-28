@@ -139,8 +139,13 @@ export {
 export {
   Favicon,
   buildYandexCompositeFaviconUrl,
+  deriveFaviconMonogram,
+  faviconMonogramBackgroundColor,
+  FAVICON_MONOGRAM_COLORS,
   hostsFromUrls,
   parseHostFromUrl,
+  primaryFaviconUrl,
+  urlsForRemoteFavicon,
   type FaviconProps,
 } from "./components/ui/favicon.js";
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";

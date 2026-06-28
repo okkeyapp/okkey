@@ -5,8 +5,8 @@ import { PersonalWorkspaceMark } from "./workspace-tile.js";
 
 const YANDEX_INTERNAL_SIZE = 120;
 
-/** Tailwind-style 500 palette for deterministic fallbacks when `color` is omitted. */
-const SHADCN_500_HEX = [
+/** Tailwind/shadcn 500 palette — monogram backgrounds and generic fallbacks. */
+export const FAVICON_MONOGRAM_COLORS = [
   "#ef4444",
   "#f97316",
   "#f59e0b",
@@ -27,12 +27,78 @@ const SHADCN_500_HEX = [
   "#64748b",
 ] as const;
 
+const SHADCN_500_HEX = FAVICON_MONOGRAM_COLORS;
+
 function stableIndexFromString(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i += 1) {
     h = (h * 31 + s.charCodeAt(i)) >>> 0;
   }
   return h % SHADCN_500_HEX.length;
+}
+
+/** Up to two initials: first letters of the first two words, or the first two characters. */
+export function deriveFaviconMonogram(name?: string, monogram?: string): string {
+  const override = monogram?.trim();
+  if (override) {
+    return takeMonogramLetters(override);
+  }
+  return takeMonogramLetters(name ?? "");
+}
+
+function isAlphanumericChar(ch: string): boolean {
+  return /[\p{L}\p{N}]/u.test(ch);
+}
+
+function firstAlphanumericChar(token: string): string {
+  for (const ch of token) {
+    if (isAlphanumericChar(ch)) {
+      return ch;
+    }
+  }
+  return "";
+}
+
+function firstAlphanumericChars(input: string, count: number): string {
+  const out: string[] = [];
+  for (const ch of input) {
+    if (isAlphanumericChar(ch)) {
+      out.push(ch);
+      if (out.length >= count) {
+        break;
+      }
+    }
+  }
+  return out.join("").toLocaleUpperCase();
+}
+
+function takeMonogramLetters(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const words = trimmed.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (words.length >= 2) {
+    const first = firstAlphanumericChar(words[0] ?? "");
+    const second = firstAlphanumericChar(words[1] ?? "");
+    if (first && second) {
+      return (first + second).toLocaleUpperCase();
+    }
+  }
+  return firstAlphanumericChars(trimmed, 2);
+}
+
+/** Background for monogram tiles — hue bucket from the first letter (1Password-style). */
+export function faviconMonogramBackgroundColor(monogram: string): string {
+  const first = firstAlphanumericChar(monogram).toUpperCase();
+  if (!first) {
+    return SHADCN_500_HEX[0];
+  }
+  const code = first.charCodeAt(0);
+  if (code >= 65 && code <= 90) {
+    return SHADCN_500_HEX[(code - 65) % SHADCN_500_HEX.length] ?? SHADCN_500_HEX[0];
+  }
+  return SHADCN_500_HEX[stableIndexFromString(monogram)] ?? SHADCN_500_HEX[0];
 }
 
 /** Extract hostname from a full URL or bare host string. */
@@ -65,6 +131,35 @@ export function hostsFromUrls(urls: readonly string[] | undefined): string[] {
     }
   }
   return out;
+}
+
+const IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+function isIpv4Host(host: string): boolean {
+  return IPV4_HOST_RE.test(host);
+}
+
+/** URLs suitable for Yandex favicon lookup (skip localhost, IPs, single-label hosts). */
+export function urlsForRemoteFavicon(urls: readonly string[]): string[] {
+  return urls.filter((url) => {
+    const host = parseHostFromUrl(url);
+    if (!host) {
+      return false;
+    }
+    const normalized = host.toLowerCase();
+    if (normalized === "localhost" || normalized.endsWith(".local") || isIpv4Host(normalized)) {
+      return false;
+    }
+    return normalized.includes(".");
+  });
+}
+
+/** First URL in `urls` that can be resolved via Yandex favicon API. */
+export function primaryFaviconUrl(urls: readonly string[] | undefined): string | undefined {
+  if (!urls?.length) {
+    return undefined;
+  }
+  return urlsForRemoteFavicon(urls)[0];
 }
 
 /**
@@ -169,28 +264,37 @@ function loadImage(src: string, crossOrigin: "" | "anonymous"): Promise<HTMLImag
 }
 
 export type FaviconProps = Omit<React.HTMLAttributes<HTMLDivElement>, "title"> & {
-  /** Page or item URLs; hosts are derived and passed to Yandex favicon (composite strip, first non-empty tile). */
+  /** Record display name; first letter is used as monogram when remote favicon is unavailable. */
+  name?: string;
+  /** Website URLs in priority order; the first URL suitable for lookup drives the remote favicon. */
   urls?: readonly string[];
+  /**
+   * When true, pass all suitable `urls` to the Yandex composite strip and show the first non-empty tile.
+   * Default (`false`): only the first suitable URL is requested (record list / form behaviour).
+   */
+  compositeStrip?: boolean;
   /** Edge length in CSS pixels (e.g. 32 in item lists). */
   size?: number;
   /** Fallback background when no favicon is shown; if omitted, a stable shadcn-500 hue is picked from `urls`. */
   color?: string;
   /**
-   * When no remote favicon: show first character (uppercase, bold, white) on the fallback background.
+   * Override monogram text (max 2 chars); defaults to initials derived from `name`.
    * (Named `monogram` to avoid clashing with the native HTML `title` tooltip attribute.)
    */
   monogram?: string;
-  /** When no remote favicon: white icon centered on the fallback background. */
+  /** When no remote favicon and no monogram from `name`: category/type icon on the fallback background. */
   icon?: React.ReactNode;
   /** `img` alt when a remote favicon is shown. */
   alt?: string;
 };
 
 /**
- * Favicon from Yandex composite strip (first non-empty tile), with monogram / icon / Okkey mark fallbacks.
+ * Favicon for records: remote tile from the primary URL, then monogram from `name`, then `icon`, then Okkey mark.
  */
 export function Favicon({
+  name,
   urls,
+  compositeStrip = false,
   size = 32,
   color,
   monogram,
@@ -200,21 +304,29 @@ export function Favicon({
   ...rest
 }: FaviconProps) {
   const urlsKey = (urls ?? []).join("\u0001");
-  const hosts = React.useMemo(() => hostsFromUrls(urls ?? []), [urlsKey]);
+  const remoteUrls = React.useMemo(() => {
+    const suitable = urlsForRemoteFavicon(urls ?? []);
+    if (compositeStrip) {
+      return suitable;
+    }
+    const primary = suitable[0];
+    return primary ? [primary] : [];
+  }, [compositeStrip, urlsKey]);
+  const hosts = React.useMemo(() => hostsFromUrls(remoteUrls), [remoteUrls]);
   const compositeSrc = React.useMemo(() => (hosts.length ? buildYandexCompositeFaviconUrl(hosts) : ""), [hosts]);
 
   const defaultBg = React.useMemo(() => {
-    const key = hosts.length ? hosts.join("|") : "okkey-favicon";
+    const key = hosts.length ? hosts.join("|") : name?.trim() || "okkey-favicon";
     return SHADCN_500_HEX[stableIndexFromString(key)] ?? SHADCN_500_HEX[0];
-  }, [hosts]);
+  }, [hosts, name]);
 
-  const bg = color ?? defaultBg;
+  const iconFallbackBg = color ?? defaultBg;
 
   const [remoteMode, setRemoteMode] = React.useState<"none" | "composite" | "single">("none");
   const [tileIndex, setTileIndex] = React.useState(0);
   const [singleSrc, setSingleSrc] = React.useState<string | null>(null);
   const [natural, setNatural] = React.useState<{ cw: number; ch: number } | null>(null);
-  const [scanDone, setScanDone] = React.useState(!urls?.length);
+  const [scanDone, setScanDone] = React.useState(!remoteUrls.length);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -292,8 +404,12 @@ export function Favicon({
           }
           const src = singleHostFaviconUrl(host);
           try {
-            await loadImage(src, "");
-            if (!cancelled) {
+            const im = await loadImage(src, "");
+            if (cancelled) {
+              return;
+            }
+            const { firstNonEmpty } = analyzeTiles(im);
+            if (firstNonEmpty != null) {
               setSingleSrc(src);
               setRemoteMode("single");
               return;
@@ -313,13 +429,21 @@ export function Favicon({
     return () => {
       cancelled = true;
     };
-  }, [compositeSrc, urlsKey]);
+  }, [compositeSrc, hosts, urlsKey]);
 
   const px = `${size}px`;
-  const letter = monogram?.trim().charAt(0).toLocaleUpperCase() ?? "";
+  const monogramText = deriveFaviconMonogram(name, monogram);
+  const monogramBg = monogramText ? faviconMonogramBackgroundColor(monogramText) : undefined;
+  const showCustomFallback = (Boolean(monogramText) || Boolean(icon)) && scanDone && remoteMode === "none";
 
   const compositeDisplayHeight =
     natural && natural.cw > 0 ? `${(natural.ch / natural.cw) * size}px` : undefined;
+
+  const showRemoteFallback = () => {
+    setRemoteMode("none");
+    setSingleSrc(null);
+    setNatural(null);
+  };
 
   return (
     <div
@@ -327,12 +451,32 @@ export function Favicon({
       style={{ width: px, height: px }}
       {...rest}
     >
+      {showCustomFallback ? (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ backgroundColor: monogramText ? monogramBg : iconFallbackBg }}
+          aria-hidden
+        >
+          {monogramText ? (
+            <span
+              className="font-semibold uppercase tracking-tight text-white"
+              style={{ fontSize: Math.max(9, Math.round(size * (monogramText.length > 1 ? 0.34 : 0.4))) }}
+            >
+              {monogramText}
+            </span>
+          ) : icon ? (
+            <span className="flex size-[55%] items-center justify-center text-white [&_svg]:size-full">{icon}</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {remoteMode === "composite" && compositeSrc && compositeDisplayHeight ? (
         <img
           src={compositeSrc}
           alt={alt}
-          className="pointer-events-none absolute left-0 top-0 max-w-none select-none"
+          className="pointer-events-none absolute left-0 top-0 z-[1] max-w-none select-none"
           draggable={false}
+          onError={showRemoteFallback}
           style={{
             width: px,
             height: compositeDisplayHeight,
@@ -347,29 +491,22 @@ export function Favicon({
           alt={alt}
           width={size}
           height={size}
-          className="pointer-events-none absolute inset-0 size-full object-cover"
+          className="pointer-events-none absolute inset-0 z-[1] size-full object-cover"
           draggable={false}
+          onError={showRemoteFallback}
         />
       ) : null}
 
-      {!scanDone && hosts.length ? (
+      {!scanDone && remoteUrls.length ? (
         <div className="absolute inset-0 animate-pulse rounded-lg bg-muted" aria-hidden />
       ) : null}
 
-      {scanDone && remoteMode === "none" ? (
+      {!monogramText && !icon && scanDone && remoteMode === "none" ? (
         <div
           className="absolute inset-0 flex items-center justify-center"
-          style={{ backgroundColor: bg }}
+          style={{ backgroundColor: iconFallbackBg }}
         >
-          {icon ? (
-            <span className="flex size-[55%] items-center justify-center text-white [&_svg]:size-full">{icon}</span>
-          ) : letter ? (
-            <span className="font-bold text-white" style={{ fontSize: Math.max(10, Math.round(size * 0.42)) }}>
-              {letter}
-            </span>
-          ) : (
-            <PersonalWorkspaceMark fillColor={bg} className="size-[62%]" />
-          )}
+          <PersonalWorkspaceMark fillColor={iconFallbackBg} className="size-[62%]" />
         </div>
       ) : null}
     </div>

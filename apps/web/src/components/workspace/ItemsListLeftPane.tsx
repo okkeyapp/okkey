@@ -1196,7 +1196,12 @@ export default function ItemsListLeftPane({
                             }
                             className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 px-3 py-2.5 text-left"
                           >
-                            <Favicon urls={row.urls.length ? row.urls : undefined} size={32} className="shrink-0 bg-background" />
+                            <Favicon
+                              name={row.title}
+                              urls={row.urls.length > 0 ? row.urls : undefined}
+                              size={32}
+                              className="shrink-0 bg-background"
+                            />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-medium text-foreground">{row.title}</span>
                               <span className="block truncate text-sm text-muted-foreground">{row.login}</span>

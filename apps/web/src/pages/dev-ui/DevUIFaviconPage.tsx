@@ -28,12 +28,11 @@ export default function DevUIFaviconPage() {
         <div>
           <h2 className="text-lg font-medium">Favicon</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Yandex composite URL: first <strong>non-empty</strong> tile is shown (e.g. skip blank{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">badexample.com</code>, show{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">gog.com</code>). Fallbacks: optional{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">color</code>,{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">monogram</code>,{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">icon</code>, or the Okkey workspace mark.
+            Pass <code className="rounded bg-muted px-1 py-0.5 text-xs">name</code> and ordered{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">urls</code> — the first suitable URL drives the remote
+            tile. Fallback order: remote favicon → monogram from{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">name</code> →{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">icon</code> → Okkey mark.
           </p>
         </div>
 
@@ -43,19 +42,33 @@ export default function DevUIFaviconPage() {
         </div>
 
         <div className="rounded-lg border border-border bg-card p-6 text-card-foreground">
-          <h3 className="mb-4 text-sm font-medium">Composite strip → first non-empty tile</h3>
+          <h3 className="mb-4 text-sm font-medium">Record usage (name + urls)</h3>
           <div className="flex flex-wrap items-end gap-6">
             <div className="flex flex-col items-center gap-2">
-              <Favicon urls={["https://badexample.com", "https://gog.com", "https://yandex.ru"]} size={64} />
-              <span className="max-w-[10rem] text-center text-xs text-muted-foreground">badexample + gog + yandex (expect GOG)</span>
+              <Favicon name="GitHub" urls={["https://github.com"]} size={64} />
+              <span className="text-xs text-muted-foreground">Single URL</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <Favicon urls={["https://github.com"]} size={64} />
-              <span className="text-xs text-muted-foreground">Single host</span>
+              <Favicon name="Yandex" urls={["https://google.com", "https://yandex.ru"]} size={48} />
+              <span className="max-w-[9rem] text-center text-xs text-muted-foreground">Primary = first URL (google)</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <Favicon urls={["https://google.com", "https://yandex.ru"]} size={48} />
-              <span className="max-w-[9rem] text-center text-xs text-muted-foreground">google + yandex</span>
+              <Favicon name="Localhost" urls={["http://localhost:3000"]} size={48} color="#22c55e" />
+              <span className="text-xs text-muted-foreground">localhost → LO + letter color</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-6 text-card-foreground">
+          <h3 className="mb-4 text-sm font-medium">Composite API (low-level)</h3>
+          <div className="flex flex-wrap items-end gap-6">
+            <div className="flex flex-col items-center gap-2">
+              <Favicon
+                compositeStrip
+                urls={["https://badexample.com", "https://gog.com", "https://yandex.ru"]}
+                size={64}
+              />
+              <span className="max-w-[10rem] text-center text-xs text-muted-foreground">badexample skipped → gog</span>
             </div>
           </div>
         </div>
@@ -63,10 +76,10 @@ export default function DevUIFaviconPage() {
         <div className="rounded-lg border border-border bg-card p-6 text-card-foreground">
           <h3 className="mb-4 text-sm font-medium">List size (32×32)</h3>
           <div className="flex flex-wrap items-center gap-3">
-            <Favicon urls={["https://vk.com"]} size={32} />
-            <Favicon urls={["https://docker.com"]} size={32} />
-            <Favicon urls={["https://jetbrains.com"]} size={32} />
-            <Favicon urls={["https://badexample.com", "https://ok.ru"]} size={32} />
+            <Favicon name="VK" urls={["https://vk.com"]} size={32} />
+            <Favicon name="Docker" urls={["https://docker.com"]} size={32} />
+            <Favicon name="JetBrains" urls={["https://jetbrains.com"]} size={32} />
+            <Favicon name="OK" urls={["https://badexample.com", "https://ok.ru"]} size={32} />
           </div>
         </div>
 
@@ -82,8 +95,8 @@ export default function DevUIFaviconPage() {
               <span className="text-xs text-muted-foreground">Explicit color, default mark</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <Favicon size={56} color="#7c3aed" monogram="okkey" />
-              <span className="text-xs text-muted-foreground">monogram → “O”</span>
+              <Favicon size={56} color="#7c3aed" name="okkey" />
+              <span className="text-xs text-muted-foreground">name → “OK” (letter hue)</span>
             </div>
             <div className="flex flex-col items-center gap-2">
               <Favicon size={56} color="#b45309" icon={<DemoFallbackCardIcon />} />
@@ -97,7 +110,7 @@ export default function DevUIFaviconPage() {
           <p className="mb-4 text-xs text-muted-foreground">Same as omitting urls — stable hue from internal seed.</p>
           <div className="flex flex-wrap gap-3">
             <Favicon urls={[]} size={40} />
-            <Favicon urls={[]} size={40} monogram="α" />
+            <Favicon name="Alpha" urls={[]} size={40} />
           </div>
         </div>
       </section>

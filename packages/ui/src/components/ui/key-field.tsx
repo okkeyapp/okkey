@@ -153,6 +153,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
   onValueChange?: (value: string) => void;
+  onValueBlur?: () => void;
   transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
@@ -216,6 +217,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       reorderable = false,
       onLabelChange,
       onValueChange,
+      onValueBlur,
       transformValueInput,
       meta,
       actions,
@@ -822,7 +824,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     placeholder={shouldConcealValue && draftValue.length > 0 ? undefined : valuePlaceholder}
                     onChange={handleValueChange}
                     onFocus={() => setIsValueFocused(true)}
-                    onBlur={() => setIsValueFocused(false)}
+                    onBlur={() => {
+                      setIsValueFocused(false);
+                      onValueBlur?.();
+                    }}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 )

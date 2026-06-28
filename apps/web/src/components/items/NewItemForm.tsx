@@ -1,10 +1,11 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
-import { Input } from "@okkey/ui";
-import { useMemo, useState } from "react";
+import { Favicon, Input } from "@okkey/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
 import { useLocale } from "../../locale/LocaleContext";
-import { KeyFormEditor } from "../key-form/KeyFormEditor";
+import { KeyFormEditor, type KeyFormEditorSection } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
 import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
@@ -27,15 +28,41 @@ export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaul
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
   const [recordName, setRecordName] = useState("");
+  const recordNameEditedRef = useRef(false);
+  const [formSections, setFormSections] = useState<KeyFormEditorSection[] | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [vaultId, setVaultId] = useSyncedNewItemVaultId(vaults, vaultsListReady);
   const [folderId, setFolderId] = useState(NO_FOLDER_VALUE);
-  const initialSections = useMemo(
-    () => (category ? getDefaultSectionsForCategory(category.id) : []),
-    [category],
-  );
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
+  const initialSections = useMemo(
+    () => (category ? getDefaultSectionsForCategory(category.id, keyFormMessages) : []),
+    [category, keyFormMessages],
+  );
+  const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>([]);
+  const suggestedRecordName = useMemo(
+    () => suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls),
+    [committedWebsiteUrls],
+  );
+  const trimmedRecordName = recordName.trim();
+
+  const handleWebsiteUrlsBlur = useCallback((sections: KeyFormEditorSection[]) => {
+    setCommittedWebsiteUrls(collectWebsiteUrlsFromSections(sections));
+  }, []);
+
+  useEffect(() => {
+    setRecordName("");
+    recordNameEditedRef.current = false;
+    setFormSections(null);
+    setCommittedWebsiteUrls([]);
+  }, [categoryId]);
+
+  useEffect(() => {
+    if (recordNameEditedRef.current) {
+      return;
+    }
+    setRecordName(suggestedRecordName);
+  }, [suggestedRecordName]);
 
   if (!category) {
     return null;
@@ -44,16 +71,20 @@ export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaul
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-4">
-        <div
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white"
-          style={{ backgroundColor: category.iconColor }}
-          aria-hidden
-        >
-          <ItemCategoryIcon categoryId={category.id} pixelSize={24} className="shrink-0 text-white" />
-        </div>
+        <Favicon
+          name={trimmedRecordName || undefined}
+          urls={committedWebsiteUrls.length > 0 ? committedWebsiteUrls : undefined}
+          size={40}
+          color={category.iconColor}
+          icon={<ItemCategoryIcon categoryId={category.id} pixelSize={22} className="shrink-0 text-white" />}
+          alt=""
+        />
         <Input
           value={recordName}
-          onChange={(event) => setRecordName(event.target.value)}
+          onChange={(event) => {
+            recordNameEditedRef.current = true;
+            setRecordName(event.target.value);
+          }}
           placeholder={t("web.newItemPopup.recordNamePlaceholder", { category: categoryLabel })}
           className="h-10 min-w-0 flex-1 text-xl font-semibold leading-6"
           aria-label={t("web.newItemPopup.recordNameLabel")}
@@ -68,6 +99,8 @@ export default function NewItemForm({ t, categoryId, workspaceName, vaults, vaul
         addFieldLabel={t("web.newItemPopup.addField")}
         fieldTypes={keyFormFieldTypes}
         messages={keyFormMessages}
+        onSectionsChange={setFormSections}
+        onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
       />
 
       <NewItemTagsSection tags={tags} onTagsChange={setTags} t={t} />
