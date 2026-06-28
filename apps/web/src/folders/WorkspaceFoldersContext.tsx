@@ -21,6 +21,7 @@ import { flattenWorkspaceFolders } from "./workspaceFolderTree";
 export type WorkspaceFoldersContextValue = {
   folderTree: WorkspaceFolderNode[];
   flatFolders: FlatWorkspaceFolder[];
+  itemFolderByItemId: ReadonlyMap<string, string | null>;
   loading: boolean;
   /** True after the first folder sync bootstrap completes for the current workspace session. */
   bootstrapped: boolean;
@@ -43,6 +44,9 @@ export function useWorkspaceFoldersState(input: {
 }): WorkspaceFoldersContextValue {
   const { userId, workspaceId, core, passwordShareC, vaultUnlocked } = input;
   const [folderTree, setFolderTree] = useState<WorkspaceFolderNode[]>([]);
+  const [itemFolderByItemId, setItemFolderByItemId] = useState<ReadonlyMap<string, string | null>>(
+    () => new Map(),
+  );
   const [loading, setLoading] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +62,7 @@ export function useWorkspaceFoldersState(input: {
       return;
     }
     setFolderTree(controller.toFolderTree());
+    setItemFolderByItemId(new Map(controller.getState().itemFolder));
     setSyncVersion(controller.getState().lastAppliedVersion);
   }, []);
 
@@ -65,6 +70,7 @@ export function useWorkspaceFoldersState(input: {
     controllerRef.current?.dispose();
     controllerRef.current = null;
     setFolderTree([]);
+    setItemFolderByItemId(new Map());
     setBootstrapped(false);
     setError(null);
 
@@ -177,6 +183,7 @@ export function useWorkspaceFoldersState(input: {
     () => ({
       folderTree,
       flatFolders,
+      itemFolderByItemId,
       loading,
       bootstrapped,
       error,
@@ -189,6 +196,7 @@ export function useWorkspaceFoldersState(input: {
     [
       folderTree,
       flatFolders,
+      itemFolderByItemId,
       loading,
       bootstrapped,
       error,

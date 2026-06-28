@@ -1,0 +1,86 @@
+import type { ItemFieldV2, ItemPlaintextV2, ItemSectionV2 } from "@okkey/types";
+import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2 } from "@okkey/types";
+import type { EntityId } from "@okkey/types";
+
+import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
+
+const DEFAULT_SECTION_TITLES: Record<string, string> = {
+  credentials: "General",
+  websites: "Websites",
+};
+
+function wireFieldType(field: KeyFormEditorField): string {
+  if (field.type === "multiline-text") {
+    return "note";
+  }
+  return field.type;
+}
+
+function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
+  const raw = typeof field.value === "string" ? field.value : "";
+
+  switch (field.type) {
+    case "password":
+      return { kind: "password", password: raw };
+    case "url":
+      return { kind: "url", url: raw };
+    case "totp":
+      return { kind: "totp", secretBase32: raw, periodSeconds: 30, digits: 6 };
+    case "multiline-text":
+      return { kind: "note", note: raw };
+    case "file":
+      return { kind: "file", name: raw };
+    case "text":
+    case "email":
+    case "phone":
+    case "date":
+      return { kind: "text", text: raw };
+    default:
+      return { kind: "unknown", declaredType: field.type, raw };
+  }
+}
+
+export function keyFormSectionsToItemPlaintext(input: {
+  sections: readonly KeyFormEditorSection[];
+  itemId: EntityId;
+  vaultId: EntityId;
+  title: string;
+  categoryId: string;
+  nowMs?: number;
+}): ItemPlaintextV2 {
+  const now = input.nowMs ?? Date.now();
+  const sections: ItemSectionV2[] = [];
+  const fields: ItemFieldV2[] = [];
+
+  input.sections.forEach((section, sectionIndex) => {
+    sections.push({
+      id: section.id,
+      title: section.title?.trim() || DEFAULT_SECTION_TITLES[section.id] || section.id,
+      order: sectionIndex,
+      isPreset: section.variant === "primary",
+    });
+
+    section.fields.forEach((field, fieldIndex) => {
+      fields.push({
+        id: field.id,
+        type: wireFieldType(field),
+        sectionId: section.id,
+        order: fieldIndex,
+        label: field.label,
+        value: fieldValueFromForm(field),
+      });
+    });
+  });
+
+  return {
+    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
+    itemId: input.itemId,
+    vaultId: input.vaultId,
+    title: input.title,
+    categoryId: input.categoryId,
+    createdAtMs: now,
+    updatedAtMs: now,
+    sections,
+    fields,
+  };
+}

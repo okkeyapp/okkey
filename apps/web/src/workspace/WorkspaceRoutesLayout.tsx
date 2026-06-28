@@ -11,12 +11,13 @@ import {
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
-import { WorkspaceFoldersProvider, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
+import { WorkspaceFoldersProvider, useWorkspaceFolders, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
+import { WorkspaceItemsProvider, useWorkspaceItemsState } from "../items/WorkspaceItemsContext";
 import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspaceFolderTree";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
@@ -121,7 +122,7 @@ function shellTitleKey(pathname: WorkspaceAppShellPath): string {
 
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
-  const { userId, profile, logout, passwordShareC, vaultUnlocked } = useAuthVault();
+  const { userId, profile, logout, passwordShareC, vaultKey, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -516,50 +517,138 @@ export default function WorkspaceRoutesLayout() {
 
         return (
           <WorkspaceFoldersProvider value={workspaceFoldersState}>
-            <>
-              <NewItemPopup
-                t={t}
-                workspaceId={resolvedWorkspaceId}
-                workspaceName={currentWorkspace?.name ?? ""}
-                vaults={vaults}
-                vaultsListReady={vaultsListReady}
-              />
-              <FoldersSettingsPopup t={t} />
-              <WorkspaceSidebarLayout
-            title={title}
-            description={description}
-            mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
-            workspaceNavItems={workspaceNavItems}
-            workspaceNavLink={AppShellNavLink}
-            workspaceNavGroupLabel={t("workspaces.shellTitle")}
-            workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-            workspaceSwitcherDropdown={workspaceSwitcherDropdown}
-            vaultItems={vaultSidebarItems}
-            vaultNavLink={AppShellNavLink}
-            vaultSectionTitle={t("web.nav.vaultsSection")}
-            folderTree={folderTreeForItems}
-            folderNavLink={AppShellNavLink}
-            folderSectionTitle={t("web.nav.foldersSection")}
-            folderEmptyLabel={t("web.nav.foldersEmpty")}
-            accountMenu={accountMenu}
-            footerPlainLinkLabels={{
-              documentation: t("web.nav.documentation"),
-              help: t("web.nav.help"),
-            }}
-            vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
-            folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
-            onFolderHeaderActionClick={openFoldersSettingsPopup}
-            itemsListVaults={vaults}
-            itemsListVaultsLoaded={vaultsListReady}
-            itemsListFolderTree={folderTreeForItems}
-            itemsListFoldersLoaded={workspaceFoldersState.bootstrapped}
-          >
-            <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
-          </WorkspaceSidebarLayout>
-            </>
+            <WorkspaceShellWithItems
+              t={t}
+              title={title}
+              description={description}
+              pathname={pathname}
+              resolvedWorkspaceId={resolvedWorkspaceId}
+              currentWorkspaceName={currentWorkspace?.name ?? ""}
+              vaults={vaults}
+              vaultsListReady={vaultsListReady}
+              workspaceNavItems={workspaceNavItems}
+              workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+              workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+              vaultSidebarItems={vaultSidebarItems}
+              folderTreeForItems={folderTreeForItems}
+              accountMenu={accountMenu}
+              footerPlainLinkLabels={{
+                documentation: t("web.nav.documentation"),
+                help: t("web.nav.help"),
+              }}
+              openFoldersSettingsPopup={openFoldersSettingsPopup}
+              core={core}
+              userId={userId ?? ""}
+              vaultKey={vaultKey}
+              vaultUnlocked={vaultUnlocked}
+              workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
+            />
           </WorkspaceFoldersProvider>
         );
       }}
     </SettingsPopup>
+  );
+}
+
+type WorkspaceShellWithItemsProps = {
+  t: (messageKey: string) => string;
+  title: string;
+  description: string;
+  pathname: WorkspaceAppShellPath;
+  resolvedWorkspaceId: string;
+  currentWorkspaceName: string;
+  vaults: Vault[];
+  vaultsListReady: boolean;
+  workspaceNavItems: ReturnType<typeof okkeyWorkspaceShellNavItems>;
+  workspaceSwitcherTrigger: ComponentProps<typeof WorkspaceSidebarLayout>["workspaceSwitcherTrigger"];
+  workspaceSwitcherDropdown: ComponentProps<typeof WorkspaceSidebarLayout>["workspaceSwitcherDropdown"];
+  vaultSidebarItems: OkkeySidebarVaultItem[];
+  folderTreeForItems: OkkeySidebarFolderTreeNode[];
+  accountMenu: OkkeyAppSidebarAccountMenu | undefined;
+  footerPlainLinkLabels: { documentation: string; help: string };
+  openFoldersSettingsPopup: () => void;
+  core: ReturnType<typeof useAuthenticatedCoreClient>;
+  userId: string;
+  vaultKey: Uint8Array | null;
+  vaultUnlocked: boolean;
+  workspaceFoldersBootstrapped: boolean;
+};
+
+function WorkspaceShellWithItems({
+  t,
+  title,
+  description,
+  pathname,
+  resolvedWorkspaceId,
+  currentWorkspaceName,
+  vaults,
+  vaultsListReady,
+  workspaceNavItems,
+  workspaceSwitcherTrigger,
+  workspaceSwitcherDropdown,
+  vaultSidebarItems,
+  folderTreeForItems,
+  accountMenu,
+  footerPlainLinkLabels,
+  openFoldersSettingsPopup,
+  core,
+  userId,
+  vaultKey,
+  vaultUnlocked,
+  workspaceFoldersBootstrapped,
+}: WorkspaceShellWithItemsProps) {
+  const { itemFolderByItemId } = useWorkspaceFolders();
+  const workspaceItemsState = useWorkspaceItemsState({
+    userId,
+    workspaceId: resolvedWorkspaceId,
+    core,
+    vaults,
+    vaultsListReady,
+    vaultKey,
+    vaultUnlocked,
+    itemFolderByItemId,
+  });
+
+  return (
+    <WorkspaceItemsProvider value={workspaceItemsState}>
+      <NewItemPopup
+        t={t}
+        workspaceId={resolvedWorkspaceId}
+        workspaceName={currentWorkspaceName}
+        vaults={vaults}
+        vaultsListReady={vaultsListReady}
+      />
+      <FoldersSettingsPopup t={t} />
+      <WorkspaceSidebarLayout
+        title={title}
+        description={description}
+        mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
+        workspaceNavItems={workspaceNavItems}
+        workspaceNavLink={AppShellNavLink}
+        workspaceNavGroupLabel={t("workspaces.shellTitle")}
+        workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+        workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+        vaultItems={vaultSidebarItems}
+        vaultNavLink={AppShellNavLink}
+        vaultSectionTitle={t("web.nav.vaultsSection")}
+        folderTree={folderTreeForItems}
+        folderNavLink={AppShellNavLink}
+        folderSectionTitle={t("web.nav.foldersSection")}
+        folderEmptyLabel={t("web.nav.foldersEmpty")}
+        accountMenu={accountMenu}
+        footerPlainLinkLabels={footerPlainLinkLabels}
+        vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
+        folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
+        onFolderHeaderActionClick={openFoldersSettingsPopup}
+        itemsListVaults={vaults}
+        itemsListVaultsLoaded={vaultsListReady}
+        itemsListFolderTree={folderTreeForItems}
+        itemsListFoldersLoaded={workspaceFoldersBootstrapped}
+        itemsListRecords={workspaceItemsState.records}
+        itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
+      >
+        <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
+      </WorkspaceSidebarLayout>
+    </WorkspaceItemsProvider>
   );
 }

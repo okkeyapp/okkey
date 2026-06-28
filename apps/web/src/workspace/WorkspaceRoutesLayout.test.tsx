@@ -27,22 +27,46 @@ vi.mock("../auth/AuthVaultContext", () => ({
     profile: { email: "sasha@okkey.local", firstName: "Sasha", lastName: "Okkey" },
     logout: mocks.logout,
     passwordShareC: new Uint8Array(32),
+    vaultKey: new Uint8Array(32),
     vaultUnlocked: true,
   }),
   useAuthenticatedCoreClient: () => mocks.core,
 }));
 
-vi.mock("../locale/LocaleContext", () => ({
-  useLocale: () => ({
-    locale: "en",
-    t: (key: string, params?: Record<string, string>) => (params?.id ? `${key}:${params.id}` : key),
+vi.mock("../items/WorkspaceItemsContext", () => ({
+  WorkspaceItemsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useWorkspaceItemsState: () => ({
+    records: [],
+    loading: false,
+    bootstrapped: true,
+    error: null,
+    syncVersion: 0,
+    createItem: vi.fn(),
+    refreshItems: vi.fn(),
+  }),
+  useWorkspaceItems: () => ({
+    records: [],
+    loading: false,
+    bootstrapped: true,
+    error: null,
+    syncVersion: 0,
+    createItem: vi.fn(),
+    refreshItems: vi.fn(),
   }),
 }));
 
 vi.mock("../folders/WorkspaceFoldersContext", () => ({
   WorkspaceFoldersProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useWorkspaceFolders: () => ({
+    itemFolderByItemId: new Map(),
+    flatFolders: [],
+    createFolder: vi.fn(),
+    assignItemToFolder: vi.fn(),
+  }),
   useWorkspaceFoldersState: () => ({
     folderTree: mocks.folderTree,
+    flatFolders: [],
+    itemFolderByItemId: new Map(),
     loading: mocks.foldersLoading,
     bootstrapped: mocks.foldersBootstrapped,
     error: null,
@@ -50,6 +74,13 @@ vi.mock("../folders/WorkspaceFoldersContext", () => ({
     createFolder: vi.fn(),
     commitFolderTree: vi.fn().mockResolvedValue(undefined),
     assignItemToFolder: vi.fn(),
+  }),
+}));
+
+vi.mock("../locale/LocaleContext", () => ({
+  useLocale: () => ({
+    locale: "en",
+    t: (key: string, params?: Record<string, string>) => (params?.id ? `${key}:${params.id}` : key),
   }),
 }));
 

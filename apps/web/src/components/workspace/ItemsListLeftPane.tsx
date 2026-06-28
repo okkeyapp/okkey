@@ -35,8 +35,6 @@ import {
   VAULT_QUERY_PARAM,
 } from "../../routes/paths";
 
-import itemsListDemoWire from "./itemsListLeftPane.demo.json";
-
 const itemsPanelSelectTriggerClassName = cn(
   "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
   "px-2 text-sm text-foreground",
@@ -48,6 +46,7 @@ const itemsPanelSelectTriggerClassName = cn(
 
 export type ItemsListRecordWire = {
   id: string;
+  vaultId?: string;
   vaultSlot?: number;
   folderId?: string | null;
   urls: string[];
@@ -61,7 +60,7 @@ export type ItemsListRecordWire = {
 
 export type ItemsListRecord = {
   id: string;
-  vaultSlot: number;
+  vaultId: string;
   folderId: string | null;
   urls: string[];
   title: string;
@@ -72,35 +71,14 @@ export type ItemsListRecord = {
   deleted: boolean;
 };
 
-const ITEMS_LIST_DEMO: readonly ItemsListRecord[] = (itemsListDemoWire as readonly ItemsListRecordWire[]).map(
-  (row) => ({
-    id: row.id,
-    vaultSlot: row.vaultSlot ?? 0,
-    folderId: row.folderId ?? null,
-    urls: row.urls ?? [],
-    title: row.title,
-    login: row.login,
-    date: new Date(row.date),
-    favorite: Boolean(row.favorite),
-    archived: Boolean(row.archived),
-    deleted: Boolean(row.deleted),
-  }),
-);
-
 function filterRowsByVault(
   rows: readonly ItemsListRecord[],
-  vaults: readonly { id: string }[],
   vaultId: string,
 ): ItemsListRecord[] {
   if (!vaultId) {
     return [...rows];
   }
-  const idx = vaults.findIndex((v) => v.id === vaultId);
-  if (idx < 0) {
-    return [...rows];
-  }
-  const mod = Math.max(vaults.length, 1);
-  return rows.filter((r) => r.vaultSlot % mod === idx);
+  return rows.filter((row) => row.vaultId === vaultId);
 }
 
 function filterRowsByFolder(rows: readonly ItemsListRecord[], folderId: string): ItemsListRecord[] {
@@ -776,17 +754,22 @@ export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean
 type ItemsListLeftPaneProps = {
   vaults: readonly ItemsListPaneVault[];
   folderTree: readonly OkkeySidebarFolderTreeNode[];
+  records: readonly ItemsListRecord[];
   /** False until the workspace vault list has been fetched at least once (avoids vault ID flash in the filter trigger). */
   itemsListVaultsLoaded?: boolean;
   /** False until workspace folder sync bootstrap completes (avoids folder ID flash in the filter trigger). */
   itemsListFoldersLoaded?: boolean;
+  /** False until workspace item sync bootstrap completes. */
+  itemsListRecordsLoaded?: boolean;
 };
 
 export default function ItemsListLeftPane({
   vaults,
   folderTree,
+  records,
   itemsListVaultsLoaded = true,
   itemsListFoldersLoaded = true,
+  itemsListRecordsLoaded = true,
 }: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -861,9 +844,9 @@ export default function ItemsListLeftPane({
     const searchTrim = searchQ.trim();
     let pool: ItemsListRecord[];
     if (searchTrim) {
-      pool = ITEMS_LIST_DEMO.filter((r) => searchScore(r, searchTrim) > 0);
+      pool = records.filter((r) => searchScore(r, searchTrim) > 0);
     } else {
-      const inVault = filterRowsByVault(ITEMS_LIST_DEMO, vaults, vaultQ);
+      const inVault = filterRowsByVault(records, vaultQ);
       pool = filterRowsByFolder(inVault, folderQ);
     }
     const filtered = filterItems(pool, filter);
@@ -877,10 +860,10 @@ export default function ItemsListLeftPane({
         })
       : sortItems(filtered, sort);
     return buildSections(sorted, sort, locale);
-  }, [filter, sort, locale, vaultQ, folderQ, vaults, searchQ]);
+  }, [filter, sort, locale, vaultQ, folderQ, records, searchQ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
-  const selectedRows = useMemo(() => ITEMS_LIST_DEMO.filter((row) => selectedIds.has(row.id)), [selectedIds]);
+  const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
   const selectedActions = useMemo(
     () => ({
       canFavorite: selectedRows.some((row) => !row.favorite),

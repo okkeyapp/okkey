@@ -1,8 +1,13 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
 import { Button, Popup } from "@okkey/ui";
+import { useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
+import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
+import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
+import { buildItemFromNewItemSavePayload } from "./NewItemForm";
+import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import {
   NEW_ITEM_POPUP_ID,
   POPUP_QUERY_PARAM,
@@ -10,10 +15,11 @@ import {
   parsePopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
+import { ITEM_QUERY_PARAM } from "../../routes/paths";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
 import { getCategoryLabel } from "./NewItemCategoryCard";
 import NewItemCategoryPicker from "./NewItemCategoryPicker";
-import NewItemForm from "./NewItemForm";
+import NewItemForm, { type NewItemFormHandle } from "./NewItemForm";
 import { BackChevronIcon } from "./itemCategoryIcons";
 import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
@@ -36,10 +42,19 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       ? activePopup.menuItemId
       : null;
 
+  const formRef = useRef<NewItemFormHandle>(null);
+  const [showValidation, setShowValidation] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const { createItem } = useWorkspaceItems();
+  const { assignItemToFolder } = useWorkspaceFolders();
+
   const { favoriteIds, favoriteIdSet, ready, toggleFavorite, reorderFavorites } =
     useItemCategoryPreferences(workspaceId);
 
   function closePopup() {
+    setShowValidation(false);
+    setSaveError(null);
     navigate(
       {
         pathname: location.pathname,
@@ -51,6 +66,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   }
 
   function selectCategory(categoryId: string) {
+    setShowValidation(false);
+    setSaveError(null);
     navigate(
       {
         pathname: location.pathname,
@@ -62,6 +79,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   }
 
   function backToCategories() {
+    setShowValidation(false);
+    setSaveError(null);
     navigate(
       {
         pathname: location.pathname,
@@ -70,6 +89,52 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       },
       { replace: false },
     );
+  }
+
+  async function handleSave() {
+    const validation = formRef.current?.validate();
+    if (!validation?.ok) {
+      setShowValidation(true);
+      return;
+    }
+    const payload = formRef.current?.getSavePayload();
+    if (!payload) {
+      setShowValidation(true);
+      return;
+    }
+
+    const selectedVault = vaults.find((vault) => vault.id === payload.vaultId);
+    if (selectedVault && !selectedVault.isPersonal) {
+      setSaveError(t("web.newItemPopup.saveErrorSharedVaultUnsupported"));
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const item = buildItemFromNewItemSavePayload(payload);
+      const itemId = await createItem(item);
+      if (payload.folderId !== NO_FOLDER_VALUE) {
+        await assignItemToFolder(itemId, payload.folderId);
+      }
+      const params = new URLSearchParams(location.search);
+      params.delete(POPUP_QUERY_PARAM);
+      params.set(ITEM_QUERY_PARAM, itemId);
+      const nextSearch = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+          hash: location.hash,
+        },
+        { replace: false },
+      );
+      setShowValidation(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : t("web.newItemPopup.saveErrorGeneric"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open) {
@@ -109,11 +174,11 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       footer={
         selectedCategoryId ? (
           <>
-            <Button type="button" variant="outline" onClick={closePopup}>
+            <Button type="button" variant="outline" onClick={closePopup} disabled={saving}>
               {t("web.newItemPopup.cancel")}
             </Button>
-            <Button type="button" onClick={() => undefined}>
-              {t("web.newItemPopup.save")}
+            <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+              {saving ? t("web.newItemPopup.saving") : t("web.newItemPopup.save")}
             </Button>
           </>
         ) : (
@@ -123,13 +188,16 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
         )
       }
     >
+      {saveError ? <p className="mb-4 text-sm text-destructive">{saveError}</p> : null}
       {selectedCategoryId ? (
         <NewItemForm
+          ref={formRef}
           t={t}
           categoryId={selectedCategoryId}
           workspaceName={workspaceName}
           vaults={vaults}
           vaultsListReady={vaultsListReady}
+          showValidation={showValidation}
         />
       ) : (
         <NewItemCategoryPicker

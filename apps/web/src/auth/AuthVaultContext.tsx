@@ -65,6 +65,8 @@ export type AuthVaultContextValue = {
   vaultUnlocked: boolean;
   /** 32-byte password share C while vault is unlocked (for workspace personal metadata key). */
   passwordShareC: Uint8Array | null;
+  /** 32-byte account vault key while unlocked (personal vault item encryption). */
+  vaultKey: Uint8Array | null;
   pendingEmail: string | null;
   emailChallengeId: string | null;
   /** ISO time from last start/resend until another resend is allowed */
@@ -203,6 +205,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const vaultUnlockedRef = useRef(initialTabVault.unlocked);
   const [vaultUnlocked, setVaultUnlocked] = useState(initialTabVault.unlocked);
   const [passwordShareC, setPasswordShareC] = useState<Uint8Array | null>(initialTabVault.passwordShareC);
+  const [vaultKey, setVaultKey] = useState<Uint8Array | null>(initialTabVault.vaultKey);
   const [vaultIdleLockMs, setVaultIdleLockMsState] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
@@ -230,6 +233,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setPasswordShareC(null);
   }, []);
 
+  const clearVaultKeySecret = useCallback(() => {
+    if (vaultKeyRef.current) {
+      wipeBytes(vaultKeyRef.current);
+      vaultKeyRef.current = null;
+    }
+    setVaultKey(null);
+  }, []);
+
   useLayoutEffect(() => {
     if (!accessToken || !userId) {
       return;
@@ -245,6 +256,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(vaultKeyRef.current);
     }
     vaultKeyRef.current = restored.vaultKey;
+    setVaultKey(restored.vaultKey);
     if (passwordShareCRef.current) {
       wipeBytes(passwordShareCRef.current);
     }
@@ -346,10 +358,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       user_id: dto.user_id,
       expires_at: dto.expires_at,
     });
-    if (vaultKeyRef.current) {
-      wipeBytes(vaultKeyRef.current);
-      vaultKeyRef.current = null;
-    }
+    clearVaultKeySecret();
     clearPasswordShareSecrets();
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
@@ -362,7 +371,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setProfile(merged);
     }
     lastActivityRef.current = Date.now();
-  }, []);
+  }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
   const logout = useCallback(() => {
     const workspaceUserId = userIdRef.current;
@@ -379,10 +388,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setUserId(null);
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
-    if (vaultKeyRef.current) {
-      wipeBytes(vaultKeyRef.current);
-      vaultKeyRef.current = null;
-    }
+    clearVaultKeySecret();
     clearPasswordShareSecrets();
     setPendingEmail(null);
     setEmailChallengeId(null);
@@ -391,14 +397,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setTwoFactorAuthStateIdState(null);
     setProfile(null);
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
-  }, [clearPasswordShareSecrets]);
+  }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
   const lockVault = useCallback(() => {
     clearVaultUnlockSession();
-    if (vaultKeyRef.current) {
-      wipeBytes(vaultKeyRef.current);
-      vaultKeyRef.current = null;
-    }
+    clearVaultKeySecret();
     clearPasswordShareSecrets();
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
@@ -477,6 +480,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       }
       vaultKeyRef.current = vaultKey;
       passwordShareCRef.current = shareC;
+      setVaultKey(vaultKey);
       setPasswordShareC(shareC);
       vaultUnlockedRef.current = true;
       setVaultUnlocked(true);
@@ -503,6 +507,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       userId,
       vaultUnlocked,
       passwordShareC,
+      vaultKey,
       pendingEmail,
       emailChallengeId,
       emailResendAvailableAt,
@@ -530,6 +535,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       userId,
       vaultUnlocked,
       passwordShareC,
+      vaultKey,
       pendingEmail,
       emailChallengeId,
       emailResendAvailableAt,

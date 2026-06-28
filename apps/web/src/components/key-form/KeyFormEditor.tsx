@@ -101,6 +101,8 @@ export type KeyFormEditorProps = {
   className?: string;
   onSectionsChange?: (sections: KeyFormEditorSection[]) => void;
   onWebsiteUrlsBlur?: (sections: KeyFormEditorSection[]) => void;
+  /** When true, empty required fields are marked invalid. */
+  showValidation?: boolean;
 };
 
 type DemoSectionVariant = KeyFormEditorSectionVariant;
@@ -1307,6 +1309,7 @@ export function KeyFormEditor({
   className,
   onSectionsChange,
   onWebsiteUrlsBlur,
+  showValidation = false,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
   const fieldTypes = fieldTypesProp ?? englishKeyFieldTypes;
@@ -2235,8 +2238,21 @@ export function KeyFormEditor({
     return !isValidKeyFieldDateValue(field.value);
   }
 
+  function isEmptyRequiredField(field: DemoField): boolean {
+    if (!showValidation || !field.required) {
+      return false;
+    }
+    if (typeof field.value !== "string") {
+      return true;
+    }
+    return field.value.trim().length === 0;
+  }
+
   function isInvalidField(field: DemoField): boolean {
-    return mode === "edit" && (isInvalidTotpField(field) || isInvalidEmailField(field) || isInvalidDateField(field));
+    return (
+      mode === "edit" &&
+      (isEmptyRequiredField(field) || isInvalidTotpField(field) || isInvalidEmailField(field) || isInvalidDateField(field))
+    );
   }
 
   function copyValueForField(field: DemoField): string | undefined {

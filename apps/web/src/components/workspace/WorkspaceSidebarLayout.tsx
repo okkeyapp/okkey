@@ -19,7 +19,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { BodyGradient } from "../BodyGradient";
 import { useLocale } from "../../locale/LocaleContext";
 import { ITEM_QUERY_PARAM, WORKSPACES_PATH } from "../../routes/paths";
-import ItemsListLeftPane from "./ItemsListLeftPane";
+import ItemsListLeftPane, { type ItemsListRecord } from "./ItemsListLeftPane";
 import ItemsShellTopBar from "./ItemsShellTopBar";
 
 const mainPanelChromeClassName = cn(
@@ -65,6 +65,10 @@ export type WorkspaceSidebarLayoutProps = {
   itemsListFoldersLoaded?: boolean;
   /** `/items` left pane: folder labels (same tree as sidebar when wired). */
   itemsListFolderTree?: readonly OkkeySidebarFolderTreeNode[];
+  /** `/items` left pane: synced workspace records. */
+  itemsListRecords?: readonly ItemsListRecord[];
+  /** False until workspace item sync bootstrap completes. */
+  itemsListRecordsLoaded?: boolean;
 };
 
 function ShellMainHeader({
@@ -155,6 +159,8 @@ export default function WorkspaceSidebarLayout({
   itemsListVaultsLoaded,
   itemsListFolderTree,
   itemsListFoldersLoaded,
+  itemsListRecords = [],
+  itemsListRecordsLoaded = true,
 }: WorkspaceSidebarLayoutProps) {
   const { locale, setLocale, t } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -230,8 +236,10 @@ export default function WorkspaceSidebarLayout({
                   <ItemsListLeftPane
                     vaults={itemsListVaults ?? []}
                     folderTree={itemsListFolderTree ?? []}
+                    records={itemsListRecords}
                     itemsListVaultsLoaded={itemsListVaultsLoaded}
                     itemsListFoldersLoaded={itemsListFoldersLoaded}
+                    itemsListRecordsLoaded={itemsListRecordsLoaded}
                   />
                 </aside>
                 <div
