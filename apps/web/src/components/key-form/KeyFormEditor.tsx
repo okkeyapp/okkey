@@ -1087,6 +1087,8 @@ type SortableFieldProps = {
   statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
   onValueBlur?: () => void;
+  onValueFocus?: () => void;
+  passwordGeneratorTrigger?: boolean;
   messages: KeyFormEditorMessages;
   addressFieldPlaceholders?: KeyFormEditorMessages["address"];
   recoveryCodesPlaceholder?: string;
@@ -1127,6 +1129,8 @@ function SortableField({
   statusOverlayLabel,
   onCopyAction,
   onValueBlur,
+  onValueFocus,
+  passwordGeneratorTrigger,
   messages,
   addressFieldPlaceholders,
   recoveryCodesPlaceholder,
@@ -1219,13 +1223,17 @@ function SortableField({
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
       onValueBlur={onValueBlur}
+      onValueFocus={onValueFocus}
+      passwordGeneratorTrigger={passwordGeneratorTrigger}
       addressFieldPlaceholders={addressFieldPlaceholders ?? messages.address}
       addressSearchCountriesPlaceholder={(addressFieldPlaceholders ?? messages.address).searchCountries}
       addressNoCountriesFoundMessage={(addressFieldPlaceholders ?? messages.address).noCountriesFound}
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
       fileClearLabel={fileClearLabel ?? messages.file.clear}
-      valuePlaceholder={messages.fieldPlaceholders[field.type]}
+      valuePlaceholder={
+        messages.fieldPlaceholders[field.id === "login" ? "login" : field.type]
+      }
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
   );
@@ -1544,6 +1552,10 @@ export function KeyFormEditor({
       setActiveValueFieldId(null);
     }
 
+    const targetField = sections
+      .find((section) => section.id === sectionId)
+      ?.fields.find((field) => field.id === fieldId);
+
     function updateField(field: DemoField): DemoField {
       if (field.id !== fieldId) {
         return field;
@@ -1575,6 +1587,10 @@ export function KeyFormEditor({
           : section,
       ),
     );
+
+    if (targetField?.type === "password") {
+      syncPasswordGeneratorForPasswordValue(fieldId, value);
+    }
   }
 
   function removeField(sectionId: string, fieldId: string) {
@@ -1663,6 +1679,14 @@ export function KeyFormEditor({
 
   function closePasswordGenerator() {
     setPasswordGeneratorFieldId(null);
+  }
+
+  function syncPasswordGeneratorForPasswordValue(fieldId: string, value: string) {
+    if (value.trim().length > 0) {
+      setPasswordGeneratorFieldId((current) => (current === fieldId ? null : current));
+      return;
+    }
+    openPasswordGenerator(fieldId);
   }
 
   function renderPasswordGeneratorPanel(section: DemoSection, field: DemoField) {
@@ -2283,6 +2307,10 @@ export function KeyFormEditor({
     );
   }
 
+  function isPasswordFieldEmpty(field: DemoField): boolean {
+    return field.type === "password" && typeof field.value === "string" && field.value.trim().length === 0;
+  }
+
   function renderField(section: DemoSection, field: DemoField) {
     const canReorderField = section.id === "websites" || !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
@@ -2349,6 +2377,12 @@ export function KeyFormEditor({
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
         onValueBlur={isWebsitesSectionUrlField ? notifyWebsiteUrlsBlur : undefined}
+        onValueFocus={
+          field.type === "password" && isPasswordFieldEmpty(field)
+            ? () => openPasswordGenerator(field.id)
+            : undefined
+        }
+        passwordGeneratorTrigger={field.type === "password"}
       />
     );
   }
@@ -2380,7 +2414,9 @@ export function KeyFormEditor({
         recoveryCodesPlaceholder={messages.recoveryCodesPlaceholder}
         fileUploadLabel={messages.file.upload}
         fileClearLabel={messages.file.clear}
-        valuePlaceholder={messages.fieldPlaceholders[field.type]}
+        valuePlaceholder={
+        messages.fieldPlaceholders[field.id === "login" ? "login" : field.type]
+      }
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined)}
         actions={renderActions(section, field)}

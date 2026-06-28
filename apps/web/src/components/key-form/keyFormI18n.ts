@@ -101,7 +101,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     [...KEY_FIELD_TYPE_IDS, "login"].map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
   );
   const fieldPlaceholders = Object.fromEntries(
-    KEY_FIELD_TYPE_IDS.map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
+    [...KEY_FIELD_TYPE_IDS, "login"].map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
   );
 
   return {

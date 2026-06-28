@@ -154,6 +154,9 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   onLabelChange?: (label: string) => void;
   onValueChange?: (value: string) => void;
   onValueBlur?: () => void;
+  onValueFocus?: () => void;
+  /** Marks the value control as part of the password generator trigger area (outside-click handling). */
+  passwordGeneratorTrigger?: boolean;
   transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
@@ -219,6 +222,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       onLabelChange,
       onValueChange,
       onValueBlur,
+      onValueFocus,
+      passwordGeneratorTrigger = false,
       transformValueInput,
       meta,
       actions,
@@ -825,11 +830,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     value={shouldConcealValue ? concealedValue : draftValue}
                     placeholder={shouldConcealValue && draftValue.length > 0 ? undefined : valuePlaceholder}
                     onChange={handleValueChange}
-                    onFocus={() => setIsValueFocused(true)}
+                    onFocus={() => {
+                      setIsValueFocused(true);
+                      onValueFocus?.();
+                    }}
                     onBlur={() => {
                       setIsValueFocused(false);
                       onValueBlur?.();
                     }}
+                    {...(passwordGeneratorTrigger ? { "data-password-generator-trigger": true } : {})}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 )
