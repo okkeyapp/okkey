@@ -217,6 +217,7 @@
   "web.keyForm.address.searchCountries": "Поиск страны",
   "web.keyForm.address.noCountriesFound": "Страны не найдены",
   "web.keyForm.file.upload": "Загрузить файл",
+  "web.keyForm.file.clear": "Очистить",
   "web.keyForm.passwordGenerator.uppercase": "A-Z",
   "web.keyForm.passwordGenerator.lowercase": "a-z",
   "web.keyForm.passwordGenerator.numbers": "0-9",

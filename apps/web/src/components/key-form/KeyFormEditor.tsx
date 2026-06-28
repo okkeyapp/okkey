@@ -1091,6 +1091,7 @@ type SortableFieldProps = {
   addressFieldPlaceholders?: KeyFormEditorMessages["address"];
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
+  fileClearLabel?: string;
 };
 
 function SortableField({
@@ -1130,6 +1131,7 @@ function SortableField({
   addressFieldPlaceholders,
   recoveryCodesPlaceholder,
   fileUploadLabel,
+  fileClearLabel,
 }: SortableFieldProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
@@ -1222,6 +1224,7 @@ function SortableField({
       addressNoCountriesFoundMessage={(addressFieldPlaceholders ?? messages.address).noCountriesFound}
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
+      fileClearLabel={fileClearLabel ?? messages.file.clear}
       valuePlaceholder={messages.fieldPlaceholders[field.type]}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
@@ -2376,6 +2379,7 @@ export function KeyFormEditor({
         addressNoCountriesFoundMessage={messages.address.noCountriesFound}
         recoveryCodesPlaceholder={messages.recoveryCodesPlaceholder}
         fileUploadLabel={messages.file.upload}
+        fileClearLabel={messages.file.clear}
         valuePlaceholder={messages.fieldPlaceholders[field.type]}
         reorderable
         meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined)}

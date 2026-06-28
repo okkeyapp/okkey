@@ -217,6 +217,7 @@
   "web.keyForm.address.searchCountries": "Search countries",
   "web.keyForm.address.noCountriesFound": "No countries found",
   "web.keyForm.file.upload": "Upload file",
+  "web.keyForm.file.clear": "Clear",
   "web.keyForm.passwordGenerator.uppercase": "A-Z",
   "web.keyForm.passwordGenerator.lowercase": "a-z",
   "web.keyForm.passwordGenerator.numbers": "0-9",

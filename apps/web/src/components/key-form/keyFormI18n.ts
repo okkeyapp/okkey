@@ -58,6 +58,7 @@ export type KeyFormEditorMessages = {
   };
   file: {
     upload: string;
+    clear: string;
   };
   passwordGenerator: {
     uppercase: string;
@@ -163,6 +164,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     },
     file: {
       upload: t("web.keyForm.file.upload"),
+      clear: t("web.keyForm.file.clear"),
     },
     passwordGenerator: {
       uppercase: t("web.keyForm.passwordGenerator.uppercase"),

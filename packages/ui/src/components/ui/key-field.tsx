@@ -191,6 +191,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   addressNoCountriesFoundMessage?: string;
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
+  fileClearLabel?: string;
   valuePlaceholder?: string;
 };
 
@@ -249,6 +250,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       addressNoCountriesFoundMessage,
       recoveryCodesPlaceholder,
       fileUploadLabel,
+      fileClearLabel = "Clear",
       valuePlaceholder,
       draggable,
       onDragStart,
@@ -868,7 +870,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               onClick={handleFileClear}
             >
               <ClearFileIcon className="size-4" />
-              Clear
+              {fileClearLabel}
             </Button>
             {actions}
           </div>
