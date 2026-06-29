@@ -37,6 +37,30 @@ function ChevronIcon({ expanded, className }: { expanded: boolean; className?: s
   );
 }
 
+function ActivityCalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M2.66663 4.66683C2.66663 4.31321 2.8071 3.97407 3.05715 3.72402C3.3072 3.47397 3.64634 3.3335 3.99996 3.3335H12C12.3536 3.3335 12.6927 3.47397 12.9428 3.72402C13.1928 3.97407 13.3333 4.31321 13.3333 4.66683V12.6668C13.3333 13.0205 13.1928 13.3596 12.9428 13.6096C12.6927 13.8597 12.3536 14.0002 12 14.0002H3.99996C3.64634 14.0002 3.3072 13.8597 3.05715 13.6096C2.8071 13.3596 2.66663 13.0205 2.66663 12.6668V4.66683Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10.6666 2V4.66667" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.33337 2V4.66667" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.66663 7.3335H13.3333" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M7.33337 10.6667C7.33337 10.8435 7.40361 11.013 7.52864 11.1381C7.65366 11.2631 7.82323 11.3333 8.00004 11.3333C8.17685 11.3333 8.34642 11.2631 8.47145 11.1381C8.59647 11.013 8.66671 10.8435 8.66671 10.6667C8.66671 10.4899 8.59647 10.3203 8.47145 10.1953C8.34642 10.0702 8.17685 10 8.00004 10C7.82323 10 7.65366 10.0702 7.52864 10.1953C7.40361 10.3203 7.33337 10.4899 7.33337 10.6667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function formatActivityLine(
   entry: ItemActivityEntry,
   locale: string,
@@ -89,6 +113,24 @@ export default function ItemActivitySection({ t, entries }: ItemActivitySectionP
       }
       return next;
     });
+  }
+
+  if (!canExpand) {
+    const entry = entries[0];
+    if (!entry) {
+      return null;
+    }
+
+    return (
+      <section className="overflow-visible pt-0 md:pt-4">
+        <div className="flex items-start gap-2">
+          <ActivityCalendarIcon className="mt-0.5 text-muted-foreground" />
+          <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
+            {formatActivityLine(entry, locale, t)}
+          </p>
+        </div>
+      </section>
+    );
   }
 
   return (
