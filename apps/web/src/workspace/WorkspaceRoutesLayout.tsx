@@ -49,6 +49,7 @@ import {
   SETTINGS_PATH,
   TOOLS_PATH,
   VAULT_QUERY_PARAM,
+  WORKSPACE_APP_SHELL_PATHS,
   WORKSPACE_QUERY_PARAM,
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
@@ -104,6 +105,10 @@ function WorkspaceTileAvatar({ workspace, sizeClass }: { workspace?: Workspace; 
   );
 }
 
+function isWorkspaceAppShellPath(pathname: string): pathname is WorkspaceAppShellPath {
+  return (WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname);
+}
+
 function shellTitleKey(pathname: WorkspaceAppShellPath): string {
   switch (pathname) {
     case ITEMS_PATH:
@@ -128,7 +133,7 @@ export default function WorkspaceRoutesLayout() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const pathname = location.pathname as WorkspaceAppShellPath;
+  const pathname = location.pathname;
 
   const workspaceParam = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -497,8 +502,11 @@ export default function WorkspaceRoutesLayout() {
     );
   }
 
-  const title = t(shellTitleKey(pathname));
-  const description = currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
+  const isShellNotFound = !isWorkspaceAppShellPath(pathname);
+  const title = isShellNotFound ? t("web.notFound.title") : t(shellTitleKey(pathname as WorkspaceAppShellPath));
+  const description = isShellNotFound
+    ? ""
+    : currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
 
   return (
     <SettingsPopup t={t}>
@@ -519,6 +527,7 @@ export default function WorkspaceRoutesLayout() {
         return (
           <WorkspaceFoldersProvider value={workspaceFoldersState}>
             <WorkspaceShellWithItems
+              isShellNotFound={isShellNotFound}
               t={t}
               title={title}
               description={description}
@@ -555,7 +564,8 @@ type WorkspaceShellWithItemsProps = {
   t: (messageKey: string) => string;
   title: string;
   description: string;
-  pathname: WorkspaceAppShellPath;
+  pathname: string;
+  isShellNotFound: boolean;
   resolvedWorkspaceId: string;
   currentWorkspaceName: string;
   vaults: Vault[];
@@ -580,6 +590,7 @@ function WorkspaceShellWithItems({
   title,
   description,
   pathname,
+  isShellNotFound,
   resolvedWorkspaceId,
   currentWorkspaceName,
   vaults,
@@ -629,6 +640,7 @@ function WorkspaceShellWithItems({
       <WorkspaceSidebarLayout
         title={title}
         description={description}
+        hideShellMainHeader={isShellNotFound}
         mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
         workspaceNavItems={workspaceNavItems}
         workspaceNavLink={AppShellNavLink}

@@ -36,6 +36,8 @@ export type WorkspaceSidebarLayoutProps = {
   children: ReactNode;
   /** `/items`: two main panes (360px + flex) with the same card chrome as the default single pane. */
   mainColumnLayout?: "single" | "items-two-pane";
+  /** Hide workspace shell header (title, back link, workspace name). */
+  hideShellMainHeader?: boolean;
 } & Pick<
   OkkeyAppSidebarProps,
   | "workspaceNavItems"
@@ -126,6 +128,7 @@ export default function WorkspaceSidebarLayout({
   description,
   children,
   mainColumnLayout = "single",
+  hideShellMainHeader = false,
   workspaceNavItems,
   workspaceNavLink,
   workspaceNavGroupLabel,
@@ -155,7 +158,7 @@ export default function WorkspaceSidebarLayout({
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsTwoPane = mainColumnLayout === "items-two-pane";
   const showMobileItemDetail = isItemsTwoPane && Boolean(activeItemId);
-  const hideShellMainHeader = isItemsTwoPane && Boolean(activeItemId);
+  const isItemsDetailEmptyPanel = isItemsTwoPane && !activeItemId;
 
   return (
     <div className="relative isolate flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -228,20 +231,24 @@ export default function WorkspaceSidebarLayout({
                     showMobileItemDetail ? "max-md:flex-1" : "max-md:hidden",
                   )}
                 >
-                  <div className={cn((showMobileItemDetail || hideShellMainHeader) && "hidden")}>
-                    <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
-                  </div>
-
-                  <ScrollArea className="min-h-0 min-w-0 flex-1">
-                    <div className="min-h-0">{children}</div>
-                  </ScrollArea>
+                  {isItemsDetailEmptyPanel ? (
+                    <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">{children}</div>
+                  ) : (
+                    <div className="relative min-h-0 flex-1">
+                      <ScrollArea className="absolute inset-0 size-full [&_[data-radix-scroll-area-viewport]]:!size-full [&_[data-radix-scroll-area-viewport]>div]:!flex [&_[data-radix-scroll-area-viewport]>div]:!h-full [&_[data-radix-scroll-area-viewport]>div]:!min-h-full">
+                        <div className="relative flex min-h-full w-full flex-col">{children}</div>
+                      </ScrollArea>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
-              <div className={cn(mainPanelClassName, "flex-1")}>
-                <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
+              <div className={cn(mainPanelClassName, "flex min-h-0 flex-1 flex-col")}>
+                {!hideShellMainHeader ? (
+                  <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
+                ) : null}
 
-                <div className="min-h-0 flex-1">{children}</div>
+                <div className="flex min-h-0 flex-1 flex-col">{children}</div>
               </div>
             )}
           </div>

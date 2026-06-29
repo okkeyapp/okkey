@@ -24,6 +24,7 @@ import DevUIFaviconPage from "../pages/dev-ui/DevUIFaviconPage";
 import DevUIWorkspaceTilePage from "../pages/dev-ui/DevUIWorkspaceTilePage";
 import UnlockPasswordPage from "../pages/unlock/UnlockPasswordPage";
 import LegacyWorkspaceNestedRedirect from "../pages/workspace/LegacyWorkspaceNestedRedirect";
+import WorkspaceNotFoundPage from "../pages/workspace/WorkspaceNotFoundPage";
 import WorkspaceSectionPage from "../pages/workspace/WorkspaceSectionPage";
 import WorkspacesPage from "../pages/workspaces/WorkspacesPage";
 import ProtectedVaultLayout from "../auth/ProtectedVaultLayout";
@@ -130,6 +131,7 @@ export default function AppRoutes() {
           <Route path={MONITORING_PATH} element={<WorkspaceSectionPage />} />
           <Route path={TOOLS_PATH} element={<WorkspaceSectionPage />} />
           <Route path={SETTINGS_PATH} element={<WorkspaceSectionPage />} />
+          <Route path="*" element={<WorkspaceNotFoundPage />} />
         </Route>
       </Route>
     </Routes>

@@ -36,7 +36,7 @@ export function KeyFieldRecoveryCodesChecklistView({
   }
 
   return (
-    <div className={cn("flex w-full flex-col gap-1", className)}>
+    <div className={cn("flex w-full flex-col", className)}>
       {codes.map((item, index) => (
         <label
           key={`${item.code}-${index}`}

@@ -1,7 +1,7 @@
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
-import { Favicon, Spinner } from "@okkey/ui";
+import { Button, Favicon, Spinner } from "@okkey/ui";
 import { useMemo, useRef } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
@@ -21,7 +21,7 @@ import {
   buildPopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
-import { applyWorkspaceSearchToParams, ITEM_QUERY_PARAM } from "../../routes/paths";
+import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_PARAM } from "../../routes/paths";
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
@@ -30,6 +30,7 @@ import { ItemCategoryIcon } from "./itemCategoryIcons";
 import ItemActivitySection from "./ItemActivitySection";
 import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
 import ItemDetailTopBar from "./ItemDetailTopBar";
+import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 
 type ItemDetailCardProps = {
@@ -56,7 +57,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const { t, locale } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
-  const [, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { profile, userId } = useAuthVault();
   const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion } = useWorkspaceItems();
@@ -118,9 +119,15 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
 
   if (!item) {
     return (
-      <div className="p-8">
-        <p className="text-sm text-muted-foreground">{t("web.items.detail.notFound")}</p>
-      </div>
+      <ItemsDetailPanelEmptyStateFill
+        title={t("web.items.detail.notFoundTitle")}
+        description={t("web.items.detail.notFound")}
+        action={
+          <Button asChild variant="secondary">
+            <Link to={itemsPathAllWorkspaceMerged(searchParams, { clearItem: true })}>{t("web.nav.allItems")}</Link>
+          </Button>
+        }
+      />
     );
   }
 

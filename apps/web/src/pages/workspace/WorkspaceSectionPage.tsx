@@ -2,6 +2,7 @@ import type { Vault } from "@okkey/types";
 import { useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 
 import ItemDetailCard from "../../components/items/ItemDetailCard";
+import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
 import { useLocale } from "../../locale/LocaleContext";
 import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, VAULT_QUERY_PARAM } from "../../routes/paths";
 
@@ -20,8 +21,17 @@ export default function WorkspaceSectionPage() {
   const itemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsRoute = location.pathname === ITEMS_PATH;
 
-  if (isItemsRoute && itemId) {
-    return <ItemDetailCard itemId={itemId} vaults={vaults} />;
+  if (isItemsRoute) {
+    if (itemId) {
+      return <ItemDetailCard itemId={itemId} vaults={vaults} />;
+    }
+
+    return (
+      <ItemsDetailPanelEmptyState
+        title={t("web.items.detail.selectItemTitle")}
+        description={t("web.items.detail.selectItemDescription")}
+      />
+    );
   }
 
   return (

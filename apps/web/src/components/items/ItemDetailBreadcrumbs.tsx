@@ -22,12 +22,12 @@ function FolderClosedIcon({ className }: { className?: string }) {
 
 const breadcrumbGhostButtonClassName = cn(
   buttonVariants({ variant: "ghost", size: "sm" }),
-  "h-6 min-h-6 max-h-6 gap-1.5 px-1 text-sm font-normal text-foreground hover:text-foreground",
+  "h-6 min-h-6 max-h-6 min-w-0 max-w-full gap-1.5 px-1 text-sm font-normal text-foreground hover:text-foreground",
 );
 
 const breadcrumbStaticClassName = "inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 px-1 text-sm text-foreground";
 
-const breadcrumbIconOnlyButtonClassName = cn(breadcrumbGhostButtonClassName, "!gap-0");
+const breadcrumbIconOnlyButtonClassName = cn(breadcrumbGhostButtonClassName, "shrink-0 !max-w-none !gap-0");
 
 type BreadcrumbCompressMode = "full" | "hide-folder-label" | "hide-vault-label";
 
@@ -212,7 +212,7 @@ export default function ItemDetailBreadcrumbs({ vault, folderId, folderLabel, cl
         </div>
       </div>
 
-      <div ref={breadcrumbsRef} className="flex w-full min-w-0 flex-1 items-center gap-2 overflow-hidden text-sm">
+      <div ref={breadcrumbsRef} className="flex w-full min-w-0 flex-1 items-center gap-2 overflow-visible text-sm">
         <BreadcrumbTrail
           {...breadcrumbBaseProps}
           showVaultLabel={compressMode !== "hide-vault-label"}
