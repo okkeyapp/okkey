@@ -15,13 +15,14 @@ import {
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
+import { EDIT_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
 import {
   FILTER_QUERY_ARCHIVED,
@@ -760,6 +761,8 @@ export default function ItemsListLeftPane({
   itemsListRecordsLoaded = true,
 }: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
@@ -913,6 +916,17 @@ export default function ItemsListLeftPane({
         return next;
       },
       { replace: true },
+    );
+  };
+
+  const openEditPopup = (itemId: string) => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_ITEM_POPUP_ID, itemId)),
+        hash: location.hash,
+      },
+      { replace: false },
     );
   };
 
@@ -1241,7 +1255,7 @@ export default function ItemsListLeftPane({
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-52 p-1">
-                                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                  <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
                                     <IconEdit16 />
                                     <span>{t("web.items.menu.edit")}</span>
                                   </DropdownMenuItem>
