@@ -14,12 +14,14 @@ import {
   type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
-import { useEffect, useMemo, useState, type ReactNode, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
+import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
+import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
 import {
   FILTER_QUERY_ARCHIVED,
   FILTER_QUERY_DELETED,
@@ -900,9 +902,19 @@ export default function ItemsListLeftPane({
     );
   };
 
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const listHeaderScrolled = useRadixScrollAreaScrolled(listScrollRef);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border p-2">
+      <ScrollArea ref={listScrollRef} className="min-h-0 min-w-0 flex-1">
+        <div
+          className={cn(
+            stickyHeaderSurfaceClassName,
+            stickyHeaderShadowClassName(listHeaderScrolled),
+            "border-b border-border p-2",
+          )}
+        >
         <div className="flex w-full items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1126,9 +1138,8 @@ export default function ItemsListLeftPane({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </div>
+        </div>
 
-      <ScrollArea className="min-h-0 min-w-0 flex-1">
         {totalRows === 0 ? (
           <div className="flex min-h-[12rem] flex-col items-center justify-center px-4 py-10">
             <p className="okkey-body text-center text-sm text-muted-foreground">{t("web.items.list.empty")}</p>

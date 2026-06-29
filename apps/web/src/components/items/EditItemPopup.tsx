@@ -140,7 +140,7 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
       closeLabel={t("web.settingsPopup.close")}
       onClose={closePopup}
       closeDisabled={saving}
-      panelClassName="min-h-[720px]"
+      panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
       footer={
         <>
           <Button type="button" variant="outline" onClick={closePopup} disabled={saving}>

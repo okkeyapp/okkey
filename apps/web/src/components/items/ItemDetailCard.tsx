@@ -1,12 +1,13 @@
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import { Favicon, Spinner } from "@okkey/ui";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
+import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import {
   buildItemActivityEntries,
   mapItemActivityWireEntries,
@@ -20,13 +21,14 @@ import {
   buildPopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
-import { applyWorkspaceSearchToParams } from "../../routes/paths";
+import { applyWorkspaceSearchToParams, ITEM_QUERY_PARAM } from "../../routes/paths";
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
 import { ItemCategoryIcon } from "./itemCategoryIcons";
 import ItemActivitySection from "./ItemActivitySection";
+import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
 import ItemDetailTopBar from "./ItemDetailTopBar";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 
@@ -59,6 +61,12 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const { profile, userId } = useAuthVault();
   const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion } = useWorkspaceItems();
   const { folderTree } = useWorkspaceFolders();
+  const cardRootRef = useRef<HTMLDivElement>(null);
+  const headerScrolled = useScrollAncestorScrolled(
+    cardRootRef,
+    0,
+    `${itemId}:${bootstrapped}:${loading}`,
+  );
 
   const item = getItemById(itemId);
   const listRecord = useMemo(
@@ -129,6 +137,17 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     );
   }
 
+  function handleBack() {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(ITEM_QUERY_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
   function handleTagClick(tag: string) {
     setSearchParams(
       (prev) =>
@@ -140,34 +159,37 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div ref={cardRootRef} className="flex min-h-full flex-col">
       <ItemDetailTopBar
         t={t}
         vault={vault}
         folderId={folderId}
         folderLabel={folderLabel}
         favorite={listRecord?.favorite ?? false}
+        headerScrolled={headerScrolled}
+        showBack={isItemsMobileListView}
+        onBack={handleBack}
         onEdit={openEditPopup}
       />
 
-      <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6">
-        <div className="flex items-center gap-4">
-          <Favicon
-            name={item.title}
-            urls={urls.length > 0 ? urls : undefined}
-            size={40}
-            color={category?.iconColor}
-            icon={
-              category ? (
-                <ItemCategoryIcon categoryId={category.id} pixelSize={22} className="shrink-0 text-white" />
-              ) : undefined
-            }
-            alt=""
-          />
-          <h1 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{item.title}</h1>
-        </div>
+      <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6 md:py-[36px]">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <Favicon
+              name={item.title}
+              urls={urls.length > 0 ? urls : undefined}
+              size={40}
+              color={category?.iconColor}
+              icon={
+                category ? (
+                  <ItemCategoryIcon categoryId={category.id} pixelSize={22} className="shrink-0 text-white" />
+                ) : undefined
+              }
+              alt=""
+            />
+            <h1 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{item.title}</h1>
+          </div>
 
-        <div className="mt-6">
           <KeyFormEditor
             key={item.itemId}
             mode="view"
@@ -175,11 +197,20 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             fieldTypes={keyFormFieldTypes}
             messages={keyFormMessages}
           />
+
+          {(item.tags ?? []).length > 0 ? (
+            <ItemTagsReadonly t={t} tags={item.tags ?? []} onTagClick={handleTagClick} />
+          ) : null}
+
+          <ItemDetailBreadcrumbs
+            vault={vault}
+            folderId={folderId}
+            folderLabel={folderLabel}
+            className="pt-4 md:hidden"
+          />
+
+          <ItemActivitySection t={t} entries={activityEntries} />
         </div>
-
-        <ItemTagsReadonly t={t} tags={item.tags ?? []} onTagClick={handleTagClick} />
-
-        <ItemActivitySection t={t} entries={activityEntries} />
       </div>
     </div>
   );

@@ -221,7 +221,7 @@ export default function SettingsPopup({ t, children }: SettingsPopupProps) {
           {activeItemId === "main" ? (
             <SettingsGeneralContent t={t} />
           ) : (
-            <div className="min-h-[420px]" aria-label={heading} />
+            <div className="min-h-[min(420px,calc(100dvh-32px))]" aria-label={heading} />
           )}
         </Popup>
       ) : null}

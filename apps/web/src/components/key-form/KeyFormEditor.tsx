@@ -594,7 +594,10 @@ function metaForField(
   sectionVariant: DemoSectionVariant,
   messages: KeyFormEditorMessages,
   value?: ReactNode,
+  mode: KeyFormMode = "view",
 ): ReactNode {
+  const counterClassName = mode === "edit" ? "mr-2" : undefined;
+
   if (type === "password") {
     const strength = typeof value === "string" ? getPasswordStrength(value) : null;
     if (!strength) {
@@ -602,7 +605,7 @@ function metaForField(
     }
 
     return (
-      <KeyCounter className="mr-2" sectionVariant={sectionVariant} value={strength.value} total={10} tone={strength.tone}>
+      <KeyCounter className={counterClassName} sectionVariant={sectionVariant} value={strength.value} total={10} tone={strength.tone}>
         {messages.passwordStrengthLabels[strength.labelKey]}
       </KeyCounter>
     );
@@ -620,7 +623,7 @@ function metaForField(
 
     return (
       <KeyCounter
-        className="mr-2"
+        className={counterClassName}
         sectionVariant={sectionVariant}
         value={usedCount}
         pieValue={remainingCount}
@@ -1170,7 +1173,7 @@ function SortableField({
       onFileDelete={onFileDelete}
       autoFocusValue={autoFocusValue}
       reorderable={reorderable}
-      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined)}
+      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined, mode)}
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
@@ -1898,6 +1901,7 @@ export function KeyFormEditor({
       section.variant,
       messages,
       typeof field.value === "string" ? field.value : undefined,
+      mode,
     );
     if (!canEdit) {
       const showRecoveryCodesMeta = field.type === "recovery-codes" && !isRecoveryCodesRevealed;
@@ -2431,7 +2435,7 @@ export function KeyFormEditor({
         messages.fieldPlaceholders[field.id === "login" ? "login" : field.type]
       }
         reorderable
-        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined)}
+        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)}
         actions={renderActions(section, field)}
         isInvalid={isInvalidField(field)}
         concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}

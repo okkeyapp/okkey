@@ -285,6 +285,7 @@
   "web.items.detail.activity.updatedLine": "Обновлен {date} в {time}, {actor}",
   "web.items.detail.activity.expand": "Показать все действия",
   "web.items.detail.activity.collapse": "Показать только последнее действие",
+  "web.items.detail.activity.showMore": "Показать ещё",
 
   "auth.email.title": "Добро пожаловать в Okkey",
   "auth.email.description": "Введите ваш email",

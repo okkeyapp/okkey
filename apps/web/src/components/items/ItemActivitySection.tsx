@@ -10,7 +10,19 @@ type ItemActivitySectionProps = {
   entries: readonly ItemActivityEntry[];
 };
 
-const iconButtonClassName = cn(buttonVariants({ variant: "outline", size: "icon" }), "!size-8 !min-h-8 !min-w-8");
+const timelineToggleClassName = cn(
+  buttonVariants({ variant: "secondary", size: "icon" }),
+  "!size-6 !min-h-6 !min-w-6 shrink-0",
+);
+
+const timelineShowMoreClassName = cn(
+  buttonVariants({ variant: "secondary", size: "sm" }),
+  "h-6 min-h-6 rounded-md px-3 text-sm",
+);
+
+const TIMELINE_LINE_CENTER_PX = 10;
+const TIMELINE_ITEM_GAP_PX = 10;
+const TIMELINE_OPEN_VISIBLE_COUNT = 10;
 
 function ChevronIcon({ expanded, className }: { expanded: boolean; className?: string }) {
   return (
@@ -18,7 +30,7 @@ function ChevronIcon({ expanded, className }: { expanded: boolean; className?: s
       viewBox="0 0 16 16"
       fill="none"
       aria-hidden
-      className={cn("size-4 shrink-0 transition-transform", !expanded && "-rotate-90", className)}
+      className={cn("size-3.5 shrink-0 transition-transform", !expanded && "-rotate-90", className)}
     >
       <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -50,47 +62,90 @@ function formatActivityLine(
 export default function ItemActivitySection({ t, entries }: ItemActivitySectionProps) {
   const { locale } = useLocale();
   const [expanded, setExpanded] = useState(false);
-  const visibleEntries = useMemo(() => (expanded ? entries : entries.slice(0, 1)), [entries, expanded]);
+  const [showAll, setShowAll] = useState(false);
   const canExpand = entries.length > 1;
+
+  const visibleEntries = useMemo(() => {
+    if (!expanded) {
+      return entries.slice(0, 1);
+    }
+    if (showAll || entries.length <= TIMELINE_OPEN_VISIBLE_COUNT) {
+      return entries;
+    }
+    return entries.slice(0, TIMELINE_OPEN_VISIBLE_COUNT);
+  }, [entries, expanded, showAll]);
+
+  const hasMoreEntries = expanded && !showAll && entries.length > TIMELINE_OPEN_VISIBLE_COUNT;
 
   if (entries.length === 0) {
     return null;
   }
 
+  function toggleExpanded() {
+    setExpanded((value) => {
+      const next = !value;
+      if (!next) {
+        setShowAll(false);
+      }
+      return next;
+    });
+  }
+
   return (
-    <section className="pt-2">
-      <div className="flex items-start gap-3">
-        {canExpand ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className={cn(iconButtonClassName, "shrink-0")}
-            aria-label={expanded ? t("web.items.detail.activity.collapse") : t("web.items.detail.activity.expand")}
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            <ChevronIcon expanded={expanded} />
-          </Button>
-        ) : null}
+    <section className="overflow-visible pt-4">
+      <div className="flex flex-col overflow-visible">
+        {visibleEntries.map((entry, index) => {
+          const isLast = index === visibleEntries.length - 1;
+          const isFirst = index === 0;
 
-        <ul className="min-w-0 flex-1">
-          {visibleEntries.map((entry, index) => {
-            const isLast = index === visibleEntries.length - 1;
-
-            return (
-              <li key={entry.id} className="relative flex gap-3 pb-4 last:pb-0">
-                <div className="relative flex w-3 shrink-0 justify-center pt-1.5">
-                  {!isLast ? <span className="absolute top-3 bottom-0 w-px bg-border" aria-hidden /> : null}
-                  <span className="relative z-[1] size-1.5 shrink-0 rounded-full bg-foreground" aria-hidden />
+          return (
+            <div key={entry.id} className="flex gap-3 overflow-visible">
+              <div className={cn("relative w-6 shrink-0 self-stretch overflow-visible", !isLast && "pb-2.5")}>
+                <div className="relative z-[1] flex h-5 w-full shrink-0 items-center justify-center">
+                  {isFirst && canExpand ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className={timelineToggleClassName}
+                      aria-label={expanded ? t("web.items.detail.activity.collapse") : t("web.items.detail.activity.expand")}
+                      aria-expanded={expanded}
+                      onClick={toggleExpanded}
+                    >
+                      <ChevronIcon expanded={expanded} />
+                    </Button>
+                  ) : (
+                    <span className="size-1.5 shrink-0 rounded-full bg-foreground" aria-hidden />
+                  )}
                 </div>
-                <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
-                  {formatActivityLine(entry, locale, t)}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+                {!isLast ? (
+                  <span
+                    className="absolute left-1/2 w-px -translate-x-1/2 bg-border"
+                    style={{ top: TIMELINE_LINE_CENTER_PX, bottom: -TIMELINE_ITEM_GAP_PX }}
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
+              <p
+                className={cn(
+                  "min-w-0 flex-1 text-sm leading-5 text-muted-foreground",
+                  !isLast && "pb-2.5",
+                )}
+              >
+                {formatActivityLine(entry, locale, t)}
+              </p>
+            </div>
+          );
+        })}
+
+        {hasMoreEntries ? (
+          <div className="flex gap-3" style={{ marginTop: TIMELINE_ITEM_GAP_PX }}>
+            <div className="w-6 shrink-0" aria-hidden />
+            <Button type="button" variant="secondary" className={timelineShowMoreClassName} onClick={() => setShowAll(true)}>
+              {t("web.items.detail.activity.showMore")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

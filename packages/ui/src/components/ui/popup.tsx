@@ -222,7 +222,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         aria-modal={role === "dialog" ? true : undefined}
         data-state={isClosing ? "closing" : "open"}
         className={cn(
-          "okkey-popup-overlay fixed inset-0 z-50 !m-0 flex items-center justify-center bg-black/30 p-3 text-foreground",
+          "okkey-popup-overlay fixed inset-0 z-50 !m-0 flex items-center justify-center overflow-hidden bg-black/30 p-4 text-foreground",
           "max-md:items-end max-md:p-0",
           className,
         )}
@@ -235,7 +235,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         style={popupStyle}
         {...props}
       >
-        <div className="pointer-events-none relative flex w-[min(var(--okkey-popup-width),calc(100vw-24px))] max-md:w-full">
+        <div className="pointer-events-none relative flex max-h-[calc(100dvh-32px)] w-[min(var(--okkey-popup-width),calc(100vw-32px))] max-md:max-h-none max-md:w-full">
           {onClose ? (
             <button
               type="button"
@@ -253,21 +253,22 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
           <div
             data-state={isClosing ? "closing" : "open"}
             className={cn(
-              "okkey-popup-panel pointer-events-auto relative flex max-h-[calc(100vh-24px)] min-h-0 w-full overflow-hidden rounded-xl bg-background",
-              "max-md:max-h-[calc(100dvh-40px)] max-md:w-full max-md:flex-col max-md:rounded-b-none",
+              "okkey-popup-panel pointer-events-auto relative flex min-h-0 w-full max-h-[calc(100dvh-32px)] flex-col overflow-hidden rounded-xl bg-background",
+              menu && "md:flex-row",
+              "max-md:w-full max-md:max-h-[calc(100dvh-32px)] max-md:flex-col max-md:rounded-b-none",
               panelClassName,
             )}
             onClick={(event) => event.stopPropagation()}
           >
           {menu ? (
-            <aside className="w-60 shrink-0 overflow-hidden bg-secondary p-2 max-md:hidden">
-              <ScrollArea className="h-full">
+            <aside className="hidden w-60 min-h-0 shrink-0 overflow-hidden bg-secondary p-2 md:block">
+              <ScrollArea className="h-full max-h-[inherit]">
                 <PopupMenuItems menu={menu} surface="sidebar" />
               </ScrollArea>
             </aside>
           ) : null}
 
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {menu ? (
               <div className="px-4 pt-4 md:hidden">
                 <PopupMobileMenu menu={menu} />
@@ -283,7 +284,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
               {description ? <PopupDescription description={description} /> : null}
             </div>
 
-            <ScrollArea className="min-h-0 flex-1">
+            <ScrollArea className="min-h-0 flex-1 max-h-full">
               <div className={cn(menu ? "pl-4 pr-4 pb-4" : "p-6 max-md:p-4", contentClassName)}>
                 {children}
               </div>

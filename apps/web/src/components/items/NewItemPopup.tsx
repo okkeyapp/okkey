@@ -190,7 +190,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       closeLabel={t("web.settingsPopup.close")}
       onClose={closePopup}
       closeDisabled={saving}
-      panelClassName="min-h-[720px]"
+      panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
       footer={
         selectedCategoryId ? (
           <>

@@ -19,7 +19,7 @@ const tagPillInteractiveClassName = cn(
 
 export default function ItemTagsReadonly({ t, tags, onTagClick }: ItemTagsReadonlyProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 py-4">
+    <div className="flex flex-wrap items-center gap-2 pt-4">
       <span className="text-sm text-foreground">{t("web.newItemPopup.tagsLabel")}</span>
       {tags.map((tag) =>
         onTagClick ? (

@@ -553,7 +553,7 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
       onClose={closePopup}
       closeDisabled={saving}
       width={720}
-      panelClassName="min-h-[560px]"
+      panelClassName="min-h-[min(560px,calc(100dvh-32px))]"
       footer={
         <>
           <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={closePopup} disabled={saving}>

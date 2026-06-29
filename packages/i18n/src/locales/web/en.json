@@ -285,6 +285,7 @@
   "web.items.detail.activity.updatedLine": "Updated on {date} at {time}, {actor}",
   "web.items.detail.activity.expand": "Show all activity",
   "web.items.detail.activity.collapse": "Show latest activity only",
+  "web.items.detail.activity.showMore": "Show more",
 
   "auth.email.title": "Welcome to Okkey",
   "auth.email.description": "Enter your email",
