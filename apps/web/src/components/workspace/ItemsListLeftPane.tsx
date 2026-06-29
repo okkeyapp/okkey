@@ -769,6 +769,7 @@ export default function ItemsListLeftPane({
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
   const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
   const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
@@ -825,6 +826,7 @@ export default function ItemsListLeftPane({
       },
       { replace: true },
     );
+    setFilterMenuOpen(false);
   };
 
   const sections = useMemo(() => {
@@ -916,7 +918,7 @@ export default function ItemsListLeftPane({
           )}
         >
         <div className="flex w-full items-center gap-2">
-          <DropdownMenu>
+          <DropdownMenu open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
