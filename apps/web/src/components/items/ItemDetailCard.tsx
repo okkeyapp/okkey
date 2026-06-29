@@ -61,7 +61,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const isItemsMobileListView = useItemsMobileListView();
   const { profile, userId } = useAuthVault();
   const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion } = useWorkspaceItems();
-  const { folderTree } = useWorkspaceFolders();
+  const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(
     cardRootRef,
@@ -177,6 +177,9 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
         showBack={isItemsMobileListView}
         onBack={handleBack}
         onEdit={openEditPopup}
+        onToggleFavorite={() => {
+          void setItemFavorite(itemId, !(listRecord?.favorite ?? false));
+        }}
       />
 
       <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6 md:py-[36px]">

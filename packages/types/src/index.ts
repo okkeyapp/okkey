@@ -77,16 +77,19 @@ export type {
   FolderPlaintextV2,
   ItemFolderAssignPlaintextV1,
   ItemFolderAssignPlaintextV2,
+  ItemFavoriteSetPlaintextV2,
 } from "./folder-schema/types.js";
 export {
   FOLDER_PLAINTEXT_SCHEMA_VERSION,
   FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
   parseFolderPlaintextUtf8,
   parseFolderPlaintextV2Utf8,
   parseItemFolderAssignPlaintextUtf8,
   parseItemFolderAssignPlaintextV2Utf8,
+  parseItemFavoriteSetPlaintextV2Utf8,
   createFolderDeleteTombstoneV1,
   createFolderDeleteTombstoneV2,
 } from "./folder-schema/index.js";
@@ -131,6 +134,7 @@ export const EVENT_TYPES = [
   "FOLDER_UPDATE",
   "FOLDER_DELETE",
   "ITEM_FOLDER_ASSIGN",
+  "ITEM_FAVORITE_SET",
   "VAULT_CREATE",
   "VAULT_SHARE",
   "VAULT_KEY_ROTATION",

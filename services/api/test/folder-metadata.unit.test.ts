@@ -112,6 +112,65 @@ test("replayWorkspaceFolderEvents applies folder and assign events", async () =>
   assert.equal(state.itemFolder.get(itemId), folderId);
 });
 
+test("replayWorkspaceFolderEvents applies item favorite set events", async () => {
+  const workspaceId = testEntityId();
+  const userId = testEntityId();
+  const itemId = testEntityId();
+
+  const favoriteRow = {
+    schemaVersion: 2,
+    itemId,
+    workspaceId,
+    favorite: true,
+  };
+
+  const unfavoriteRow = {
+    schemaVersion: 2,
+    itemId,
+    workspaceId,
+    favorite: false,
+  };
+
+  const events: WorkspacePersonalEventWireDto[] = [
+    baseWire({
+      eventType: "ITEM_FAVORITE_SET",
+      actorId: userId,
+      workspaceId,
+      encryptedBlob: {
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: opaqueJson(favoriteRow),
+        meta: {},
+      },
+      version: 1,
+    }),
+    baseWire({
+      eventType: "ITEM_FAVORITE_SET",
+      actorId: userId,
+      workspaceId,
+      encryptedBlob: {
+        crypto_version: 2,
+        algorithm: "opaque",
+        payload: opaqueJson(unfavoriteRow),
+        meta: {},
+      },
+      version: 2,
+    }),
+  ];
+
+  const state = await replayWorkspaceFolderEvents(events, workspaceId, async (b64) =>
+    Uint8Array.from(Buffer.from(b64, "base64")),
+  );
+  assert.equal(state.itemFavorite.has(itemId), false);
+
+  const favoritedOnly = await replayWorkspaceFolderEvents(
+    [events[0]!],
+    workspaceId,
+    async (b64) => Uint8Array.from(Buffer.from(b64, "base64")),
+  );
+  assert.equal(favoritedOnly.itemFavorite.has(itemId), true);
+});
+
 test("replayWorkspaceFolderEvents ignores other workspace ids", async () => {
   const workspaceId = testEntityId();
   const otherWorkspaceId = testEntityId();

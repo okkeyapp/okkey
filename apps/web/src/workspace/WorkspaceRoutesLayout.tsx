@@ -609,7 +609,7 @@ function WorkspaceShellWithItems({
   vaultUnlocked,
   workspaceFoldersBootstrapped,
 }: WorkspaceShellWithItemsProps) {
-  const { itemFolderByItemId } = useWorkspaceFolders();
+  const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const workspaceItemsState = useWorkspaceItemsState({
     userId,
     workspaceId: resolvedWorkspaceId,
@@ -619,6 +619,7 @@ function WorkspaceShellWithItems({
     vaultKey,
     vaultUnlocked,
     itemFolderByItemId,
+    itemFavoriteByItemId,
   });
 
   return (

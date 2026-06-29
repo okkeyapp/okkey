@@ -11,6 +11,7 @@ import {
   buildFolderDeleteAppendRequest,
   buildFolderUpdateAppendRequest,
   buildItemFolderAssignAppendRequest,
+  buildItemFavoriteSetAppendRequest,
   replayWorkspaceFolderEvents,
   WorkspacePersonalOutboxClient,
   type WorkspaceFolderReplayState,
@@ -34,6 +35,7 @@ type CachedMaterializedState = {
   lastAppliedVersion: number;
   folders: Array<[string, FolderPlaintextV2]>;
   itemFolder: Array<[string, string | null]>;
+  itemFavorite: string[];
 };
 
 function cacheKey(userId: string, workspaceId: string): string {
@@ -78,6 +80,7 @@ async function readCachedState(
     return {
       folders: new Map(row.folders),
       itemFolder: new Map(row.itemFolder),
+      itemFavorite: new Set(row.itemFavorite ?? []),
       lastAppliedVersion: row.lastAppliedVersion,
     };
   } catch {
@@ -99,6 +102,7 @@ async function writeCachedState(
       lastAppliedVersion: state.lastAppliedVersion,
       folders: [...state.folders.entries()],
       itemFolder: [...state.itemFolder.entries()],
+      itemFavorite: [...state.itemFavorite],
     } satisfies CachedMaterializedState);
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -116,6 +120,8 @@ export type WorkspaceFoldersSyncController = {
   createFolder: (label: string) => Promise<string>;
   commitFolderTree: (nextTree: readonly WorkspaceFolderNode[]) => Promise<void>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
+  setItemFavorite: (itemId: string, favorite: boolean) => Promise<void>;
+  setItemsFavorite: (itemIds: readonly string[], favorite: boolean) => Promise<void>;
   getState: () => WorkspaceFolderReplayState;
   toFolderTree: () => WorkspaceFolderNode[];
   dispose: () => void;
@@ -130,6 +136,7 @@ export function createWorkspaceFoldersSyncController(input: {
   let state: WorkspaceFolderReplayState = {
     folders: new Map(),
     itemFolder: new Map(),
+    itemFavorite: new Set(),
     lastAppliedVersion: 0,
   };
   let metadataKey: Uint8Array | null = null;
@@ -194,6 +201,8 @@ export function createWorkspaceFoldersSyncController(input: {
   }
 
   async function enqueue(request: SyncAppendEventRequestDto): Promise<void> {
+    await replayIncremental(state.lastAppliedVersion);
+    request.baseVersion = state.lastAppliedVersion;
     await outbox.enqueue({
       workspaceId: input.workspaceId,
       request,
@@ -202,12 +211,10 @@ export function createWorkspaceFoldersSyncController(input: {
     await replayIncremental(state.lastAppliedVersion);
   }
 
-  async function applyMutations(
-    mutations: FolderTreeMutation[],
-    baseVersionStart: number,
-  ): Promise<void> {
+  async function applyMutations(mutations: FolderTreeMutation[]): Promise<void> {
     const key = await ensureMetadataKey();
-    let version = baseVersionStart;
+    await replayIncremental(state.lastAppliedVersion);
+    let version = state.lastAppliedVersion;
     for (const mutation of mutations) {
       let request: SyncAppendEventRequestDto;
       if (mutation.kind === "create") {
@@ -277,7 +284,7 @@ export function createWorkspaceFoldersSyncController(input: {
       if (!mutations.length) {
         return;
       }
-      await applyMutations(mutations, state.lastAppliedVersion);
+      await applyMutations(mutations);
     },
     assignItemToFolder: async (itemId, folderId) => {
       const key = await ensureMetadataKey();
@@ -292,6 +299,49 @@ export function createWorkspaceFoldersSyncController(input: {
         state.lastAppliedVersion,
       );
       await enqueue(request);
+    },
+    setItemFavorite: async (itemId, favorite) => {
+      const currentlyFavorite = state.itemFavorite.has(itemId);
+      if (currentlyFavorite === favorite) {
+        return;
+      }
+      const key = await ensureMetadataKey();
+      const request = await buildItemFavoriteSetAppendRequest(
+        key,
+        {
+          schemaVersion: 2,
+          itemId,
+          workspaceId: input.workspaceId,
+          favorite,
+        },
+        state.lastAppliedVersion,
+      );
+      await enqueue(request);
+    },
+    setItemsFavorite: async (itemIds, favorite) => {
+      const uniqueIds = [...new Set(itemIds)].filter((itemId) => state.itemFavorite.has(itemId) !== favorite);
+      if (!uniqueIds.length) {
+        return;
+      }
+      const key = await ensureMetadataKey();
+      await replayIncremental(state.lastAppliedVersion);
+      let version = state.lastAppliedVersion;
+      for (const itemId of uniqueIds) {
+        const request = await buildItemFavoriteSetAppendRequest(
+          key,
+          {
+            schemaVersion: 2,
+            itemId,
+            workspaceId: input.workspaceId,
+            favorite,
+          },
+          version,
+        );
+        await outbox.enqueue({ workspaceId: input.workspaceId, request });
+        version += 1;
+      }
+      await outbox.drain(input.workspaceId);
+      await replayIncremental(state.lastAppliedVersion);
     },
     dispose: () => {
       if (metadataKey) {

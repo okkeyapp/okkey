@@ -79,4 +79,5 @@ export {
   buildFolderUpdateAppendRequest,
   buildFolderDeleteAppendRequest,
   buildItemFolderAssignAppendRequest,
+  buildItemFavoriteSetAppendRequest,
 } from "./folder-sync.js";

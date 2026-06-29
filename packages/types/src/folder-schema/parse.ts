@@ -5,10 +5,12 @@ import {
   FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
   type FolderPlaintextV1,
   type FolderPlaintextV2,
   type ItemFolderAssignPlaintextV1,
   type ItemFolderAssignPlaintextV2,
+  type ItemFavoriteSetPlaintextV2,
 } from "./types.js";
 
 function isEntityIdField(value: string): boolean {
@@ -135,5 +137,28 @@ export function parseItemFolderAssignPlaintextV2Utf8(
     itemId: raw.itemId as EntityId,
     workspaceId: raw.workspaceId as EntityId,
     folderId: (raw.folderId as EntityId | null) ?? null,
+  };
+}
+
+export function parseItemFavoriteSetPlaintextV2Utf8(
+  bytes: Uint8Array,
+): ItemFavoriteSetPlaintextV2 | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(raw)) return undefined;
+  if (raw.schemaVersion !== ITEM_FAVORITE_SET_SCHEMA_VERSION_V2) return undefined;
+  if (typeof raw.itemId !== "string" || !isEntityIdField(raw.itemId)) return undefined;
+  if (typeof raw.workspaceId !== "string" || !isEntityIdField(raw.workspaceId)) return undefined;
+  if (typeof raw.favorite !== "boolean") return undefined;
+
+  return {
+    schemaVersion: ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
+    itemId: raw.itemId as EntityId,
+    workspaceId: raw.workspaceId as EntityId,
+    favorite: raw.favorite,
   };
 }

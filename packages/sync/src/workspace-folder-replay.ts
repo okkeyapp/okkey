@@ -2,8 +2,10 @@ import type { FolderPlaintextV2, WorkspacePersonalEventWireDto } from "@okkey/ty
 import {
   FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
   parseFolderPlaintextV2Utf8,
   parseItemFolderAssignPlaintextV2Utf8,
+  parseItemFavoriteSetPlaintextV2Utf8,
 } from "@okkey/types";
 
 const FOLDER_ROW_TYPES = new Set(["FOLDER_CREATE", "FOLDER_UPDATE", "FOLDER_DELETE"]);
@@ -11,6 +13,7 @@ const FOLDER_ROW_TYPES = new Set(["FOLDER_CREATE", "FOLDER_UPDATE", "FOLDER_DELE
 const FOLDER_AND_ASSIGN_TYPES = new Set([
   ...FOLDER_ROW_TYPES,
   "ITEM_FOLDER_ASSIGN",
+  "ITEM_FAVORITE_SET",
 ]);
 
 const SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS = new Set<number>([
@@ -20,6 +23,11 @@ const SUPPORTED_FOLDER_METADATA_ENVELOPE_VERSIONS = new Set<number>([
 
 const SUPPORTED_ITEM_FOLDER_ASSIGN_ENVELOPE_VERSIONS = new Set<number>([
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  2,
+]);
+
+const SUPPORTED_ITEM_FAVORITE_SET_ENVELOPE_VERSIONS = new Set<number>([
+  ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
   2,
 ]);
 
@@ -33,6 +41,7 @@ function getEventBlob(event: WorkspacePersonalEventWireDto): { crypto_version: n
 export interface WorkspaceFolderReplayState {
   folders: Map<string, FolderPlaintextV2>;
   itemFolder: Map<string, string | null>;
+  itemFavorite: Set<string>;
   lastAppliedVersion: number;
 }
 
@@ -74,11 +83,12 @@ export async function replayWorkspaceFolderEvents(
   workspaceId: string,
   decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
   initialLastAppliedVersion = 0,
-  initialState?: Pick<WorkspaceFolderReplayState, "folders" | "itemFolder">,
+  initialState?: Pick<WorkspaceFolderReplayState, "folders" | "itemFolder" | "itemFavorite">,
 ): Promise<WorkspaceFolderReplayState> {
   const state: WorkspaceFolderReplayState = {
     folders: new Map(initialState?.folders),
     itemFolder: new Map(initialState?.itemFolder),
+    itemFavorite: new Set(initialState?.itemFavorite),
     lastAppliedVersion: initialLastAppliedVersion,
   };
 
@@ -109,6 +119,23 @@ export async function replayWorkspaceFolderEvents(
         continue;
       }
       state.itemFolder.set(assign.itemId, assign.folderId);
+      state.lastAppliedVersion = ev.version;
+      continue;
+    }
+
+    if (ev.eventType === "ITEM_FAVORITE_SET") {
+      if (!SUPPORTED_ITEM_FAVORITE_SET_ENVELOPE_VERSIONS.has(getEventBlob(ev).crypto_version)) {
+        continue;
+      }
+      const favoriteSet = parseItemFavoriteSetPlaintextV2Utf8(plaintextBytes);
+      if (!favoriteSet || favoriteSet.workspaceId !== workspaceId) {
+        continue;
+      }
+      if (favoriteSet.favorite) {
+        state.itemFavorite.add(favoriteSet.itemId);
+      } else {
+        state.itemFavorite.delete(favoriteSet.itemId);
+      }
       state.lastAppliedVersion = ev.version;
       continue;
     }

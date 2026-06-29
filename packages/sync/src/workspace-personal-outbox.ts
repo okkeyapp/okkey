@@ -87,36 +87,50 @@ function toOutboxError(err: unknown): {
   if (isObject(err)) {
     const directCode = typeof err.code === "string" ? err.code : undefined;
     const directMsg = typeof err.message === "string" ? err.message : "unknown error";
-    if (directCode === "VERSION_MISMATCH" && isObject(err.details)) {
-      const d = err.details;
-      return {
-        code: directCode,
-        message: directMsg,
-        versionMismatch: {
-          code: "VERSION_MISMATCH",
-          expectedBaseVersion: Number(d.expectedBaseVersion),
-          latestVersion: Number(d.latestVersion),
-        },
-      };
-    }
-    if (typeof err.error === "string") {
-      const details = isObject(err.details) ? err.details : undefined;
-      if (err.error === "VERSION_MISMATCH" && details) {
+
+    const versionMismatchFromDetails = (
+      details: Record<string, unknown>,
+    ): WorkspacePersonalVersionMismatchDetails | undefined => {
+      if (
+        typeof details.expectedBaseVersion === "number" &&
+        typeof details.latestVersion === "number"
+      ) {
         return {
           code: "VERSION_MISMATCH",
-          message: typeof err.message === "string" ? err.message : directMsg,
-          versionMismatch: {
-            code: "VERSION_MISMATCH",
-            expectedBaseVersion: Number(details.expectedBaseVersion),
-            latestVersion: Number(details.latestVersion),
-          },
+          expectedBaseVersion: details.expectedBaseVersion,
+          latestVersion: details.latestVersion,
         };
       }
-      return { code: err.error, message: directMsg };
+      return undefined;
+    };
+
+    if (directCode === "VERSION_MISMATCH" && isObject(err.details)) {
+      const mismatch = versionMismatchFromDetails(err.details);
+      if (mismatch) {
+        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+      }
     }
+
+    if (typeof err.error === "string" && err.error === "VERSION_MISMATCH" && isObject(err.details)) {
+      const mismatch = versionMismatchFromDetails(err.details);
+      if (mismatch) {
+        return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+      }
+    }
+
+    if (isObject(err.body) && typeof err.body.error === "string" && err.body.error === "VERSION_MISMATCH") {
+      const details = isObject(err.body.details) ? err.body.details : undefined;
+      if (details) {
+        const mismatch = versionMismatchFromDetails(details);
+        if (mismatch) {
+          return { code: "VERSION_MISMATCH", message: directMsg, versionMismatch: mismatch };
+        }
+      }
+    }
+
     return { code: directCode ?? "UNKNOWN", message: directMsg };
   }
-  return { code: "UNKNOWN", message: String(err) };
+  return { code: "UNKNOWN", message: err instanceof Error ? err.message : String(err) };
 }
 
 export class InMemoryWorkspacePersonalOutboxStore implements WorkspacePersonalOutboxStore {

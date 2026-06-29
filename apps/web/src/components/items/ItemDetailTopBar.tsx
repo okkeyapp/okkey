@@ -10,6 +10,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@okkey/ui";
 import type { SVGProps } from "react";
@@ -32,7 +36,21 @@ function IconCapsule16({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
-function IconFavorite16({ className, ...props }: SVGProps<SVGSVGElement>) {
+function IconFavorite16({ className, filled = false, ...props }: SVGProps<SVGSVGElement> & { filled?: boolean }) {
+  if (filled) {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+        <path
+          d="M8.00004 1.33325L10.06 5.50659L14.6667 6.17992L11.3334 9.42659L12.12 14.0133L8.00004 11.8466L3.88004 14.0133L4.66671 9.42659L1.33337 6.17992L5.94004 5.50659L8.00004 1.33325Z"
+          fill="#FB923C"
+          stroke="#FB923C"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
       <path
@@ -140,6 +158,7 @@ type ItemDetailTopBarProps = {
   showBack?: boolean;
   onBack?: () => void;
   onEdit: () => void;
+  onToggleFavorite: () => void;
 };
 
 const controlGroupLayoutClassName = "w-auto shrink-0";
@@ -154,7 +173,12 @@ export default function ItemDetailTopBar({
   showBack = false,
   onBack,
   onEdit,
+  onToggleFavorite,
 }: ItemDetailTopBarProps) {
+  const favoriteTooltip = favorite
+    ? t("web.items.detail.favoriteRemoveTooltip")
+    : t("web.items.detail.favoriteAddTooltip");
+
   return (
     <div
       className={cn(
@@ -197,16 +221,24 @@ export default function ItemDetailTopBar({
           >
             <IconCapsule16 />
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className={iconGroupButtonClassName}
-            aria-label={favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
-            onClick={() => undefined}
-          >
-            <IconFavorite16 />
-          </Button>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className={iconGroupButtonClassName}
+                  aria-label={favoriteTooltip}
+                  aria-pressed={favorite}
+                  onClick={onToggleFavorite}
+                >
+                  <IconFavorite16 filled={favorite} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{favoriteTooltip}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </ControlGroup>
 
         <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>

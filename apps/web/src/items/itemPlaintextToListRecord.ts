@@ -25,7 +25,7 @@ function collectUrls(item: ItemPlaintextV2): string[] {
 
 export function itemPlaintextToListRecord(
   item: ItemPlaintextV2,
-  input: { folderId: string | null },
+  input: { folderId: string | null; favorite: boolean },
 ): ItemsListRecord {
   const login = readTextField(item, "login") || readTextField(item, item.fields.find((field) => field.type === "text")?.id ?? "");
 
@@ -38,7 +38,7 @@ export function itemPlaintextToListRecord(
     login,
     tags: [...(item.tags ?? [])],
     date: new Date(item.updatedAtMs),
-    favorite: false,
+    favorite: input.favorite,
     archived: false,
     deleted: false,
   };

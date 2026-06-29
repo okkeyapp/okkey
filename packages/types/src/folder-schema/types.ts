@@ -12,6 +12,9 @@ export const ITEM_FOLDER_ASSIGN_SCHEMA_VERSION = 1 as const;
 /** Encrypted JSON inside ITEM_FOLDER_ASSIGN ciphertext (workspace-scoped). */
 export const ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2 = 2 as const;
 
+/** Encrypted JSON inside ITEM_FAVORITE_SET ciphertext (workspace-scoped). */
+export const ITEM_FAVORITE_SET_SCHEMA_VERSION_V2 = 2 as const;
+
 export interface FolderPlaintextV1 {
   schemaVersion: typeof FOLDER_PLAINTEXT_SCHEMA_VERSION;
   folderId: EntityId;
@@ -52,4 +55,11 @@ export interface ItemFolderAssignPlaintextV2 {
   workspaceId: EntityId;
   /** `null` = not in any folder. */
   folderId: EntityId | null;
+}
+
+export interface ItemFavoriteSetPlaintextV2 {
+  schemaVersion: typeof ITEM_FAVORITE_SET_SCHEMA_VERSION_V2;
+  itemId: EntityId;
+  workspaceId: EntityId;
+  favorite: boolean;
 }

@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } f
 import { useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
+import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
@@ -759,6 +760,7 @@ export default function ItemsListLeftPane({
   itemsListRecordsLoaded = true,
 }: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
+  const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -891,6 +893,16 @@ export default function ItemsListLeftPane({
       }
       return next;
     });
+  };
+
+  const favoriteSelectedItems = (favorite: boolean) => {
+    const itemIds = selectedRows
+      .filter((row) => row.favorite !== favorite)
+      .map((row) => row.id);
+    if (!itemIds.length) {
+      return;
+    }
+    void setItemsFavorite(itemIds, favorite);
   };
 
   const selectItemInUrl = (id: string) => {
@@ -1233,7 +1245,12 @@ export default function ItemsListLeftPane({
                                     <IconEdit16 />
                                     <span>{t("web.items.menu.edit")}</span>
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onSelect={() => {
+                                      void setItemFavorite(row.id, !row.favorite);
+                                    }}
+                                  >
                                     {row.favorite ? (
                                       <IconUnfavorite16 className="text-foreground" />
                                     ) : (
@@ -1313,13 +1330,13 @@ export default function ItemsListLeftPane({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 p-1">
               {selectedActions.canFavorite ? (
-                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                <DropdownMenuItem className="gap-2" onSelect={() => favoriteSelectedItems(true)}>
                   <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
                   <span>{t("web.items.menu.addToFavorites")}</span>
                 </DropdownMenuItem>
               ) : null}
               {selectedActions.canUnfavorite ? (
-                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                <DropdownMenuItem className="gap-2" onSelect={() => favoriteSelectedItems(false)}>
                   <IconUnfavorite16 />
                   <span>{t("web.items.menu.removeFromFavorites")}</span>
                 </DropdownMenuItem>

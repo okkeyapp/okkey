@@ -22,6 +22,7 @@ export type WorkspaceFoldersContextValue = {
   folderTree: WorkspaceFolderNode[];
   flatFolders: FlatWorkspaceFolder[];
   itemFolderByItemId: ReadonlyMap<string, string | null>;
+  itemFavoriteByItemId: ReadonlySet<string>;
   loading: boolean;
   /** True after the first folder sync bootstrap completes for the current workspace session. */
   bootstrapped: boolean;
@@ -30,6 +31,8 @@ export type WorkspaceFoldersContextValue = {
   createFolder: (label: string) => Promise<string>;
   commitFolderTree: (tree: WorkspaceFolderNode[]) => Promise<void>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
+  setItemFavorite: (itemId: string, favorite: boolean) => Promise<void>;
+  setItemsFavorite: (itemIds: readonly string[], favorite: boolean) => Promise<void>;
   refreshFolders: () => Promise<void>;
 };
 
@@ -47,6 +50,7 @@ export function useWorkspaceFoldersState(input: {
   const [itemFolderByItemId, setItemFolderByItemId] = useState<ReadonlyMap<string, string | null>>(
     () => new Map(),
   );
+  const [itemFavoriteByItemId, setItemFavoriteByItemId] = useState<ReadonlySet<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +67,7 @@ export function useWorkspaceFoldersState(input: {
     }
     setFolderTree(controller.toFolderTree());
     setItemFolderByItemId(new Map(controller.getState().itemFolder));
+    setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
     setSyncVersion(controller.getState().lastAppliedVersion);
   }, []);
 
@@ -71,6 +76,7 @@ export function useWorkspaceFoldersState(input: {
     controllerRef.current = null;
     setFolderTree([]);
     setItemFolderByItemId(new Map());
+    setItemFavoriteByItemId(new Set());
     setBootstrapped(false);
     setError(null);
 
@@ -173,6 +179,24 @@ export function useWorkspaceFoldersState(input: {
     [runMutation],
   );
 
+  const setItemFavorite = useCallback(
+    async (itemId: string, favorite: boolean) => {
+      await runMutation(async (controller) => {
+        await controller.setItemFavorite(itemId, favorite);
+      });
+    },
+    [runMutation],
+  );
+
+  const setItemsFavorite = useCallback(
+    async (itemIds: readonly string[], favorite: boolean) => {
+      await runMutation(async (controller) => {
+        await controller.setItemsFavorite(itemIds, favorite);
+      });
+    },
+    [runMutation],
+  );
+
   const refreshFolders = useCallback(async () => {
     await runMutation(async (controller) => {
       await controller.refresh();
@@ -184,6 +208,7 @@ export function useWorkspaceFoldersState(input: {
       folderTree,
       flatFolders,
       itemFolderByItemId,
+      itemFavoriteByItemId,
       loading,
       bootstrapped,
       error,
@@ -191,12 +216,15 @@ export function useWorkspaceFoldersState(input: {
       createFolder,
       commitFolderTree,
       assignItemToFolder,
+      setItemFavorite,
+      setItemsFavorite,
       refreshFolders,
     }),
     [
       folderTree,
       flatFolders,
       itemFolderByItemId,
+      itemFavoriteByItemId,
       loading,
       bootstrapped,
       error,
@@ -204,6 +232,8 @@ export function useWorkspaceFoldersState(input: {
       createFolder,
       commitFolderTree,
       assignItemToFolder,
+      setItemFavorite,
+      setItemsFavorite,
       refreshFolders,
     ],
   );

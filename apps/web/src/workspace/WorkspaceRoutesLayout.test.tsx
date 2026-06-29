@@ -67,15 +67,19 @@ vi.mock("../folders/WorkspaceFoldersContext", () => ({
   WorkspaceFoldersProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useWorkspaceFolders: () => ({
     itemFolderByItemId: new Map(),
+    itemFavoriteByItemId: new Set(),
     flatFolders: [],
     folderTree: [],
     createFolder: vi.fn(),
     assignItemToFolder: vi.fn(),
+    setItemFavorite: vi.fn(),
+    setItemsFavorite: vi.fn(),
   }),
   useWorkspaceFoldersState: () => ({
     folderTree: mocks.folderTree,
     flatFolders: [],
     itemFolderByItemId: new Map(),
+    itemFavoriteByItemId: new Set(),
     loading: mocks.foldersLoading,
     bootstrapped: mocks.foldersBootstrapped,
     error: null,
@@ -83,6 +87,8 @@ vi.mock("../folders/WorkspaceFoldersContext", () => ({
     createFolder: vi.fn(),
     commitFolderTree: vi.fn().mockResolvedValue(undefined),
     assignItemToFolder: vi.fn(),
+    setItemFavorite: vi.fn(),
+    setItemsFavorite: vi.fn(),
   }),
 }));
 

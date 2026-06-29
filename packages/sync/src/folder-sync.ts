@@ -2,11 +2,13 @@ import type {
   EncryptedBlobDto,
   FolderPlaintextV2,
   ItemFolderAssignPlaintextV2,
+  ItemFavoriteSetPlaintextV2,
   SyncAppendEventRequestDto,
 } from "@okkey/types";
 import {
   FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
   ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+  ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
 } from "@okkey/types";
 import { encryptPersonalVaultMetadataPayload, wipeBytes } from "@okkey/crypto";
 
@@ -137,6 +139,34 @@ export async function buildItemFolderAssignAppendRequest(
       encryptedBlob: toEncryptedBlob(
         uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
         ITEM_FOLDER_ASSIGN_SCHEMA_VERSION_V2,
+      ),
+      baseVersion,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+      clientCreatedAt,
+    };
+  } finally {
+    wipeBytes(plaintext);
+    wipeBytes(encrypted);
+  }
+}
+
+export async function buildItemFavoriteSetAppendRequest(
+  personalMetadataKey: Uint8Array,
+  favoriteSet: ItemFavoriteSetPlaintextV2,
+  baseVersion: number,
+  idempotencyKey?: string,
+  clientCreatedAt?: string,
+): Promise<SyncAppendEventRequestDto> {
+  let plaintext: Uint8Array | undefined;
+  let encrypted: Uint8Array | undefined;
+  try {
+    plaintext = encoder.encode(JSON.stringify(favoriteSet));
+    encrypted = await encryptPersonalVaultMetadataPayload(personalMetadataKey, plaintext);
+    return {
+      eventType: "ITEM_FAVORITE_SET",
+      encryptedBlob: toEncryptedBlob(
+        uint8ArrayToStandardBase64(assertBytes(encrypted, "encrypted")),
+        ITEM_FAVORITE_SET_SCHEMA_VERSION_V2,
       ),
       baseVersion,
       ...(idempotencyKey ? { idempotencyKey } : {}),

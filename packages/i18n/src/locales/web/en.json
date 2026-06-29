@@ -281,6 +281,8 @@
   "web.items.detail.selectItemDescription": "The item card will appear here",
   "web.items.detail.moreActionsAria": "More actions",
   "web.items.detail.capsuleFavoriteGroupAria": "Capsule and favorites",
+  "web.items.detail.favoriteAddTooltip": "Add to favorites",
+  "web.items.detail.favoriteRemoveTooltip": "Remove from favorites",
   "web.items.detail.editActionsGroupAria": "Edit and more actions",
   "web.items.detail.tagsEmpty": "No tags",
   "web.items.detail.activity.title": "Activity",

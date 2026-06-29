@@ -45,9 +45,19 @@ export function useWorkspaceItemsState(input: {
   vaultKey: Uint8Array | null;
   vaultUnlocked: boolean;
   itemFolderByItemId: ReadonlyMap<string, string | null>;
+  itemFavoriteByItemId: ReadonlySet<string>;
 }): WorkspaceItemsContextValue {
-  const { userId, workspaceId, core, vaults, vaultsListReady, vaultKey, vaultUnlocked, itemFolderByItemId } =
-    input;
+  const {
+    userId,
+    workspaceId,
+    core,
+    vaults,
+    vaultsListReady,
+    vaultKey,
+    vaultUnlocked,
+    itemFolderByItemId,
+    itemFavoriteByItemId,
+  } = input;
   const [records, setRecords] = useState<ItemsListRecord[]>([]);
   const [items, setItems] = useState<ItemPlaintextV2[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,6 +67,8 @@ export function useWorkspaceItemsState(input: {
   const controllerRef = useRef<WorkspaceVaultItemsSyncController | null>(null);
   const itemFolderRef = useRef(itemFolderByItemId);
   itemFolderRef.current = itemFolderByItemId;
+  const itemFavoriteRef = useRef(itemFavoriteByItemId);
+  itemFavoriteRef.current = itemFavoriteByItemId;
 
   const syncFromController = useCallback(() => {
     const controller = controllerRef.current;
@@ -71,6 +83,7 @@ export function useWorkspaceItemsState(input: {
       syncedItems.map((item) =>
         itemPlaintextToListRecord(item, {
           folderId: itemFolderRef.current.get(item.itemId) ?? null,
+          favorite: itemFavoriteRef.current.has(item.itemId),
         }),
       ),
     );
@@ -137,7 +150,7 @@ export function useWorkspaceItemsState(input: {
 
   useEffect(() => {
     syncFromController();
-  }, [itemFolderByItemId, syncFromController]);
+  }, [itemFolderByItemId, itemFavoriteByItemId, syncFromController]);
 
   const runMutation = useCallback(
     async (fn: (controller: WorkspaceVaultItemsSyncController) => Promise<void>) => {
