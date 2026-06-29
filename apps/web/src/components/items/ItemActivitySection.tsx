@@ -1,8 +1,9 @@
-import type { WebMessageValues } from "@okkey/i18n";
+import type { WebMessageValues, WebLocale } from "@okkey/i18n";
 import { Button, buttonVariants, cn } from "@okkey/ui";
 import { useMemo, useState } from "react";
 
 import type { ItemActivityEntry } from "../../items/buildItemActivityEntries";
+import { formatUserLocalDateParts } from "../../lib/formatUserLocalDateTime";
 import { useLocale } from "../../locale/LocaleContext";
 
 type ItemActivitySectionProps = {
@@ -63,19 +64,10 @@ function ActivityCalendarIcon({ className }: { className?: string }) {
 
 function formatActivityLine(
   entry: ItemActivityEntry,
-  locale: string,
+  locale: WebLocale,
   t: (messageKey: string, values?: WebMessageValues) => string,
 ): string {
-  const date = new Date(entry.atMs);
-  const datePart = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(date);
-  const timePart = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  const { date: datePart, time: timePart } = formatUserLocalDateParts(entry.atMs, { locale });
 
   if (entry.actionKey === "created") {
     return t("web.items.detail.activity.createdLine", { date: datePart, time: timePart, actor: entry.actorLabel });
