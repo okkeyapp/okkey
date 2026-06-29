@@ -2,6 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { CryptoDowngradeInvariantError } from "../src/storage/errors.ts";
+import { testEntityId } from "./test-entity-id.ts";
+
+const TEST_ITEM_ID = testEntityId();
+
+function mkItemUpdateInput(
+  encryptedBlob: unknown,
+  baseVersion = 0,
+): {
+  eventType: "ITEM_UPDATE";
+  encryptedBlob: unknown;
+  baseVersion: number;
+  referencedItemId: string;
+} {
+  return {
+    eventType: "ITEM_UPDATE",
+    encryptedBlob,
+    baseVersion,
+    referencedItemId: TEST_ITEM_ID,
+  };
+}
 
 function mkBlob(payload: string, cryptoVersion = 2) {
   return {
@@ -66,12 +86,7 @@ test("security: rejects strip attack with removed crypto_version", async () => {
   };
 
   await assert.rejects(
-    () =>
-      service.appendEvent("v-security", "u-owner", {
-        eventType: "ITEM_UPDATE",
-        encryptedBlob: strippedBlob,
-        baseVersion: 0,
-      }),
+    () => service.appendEvent("v-security", "u-owner", mkItemUpdateInput(strippedBlob)),
     (error: unknown) => error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
   );
 });
@@ -81,11 +96,11 @@ test("security: rejects legacy encryptedBlob string when legacy shape is disable
 
   await assert.rejects(
     () =>
-      service.appendEvent("v-security", "u-owner", {
-        eventType: "ITEM_UPDATE",
-        encryptedBlob: Buffer.from("legacy-cipher", "utf8").toString("base64"),
-        baseVersion: 0,
-      }),
+      service.appendEvent(
+        "v-security",
+        "u-owner",
+        mkItemUpdateInput(Buffer.from("legacy-cipher", "utf8").toString("base64")),
+      ),
     (error: unknown) => error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
   );
 });
@@ -97,11 +112,7 @@ test("security: maps downgrade attempt to CRYPTO_DOWNGRADE_NOT_ALLOWED", async (
 
   await assert.rejects(
     () =>
-      service.appendEvent("v-security", "u-owner", {
-        eventType: "ITEM_UPDATE",
-        encryptedBlob: mkBlob("downgrade-attempt", 1),
-        baseVersion: 0,
-      }),
+      service.appendEvent("v-security", "u-owner", mkItemUpdateInput(mkBlob("downgrade-attempt", 1))),
     (error: unknown) =>
       error instanceof SyncServiceError &&
       error.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED" &&
@@ -114,11 +125,7 @@ test("security: rejects profile not allowed by production policy", async () => {
 
   await assert.rejects(
     () =>
-      service.appendEvent("v-security", "u-owner", {
-        eventType: "ITEM_UPDATE",
-        encryptedBlob: mkBlob("policy-violation", 1),
-        baseVersion: 0,
-      }),
+      service.appendEvent("v-security", "u-owner", mkItemUpdateInput(mkBlob("policy-violation", 1))),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "CRYPTO_PROFILE_NOT_ALLOWED",
   );
