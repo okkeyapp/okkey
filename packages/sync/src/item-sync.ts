@@ -108,6 +108,29 @@ export async function buildItemUpdateAppendRequest(
   }
 }
 
+export function buildItemSyncMetadataFromPlaintext(
+  request: SyncAppendEventRequestDto,
+  item: ItemPlaintextV2,
+): SyncAppendEventRequestDto {
+  const itemEventTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+  if (!itemEventTypes.has(request.eventType)) {
+    return request;
+  }
+  const metadata: Pick<
+    SyncAppendEventRequestDto,
+    "referencedItemId" | "itemSoftDeleted" | "itemDeletedAtMs"
+  > = {
+    referencedItemId: item.itemId,
+  };
+  if (item.deleted) {
+    metadata.itemSoftDeleted = true;
+    metadata.itemDeletedAtMs = item.deletedAtMs ?? item.updatedAtMs;
+  } else if (request.eventType === "ITEM_UPDATE") {
+    metadata.itemSoftDeleted = false;
+  }
+  return { ...request, ...metadata };
+}
+
 export async function buildItemDeleteAppendRequest(
   vaultKey: Uint8Array,
   vaultId: string,

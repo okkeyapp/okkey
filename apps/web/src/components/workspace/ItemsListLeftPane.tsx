@@ -77,6 +77,7 @@ export type ItemsListRecord = {
   favorite: boolean;
   archived: boolean;
   deleted: boolean;
+  deletedAtMs?: number;
 };
 
 function filterRowsByVault(
@@ -765,7 +766,7 @@ export default function ItemsListLeftPane({
   const location = useLocation();
   const navigate = useNavigate();
   const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
-  const { setItemArchived, setItemsArchived } = useWorkspaceItems();
+  const { setItemArchived, setItemsArchived, setItemDeleted, setItemsDeleted } = useWorkspaceItems();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -777,6 +778,7 @@ export default function ItemsListLeftPane({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [bulkActionsMenuOpen, setBulkActionsMenuOpen] = useState(false);
 
   const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
   const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
@@ -879,8 +881,17 @@ export default function ItemsListLeftPane({
   }, [selectionMode, selectedIds]);
 
   const exitSelectionMode = () => {
+    setBulkActionsMenuOpen(false);
     setSelectionMode(false);
     setSelectedIds(new Set());
+  };
+
+  const finishBulkSelection = async (action: () => Promise<void>) => {
+    try {
+      await action();
+    } finally {
+      exitSelectionMode();
+    }
   };
 
   const enterSelectionModeWith = (id: string) => {
@@ -907,14 +918,31 @@ export default function ItemsListLeftPane({
     if (!itemIds.length) {
       return;
     }
-    void setItemsFavorite(itemIds, favorite);
+    void finishBulkSelection(() => setItemsFavorite(itemIds, favorite));
   };
 
   const archiveRow = (row: ItemsListRecord, archived: boolean) => {
+    if (row.deleted) {
+      return;
+    }
     void (async () => {
       await setItemArchived(row.id, archived);
       if (archived && row.favorite) {
         await setItemFavorite(row.id, false);
+      }
+    })();
+  };
+
+  const deleteRow = (row: ItemsListRecord, deleted: boolean) => {
+    void (async () => {
+      await setItemDeleted(row.id, deleted);
+      if (deleted) {
+        if (row.favorite) {
+          await setItemFavorite(row.id, false);
+        }
+        if (row.archived) {
+          await setItemArchived(row.id, false);
+        }
       }
     })();
   };
@@ -925,7 +953,7 @@ export default function ItemsListLeftPane({
     if (!itemIds.length) {
       return;
     }
-    void (async () => {
+    void finishBulkSelection(async () => {
       await setItemsArchived(itemIds, archived);
       if (archived) {
         const favoriteIds = rows.filter((row) => row.favorite).map((row) => row.id);
@@ -933,7 +961,28 @@ export default function ItemsListLeftPane({
           await setItemsFavorite(favoriteIds, false);
         }
       }
-    })();
+    });
+  };
+
+  const deleteSelectedItems = (deleted: boolean) => {
+    const rows = selectedRows.filter((row) => row.deleted !== deleted);
+    const itemIds = rows.map((row) => row.id);
+    if (!itemIds.length) {
+      return;
+    }
+    void finishBulkSelection(async () => {
+      await setItemsDeleted(itemIds, deleted);
+      if (deleted) {
+        const favoriteIds = rows.filter((row) => row.favorite).map((row) => row.id);
+        if (favoriteIds.length) {
+          await setItemsFavorite(favoriteIds, false);
+        }
+        const archivedIds = rows.filter((row) => row.archived).map((row) => row.id);
+        if (archivedIds.length) {
+          await setItemsArchived(archivedIds, false);
+        }
+      }
+    });
   };
 
   const selectItemInUrl = (id: string) => {
@@ -1283,7 +1332,7 @@ export default function ItemsListLeftPane({
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-52 p-1">
-                                  {!row.archived ? (
+                                  {!row.archived && !row.deleted ? (
                                     <>
                                       <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
                                         <IconEdit16 />
@@ -1314,21 +1363,23 @@ export default function ItemsListLeftPane({
                                     <span>{t("web.items.menu.select")}</span>
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator className="mx-1 my-1" />
-                                  <DropdownMenuItem className="gap-2" onSelect={() => archiveRow(row, !row.archived)}>
-                                    {row.archived ? (
-                                      <IconUnarchive16 className="text-foreground" />
-                                    ) : (
-                                      <FilterIconArchived className="size-4 shrink-0 text-foreground" />
-                                    )}
-                                    <span>{row.archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
-                                  </DropdownMenuItem>
+                                  {!row.deleted ? (
+                                    <DropdownMenuItem className="gap-2" onSelect={() => archiveRow(row, !row.archived)}>
+                                      {row.archived ? (
+                                        <IconUnarchive16 className="text-foreground" />
+                                      ) : (
+                                        <FilterIconArchived className="size-4 shrink-0 text-foreground" />
+                                      )}
+                                      <span>{row.archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
+                                    </DropdownMenuItem>
+                                  ) : null}
                                   <DropdownMenuItem
                                     className={cn(
                                       "gap-2",
                                       !row.deleted &&
                                         "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
                                     )}
-                                    onSelect={() => undefined}
+                                    onSelect={() => deleteRow(row, !row.deleted)}
                                   >
                                     {row.deleted ? (
                                       <IconRestore16 className="text-foreground" />
@@ -1367,7 +1418,7 @@ export default function ItemsListLeftPane({
           <p className="ms-2 min-w-0 flex-1 truncate text-left text-sm text-foreground">
             {t("web.items.list.selectionCount", { count: selectedIds.size })}
           </p>
-          <DropdownMenu>
+          <DropdownMenu open={bulkActionsMenuOpen} onOpenChange={setBulkActionsMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="secondary" size="sm" className="ms-auto shrink-0 gap-2">
                 <IconActions16 />
@@ -1413,14 +1464,14 @@ export default function ItemsListLeftPane({
               {selectedActions.canDelete ? (
                 <DropdownMenuItem
                   className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
-                  onSelect={() => undefined}
+                  onSelect={() => deleteSelectedItems(true)}
                 >
                   <IconDelete16 />
                   <span>{t("web.items.menu.delete")}</span>
                 </DropdownMenuItem>
               ) : null}
               {selectedActions.canRestore ? (
-                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                <DropdownMenuItem className="gap-2" onSelect={() => deleteSelectedItems(false)}>
                   <IconRestore16 />
                   <span>{t("web.items.menu.restore")}</span>
                 </DropdownMenuItem>

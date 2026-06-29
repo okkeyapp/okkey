@@ -16,6 +16,7 @@ import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane"
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import { withItemArchivedState } from "./itemArchive";
+import { withItemDeletedState } from "./itemDelete";
 import {
   createWorkspaceVaultItemsSyncController,
   type WorkspaceVaultItemsSyncController,
@@ -34,6 +35,8 @@ export type WorkspaceItemsContextValue = {
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
   setItemArchived: (itemId: string, archived: boolean) => Promise<void>;
   setItemsArchived: (itemIds: readonly string[], archived: boolean) => Promise<void>;
+  setItemDeleted: (itemId: string, deleted: boolean) => Promise<void>;
+  setItemsDeleted: (itemIds: readonly string[], deleted: boolean) => Promise<void>;
   refreshItems: () => Promise<void>;
 };
 
@@ -49,6 +52,7 @@ export function useWorkspaceItemsState(input: {
   vaultUnlocked: boolean;
   itemFolderByItemId: ReadonlyMap<string, string | null>;
   itemFavoriteByItemId: ReadonlySet<string>;
+  deletedItemsRetentionDays: number;
 }): WorkspaceItemsContextValue {
   const {
     userId,
@@ -60,6 +64,7 @@ export function useWorkspaceItemsState(input: {
     vaultUnlocked,
     itemFolderByItemId,
     itemFavoriteByItemId,
+    deletedItemsRetentionDays,
   } = input;
   const [records, setRecords] = useState<ItemsListRecord[]>([]);
   const [items, setItems] = useState<ItemPlaintextV2[]>([]);
@@ -73,6 +78,18 @@ export function useWorkspaceItemsState(input: {
   const itemFavoriteRef = useRef(itemFavoriteByItemId);
   itemFavoriteRef.current = itemFavoriteByItemId;
 
+  const deletedRetentionRef = useRef(deletedItemsRetentionDays);
+  deletedRetentionRef.current = deletedItemsRetentionDays;
+
+  const isDeletedItemWithinRetention = useCallback((item: ItemPlaintextV2) => {
+    if (!item.deleted) {
+      return true;
+    }
+    const deletedAtMs = item.deletedAtMs ?? item.updatedAtMs;
+    const retentionMs = deletedRetentionRef.current * 86_400_000;
+    return Date.now() - deletedAtMs < retentionMs;
+  }, []);
+
   const syncFromController = useCallback(() => {
     const controller = controllerRef.current;
     if (!controller) {
@@ -80,7 +97,7 @@ export function useWorkspaceItemsState(input: {
       setItems([]);
       return;
     }
-    const syncedItems = controller.getAllItems();
+    const syncedItems = controller.getAllItems().filter(isDeletedItemWithinRetention);
     setItems(syncedItems);
     setRecords(
       syncedItems.map((item) =>
@@ -91,7 +108,7 @@ export function useWorkspaceItemsState(input: {
       ),
     );
     setSyncVersion((version) => version + 1);
-  }, []);
+  }, [isDeletedItemWithinRetention]);
 
   useEffect(() => {
     controllerRef.current?.dispose();
@@ -208,6 +225,9 @@ export function useWorkspaceItemsState(input: {
         if (Boolean(item.archived) === archived) {
           return;
         }
+        if (item.deleted) {
+          throw new Error("CANNOT_ARCHIVE_DELETED_ITEM");
+        }
         await controller.updateItem(withItemArchivedState(item, archived));
       });
     },
@@ -224,10 +244,46 @@ export function useWorkspaceItemsState(input: {
         const itemsById = new Map(controller.getAllItems().map((item) => [item.itemId, item]));
         for (const itemId of uniqueIds) {
           const item = itemsById.get(itemId);
-          if (!item || Boolean(item.archived) === archived) {
+          if (!item || item.deleted || Boolean(item.archived) === archived) {
             continue;
           }
           await controller.updateItem(withItemArchivedState(item, archived));
+        }
+      });
+    },
+    [runMutation],
+  );
+
+  const setItemDeleted = useCallback(
+    async (itemId: string, deleted: boolean) => {
+      await runMutation(async (controller) => {
+        const item = controller.getAllItems().find((candidate) => candidate.itemId === itemId);
+        if (!item) {
+          throw new Error("ITEM_NOT_FOUND");
+        }
+        if (Boolean(item.deleted) === deleted) {
+          return;
+        }
+        await controller.updateItem(withItemDeletedState(item, deleted));
+      });
+    },
+    [runMutation],
+  );
+
+  const setItemsDeleted = useCallback(
+    async (itemIds: readonly string[], deleted: boolean) => {
+      const uniqueIds = [...new Set(itemIds)];
+      if (!uniqueIds.length) {
+        return;
+      }
+      await runMutation(async (controller) => {
+        const itemsById = new Map(controller.getAllItems().map((item) => [item.itemId, item]));
+        for (const itemId of uniqueIds) {
+          const item = itemsById.get(itemId);
+          if (!item || Boolean(item.deleted) === deleted) {
+            continue;
+          }
+          await controller.updateItem(withItemDeletedState(item, deleted));
         }
       });
     },
@@ -267,6 +323,8 @@ export function useWorkspaceItemsState(input: {
       updateItem,
       setItemArchived,
       setItemsArchived,
+      setItemDeleted,
+      setItemsDeleted,
       refreshItems,
     }),
     [
@@ -282,6 +340,8 @@ export function useWorkspaceItemsState(input: {
       updateItem,
       setItemArchived,
       setItemsArchived,
+      setItemDeleted,
+      setItemsDeleted,
       refreshItems,
     ],
   );

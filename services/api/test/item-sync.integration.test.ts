@@ -47,6 +47,7 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
+    softDeletes: storage.repositories.vaultItemSoftDeletes,
   });
 
   const vaultService = new VaultService({
@@ -91,6 +92,7 @@ test("integration: item events append, list, replay, idempotency (opaque payload
     encryptedBlob: mkBlobFromItem(item),
     baseVersion: 0,
     idempotencyKey: idem,
+    referencedItemId: itemId,
   });
   assert.equal(created.eventType, "ITEM_CREATE");
   assert.equal(created.version, 1);
@@ -102,6 +104,7 @@ test("integration: item events append, list, replay, idempotency (opaque payload
     encryptedBlob: mkBlobFromItem(item),
     baseVersion: 0,
     idempotencyKey: idem,
+    referencedItemId: itemId,
   });
   assert.equal(retry.id, created.id);
   assert.equal(retry.version, 1);
@@ -115,6 +118,7 @@ test("integration: item events append, list, replay, idempotency (opaque payload
           title: "stale-base-version",
         }),
         baseVersion: 0,
+        referencedItemId: itemId,
       }),
     (e: unknown) => e instanceof SyncServiceError && e.code === "VERSION_MISMATCH",
   );
@@ -142,6 +146,8 @@ test("integration: item events append, list, replay, idempotency (opaque payload
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlobFromItem(updatedItem),
     baseVersion: 1,
+    referencedItemId: itemId,
+    itemSoftDeleted: false,
   });
   assert.equal(up.version, 2);
 
@@ -151,29 +157,30 @@ test("integration: item events append, list, replay, idempotency (opaque payload
   );
   assert.equal(replay2.items.get(itemId)?.title, "Renamed");
 
-  const tombstone: ItemPlaintextV2 = {
-    schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
-    itemId,
-    vaultId,
-    title: "",
-    categoryId: ITEM_CATEGORY_LOGIN,
-    createdAtMs: 0,
-    updatedAtMs: Date.now(),
+  const deletedAtMs = now + 2;
+  const softDeletedItem: ItemPlaintextV2 = {
+    ...updatedItem,
     deleted: true,
-    sections: [],
-    fields: [],
+    deletedAtMs,
+    updatedAtMs: deletedAtMs,
   };
   await syncService.appendEvent(vaultId, userId, {
-    eventType: "ITEM_DELETE",
-    encryptedBlob: mkBlobFromItem(tombstone),
+    eventType: "ITEM_UPDATE",
+    encryptedBlob: mkBlobFromItem(softDeletedItem),
     baseVersion: 2,
+    referencedItemId: itemId,
+    itemSoftDeleted: true,
+    itemDeletedAtMs: deletedAtMs,
   });
 
   const listed3 = await syncService.listEvents(vaultId, userId, 0);
   const replay3 = await replayItemPlaintextEvents(listed3, async (b64) =>
     Uint8Array.from(Buffer.from(b64, "base64")),
   );
-  assert.equal(replay3.items.has(itemId), false);
+  const replayed = replay3.items.get(itemId);
+  assert.equal(replayed?.deleted, true);
+  assert.equal(replayed?.title, "Renamed");
+  assert.equal(replayed?.deletedAtMs, deletedAtMs);
 });
 
 test("integration: sync rejects payload schema downgrade after higher version in stream", async (t) => {
@@ -234,6 +241,7 @@ test("integration: sync rejects payload schema downgrade after higher version in
     encryptedBlob: mkBlobFromItem(item, ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST),
     baseVersion: 0,
     idempotencyKey: idem,
+    referencedItemId: itemId,
   });
 
   const weaker: ItemPlaintextV2 = { ...item, title: "weaker-crypto-version", updatedAtMs: now + 1 };
@@ -243,6 +251,7 @@ test("integration: sync rejects payload schema downgrade after higher version in
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlobFromItem(weaker, 1),
         baseVersion: 1,
+        referencedItemId: itemId,
       }),
     (e: unknown) =>
       e instanceof SyncServiceError && e.code === "CRYPTO_DOWNGRADE_NOT_ALLOWED",

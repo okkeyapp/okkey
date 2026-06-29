@@ -4,6 +4,7 @@ import {
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   parseAndNormalizeItemPlaintextUtf8,
 } from "@okkey/types";
+import { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
 
 const ITEM_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
 
@@ -58,11 +59,7 @@ export async function replayItemPlaintextEvents(
     if (!parsed) {
       continue;
     }
-    if (parsed.deleted) {
-      items.delete(parsed.itemId);
-    } else {
-      items.set(parsed.itemId, parsed);
-    }
+    applyItemPlaintextToReplayMap(items, parsed, ev);
   }
   return { items };
 }

@@ -4,6 +4,7 @@ import {
   ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST,
   parseAndNormalizeItemPlaintextUtf8,
 } from "@okkey/types";
+import { applyItemPlaintextToReplayMap } from "./item-replay-state.js";
 
 type CoreEventType =
   | "ITEM_CREATE"
@@ -361,11 +362,7 @@ export class SyncReplayEngine {
         return "quarantined";
       }
 
-      if (parsed.deleted) {
-        state.items.delete(parsed.itemId);
-      } else {
-        state.items.set(parsed.itemId, parsed);
-      }
+      applyItemPlaintextToReplayMap(state.items, parsed, event);
       return "applied";
     };
     this.registerHandler("ITEM_CREATE", itemHandler);

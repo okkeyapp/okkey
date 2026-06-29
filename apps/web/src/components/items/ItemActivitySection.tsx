@@ -86,6 +86,12 @@ function formatActivityLine(
   if (entry.actionKey === "unarchived") {
     return t("web.items.detail.activity.unarchivedLine", { date: datePart, time: timePart, actor: entry.actorLabel });
   }
+  if (entry.actionKey === "deleted") {
+    return t("web.items.detail.activity.deletedLine", { date: datePart, time: timePart, actor: entry.actorLabel });
+  }
+  if (entry.actionKey === "restored") {
+    return t("web.items.detail.activity.restoredLine", { date: datePart, time: timePart, actor: entry.actorLabel });
+  }
   return t("web.items.detail.activity.updatedLine", { date: datePart, time: timePart, actor: entry.actorLabel });
 }
 

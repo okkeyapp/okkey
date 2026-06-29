@@ -48,6 +48,8 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
     updateItem: vi.fn(),
     setItemArchived: vi.fn(),
     setItemsArchived: vi.fn(),
+    setItemDeleted: vi.fn(),
+    setItemsDeleted: vi.fn(),
     refreshItems: vi.fn(),
   }),
   useWorkspaceItems: () => ({
@@ -63,6 +65,8 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
     updateItem: vi.fn(),
     setItemArchived: vi.fn(),
     setItemsArchived: vi.fn(),
+    setItemDeleted: vi.fn(),
+    setItemsDeleted: vi.fn(),
     refreshItems: vi.fn(),
   }),
 }));
@@ -189,6 +193,7 @@ describe("WorkspaceRoutesLayout", () => {
     name: "Personal",
     ownerId: "user-1",
     planTier: "FREE",
+    deletedItemsRetentionDays: 30,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

@@ -40,6 +40,7 @@ export function itemPlaintextToListRecord(
     date: new Date(item.updatedAtMs),
     favorite: input.favorite,
     archived: item.archived ?? false,
-    deleted: false,
+    deleted: item.deleted ?? false,
+    ...(item.deletedAtMs !== undefined ? { deletedAtMs: item.deletedAtMs } : {}),
   };
 }

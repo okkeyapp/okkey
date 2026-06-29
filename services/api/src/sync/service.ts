@@ -22,6 +22,7 @@ import {
 } from "../observability/crypto-rollout.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
 import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import type { VaultItemSoftDeletesRepository } from "../storage/vault-item-soft-deletes.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
 import {
@@ -77,7 +78,8 @@ export class SyncServiceError extends Error {
 
 export interface SyncServiceDeps {
   vaults: Pick<VaultsRepository, "findById" | "canReadVault">;
-  events: Pick<EventsRepository, "listAfterVersion" | "append">;
+  events: Pick<EventsRepository, "listAfterVersion" | "append" | "deleteByVaultAndReferencedItemId">;
+  softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
   users?: Pick<UsersRepository, "findById">;
   config?: Partial<
     Pick<
@@ -113,11 +115,15 @@ export interface SyncAppendEventInput {
   baseVersion: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
+  referencedItemId?: string;
+  itemSoftDeleted?: boolean;
+  itemDeletedAtMs?: number;
 }
 
 export class SyncService {
   private readonly vaults: SyncServiceDeps["vaults"];
   private readonly events: SyncServiceDeps["events"];
+  private readonly softDeletes: SyncServiceDeps["softDeletes"];
   private readonly users: SyncServiceDeps["users"];
   private readonly config: Pick<
     ApiConfig,
@@ -133,6 +139,7 @@ export class SyncService {
   constructor(deps: SyncServiceDeps) {
     this.vaults = deps.vaults;
     this.events = deps.events;
+    this.softDeletes = deps.softDeletes;
     this.users = deps.users;
     this.config = {
       allowedCryptoProfileVersions: [1, 2],
@@ -330,6 +337,39 @@ export class SyncService {
       }
     }
 
+    const itemEventTypes = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+    let referencedItemId: string | null = null;
+    if (input.referencedItemId !== undefined && input.referencedItemId !== "") {
+      if (!isEntityId(input.referencedItemId)) {
+        throw new SyncServiceError(
+          "SYNC_BAD_REQUEST",
+          400,
+          "referencedItemId must be a snowflake entity id",
+        );
+      }
+      referencedItemId = input.referencedItemId;
+    } else if (itemEventTypes.has(input.eventType)) {
+      throw new SyncServiceError(
+        "SYNC_BAD_REQUEST",
+        400,
+        "referencedItemId is required for item events",
+      );
+    }
+
+    if (input.itemSoftDeleted === true) {
+      if (
+        input.itemDeletedAtMs === undefined ||
+        !Number.isFinite(input.itemDeletedAtMs) ||
+        input.itemDeletedAtMs <= 0
+      ) {
+        throw new SyncServiceError(
+          "SYNC_BAD_REQUEST",
+          400,
+          "itemDeletedAtMs is required when itemSoftDeleted is true",
+        );
+      }
+    }
+
     let clientCreatedAt: string | null = null;
     if (input.clientCreatedAt !== undefined && input.clientCreatedAt !== "") {
       const parsed = Date.parse(input.clientCreatedAt);
@@ -353,7 +393,22 @@ export class SyncService {
         payloadSchemaVersion: normalizedBlob.crypto_version,
         idempotencyKey: input.idempotencyKey,
         clientCreatedAt: clientCreatedAt ?? undefined,
+        referencedItemId,
       });
+      if (this.softDeletes && referencedItemId) {
+        if (
+          input.eventType === "ITEM_DELETE" ||
+          (input.eventType === "ITEM_UPDATE" && input.itemSoftDeleted === true)
+        ) {
+          await this.softDeletes.upsert({
+            vaultId,
+            itemId: referencedItemId,
+            deletedAtMs: Math.trunc(input.itemDeletedAtMs ?? Date.now()),
+          });
+        } else if (input.eventType === "ITEM_UPDATE" && input.itemSoftDeleted === false) {
+          await this.softDeletes.remove(vaultId, referencedItemId);
+        }
+      }
       recordCryptoOperationOutcome(this.log, {
         operation,
         deployEnv: this.config.deployEnv,

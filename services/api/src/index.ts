@@ -17,6 +17,8 @@ import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
 import { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
+import { ItemPurgeService } from "./item-purge/service.ts";
+import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
@@ -77,6 +79,13 @@ async function main(): Promise<void> {
     preferences: storage.repositories.workspaceMemberItemCategoryPreferences,
     workspaces: storage.repositories.workspaces,
   });
+  const workspaceSettingsService = new WorkspaceSettingsService({
+    workspaces: storage.repositories.workspaces,
+  });
+  const itemPurgeService = new ItemPurgeService({
+    events: storage.repositories.events,
+    softDeletes: storage.repositories.vaultItemSoftDeletes,
+  });
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -90,6 +99,7 @@ async function main(): Promise<void> {
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,
     events: storage.repositories.events,
+    softDeletes: storage.repositories.vaultItemSoftDeletes,
     users: storage.repositories.users,
     config,
     log: logger,
@@ -135,6 +145,7 @@ async function main(): Promise<void> {
     usersRepository: storage.repositories.users,
     vaultService,
     itemCategoryPreferencesService,
+    workspaceSettingsService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,
@@ -155,8 +166,19 @@ async function main(): Promise<void> {
     });
   });
 
+  const purgeIntervalMs = 60 * 60 * 1000;
+  const purgeTimer = setInterval(() => {
+    void itemPurgeService.purgeExpiredSoftDeletes().catch((error: unknown) => {
+      logger.error("deleted items purge failed", {
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+    });
+  }, purgeIntervalMs);
+  purgeTimer.unref();
+
   const shutdown = async () => {
     logger.info("api server stopping");
+    clearInterval(purgeTimer);
     server.close();
     await storage.close();
   };

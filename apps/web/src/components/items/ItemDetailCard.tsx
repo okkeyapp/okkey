@@ -60,7 +60,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { profile, userId } = useAuthVault();
-  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived } =
+  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted } =
     useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
@@ -184,11 +184,28 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
           void setItemFavorite(itemId, !(listRecord?.favorite ?? false));
         }}
         onToggleArchive={() => {
+          if (listRecord?.deleted) {
+            return;
+          }
           const nextArchived = !(listRecord?.archived ?? false);
           void (async () => {
             await setItemArchived(itemId, nextArchived);
             if (nextArchived && listRecord?.favorite) {
               await setItemFavorite(itemId, false);
+            }
+          })();
+        }}
+        onToggleDelete={() => {
+          const nextDeleted = !(listRecord?.deleted ?? false);
+          void (async () => {
+            await setItemDeleted(itemId, nextDeleted);
+            if (nextDeleted) {
+              if (listRecord?.favorite) {
+                await setItemFavorite(itemId, false);
+              }
+              if (listRecord?.archived) {
+                await setItemArchived(itemId, false);
+              }
             }
           })();
         }}

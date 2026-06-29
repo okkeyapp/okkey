@@ -67,6 +67,25 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0002);
   }
+
+  const deletedRetentionColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'deleted_items_retention_days'
+      ) AS exists
+    `,
+  );
+  if (!deletedRetentionColumn[0]?.exists) {
+    const migration0003 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0003_deleted_items_retention.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0003);
+  }
 }
 
 export async function cleanupUserData(

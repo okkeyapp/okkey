@@ -130,6 +130,10 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     if (n) fields.push(n);
   }
   const deleted = typeof raw.deleted === "boolean" ? raw.deleted : undefined;
+  const deletedAtMs =
+    typeof raw.deletedAtMs === "number" && Number.isFinite(raw.deletedAtMs)
+      ? raw.deletedAtMs
+      : undefined;
   const archived = typeof raw.archived === "boolean" ? raw.archived : undefined;
   const tagsRaw = Array.isArray(raw.tags) ? raw.tags : [];
   const tags = tagsRaw
@@ -145,6 +149,7 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     createdAtMs,
     updatedAtMs,
     deleted,
+    ...(deletedAtMs !== undefined ? { deletedAtMs } : {}),
     archived,
     sections,
     fields,

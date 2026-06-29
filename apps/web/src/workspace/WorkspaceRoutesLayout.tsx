@@ -1,5 +1,6 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace } from "@okkey/types";
+import { DEFAULT_DELETED_ITEMS_RETENTION_DAYS } from "@okkey/types";
 import {
   cn,
   DropdownMenuItem,
@@ -534,6 +535,10 @@ export default function WorkspaceRoutesLayout() {
               pathname={pathname}
               resolvedWorkspaceId={resolvedWorkspaceId}
               currentWorkspaceName={currentWorkspace?.name ?? ""}
+              deletedItemsRetentionDays={
+                currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
+              }
+              currentWorkspace={currentWorkspace}
               vaults={vaults}
               vaultsListReady={vaultsListReady}
               workspaceNavItems={workspaceNavItems}
@@ -568,6 +573,8 @@ type WorkspaceShellWithItemsProps = {
   isShellNotFound: boolean;
   resolvedWorkspaceId: string;
   currentWorkspaceName: string;
+  deletedItemsRetentionDays: number;
+  currentWorkspace?: Workspace;
   vaults: Vault[];
   vaultsListReady: boolean;
   workspaceNavItems: ReturnType<typeof okkeyWorkspaceShellNavItems>;
@@ -593,6 +600,8 @@ function WorkspaceShellWithItems({
   isShellNotFound,
   resolvedWorkspaceId,
   currentWorkspaceName,
+  deletedItemsRetentionDays,
+  currentWorkspace,
   vaults,
   vaultsListReady,
   workspaceNavItems,
@@ -620,6 +629,7 @@ function WorkspaceShellWithItems({
     vaultUnlocked,
     itemFolderByItemId,
     itemFavoriteByItemId,
+    deletedItemsRetentionDays,
   });
 
   return (
@@ -667,7 +677,7 @@ function WorkspaceShellWithItems({
         itemsListRecords={workspaceItemsState.records}
         itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
       >
-        <Outlet context={{ workspaceId: resolvedWorkspaceId, vaults }} />
+        <Outlet context={{ workspaceId: resolvedWorkspaceId, vaults, workspace: currentWorkspace }} />
       </WorkspaceSidebarLayout>
     </WorkspaceItemsProvider>
   );

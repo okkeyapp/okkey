@@ -30,6 +30,8 @@ import type {
   AccountEmailChangeStartResponseDto,
   WorkspaceItemCategoryPreferencesResponseDto,
   WorkspaceItemCategoryPreferencesUpdateRequestDto,
+  WorkspaceSettingsResponseDto,
+  WorkspaceSettingsUpdateRequestDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -226,6 +228,22 @@ export class CoreApiClient {
   ): Promise<WorkspaceItemCategoryPreferencesResponseDto> {
     return this.api.put<WorkspaceItemCategoryPreferencesResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/item-category-preferences`,
+      body,
+    );
+  }
+
+  getWorkspaceSettings(workspaceId: string): Promise<WorkspaceSettingsResponseDto> {
+    return this.api.get<WorkspaceSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
+    );
+  }
+
+  updateWorkspaceSettings(
+    workspaceId: string,
+    body: WorkspaceSettingsUpdateRequestDto,
+  ): Promise<WorkspaceSettingsResponseDto> {
+    return this.api.patch<WorkspaceSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
       body,
     );
   }

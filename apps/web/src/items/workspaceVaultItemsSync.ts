@@ -6,7 +6,8 @@ import {
   IndexedDbOutboxStore,
   SyncOutboxClient,
 } from "@okkey/sync";
-import { buildItemCreateAppendRequest, buildItemUpdateAppendRequest } from "@okkey/sync/item-sync";
+import { buildItemCreateAppendRequest, buildItemSyncMetadataFromPlaintext, buildItemUpdateAppendRequest } from "@okkey/sync/item-sync";
+import { applyItemPlaintextToReplayMap } from "@okkey/sync";
 
 import { base64ToBytes } from "../auth/base64";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
@@ -39,7 +40,7 @@ type CachedWorkspaceVaultItemsState = {
 };
 
 function cacheKey(userId: string, workspaceId: string): string {
-  return `okkey.workspace-vault-items.v2.u.${userId}.w.${workspaceId}`;
+  return `okkey.workspace-vault-items.v3.u.${userId}.w.${workspaceId}`;
 }
 
 function openCacheDb(): Promise<IDBDatabase> {
@@ -202,13 +203,11 @@ async function applyVaultItemEvents(
         event,
         resolveItemUpdateActivityKey(previous, parsed),
       );
+    } else if (event.eventType === "ITEM_DELETE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "deleted");
     }
 
-    if (parsed.deleted || event.eventType === "ITEM_DELETE") {
-      items.delete(parsed.itemId);
-    } else {
-      items.set(parsed.itemId, parsed);
-    }
+    applyItemPlaintextToReplayMap(items, parsed, event);
 
     lastAppliedVersion = event.version;
   }
@@ -332,11 +331,14 @@ export function createWorkspaceVaultItemsSyncController(input: {
     createItem: async (item) => {
       const state = ensureVaultState(item.vaultId);
       const vaultKey = await resolveVaultKey(item.vaultId);
-      const request = await buildItemCreateAppendRequest(
-        vaultKey,
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemCreateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
         item,
-        state.lastAppliedVersion,
-        generateEntityId(),
       );
       await enqueue(request, item.vaultId);
       return item.itemId;
@@ -344,11 +346,14 @@ export function createWorkspaceVaultItemsSyncController(input: {
     updateItem: async (item) => {
       const state = ensureVaultState(item.vaultId);
       const vaultKey = await resolveVaultKey(item.vaultId);
-      const request = await buildItemUpdateAppendRequest(
-        vaultKey,
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemUpdateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
         item,
-        state.lastAppliedVersion,
-        generateEntityId(),
       );
       await enqueue(request, item.vaultId);
       return item.itemId;

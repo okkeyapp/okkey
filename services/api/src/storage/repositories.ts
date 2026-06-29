@@ -289,6 +289,7 @@ export interface WorkspaceRecord {
   name: string;
   ownerId: string;
   planTier: string;
+  deletedItemsRetentionDays: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -307,12 +308,12 @@ export class WorkspacesRepository {
   }): Promise<WorkspaceRecord> {
     const id = generateEntityId();
     const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string }
+      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
     >(
       `
         INSERT INTO workspaces (id, name, owner_id, plan_tier)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, name, owner_id, plan_tier, created_at, updated_at
+        RETURNING id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at
       `,
       [id, input.name, input.ownerId, input.planTier ?? "FREE"],
     );
@@ -321,20 +322,44 @@ export class WorkspacesRepository {
 
   async findById(id: string): Promise<WorkspaceRecord | null> {
     const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string }
+      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
     >(
-      "SELECT id, name, owner_id, plan_tier, created_at, updated_at FROM workspaces WHERE id = $1",
+      "SELECT id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at FROM workspaces WHERE id = $1",
       [id],
     );
     return rows[0] ? mapWorkspace(rows[0]) : null;
   }
 
+  async getDeletedItemsRetentionDays(id: string): Promise<number | null> {
+    const rows = await this.db.query<{ deleted_items_retention_days: number }>(
+      "SELECT deleted_items_retention_days FROM workspaces WHERE id = $1",
+      [id],
+    );
+    return rows[0]?.deleted_items_retention_days ?? null;
+  }
+
+  async updateDeletedItemsRetentionDays(id: string, days: number): Promise<number> {
+    const rows = await this.db.query<{ deleted_items_retention_days: number }>(
+      `
+        UPDATE workspaces
+        SET deleted_items_retention_days = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING deleted_items_retention_days
+      `,
+      [id, days],
+    );
+    if (!rows[0]) {
+      throw new EntityNotFoundError("workspace", id);
+    }
+    return rows[0].deleted_items_retention_days;
+  }
+
   async listByOwner(ownerId: string): Promise<WorkspaceRecord[]> {
     const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string }
+      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
     >(
       `
-        SELECT id, name, owner_id, plan_tier, created_at, updated_at
+        SELECT id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at
         FROM workspaces
         WHERE owner_id = $1
         ORDER BY created_at ASC
@@ -347,16 +372,16 @@ export class WorkspacesRepository {
   /** Workspaces where the user is owner or a workspace member (deduplicated). */
   async listAccessibleByUser(userId: string): Promise<WorkspaceRecord[]> {
     const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string }
+      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
     >(
       `
-        SELECT id, name, owner_id, plan_tier, created_at, updated_at
+        SELECT id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at
         FROM (
-          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.created_at, w.updated_at
+          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.created_at, w.updated_at
           FROM workspaces w
           WHERE w.owner_id = $1
           UNION
-          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.created_at, w.updated_at
+          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.created_at, w.updated_at
           FROM workspaces w
           INNER JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = $1
         ) sub
@@ -1201,6 +1226,7 @@ export class EventsRepository {
     payloadSchemaVersion?: number;
     idempotencyKey?: string | null;
     clientCreatedAt?: string | null;
+    referencedItemId?: string | null;
   }): Promise<EventRecord> {
     return this.db.transaction(async (tx) => {
       const vaultRows = await tx.query<{ id: string; crypto_version: number }>(
@@ -1292,9 +1318,9 @@ export class EventsRepository {
           `
           INSERT INTO events (
             id, vault_id, actor_id, event_type, encrypted_payload, version,
-            payload_schema_version, idempotency_key, client_created_at
+            payload_schema_version, idempotency_key, client_created_at, referenced_item_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           RETURNING id, vault_id, actor_id, event_type, encrypted_payload,
                     payload_schema_version, idempotency_key, client_created_at, version, created_at
         `,
@@ -1308,6 +1334,7 @@ export class EventsRepository {
             payloadSchemaVersion,
             input.idempotencyKey ?? null,
             input.clientCreatedAt ?? null,
+            input.referencedItemId ?? null,
           ],
         );
       } catch (error) {
@@ -1338,6 +1365,18 @@ export class EventsRepository {
 
       return mapEvent(rows[0]);
     });
+  }
+
+  async deleteByVaultAndReferencedItemId(vaultId: string, referencedItemId: string): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM events
+        WHERE vault_id = $1 AND referenced_item_id = $2::bigint
+        RETURNING id
+      `,
+      [vaultId, referencedItemId],
+    );
+    return rows.length;
   }
 
   async listAfterVersion(vaultId: string, afterVersion: number): Promise<EventRecord[]> {
@@ -1554,13 +1593,19 @@ function mapUser(
 }
 
 function mapWorkspace(
-  row: BaseRow & { name: string; owner_id: string; plan_tier: string },
+  row: BaseRow & {
+    name: string;
+    owner_id: string;
+    plan_tier: string;
+    deleted_items_retention_days: number;
+  },
 ): WorkspaceRecord {
   return {
     id: row.id,
     name: row.name,
     ownerId: row.owner_id,
     planTier: row.plan_tier,
+    deletedItemsRetentionDays: row.deleted_items_retention_days,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };

@@ -16,11 +16,15 @@ export interface User {
   updatedAt: string;
 }
 
+export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30 as const;
+
 export interface Workspace {
   id: EntityId;
   name: string;
   ownerId: EntityId;
   planTier: string;
+  /** Days before soft-deleted vault items are permanently purged from the server. */
+  deletedItemsRetentionDays: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -363,6 +367,22 @@ export interface SyncAppendEventRequestDto {
   /** Required for `ITEM_CREATE`; optional for other types. Must be EntityId when set. */
   idempotencyKey?: string;
   clientCreatedAt?: string;
+  /** Opaque item id for server-side retention purge (never decrypted by server). */
+  referencedItemId?: EntityId;
+  /** Soft-delete hint for `ITEM_*` events; server uses this for retention indexing only. */
+  itemSoftDeleted?: boolean;
+  /** Epoch ms when item was soft-deleted; required when `itemSoftDeleted` is true. */
+  itemDeletedAtMs?: number;
+}
+
+/** `GET /workspaces/:workspaceId/settings` success body. */
+export interface WorkspaceSettingsResponseDto {
+  deleted_items_retention_days: number;
+}
+
+/** `PATCH /workspaces/:workspaceId/settings` request body. */
+export interface WorkspaceSettingsUpdateRequestDto {
+  deleted_items_retention_days: number;
 }
 
 /** `GET /vaults/:vaultId/key` success body. */

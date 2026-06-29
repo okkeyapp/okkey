@@ -114,6 +114,8 @@ export interface ItemPlaintextV2 {
   createdAtMs: number;
   updatedAtMs: number;
   deleted?: boolean;
+  /** Epoch ms when the item was soft-deleted; used for retention and restore. */
+  deletedAtMs?: number;
   /** When true, item is hidden from default lists for all vault members. */
   archived?: boolean;
   sections: ItemSectionV2[];

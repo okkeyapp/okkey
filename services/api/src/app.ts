@@ -44,6 +44,7 @@ import {
 import {
   createWorkspaceItemCategoryPreferencesRoute,
 } from "./routes/workspace-item-category-preferences.ts";
+import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
 import {
   createWorkspacePersonalEventsAppendRoute,
   createWorkspacePersonalEventsListRoute,
@@ -76,6 +77,7 @@ import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
 import type { CapsuleService } from "./capsule/service.ts";
 import type { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
+import type { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import type { UsersRepository } from "./storage/repositories.ts";
 import type { EmailChangeService } from "./account/email-change.ts";
@@ -102,6 +104,7 @@ export interface AppDeps {
   twoFactorService?: TwoFactorService;
   capsuleService?: CapsuleService;
   itemCategoryPreferencesService?: ItemCategoryPreferencesService;
+  workspaceSettingsService?: WorkspaceSettingsService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   keyFieldFileStorage?: KeyFieldFileStorage;
 }
@@ -238,6 +241,18 @@ export function createApiApp(
         "PUT",
         "/workspaces/:workspaceId/item-category-preferences",
         createWorkspaceItemCategoryPreferencesRoute(deps.itemCategoryPreferencesService, resolveUserId),
+      );
+    }
+    if (deps.workspaceSettingsService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/settings",
+        createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
+      );
+      app.route(
+        "PATCH",
+        "/workspaces/:workspaceId/settings",
+        createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
       );
     }
     if (deps.workspacePersonalSyncService) {

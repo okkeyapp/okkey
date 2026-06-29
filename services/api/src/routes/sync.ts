@@ -9,6 +9,9 @@ interface AppendEventBody {
   baseVersion?: number;
   idempotencyKey?: string;
   clientCreatedAt?: string;
+  referencedItemId?: string;
+  itemSoftDeleted?: boolean;
+  itemDeletedAtMs?: number;
 }
 
 const EVENT_TYPES_REQUIRING_SIGNATURE = new Set(["VAULT_SHARE", "VAULT_KEY_ROTATION"]);
@@ -102,6 +105,9 @@ export function createSyncEventsAppendRoute(
         baseVersion: body.baseVersion,
         idempotencyKey: body.idempotencyKey,
         clientCreatedAt: body.clientCreatedAt,
+        referencedItemId: body.referencedItemId,
+        itemSoftDeleted: body.itemSoftDeleted,
+        itemDeletedAtMs: body.itemDeletedAtMs,
       });
       json(ctx.res, 201, created);
     } catch (error) {

@@ -198,6 +198,7 @@ type ItemDetailTopBarProps = {
   onEdit: () => void;
   onToggleFavorite: () => void;
   onToggleArchive: () => void;
+  onToggleDelete: () => void;
 };
 
 const controlGroupLayoutClassName = "w-auto shrink-0";
@@ -216,6 +217,7 @@ export default function ItemDetailTopBar({
   onEdit,
   onToggleFavorite,
   onToggleArchive,
+  onToggleDelete,
 }: ItemDetailTopBarProps) {
   const favoriteTooltip = favorite
     ? t("web.items.detail.favoriteRemoveTooltip")
@@ -252,7 +254,7 @@ export default function ItemDetailTopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {!archived ? (
+        {!archived && !deleted ? (
           <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
             <Button
               type="button"
@@ -291,7 +293,7 @@ export default function ItemDetailTopBar({
             variant="outline"
             size="sm"
             className={editButtonClassName}
-            disabled={archived}
+            disabled={archived || deleted}
             onClick={onEdit}
           >
             <IconEdit16 />
@@ -308,20 +310,22 @@ export default function ItemDetailTopBar({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
-              <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
-                {archived ? (
-                  <IconUnarchive16 className="text-foreground" />
-                ) : (
-                  <FilterIconArchived className="size-4 shrink-0 text-foreground" />
-                )}
-                <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
-              </DropdownMenuItem>
+              {!deleted ? (
+                <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
+                  {archived ? (
+                    <IconUnarchive16 className="text-foreground" />
+                  ) : (
+                    <FilterIconArchived className="size-4 shrink-0 text-foreground" />
+                  )}
+                  <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 className={cn(
                   "gap-2",
                   !deleted && "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
                 )}
-                onSelect={() => undefined}
+                onSelect={onToggleDelete}
               >
                 {deleted ? (
                   <IconRestore16 className="text-foreground" />
