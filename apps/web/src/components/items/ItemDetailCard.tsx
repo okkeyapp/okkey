@@ -1,16 +1,18 @@
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import { Favicon, Spinner } from "@okkey/ui";
 import { useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
+import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import {
   buildItemActivityEntries,
   mapItemActivityWireEntries,
 } from "../../items/buildItemActivityEntries";
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
+import { formatTagSearchQuery } from "../../items/workspaceItemSearch";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useLocale } from "../../locale/LocaleContext";
 import {
@@ -18,6 +20,7 @@ import {
   buildPopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
+import { applyWorkspaceSearchToParams } from "../../routes/paths";
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
@@ -51,6 +54,8 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const { t, locale } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
+  const isItemsMobileListView = useItemsMobileListView();
   const { profile, userId } = useAuthVault();
   const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion } = useWorkspaceItems();
   const { folderTree } = useWorkspaceFolders();
@@ -124,6 +129,16 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     );
   }
 
+  function handleTagClick(tag: string) {
+    setSearchParams(
+      (prev) =>
+        applyWorkspaceSearchToParams(prev, formatTagSearchQuery(tag), {
+          clearItem: isItemsMobileListView,
+        }),
+      { replace: true },
+    );
+  }
+
   return (
     <div className="flex min-h-full flex-col">
       <ItemDetailTopBar
@@ -162,7 +177,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
           />
         </div>
 
-        <ItemTagsReadonly t={t} tags={item.tags ?? []} />
+        <ItemTagsReadonly t={t} tags={item.tags ?? []} onTagClick={handleTagClick} />
 
         <ItemActivitySection t={t} entries={activityEntries} />
       </div>

@@ -36,6 +36,7 @@ export function itemPlaintextToListRecord(
     urls: collectUrls(item),
     title: item.title,
     login,
+    tags: [...(item.tags ?? [])],
     date: new Date(item.updatedAtMs),
     favorite: false,
     archived: false,

@@ -14,6 +14,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import { NEW_ITEM_POPUP_ID, popupQuerySearch } from "../../routes/popupQuery";
 import {
+  applyWorkspaceSearchToParams,
   FILTER_QUERY_PARAM,
   FOLDER_QUERY_PARAM,
   ITEM_QUERY_PARAM,
@@ -216,21 +217,10 @@ export default function ItemsShellTopBar() {
               e.preventDefault();
               const raw = e.currentTarget.value.trim();
               setSearchParams(
-                (prev) => {
-                  const next = new URLSearchParams(prev);
-                  if (raw) {
-                    next.set(SEARCH_QUERY_PARAM, raw);
-                    next.delete(VAULT_QUERY_PARAM);
-                    next.delete(FOLDER_QUERY_PARAM);
-                    next.delete(FILTER_QUERY_PARAM);
-                    if (isItemsMobileListView) {
-                      next.delete(ITEM_QUERY_PARAM);
-                    }
-                  } else {
-                    next.delete(SEARCH_QUERY_PARAM);
-                  }
-                  return next;
-                },
+                (prev) =>
+                  applyWorkspaceSearchToParams(prev, raw, {
+                    clearItem: isItemsMobileListView,
+                  }),
                 { replace: true },
               );
             }}

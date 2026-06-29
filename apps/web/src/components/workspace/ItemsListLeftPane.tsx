@@ -19,6 +19,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
+import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import {
   FILTER_QUERY_ARCHIVED,
   FILTER_QUERY_DELETED,
@@ -52,6 +53,7 @@ export type ItemsListRecordWire = {
   urls: string[];
   title: string;
   login: string;
+  tags?: string[];
   date: string;
   favorite?: boolean;
   archived?: boolean;
@@ -65,6 +67,7 @@ export type ItemsListRecord = {
   urls: string[];
   title: string;
   login: string;
+  tags: string[];
   date: Date;
   favorite: boolean;
   archived: boolean;
@@ -672,24 +675,6 @@ function compareTwoItemsSort(a: ItemsListRecord, b: ItemsListRecord, sort: Items
   }
 }
 
-/** Title weight 10; each URL index `i` contributes `10 / (i + 1)` if substring matches. */
-function searchScore(row: ItemsListRecord, needle: string): number {
-  const q = needle.trim().toLowerCase();
-  if (!q) {
-    return 0;
-  }
-  let s = 0;
-  if (row.title.toLowerCase().includes(q)) {
-    s += 10;
-  }
-  row.urls.forEach((url, i) => {
-    if (url.toLowerCase().includes(q)) {
-      s += 10 / (i + 1);
-    }
-  });
-  return s;
-}
-
 function filterItems(items: readonly ItemsListRecord[], filter: ItemsListFilter): ItemsListRecord[] {
   switch (filter) {
     case "all":
@@ -844,7 +829,7 @@ export default function ItemsListLeftPane({
     const searchTrim = searchQ.trim();
     let pool: ItemsListRecord[];
     if (searchTrim) {
-      pool = records.filter((r) => searchScore(r, searchTrim) > 0);
+      pool = records.filter((r) => scoreItemsListRecordSearch(r, searchTrim) > 0);
     } else {
       const inVault = filterRowsByVault(records, vaultQ);
       pool = filterRowsByFolder(inVault, folderQ);
@@ -852,7 +837,7 @@ export default function ItemsListLeftPane({
     const filtered = filterItems(pool, filter);
     const sorted = searchTrim
       ? [...filtered].sort((a, b) => {
-          const ds = searchScore(b, searchTrim) - searchScore(a, searchTrim);
+          const ds = scoreItemsListRecordSearch(b, searchTrim) - scoreItemsListRecordSearch(a, searchTrim);
           if (ds !== 0) {
             return ds;
           }

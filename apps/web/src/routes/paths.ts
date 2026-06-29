@@ -59,6 +59,33 @@ export const SORT_QUERY_ALPH_DESC = "alph-desc";
 /** Full-text-ish search on `/items` (top bar); coexists with other `?` params. */
 export const SEARCH_QUERY_PARAM = "search";
 
+export type ApplyWorkspaceSearchQueryOptions = {
+  /** Drop selected item row (mobile list-only view). */
+  clearItem?: boolean;
+};
+
+/** Apply workspace shell search query; clears vault/folder/filter scope like the top bar Enter handler. */
+export function applyWorkspaceSearchToParams(
+  prev: URLSearchParams,
+  raw: string,
+  options?: ApplyWorkspaceSearchQueryOptions,
+): URLSearchParams {
+  const next = new URLSearchParams(prev);
+  const trimmed = raw.trim();
+  if (trimmed) {
+    next.set(SEARCH_QUERY_PARAM, trimmed);
+    next.delete(VAULT_QUERY_PARAM);
+    next.delete(FOLDER_QUERY_PARAM);
+    next.delete(FILTER_QUERY_PARAM);
+    if (options?.clearItem) {
+      next.delete(ITEM_QUERY_PARAM);
+    }
+  } else {
+    next.delete(SEARCH_QUERY_PARAM);
+  }
+  return next;
+}
+
 export function itemsPathWithVault(vaultId: string): string {
   return `${ITEMS_PATH}?${new URLSearchParams({ [VAULT_QUERY_PARAM]: vaultId }).toString()}`;
 }
