@@ -114,6 +114,8 @@ export interface ItemPlaintextV2 {
   createdAtMs: number;
   updatedAtMs: number;
   deleted?: boolean;
+  /** When true, item is hidden from default lists for all vault members. */
+  archived?: boolean;
   sections: ItemSectionV2[];
   fields: ItemFieldV2[];
   /** User-defined labels; omitted when empty. */

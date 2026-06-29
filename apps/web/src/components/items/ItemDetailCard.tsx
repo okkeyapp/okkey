@@ -60,7 +60,8 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { profile, userId } = useAuthVault();
-  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion } = useWorkspaceItems();
+  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived } =
+    useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(
@@ -173,12 +174,23 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
         folderId={folderId}
         folderLabel={folderLabel}
         favorite={listRecord?.favorite ?? false}
+        archived={listRecord?.archived ?? false}
+        deleted={listRecord?.deleted ?? false}
         headerScrolled={headerScrolled}
         showBack={isItemsMobileListView}
         onBack={handleBack}
         onEdit={openEditPopup}
         onToggleFavorite={() => {
           void setItemFavorite(itemId, !(listRecord?.favorite ?? false));
+        }}
+        onToggleArchive={() => {
+          const nextArchived = !(listRecord?.archived ?? false);
+          void (async () => {
+            await setItemArchived(itemId, nextArchived);
+            if (nextArchived && listRecord?.favorite) {
+              await setItemFavorite(itemId, false);
+            }
+          })();
         }}
       />
 

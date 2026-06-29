@@ -39,7 +39,7 @@ export function itemPlaintextToListRecord(
     tags: [...(item.tags ?? [])],
     date: new Date(item.updatedAtMs),
     favorite: input.favorite,
-    archived: false,
+    archived: item.archived ?? false,
     deleted: false,
   };
 }

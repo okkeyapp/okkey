@@ -227,3 +227,20 @@ test("replay ITEM_UPDATE applies reordered sections and fields (sync via ITEM_UP
   assert.equal(final.fields.find((f) => f.id === "f-extra-1")?.order, 1);
   assert.equal(final.fields.find((f) => f.id === "f-extra-2")?.order, 0);
 });
+
+test("normalizeItemPlaintextV2 preserves archived flag", () => {
+  const vaultId = testEntityId();
+  const itemId = testEntityId();
+  const item = createPresetItemPlaintextV2({
+    categoryId: ITEM_CATEGORY_LOGIN,
+    itemId,
+    vaultId,
+    title: "Archived login",
+    nowMs: Date.now(),
+  });
+  const archived = { ...item, archived: true };
+  const bytes = new TextEncoder().encode(JSON.stringify(archived));
+  const parsed = parseAndNormalizeItemPlaintextUtf8(bytes);
+  assert.ok(parsed);
+  assert.equal(parsed.archived, true);
+});

@@ -22,6 +22,7 @@ import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
+import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { EDIT_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
 import {
@@ -764,6 +765,7 @@ export default function ItemsListLeftPane({
   const location = useLocation();
   const navigate = useNavigate();
   const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
+  const { setItemArchived, setItemsArchived } = useWorkspaceItems();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -860,10 +862,10 @@ export default function ItemsListLeftPane({
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
   const selectedActions = useMemo(
     () => ({
-      canFavorite: selectedRows.some((row) => !row.favorite),
-      canUnfavorite: selectedRows.some((row) => row.favorite),
-      canArchive: selectedRows.some((row) => !row.archived),
-      canUnarchive: selectedRows.some((row) => row.archived),
+      canFavorite: selectedRows.some((row) => !row.favorite && !row.archived && !row.deleted),
+      canUnfavorite: selectedRows.some((row) => row.favorite && !row.archived),
+      canArchive: selectedRows.some((row) => !row.archived && !row.deleted),
+      canUnarchive: selectedRows.some((row) => row.archived && !row.deleted),
       canDelete: selectedRows.some((row) => !row.deleted),
       canRestore: selectedRows.some((row) => row.deleted),
     }),
@@ -900,12 +902,38 @@ export default function ItemsListLeftPane({
 
   const favoriteSelectedItems = (favorite: boolean) => {
     const itemIds = selectedRows
-      .filter((row) => row.favorite !== favorite)
+      .filter((row) => !row.archived && row.favorite !== favorite)
       .map((row) => row.id);
     if (!itemIds.length) {
       return;
     }
     void setItemsFavorite(itemIds, favorite);
+  };
+
+  const archiveRow = (row: ItemsListRecord, archived: boolean) => {
+    void (async () => {
+      await setItemArchived(row.id, archived);
+      if (archived && row.favorite) {
+        await setItemFavorite(row.id, false);
+      }
+    })();
+  };
+
+  const archiveSelectedItems = (archived: boolean) => {
+    const rows = selectedRows.filter((row) => row.archived !== archived);
+    const itemIds = rows.map((row) => row.id);
+    if (!itemIds.length) {
+      return;
+    }
+    void (async () => {
+      await setItemsArchived(itemIds, archived);
+      if (archived) {
+        const favoriteIds = rows.filter((row) => row.favorite).map((row) => row.id);
+        if (favoriteIds.length) {
+          await setItemsFavorite(favoriteIds, false);
+        }
+      }
+    })();
   };
 
   const selectItemInUrl = (id: string) => {
@@ -1255,34 +1283,38 @@ export default function ItemsListLeftPane({
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-52 p-1">
-                                  <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
-                                    <IconEdit16 />
-                                    <span>{t("web.items.menu.edit")}</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="gap-2"
-                                    onSelect={() => {
-                                      void setItemFavorite(row.id, !row.favorite);
-                                    }}
-                                  >
-                                    {row.favorite ? (
-                                      <IconUnfavorite16 className="text-foreground" />
-                                    ) : (
-                                      <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
-                                    )}
-                                    <span>
-                                      {row.favorite
-                                        ? t("web.items.menu.removeFromFavorites")
-                                        : t("web.items.menu.addToFavorites")}
-                                    </span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator className="mx-1 my-1" />
+                                  {!row.archived ? (
+                                    <>
+                                      <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
+                                        <IconEdit16 />
+                                        <span>{t("web.items.menu.edit")}</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        className="gap-2"
+                                        onSelect={() => {
+                                          void setItemFavorite(row.id, !row.favorite);
+                                        }}
+                                      >
+                                        {row.favorite ? (
+                                          <IconUnfavorite16 className="text-foreground" />
+                                        ) : (
+                                          <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                                        )}
+                                        <span>
+                                          {row.favorite
+                                            ? t("web.items.menu.removeFromFavorites")
+                                            : t("web.items.menu.addToFavorites")}
+                                        </span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator className="mx-1 my-1" />
+                                    </>
+                                  ) : null}
                                   <DropdownMenuItem className="gap-2" onSelect={() => enterSelectionModeWith(row.id)}>
                                     <IconSelect16 />
                                     <span>{t("web.items.menu.select")}</span>
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator className="mx-1 my-1" />
-                                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                  <DropdownMenuItem className="gap-2" onSelect={() => archiveRow(row, !row.archived)}>
                                     {row.archived ? (
                                       <IconUnarchive16 className="text-foreground" />
                                     ) : (
@@ -1363,13 +1395,13 @@ export default function ItemsListLeftPane({
                 <DropdownMenuSeparator className="mx-1 my-1" />
               ) : null}
               {selectedActions.canArchive ? (
-                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                <DropdownMenuItem className="gap-2" onSelect={() => archiveSelectedItems(true)}>
                   <FilterIconArchived className="size-4 shrink-0 text-foreground" />
                   <span>{t("web.items.menu.archive")}</span>
                 </DropdownMenuItem>
               ) : null}
               {selectedActions.canUnarchive ? (
-                <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                <DropdownMenuItem className="gap-2" onSelect={() => archiveSelectedItems(false)}>
                   <IconUnarchive16 />
                   <span>{t("web.items.menu.unarchive")}</span>
                 </DropdownMenuItem>

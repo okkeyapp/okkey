@@ -8,7 +8,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Tooltip,
   TooltipContent,
@@ -76,6 +75,19 @@ function IconEdit16({ className }: { className?: string }) {
   );
 }
 
+function FilterIconArchived({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-muted-foreground", className)} {...props}>
+      <path
+        d="M2.5 5.50011V12.1668C2.5 12.5204 2.6295 12.8595 2.86002 13.1096C3.09053 13.3596 3.40318 13.5001 3.72917 13.5001H11.2708C12.5968 13.5001 12.9095 13.3596 13.14 13.1096C13.3705 12.8595 13.5 12.5204 13.5 12.1668V5.50011M6.49996 8.50011H9.49996M2.16667 2.0001L13.8333 2.00002C14.2015 2.00002 14.5 2.29849 14.5 2.66668V4.66668C14.5 5.03487 14.2015 5.50002 13.8333 5.50002L8 5.50011L2.16667 5.5001C1.79848 5.5001 1.5 5.03496 1.5 4.66677V2.66677C1.5 2.29858 1.79848 2.0001 2.16667 2.0001Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconUnarchive16({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
@@ -101,7 +113,31 @@ function IconDelete16({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
       <path
-        d="M2 4H14M12.6667 4V13.3333C12.6667 13.687 12.5262 14.0261 12.2761 14.2761C12.0261 14.5262 11.687 14.6667 11.3333 14.6667H4.66667C4.31305 14.6667 3.97391 14.5262 3.72386 14.2761C3.47381 14.0261 3.33333 13.687 3.33333 13.3333V4M5.33333 4V2.66667C5.33333 2.31305 5.47381 1.97391 5.72386 1.72386C5.97391 1.47381 6.31305 1.33333 6.66667 1.33333H9.33333C9.68696 1.33333 10.0261 1.47381 10.2761 1.72386C10.5262 1.97391 10.6667 2.31305 10.6667 2.66667V4"
+        d="M2 3.99992H14M12.6667 3.99992V13.3333C12.6667 13.9999 12 14.6666 11.3333 14.6666H4.66667C4 14.6666 3.33333 13.9999 3.33333 13.3333V3.99992M5.33333 3.99992V2.66659C5.33333 1.99992 6 1.33325 6.66667 1.33325H9.33333C10 1.33325 10.6667 1.99992 10.6667 2.66659V3.99992M6.66667 7.33325V11.3333M9.33333 7.33325V11.3333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconRestore16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.66663 4.6665H4.66663M7.33329 4.6665H13.3333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6.66663 7.3335V11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 9.3335V11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M3.33337 4.6665L4.00004 12.6665C4.00004 13.0201 4.14052 13.3593 4.39056 13.6093C4.64061 13.8594 4.97975 13.9998 5.33337 13.9998H10.6667C11.0203 13.9998 11.3595 13.8594 11.6095 13.6093C11.8596 13.3593 12 13.0201 12 12.6665L12.0514 12.0512"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12.256 9.58184L12.6666 4.6665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6 3.33333V2.66667C6 2.48986 6.07024 2.32029 6.19526 2.19526C6.32029 2.07024 6.48986 2 6.66667 2H9.33333C9.51014 2 9.67971 2.07024 9.80474 2.19526C9.92976 2.32029 10 2.48986 10 2.66667V4.66667"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -154,11 +190,14 @@ type ItemDetailTopBarProps = {
   folderId: string | null;
   folderLabel: string;
   favorite: boolean;
+  archived: boolean;
+  deleted: boolean;
   headerScrolled?: boolean;
   showBack?: boolean;
   onBack?: () => void;
   onEdit: () => void;
   onToggleFavorite: () => void;
+  onToggleArchive: () => void;
 };
 
 const controlGroupLayoutClassName = "w-auto shrink-0";
@@ -169,11 +208,14 @@ export default function ItemDetailTopBar({
   folderId,
   folderLabel,
   favorite,
+  archived,
+  deleted,
   headerScrolled = false,
   showBack = false,
   onBack,
   onEdit,
   onToggleFavorite,
+  onToggleArchive,
 }: ItemDetailTopBarProps) {
   const favoriteTooltip = favorite
     ? t("web.items.detail.favoriteRemoveTooltip")
@@ -210,39 +252,48 @@ export default function ItemDetailTopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
+        {!archived ? (
+          <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={iconGroupButtonClassName}
+              aria-label={t("web.nav.addCapsule")}
+              onClick={() => undefined}
+            >
+              <IconCapsule16 />
+            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className={iconGroupButtonClassName}
+                    aria-label={favoriteTooltip}
+                    aria-pressed={favorite}
+                    onClick={onToggleFavorite}
+                  >
+                    <IconFavorite16 filled={favorite} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{favoriteTooltip}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </ControlGroup>
+        ) : null}
+
+        <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
           <Button
             type="button"
             variant="outline"
-            size="icon"
-            className={iconGroupButtonClassName}
-            aria-label={t("web.nav.addCapsule")}
-            onClick={() => undefined}
+            size="sm"
+            className={editButtonClassName}
+            disabled={archived}
+            onClick={onEdit}
           >
-            <IconCapsule16 />
-          </Button>
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className={iconGroupButtonClassName}
-                  aria-label={favoriteTooltip}
-                  aria-pressed={favorite}
-                  onClick={onToggleFavorite}
-                >
-                  <IconFavorite16 filled={favorite} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{favoriteTooltip}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </ControlGroup>
-
-        <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
-          <Button type="button" variant="outline" size="sm" className={editButtonClassName} onClick={onEdit}>
             <IconEdit16 />
             <span>{t("web.items.menu.edit")}</span>
           </Button>
@@ -257,14 +308,27 @@ export default function ItemDetailTopBar({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
-              <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
-                <IconUnarchive16 className="text-foreground" />
-                <span>{t("web.items.menu.archive")}</span>
+              <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
+                {archived ? (
+                  <IconUnarchive16 className="text-foreground" />
+                ) : (
+                  <FilterIconArchived className="size-4 shrink-0 text-foreground" />
+                )}
+                <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="mx-1 my-1" />
-              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onSelect={() => undefined}>
-                <IconDelete16 />
-                <span>{t("web.items.menu.delete")}</span>
+              <DropdownMenuItem
+                className={cn(
+                  "gap-2",
+                  !deleted && "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
+                )}
+                onSelect={() => undefined}
+              >
+                {deleted ? (
+                  <IconRestore16 className="text-foreground" />
+                ) : (
+                  <IconDelete16 />
+                )}
+                <span>{deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

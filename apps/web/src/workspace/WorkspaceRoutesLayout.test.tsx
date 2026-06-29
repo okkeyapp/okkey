@@ -46,6 +46,8 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
     getItemActivityById: () => [],
     createItem: vi.fn(),
     updateItem: vi.fn(),
+    setItemArchived: vi.fn(),
+    setItemsArchived: vi.fn(),
     refreshItems: vi.fn(),
   }),
   useWorkspaceItems: () => ({
@@ -59,6 +61,8 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
     getItemActivityById: () => [],
     createItem: vi.fn(),
     updateItem: vi.fn(),
+    setItemArchived: vi.fn(),
+    setItemsArchived: vi.fn(),
     refreshItems: vi.fn(),
   }),
 }));

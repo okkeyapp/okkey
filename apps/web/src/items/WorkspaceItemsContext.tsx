@@ -15,6 +15,7 @@ import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
+import { withItemArchivedState } from "./itemArchive";
 import {
   createWorkspaceVaultItemsSyncController,
   type WorkspaceVaultItemsSyncController,
@@ -31,6 +32,8 @@ export type WorkspaceItemsContextValue = {
   getItemActivityById: (itemId: string) => ItemActivityWireEntry[];
   createItem: (item: ItemPlaintextV2) => Promise<string>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
+  setItemArchived: (itemId: string, archived: boolean) => Promise<void>;
+  setItemsArchived: (itemIds: readonly string[], archived: boolean) => Promise<void>;
   refreshItems: () => Promise<void>;
 };
 
@@ -195,6 +198,42 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const setItemArchived = useCallback(
+    async (itemId: string, archived: boolean) => {
+      await runMutation(async (controller) => {
+        const item = controller.getAllItems().find((candidate) => candidate.itemId === itemId);
+        if (!item) {
+          throw new Error("ITEM_NOT_FOUND");
+        }
+        if (Boolean(item.archived) === archived) {
+          return;
+        }
+        await controller.updateItem(withItemArchivedState(item, archived));
+      });
+    },
+    [runMutation],
+  );
+
+  const setItemsArchived = useCallback(
+    async (itemIds: readonly string[], archived: boolean) => {
+      const uniqueIds = [...new Set(itemIds)];
+      if (!uniqueIds.length) {
+        return;
+      }
+      await runMutation(async (controller) => {
+        const itemsById = new Map(controller.getAllItems().map((item) => [item.itemId, item]));
+        for (const itemId of uniqueIds) {
+          const item = itemsById.get(itemId);
+          if (!item || Boolean(item.archived) === archived) {
+            continue;
+          }
+          await controller.updateItem(withItemArchivedState(item, archived));
+        }
+      });
+    },
+    [runMutation],
+  );
+
   const refreshItems = useCallback(async () => {
     await runMutation(async (controller) => {
       await controller.refresh();
@@ -226,6 +265,8 @@ export function useWorkspaceItemsState(input: {
       getItemActivityById,
       createItem,
       updateItem,
+      setItemArchived,
+      setItemsArchived,
       refreshItems,
     }),
     [
@@ -239,6 +280,8 @@ export function useWorkspaceItemsState(input: {
       getItemActivityById,
       createItem,
       updateItem,
+      setItemArchived,
+      setItemsArchived,
       refreshItems,
     ],
   );

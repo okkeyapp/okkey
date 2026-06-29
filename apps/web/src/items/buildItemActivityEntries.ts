@@ -1,16 +1,35 @@
+import type { ItemPlaintextV2 } from "@okkey/types";
+
+export type ItemActivityActionKey = "created" | "updated" | "archived" | "unarchived";
+
 export type ItemActivityEntry = {
   id: string;
-  actionKey: "created" | "updated";
+  actionKey: ItemActivityActionKey;
   atMs: number;
   actorLabel: string;
 };
 
 export type ItemActivityWireEntry = {
   id: string;
-  actionKey: "created" | "updated";
+  actionKey: ItemActivityActionKey;
   atMs: number;
   actorId: string | null;
 };
+
+export function resolveItemUpdateActivityKey(
+  previous: ItemPlaintextV2 | undefined,
+  next: ItemPlaintextV2,
+): ItemActivityActionKey {
+  const wasArchived = Boolean(previous?.archived);
+  const isArchived = Boolean(next.archived);
+  if (!wasArchived && isArchived) {
+    return "archived";
+  }
+  if (wasArchived && !isArchived) {
+    return "unarchived";
+  }
+  return "updated";
+}
 
 export function mapItemActivityWireEntries(
   entries: readonly ItemActivityWireEntry[],

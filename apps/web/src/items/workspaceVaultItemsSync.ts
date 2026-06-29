@@ -10,6 +10,7 @@ import { buildItemCreateAppendRequest, buildItemUpdateAppendRequest } from "@okk
 
 import { base64ToBytes } from "../auth/base64";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
+import { resolveItemUpdateActivityKey } from "./buildItemActivityEntries";
 import { resolveVaultItemEncryptionKey } from "./resolveVaultItemEncryptionKey";
 
 const CACHE_DB = "okkey-workspace-vault-items-sync";
@@ -38,7 +39,7 @@ type CachedWorkspaceVaultItemsState = {
 };
 
 function cacheKey(userId: string, workspaceId: string): string {
-  return `okkey.workspace-vault-items.v1.u.${userId}.w.${workspaceId}`;
+  return `okkey.workspace-vault-items.v2.u.${userId}.w.${workspaceId}`;
 }
 
 function openCacheDb(): Promise<IDBDatabase> {
@@ -194,7 +195,13 @@ async function applyVaultItemEvents(
     if (event.eventType === "ITEM_CREATE") {
       appendItemActivity(itemActivity, parsed.itemId, event, "created");
     } else if (event.eventType === "ITEM_UPDATE") {
-      appendItemActivity(itemActivity, parsed.itemId, event, "updated");
+      const previous = items.get(parsed.itemId);
+      appendItemActivity(
+        itemActivity,
+        parsed.itemId,
+        event,
+        resolveItemUpdateActivityKey(previous, parsed),
+      );
     }
 
     if (parsed.deleted || event.eventType === "ITEM_DELETE") {

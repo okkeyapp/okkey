@@ -80,6 +80,12 @@ function formatActivityLine(
   if (entry.actionKey === "created") {
     return t("web.items.detail.activity.createdLine", { date: datePart, time: timePart, actor: entry.actorLabel });
   }
+  if (entry.actionKey === "archived") {
+    return t("web.items.detail.activity.archivedLine", { date: datePart, time: timePart, actor: entry.actorLabel });
+  }
+  if (entry.actionKey === "unarchived") {
+    return t("web.items.detail.activity.unarchivedLine", { date: datePart, time: timePart, actor: entry.actorLabel });
+  }
   return t("web.items.detail.activity.updatedLine", { date: datePart, time: timePart, actor: entry.actorLabel });
 }
 
