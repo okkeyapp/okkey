@@ -867,7 +867,7 @@ export default function ItemsListLeftPane({
   const selectedActions = useMemo(
     () => ({
       canFavorite: selectedRows.some((row) => !row.favorite && !row.archived && !row.deleted),
-      canUnfavorite: selectedRows.some((row) => row.favorite && !row.archived),
+      canUnfavorite: selectedRows.some((row) => row.favorite && !row.archived && !row.deleted),
       canArchive: selectedRows.some((row) => !row.archived && !row.deleted),
       canUnarchive: selectedRows.some((row) => row.archived && !row.deleted),
       canDelete: selectedRows.some((row) => !row.deleted),
@@ -915,7 +915,7 @@ export default function ItemsListLeftPane({
 
   const favoriteSelectedItems = (favorite: boolean) => {
     const itemIds = selectedRows
-      .filter((row) => !row.archived && row.favorite !== favorite)
+      .filter((row) => !row.archived && !row.deleted && row.favorite !== favorite)
       .map((row) => row.id);
     if (!itemIds.length) {
       return;
