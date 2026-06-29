@@ -1,29 +1,40 @@
 import type { CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
-import type { ItemPlaintextV2, SyncAppendEventRequestDto, Vault } from "@okkey/types";
-import { generateEntityId } from "@okkey/types";
+import type { ItemPlaintextV2, SyncAppendEventRequestDto, SyncEventWireDto, Vault } from "@okkey/types";
+import { generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
 import {
   IndexedDbOutboxStore,
-  replayItemPlaintextEvents,
   SyncOutboxClient,
-  type ItemVaultReplayState,
 } from "@okkey/sync";
-import { buildItemCreateAppendRequest } from "@okkey/sync/item-sync";
+import { buildItemCreateAppendRequest, buildItemUpdateAppendRequest } from "@okkey/sync/item-sync";
 
 import { base64ToBytes } from "../auth/base64";
+import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { resolveVaultItemEncryptionKey } from "./resolveVaultItemEncryptionKey";
 
 const CACHE_DB = "okkey-workspace-vault-items-sync";
 const CACHE_STORE = "materialized_state";
+const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
+const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
 
 type VaultItemsMaterializedState = {
   items: Map<string, ItemPlaintextV2>;
+  itemActivity: Map<string, ItemActivityWireEntry[]>;
   lastAppliedVersion: number;
 };
 
 type CachedWorkspaceVaultItemsState = {
   key: string;
-  vaults: Array<[string, { items: Array<[string, ItemPlaintextV2]>; lastAppliedVersion: number }]>;
+  vaults: Array<
+    [
+      string,
+      {
+        items: Array<[string, ItemPlaintextV2]>;
+        itemActivity?: Array<[string, ItemActivityWireEntry[]]>;
+        lastAppliedVersion: number;
+      },
+    ]
+  >;
 };
 
 function cacheKey(userId: string, workspaceId: string): string {
@@ -67,9 +78,11 @@ async function readCachedState(
     }
     const vaults = new Map<string, VaultItemsMaterializedState>();
     for (const [vaultId, snapshot] of row.vaults) {
+      const hasActivity = Boolean(snapshot.itemActivity);
       vaults.set(vaultId, {
         items: new Map(snapshot.items),
-        lastAppliedVersion: snapshot.lastAppliedVersion,
+        itemActivity: new Map(snapshot.itemActivity ?? []),
+        lastAppliedVersion: hasActivity ? snapshot.lastAppliedVersion : 0,
       });
     }
     return vaults;
@@ -93,6 +106,7 @@ async function writeCachedState(
         vaultId,
         {
           items: [...snapshot.items.entries()],
+          itemActivity: [...snapshot.itemActivity.entries()],
           lastAppliedVersion: snapshot.lastAppliedVersion,
         },
       ]),
@@ -108,15 +122,101 @@ async function writeCachedState(
 }
 
 function emptyVaultState(): VaultItemsMaterializedState {
-  return { items: new Map(), lastAppliedVersion: 0 };
+  return { items: new Map(), itemActivity: new Map(), lastAppliedVersion: 0 };
+}
+
+function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
+  const maybe = event as SyncEventWireDto & {
+    encryptedBlob?: { crypto_version?: number; payload?: string };
+    payloadSchemaVersion?: number;
+    encryptedPayload?: string;
+  };
+  if (maybe.encryptedBlob?.payload) {
+    return {
+      crypto_version: maybe.encryptedBlob.crypto_version ?? 2,
+      payload: maybe.encryptedBlob.payload,
+    };
+  }
+  return {
+    crypto_version: maybe.payloadSchemaVersion ?? 2,
+    payload: maybe.encryptedPayload ?? "",
+  };
+}
+
+function appendItemActivity(
+  itemActivity: Map<string, ItemActivityWireEntry[]>,
+  itemId: string,
+  event: SyncEventWireDto,
+  actionKey: ItemActivityWireEntry["actionKey"],
+): void {
+  const list = itemActivity.get(itemId) ?? [];
+  list.push({
+    id: event.id,
+    actionKey,
+    atMs: Date.parse(event.createdAt) || Date.now(),
+    actorId: event.actorId,
+  });
+  itemActivity.set(itemId, list);
+}
+
+async function applyVaultItemEvents(
+  state: VaultItemsMaterializedState,
+  events: SyncEventWireDto[],
+  decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
+): Promise<VaultItemsMaterializedState> {
+  const items = new Map(state.items);
+  const itemActivity = new Map(state.itemActivity);
+  let lastAppliedVersion = state.lastAppliedVersion;
+
+  for (const event of events) {
+    if (event.version <= lastAppliedVersion) {
+      continue;
+    }
+
+    if (!ITEM_EVENT_TYPES.has(event.eventType)) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+
+    const blob = getEventBlob(event);
+    if (!SUPPORTED_PAYLOAD_SCHEMA_VERSIONS.has(blob.crypto_version) || !blob.payload) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+
+    const plaintextBytes = await decryptWirePayload(blob.payload);
+    const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
+    if (!parsed) {
+      lastAppliedVersion = event.version;
+      continue;
+    }
+
+    if (event.eventType === "ITEM_CREATE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "created");
+    } else if (event.eventType === "ITEM_UPDATE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "updated");
+    }
+
+    if (parsed.deleted || event.eventType === "ITEM_DELETE") {
+      items.delete(parsed.itemId);
+    } else {
+      items.set(parsed.itemId, parsed);
+    }
+
+    lastAppliedVersion = event.version;
+  }
+
+  return { items, itemActivity, lastAppliedVersion };
 }
 
 export type WorkspaceVaultItemsSyncController = {
   refresh: () => Promise<void>;
   drainOutbox: () => Promise<void>;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  updateItem: (item: ItemPlaintextV2) => Promise<string>;
   getItemsByVault: (vaultId: string) => ItemPlaintextV2[];
   getAllItems: () => ItemPlaintextV2[];
+  getItemActivityById: (itemId: string) => ItemActivityWireEntry[];
   getState: () => Map<string, VaultItemsMaterializedState>;
   dispose: () => void;
 };
@@ -170,24 +270,19 @@ export function createWorkspaceVaultItemsSyncController(input: {
   }
 
   async function replayVaultIncremental(vaultId: string): Promise<void> {
-    const state = ensureVaultState(vaultId);
-    const page = await input.core.listVaultEvents(vaultId, state.lastAppliedVersion);
-    if (!page.events.length) {
-      return;
-    }
+    let state = ensureVaultState(vaultId);
     const vaultKey = await resolveVaultKey(vaultId);
-    const replayed = await replayItemPlaintextEvents(page.events, async (payloadBase64) =>
-      decryptVaultItemPayload(vaultKey, base64ToBytes(payloadBase64)),
-    );
-    const mergedItems = new Map(state.items);
-    for (const [itemId, item] of replayed.items) {
-      mergedItems.set(itemId, item);
+    const decryptWirePayload = async (encryptedPayloadBase64: string) =>
+      decryptVaultItemPayload(vaultKey, base64ToBytes(encryptedPayloadBase64));
+
+    while (true) {
+      const page = await input.core.listVaultEvents(vaultId, state.lastAppliedVersion);
+      if (!page.events.length) {
+        break;
+      }
+      state = await applyVaultItemEvents(state, page.events, decryptWirePayload);
+      vaultStates.set(vaultId, state);
     }
-    const lastVersion = page.events[page.events.length - 1]?.version ?? state.lastAppliedVersion;
-    vaultStates.set(vaultId, {
-      items: mergedItems,
-      lastAppliedVersion: lastVersion,
-    });
   }
 
   async function refresh(): Promise<void> {
@@ -213,6 +308,15 @@ export function createWorkspaceVaultItemsSyncController(input: {
     getItemsByVault: (vaultId) => [...(vaultStates.get(vaultId)?.items.values() ?? [])],
     getAllItems: () =>
       [...vaultStates.values()].flatMap((state) => [...state.items.values()]),
+    getItemActivityById: (itemId) => {
+      for (const state of vaultStates.values()) {
+        const entries = state.itemActivity.get(itemId);
+        if (entries?.length) {
+          return entries;
+        }
+      }
+      return [];
+    },
     refresh,
     drainOutbox: async () => {
       await outbox.drain();
@@ -230,10 +334,22 @@ export function createWorkspaceVaultItemsSyncController(input: {
       await enqueue(request, item.vaultId);
       return item.itemId;
     },
+    updateItem: async (item) => {
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = await buildItemUpdateAppendRequest(
+        vaultKey,
+        item,
+        state.lastAppliedVersion,
+        generateEntityId(),
+      );
+      await enqueue(request, item.vaultId);
+      return item.itemId;
+    },
     dispose: () => {
       vaultKeyCache.clear();
     },
   };
 }
 
-export type { ItemVaultReplayState };
+export type { VaultItemsMaterializedState as ItemVaultReplayState };

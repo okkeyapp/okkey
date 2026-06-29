@@ -19,6 +19,9 @@ import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
+import { runSaveWithToast } from "../../lib/saveWithToast";
+import PopupSaveButton from "../ui/PopupSaveButton";
+
 import {
   applyFolderTreeDrag,
   flattenFolderTree,
@@ -352,6 +355,8 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [overDragId, setOverDragId] = useState<string | null>(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -367,6 +372,7 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
     setCommittedLabels(buildCommittedLabelMap(folderTree));
     setEditingId(null);
     setDraftLabels({});
+    setSaveError(null);
   }, [open, folderTree]);
 
   const flattenedItems = useMemo(() => {
@@ -389,6 +395,7 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
   const activeItem = activeDragId ? flattenedItems.find((item) => item.id === activeDragId) : null;
 
   function closePopup() {
+    setSaveError(null);
     navigate(
       {
         pathname: location.pathname,
@@ -447,7 +454,11 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
     setDraftLabels((current) => ({ ...current, [id]: "" }));
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (saving) {
+      return;
+    }
+
     let nextTree = draftTree;
     let nextCommitted = committedLabels;
     if (editingId) {
@@ -455,12 +466,27 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
       nextTree = result.tree;
       nextCommitted = result.labels;
     }
-    void commitFolderTree(normalizeWorkspaceFolderTreeForSave(nextTree))
-      .then(() => {
-        setCommittedLabels(nextCommitted);
-        closePopup();
-      })
-      .catch(() => undefined);
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await runSaveWithToast(
+        {
+          loading: t("web.toast.save.loading"),
+          success: t("web.toast.save.success"),
+          error: t("web.toast.save.error"),
+        },
+        async () => {
+          await commitFolderTree(normalizeWorkspaceFolderTreeForSave(nextTree));
+          setCommittedLabels(nextCommitted);
+        },
+      );
+      closePopup();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : t("web.toast.save.error"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -525,19 +551,25 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
       description={t("web.foldersPopup.description")}
       closeLabel={t("web.settingsPopup.close")}
       onClose={closePopup}
+      closeDisabled={saving}
       width={720}
       panelClassName="min-h-[560px]"
       footer={
         <>
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={closePopup}>
+          <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={closePopup} disabled={saving}>
             {t("web.foldersPopup.cancel")}
           </Button>
-          <Button type="button" className="h-9 rounded-lg px-4" onClick={handleSave}>
-            {t("web.foldersPopup.save")}
-          </Button>
+          <PopupSaveButton
+            saving={saving}
+            saveLabel={t("web.foldersPopup.save")}
+            savingLabel={t("web.newItemPopup.saving")}
+            className="h-9 rounded-lg px-4"
+            onClick={() => void handleSave()}
+          />
         </>
       }
     >
+      {saveError ? <p className="mb-4 text-sm text-destructive">{saveError}</p> : null}
       <div className="flex flex-col gap-4">
         <DndContext
           sensors={sensors}

@@ -4,8 +4,12 @@ import { Button, Popup } from "@okkey/ui";
 import { useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
+import { deleteDevKeyFieldFile } from "../../api/key-field-files";
+import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
+import { runSaveWithToast } from "../../lib/saveWithToast";
+import PopupSaveButton from "../ui/PopupSaveButton";
 import { buildItemFromNewItemSavePayload } from "./NewItemForm";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import {
@@ -112,11 +116,26 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
     setSaving(true);
     setSaveError(null);
     try {
-      const item = buildItemFromNewItemSavePayload(payload);
-      const itemId = await createItem(item);
-      if (payload.folderId !== NO_FOLDER_VALUE) {
-        await assignItemToFolder(itemId, payload.folderId);
-      }
+      const itemId = await runSaveWithToast(
+        {
+          loading: t("web.toast.save.loading"),
+          success: t("web.toast.save.success"),
+          error: t("web.newItemPopup.saveErrorGeneric"),
+        },
+        async () => {
+          const item = buildItemFromNewItemSavePayload(payload);
+          const createdItemId = await createItem(item);
+          await deleteRemovedKeyFieldFiles(
+            formRef.current?.getFileBaselineSections() ?? [],
+            formRef.current?.getCurrentSections() ?? payload.sections,
+            deleteDevKeyFieldFile,
+          );
+          if (payload.folderId !== NO_FOLDER_VALUE) {
+            await assignItemToFolder(createdItemId, payload.folderId);
+          }
+          return createdItemId;
+        },
+      );
       const params = new URLSearchParams(location.search);
       params.delete(POPUP_QUERY_PARAM);
       params.set(ITEM_QUERY_PARAM, itemId);
@@ -170,6 +189,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       header={header}
       closeLabel={t("web.settingsPopup.close")}
       onClose={closePopup}
+      closeDisabled={saving}
       panelClassName="min-h-[720px]"
       footer={
         selectedCategoryId ? (
@@ -177,9 +197,12 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             <Button type="button" variant="outline" onClick={closePopup} disabled={saving}>
               {t("web.newItemPopup.cancel")}
             </Button>
-            <Button type="button" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? t("web.newItemPopup.saving") : t("web.newItemPopup.save")}
-            </Button>
+            <PopupSaveButton
+              saving={saving}
+              saveLabel={t("web.newItemPopup.save")}
+              savingLabel={t("web.newItemPopup.saving")}
+              onClick={() => void handleSave()}
+            />
           </>
         ) : (
           <Button type="button" variant="outline" onClick={closePopup}>

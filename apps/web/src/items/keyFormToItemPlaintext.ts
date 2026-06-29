@@ -1,8 +1,10 @@
 import type { ItemFieldV2, ItemPlaintextV2, ItemSectionV2 } from "@okkey/types";
 import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2 } from "@okkey/types";
 import type { EntityId } from "@okkey/types";
+import { parseKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
+import { filterFilledKeyFormSections } from "./keyFormFilledFields";
 
 const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
@@ -12,6 +14,9 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
 function wireFieldType(field: KeyFormEditorField): string {
   if (field.type === "multiline-text") {
     return "note";
+  }
+  if (field.type === "recovery-codes") {
+    return "recovery-codes";
   }
   return field.type;
 }
@@ -28,8 +33,22 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
       return { kind: "totp", secretBase32: raw, periodSeconds: 30, digits: 6 };
     case "multiline-text":
       return { kind: "note", note: raw };
-    case "file":
+    case "file": {
+      const parsed = parseKeyFieldFileValue(raw);
+      if (parsed) {
+        return {
+          kind: "file",
+          attachmentId: parsed.attachmentId,
+          name: parsed.name,
+          mimeType: parsed.mimeType,
+          sizeBytes: parsed.sizeBytes,
+          url: parsed.url,
+        };
+      }
       return { kind: "file", name: raw };
+    }
+    case "recovery-codes":
+      return { kind: "unknown", declaredType: "recovery-codes", raw };
     case "text":
     case "email":
     case "phone":
@@ -47,12 +66,14 @@ export function keyFormSectionsToItemPlaintext(input: {
   title: string;
   categoryId: string;
   nowMs?: number;
+  tags?: readonly string[];
 }): ItemPlaintextV2 {
   const now = input.nowMs ?? Date.now();
   const sections: ItemSectionV2[] = [];
   const fields: ItemFieldV2[] = [];
+  const filledSections = filterFilledKeyFormSections(input.sections);
 
-  input.sections.forEach((section, sectionIndex) => {
+  filledSections.forEach((section, sectionIndex) => {
     sections.push({
       id: section.id,
       title: section.title?.trim() || DEFAULT_SECTION_TITLES[section.id] || section.id,
@@ -82,5 +103,6 @@ export function keyFormSectionsToItemPlaintext(input: {
     updatedAtMs: now,
     sections,
     fields,
+    ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {}),
   };
 }

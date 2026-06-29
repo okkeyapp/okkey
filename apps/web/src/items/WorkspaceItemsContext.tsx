@@ -13,6 +13,7 @@ import type { CoreClient } from "@okkey/api";
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 
 import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane";
+import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import {
   createWorkspaceVaultItemsSyncController,
@@ -21,11 +22,15 @@ import {
 
 export type WorkspaceItemsContextValue = {
   records: ItemsListRecord[];
+  items: ItemPlaintextV2[];
   loading: boolean;
   bootstrapped: boolean;
   error: string | null;
   syncVersion: number;
+  getItemById: (itemId: string) => ItemPlaintextV2 | undefined;
+  getItemActivityById: (itemId: string) => ItemActivityWireEntry[];
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  updateItem: (item: ItemPlaintextV2) => Promise<string>;
   refreshItems: () => Promise<void>;
 };
 
@@ -44,6 +49,7 @@ export function useWorkspaceItemsState(input: {
   const { userId, workspaceId, core, vaults, vaultsListReady, vaultKey, vaultUnlocked, itemFolderByItemId } =
     input;
   const [records, setRecords] = useState<ItemsListRecord[]>([]);
+  const [items, setItems] = useState<ItemPlaintextV2[]>([]);
   const [loading, setLoading] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,11 +62,13 @@ export function useWorkspaceItemsState(input: {
     const controller = controllerRef.current;
     if (!controller) {
       setRecords([]);
+      setItems([]);
       return;
     }
-    const items = controller.getAllItems();
+    const syncedItems = controller.getAllItems();
+    setItems(syncedItems);
     setRecords(
-      items.map((item) =>
+      syncedItems.map((item) =>
         itemPlaintextToListRecord(item, {
           folderId: itemFolderRef.current.get(item.itemId) ?? null,
         }),
@@ -73,6 +81,7 @@ export function useWorkspaceItemsState(input: {
     controllerRef.current?.dispose();
     controllerRef.current = null;
     setRecords([]);
+    setItems([]);
     setBootstrapped(false);
     setError(null);
 
@@ -162,23 +171,63 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const updateItem = useCallback(
+    async (item: ItemPlaintextV2) => {
+      let updatedId = "";
+      await runMutation(async (controller) => {
+        updatedId = await controller.updateItem(item);
+      });
+      return updatedId;
+    },
+    [runMutation],
+  );
+
   const refreshItems = useCallback(async () => {
     await runMutation(async (controller) => {
       await controller.refresh();
     });
   }, [runMutation]);
 
+  const getItemById = useCallback(
+    (itemId: string) => items.find((item) => item.itemId === itemId),
+    [items],
+  );
+
+  const getItemActivityById = useCallback((itemId: string) => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return [];
+    }
+    return controller.getItemActivityById(itemId);
+  }, [syncVersion]);
+
   return useMemo(
     () => ({
       records,
+      items,
       loading,
       bootstrapped,
       error,
       syncVersion,
+      getItemById,
+      getItemActivityById,
       createItem,
+      updateItem,
       refreshItems,
     }),
-    [records, loading, bootstrapped, error, syncVersion, createItem, refreshItems],
+    [
+      records,
+      items,
+      loading,
+      bootstrapped,
+      error,
+      syncVersion,
+      getItemById,
+      getItemActivityById,
+      createItem,
+      updateItem,
+      refreshItems,
+    ],
   );
 }
 

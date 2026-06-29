@@ -56,7 +56,7 @@ import {
   type KeyFormMode,
   type KeyFieldFileValue,
 } from "@okkey/ui";
-import { deleteDevKeyFieldFile, uploadDevKeyFieldFile } from "../../api/key-field-files";
+import { uploadDevKeyFieldFile } from "../../api/key-field-files";
 import {
   englishKeyFieldTypes,
   englishKeyFormEditorMessages,
@@ -1413,7 +1413,6 @@ export function KeyFormEditor({
     (file: File, onProgress: (percent: number) => void) => uploadDevKeyFieldFile(file, onProgress),
     [],
   );
-  const handleKeyFieldFileDelete = useCallback(async (file: KeyFieldFileValue) => deleteDevKeyFieldFile(file), []);
 
   useEffect(() => {
     window.localStorage.setItem(passwordGeneratorStorageKey, JSON.stringify(passwordGeneratorPreferences));
@@ -2381,7 +2380,6 @@ export function KeyFormEditor({
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={isFileField}
         onFileUpload={handleKeyFieldFileUpload}
-        onFileDelete={handleKeyFieldFileDelete}
         transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
         onCopyAction={
           isRecoveryCodesField
@@ -2423,7 +2421,6 @@ export function KeyFormEditor({
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={field.type === "file"}
         onFileUpload={handleKeyFieldFileUpload}
-        onFileDelete={handleKeyFieldFileDelete}
         addressFieldPlaceholders={messages.address}
         addressSearchCountriesPlaceholder={messages.address.searchCountries}
         addressNoCountriesFoundMessage={messages.address.noCountriesFound}

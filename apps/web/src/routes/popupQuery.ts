@@ -2,6 +2,7 @@ export const POPUP_QUERY_PARAM = "popup";
 export const SETTINGS_POPUP_ID = "settings";
 export const FOLDERS_POPUP_ID = "folders";
 export const NEW_ITEM_POPUP_ID = "new-item";
+export const EDIT_ITEM_POPUP_ID = "edit-item";
 
 export function parsePopupQueryValue(value: string | null): { popupId: string; menuItemId?: string } | null {
   if (!value) {

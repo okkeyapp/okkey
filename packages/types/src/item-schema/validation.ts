@@ -48,6 +48,9 @@ export function normalizeFieldValue(type: string, value: unknown): FieldValueV2 
         kind: "file",
         attachmentId: typeof value.attachmentId === "string" ? value.attachmentId : undefined,
         name: typeof value.name === "string" ? value.name : "",
+        mimeType: typeof value.mimeType === "string" ? value.mimeType : undefined,
+        sizeBytes: typeof value.sizeBytes === "number" ? value.sizeBytes : undefined,
+        url: typeof value.url === "string" ? value.url : undefined,
       };
     case "unknown":
       return {
@@ -127,6 +130,11 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     if (n) fields.push(n);
   }
   const deleted = typeof raw.deleted === "boolean" ? raw.deleted : undefined;
+  const tagsRaw = Array.isArray(raw.tags) ? raw.tags : [];
+  const tags = tagsRaw
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
   return {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
     itemId,
@@ -138,6 +146,7 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     deleted,
     sections,
     fields,
+    ...(tags.length > 0 ? { tags } : {}),
   };
 }
 

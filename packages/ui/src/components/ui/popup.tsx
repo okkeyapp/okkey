@@ -38,6 +38,8 @@ export type PopupProps = Omit<React.ComponentPropsWithoutRef<"div">, "title"> & 
   width?: PopupWidth;
   onClose?: () => void;
   closeLabel?: string;
+  /** When true, overlay click and close button do nothing. */
+  closeDisabled?: boolean;
   panelClassName?: string;
   contentClassName?: string;
 };
@@ -178,6 +180,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       width = 720,
       onClose,
       closeLabel = "Close popup",
+      closeDisabled = false,
       children,
       style,
       onClick,
@@ -202,7 +205,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
     }, []);
 
     const requestClose = React.useCallback(() => {
-      if (!onClose || isClosing) {
+      if (!onClose || isClosing || closeDisabled) {
         return;
       }
 
@@ -210,7 +213,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       closeTimerRef.current = setTimeout(() => {
         onClose();
       }, POPUP_ANIMATION_MS);
-    }, [isClosing, onClose]);
+    }, [closeDisabled, isClosing, onClose]);
 
     return (
       <div

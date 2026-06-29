@@ -67,12 +67,14 @@ export interface FieldValueNote {
   note: string;
 }
 
-/** File attachments are enterprise / gated in UI; placeholder for forward-compatible payloads. */
 export interface FieldValueFile {
   kind: "file";
   /** Opaque client-side ref when implemented (5.3+); empty in Core v1 */
   attachmentId?: string;
   name?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  url?: string;
 }
 
 /** Forward-compat bucket for unrecognized `type` / shape (older clients keep raw JSON). */
@@ -114,4 +116,6 @@ export interface ItemPlaintextV2 {
   deleted?: boolean;
   sections: ItemSectionV2[];
   fields: ItemFieldV2[];
+  /** User-defined labels; omitted when empty. */
+  tags?: string[];
 }

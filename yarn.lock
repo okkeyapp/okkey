@@ -1147,7 +1147,7 @@
 "@okkey/api@file:packages/api":
   version "0.0.1"
   dependencies:
-    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-b6c7d77d-5049-49ba-b6f5-de62a6bbd68b-1782311543929/node_modules/@okkey/types"
+    "@okkey/types" "file:../../../../../../var/folders/nm/hvtvjrk138g_6tnjgsk2ngnh0000gn/T/cursor-sandbox-cache/a0c601372a7a9ef1e2ce2b02a6149ee8/yarn/v6/npm-@okkey-api-0.0.1-3a906697-b3a5-44a9-8f91-b5e3f93a3e06-1782724267496/node_modules/@okkey/types"
 
 "@okkey/crypto-wasm@link:./packages/crypto/dist":
   version "0.0.0"
@@ -1155,6 +1155,8 @@
 
 "@okkey/types@file:packages/types":
   version "0.0.1"
+  dependencies:
+    "@okkey/id" "0.0.1"
 
 "@pkgjs/parseargs@^0.11.0":
   version "0.11.0"
@@ -4012,6 +4014,11 @@ socket.io@4.8.1:
     engine.io "~6.6.0"
     socket.io-adapter "~2.5.2"
     socket.io-parser "~4.2.4"
+
+sonner@^2.0.7:
+  version "2.0.7"
+  resolved "https://registry.yarnpkg.com/sonner/-/sonner-2.0.7.tgz#810c1487a67ec3370126e0f400dfb9edddc3e4f6"
+  integrity sha512-W6ZN4p58k8aDKA4XPcx2hpIQXBRAgyiWVkYhT7CvK6D3iAu7xjvVyhQHg2/iaKJZ1XVJ4r7XuwGL+WGEK37i9w==
 
 source-map-js@^1.0.2, source-map-js@^1.2.1:
   version "1.2.1"

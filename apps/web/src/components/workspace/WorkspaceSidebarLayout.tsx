@@ -167,6 +167,7 @@ export default function WorkspaceSidebarLayout({
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsTwoPane = mainColumnLayout === "items-two-pane";
   const showMobileItemDetail = isItemsTwoPane && Boolean(activeItemId);
+  const hideShellMainHeader = isItemsTwoPane && Boolean(activeItemId);
 
   const clearActiveItem = () => {
     setSearchParams(
@@ -253,7 +254,7 @@ export default function WorkspaceSidebarLayout({
                   {showMobileItemDetail ? (
                     <ItemsMobileDetailBackBar label={t("web.items.detail.back")} onBack={clearActiveItem} />
                   ) : null}
-                  <div className={cn(showMobileItemDetail && "max-md:hidden")}>
+                  <div className={cn((showMobileItemDetail || hideShellMainHeader) && "hidden")}>
                     <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
                   </div>
 

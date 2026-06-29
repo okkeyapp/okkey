@@ -1,0 +1,171 @@
+import type { ItemPlaintextV2, Vault } from "@okkey/types";
+import { Favicon, Spinner } from "@okkey/ui";
+import { useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
+import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
+import {
+  buildItemActivityEntries,
+  mapItemActivityWireEntries,
+} from "../../items/buildItemActivityEntries";
+import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
+import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useLocale } from "../../locale/LocaleContext";
+import {
+  EDIT_ITEM_POPUP_ID,
+  buildPopupQueryValue,
+  popupQuerySearch,
+} from "../../routes/popupQuery";
+import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
+import { KeyFormEditor } from "../key-form/KeyFormEditor";
+import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
+import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
+import { ItemCategoryIcon } from "./itemCategoryIcons";
+import ItemActivitySection from "./ItemActivitySection";
+import ItemDetailTopBar from "./ItemDetailTopBar";
+import ItemTagsReadonly from "./ItemTagsReadonly";
+
+type ItemDetailCardProps = {
+  itemId: string;
+  vaults: readonly Vault[];
+};
+
+function collectUrls(item: ItemPlaintextV2): string[] {
+  return item.fields
+    .filter((field) => field.type === "url" && field.value.kind === "url")
+    .map((field) => (field.value.kind === "url" ? field.value.url.trim() : ""))
+    .filter((url) => url.length > 0);
+}
+
+function actorLabelFromProfile(profile: { firstName?: string | null; lastName?: string | null; email?: string } | null): string {
+  const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim();
+  if (name) {
+    return name;
+  }
+  return profile?.email?.trim() || "—";
+}
+
+export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) {
+  const { t, locale } = useLocale();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { profile, userId } = useAuthVault();
+  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion } = useWorkspaceItems();
+  const { folderTree } = useWorkspaceFolders();
+
+  const item = getItemById(itemId);
+  const listRecord = useMemo(
+    () => records.find((record: ItemsListRecord) => record.id === itemId),
+    [records, itemId],
+  );
+  const vault = vaults.find((candidate) => candidate.id === (item?.vaultId ?? listRecord?.vaultId));
+  const folderId = listRecord?.folderId ?? null;
+  const folderLabel = folderId
+    ? findWorkspaceFolderPathById(folderTree, folderId) || folderId
+    : t("web.newItemPopup.noFolder");
+
+  const category = item && isItemCategoryId(item.categoryId) ? getItemCategoryDefinition(item.categoryId) : undefined;
+  const formSections = useMemo(() => (item ? itemPlaintextToKeyFormSections(item) : []), [item]);
+  const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+  const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
+  const activityEntries = useMemo(() => {
+    if (!item) {
+      return [];
+    }
+    const resolveActorLabel = (actorId: string | null) => {
+      if (actorId && userId && actorId === userId) {
+        return actorLabelFromProfile(profile);
+      }
+      if (actorId) {
+        return actorId;
+      }
+      return actorLabelFromProfile(profile);
+    };
+    const wireEntries = getItemActivityById(item.itemId);
+    if (wireEntries.length > 0) {
+      return mapItemActivityWireEntries(wireEntries, resolveActorLabel);
+    }
+    return buildItemActivityEntries({
+      itemId: item.itemId,
+      createdAtMs: item.createdAtMs,
+      updatedAtMs: item.updatedAtMs,
+      actorLabel: actorLabelFromProfile(profile),
+    });
+  }, [item, profile, userId, getItemActivityById, syncVersion]);
+
+  if (!bootstrapped || loading) {
+    return (
+      <div className="flex min-h-[240px] items-center justify-center p-8">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (!item) {
+    return (
+      <div className="p-8">
+        <p className="text-sm text-muted-foreground">{t("web.items.detail.notFound")}</p>
+      </div>
+    );
+  }
+
+  const urls = collectUrls(item);
+
+  function openEditPopup() {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_ITEM_POPUP_ID, itemId)),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <ItemDetailTopBar
+        t={t}
+        vault={vault}
+        folderId={folderId}
+        folderLabel={folderLabel}
+        favorite={listRecord?.favorite ?? false}
+        onEdit={openEditPopup}
+      />
+
+      <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6">
+        <div className="flex items-center gap-4">
+          <Favicon
+            name={item.title}
+            urls={urls.length > 0 ? urls : undefined}
+            size={40}
+            color={category?.iconColor}
+            icon={
+              category ? (
+                <ItemCategoryIcon categoryId={category.id} pixelSize={22} className="shrink-0 text-white" />
+              ) : undefined
+            }
+            alt=""
+          />
+          <h1 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{item.title}</h1>
+        </div>
+
+        <div className="mt-6">
+          <KeyFormEditor
+            key={item.itemId}
+            mode="view"
+            initialSections={formSections}
+            fieldTypes={keyFormFieldTypes}
+            messages={keyFormMessages}
+          />
+        </div>
+
+        <ItemTagsReadonly t={t} tags={item.tags ?? []} />
+
+        <ItemActivitySection t={t} entries={activityEntries} />
+      </div>
+    </div>
+  );
+}

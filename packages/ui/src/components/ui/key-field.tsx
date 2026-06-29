@@ -286,7 +286,6 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const parsedRecoveryCodesValue =
       recoveryCodesValue && typeof stringValue === "string" ? parseKeyFieldRecoveryCodesValue(stringValue) : [];
     const parsedFileValue = fileValue ? parseKeyFieldFileValue(draftValue) : null;
-    const [isFileClearing, setIsFileClearing] = React.useState(false);
     const [fileValidationError, setFileValidationError] = React.useState(false);
     const [fileLightboxOpen, setFileLightboxOpen] = React.useState(false);
     const isFieldActive =
@@ -551,20 +550,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     }
 
     function handleFileClear() {
-      if (!parsedFileValue || !onFileDelete) {
+      if (!parsedFileValue) {
         return;
       }
 
-      void (async () => {
-        setIsFileClearing(true);
-        try {
-          await onFileDelete(parsedFileValue);
-          setDraftValue("");
-          onValueChange?.("");
-        } finally {
-          setIsFileClearing(false);
-        }
-      })();
+      setDraftValue("");
+      onValueChange?.("");
     }
 
     function handleFieldClick(event: React.MouseEvent<HTMLDivElement>) {
@@ -874,7 +865,6 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               type="button"
               variant="outline"
               size="sm"
-              disabled={isFileClearing}
               className={cn("h-8 px-3", controlButtonClassName)}
               onClick={handleFileClear}
             >

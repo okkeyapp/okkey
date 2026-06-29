@@ -22,6 +22,7 @@ import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspa
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
+import EditItemPopup from "../components/items/EditItemPopup";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
@@ -618,6 +619,12 @@ function WorkspaceShellWithItems({
         vaults={vaults}
         vaultsListReady={vaultsListReady}
       />
+      <EditItemPopup
+        t={t}
+        workspaceName={currentWorkspaceName}
+        vaults={vaults}
+        vaultsListReady={vaultsListReady}
+      />
       <FoldersSettingsPopup t={t} />
       <WorkspaceSidebarLayout
         title={title}
@@ -647,7 +654,7 @@ function WorkspaceShellWithItems({
         itemsListRecords={workspaceItemsState.records}
         itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
       >
-        <Outlet context={{ workspaceId: resolvedWorkspaceId }} />
+        <Outlet context={{ workspaceId: resolvedWorkspaceId, vaults }} />
       </WorkspaceSidebarLayout>
     </WorkspaceItemsProvider>
   );

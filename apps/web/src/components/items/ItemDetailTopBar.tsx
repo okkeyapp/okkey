@@ -1,0 +1,257 @@
+import type { WebMessageValues } from "@okkey/i18n";
+import type { Vault } from "@okkey/types";
+import {
+  Button,
+  buttonVariants,
+  ControlGroup,
+  controlGroupItemFixedClassName,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  cn,
+} from "@okkey/ui";
+import type { SVGProps } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+
+import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
+import { itemsPathWithFolderMerged, itemsPathWithVaultMerged } from "../../routes/paths";
+
+function IconCapsule16({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path
+        d="M6.33333 2.66667C7.23949 1.76051 8.4685 1.25144 9.75 1.25144C11.0315 1.25144 12.2605 1.76051 13.1667 2.66667C14.0728 3.57282 14.5819 4.80184 14.5819 6.08333C14.5819 7.36483 14.0728 8.59384 13.1667 9.5L9.75 12.9167C8.84384 13.8228 7.61483 14.3319 6.33333 14.3319C5.05183 14.3319 3.82282 13.8228 2.91667 12.9167C2.01051 12.0105 1.50144 10.7815 1.50144 9.5C1.50144 8.2185 2.01051 6.98949 2.91667 6.08333L6.33333 2.66667Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line x1="4.85355" y1="4.14645" x2="11.8536" y2="11.1464" stroke="currentColor" />
+    </svg>
+  );
+}
+
+function IconFavorite16({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path
+        d="M7.99992 1.33325L10.0599 5.50659L14.6666 6.17992L11.3333 9.42659L12.1199 14.0133L7.99992 11.8466L3.87992 14.0133L4.66659 9.42659L1.33325 6.17992L5.93992 5.50659L7.99992 1.33325Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconEdit16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M9.99992 3.33333L12.6666 6M14.1159 4.54126C14.4683 4.18888 14.6664 3.71091 14.6665 3.2125C14.6665 2.71409 14.4686 2.23607 14.1162 1.8836C13.7638 1.53112 13.2859 1.33307 12.7874 1.33301C12.289 1.33295 11.811 1.53088 11.4585 1.88326L2.56121 10.7826C2.40642 10.9369 2.29195 11.127 2.22787 11.3359L1.34721 14.2373C1.32998 14.2949 1.32868 14.3562 1.34344 14.4145C1.35821 14.4728 1.38849 14.5261 1.43107 14.5686C1.47366 14.6111 1.52696 14.6413 1.58531 14.656C1.64367 14.6707 1.70491 14.6693 1.76254 14.6519L4.66454 13.7719C4.87332 13.7084 5.06332 13.5947 5.21787 13.4406L14.1159 4.54126Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconUnarchive16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M5.33327 2.6665H12.6666C13.0202 2.6665 13.3594 2.80698 13.6094 3.05703C13.8595 3.30708 13.9999 3.64622 13.9999 3.99984C13.9999 4.35346 13.8595 4.6926 13.6094 4.94265C13.3594 5.19269 13.0202 5.33317 12.6666 5.33317H7.99994M5.33327 5.33317H3.33327C3.02844 5.33335 2.73274 5.22907 2.49546 5.03771C2.25818 4.84634 2.09363 4.57945 2.02923 4.28149C1.96484 3.98353 2.00449 3.67251 2.14157 3.40024C2.27866 3.12796 2.5049 2.91089 2.78261 2.78517"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.33337 5.3335V12.0002C3.33337 12.3538 3.47385 12.6929 3.7239 12.943C3.97395 13.193 4.31309 13.3335 4.66671 13.3335H11.3334C11.5903 13.3335 11.8418 13.2592 12.0575 13.1197C12.2732 12.9801 12.444 12.7812 12.5494 12.5468M12.6667 10.0002V5.3335"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M6.66663 8H7.99996" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconDelete16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M2 4H14M12.6667 4V13.3333C12.6667 13.687 12.5262 14.0261 12.2761 14.2761C12.0261 14.5262 11.687 14.6667 11.3333 14.6667H4.66667C4.31305 14.6667 3.97391 14.5262 3.72386 14.2761C3.47381 14.0261 3.33333 13.687 3.33333 13.3333V4M5.33333 4V2.66667C5.33333 2.31305 5.47381 1.97391 5.72386 1.72386C5.97391 1.47381 6.31305 1.33333 6.66667 1.33333H9.33333C9.68696 1.33333 10.0261 1.47381 10.2761 1.72386C10.5262 1.97391 10.6667 2.31305 10.6667 2.66667V4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MoreVerticalIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M7.99992 8.00008C8.36811 8.00008 8.66659 7.7016 8.66659 7.33341C8.66659 6.96522 8.36811 6.66675 7.99992 6.66675C7.63173 6.66675 7.33325 6.96522 7.33325 7.33341C7.33325 7.7016 7.63173 8.00008 7.99992 8.00008Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.99992 4.00008C8.36811 4.00008 8.66659 3.7016 8.66659 3.33341C8.66659 2.96522 8.36811 2.66675 7.99992 2.66675C7.63173 2.66675 7.33325 2.96522 7.33325 3.33341C7.33325 3.7016 7.63173 4.00008 7.99992 4.00008Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.99992 13.3334C8.36811 13.3334 8.66659 13.0349 8.66659 12.6667C8.66659 12.2986 8.36811 12.0001 7.99992 12.0001C7.63173 12.0001 7.33325 12.2986 7.33325 12.6667C7.33325 13.0349 7.63173 13.3334 7.99992 13.3334Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FolderClosedIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path
+        d="M1.5 6.5H14.5M13.1667 13.5C13.5203 13.5 13.8594 13.3595 14.1095 13.1095C14.3595 12.8594 14.5 12.5203 14.5 12.1667V5.83333C14.5 5.47971 14.3595 5.14057 14.1095 4.89052C13.8594 4.64048 13.5203 4.5 13.1667 4.5H8.06671C7.84372 4.50219 7.62374 4.44841 7.42691 4.34359C7.23008 4.23877 7.06268 4.08625 6.94004 3.9L6.40004 3.1C6.27863 2.91565 6.11336 2.76432 5.91904 2.6596C5.72472 2.55488 5.50745 2.50004 5.28671 2.5H2.83333C2.47971 2.5 2.14057 2.64048 1.89052 2.89052C1.64048 3.14057 1.5 3.47971 1.5 3.83333V12.1667C1.5 12.5203 1.64048 12.8594 1.89052 13.1095C2.14057 13.3595 2.47971 13.5 2.83333 13.5H13.1667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const iconGroupButtonClassName = cn(
+  buttonVariants({ variant: "outline", size: "icon" }),
+  controlGroupItemFixedClassName,
+  "!size-9 !min-h-9 !min-w-9",
+);
+
+const editButtonClassName = cn(buttonVariants({ variant: "outline", size: "sm" }), controlGroupItemFixedClassName, "!h-9 gap-2");
+
+type ItemDetailTopBarProps = {
+  t: (messageKey: string, values?: WebMessageValues) => string;
+  vault: Vault | undefined;
+  folderId: string | null;
+  folderLabel: string;
+  favorite: boolean;
+  onEdit: () => void;
+};
+
+const controlGroupLayoutClassName = "w-auto shrink-0";
+
+const breadcrumbLinkClassName =
+  "inline-flex min-w-0 items-center gap-1.5 rounded-sm text-foreground transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+export default function ItemDetailTopBar({
+  t,
+  vault,
+  folderId,
+  folderLabel,
+  favorite,
+  onEdit,
+}: ItemDetailTopBarProps) {
+  const [searchParams] = useSearchParams();
+  const isItemsMobileListView = useItemsMobileListView();
+  const itemsPathMergeOptions = isItemsMobileListView ? { clearItem: true as const } : undefined;
+  const vaultTo = vault ? itemsPathWithVaultMerged(searchParams, vault.id, itemsPathMergeOptions) : null;
+  const folderTo = folderId ? itemsPathWithFolderMerged(searchParams, folderId, itemsPathMergeOptions) : null;
+
+  return (
+    <div className="flex min-w-0 items-center gap-3 border-b border-border py-2 pl-4 pr-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+        {vaultTo ? (
+          <Link to={vaultTo} className={breadcrumbLinkClassName}>
+            <span className="text-base leading-none" aria-hidden>
+              {vault?.isPersonal ? "🏠" : "💼"}
+            </span>
+            <span className="truncate">{vault?.name ?? "…"}</span>
+          </Link>
+        ) : (
+          <span className="inline-flex min-w-0 items-center gap-1.5 text-foreground">
+            <span className="text-base leading-none" aria-hidden>
+              {vault?.isPersonal ? "🏠" : "💼"}
+            </span>
+            <span className="truncate">{vault?.name ?? "…"}</span>
+          </span>
+        )}
+        <span aria-hidden>•</span>
+        {folderTo ? (
+          <Link to={folderTo} className={breadcrumbLinkClassName}>
+            <FolderClosedIcon />
+            <span className="truncate">{folderLabel}</span>
+          </Link>
+        ) : (
+          <span className="inline-flex min-w-0 items-center gap-1.5 text-foreground">
+            <FolderClosedIcon />
+            <span className="truncate">{folderLabel}</span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className={iconGroupButtonClassName}
+            aria-label={t("web.nav.addCapsule")}
+            onClick={() => undefined}
+          >
+            <IconCapsule16 />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className={iconGroupButtonClassName}
+            aria-label={favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
+            onClick={() => undefined}
+          >
+            <IconFavorite16 />
+          </Button>
+        </ControlGroup>
+
+        <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
+          <Button type="button" variant="outline" size="sm" className={editButtonClassName} onClick={onEdit}>
+            <IconEdit16 />
+            <span>{t("web.items.menu.edit")}</span>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={iconGroupButtonClassName}
+                aria-label={t("web.items.detail.moreActionsAria")}
+              >
+                <MoreVerticalIcon />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52 p-1">
+              <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                <IconUnarchive16 className="text-foreground" />
+                <span>{t("web.items.menu.archive")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="mx-1 my-1" />
+              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onSelect={() => undefined}>
+                <IconDelete16 />
+                <span>{t("web.items.menu.delete")}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ControlGroup>
+      </div>
+    </div>
+  );
+}

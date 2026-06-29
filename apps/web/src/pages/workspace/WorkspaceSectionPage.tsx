@@ -1,23 +1,31 @@
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import type { Vault } from "@okkey/types";
+import { useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 
-import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, VAULT_QUERY_PARAM } from "../../routes/paths";
+import ItemDetailCard from "../../components/items/ItemDetailCard";
 import { useLocale } from "../../locale/LocaleContext";
+import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, VAULT_QUERY_PARAM } from "../../routes/paths";
 
 export type WorkspaceShellOutletContext = {
   workspaceId: string;
+  vaults: readonly Vault[];
 };
 
 export default function WorkspaceSectionPage() {
-  const { workspaceId } = useOutletContext<WorkspaceShellOutletContext>();
+  const { workspaceId, vaults } = useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  // Items filters from the shell URL; mutually exclusive at runtime (see `WorkspaceRoutesLayout` + `paths.ts`).
   const vaultId = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderId = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const itemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
+  const isItemsRoute = location.pathname === ITEMS_PATH;
+
+  if (isItemsRoute && itemId) {
+    return <ItemDetailCard itemId={itemId} vaults={vaults} />;
+  }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 p-4">
       <p className="okkey-body text-copy-secondary">{t("workspaces.shellPlaceholder")}</p>
       <p className="okkey-small text-copy-secondary" data-testid="workspace-shell-context-id">
         {workspaceId}
@@ -30,11 +38,6 @@ export default function WorkspaceSectionPage() {
       {folderId ? (
         <p className="okkey-small text-copy-secondary" data-testid="items-folder-filter">
           folder: {folderId}
-        </p>
-      ) : null}
-      {itemId ? (
-        <p className="okkey-small text-copy-secondary" data-testid="items-item-filter">
-          item: {itemId}
         </p>
       ) : null}
     </div>

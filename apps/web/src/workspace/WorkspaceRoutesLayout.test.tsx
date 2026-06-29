@@ -37,20 +37,28 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
   WorkspaceItemsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useWorkspaceItemsState: () => ({
     records: [],
+    items: [],
     loading: false,
     bootstrapped: true,
     error: null,
     syncVersion: 0,
+    getItemById: () => undefined,
+    getItemActivityById: () => [],
     createItem: vi.fn(),
+    updateItem: vi.fn(),
     refreshItems: vi.fn(),
   }),
   useWorkspaceItems: () => ({
     records: [],
+    items: [],
     loading: false,
     bootstrapped: true,
     error: null,
     syncVersion: 0,
+    getItemById: () => undefined,
+    getItemActivityById: () => [],
     createItem: vi.fn(),
+    updateItem: vi.fn(),
     refreshItems: vi.fn(),
   }),
 }));
@@ -60,6 +68,7 @@ vi.mock("../folders/WorkspaceFoldersContext", () => ({
   useWorkspaceFolders: () => ({
     itemFolderByItemId: new Map(),
     flatFolders: [],
+    folderTree: [],
     createFolder: vi.fn(),
     assignItemToFolder: vi.fn(),
   }),
@@ -85,6 +94,9 @@ vi.mock("../locale/LocaleContext", () => ({
 }));
 
 vi.mock("../components/items/NewItemPopup", () => ({
+  default: () => null,
+}));
+vi.mock("../components/items/EditItemPopup", () => ({
   default: () => null,
 }));
 
