@@ -14,9 +14,11 @@ export function formatSaveError(error: unknown, fallback: string): string {
 }
 
 export async function runSaveWithToast<T>(messages: SaveToastMessages, action: () => Promise<T>): Promise<T> {
-  return toast.promise(action(), {
-    loading: messages.loading,
-    success: messages.success,
-    error: (error) => formatSaveError(error, messages.error),
-  });
+  return toast
+    .promise(action(), {
+      loading: messages.loading,
+      success: messages.success,
+      error: (error) => formatSaveError(error, messages.error),
+    })
+    .unwrap();
 }

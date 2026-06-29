@@ -7,7 +7,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Favicon,
   ScrollArea,
   SidebarGroupLabel,
   Spinner,
@@ -22,6 +21,7 @@ import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
+import ItemRecordFavicon from "../items/ItemRecordFavicon";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { EDIT_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
@@ -55,6 +55,7 @@ export type ItemsListRecordWire = {
   vaultId?: string;
   vaultSlot?: number;
   folderId?: string | null;
+  categoryId?: string;
   urls: string[];
   title: string;
   login: string;
@@ -69,6 +70,7 @@ export type ItemsListRecord = {
   id: string;
   vaultId: string;
   folderId: string | null;
+  categoryId: string;
   urls: string[];
   title: string;
   login: string;
@@ -1280,9 +1282,10 @@ export default function ItemsListLeftPane({
                             }
                             className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 px-3 py-2.5 text-left"
                           >
-                            <Favicon
-                              name={row.title}
-                              urls={row.urls.length > 0 ? row.urls : undefined}
+                            <ItemRecordFavicon
+                              categoryId={row.categoryId}
+                              title={row.title}
+                              urls={row.urls}
                               size={32}
                               className="shrink-0 bg-background"
                             />

@@ -146,7 +146,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           search: nextSearch ? `?${nextSearch}` : "",
           hash: location.hash,
         },
-        { replace: false },
+        { replace: true },
       );
       setShowValidation(false);
     } catch (error) {

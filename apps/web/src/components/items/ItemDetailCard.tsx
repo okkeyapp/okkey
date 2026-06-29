@@ -1,5 +1,5 @@
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
-import { Button, Favicon, Spinner } from "@okkey/ui";
+import { Button, Spinner } from "@okkey/ui";
 import { useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -26,7 +26,7 @@ import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
-import { ItemCategoryIcon } from "./itemCategoryIcons";
+import ItemRecordFavicon from "./ItemRecordFavicon";
 import ItemActivitySection from "./ItemActivitySection";
 import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
 import ItemDetailTopBar from "./ItemDetailTopBar";
@@ -214,16 +214,11 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
       <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6 md:py-[36px]">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            <Favicon
-              name={item.title}
-              urls={urls.length > 0 ? urls : undefined}
+            <ItemRecordFavicon
+              categoryId={item.categoryId}
+              title={item.title}
+              urls={urls}
               size={40}
-              color={category?.iconColor}
-              icon={
-                category ? (
-                  <ItemCategoryIcon categoryId={category.id} pixelSize={22} className="shrink-0 text-white" />
-                ) : undefined
-              }
               alt=""
             />
             <h1 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{item.title}</h1>

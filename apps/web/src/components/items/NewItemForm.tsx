@@ -1,6 +1,6 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
-import { Favicon, Input, cn } from "@okkey/ui";
+import { Input, cn } from "@okkey/ui";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
@@ -17,7 +17,7 @@ import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../ke
 import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
 import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
-import { ItemCategoryIcon } from "./itemCategoryIcons";
+import ItemRecordFavicon from "./ItemRecordFavicon";
 import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
 import { generateEntityId } from "@okkey/types";
@@ -172,12 +172,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-4">
-        <Favicon
-          name={trimmedRecordName || undefined}
-          urls={committedWebsiteUrls.length > 0 ? committedWebsiteUrls : undefined}
+        <ItemRecordFavicon
+          categoryId={category.id}
+          title={trimmedRecordName || undefined}
+          urls={committedWebsiteUrls}
           size={40}
-          color={category.iconColor}
-          icon={<ItemCategoryIcon categoryId={category.id} pixelSize={22} className="shrink-0 text-white" />}
           alt=""
         />
         <Input

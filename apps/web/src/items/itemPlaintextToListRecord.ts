@@ -33,6 +33,7 @@ export function itemPlaintextToListRecord(
     id: item.itemId,
     vaultId: item.vaultId,
     folderId: input.folderId,
+    categoryId: item.categoryId,
     urls: collectUrls(item),
     title: item.title,
     login,
