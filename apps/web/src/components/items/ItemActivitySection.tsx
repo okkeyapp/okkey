@@ -92,7 +92,7 @@ export default function ItemActivitySection({ t, entries }: ItemActivitySectionP
   }
 
   return (
-    <section className="overflow-visible pt-4">
+    <section className="overflow-visible pt-0 md:pt-4">
       <div className="flex flex-col overflow-visible">
         {visibleEntries.map((entry, index) => {
           const isLast = index === visibleEntries.length - 1;

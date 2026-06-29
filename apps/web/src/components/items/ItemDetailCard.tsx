@@ -206,7 +206,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             vault={vault}
             folderId={folderId}
             folderLabel={folderLabel}
-            className="pt-4 md:hidden"
+            className="-mr-1 pt-4 md:hidden"
           />
 
           <ItemActivitySection t={t} entries={activityEntries} />
