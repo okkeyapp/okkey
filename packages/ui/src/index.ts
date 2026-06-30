@@ -31,6 +31,14 @@ export {
   type KeyFieldRecoveryCodesValue,
 } from "./lib/key-field-recovery-codes.js";
 export {
+  coerceSecretRawToFormValue,
+  getSecretKindFromRaw,
+  parseKeyFieldSecretRaw,
+  serializeKeyFieldSecretRaw,
+  type KeyFieldSecretKind,
+  type KeyFieldSecretRaw,
+} from "./lib/key-field-secret.js";
+export {
   buildKeyFieldFileDownloadUrl,
   defaultKeyFieldFileUploadConstraints,
   formatKeyFieldFileMeta,

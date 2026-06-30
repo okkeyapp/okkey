@@ -48,7 +48,7 @@ export const keyFieldTypeOptions: readonly KeyFieldTypeOption[] = [
   { id: "date", label: "Date", group: "general" },
   { id: "url", label: "Website URL", group: "general" },
   { id: "multiline-text", label: "Multiline text", group: "general" },
-  { id: "password", label: "Password", group: "secret" },
+  { id: "secret", label: "Secret", group: "secret" },
   { id: "totp", label: "Totp", group: "secret" },
   { id: "recovery-codes", label: "Recovery codes", group: "secret" },
   { id: "file", label: "File", group: "file" },
@@ -136,6 +136,12 @@ function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
 const keyFieldOverlayPillClassName =
   "inline-flex h-8 items-center justify-center gap-1.5 rounded-[50px] border border-black/5 px-3 text-sm font-medium text-foreground";
 
+const keyFieldSingleLineControlClassName =
+  "m-0 block w-full min-w-0 border-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none";
+
+/** Matches Tailwind `h-5` / `leading-5` for a single-line control. */
+const KEY_FIELD_SINGLE_LINE_HEIGHT_PX = 20;
+
 export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "children"> & {
   label: string;
   value?: React.ReactNode;
@@ -153,6 +159,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   onFileUpload?: KeyFieldFileUploadHandler;
   onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
   autoFocusValue?: boolean;
+  /** Bumps when the parent requests value focus again for the same field. */
+  autoFocusValueRequest?: number;
   reorderable?: boolean;
   onLabelChange?: (label: string) => void;
   onValueChange?: (value: string) => void;
@@ -160,6 +168,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   onValueFocus?: () => void;
   /** Marks the value control as part of the password generator trigger area (outside-click handling). */
   passwordGeneratorTrigger?: boolean;
+  /** Multiline secret: concealed as a single line; revealed as a compact textarea. */
+  secretMultilineValue?: boolean;
   transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
@@ -221,12 +231,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       onFileUpload,
       onFileDelete,
       autoFocusValue = false,
+      autoFocusValueRequest = 0,
       reorderable = false,
       onLabelChange,
       onValueChange,
       onValueBlur,
       onValueFocus,
       passwordGeneratorTrigger = false,
+      secretMultilineValue = false,
       transformValueInput,
       meta,
       actions,
@@ -272,6 +284,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const [isValueFocused, setIsValueFocused] = React.useState(false);
     const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
     const hasAutoFocusedValueRef = React.useRef(false);
+    const lastAutoFocusRequestRef = React.useRef<number | undefined>(undefined);
+    const prevSecretMultilineValueRef = React.useRef(secretMultilineValue);
+    const ignoreValueBlurRef = React.useRef(false);
     const valueInputRef = React.useRef<HTMLInputElement | null>(null);
     const valueTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
     const [draftLabel, setDraftLabel] = React.useState(label);
@@ -280,7 +295,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const canEditLabel = mode === "edit" && editableLabel;
     const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
+    if (prevSecretMultilineValueRef.current !== secretMultilineValue) {
+      prevSecretMultilineValueRef.current = secretMultilineValue;
+      ignoreValueBlurRef.current = true;
+    }
     const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
+    const useCompactMultilineEditor = secretMultilineValue && !shouldConcealValue;
+    const useConcealedSingleLineEditor = secretMultilineValue && shouldConcealValue;
+    const shouldAutoResizeTextarea = multilineValue || recoveryCodesValue || secretMultilineValue;
     const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
     const formattedAddressValue =
       addressValue && typeof stringValue === "string"
@@ -315,31 +337,58 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       : copyIcon ?? <CopyIcon className="size-4" />;
 
     const resizeTextarea = React.useCallback(() => {
+      if (!shouldAutoResizeTextarea) {
+        return;
+      }
+
       const valueControl = valueTextareaRef.current;
       if (!valueControl) {
         return;
       }
 
       valueControl.style.height = "auto";
-      valueControl.style.height = `${valueControl.scrollHeight}px`;
-    }, []);
+      const measuredHeight = valueControl.scrollHeight;
+      const nextHeight = secretMultilineValue
+        ? Math.max(KEY_FIELD_SINGLE_LINE_HEIGHT_PX, measuredHeight)
+        : measuredHeight;
+      valueControl.style.height = `${nextHeight}px`;
+    }, [secretMultilineValue, shouldAutoResizeTextarea]);
 
     const setValueTextareaRef = React.useCallback(
       (node: HTMLTextAreaElement | null) => {
         valueTextareaRef.current = node;
-        if (node) {
+        if (node && shouldAutoResizeTextarea) {
           resizeTextarea();
           window.requestAnimationFrame(resizeTextarea);
         }
       },
-      [resizeTextarea],
+      [resizeTextarea, shouldAutoResizeTextarea],
     );
+
+    const revealSecretMultilineEditor = React.useCallback(() => {
+      setIsValueFocused(true);
+      onValueFocus?.();
+    }, [onValueFocus]);
+
+    const handleValueControlBlur = React.useCallback(() => {
+      if (ignoreValueBlurRef.current) {
+        return;
+      }
+      setIsValueFocused(false);
+      onValueBlur?.();
+    }, [onValueBlur]);
 
     const focusValueControl = React.useCallback(() => {
       if (fileValue) {
         return;
       }
-      if (multilineValue || recoveryCodesValue) {
+
+      if (secretMultilineValue && concealValue && draftValue.length > 0 && !isValueFocused) {
+        revealSecretMultilineEditor();
+        return;
+      }
+
+      if (multilineValue || recoveryCodesValue || secretMultilineValue) {
         valueTextareaRef.current?.focus();
         return;
       }
@@ -355,7 +404,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
 
       valueInputRef.current?.focus();
-    }, [addressValue, dateValue, fileValue, multilineValue, recoveryCodesValue]);
+    }, [
+      addressValue,
+      concealValue,
+      dateValue,
+      draftValue.length,
+      fileValue,
+      isValueFocused,
+      multilineValue,
+      recoveryCodesValue,
+      revealSecretMultilineEditor,
+      secretMultilineValue,
+    ]);
 
     React.useEffect(() => {
       setDraftLabel(label);
@@ -366,23 +426,79 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     }, [stringValue]);
 
     React.useLayoutEffect(() => {
-      if (multilineValue || recoveryCodesValue) {
+      if (shouldAutoResizeTextarea) {
         resizeTextarea();
       }
-    }, [draftValue, multilineValue, recoveryCodesValue, resizeTextarea]);
+    }, [draftValue, shouldAutoResizeTextarea, resizeTextarea]);
+
+    React.useLayoutEffect(() => {
+      if (!canEditValue || !secretMultilineValue || !isValueFocused || shouldConcealValue) {
+        return;
+      }
+
+      const textarea = valueTextareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      resizeTextarea();
+
+      if (document.activeElement !== textarea) {
+        textarea.focus();
+        const end = textarea.value.length;
+        textarea.setSelectionRange(end, end);
+      }
+    }, [canEditValue, isValueFocused, resizeTextarea, secretMultilineValue, shouldConcealValue]);
+
+    React.useEffect(() => {
+      if (!ignoreValueBlurRef.current) {
+        return;
+      }
+
+      ignoreValueBlurRef.current = false;
+
+      if (!canEditValue) {
+        return;
+      }
+
+      setIsValueFocused(true);
+
+      function focusAfterSecretEditorSwap() {
+        if (secretMultilineValue) {
+          const textarea = valueTextareaRef.current;
+          if (!textarea) {
+            return;
+          }
+          if (document.activeElement !== textarea) {
+            textarea.focus();
+            const end = textarea.value.length;
+            textarea.setSelectionRange(end, end);
+          }
+          return;
+        }
+
+        valueInputRef.current?.focus();
+      }
+
+      focusAfterSecretEditorSwap();
+      window.requestAnimationFrame(focusAfterSecretEditorSwap);
+    }, [canEditValue, secretMultilineValue]);
 
     React.useEffect(() => {
       if (!autoFocusValue) {
         hasAutoFocusedValueRef.current = false;
+        lastAutoFocusRequestRef.current = undefined;
         return undefined;
       }
 
-      if (!canEditValue || hasAutoFocusedValueRef.current) {
+      if (hasAutoFocusedValueRef.current && lastAutoFocusRequestRef.current === autoFocusValueRequest) {
         return undefined;
       }
 
       hasAutoFocusedValueRef.current = true;
-      if (!addressValue && !recoveryCodesValue && !fileValue) {
+      lastAutoFocusRequestRef.current = autoFocusValueRequest;
+
+      if (canEditValue && !addressValue && !recoveryCodesValue && !fileValue) {
         setIsValueFocused(true);
       }
       if (dateValue) {
@@ -391,7 +507,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
       function focusValueControlIfNeeded() {
         const valueControl =
-          multilineValue || recoveryCodesValue ? valueTextareaRef.current : valueInputRef.current;
+          multilineValue || recoveryCodesValue || secretMultilineValue
+            ? valueTextareaRef.current
+            : valueInputRef.current;
         if (!valueControl || document.activeElement === valueControl) {
           return;
         }
@@ -403,15 +521,22 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         window.requestAnimationFrame(focusValueControlIfNeeded);
       });
       const timeoutId = window.setTimeout(focusValueControlIfNeeded, 50);
-      const fallbackTimeoutId = window.setTimeout(focusValueControlIfNeeded, 150);
 
       return () => {
         window.cancelAnimationFrame(frameId);
         window.clearTimeout(timeoutId);
-        window.clearTimeout(fallbackTimeoutId);
-        hasAutoFocusedValueRef.current = false;
       };
-    }, [autoFocusValue, canEditValue, addressValue, dateValue, fileValue, multilineValue, recoveryCodesValue]);
+    }, [
+      autoFocusValue,
+      autoFocusValueRequest,
+      canEditValue,
+      addressValue,
+      dateValue,
+      fileValue,
+      multilineValue,
+      recoveryCodesValue,
+      secretMultilineValue,
+    ]);
 
     React.useEffect(() => {
       if (canEditValue) {
@@ -743,7 +868,37 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               )}
             >
               {canEditValue ? (
-                multilineValue ? (
+                useConcealedSingleLineEditor ? (
+                  <input
+                    ref={valueInputRef}
+                    value={concealedValue}
+                    readOnly
+                    onFocus={revealSecretMultilineEditor}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      revealSecretMultilineEditor();
+                    }}
+                    className={cn(keyFieldSingleLineControlClassName, "h-5 cursor-text")}
+                  />
+                ) : useCompactMultilineEditor ? (
+                  <textarea
+                    ref={setValueTextareaRef}
+                    value={draftValue}
+                    placeholder={valuePlaceholder}
+                    onChange={handleValueChange}
+                    onFocus={() => {
+                      setIsValueFocused(true);
+                      resizeTextarea();
+                      onValueFocus?.();
+                    }}
+                    onBlur={handleValueControlBlur}
+                    style={{ height: KEY_FIELD_SINGLE_LINE_HEIGHT_PX }}
+                    className={cn(
+                      keyFieldSingleLineControlClassName,
+                      "resize-none overflow-hidden placeholder:text-muted-foreground",
+                    )}
+                  />
+                ) : multilineValue ? (
                   <textarea
                     ref={setValueTextareaRef}
                     value={draftValue}
@@ -820,10 +975,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       setIsValueFocused(true);
                       onValueFocus?.();
                     }}
-                    onBlur={() => {
-                      setIsValueFocused(false);
-                      onValueBlur?.();
-                    }}
+                    onBlur={handleValueControlBlur}
                     {...(passwordGeneratorTrigger ? { "data-password-generator-trigger": true } : {})}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
@@ -838,6 +990,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 <KeyFieldFileView value={draftValue} onOpen={mode === "view" ? handleOpenFile : undefined} />
               ) : addressValue ? (
                 formattedAddressValue
+              ) : secretMultilineValue && !shouldConcealValue ? (
+                <span className="whitespace-pre-wrap break-words">{displayedValue}</span>
               ) : (
                 displayedValue
               )}

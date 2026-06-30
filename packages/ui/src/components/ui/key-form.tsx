@@ -44,6 +44,19 @@ export const KeyForm = React.forwardRef<HTMLDivElement, KeyFormProps>(
     ref,
   ) => {
     const canAddSection = mode === "edit" && Boolean(onAddSection);
+    const pendingAddSectionTypeRef = React.useRef<KeyFieldTypeOption | null>(null);
+
+    function queueAddSection(type: KeyFieldTypeOption) {
+      pendingAddSectionTypeRef.current = type;
+    }
+
+    function flushQueuedAddSection() {
+      const type = pendingAddSectionTypeRef.current;
+      pendingAddSectionTypeRef.current = null;
+      if (type) {
+        onAddSection?.(type);
+      }
+    }
 
     return (
       <div ref={ref} className={cn("flex min-w-0 flex-col gap-4", className)} {...props}>
@@ -61,11 +74,18 @@ export const KeyForm = React.forwardRef<HTMLDivElement, KeyFormProps>(
                 {addSectionLabel}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" className="min-w-[260px] p-1">
+            <DropdownMenuContent
+              align="center"
+              className="min-w-[260px] p-1"
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                flushQueuedAddSection();
+              }}
+            >
               {fieldTypes.map((type, index) => (
                 <React.Fragment key={type.id}>
                   {index > 0 && fieldTypes[index - 1]?.group !== type.group ? <DropdownMenuSeparator /> : null}
-                  <DropdownMenuItem onSelect={() => onAddSection?.(type)}>
+                  <DropdownMenuItem onSelect={() => queueAddSection(type)}>
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate">{type.label}</span>
                       {type.description ? <span className="truncate text-xs text-muted-foreground">{type.description}</span> : null}

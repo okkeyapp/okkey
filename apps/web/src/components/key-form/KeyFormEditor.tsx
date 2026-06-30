@@ -26,6 +26,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   KeyField,
   KeyFieldOverlayPanel,
@@ -53,6 +54,7 @@ import {
   serializeKeyFieldRecoveryCodesValue,
   type KeyFieldValueTransformContext,
   type KeyFieldTypeOption,
+  type KeyFieldSecretKind,
   type KeyFormMode,
   type KeyFieldFileValue,
 } from "@okkey/ui";
@@ -66,6 +68,17 @@ import {
   type KeyFormUrlAutofillScope,
   type PasswordStrengthLabelKey,
 } from "./keyFormI18n";
+import {
+  getSecretKind,
+  isConfigurableSecretField,
+  isFixedPasswordField,
+  isSecretFieldEmpty,
+  isSecretLikeField,
+  secretFieldShowsStrength,
+  shouldConcealSecretField,
+  shouldOpenGeneratorOnFocus,
+  showSecretLabelKey,
+} from "./keyFormSecretField";
 
 export type { KeyFormUrlAutofillScope } from "./keyFormI18n";
 
@@ -79,6 +92,7 @@ export type KeyFormEditorField = {
   copyValue?: string;
   editableLabel?: boolean;
   secret?: boolean;
+  secretKind?: KeyFieldSecretKind;
   deletable?: boolean;
   required?: boolean;
   urlAutofillScope?: KeyFormUrlAutofillScope;
@@ -115,6 +129,24 @@ export type RecoveryCodesValueChange = {
 type DemoSectionVariant = KeyFormEditorSectionVariant;
 
 type DemoField = KeyFormEditorField;
+
+function fieldValuePlaceholderKey(field: Pick<DemoField, "id" | "type">): string {
+  if (field.id === "login") {
+    return "login";
+  }
+  if (field.id === "password") {
+    return "password";
+  }
+  return field.type;
+}
+
+function fieldDisplayLabel(field: Pick<DemoField, "id" | "type" | "label">, messages: KeyFormEditorMessages): string {
+  const trimmed = field.label?.trim();
+  if (trimmed) {
+    return trimmed;
+  }
+  return messages.fieldLabels[fieldValuePlaceholderKey(field)] ?? field.id;
+}
 
 type DemoSection = KeyFormEditorSection;
 
@@ -645,6 +677,40 @@ function metaForField(
   return null;
 }
 
+function metaForSecretLikeField(
+  field: DemoField,
+  sectionVariant: DemoSectionVariant,
+  messages: KeyFormEditorMessages,
+  value?: ReactNode,
+  mode: KeyFormMode = "view",
+): ReactNode {
+  if (!secretFieldShowsStrength(field)) {
+    return null;
+  }
+  return metaForField("password", sectionVariant, messages, value, mode);
+}
+
+function secretVisibilityLabels(
+  field: DemoField,
+  isVisible: boolean,
+  messages: KeyFormEditorMessages,
+): { show: string; hide: string } {
+  if (showSecretLabelKey(field) === "password") {
+    return { show: messages.showPassword, hide: messages.hidePassword };
+  }
+  return { show: messages.showSecret, hide: messages.hideSecret };
+}
+
+function secretKindLabel(kind: KeyFieldSecretKind, messages: KeyFormEditorMessages): string {
+  if (kind === "password") {
+    return messages.secretKind.password;
+  }
+  if (kind === "single-line") {
+    return messages.secretKind.singleLine;
+  }
+  return messages.secretKind.multiLine;
+}
+
 function generatePassword(settings: PasswordGeneratorSettings, length: number): string {
   const enabledSets = (Object.keys(settings) as Array<keyof PasswordGeneratorSettings>)
     .filter((key) => settings[key])
@@ -1073,6 +1139,7 @@ type SortableFieldProps = {
   mode: KeyFormMode;
   reorderable: boolean;
   autoFocusValue?: boolean;
+  autoFocusValueRequest?: number;
   onLabelChange: (label: string) => void;
   onValueChange: (value: string) => void;
   actions: ReactNode;
@@ -1115,6 +1182,7 @@ function SortableField({
   mode,
   reorderable,
   autoFocusValue,
+  autoFocusValueRequest,
   onLabelChange,
   onValueChange,
   actions,
@@ -1149,6 +1217,8 @@ function SortableField({
   fileUploadLabel,
   fileClearLabel,
 }: SortableFieldProps) {
+  const secretKind = getSecretKind(field);
+  const isMultiLineSecret = field.type === "secret" && secretKind === "multi-line";
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
     data: {
@@ -1165,12 +1235,13 @@ function SortableField({
   return (
     <KeyField
       ref={setNodeRef}
-      label={field.label}
+      label={fieldDisplayLabel(field, messages)}
       value={value}
       mode={mode}
       editableLabel={field.editableLabel}
       editableValue={typeof value === "string"}
-      multilineValue={field.type === "multiline-text"}
+      multilineValue={field.type === "multiline-text" || isMultiLineSecret}
+      secretMultilineValue={isMultiLineSecret}
       dateValue={dateValue}
       addressValue={addressValue}
       recoveryCodesValue={recoveryCodesValue}
@@ -1179,8 +1250,13 @@ function SortableField({
       onFileUpload={onFileUpload}
       onFileDelete={onFileDelete}
       autoFocusValue={autoFocusValue}
+      autoFocusValueRequest={autoFocusValueRequest}
       reorderable={reorderable}
-      meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined, mode)}
+      meta={
+        field.type === "recovery-codes" || field.type === "totp" || field.type === "file" || isSecretLikeField(field)
+          ? null
+          : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined, mode)
+      }
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
@@ -1200,7 +1276,11 @@ function SortableField({
       )}
       style={style}
       valueClassName={
-        field.type === "multiline-text" || field.type === "note" || field.type === "address" || field.type === "recovery-codes"
+        field.type === "multiline-text" ||
+        field.type === "note" ||
+        field.type === "address" ||
+        field.type === "recovery-codes" ||
+        isMultiLineSecret
           ? "whitespace-pre-wrap break-words"
           : undefined
       }
@@ -1243,9 +1323,7 @@ function SortableField({
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
       fileClearLabel={fileClearLabel ?? messages.file.clear}
-      valuePlaceholder={
-        messages.fieldPlaceholders[field.id === "login" ? "login" : field.type]
-      }
+      valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
   );
@@ -1378,6 +1456,7 @@ export function KeyFormEditor({
   const [disabledMultilineCopyIds, setDisabledMultilineCopyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
+  const [valueFocusRequest, setValueFocusRequest] = useState(0);
   const [passwordGeneratorFieldId, setPasswordGeneratorFieldId] = useState<string | null>(null);
   const [passwordGeneratorPreferences, setPasswordGeneratorPreferences] = useState<PasswordGeneratorPreferences>(
     loadPasswordGeneratorPreferences,
@@ -1388,6 +1467,7 @@ export function KeyFormEditor({
   );
   const [isGeneratedPasswordCopied, setIsGeneratedPasswordCopied] = useState(false);
   const nextIdRef = useRef(1);
+  const pendingSecretKindFocusFieldIdRef = useRef<string | null>(null);
   const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const urlFieldTypes = useMemo(() => fieldTypes.filter((type) => type.id === "url"), [fieldTypes]);
   const totpFieldTypes = useMemo(() => fieldTypes.filter((type) => type.id === "totp"), [fieldTypes]);
@@ -1468,6 +1548,19 @@ export function KeyFormEditor({
     return () => document.removeEventListener("pointerdown", handleDocumentPointerDown);
   }, [passwordGeneratorFieldId]);
 
+  function focusFieldValue(fieldId: string) {
+    setActiveValueFieldId(fieldId);
+    setValueFocusRequest((current) => current + 1);
+  }
+
+  function flushPendingSecretKindFocus() {
+    const fieldId = pendingSecretKindFocusFieldIdRef.current;
+    pendingSecretKindFocusFieldIdRef.current = null;
+    if (fieldId) {
+      focusFieldValue(fieldId);
+    }
+  }
+
   function createField(type: KeyFieldTypeOption): DemoField {
     const id = `field-${nextIdRef.current++}`;
     const initialValue =
@@ -1483,14 +1576,14 @@ export function KeyFormEditor({
       value: initialValue,
       copyValue: "",
       editableLabel: true,
-      secret: type.id === "password",
+      secret: type.id === "secret",
+      ...(type.id === "secret" ? { secretKind: "password" as const } : {}),
     };
   }
 
   function addSection(type: KeyFieldTypeOption) {
     const sectionId = `section-${nextIdRef.current++}`;
     const field = createField(type);
-    setActiveValueFieldId(field.id);
     setSections((current) => [
       ...current,
       {
@@ -1500,6 +1593,7 @@ export function KeyFormEditor({
         fields: [field],
       },
     ]);
+    focusFieldValue(field.id);
   }
 
   function addField(sectionId: string, type: KeyFieldTypeOption) {
@@ -1522,12 +1616,12 @@ export function KeyFormEditor({
       };
     }
 
-    setActiveValueFieldId(field.id);
     setSections((current) =>
       current.map((section) =>
         section.id === sectionId ? { ...section, fields: [...section.fields, field] } : section,
       ),
     );
+    focusFieldValue(field.id);
   }
 
   function updateUrlAutofillScope(sectionId: string, fieldId: string, scope: KeyFormUrlAutofillScope) {
@@ -1580,7 +1674,7 @@ export function KeyFormEditor({
         ...field,
         value: nextValue,
         copyValue:
-          field.type === "password"
+          isSecretLikeField(field)
             ? value
             : field.type === "phone"
               ? nextValue
@@ -1601,9 +1695,26 @@ export function KeyFormEditor({
       ),
     );
 
-    if (targetField?.type === "password") {
+    if (targetField && isFixedPasswordField(targetField)) {
       syncPasswordGeneratorForPasswordValue(fieldId, value);
     }
+  }
+
+  function updateSecretKind(sectionId: string, fieldId: string, secretKind: KeyFieldSecretKind) {
+    setOpenFieldMenuId(null);
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === fieldId && field.type === "secret" ? { ...field, secretKind } : field,
+              ),
+            }
+          : section,
+      ),
+    );
+    pendingSecretKindFocusFieldIdRef.current = fieldId;
   }
 
   function removeField(sectionId: string, fieldId: string) {
@@ -1900,20 +2011,24 @@ export function KeyFormEditor({
 
   function renderActions(section: DemoSection, field: DemoField) {
     const canEdit = mode === "edit";
-    const isPasswordVisible = field.type === "password" && visiblePasswordIds.has(field.id);
+    const isSecretVisible = isSecretLikeField(field) && visiblePasswordIds.has(field.id);
     const isRecoveryCodesRevealed = field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
-    const fieldMeta = metaForField(
-      field.type,
+    const fieldMeta = metaForSecretLikeField(
+      field,
       section.variant,
       messages,
       typeof field.value === "string" ? field.value : undefined,
       mode,
     );
+    const visibilityLabels = secretVisibilityLabels(field, isSecretVisible, messages);
+    const currentSecretKind = getSecretKind(field);
+    const secretKindOptions: KeyFieldSecretKind[] = ["password", "single-line", "multi-line"];
+
     if (!canEdit) {
       const showRecoveryCodesMeta = field.type === "recovery-codes" && !isRecoveryCodesRevealed;
-      return (field.type === "password" || showRecoveryCodesMeta) && fieldMeta ? (
+      return (secretFieldShowsStrength(field) || showRecoveryCodesMeta) && fieldMeta ? (
         <span className={cn("transition-opacity group-hover/key-field:opacity-0", isFieldMenuOpen && "opacity-0")}>
           {fieldMeta}
         </span>
@@ -1922,8 +2037,8 @@ export function KeyFormEditor({
 
     return (
       <>
-        {field.type === "password" ? fieldMeta : null}
-        {field.type === "password" ? (
+        {secretFieldShowsStrength(field) ? fieldMeta : null}
+        {isFixedPasswordField(field) ? (
           <>
             <DropdownMenu
               open={isFieldMenuOpen}
@@ -1934,7 +2049,7 @@ export function KeyFormEditor({
                   type="button"
                   variant="ghost"
                   size="iconSm"
-                data-password-generator-trigger
+                  data-password-generator-trigger
                   className={cn(
                     "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
                     section.variant === "additional" && "hover:!bg-card",
@@ -1948,12 +2063,65 @@ export function KeyFormEditor({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
                 <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
-                  {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
-                  {isPasswordVisible ? messages.hidePassword : messages.showPassword}
+                  {isSecretVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+                  {isSecretVisible ? visibilityLabels.hide : visibilityLabels.show}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openPasswordGenerator(field.id)}>
                   <GeneratePasswordIcon className="size-4" />
-                  {messages.generatePassword}
+                  {messages.generator}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        ) : isConfigurableSecretField(field) ? (
+          <>
+            <DropdownMenu
+              open={isFieldMenuOpen}
+              onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+            >
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="iconSm"
+                  data-password-generator-trigger
+                  className={cn(
+                    "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                    section.variant === "additional" && "hover:!bg-card",
+                    (isFieldMenuOpen || isPasswordGeneratorOpen) &&
+                      "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                  )}
+                  aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
+                >
+                  <GearIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={6}
+                className="min-w-[15rem] p-1"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  flushPendingSecretKindFocus();
+                }}
+              >
+                {secretKindOptions.map((kind) => {
+                  const selected = currentSecretKind === kind;
+                  return (
+                    <DropdownMenuItem key={kind} onSelect={() => updateSecretKind(section.id, field.id, kind)}>
+                      {selected ? <CheckIcon className="size-4" /> : <span className="size-4 shrink-0" aria-hidden />}
+                      {secretKindLabel(kind, messages)}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
+                  {isSecretVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+                  {isSecretVisible ? visibilityLabels.hide : visibilityLabels.show}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => openPasswordGenerator(field.id)}>
+                  <GeneratePasswordIcon className="size-4" />
+                  {messages.generator}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -2288,11 +2456,15 @@ export function KeyFormEditor({
   }
 
   function renderFloatingActions(field: DemoField) {
-    if (mode !== "view" || (field.type !== "password" && field.type !== "url" && field.type !== "address" && field.type !== "recovery-codes")) {
+    if (
+      mode !== "view" ||
+      (!isSecretLikeField(field) && field.type !== "url" && field.type !== "address" && field.type !== "recovery-codes")
+    ) {
       return null;
     }
 
-    const isPasswordVisible = visiblePasswordIds.has(field.id);
+    const isSecretVisible = visiblePasswordIds.has(field.id);
+    const visibilityLabels = secretVisibilityLabels(field, isSecretVisible, messages);
     const isRecoveryCodesVisible = visibleRecoveryCodesIds.has(field.id);
     const isOpen = openFieldMenuId === field.id;
 
@@ -2309,10 +2481,10 @@ export function KeyFormEditor({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={6} className="min-w-[11rem] p-1">
-          {field.type === "password" ? (
+          {isSecretLikeField(field) ? (
             <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
-              {isPasswordVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
-              {isPasswordVisible ? messages.hidePassword : messages.showPassword}
+              {isSecretVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+              {isSecretVisible ? visibilityLabels.hide : visibilityLabels.show}
             </DropdownMenuItem>
           ) : field.type === "url" ? (
             <DropdownMenuItem onSelect={() => field.copyValue && navigator.clipboard.writeText(field.copyValue)}>
@@ -2335,15 +2507,12 @@ export function KeyFormEditor({
     );
   }
 
-  function isPasswordFieldEmpty(field: DemoField): boolean {
-    return field.type === "password" && typeof field.value === "string" && field.value.trim().length === 0;
-  }
-
   function renderField(section: DemoSection, field: DemoField) {
     const canReorderField = section.id === "websites" || !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
+    const isSecretVisible = visiblePasswordIds.has(field.id);
     const isFieldInvalid = isInvalidField(field);
     const isFieldDraggingInSection = activeDrag?.type === "field" && activeDrag.sectionId === section.id;
     const isFirstField = section.fields[0]?.id === field.id;
@@ -2372,12 +2541,13 @@ export function KeyFormEditor({
         mode={mode}
         reorderable={canReorderField}
         autoFocusValue={activeValueFieldId === field.id}
+        autoFocusValueRequest={activeValueFieldId === field.id ? valueFocusRequest : undefined}
         actions={renderActions(section, field)}
         floatingActions={renderFloatingActions(field)}
         isHoverLocked={openFieldMenuId === field.id}
         forceActive={isPasswordGeneratorOpen}
         isInvalid={isFieldInvalid}
-        fieldOverlay={field.type === "password" ? renderPasswordGeneratorPanel(section, field) : undefined}
+        fieldOverlay={isSecretLikeField(field) ? renderPasswordGeneratorPanel(section, field) : undefined}
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
@@ -2386,7 +2556,7 @@ export function KeyFormEditor({
         copySuccessLabel={isWebsiteField ? null : undefined}
         statusOverlayLabel={isRecoveryCodesExhausted ? messages.allCodesUsed : undefined}
         messages={messages}
-        concealValue={field.type === "password" && !visiblePasswordIds.has(field.id) && !isPasswordGeneratorOpen}
+        concealValue={shouldConcealSecretField(field, isSecretVisible, isPasswordGeneratorOpen)}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
         recoveryCodesValue={isRecoveryCodesField}
@@ -2404,12 +2574,8 @@ export function KeyFormEditor({
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
         onValueBlur={isWebsitesSectionUrlField ? notifyWebsiteUrlsBlur : undefined}
-        onValueFocus={
-          field.type === "password" && isPasswordFieldEmpty(field)
-            ? () => openPasswordGenerator(field.id)
-            : undefined
-        }
-        passwordGeneratorTrigger={field.type === "password"}
+        onValueFocus={shouldOpenGeneratorOnFocus(field) ? () => openPasswordGenerator(field.id) : undefined}
+        passwordGeneratorTrigger={isSecretLikeField(field)}
       />
     );
   }
@@ -2419,6 +2585,8 @@ export function KeyFormEditor({
     const isWebsiteField = field.type === "url";
     const isRecoveryCodesField = field.type === "recovery-codes";
     const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
+    const isMultiLineSecret = field.type === "secret" && getSecretKind(field) === "multi-line";
+    const isSecretVisible = visiblePasswordIds.has(field.id);
 
     return (
       <KeyField
@@ -2427,7 +2595,8 @@ export function KeyFormEditor({
         mode={mode}
         editableLabel={field.editableLabel}
         editableValue={typeof fieldValue === "string"}
-        multilineValue={field.type === "multiline-text"}
+        multilineValue={field.type === "multiline-text" || isMultiLineSecret}
+        secretMultilineValue={isMultiLineSecret}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
         recoveryCodesValue={isRecoveryCodesField}
@@ -2440,14 +2609,16 @@ export function KeyFormEditor({
         recoveryCodesPlaceholder={messages.recoveryCodesPlaceholder}
         fileUploadLabel={messages.file.upload}
         fileClearLabel={messages.file.clear}
-        valuePlaceholder={
-        messages.fieldPlaceholders[field.id === "login" ? "login" : field.type]
-      }
+        valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
         reorderable
-        meta={field.type === "password" || field.type === "recovery-codes" || field.type === "totp" || field.type === "file" ? null : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)}
+        meta={
+          field.type === "recovery-codes" || field.type === "totp" || field.type === "file" || isSecretLikeField(field)
+            ? null
+            : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)
+        }
         actions={renderActions(section, field)}
         isInvalid={isInvalidField(field)}
-        concealValue={field.type === "password" && !visiblePasswordIds.has(field.id)}
+        concealValue={shouldConcealSecretField(field, isSecretVisible, false)}
         className={cn(
           !isDraggedField && section.variant === "primary" && "border-x-transparent",
           !isDraggedField && section.variant === "additional" && "border-x-transparent border-b-transparent",
@@ -2459,7 +2630,11 @@ export function KeyFormEditor({
         )}
         style={isDraggedField && activeDrag?.type === "field" && activeDrag.width ? { width: activeDrag.width } : undefined}
         valueClassName={
-          field.type === "multiline-text" || field.type === "note" || field.type === "address" || field.type === "recovery-codes"
+          field.type === "multiline-text" ||
+          field.type === "note" ||
+          field.type === "address" ||
+          field.type === "recovery-codes" ||
+          isMultiLineSecret
             ? "whitespace-pre-wrap break-words"
             : undefined
         }

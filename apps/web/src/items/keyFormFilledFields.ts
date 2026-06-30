@@ -1,6 +1,7 @@
 import type { ItemFieldV2 } from "@okkey/types";
 import {
   coerceRecoveryCodesRawToFormValue,
+  coerceSecretRawToFormValue,
   parseKeyFieldAddressValue,
   parseKeyFieldFileValue,
   parseKeyFieldRecoveryCodesValue,
@@ -55,6 +56,9 @@ export function isItemFieldFilled(field: ItemFieldV2): boolean {
     case "unknown":
       if (field.value.declaredType === "recovery-codes") {
         return hasRecoveryCodesContent(coerceRecoveryCodesRawToFormValue(field.value.raw));
+      }
+      if (field.value.declaredType === "secret") {
+        return coerceSecretRawToFormValue(field.value.raw).trim().length > 0;
       }
       if (field.value.declaredType === "address" && typeof field.value.raw === "string") {
         return hasAddressContent(field.value.raw);

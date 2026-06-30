@@ -95,6 +95,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
     const singleAddFieldType = fieldTypes.length === 1 ? fieldTypes[0] : undefined;
     const shouldShowHeader = Boolean(title) || canEditTitle || Boolean(headerActions);
     const addFieldButtonRef = React.useRef<HTMLButtonElement>(null);
+    const pendingAddFieldTypeRef = React.useRef<KeyFieldTypeOption | null>(null);
 
     React.useEffect(() => {
       setDraftTitle(title ?? "");
@@ -103,6 +104,18 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
     function handleAddField(type: KeyFieldTypeOption) {
       onAddField?.(type);
       addFieldButtonRef.current?.blur();
+    }
+
+    function queueAddField(type: KeyFieldTypeOption) {
+      pendingAddFieldTypeRef.current = type;
+    }
+
+    function flushQueuedAddField() {
+      const type = pendingAddFieldTypeRef.current;
+      pendingAddFieldTypeRef.current = null;
+      if (type) {
+        handleAddField(type);
+      }
     }
 
     function commitTitle() {
@@ -260,12 +273,15 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
               <DropdownMenuContent
                 align="center"
                 className="min-w-[240px] p-1"
-                onCloseAutoFocus={(event) => event.preventDefault()}
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  flushQueuedAddField();
+                }}
               >
                 {fieldTypes.map((type, index) => (
                   <React.Fragment key={type.id}>
                     {index > 0 && fieldTypes[index - 1]?.group !== type.group ? <DropdownMenuSeparator /> : null}
-                    <DropdownMenuItem onSelect={() => handleAddField(type)}>
+                    <DropdownMenuItem onSelect={() => queueAddField(type)}>
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{type.label}</span>
                         {type.description ? <span className="truncate text-xs text-muted-foreground">{type.description}</span> : null}

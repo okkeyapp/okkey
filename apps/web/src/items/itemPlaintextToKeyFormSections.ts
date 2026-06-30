@@ -1,5 +1,5 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
-import { coerceRecoveryCodesRawToFormValue, serializeKeyFieldFileValue } from "@okkey/ui";
+import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, getSecretKindFromRaw, serializeKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import { isItemFieldFilled } from "./keyFormFilledFields";
@@ -10,6 +10,9 @@ function formFieldType(field: ItemFieldV2): string {
   }
   if (field.type === "recovery-codes") {
     return "recovery-codes";
+  }
+  if (field.value.kind === "unknown" && field.value.declaredType === "secret") {
+    return "secret";
   }
   if (field.value.kind === "unknown" && field.value.declaredType === "recovery-codes") {
     return "recovery-codes";
@@ -47,6 +50,9 @@ function stringValueFromField(field: ItemFieldV2): string {
     case "unknown":
       if (field.value.declaredType === "recovery-codes") {
         return coerceRecoveryCodesRawToFormValue(field.value.raw);
+      }
+      if (field.value.declaredType === "secret") {
+        return coerceSecretRawToFormValue(field.value.raw);
       }
       return "";
     default:
@@ -108,15 +114,17 @@ function toFormField(
   const value = stringValueFromField(field);
   const type = formFieldType(field);
   const deletable = isFieldDeletable(sectionId, field, sectionFields, isPresetSection);
+  const secretKind = type === "secret" ? getSecretKindFromRaw(field.value.kind === "unknown" ? field.value.raw : null) : undefined;
   return {
     id: field.id,
     type,
     label: field.label ?? field.id,
     value,
-    copyValue: type === "password" || type === "url" ? value : undefined,
-    secret: type === "password",
+    copyValue: type === "password" || type === "secret" || type === "url" ? value : undefined,
+    secret: type === "password" || type === "secret",
     editableLabel: type === "url",
     deletable,
+    ...(secretKind ? { secretKind } : {}),
     ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
   };
 }

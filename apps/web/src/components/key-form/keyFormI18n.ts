@@ -22,7 +22,15 @@ export type KeyFormEditorMessages = {
   copied: string;
   showPassword: string;
   hidePassword: string;
+  showSecret: string;
+  hideSecret: string;
   generatePassword: string;
+  generator: string;
+  secretKind: {
+    password: string;
+    singleLine: string;
+    multiLine: string;
+  };
   enterNewTotpSecret: string;
   enableMask: string;
   disableMask: string;
@@ -87,6 +95,11 @@ export function formatKeyFormMessage(
 
 const KEY_FIELD_TYPE_IDS = keyFieldTypeOptions.map((type) => type.id);
 
+/** Preset credential fields not listed in {@link keyFieldTypeOptions}. */
+const KEY_FORM_EXTRA_FIELD_KEYS = ["login", "password"] as const;
+
+const KEY_FORM_FIELD_KEYS = [...KEY_FIELD_TYPE_IDS, ...KEY_FORM_EXTRA_FIELD_KEYS];
+
 export function createLocalizedKeyFieldTypes(locale: WebLocale): KeyFieldTypeOption[] {
   return keyFieldTypeOptions.map((type) => ({
     ...type,
@@ -98,10 +111,10 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
   const t: Translate = (messageKey) => formatWebMessage(locale, messageKey);
   const template: Translate = (messageKey) => getWebMessagePattern(locale, messageKey);
   const fieldLabels = Object.fromEntries(
-    [...KEY_FIELD_TYPE_IDS, "login"].map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
+    KEY_FORM_FIELD_KEYS.map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
   );
   const fieldPlaceholders = Object.fromEntries(
-    [...KEY_FIELD_TYPE_IDS, "login"].map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
+    KEY_FORM_FIELD_KEYS.map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
   );
 
   return {
@@ -109,7 +122,15 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     copied: t("web.keyForm.copied"),
     showPassword: t("web.keyForm.showPassword"),
     hidePassword: t("web.keyForm.hidePassword"),
+    showSecret: t("web.keyForm.showSecret"),
+    hideSecret: t("web.keyForm.hideSecret"),
     generatePassword: t("web.keyForm.generatePassword"),
+    generator: t("web.keyForm.generator"),
+    secretKind: {
+      password: t("web.keyForm.secretKind.password"),
+      singleLine: t("web.keyForm.secretKind.singleLine"),
+      multiLine: t("web.keyForm.secretKind.multiLine"),
+    },
     enterNewTotpSecret: t("web.keyForm.enterNewTotpSecret"),
     enableMask: t("web.keyForm.enableMask"),
     disableMask: t("web.keyForm.disableMask"),
