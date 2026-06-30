@@ -1,6 +1,6 @@
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import { Button, Spinner } from "@okkey/ui";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -13,6 +13,7 @@ import {
   mapItemActivityWireEntries,
 } from "../../items/buildItemActivityEntries";
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
+import { patchItemRecoveryCodesField } from "../../items/patchItemRecoveryCodesField";
 import { formatTagSearchQuery } from "../../items/workspaceItemSearch";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useLocale } from "../../locale/LocaleContext";
@@ -23,7 +24,7 @@ import {
 } from "../../routes/popupQuery";
 import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_PARAM } from "../../routes/paths";
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
-import { KeyFormEditor } from "../key-form/KeyFormEditor";
+import { KeyFormEditor, type RecoveryCodesValueChange } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
 import ItemRecordFavicon from "./ItemRecordFavicon";
@@ -60,7 +61,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { profile, userId } = useAuthVault();
-  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted } =
+  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet } =
     useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
@@ -85,6 +86,17 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const formSections = useMemo(() => (item ? itemPlaintextToKeyFormSections(item) : []), [item]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
+  const handleRecoveryCodesValueChange = useCallback(
+    async ({ fieldId, value }: RecoveryCodesValueChange) => {
+      const currentItem = getItemById(itemId);
+      if (!currentItem) {
+        return;
+      }
+
+      await updateItemQuiet(patchItemRecoveryCodesField(currentItem, fieldId, value));
+    },
+    [getItemById, itemId, updateItemQuiet],
+  );
   const activityEntries = useMemo(() => {
     if (!item) {
       return [];
@@ -230,6 +242,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             initialSections={formSections}
             fieldTypes={keyFormFieldTypes}
             messages={keyFormMessages}
+            onRecoveryCodesValueChange={handleRecoveryCodesValueChange}
           />
 
           {(item.tags ?? []).length > 0 ? (

@@ -101,8 +101,15 @@ export type KeyFormEditorProps = {
   className?: string;
   onSectionsChange?: (sections: KeyFormEditorSection[]) => void;
   onWebsiteUrlsBlur?: (sections: KeyFormEditorSection[]) => void;
+  onRecoveryCodesValueChange?: (change: RecoveryCodesValueChange) => void | Promise<void>;
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
+};
+
+export type RecoveryCodesValueChange = {
+  sectionId: string;
+  fieldId: string;
+  value: string;
 };
 
 type DemoSectionVariant = KeyFormEditorSectionVariant;
@@ -1312,6 +1319,7 @@ export function KeyFormEditor({
   className,
   onSectionsChange,
   onWebsiteUrlsBlur,
+  onRecoveryCodesValueChange,
   showValidation = false,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
@@ -2144,6 +2152,7 @@ export function KeyFormEditor({
     );
     updateFieldValue(sectionId, field.id, nextValue);
     await navigator.clipboard.writeText(copiedValue);
+    await onRecoveryCodesValueChange?.({ sectionId, fieldId: field.id, value: nextValue });
   }
 
   function openAddressInMaps(field: DemoField) {

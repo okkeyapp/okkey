@@ -12,6 +12,7 @@ import { applyItemPlaintextToReplayMap } from "@okkey/sync";
 import { base64ToBytes } from "../auth/base64";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { resolveItemUpdateActivityKey } from "./buildItemActivityEntries";
+import { isRecoveryCodesUsageOnlyItemUpdate } from "./recoveryCodesItemUpdate";
 import { resolveVaultItemEncryptionKey } from "./resolveVaultItemEncryptionKey";
 
 const CACHE_DB = "okkey-workspace-vault-items-sync";
@@ -197,12 +198,14 @@ async function applyVaultItemEvents(
       appendItemActivity(itemActivity, parsed.itemId, event, "created");
     } else if (event.eventType === "ITEM_UPDATE") {
       const previous = items.get(parsed.itemId);
-      appendItemActivity(
-        itemActivity,
-        parsed.itemId,
-        event,
-        resolveItemUpdateActivityKey(previous, parsed),
-      );
+      if (!isRecoveryCodesUsageOnlyItemUpdate(previous, parsed)) {
+        appendItemActivity(
+          itemActivity,
+          parsed.itemId,
+          event,
+          resolveItemUpdateActivityKey(previous, parsed),
+        );
+      }
     } else if (event.eventType === "ITEM_DELETE") {
       appendItemActivity(itemActivity, parsed.itemId, event, "deleted");
     }

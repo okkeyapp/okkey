@@ -1,5 +1,5 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
-import { serializeKeyFieldFileValue } from "@okkey/ui";
+import { coerceRecoveryCodesRawToFormValue, serializeKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import { isItemFieldFilled } from "./keyFormFilledFields";
@@ -45,8 +45,8 @@ function stringValueFromField(field: ItemFieldV2): string {
       }
       return "";
     case "unknown":
-      if (field.value.declaredType === "recovery-codes" && typeof field.value.raw === "string") {
-        return field.value.raw;
+      if (field.value.declaredType === "recovery-codes") {
+        return coerceRecoveryCodesRawToFormValue(field.value.raw);
       }
       return "";
     default:

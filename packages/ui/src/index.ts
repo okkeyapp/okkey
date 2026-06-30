@@ -15,6 +15,8 @@ export {
   getKeyFieldRecoveryCodesUsedCount,
   markFirstUnusedKeyFieldRecoveryCodeUsed,
   mergeKeyFieldRecoveryCodesEditorLines,
+  mergeKeyFieldRecoveryCodesEditorLinesWithValue,
+  coerceRecoveryCodesRawToFormValue,
   normalizeKeyFieldRecoveryCodesRows,
   normalizeRecoveryCodeEditorRows,
   normalizeRecoveryCodesEditorText,

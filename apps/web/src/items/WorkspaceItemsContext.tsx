@@ -33,6 +33,7 @@ export type WorkspaceItemsContextValue = {
   getItemActivityById: (itemId: string) => ItemActivityWireEntry[];
   createItem: (item: ItemPlaintextV2) => Promise<string>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
+  updateItemQuiet: (item: ItemPlaintextV2) => Promise<string>;
   setItemArchived: (itemId: string, archived: boolean) => Promise<void>;
   setItemsArchived: (itemIds: readonly string[], archived: boolean) => Promise<void>;
   setItemDeleted: (itemId: string, deleted: boolean) => Promise<void>;
@@ -215,6 +216,26 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const updateItemQuiet = useCallback(
+    async (item: ItemPlaintextV2) => {
+      const controller = controllerRef.current;
+      if (!controller) {
+        throw new Error("ITEMS_SYNC_NOT_READY");
+      }
+
+      let updatedId = "";
+      try {
+        updatedId = await controller.updateItem(item);
+        syncFromController();
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "item sync failed");
+        throw err;
+      }
+      return updatedId;
+    },
+    [syncFromController],
+  );
+
   const setItemArchived = useCallback(
     async (itemId: string, archived: boolean) => {
       await runMutation(async (controller) => {
@@ -321,6 +342,7 @@ export function useWorkspaceItemsState(input: {
       getItemActivityById,
       createItem,
       updateItem,
+      updateItemQuiet,
       setItemArchived,
       setItemsArchived,
       setItemDeleted,
@@ -338,6 +360,7 @@ export function useWorkspaceItemsState(input: {
       getItemActivityById,
       createItem,
       updateItem,
+      updateItemQuiet,
       setItemArchived,
       setItemsArchived,
       setItemDeleted,

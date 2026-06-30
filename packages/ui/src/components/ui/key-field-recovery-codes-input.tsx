@@ -2,6 +2,7 @@ import * as React from "react";
 
 import {
   mergeKeyFieldRecoveryCodesEditorLines,
+  mergeKeyFieldRecoveryCodesEditorLinesWithValue,
   normalizeKeyFieldRecoveryCodesRows,
   normalizeRecoveryCodesEditorText,
   parseKeyFieldRecoveryCodesValue,
@@ -67,6 +68,10 @@ export function KeyFieldRecoveryCodesInput({
   const isInternalChangeRef = React.useRef(false);
   const pendingCursorPositionRef = React.useRef<number | null>(null);
 
+  const displayLines = React.useMemo(
+    () => mergeKeyFieldRecoveryCodesEditorLinesWithValue(lines, value),
+    [lines, value],
+  );
   const textareaValue = editorTextFromLines(lines);
 
   const resizeTextarea = React.useCallback(() => {
@@ -197,7 +202,7 @@ export function KeyFieldRecoveryCodesInput({
       onBlurCapture={handlePanelBlur}
     >
       <div className={cn("flex flex-col", checkboxGutterClassName)}>
-        {lines.map((line, index) => (
+        {displayLines.map((line, index) => (
           <div key={`recovery-code-checkbox-${index}`} className="flex h-5 items-center justify-center overflow-visible">
             <Checkbox
               checked={line.used}

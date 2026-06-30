@@ -111,6 +111,65 @@ export function mergeKeyFieldRecoveryCodesEditorLines(
   });
 }
 
+function recoveryCodesFromUnknownRaw(raw: unknown): KeyFieldRecoveryCodesValue {
+  if (!Array.isArray(raw)) {
+    return emptyKeyFieldRecoveryCodesValue();
+  }
+
+  return raw.flatMap((item): KeyFieldRecoveryCode[] => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+
+    const record = item as Partial<KeyFieldRecoveryCode>;
+    if (typeof record.code !== "string") {
+      return [];
+    }
+
+    const code = record.code.trim();
+    if (!code) {
+      return [];
+    }
+
+    return [{ code, used: Boolean(record.used) }];
+  });
+}
+
+/** Normalizes recovery-codes `raw` from item plaintext into the serialized form field value. */
+export function coerceRecoveryCodesRawToFormValue(raw: unknown): string {
+  if (typeof raw === "string") {
+    return raw;
+  }
+
+  if (Array.isArray(raw)) {
+    return serializeKeyFieldRecoveryCodesValue(recoveryCodesFromUnknownRaw(raw));
+  }
+
+  return "";
+}
+
+/** Applies `used` flags from the serialized field value onto in-progress editor rows. */
+export function mergeKeyFieldRecoveryCodesEditorLinesWithValue(
+  lines: readonly KeyFieldRecoveryCode[],
+  value: string,
+): KeyFieldRecoveryCode[] {
+  const usedByCode = buildKeyFieldRecoveryCodeUsedLookup(parseKeyFieldRecoveryCodesValue(value));
+
+  return lines.map((line) => {
+    const trimmedCode = line.code.trim();
+    if (!trimmedCode) {
+      return line;
+    }
+
+    const usedFromValue = usedByCode.get(trimmedCode);
+    if (usedFromValue === undefined) {
+      return line;
+    }
+
+    return { ...line, used: usedFromValue };
+  });
+}
+
 export function splitRecoveryCodesPasteText(text: string): string[] {
   return text
     .split(/[,\r\n]+/)
