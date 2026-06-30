@@ -756,6 +756,12 @@ export function okkeyWorkspaceShellNavItems(
   ];
 }
 
+function folderTreeHasActiveNode(nodes: OkkeySidebarFolderTreeNode[]): boolean {
+  return nodes.some(
+    (node) => node.isActive || (node.children?.length ? folderTreeHasActiveNode(node.children) : false),
+  );
+}
+
 function demoVaultItems(): OkkeySidebarVaultItem[] {
   return [
     { id: "p", leading: demoVaultLeading("🏠"), label: "Personal" },
@@ -1146,6 +1152,8 @@ function OkkeyAppSidebarInner({
   const [safesOpen, setSafesOpen] = React.useState(true);
   const [collapsedVaultDropdownOpen, setCollapsedVaultDropdownOpen] = React.useState(false);
   const [collapsedFolderDropdownOpen, setCollapsedFolderDropdownOpen] = React.useState(false);
+  const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = React.useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const footerAccount = footerAccountFromProps(accountMenu);
   const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
   const footerPlainItems = React.useMemo((): OkkeySidebarPlainLinkItem[] => {
@@ -1164,6 +1172,11 @@ function OkkeyAppSidebarInner({
   const showFolders = folderTree !== undefined || folderData.length > 0;
   const vaultTitle = vaultSectionTitle ?? "Vaults";
   const folderTitle = folderSectionTitle ?? "Folders";
+  const collapsedDesktopSidebar = !shell.isMobile && !expanded;
+  const collapsedVaultTriggerActive =
+    collapsedDesktopSidebar && vaultData.some((item) => item.isActive);
+  const collapsedFolderTriggerActive =
+    collapsedDesktopSidebar && folderTreeHasActiveNode(folderData);
 
   return (
     <div
@@ -1180,7 +1193,7 @@ function OkkeyAppSidebarInner({
         )}
       >
       <SidebarHeader>
-        <DropdownMenu>
+        <DropdownMenu open={workspaceSwitcherOpen} onOpenChange={setWorkspaceSwitcherOpen}>
           {showExpanded ? (
             <DropdownMenuTrigger asChild>
               <button
@@ -1200,7 +1213,11 @@ function OkkeyAppSidebarInner({
               </button>
             </DropdownMenuTrigger>
           ) : (
-            <CollapsedDropdownIconTooltip label={groupLabel} variant="compact">
+            <CollapsedDropdownIconTooltip
+              label={groupLabel}
+              variant="compact"
+              menuOpen={workspaceSwitcherOpen}
+            >
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
@@ -1231,6 +1248,7 @@ function OkkeyAppSidebarInner({
                 ? "max-h-[min(28rem,72dvh)] w-[min(18rem,calc(100vw-1.5rem))] overflow-y-auto"
                 : "w-72",
             )}
+            onCloseAutoFocus={(event) => event.preventDefault()}
           >
             {workspaceSwitcherDropdown ?? <WorkspaceSwitcherDropdownPanel />}
           </DropdownMenuContent>
@@ -1251,6 +1269,7 @@ function OkkeyAppSidebarInner({
                       <DropdownMenuTrigger asChild>
                         <SidebarMenuButton
                           type="button"
+                          isActive={collapsedVaultTriggerActive}
                           className={cn(
                             "h-9 min-h-9 justify-center px-0",
                             sidebarDropdownTriggerOpenClassName,
@@ -1288,6 +1307,7 @@ function OkkeyAppSidebarInner({
                         <DropdownMenuTrigger asChild>
                           <SidebarMenuButton
                             type="button"
+                            isActive={collapsedFolderTriggerActive}
                             className={cn(
                               "h-9 min-h-9 justify-center px-0",
                               sidebarDropdownTriggerOpenClassName,
@@ -1384,7 +1404,7 @@ function OkkeyAppSidebarInner({
       </SidebarContent>
 
       <SidebarFooter>
-        <DropdownMenu>
+        <DropdownMenu open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
           {showExpanded ? (
             <DropdownMenuTrigger asChild>
               <button
@@ -1422,6 +1442,7 @@ function OkkeyAppSidebarInner({
             <CollapsedDropdownIconTooltip
               label={footerNameLine ? `${footerNameLine} · ${footerAccount.email}` : footerAccount.email}
               variant="compact"
+              menuOpen={profileMenuOpen}
             >
               <DropdownMenuTrigger asChild>
                 <button
@@ -1460,6 +1481,7 @@ function OkkeyAppSidebarInner({
                 ? "max-h-[min(24rem,72dvh)] w-[min(16rem,calc(100vw-1.5rem))] overflow-y-auto"
                 : "w-64",
             )}
+            onCloseAutoFocus={(event) => event.preventDefault()}
           >
             <ProfileAccountDropdownPanel
               firstName={footerAccount.firstName}
