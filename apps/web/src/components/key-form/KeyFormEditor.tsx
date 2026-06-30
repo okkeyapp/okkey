@@ -148,6 +148,28 @@ function fieldDisplayLabel(field: Pick<DemoField, "id" | "type" | "label">, mess
   return messages.fieldLabels[fieldValuePlaceholderKey(field)] ?? field.id;
 }
 
+const FORM_ENTITY_ID_PATTERN = /^(?:section|field)-(\d+)$/;
+
+function getNextFormEntityCounter(sections: readonly DemoSection[]): number {
+  let max = 0;
+
+  for (const section of sections) {
+    const sectionMatch = section.id.match(FORM_ENTITY_ID_PATTERN);
+    if (sectionMatch) {
+      max = Math.max(max, Number.parseInt(sectionMatch[1], 10));
+    }
+
+    for (const field of section.fields) {
+      const fieldMatch = field.id.match(FORM_ENTITY_ID_PATTERN);
+      if (fieldMatch) {
+        max = Math.max(max, Number.parseInt(fieldMatch[1], 10));
+      }
+    }
+  }
+
+  return max + 1;
+}
+
 type DemoSection = KeyFormEditorSection;
 
 type SortableItemData =
@@ -1466,7 +1488,7 @@ export function KeyFormEditor({
     generatePassword(passwordGeneratorSettings, passwordGeneratorLength),
   );
   const [isGeneratedPasswordCopied, setIsGeneratedPasswordCopied] = useState(false);
-  const nextIdRef = useRef(1);
+  const nextIdRef = useRef(getNextFormEntityCounter(initialSections));
   const pendingSecretKindFocusFieldIdRef = useRef<string | null>(null);
   const generatedPasswordCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const urlFieldTypes = useMemo(() => fieldTypes.filter((type) => type.id === "url"), [fieldTypes]);
@@ -1549,8 +1571,12 @@ export function KeyFormEditor({
   }, [passwordGeneratorFieldId]);
 
   function focusFieldValue(fieldId: string) {
-    setActiveValueFieldId(fieldId);
-    setValueFocusRequest((current) => current + 1);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setActiveValueFieldId(fieldId);
+        setValueFocusRequest((current) => current + 1);
+      });
+    });
   }
 
   function flushPendingSecretKindFocus() {
@@ -1589,7 +1615,7 @@ export function KeyFormEditor({
       {
         id: sectionId,
         variant: "additional",
-        title: type.label,
+        title: "",
         fields: [field],
       },
     ]);

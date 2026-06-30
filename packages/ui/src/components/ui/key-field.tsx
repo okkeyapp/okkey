@@ -417,6 +417,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       secretMultilineValue,
     ]);
 
+    const getValueControlElement = React.useCallback((): HTMLElement | null => {
+      if (fileValue) {
+        return null;
+      }
+
+      if (multilineValue || recoveryCodesValue || secretMultilineValue) {
+        return valueTextareaRef.current;
+      }
+
+      return valueInputRef.current;
+    }, [fileValue, multilineValue, recoveryCodesValue, secretMultilineValue]);
+
     React.useEffect(() => {
       setDraftLabel(label);
     }, [label]);
@@ -498,44 +510,63 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       hasAutoFocusedValueRef.current = true;
       lastAutoFocusRequestRef.current = autoFocusValueRequest;
 
-      if (canEditValue && !addressValue && !recoveryCodesValue && !fileValue) {
-        setIsValueFocused(true);
-      }
-      if (dateValue) {
-        setIsDatePickerOpen(true);
-      }
+      let cancelled = false;
+      let retryTimeoutId: number | undefined;
 
-      function focusValueControlIfNeeded() {
-        const valueControl =
-          multilineValue || recoveryCodesValue || secretMultilineValue
-            ? valueTextareaRef.current
-            : valueInputRef.current;
-        if (!valueControl || document.activeElement === valueControl) {
+      function markValueFocusedIfNeeded() {
+        if (!canEditValue || fileValue) {
           return;
         }
 
-        valueControl.focus();
+        setIsValueFocused(true);
+      }
+
+      function tryAutoFocus(attempt = 0) {
+        if (cancelled) {
+          return;
+        }
+
+        if (dateValue) {
+          setIsDatePickerOpen(true);
+        }
+
+        focusValueControl();
+
+        const control = getValueControlElement();
+        if (control && document.activeElement === control) {
+          if (dateValue) {
+            setIsValueFocused(true);
+            setIsDatePickerOpen(true);
+          } else {
+            markValueFocusedIfNeeded();
+          }
+          return;
+        }
+
+        if (attempt < 12) {
+          retryTimeoutId = window.setTimeout(() => tryAutoFocus(attempt + 1), 50);
+        }
       }
 
       const frameId = window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(focusValueControlIfNeeded);
+        window.requestAnimationFrame(() => tryAutoFocus());
       });
-      const timeoutId = window.setTimeout(focusValueControlIfNeeded, 50);
 
       return () => {
+        cancelled = true;
         window.cancelAnimationFrame(frameId);
-        window.clearTimeout(timeoutId);
+        if (retryTimeoutId) {
+          window.clearTimeout(retryTimeoutId);
+        }
       };
     }, [
       autoFocusValue,
       autoFocusValueRequest,
       canEditValue,
-      addressValue,
       dateValue,
       fileValue,
-      multilineValue,
-      recoveryCodesValue,
-      secretMultilineValue,
+      focusValueControl,
+      getValueControlElement,
     ]);
 
     React.useEffect(() => {

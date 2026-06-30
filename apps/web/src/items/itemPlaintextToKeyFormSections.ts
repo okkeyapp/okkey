@@ -105,6 +105,22 @@ function isFieldDeletable(
   return false;
 }
 
+function isFieldLabelEditable(
+  sectionId: string,
+  field: ItemFieldV2,
+  isPresetSection: boolean,
+): boolean {
+  if (!isPresetSection) {
+    return true;
+  }
+
+  if (sectionId === "websites" && formFieldType(field) === "url") {
+    return true;
+  }
+
+  return false;
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -122,7 +138,7 @@ function toFormField(
     value,
     copyValue: type === "password" || type === "secret" || type === "url" ? value : undefined,
     secret: type === "password" || type === "secret",
-    editableLabel: type === "url",
+    editableLabel: isFieldLabelEditable(sectionId, field, isPresetSection),
     deletable,
     ...(secretKind ? { secretKind } : {}),
     ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
