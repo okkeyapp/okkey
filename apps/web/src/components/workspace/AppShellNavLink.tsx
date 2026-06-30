@@ -11,10 +11,11 @@ type AppShellNavLinkProps = {
   className?: string;
   children: ReactNode;
   "aria-current"?: ComponentProps<"a">["aria-current"];
+  onClick?: ComponentProps<"a">["onClick"];
 };
 
 const AppShellNavLink = forwardRef<HTMLAnchorElement, AppShellNavLinkProps>(function AppShellNavLink(
-  { to, className, children, "aria-current": ariaCurrent },
+  { to, className, children, "aria-current": ariaCurrent, onClick, ...rest },
   ref,
 ) {
   const shell = useOkkeyAppShellLayout();
@@ -25,7 +26,9 @@ const AppShellNavLink = forwardRef<HTMLAnchorElement, AppShellNavLinkProps>(func
       to={to}
       className={className}
       aria-current={ariaCurrent}
-      onClick={() => {
+      {...rest}
+      onClick={(event) => {
+        onClick?.(event);
         if (shell.isMobile) {
           shell.setMobileDrawerOpen(false);
         }

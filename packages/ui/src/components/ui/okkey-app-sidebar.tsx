@@ -926,17 +926,52 @@ function CollapsedDropdownIconTooltip({
   children,
   /** `compact` — квадратные контролы в шапке/футере; `menuRow` — полная ширина ряла как у `SidebarMenuButton` */
   variant = "menuRow",
+  /** When a nested dropdown is open or just closed, suppress the label tooltip (avoids flash on focus restore). */
+  menuOpen = false,
 }: {
   label: string;
   children: React.ReactNode;
   variant?: "menuRow" | "compact";
+  menuOpen?: boolean;
 }) {
   const wrapClassName =
     variant === "compact" ? "inline-flex shrink-0" : "inline-flex w-full min-w-0 justify-center";
+  const [tooltipOpen, setTooltipOpen] = React.useState(false);
+  const suppressTooltipRef = React.useRef(false);
+  const prevMenuOpenRef = React.useRef(menuOpen);
+
+  React.useEffect(() => {
+    if (menuOpen) {
+      setTooltipOpen(false);
+    } else if (prevMenuOpenRef.current) {
+      suppressTooltipRef.current = true;
+      setTooltipOpen(false);
+    }
+    prevMenuOpenRef.current = menuOpen;
+  }, [menuOpen]);
+
+  const handleTooltipOpenChange = React.useCallback(
+    (next: boolean) => {
+      if (menuOpen || (next && suppressTooltipRef.current)) {
+        setTooltipOpen(false);
+        return;
+      }
+      setTooltipOpen(next);
+    },
+    [menuOpen],
+  );
+
   return (
-    <Tooltip delayDuration={0}>
+    <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange} delayDuration={0}>
       <TooltipTrigger asChild>
-        <span className={wrapClassName}>{children}</span>
+        <span
+          className={wrapClassName}
+          onPointerLeave={() => {
+            suppressTooltipRef.current = false;
+          }}
+        >
+          {children}
+        </span>
       </TooltipTrigger>
       <TooltipContent side="right" align="center">
         {label}
@@ -1109,6 +1144,8 @@ function OkkeyAppSidebarInner({
   const shell = useOkkeyAppShellLayout();
   const showExpanded = shell.isMobile || expanded;
   const [safesOpen, setSafesOpen] = React.useState(true);
+  const [collapsedVaultDropdownOpen, setCollapsedVaultDropdownOpen] = React.useState(false);
+  const [collapsedFolderDropdownOpen, setCollapsedFolderDropdownOpen] = React.useState(false);
   const footerAccount = footerAccountFromProps(accountMenu);
   const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
   const footerPlainItems = React.useMemo((): OkkeySidebarPlainLinkItem[] => {
@@ -1209,8 +1246,8 @@ function OkkeyAppSidebarInner({
                   <CollapsedPrimaryNavRow key={item.id} item={item} linkComponent={workspaceNavLink} />
                 ))}
                 <SidebarMenuItem>
-                  <DropdownMenu>
-                    <CollapsedDropdownIconTooltip label={vaultTitle}>
+                  <DropdownMenu open={collapsedVaultDropdownOpen} onOpenChange={setCollapsedVaultDropdownOpen}>
+                    <CollapsedDropdownIconTooltip label={vaultTitle} menuOpen={collapsedVaultDropdownOpen}>
                       <DropdownMenuTrigger asChild>
                         <SidebarMenuButton
                           type="button"
@@ -1229,6 +1266,7 @@ function OkkeyAppSidebarInner({
                       align="start"
                       sideOffset={6}
                       className={collapsedSectionDropdownContentClassName}
+                      onCloseAutoFocus={(event) => event.preventDefault()}
                     >
                       <OkkeySidebarVaultsMenu
                         surface="dropdown"
@@ -1238,14 +1276,15 @@ function OkkeyAppSidebarInner({
                         showHeaderPlus
                         headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                         linkComponent={vaultNavLink}
+                        onDropdownClose={() => setCollapsedVaultDropdownOpen(false)}
                       />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </SidebarMenuItem>
                 {showFolders ? (
                   <SidebarMenuItem>
-                    <DropdownMenu>
-                      <CollapsedDropdownIconTooltip label={folderTitle}>
+                    <DropdownMenu open={collapsedFolderDropdownOpen} onOpenChange={setCollapsedFolderDropdownOpen}>
+                      <CollapsedDropdownIconTooltip label={folderTitle} menuOpen={collapsedFolderDropdownOpen}>
                         <DropdownMenuTrigger asChild>
                           <SidebarMenuButton
                             type="button"
@@ -1264,6 +1303,7 @@ function OkkeyAppSidebarInner({
                         align="start"
                         sideOffset={6}
                         className={collapsedSectionDropdownContentClassName}
+                        onCloseAutoFocus={(event) => event.preventDefault()}
                       >
                         <OkkeySidebarFoldersMenu
                           surface="dropdown"
@@ -1276,6 +1316,7 @@ function OkkeyAppSidebarInner({
                           headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                           onHeaderActionClick={onFolderHeaderActionClick}
                           linkComponent={folderNavLink}
+                          onDropdownClose={() => setCollapsedFolderDropdownOpen(false)}
                         />
                       </DropdownMenuContent>
                     </DropdownMenu>

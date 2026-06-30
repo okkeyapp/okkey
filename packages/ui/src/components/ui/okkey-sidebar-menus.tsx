@@ -241,6 +241,16 @@ const folderDropdownMenuItemClassName = cn(
   "focus-visible:bg-[rgba(0,0,0,0.05)] focus-visible:text-foreground dark:focus-visible:bg-[rgba(255,255,255,0.08)]",
 );
 
+function withDropdownClose(
+  onDropdownClose: (() => void) | undefined,
+  onClick?: React.MouseEventHandler<HTMLElement>,
+): React.MouseEventHandler<HTMLElement> {
+  return (event) => {
+    onClick?.(event);
+    onDropdownClose?.();
+  };
+}
+
 function NavPlusControlTooltip({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <Tooltip delayDuration={0}>
@@ -281,6 +291,7 @@ export type OkkeyWorkspaceNavLinkComponent = React.ForwardRefExoticComponent<
     className?: string;
     children: React.ReactNode;
     "aria-current"?: React.ComponentProps<"a">["aria-current"];
+    onClick?: React.MouseEventHandler<HTMLAnchorElement>;
   }> &
     React.RefAttributes<HTMLAnchorElement>
 >;
@@ -379,6 +390,8 @@ export type OkkeySidebarVaultsMenuProps = {
   headerPlusAriaLabel?: string;
   onHeaderPlusPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
+  /** Collapsed sidebar dropdown: close the parent menu after navigation or header actions. */
+  onDropdownClose?: () => void;
 };
 
 function VaultRowSidebar({
@@ -439,18 +452,17 @@ function VaultRowSidebar({
 function VaultRowDropdown({
   item,
   linkComponent,
+  onDropdownClose,
 }: {
   item: OkkeySidebarVaultItem;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
+  onDropdownClose?: () => void;
 }) {
   const href = item.to;
   const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
   const rowClassName = cn(
-    "flex min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-sm text-foreground outline-none",
+    "flex min-w-0 items-center gap-2 text-sm text-foreground outline-none",
     item.rightIcon ? "w-full justify-between" : undefined,
-    item.isActive
-      ? "bg-[rgba(0,0,0,0.05)] text-foreground dark:bg-[rgba(255,255,255,0.08)]"
-      : undefined,
   );
   const rowInner = (
     <>
@@ -463,8 +475,22 @@ function VaultRowDropdown({
   );
   if (LinkC && href) {
     return (
-      <DropdownMenuItem asChild className={cn(folderDropdownMenuItemClassName, "p-0")}>
-        <LinkC to={href} className={rowClassName} aria-current={item.isActive ? "page" : undefined}>
+      <DropdownMenuItem
+        asChild
+        className={cn(
+          folderDropdownMenuItemClassName,
+          item.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined,
+          item.rightIcon ? "justify-between gap-2" : undefined,
+        )}
+        aria-current={item.isActive ? "page" : undefined}
+        onSelect={() => onDropdownClose?.()}
+      >
+        <LinkC
+          to={href}
+          className={rowClassName}
+          aria-current={item.isActive ? "page" : undefined}
+          onClick={withDropdownClose(onDropdownClose)}
+        >
           {rowInner}
         </LinkC>
       </DropdownMenuItem>
@@ -475,6 +501,7 @@ function VaultRowDropdown({
       <DropdownMenuItem
         className={cn(folderDropdownMenuItemClassName, "justify-between gap-2", item.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined)}
         aria-current={item.isActive ? "page" : undefined}
+        onSelect={() => onDropdownClose?.()}
       >
         <span className="flex min-w-0 items-center gap-2">
           {item.leading}
@@ -488,6 +515,7 @@ function VaultRowDropdown({
     <DropdownMenuItem
       className={cn(folderDropdownMenuItemClassName, "gap-2", item.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined)}
       aria-current={item.isActive ? "page" : undefined}
+      onSelect={() => onDropdownClose?.()}
     >
       {item.leading}
       <span>{item.label}</span>
@@ -507,6 +535,7 @@ export function OkkeySidebarVaultsMenu({
   headerPlusAriaLabel,
   onHeaderPlusPointerDown,
   linkComponent,
+  onDropdownClose,
 }: OkkeySidebarVaultsMenuProps) {
   const gClass = collapsibleGroupClass(collapsibleGroupName);
   const isControlled = open !== undefined;
@@ -573,6 +602,7 @@ export function OkkeySidebarVaultsMenu({
                 className={sidebarSectionPlusButton()}
                 aria-label={headerPlusAriaLabel ?? "Add"}
                 onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
+                onClick={() => onDropdownClose?.()}
               >
                 <PlusMenuIcon />
               </button>
@@ -582,7 +612,12 @@ export function OkkeySidebarVaultsMenu({
         <ScrollArea className="max-h-[360px]">
           <div className="p-1">
             {items.map((item) => (
-              <VaultRowDropdown key={item.id} item={item} linkComponent={linkComponent} />
+              <VaultRowDropdown
+                key={item.id}
+                item={item}
+                linkComponent={linkComponent}
+                onDropdownClose={onDropdownClose}
+              />
             ))}
           </div>
         </ScrollArea>
@@ -635,6 +670,8 @@ export type OkkeySidebarFoldersMenuProps = {
   headerActionIcon?: React.ReactNode;
   onHeaderActionClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
+  /** Collapsed sidebar dropdown: close the parent menu after navigation or header actions. */
+  onDropdownClose?: () => void;
 };
 
 function FolderHeaderActionButton({
@@ -839,12 +876,14 @@ function FolderSubTreeDropdown({
   branchGroupName,
   linkComponent,
   nestedInBranch = false,
+  onDropdownClose,
 }: {
   nodes: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
   branchGroupName: string;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
   nestedInBranch?: boolean;
+  onDropdownClose?: () => void;
 }) {
   return (
     <>
@@ -872,6 +911,7 @@ function FolderSubTreeDropdown({
                         folderDropdownBranchLinkClassName(node.isActive),
                         node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
                       )}
+                      onClick={withDropdownClose(onDropdownClose)}
                     >
                       {folderLeafBody(leafIcon, node.label, false)}
                     </LinkC>
@@ -882,6 +922,7 @@ function FolderSubTreeDropdown({
                         folderDropdownBranchLinkClassName(node.isActive),
                         node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
                       )}
+                      onClick={() => onDropdownClose?.()}
                     >
                       {folderLeafBody(leafIcon, node.label, false)}
                     </button>
@@ -895,6 +936,7 @@ function FolderSubTreeDropdown({
                       branchGroupName={gName}
                       linkComponent={linkComponent}
                       nestedInBranch
+                      onDropdownClose={onDropdownClose}
                     />
                   </SidebarMenuSub>
                 </CollapsibleContent>
@@ -914,11 +956,16 @@ function FolderSubTreeDropdown({
                     folderDropdownLeafLinkClassName(node.isActive),
                     node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
                   )}
+                  onClick={withDropdownClose(onDropdownClose)}
                 >
                   {leafBody}
                 </LinkC>
               ) : (
-                <button type="button" className={folderDropdownLeafLinkClassName(node.isActive)}>
+                <button
+                  type="button"
+                  className={folderDropdownLeafLinkClassName(node.isActive)}
+                  onClick={() => onDropdownClose?.()}
+                >
                   {leafBody}
                 </button>
               )}
@@ -935,14 +982,16 @@ function FolderTopTreeDropdown({
   leafIcon,
   branchGroupName,
   linkComponent,
+  onDropdownClose,
 }: {
   nodes: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
   branchGroupName: string;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
+  onDropdownClose?: () => void;
 }) {
   return (
-    <div className={cn("flex flex-col px-2 py-0", folderTreeGapClassName)}>
+    <div className={cn("flex flex-col", folderTreeGapClassName)}>
       {nodes.map((node) => {
         if (node.children?.length) {
           const gName = `${branchGroupName}-${node.id}`;
@@ -966,6 +1015,7 @@ function FolderTopTreeDropdown({
                       folderDropdownBranchLinkClassName(node.isActive),
                       node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
                     )}
+                    onClick={withDropdownClose(onDropdownClose)}
                   >
                     {folderLeafBody(leafIcon, node.label, false)}
                   </LinkC>
@@ -976,6 +1026,7 @@ function FolderTopTreeDropdown({
                       folderDropdownBranchLinkClassName(node.isActive),
                       node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
                     )}
+                    onClick={() => onDropdownClose?.()}
                   >
                     {folderLeafBody(leafIcon, node.label, false)}
                   </button>
@@ -989,6 +1040,7 @@ function FolderTopTreeDropdown({
                     branchGroupName={gName}
                     linkComponent={linkComponent}
                     nestedInBranch
+                    onDropdownClose={onDropdownClose}
                   />
                 </SidebarMenuSub>
               </CollapsibleContent>
@@ -999,15 +1051,31 @@ function FolderTopTreeDropdown({
         const leafBody = folderLeafBody(leafIcon, node.label);
         if (LinkC && href) {
           return (
-            <DropdownMenuItem key={node.id} asChild className={cn(folderDropdownMenuItemClassName, "p-0")}>
-              <LinkC to={href} className="flex items-center gap-2 px-2 py-2">
+            <DropdownMenuItem
+              key={node.id}
+              asChild
+              className={cn(
+                folderDropdownMenuItemClassName,
+                node.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined,
+              )}
+              onSelect={() => onDropdownClose?.()}
+            >
+              <LinkC
+                to={href}
+                className="flex min-w-0 items-center gap-2"
+                onClick={withDropdownClose(onDropdownClose)}
+              >
                 {leafBody}
               </LinkC>
             </DropdownMenuItem>
           );
         }
         return (
-          <DropdownMenuItem key={node.id} className={folderDropdownMenuItemClassName}>
+          <DropdownMenuItem
+            key={node.id}
+            className={folderDropdownMenuItemClassName}
+            onSelect={() => onDropdownClose?.()}
+          >
             {leafIcon}
             <span className="truncate">{node.label}</span>
           </DropdownMenuItem>
@@ -1030,6 +1098,7 @@ export function OkkeySidebarFoldersMenu({
   headerActionIcon,
   onHeaderActionClick,
   linkComponent,
+  onDropdownClose,
 }: OkkeySidebarFoldersMenuProps) {
   const gClass = collapsibleGroupClass(collapsibleGroupName);
   const [folderSectionOpen, setFolderSectionOpen] = React.useState(true);
@@ -1038,6 +1107,16 @@ export function OkkeySidebarFoldersMenu({
   const headerActionAriaLabel = headerPlusAriaLabel ?? "Add";
   const headerActionNode =
     headerActionIcon ?? (onHeaderActionClick ? <SidebarSettingsMenuIcon /> : <PlusMenuIcon />);
+  const handleDropdownHeaderAction = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      onHeaderActionClick?.(event);
+      onDropdownClose?.();
+    },
+    [onDropdownClose, onHeaderActionClick],
+  );
+  const handleDropdownHeaderPlus = React.useCallback(() => {
+    onDropdownClose?.();
+  }, [onDropdownClose]);
 
   const headerRow = (
     <div className="flex h-8 w-full shrink-0 items-center gap-2">
@@ -1079,20 +1158,28 @@ export function OkkeySidebarFoldersMenu({
             <FolderHeaderActionButton
               ariaLabel={headerActionAriaLabel}
               icon={headerActionNode}
-              onClick={onHeaderActionClick}
+              onClick={onHeaderActionClick ? handleDropdownHeaderAction : handleDropdownHeaderPlus}
               onPointerDown={onHeaderPlusPointerDown}
               variant={onHeaderActionClick ? "settings" : "plus"}
             />
           ) : null}
         </div>
         <ScrollArea className="max-h-[360px]">
-          {isEmpty ? (
-            <div className="px-3 py-3">
-              <p className="text-xs leading-4 text-muted-foreground">{emptyLabel}</p>
-            </div>
-          ) : (
-            <FolderTopTreeDropdown nodes={tree} leafIcon={leafIcon} branchGroupName="foldd" linkComponent={linkComponent} />
-          )}
+          <div className="p-1">
+            {isEmpty ? (
+              <div className="px-2 py-1.5">
+                <p className="text-xs leading-4 text-muted-foreground">{emptyLabel}</p>
+              </div>
+            ) : (
+              <FolderTopTreeDropdown
+                nodes={tree}
+                leafIcon={leafIcon}
+                branchGroupName="foldd"
+                linkComponent={linkComponent}
+                onDropdownClose={onDropdownClose}
+              />
+            )}
+          </div>
         </ScrollArea>
       </>
     );
