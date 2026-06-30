@@ -133,6 +133,9 @@ function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+const keyFieldOverlayPillClassName =
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-[50px] border border-black/5 px-3 text-sm font-medium text-foreground";
+
 export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "children"> & {
   label: string;
   value?: React.ReactNode;
@@ -626,12 +629,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             )}
             onClick={handleCopyClick}
           >
-            <span
-              className={cn(
-                "inline-flex h-6 items-center justify-center gap-1.5 rounded-[50px] px-3 text-sm font-medium text-foreground",
-                copyTextClassName ?? "bg-card",
-              )}
-            >
+            <span className={cn(keyFieldOverlayPillClassName, copyTextClassName ?? "bg-card")}>
               {copyIconPosition === "start" ? currentCopyIcon : null}
               {isCopied ? copySuccessLabel : copyLabel}
               {copyIconPosition === "end" ? currentCopyIcon : null}
@@ -651,12 +649,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             )}
             onClick={handleOpenFileClick}
           >
-            <span
-              className={cn(
-                "inline-flex h-6 items-center justify-center gap-1.5 rounded-[50px] px-3 text-sm font-medium text-foreground",
-                copyTextClassName ?? "bg-card",
-              )}
-            >
+            <span className={cn(keyFieldOverlayPillClassName, copyTextClassName ?? "bg-card")}>
               <OpenFileIcon className="size-4" />
               Open
             </span>
@@ -672,12 +665,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               copyOverlayClassName ?? "bg-card/20",
             )}
           >
-            <span
-              className={cn(
-                "inline-flex h-6 items-center justify-center rounded-[50px] px-3 text-sm font-medium text-foreground",
-                copyTextClassName ?? "bg-card",
-              )}
-            >
+            <span className={cn(keyFieldOverlayPillClassName, copyTextClassName ?? "bg-card")}>
               {statusOverlayLabel}
             </span>
           </div>
@@ -746,7 +734,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className={cn("relative min-w-0 flex-1 text-sm leading-5 text-foreground", fileValue ? "min-h-20" : "min-h-5", valueClassName)}>
+            <div
+              className={cn(
+                "relative min-w-0 flex-1 text-sm leading-5 text-foreground",
+                fileValue ? "min-h-20" : "min-h-5",
+                mode === "view" && !canEditValue && !addressValue && !recoveryCodesValue && !fileValue && "break-all",
+                valueClassName,
+              )}
+            >
               {canEditValue ? (
                 multilineValue ? (
                   <textarea
