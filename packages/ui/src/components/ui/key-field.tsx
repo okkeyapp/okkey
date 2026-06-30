@@ -1,6 +1,15 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
+import {
+  keyFormFieldSurfaceErrorRingClassName,
+  keyFormFieldSurfaceFocusRingClassName,
+  keyFormFieldSurfaceTransitionClassName,
+} from "../../lib/input-like-control-classes.js";
+import {
+  keyFieldSurfaceRoundingClassName,
+  type KeyFieldSurfaceRounding,
+} from "../../lib/key-field-surface-rounding.js";
 import { isKeyFieldDatePickerInteractionTarget } from "../../lib/key-field-date-picker.js";
 import { formatKeyFieldAddressCopyValue, parseKeyFieldAddressValue } from "../../lib/key-field-address.js";
 import {
@@ -209,6 +218,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   fileUploadLabel?: string;
   fileClearLabel?: string;
   valuePlaceholder?: string;
+  surfaceRounding?: KeyFieldSurfaceRounding;
 };
 
 export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
@@ -272,6 +282,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       fileUploadLabel,
       fileClearLabel = "Clear",
       valuePlaceholder,
+      surfaceRounding,
       draggable,
       onDragStart,
       onDragEnd,
@@ -313,13 +324,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const parsedFileValue = fileValue ? parseKeyFieldFileValue(draftValue) : null;
     const [fileValidationError, setFileValidationError] = React.useState(false);
     const [fileLightboxOpen, setFileLightboxOpen] = React.useState(false);
-    const isFieldActive =
-      isEditingLabel ||
-      isValueFocused ||
-      (dateValue && isDatePickerOpen) ||
-      forceActive ||
-      isInvalid ||
-      (fileValue && fileValidationError);
+    const hasValidationError = isInvalid || (fileValue && fileValidationError);
+    const isSurfaceActiveByState = (dateValue && isDatePickerOpen) || forceActive;
+    const hasOpenOverlay = Boolean(fieldOverlay) || forceActive;
     const canShowStatusOverlay =
       mode === "view" && Boolean(statusOverlayLabel) && !(recoveryCodesValue && recoveryCodesRevealed);
     const canOpenFileValue = mode === "view" && fileValue && parsedFileValue !== null;
@@ -742,15 +749,22 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         ref={ref}
         className={cn(
           "group/key-field -mt-px flex min-w-0 items-center gap-2.5 border-x border-y border-x-transparent border-y-border px-4 py-2",
+          keyFormFieldSurfaceTransitionClassName,
+          surfaceRounding && keyFieldSurfaceRoundingClassName(surfaceRounding),
           fieldOverlay && "relative",
-          (canCopyValue || canOpenFileValue || canShowStatusOverlay || floatingActions) && "relative transition-colors",
+          (canCopyValue || canOpenFileValue || canShowStatusOverlay || floatingActions) && "relative",
           (canCopyValue || canOpenFileValue || canShowStatusOverlay) && copyHoverClassName,
           isHoverLocked && copyHoverActiveClassName,
           className,
-          isFieldActive &&
-            (isInvalid || (fileValue && fileValidationError)
-              ? "relative z-10 border-x-destructive border-y-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]"
-              : "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]"),
+          hasOpenOverlay && "relative z-30",
+          !hasValidationError && [
+            "focus-within:relative focus-within:z-10",
+            "focus-within:border-x-accent focus-within:border-y-accent",
+            "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+          ],
+          hasValidationError && ["relative z-[1]", keyFormFieldSurfaceErrorRingClassName, "focus-within:z-10"],
+          isSurfaceActiveByState && !hasValidationError && ["relative z-10", keyFormFieldSurfaceFocusRingClassName],
+          isSurfaceActiveByState && hasValidationError && "relative z-10",
         )}
         draggable={canReorder ? draggable : false}
         onDragStart={canReorder ? onDragStart : undefined}

@@ -16,3 +16,15 @@ export const inputLikeControlClassName =
   "dark:focus:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] " +
   "focus:border-accent focus-visible:border-accent " +
   "disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Border and focus ring on KeyField / KeySection title row — matches {@link inputLikeControlClassName}. */
+export const keyFormFieldSurfaceTransitionClassName =
+  "shadow-none transition-[color,box-shadow,border-color]";
+
+/** Accent focus ring for a KeyField / KeySection surface (use with focus-within: or state). */
+export const keyFormFieldSurfaceFocusRingClassName =
+  "border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]";
+
+/** Destructive validation ring for a KeyField surface. */
+export const keyFormFieldSurfaceErrorRingClassName =
+  "border-x-destructive border-y-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";

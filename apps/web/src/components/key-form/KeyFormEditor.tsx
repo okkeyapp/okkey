@@ -39,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  getKeyFieldSurfaceRounding,
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
   emptyKeyFieldRecoveryCodesValue,
@@ -399,6 +400,12 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     return false;
   }
 
+  if (section.id === "credentials") {
+    if (field.id === "login" || field.id === "password" || field.type === "password") {
+      return false;
+    }
+  }
+
   if (section.id === "websites" && field.type === "url") {
     return section.fields.filter((item) => item.type === "url").length > 1;
   }
@@ -420,6 +427,36 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
   }
 
   return false;
+}
+
+function keySectionCanAddField(section: DemoSection, mode: KeyFormMode): boolean {
+  if (mode !== "edit") {
+    return false;
+  }
+
+  if (section.variant === "additional") {
+    return true;
+  }
+
+  return sectionHasAddFieldButton(section, mode);
+}
+
+function surfaceRoundingForField(
+  section: DemoSection,
+  mode: KeyFormMode,
+  fieldIndex: number,
+  isFieldDragging: boolean,
+) {
+  return getKeyFieldSurfaceRounding({
+    mode,
+    sectionVariant: section.variant,
+    sectionTitle: section.title,
+    editableTitle: true,
+    fieldIndex,
+    fieldsCount: section.fields.length,
+    canAddField: keySectionCanAddField(section, mode),
+    isFieldDragging,
+  });
 }
 
 function ActionButton({
@@ -1195,6 +1232,7 @@ type SortableFieldProps = {
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
   fileClearLabel?: string;
+  surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
 };
 
 function SortableField({
@@ -1238,6 +1276,7 @@ function SortableField({
   recoveryCodesPlaceholder,
   fileUploadLabel,
   fileClearLabel,
+  surfaceRounding,
 }: SortableFieldProps) {
   const secretKind = getSecretKind(field);
   const isMultiLineSecret = field.type === "secret" && secretKind === "multi-line";
@@ -1255,9 +1294,10 @@ function SortableField({
   };
 
   return (
-    <KeyField
-      ref={setNodeRef}
+    <div ref={setNodeRef} style={style} className={cn("min-w-0", isDragging && "relative z-10 opacity-0")}>
+      <KeyField
       label={fieldDisplayLabel(field, messages)}
+      surfaceRounding={surfaceRounding}
       value={value}
       mode={mode}
       editableLabel={field.editableLabel}
@@ -1294,9 +1334,7 @@ function SortableField({
         hideTopBorder && "border-t-transparent",
         hideTopBorder && "!mt-0",
         hideBottomBorder && "border-b-transparent",
-        isDragging && "relative z-10 opacity-0",
       )}
-      style={style}
       valueClassName={
         field.type === "multiline-text" ||
         field.type === "note" ||
@@ -1348,6 +1386,7 @@ function SortableField({
       valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
+    </div>
   );
 }
 
@@ -1387,25 +1426,24 @@ function SortableSection({
   };
 
   return (
-    <KeySection
-      ref={setNodeRef}
-      title={section.title}
-      variant={section.variant}
-      mode={mode}
-      editableTitle
-      reorderable
-      fieldTypes={fieldTypes}
-      addFieldLabel={addFieldLabel}
-      sectionTitlePlaceholder={sectionTitlePlaceholder}
-      editSectionTitleAriaLabel={editSectionTitleAriaLabel}
-      className={cn(isDragging && "relative z-10 opacity-0")}
-      style={style}
-      onAddField={onAddField}
-      onTitleChange={onTitleChange}
-      dragHandleProps={mode === "edit" && section.variant === "additional" ? { ...attributes, ...listeners } : undefined}
-    >
+    <div ref={setNodeRef} style={style} className={cn(isDragging && "relative z-10 opacity-0")}>
+      <KeySection
+        title={section.title}
+        variant={section.variant}
+        mode={mode}
+        editableTitle
+        reorderable
+        fieldTypes={fieldTypes}
+        addFieldLabel={addFieldLabel}
+        sectionTitlePlaceholder={sectionTitlePlaceholder}
+        editSectionTitleAriaLabel={editSectionTitleAriaLabel}
+        onAddField={onAddField}
+        onTitleChange={onTitleChange}
+        dragHandleProps={mode === "edit" && section.variant === "additional" ? { ...attributes, ...listeners } : undefined}
+      >
       {children}
     </KeySection>
+    </div>
   );
 }
 
@@ -2543,7 +2581,8 @@ export function KeyFormEditor({
     const isFieldDraggingInSection = activeDrag?.type === "field" && activeDrag.sectionId === section.id;
     const isFirstField = section.fields[0]?.id === field.id;
     const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
-    const hasAddFieldButton = sectionHasAddFieldButton(section, mode);
+    const hasAddFieldButton = keySectionCanAddField(section, mode);
+    const fieldIndex = section.fields.findIndex((item) => item.id === field.id);
     const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
     const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
     const isRecoveryCodesField = field.type === "recovery-codes";
@@ -2563,6 +2602,7 @@ export function KeyFormEditor({
         key={field.id}
         section={section}
         field={field}
+        surfaceRounding={surfaceRoundingForField(section, mode, fieldIndex, isFieldDraggingInSection)}
         value={valueForField(section, field)}
         mode={mode}
         reorderable={canReorderField}
@@ -2606,7 +2646,7 @@ export function KeyFormEditor({
     );
   }
 
-  function renderFieldPreview(section: DemoSection, field: DemoField, isDraggedField = false) {
+  function renderFieldPreview(section: DemoSection, field: DemoField, isDraggedField = false, fieldIndex = 0) {
     const fieldValue = valueForField(section, field);
     const isWebsiteField = field.type === "url";
     const isRecoveryCodesField = field.type === "recovery-codes";
@@ -2617,6 +2657,11 @@ export function KeyFormEditor({
     return (
       <KeyField
         label={field.label}
+        surfaceRounding={
+          isDraggedField
+            ? undefined
+            : surfaceRoundingForField(section, mode, fieldIndex, false)
+        }
         value={fieldValue}
         mode={mode}
         editableLabel={field.editableLabel}
@@ -2723,7 +2768,7 @@ export function KeyFormEditor({
           className="rounded-xl shadow-lg"
           style={activeDrag.width ? { width: activeDrag.width } : undefined}
         >
-          {section.fields.map((field) => renderFieldPreview(section, field))}
+          {section.fields.map((field, fieldIndex) => renderFieldPreview(section, field, false, fieldIndex))}
         </KeySection>
       );
     }

@@ -106,6 +106,12 @@ export {
   type KeySectionProps,
   type KeySectionVariant,
 } from "./components/ui/key-form.js";
+export {
+  getKeyFieldSurfaceRounding,
+  keyFieldSurfaceRoundingClassName,
+  type KeyFieldSurfaceRounding,
+  type KeyFieldSurfaceRoundingInput,
+} from "./lib/key-field-surface-rounding.js";
 export { Spinner, spinnerVariants, type SpinnerProps } from "./components/ui/spinner.js";
 export {
   Select,

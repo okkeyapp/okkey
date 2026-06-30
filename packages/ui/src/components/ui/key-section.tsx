@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
+import { keyFormFieldSurfaceTransitionClassName } from "../../lib/input-like-control-classes.js";
 import { Button } from "./button.js";
 import {
   DropdownMenu,
@@ -149,7 +150,10 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
             <div
               className={cn(
                 "flex min-w-0 items-center gap-1.5 rounded-t-xl border border-x-transparent border-b-border border-t-transparent px-4 py-3",
-                isEditingTitle && "relative z-10 border-x-accent border-y-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                keyFormFieldSurfaceTransitionClassName,
+                "focus-within:relative focus-within:z-10",
+                "focus-within:border-x-accent focus-within:border-y-accent",
+                "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
               )}
             >
               {canReorder ? (
@@ -220,13 +224,6 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
             className={cn(
               shouldShowHeader && "[&>*:first-child]:-mt-px",
               "[&>*+*]:-mt-px",
-              !shouldShowHeader && "[&>*:first-child]:rounded-t-xl",
-              variant === "additional" && !shouldShowHeader && "[&>*:first-child]:border-t-transparent",
-              !canAddField && "[&>*:last-child]:rounded-b-xl",
-              variant === "primary" &&
-                isFieldDragging &&
-                "[&>*]:!rounded-none [&>*]:!border-x-transparent [&>*:first-child]:!border-t-border",
-              variant === "primary" && isFieldDragging && !canAddField && "[&>*:last-child]:!border-b-transparent",
             )}
           >
             {children}
