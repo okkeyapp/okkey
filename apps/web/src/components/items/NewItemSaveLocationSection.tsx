@@ -145,7 +145,7 @@ export default function NewItemSaveLocationSection({
 
   return (
     <section
-      className="overflow-visible rounded-[10px] bg-slate-100 px-4 pb-2 pt-2 dark:bg-muted"
+      className="overflow-visible rounded-[10px] bg-secondary px-4 pb-2 pt-2 text-secondary-foreground"
       aria-label={t("web.newItemPopup.saveLocationAria")}
     >
       <p className="text-xs leading-5 text-muted-foreground">{t("web.newItemPopup.saveLocationLabel")}</p>

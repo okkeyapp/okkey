@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
   cn,
   getKeyFieldSurfaceRounding,
+  keyFormAdditionalFieldBorderClassName,
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
   emptyKeyFieldRecoveryCodesValue,
@@ -225,8 +226,8 @@ const passwordGeneratorCharacterSets: Record<keyof PasswordGeneratorSettings, st
 function EyeIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M1.33325 7.99992C1.33325 7.99992 3.33325 3.33325 7.99992 3.33325C12.6666 3.33325 14.6666 7.99992 14.6666 7.99992C14.6666 7.99992 12.6666 12.6666 7.99992 12.6666C3.33325 12.6666 1.33325 7.99992 1.33325 7.99992Z" stroke="#737373" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.99992 9.99992C9.10449 9.99992 9.99992 9.10449 9.99992 7.99992C9.99992 6.89535 9.10449 5.99992 7.99992 5.99992C6.89535 5.99992 5.99992 6.89535 5.99992 7.99992C5.99992 9.10449 6.89535 9.99992 7.99992 9.99992Z" stroke="#737373" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M1.33325 7.99992C1.33325 7.99992 3.33325 3.33325 7.99992 3.33325C12.6666 3.33325 14.6666 7.99992 14.6666 7.99992C14.6666 7.99992 12.6666 12.6666 7.99992 12.6666C3.33325 12.6666 1.33325 7.99992 1.33325 7.99992Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.99992 9.99992C9.10449 9.99992 9.99992 9.10449 9.99992 7.99992C9.99992 6.89535 9.10449 5.99992 7.99992 5.99992C6.89535 5.99992 5.99992 6.89535 5.99992 7.99992C5.99992 9.10449 6.89535 9.99992 7.99992 9.99992Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -234,7 +235,7 @@ function EyeIcon(props: SVGProps<SVGSVGElement>) {
 function TrashIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M2 3.99992H14M12.6667 3.99992V13.3333C12.6667 13.9999 12 14.6666 11.3333 14.6666H4.66667C4 14.6666 3.33333 13.9999 3.33333 13.3333V3.99992M5.33333 3.99992V2.66659C5.33333 1.99992 6 1.33325 6.66667 1.33325H9.33333C10 1.33325 10.6667 1.99992 10.6667 2.66659V3.99992M6.66667 7.33325V11.3333M9.33333 7.33325V11.3333" stroke="#EF4444" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 3.99992H14M12.6667 3.99992V13.3333C12.6667 13.9999 12 14.6666 11.3333 14.6666H4.66667C4 14.6666 3.33333 13.9999 3.33333 13.3333V3.99992M5.33333 3.99992V2.66659C5.33333 1.99992 6 1.33325 6.66667 1.33325H9.33333C10 1.33325 10.6667 1.99992 10.6667 2.66659V3.99992M6.66667 7.33325V11.3333M9.33333 7.33325V11.3333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -1329,11 +1330,15 @@ function SortableField({
       transformValueInput={transformValueInput}
       className={cn(
         section.variant === "primary" && "border-x-transparent",
-        section.variant === "additional" && "border-x-transparent",
-        section.variant === "additional" && (showBottomBorder ? "border-b-border" : "border-b-transparent"),
-        hideTopBorder && "border-t-transparent",
-        hideTopBorder && "!mt-0",
-        hideBottomBorder && "border-b-transparent",
+        section.variant === "additional" &&
+          keyFormAdditionalFieldBorderClassName({
+            isFirst: section.fields[0]?.id === field.id,
+            isLast: section.fields[section.fields.length - 1]?.id === field.id,
+            showTrailingBottomBorder: showBottomBorder,
+          }),
+        section.variant === "primary" && hideTopBorder && "border-t-transparent",
+        section.variant === "primary" && hideTopBorder && "!mt-0",
+        section.variant === "primary" && hideBottomBorder && "border-b-transparent",
       )}
       valueClassName={
         field.type === "multiline-text" ||
@@ -2692,7 +2697,12 @@ export function KeyFormEditor({
         concealValue={shouldConcealSecretField(field, isSecretVisible, false)}
         className={cn(
           !isDraggedField && section.variant === "primary" && "border-x-transparent",
-          !isDraggedField && section.variant === "additional" && "border-x-transparent border-b-transparent",
+          !isDraggedField &&
+            section.variant === "additional" &&
+            keyFormAdditionalFieldBorderClassName({
+              isFirst: fieldIndex === 0,
+              isLast: fieldIndex === section.fields.length - 1,
+            }),
           isDraggedField &&
             cn(
               "rounded-lg border border-x-border border-y-border shadow-lg",

@@ -66,8 +66,8 @@ export const keyFieldTypeOptions: readonly KeyFieldTypeOption[] = [
 function PencilIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M2.33337 11.6667H4.66671L10.7917 5.54168C10.9449 5.38847 11.0664 5.20659 11.1494 5.00641C11.2323 4.80623 11.275 4.59168 11.275 4.37501C11.275 4.15834 11.2323 3.9438 11.1494 3.74362C11.0664 3.54344 10.9449 3.36156 10.7917 3.20835C10.6385 3.05514 10.4566 2.93361 10.2564 2.85069C10.0563 2.76777 9.84171 2.7251 9.62504 2.7251C9.40837 2.7251 9.19382 2.76777 8.99365 2.85069C8.79347 2.93361 8.61158 3.05514 8.45837 3.20835L2.33337 9.33335V11.6667Z" stroke="#737373" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.875 3.79175L10.2083 6.12508" stroke="#737373" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.33337 11.6667H4.66671L10.7917 5.54168C10.9449 5.38847 11.0664 5.20659 11.1494 5.00641C11.2323 4.80623 11.275 4.59168 11.275 4.37501C11.275 4.15834 11.2323 3.9438 11.1494 3.74362C11.0664 3.54344 10.9449 3.36156 10.7917 3.20835C10.6385 3.05514 10.4566 2.93361 10.2564 2.85069C10.0563 2.76777 9.84171 2.7251 9.62504 2.7251C9.40837 2.7251 9.19382 2.76777 8.99365 2.85069C8.79347 2.93361 8.61158 3.05514 8.45837 3.20835L2.33337 9.33335V11.6667Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.875 3.79175L10.2083 6.12508" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -143,7 +143,7 @@ function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 const keyFieldOverlayPillClassName =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-[50px] border border-black/5 px-3 text-sm font-medium text-foreground";
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-[50px] border border-black/5 px-3 text-sm font-medium text-foreground dark:border-foreground/25";
 
 const keyFieldSingleLineControlClassName =
   "m-0 block w-full min-w-0 border-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none";
@@ -759,7 +759,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           hasOpenOverlay && "relative z-30",
           !hasValidationError && [
             "focus-within:relative focus-within:z-10",
-            "focus-within:border-x-accent focus-within:border-y-accent",
+            "focus-within:border-x-accent focus-within:!border-y-accent",
             "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
           ],
           hasValidationError && ["relative z-[1]", keyFormFieldSurfaceErrorRingClassName, "focus-within:z-10"],

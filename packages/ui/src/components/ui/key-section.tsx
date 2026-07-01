@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
-import { keyFormFieldSurfaceTransitionClassName } from "../../lib/input-like-control-classes.js";
+import { keyFormFieldSurfaceTransitionClassName, keyFormAdditionalDividerBorderBClassName, keyFormAdditionalDividerBorderTClassName } from "../../lib/input-like-control-classes.js";
 import { Button } from "./button.js";
 import {
   DropdownMenu,
@@ -15,7 +15,7 @@ import { keyFieldTypeOptions, type KeyFieldTypeOption, type KeyFormMode } from "
 function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M3.33337 7.99992H12.6667M8.00004 3.33325V12.6666" stroke="#0A0A0A" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.33337 7.99992H12.6667M8.00004 3.33325V12.6666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -23,8 +23,8 @@ function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
 function PencilIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M2.33337 11.6667H4.66671L10.7917 5.54168C10.9449 5.38847 11.0664 5.20659 11.1494 5.00641C11.2323 4.80623 11.275 4.59168 11.275 4.37501C11.275 4.15834 11.2323 3.9438 11.1494 3.74362C11.0664 3.54344 10.9449 3.36156 10.7917 3.20835C10.6385 3.05514 10.4566 2.93361 10.2564 2.85069C10.0563 2.76777 9.84171 2.7251 9.62504 2.7251C9.40837 2.7251 9.19382 2.76777 8.99365 2.85069C8.79347 2.93361 8.61158 3.05514 8.45837 3.20835L2.33337 9.33335V11.6667Z" stroke="#737373" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.875 3.79175L10.2083 6.12508" stroke="#737373" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.33337 11.6667H4.66671L10.7917 5.54168C10.9449 5.38847 11.0664 5.20659 11.1494 5.00641C11.2323 4.80623 11.275 4.59168 11.275 4.37501C11.275 4.15834 11.2323 3.9438 11.1494 3.74362C11.0664 3.54344 10.9449 3.36156 10.7917 3.20835C10.6385 3.05514 10.4566 2.93361 10.2564 2.85069C10.0563 2.76777 9.84171 2.7251 9.62504 2.7251C9.40837 2.7251 9.19382 2.76777 8.99365 2.85069C8.79347 2.93361 8.61158 3.05514 8.45837 3.20835L2.33337 9.33335V11.6667Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.875 3.79175L10.2083 6.12508" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -149,10 +149,12 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
           {shouldShowHeader ? (
             <div
               className={cn(
-                "flex min-w-0 items-center gap-1.5 rounded-t-xl border border-x-transparent border-b-border border-t-transparent px-4 py-3",
+                "flex min-w-0 items-center gap-1.5 rounded-t-xl border border-x-transparent border-t-transparent px-4 py-3",
+                variant === "primary" && "border-b-border",
+                variant === "additional" && keyFormAdditionalDividerBorderBClassName,
                 keyFormFieldSurfaceTransitionClassName,
                 "focus-within:relative focus-within:z-10",
-                "focus-within:border-x-accent focus-within:border-y-accent",
+                "focus-within:border-x-accent focus-within:!border-y-accent",
                 "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
               )}
             >
@@ -238,7 +240,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 "-mt-px h-8 w-full rounded-b-xl rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
                 variant === "primary" && "border-x-transparent border-b-transparent",
                 variant === "primary" && isFieldDragging && "!rounded-none !border-x-transparent !border-b-transparent",
-                variant === "additional" && "border-x-transparent border-b-transparent",
+                variant === "additional" && cn("border-x-transparent border-b-transparent", keyFormAdditionalDividerBorderTClassName),
                 "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                 "focus:border-accent focus-visible:border-accent",
               )}
@@ -258,7 +260,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                     "-mt-px h-8 w-full rounded-b-xl rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
                     variant === "primary" && "border-x-transparent border-b-transparent",
                     variant === "primary" && isFieldDragging && "!rounded-none !border-x-transparent !border-b-transparent",
-                    variant === "additional" && "border-x-transparent border-b-transparent",
+                    variant === "additional" && cn("border-x-transparent border-b-transparent", keyFormAdditionalDividerBorderTClassName),
                     "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
                     "focus:border-accent focus-visible:border-accent",
                   )}
