@@ -287,17 +287,22 @@ export default function ItemDetailTopBar({
       <div className="flex shrink-0 items-center gap-2">
         {!archived && !deleted ? (
           <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className={iconGroupButtonClassName}
-              aria-label={t("web.nav.addCapsule")}
-              onClick={() => undefined}
-            >
-              <IconCapsule16 />
-            </Button>
             <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className={iconGroupButtonClassName}
+                    aria-label={t("web.nav.addCapsule")}
+                    onClick={() => undefined}
+                  >
+                    <IconCapsule16 />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t("web.nav.addCapsule")}</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -358,6 +363,10 @@ export default function ItemDetailTopBar({
                     <span>
                       {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
                     </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                    <IconCapsule16 />
+                    <span>{t("web.nav.addCapsule")}</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="mx-1 my-1" />
                 </>

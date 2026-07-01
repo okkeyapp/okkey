@@ -383,6 +383,20 @@ function IconSelect16({ className }: { className?: string }) {
   );
 }
 
+function IconCapsule16({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)} {...props}>
+      <path
+        d="M6.33333 2.66667C7.23949 1.76051 8.4685 1.25144 9.75 1.25144C11.0315 1.25144 12.2605 1.76051 13.1667 2.66667C14.0728 3.57282 14.5819 4.80184 14.5819 6.08333C14.5819 7.36483 14.0728 8.59384 13.1667 9.5L9.75 12.9167C8.84384 13.8228 7.61483 14.3319 6.33333 14.3319C5.05183 14.3319 3.82282 13.8228 2.91667 12.9167C2.01051 12.0105 1.50144 10.7815 1.50144 9.5C1.50144 8.2185 2.01051 6.98949 2.91667 6.08333L6.33333 2.66667Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line x1="4.85355" y1="4.14645" x2="11.8536" y2="11.1464" stroke="currentColor" />
+    </svg>
+  );
+}
+
 function IconUnfavorite16({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
@@ -1380,6 +1394,10 @@ export default function ItemsListLeftPane({
                                             ? t("web.items.menu.removeFromFavorites")
                                             : t("web.items.menu.addToFavorites")}
                                         </span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                        <IconCapsule16 />
+                                        <span>{t("web.nav.addCapsule")}</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuSeparator className="mx-1 my-1" />
                                     </>
