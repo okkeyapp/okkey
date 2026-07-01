@@ -23,6 +23,8 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { ItemFaviconStorage } from "./storage/item-favicon-storage.ts";
+import { ItemFaviconService } from "./favicon/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 
 async function main(): Promise<void> {
@@ -82,10 +84,6 @@ async function main(): Promise<void> {
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
   });
-  const itemPurgeService = new ItemPurgeService({
-    events: storage.repositories.events,
-    softDeletes: storage.repositories.vaultItemSoftDeletes,
-  });
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -130,6 +128,9 @@ async function main(): Promise<void> {
   const keyFieldFileStorage = keyFieldFileStorageConfig
     ? new KeyFieldFileStorage(keyFieldFileStorageConfig)
     : undefined;
+  const itemFaviconStorage = keyFieldFileStorageConfig
+    ? new ItemFaviconStorage(keyFieldFileStorageConfig)
+    : undefined;
   if (keyFieldFileStorage) {
     await keyFieldFileStorage.ensureBucket();
     logger.info("key field file storage initialized", {
@@ -137,6 +138,25 @@ async function main(): Promise<void> {
       endpoint: keyFieldFileStorageConfig?.endpoint,
     });
   }
+  if (itemFaviconStorage) {
+    await itemFaviconStorage.ensureBucket();
+    logger.info("item favicon storage initialized", {
+      bucket: keyFieldFileStorageConfig?.bucket,
+      endpoint: keyFieldFileStorageConfig?.endpoint,
+    });
+  }
+  const itemFaviconService = itemFaviconStorage
+    ? new ItemFaviconService({
+        storage: itemFaviconStorage,
+        favicons: storage.repositories.vaultItemFavicons,
+        vaults: storage.repositories.vaults,
+      })
+    : undefined;
+  const itemPurgeService = new ItemPurgeService({
+    events: storage.repositories.events,
+    softDeletes: storage.repositories.vaultItemSoftDeletes,
+    favicons: itemFaviconService,
+  });
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),
     authService,
@@ -155,6 +175,7 @@ async function main(): Promise<void> {
     twoFactorService,
     capsuleService,
     keyFieldFileStorage,
+    itemFaviconService,
   });
 
   const server = createServer(app.handler());

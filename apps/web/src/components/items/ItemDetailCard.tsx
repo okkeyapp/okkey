@@ -1,4 +1,4 @@
-import type { ItemPlaintextV2, Vault } from "@okkey/types";
+import type { Vault } from "@okkey/types";
 import { Button, Spinner } from "@okkey/ui";
 import { useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -38,13 +38,6 @@ type ItemDetailCardProps = {
   itemId: string;
   vaults: readonly Vault[];
 };
-
-function collectUrls(item: ItemPlaintextV2): string[] {
-  return item.fields
-    .filter((field) => field.type === "url" && field.value.kind === "url")
-    .map((field) => (field.value.kind === "url" ? field.value.url.trim() : ""))
-    .filter((url) => url.length > 0);
-}
 
 function actorLabelFromProfile(profile: { firstName?: string | null; lastName?: string | null; email?: string } | null): string {
   const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim();
@@ -147,8 +140,6 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     );
   }
 
-  const urls = collectUrls(item);
-
   function openEditPopup() {
     navigate(
       {
@@ -232,7 +223,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             <ItemRecordFavicon
               categoryId={item.categoryId}
               title={item.title}
-              urls={urls}
+              faviconId={item.faviconId ?? listRecord?.faviconId}
               size={40}
               alt=""
             />

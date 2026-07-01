@@ -113,6 +113,7 @@ export {
   type KeyFieldSurfaceRoundingInput,
 } from "./lib/key-field-surface-rounding.js";
 export { Spinner, spinnerVariants, type SpinnerProps } from "./components/ui/spinner.js";
+export { Skeleton, type SkeletonProps } from "./components/ui/skeleton.js";
 export {
   Select,
   SelectContent,

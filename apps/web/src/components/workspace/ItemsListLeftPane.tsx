@@ -21,7 +21,7 @@ import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
-import ItemRecordFavicon from "../items/ItemRecordFavicon";
+import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { EDIT_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
@@ -72,6 +72,7 @@ export type ItemsListRecord = {
   folderId: string | null;
   categoryId: string;
   urls: string[];
+  faviconId?: string;
   title: string;
   login: string;
   tags: string[];
@@ -1282,10 +1283,10 @@ export default function ItemsListLeftPane({
                             }
                             className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 px-3 py-2.5 text-left"
                           >
-                            <ItemRecordFavicon
+                            <LazyItemRecordFavicon
                               categoryId={row.categoryId}
                               title={row.title}
-                              urls={row.urls}
+                              faviconId={row.faviconId}
                               size={32}
                               className="shrink-0 bg-background"
                             />

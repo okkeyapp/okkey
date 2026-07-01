@@ -74,9 +74,14 @@ const config: Config = {
           "0%, 100%": { transform: "rotate(-0.45deg)" },
           "50%": { transform: "rotate(0.45deg)" },
         },
+        shimmer: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
       },
       animation: {
         "category-wiggle": "category-wiggle 0.34s ease-in-out infinite",
+        shimmer: "shimmer 1.1s ease-in-out infinite",
       },
     },
   },

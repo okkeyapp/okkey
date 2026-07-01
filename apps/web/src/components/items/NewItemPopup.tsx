@@ -5,7 +5,9 @@ import { useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteDevKeyFieldFile } from "../../api/key-field-files";
+import { useAuthVault } from "../../auth/AuthVaultContext";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
+import { syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { runSaveWithToast } from "../../lib/saveWithToast";
@@ -52,6 +54,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const [saveError, setSaveError] = useState<string | null>(null);
   const { createItem } = useWorkspaceItems();
   const { assignItemToFolder } = useWorkspaceFolders();
+  const { accessToken } = useAuthVault();
 
   const { favoriteIds, favoriteIdSet, ready, toggleFavorite, reorderFavorites } =
     useItemCategoryPreferences(workspaceId);
@@ -123,7 +126,11 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           error: t("web.newItemPopup.saveErrorGeneric"),
         },
         async () => {
-          const item = buildItemFromNewItemSavePayload(payload);
+          if (!accessToken) {
+            throw new Error("AUTH_REQUIRED");
+          }
+          let item = buildItemFromNewItemSavePayload(payload);
+          item = await syncItemFaviconForPlaintext(accessToken, item);
           const createdItemId = await createItem(item);
           await deleteRemovedKeyFieldFiles(
             formRef.current?.getFileBaselineSections() ?? [],

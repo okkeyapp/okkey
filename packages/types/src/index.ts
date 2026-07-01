@@ -375,6 +375,11 @@ export interface SyncAppendEventRequestDto {
   itemDeletedAtMs?: number;
 }
 
+/** `PUT /vaults/:vaultId/items/:itemId/favicon` success body. */
+export interface ItemFaviconUpsertResponseDto {
+  faviconId: EntityId | null;
+}
+
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {
   deleted_items_retention_days: number;

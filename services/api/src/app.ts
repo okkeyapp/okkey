@@ -82,11 +82,18 @@ import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstr
 import type { UsersRepository } from "./storage/repositories.ts";
 import type { EmailChangeService } from "./account/email-change.ts";
 import type { KeyFieldFileStorage } from "./storage/key-field-file-storage.ts";
+import type { ItemFaviconService } from "./favicon/service.ts";
 import {
   createDevKeyFieldFileDeleteRoute,
   createDevKeyFieldFileGetRoute,
   createDevKeyFieldFileUploadRoute,
 } from "./routes/dev-key-field-files.ts";
+import {
+  createItemFaviconDeleteRoute,
+  createItemFaviconGetRoute,
+  createItemFaviconPreviewRoute,
+  createItemFaviconUpsertRoute,
+} from "./routes/item-favicons.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
@@ -107,6 +114,7 @@ export interface AppDeps {
   workspaceSettingsService?: WorkspaceSettingsService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   keyFieldFileStorage?: KeyFieldFileStorage;
+  itemFaviconService?: ItemFaviconService;
 }
 
 export function createApiApp(
@@ -363,6 +371,25 @@ export function createApiApp(
       "DELETE",
       "/dev/key-field-files/:attachmentId",
       createDevKeyFieldFileDeleteRoute(deps.keyFieldFileStorage, config),
+    );
+  }
+
+  if (deps.itemFaviconService) {
+    app.route("GET", "/favicons/:faviconId", createItemFaviconGetRoute(deps.itemFaviconService));
+    app.route(
+      "POST",
+      "/favicon/preview",
+      createItemFaviconPreviewRoute(deps.itemFaviconService, resolveUserId),
+    );
+    app.route(
+      "PUT",
+      "/vaults/:vaultId/items/:itemId/favicon",
+      createItemFaviconUpsertRoute(deps.itemFaviconService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/vaults/:vaultId/items/:itemId/favicon",
+      createItemFaviconDeleteRoute(deps.itemFaviconService, resolveUserId),
     );
   }
 

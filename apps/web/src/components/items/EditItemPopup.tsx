@@ -5,10 +5,12 @@ import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteDevKeyFieldFile } from "../../api/key-field-files";
+import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
+import { syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useLocale } from "../../locale/LocaleContext";
 import { runSaveWithToast } from "../../lib/saveWithToast";
@@ -49,6 +51,7 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
   const [saveError, setSaveError] = useState<string | null>(null);
   const { getItemById, updateItem } = useWorkspaceItems();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
+  const { accessToken } = useAuthVault();
   const { locale } = useLocale();
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
 
@@ -68,6 +71,7 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
       sections: itemPlaintextToKeyFormSections(item, keyFormMessages),
       tags: item.tags ?? [],
       createdAtMs: item.createdAtMs,
+      ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     };
   }, [item, folderId, keyFormMessages]);
 
@@ -112,7 +116,11 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
           error: t("web.editItemPopup.saveErrorGeneric"),
         },
         async () => {
-          const updatedItem = buildItemFromEditSavePayload(payload, payload.createdAtMs);
+          if (!accessToken) {
+            throw new Error("AUTH_REQUIRED");
+          }
+          let updatedItem = buildItemFromEditSavePayload(payload, payload.createdAtMs);
+          updatedItem = await syncItemFaviconForPlaintext(accessToken, updatedItem, item);
           await updateItem(updatedItem);
           await deleteRemovedKeyFieldFiles(
             formRef.current?.getFileBaselineSections() ?? initialValues.sections,

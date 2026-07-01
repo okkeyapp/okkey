@@ -140,6 +140,7 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     .filter((tag): tag is string => typeof tag === "string")
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0);
+  const faviconId = typeof raw.faviconId === "string" && raw.faviconId.trim() ? raw.faviconId.trim() : undefined;
   return {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
     itemId,
@@ -154,6 +155,7 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     sections,
     fields,
     ...(tags.length > 0 ? { tags } : {}),
+    ...(faviconId ? { faviconId } : {}),
   };
 }
 

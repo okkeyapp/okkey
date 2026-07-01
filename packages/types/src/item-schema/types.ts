@@ -122,4 +122,6 @@ export interface ItemPlaintextV2 {
   fields: ItemFieldV2[];
   /** User-defined labels; omitted when empty. */
   tags?: string[];
+  /** Server-stored favicon blob id (MinIO); set after favicon upsert on save. */
+  faviconId?: EntityId;
 }

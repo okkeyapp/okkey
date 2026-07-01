@@ -35,6 +35,7 @@ export function itemPlaintextToListRecord(
     folderId: input.folderId,
     categoryId: item.categoryId,
     urls: collectUrls(item),
+    ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     title: item.title,
     login,
     tags: [...(item.tags ?? [])],

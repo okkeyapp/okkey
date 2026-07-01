@@ -2,8 +2,7 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils.js";
 import { PersonalWorkspaceMark } from "./workspace-tile.js";
-
-const YANDEX_INTERNAL_SIZE = 120;
+import { Skeleton } from "./skeleton.js";
 
 /** Tailwind/shadcn 500 palette — monogram backgrounds and generic fallbacks. */
 export const FAVICON_MONOGRAM_COLORS = [
@@ -139,7 +138,7 @@ function isIpv4Host(host: string): boolean {
   return IPV4_HOST_RE.test(host);
 }
 
-/** URLs suitable for Yandex favicon lookup (skip localhost, IPs, single-label hosts). */
+/** URLs suitable for remote favicon lookup (skip localhost, IPs, single-label hosts). */
 export function urlsForRemoteFavicon(urls: readonly string[]): string[] {
   return urls.filter((url) => {
     const host = parseHostFromUrl(url);
@@ -154,13 +153,15 @@ export function urlsForRemoteFavicon(urls: readonly string[]): string[] {
   });
 }
 
-/** First URL in `urls` that can be resolved via Yandex favicon API. */
+/** First URL in `urls` that can be resolved via remote favicon API. */
 export function primaryFaviconUrl(urls: readonly string[] | undefined): string | undefined {
   if (!urls?.length) {
     return undefined;
   }
   return urlsForRemoteFavicon(urls)[0];
 }
+
+const YANDEX_INTERNAL_SIZE = 120;
 
 /**
  * Yandex favicon API: multiple hosts in the path return a vertical strip of squares
@@ -176,122 +177,35 @@ export function buildYandexCompositeFaviconUrl(hosts: readonly string[], size = 
   return `https://favicon.yandex.net/favicon/${parts.map((p) => encodeURIComponent(p)).join("/")}?size=${size}`;
 }
 
-function singleHostFaviconUrl(host: string, size = YANDEX_INTERNAL_SIZE): string {
-  return `https://favicon.yandex.net/favicon/${encodeURIComponent(host)}?size=${size}`;
-}
-
-function isTileLikelyEmpty(imageData: ImageData, tileW: number, tileH: number): boolean {
-  const { data } = imageData;
-  let minL = 255;
-  let maxL = 0;
-  let sumA = 0;
-  const step = 6;
-  let samples = 0;
-  for (let y = 0; y < tileH; y += step) {
-    for (let x = 0; x < tileW; x += step) {
-      const i = (y * tileW + x) * 4;
-      const r = data[i] ?? 0;
-      const g = data[i + 1] ?? 0;
-      const b = data[i + 2] ?? 0;
-      const a = data[i + 3] ?? 0;
-      sumA += a;
-      const l = 0.299 * r + 0.587 * g + 0.114 * b;
-      minL = Math.min(minL, l);
-      maxL = Math.max(maxL, l);
-      samples += 1;
-    }
-  }
-  const range = maxL - minL;
-  const avgA = sumA / Math.max(1, samples);
-  if (avgA < 28) {
-    return true;
-  }
-  return range < 18;
-}
-
-function analyzeTiles(img: HTMLImageElement): { nTiles: number; firstNonEmpty: number | null } {
-  const cw = img.naturalWidth;
-  const ch = img.naturalHeight;
-  if (cw <= 0 || ch <= 0) {
-    return { nTiles: 0, firstNonEmpty: null };
-  }
-  const tileW = cw;
-  const nTiles = Math.max(1, Math.round(ch / cw));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = tileW;
-  canvas.height = tileW;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    return { nTiles, firstNonEmpty: null };
-  }
-
-  if (nTiles === 1) {
-    ctx.drawImage(img, 0, 0, cw, ch, 0, 0, tileW, tileW);
-    try {
-      const data = ctx.getImageData(0, 0, tileW, tileW);
-      return { nTiles: 1, firstNonEmpty: isTileLikelyEmpty(data, tileW, tileW) ? null : 0 };
-    } catch {
-      return { nTiles: 1, firstNonEmpty: null };
-    }
-  }
-
-  for (let i = 0; i < nTiles; i += 1) {
-    ctx.clearRect(0, 0, tileW, tileW);
-    ctx.drawImage(img, 0, i * tileW, tileW, tileW, 0, 0, tileW, tileW);
-    try {
-      const data = ctx.getImageData(0, 0, tileW, tileW);
-      if (!isTileLikelyEmpty(data, tileW, tileW)) {
-        return { nTiles, firstNonEmpty: i };
-      }
-    } catch {
-      return { nTiles, firstNonEmpty: null };
-    }
-  }
-  return { nTiles, firstNonEmpty: null };
-}
-
-function loadImage(src: string, crossOrigin: "" | "anonymous"): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    if (crossOrigin) {
-      img.crossOrigin = crossOrigin;
-    }
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("image load error"));
-    img.src = src;
-  });
-}
-
 export type FaviconProps = Omit<React.HTMLAttributes<HTMLDivElement>, "title"> & {
-  /** Record display name; first letter is used as monogram when remote favicon is unavailable. */
+  /** Stored favicon image URL (MinIO/API). When set, renders a single `<img>` without remote lookups. */
+  imageSrc?: string;
+  /** Pass `loading="lazy"` to the image (list rows). */
+  lazy?: boolean;
+  /** Record display name; first letter is used as monogram when no image is shown. */
   name?: string;
-  /** Website URLs in priority order; the first URL suitable for lookup drives the remote favicon. */
+  /** @deprecated Dev gallery only — production uses `imageSrc` from stored favicons. */
   urls?: readonly string[];
-  /**
-   * When true, pass all suitable `urls` to the Yandex composite strip and show the first non-empty tile.
-   * Default (`false`): only the first suitable URL is requested (record list / form behaviour).
-   */
+  /** @deprecated Dev gallery composite strip demo. */
   compositeStrip?: boolean;
   /** Edge length in CSS pixels (e.g. 32 in item lists). */
   size?: number;
-  /** Fallback background when no favicon is shown; if omitted, a stable shadcn-500 hue is picked from `urls`. */
+  /** Fallback background when no favicon is shown. */
   color?: string;
-  /**
-   * Override monogram text (max 2 chars); defaults to initials derived from `name`.
-   * (Named `monogram` to avoid clashing with the native HTML `title` tooltip attribute.)
-   */
   monogram?: string;
-  /** When no remote favicon and no monogram from `name`: category/type icon on the fallback background. */
+  /** When no image and no monogram from `name`: category/type icon on the fallback background. */
   icon?: React.ReactNode;
-  /** `img` alt when a remote favicon is shown. */
+  /** Shows a pulse skeleton instead of monogram/icon while a remote preview is loading. */
+  loading?: boolean;
   alt?: string;
 };
 
 /**
- * Favicon for records: remote tile from the primary URL, then monogram from `name`, then `icon`, then Okkey mark.
+ * Record favicon tile: stored image, then monogram from `name`, then `icon`, then Okkey mark.
  */
 export function Favicon({
+  imageSrc,
+  lazy = false,
   name,
   urls,
   compositeStrip = false,
@@ -299,151 +213,35 @@ export function Favicon({
   color,
   monogram,
   icon,
+  loading = false,
   className,
   alt = "",
   ...rest
 }: FaviconProps) {
-  const urlsKey = (urls ?? []).join("\u0001");
-  const remoteUrls = React.useMemo(() => {
-    const suitable = urlsForRemoteFavicon(urls ?? []);
-    if (compositeStrip) {
-      return suitable;
-    }
-    const primary = suitable[0];
-    return primary ? [primary] : [];
-  }, [compositeStrip, urlsKey]);
-  const hosts = React.useMemo(() => hostsFromUrls(remoteUrls), [remoteUrls]);
-  const compositeSrc = React.useMemo(() => (hosts.length ? buildYandexCompositeFaviconUrl(hosts) : ""), [hosts]);
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const [imageLoaded, setImageLoaded] = React.useState(false);
+  React.useEffect(() => {
+    setImageFailed(false);
+    setImageLoaded(false);
+  }, [imageSrc]);
 
+  const hosts = React.useMemo(() => hostsFromUrls(urls ?? []), [urls]);
   const defaultBg = React.useMemo(() => {
     const key = hosts.length ? hosts.join("|") : name?.trim() || "okkey-favicon";
     return SHADCN_500_HEX[stableIndexFromString(key)] ?? SHADCN_500_HEX[0];
   }, [hosts, name]);
-
   const iconFallbackBg = color ?? defaultBg;
-
-  const [remoteMode, setRemoteMode] = React.useState<"none" | "composite" | "single">("none");
-  const [tileIndex, setTileIndex] = React.useState(0);
-  const [singleSrc, setSingleSrc] = React.useState<string | null>(null);
-  const [natural, setNatural] = React.useState<{ cw: number; ch: number } | null>(null);
-  const [scanDone, setScanDone] = React.useState(!remoteUrls.length);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      setRemoteMode("none");
-      setSingleSrc(null);
-      setNatural(null);
-      setTileIndex(0);
-
-      if (!hosts.length || !compositeSrc) {
-        setScanDone(true);
-        return;
-      }
-
-      setScanDone(false);
-
-      try {
-        try {
-          const img = await loadImage(compositeSrc, "anonymous");
-          if (cancelled) {
-            return;
-          }
-          const { firstNonEmpty } = analyzeTiles(img);
-          if (firstNonEmpty != null) {
-            setTileIndex(firstNonEmpty);
-            setNatural({ cw: img.naturalWidth, ch: img.naturalHeight });
-            setRemoteMode("composite");
-            return;
-          }
-        } catch {
-          /* try uncredentialed fetch for canvas */
-        }
-
-        try {
-          const img = await loadImage(compositeSrc, "");
-          if (cancelled) {
-            return;
-          }
-          const { firstNonEmpty } = analyzeTiles(img);
-          if (firstNonEmpty != null) {
-            setTileIndex(firstNonEmpty);
-            setNatural({ cw: img.naturalWidth, ch: img.naturalHeight });
-            setRemoteMode("composite");
-            return;
-          }
-        } catch {
-          /* ignore */
-        }
-
-        for (const host of hosts) {
-          if (cancelled) {
-            return;
-          }
-          const src = singleHostFaviconUrl(host);
-          try {
-            const im = await loadImage(src, "anonymous");
-            if (cancelled) {
-              return;
-            }
-            const { firstNonEmpty } = analyzeTiles(im);
-            if (firstNonEmpty != null) {
-              setSingleSrc(src);
-              setRemoteMode("single");
-              return;
-            }
-          } catch {
-            /* next */
-          }
-        }
-
-        for (const host of hosts) {
-          if (cancelled) {
-            return;
-          }
-          const src = singleHostFaviconUrl(host);
-          try {
-            const im = await loadImage(src, "");
-            if (cancelled) {
-              return;
-            }
-            const { firstNonEmpty } = analyzeTiles(im);
-            if (firstNonEmpty != null) {
-              setSingleSrc(src);
-              setRemoteMode("single");
-              return;
-            }
-          } catch {
-            /* next */
-          }
-        }
-      } finally {
-        if (!cancelled) {
-          setScanDone(true);
-        }
-      }
-    }
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [compositeSrc, hosts, urlsKey]);
 
   const px = `${size}px`;
   const monogramText = deriveFaviconMonogram(name, monogram);
   const monogramBg = monogramText ? faviconMonogramBackgroundColor(monogramText) : undefined;
-  const showCustomFallback = (Boolean(monogramText) || Boolean(icon)) && scanDone && remoteMode === "none";
+  const hasImageSrc = Boolean(imageSrc) && !imageFailed;
+  const imagePending = hasImageSrc && !imageLoaded;
+  const showSkeleton = loading || imagePending;
+  const showImage = hasImageSrc && imageLoaded;
 
-  const compositeDisplayHeight =
-    natural && natural.cw > 0 ? `${(natural.ch / natural.cw) * size}px` : undefined;
-
-  const showRemoteFallback = () => {
-    setRemoteMode("none");
-    setSingleSrc(null);
-    setNatural(null);
-  };
+  const devCompositeSrc =
+    !imageSrc && compositeStrip && hosts.length ? buildYandexCompositeFaviconUrl(hosts) : "";
 
   return (
     <div
@@ -451,7 +249,27 @@ export function Favicon({
       style={{ width: px, height: px }}
       {...rest}
     >
-      {showCustomFallback ? (
+      {showSkeleton ? <Skeleton className="absolute inset-0 z-[1] rounded-lg" /> : null}
+
+      {hasImageSrc ? (
+        <img
+          src={imageSrc}
+          alt={alt}
+          width={size}
+          height={size}
+          loading={lazy ? "lazy" : undefined}
+          decoding="async"
+          className={cn(
+            "pointer-events-none size-full object-cover",
+            imagePending && "opacity-0",
+          )}
+          draggable={false}
+          onLoad={() => setImageLoaded(true)}
+          onError={() => setImageFailed(true)}
+        />
+      ) : null}
+
+      {!showSkeleton && !hasImageSrc && (monogramText || icon) ? (
         <div
           className="absolute inset-0 flex items-center justify-center"
           style={{ backgroundColor: monogramText ? monogramBg : iconFallbackBg }}
@@ -470,42 +288,19 @@ export function Favicon({
         </div>
       ) : null}
 
-      {remoteMode === "composite" && compositeSrc && compositeDisplayHeight ? (
+      {!showSkeleton && !hasImageSrc && !monogramText && !icon && devCompositeSrc ? (
         <img
-          src={compositeSrc}
-          alt={alt}
-          className="pointer-events-none absolute left-0 top-0 z-[1] max-w-none select-none"
-          draggable={false}
-          onError={showRemoteFallback}
-          style={{
-            width: px,
-            height: compositeDisplayHeight,
-            top: `calc(-1 * ${tileIndex} * ${px})`,
-          }}
-        />
-      ) : null}
-
-      {remoteMode === "single" && singleSrc ? (
-        <img
-          src={singleSrc}
+          src={devCompositeSrc}
           alt={alt}
           width={size}
           height={size}
-          className="pointer-events-none absolute inset-0 z-[1] size-full object-cover"
+          className="pointer-events-none size-full object-cover"
           draggable={false}
-          onError={showRemoteFallback}
         />
       ) : null}
 
-      {!scanDone && remoteUrls.length ? (
-        <div className="absolute inset-0 animate-pulse rounded-lg bg-muted" aria-hidden />
-      ) : null}
-
-      {!monogramText && !icon && scanDone && remoteMode === "none" ? (
-        <div
-          className="absolute inset-0 flex items-center justify-center"
-          style={{ backgroundColor: iconFallbackBg }}
-        >
+      {!showSkeleton && !hasImageSrc && !monogramText && !icon && !devCompositeSrc ? (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: iconFallbackBg }}>
           <PersonalWorkspaceMark fillColor={iconFallbackBg} className="size-[62%]" />
         </div>
       ) : null}

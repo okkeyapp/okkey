@@ -1,11 +1,13 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
+import { generateEntityId } from "@okkey/types";
 import { Input, cn } from "@okkey/ui";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
 import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
+import { useItemFormFaviconPreview } from "../../items/useItemFormFaviconPreview";
 import {
   validateNewItemForm,
   type NewItemFormValidationIssue,
@@ -20,7 +22,7 @@ import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
 import ItemRecordFavicon from "./ItemRecordFavicon";
 import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
-import { generateEntityId } from "@okkey/types";
+import { useAuthVault } from "../../auth/AuthVaultContext";
 
 export type NewItemSavePayload = {
   itemId: string;
@@ -42,6 +44,7 @@ export type NewItemFormInitialValues = {
   sections: KeyFormEditorSection[];
   tags: string[];
   createdAtMs: number;
+  faviconId?: string;
 };
 
 export type NewItemFormHandle = {
@@ -66,6 +69,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   ref,
 ) {
   const isEditMode = Boolean(initialValues);
+  const { accessToken } = useAuthVault();
+  const itemIdRef = useRef(initialValues?.itemId ?? generateEntityId());
   const { locale } = useLocale();
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
@@ -98,6 +103,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   );
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
+  const { previewImageSrc, isLoading: previewFaviconLoading } = useItemFormFaviconPreview({
+    accessToken,
+    categoryId,
+    urls: committedWebsiteUrls,
+  });
 
   const handleWebsiteUrlsBlur = useCallback((sections: KeyFormEditorSection[]) => {
     setCommittedWebsiteUrls(collectWebsiteUrlsFromSections(sections));
@@ -149,7 +159,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           return null;
         }
         return {
-          itemId: initialValues?.itemId ?? generateEntityId(),
+          itemId: itemIdRef.current,
           vaultId,
           folderId,
           recordName: trimmedRecordName,
@@ -175,7 +185,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         <ItemRecordFavicon
           categoryId={category.id}
           title={trimmedRecordName || undefined}
-          urls={committedWebsiteUrls}
+          previewImageSrc={previewImageSrc}
+          previewLoading={previewFaviconLoading}
           size={40}
           alt=""
         />
