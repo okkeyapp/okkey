@@ -26,38 +26,9 @@ type ItemRecordFaviconProps = {
   size?: number;
   className?: string;
   alt?: string;
-  /** When true, image uses native lazy loading (list rows after intersection). */
+  /** When true, image uses native lazy loading (list rows). */
   lazy?: boolean;
-  /** When false, stored image is not requested yet (intersection gate for lists). */
-  loadImage?: boolean;
 };
-
-function useLazyVisible(rootMargin = "120px"): [React.RefObject<HTMLDivElement | null>, boolean] {
-  const ref = React.useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = React.useState(false);
-
-  React.useEffect(() => {
-    const element = ref.current;
-    if (!element || visible) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin },
-    );
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [visible, rootMargin]);
-
-  return [ref, visible];
-}
 
 /** Login/password: stored favicon, monogram, or category icon. Other categories: category icon only. */
 export default function ItemRecordFavicon({
@@ -71,7 +42,6 @@ export default function ItemRecordFavicon({
   className,
   alt = "",
   lazy = false,
-  loadImage = true,
 }: ItemRecordFaviconProps) {
   const category = isItemCategoryId(categoryId) ? getItemCategoryDefinition(categoryId) : undefined;
   const categoryIcon = category ? (
@@ -82,8 +52,8 @@ export default function ItemRecordFavicon({
     />
   ) : undefined;
 
-  const imageSrc =
-    loadImage && (previewImageSrc ?? (faviconId ? buildItemFaviconUrl(faviconId) : undefined));
+  const imageSrc = previewImageSrc ?? (faviconId ? buildItemFaviconUrl(faviconId) : undefined);
+  const skeletonWhileLoading = previewLoading || previewImageSrc != null;
 
   if (isLoginItemCategory(categoryId)) {
     return (
@@ -91,6 +61,7 @@ export default function ItemRecordFavicon({
         name={title}
         imageSrc={imageSrc}
         loading={previewLoading}
+        skeletonWhileLoading={skeletonWhileLoading}
         lazy={lazy}
         size={size}
         color={category?.iconColor}
@@ -112,14 +83,9 @@ export default function ItemRecordFavicon({
   );
 }
 
-type LazyItemRecordFaviconProps = Omit<ItemRecordFaviconProps, "lazy" | "loadImage">;
+type LazyItemRecordFaviconProps = Omit<ItemRecordFaviconProps, "lazy">;
 
-/** List row favicon: waits for viewport intersection before loading the stored image. */
+/** List row favicon: native lazy loading for stored images. */
 export function LazyItemRecordFavicon(props: LazyItemRecordFaviconProps) {
-  const [ref, visible] = useLazyVisible();
-  return (
-    <div ref={ref} className="shrink-0" style={{ width: props.size ?? 32, height: props.size ?? 32 }}>
-      <ItemRecordFavicon {...props} lazy={visible} loadImage={visible} />
-    </div>
-  );
+  return <ItemRecordFavicon {...props} lazy />;
 }

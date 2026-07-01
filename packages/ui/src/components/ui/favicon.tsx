@@ -195,8 +195,10 @@ export type FaviconProps = Omit<React.HTMLAttributes<HTMLDivElement>, "title"> &
   monogram?: string;
   /** When no image and no monogram from `name`: category/type icon on the fallback background. */
   icon?: React.ReactNode;
-  /** Shows a pulse skeleton instead of monogram/icon while a remote preview is loading. */
+  /** Remote preview API in flight (form preview). */
   loading?: boolean;
+  /** When true, shows skeleton during preview load and image decode; lists/cards keep monogram fallback. */
+  skeletonWhileLoading?: boolean;
   alt?: string;
 };
 
@@ -214,6 +216,7 @@ export function Favicon({
   monogram,
   icon,
   loading = false,
+  skeletonWhileLoading = false,
   className,
   alt = "",
   ...rest
@@ -237,8 +240,7 @@ export function Favicon({
   const monogramBg = monogramText ? faviconMonogramBackgroundColor(monogramText) : undefined;
   const hasImageSrc = Boolean(imageSrc) && !imageFailed;
   const imagePending = hasImageSrc && !imageLoaded;
-  const showSkeleton = loading || imagePending;
-  const showImage = hasImageSrc && imageLoaded;
+  const showSkeleton = skeletonWhileLoading && (loading || imagePending);
 
   const devCompositeSrc =
     !imageSrc && compositeStrip && hosts.length ? buildYandexCompositeFaviconUrl(hosts) : "";
@@ -261,7 +263,7 @@ export function Favicon({
           decoding="async"
           className={cn(
             "pointer-events-none size-full object-cover",
-            imagePending && "opacity-0",
+            imagePending && skeletonWhileLoading && "opacity-0",
           )}
           draggable={false}
           onLoad={() => setImageLoaded(true)}
