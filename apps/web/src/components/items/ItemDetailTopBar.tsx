@@ -64,6 +64,33 @@ function IconFavorite16({ className, filled = false, ...props }: SVGProps<SVGSVG
   );
 }
 
+function FilterIconFavorites({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-[#F97316]", className)} {...props}>
+      <path
+        d="M8.00004 1.3335L10.06 5.50683L14.6667 6.18016L11.3334 9.42683L12.12 14.0135L8.00004 11.8468L3.88004 14.0135L4.66671 9.42683L1.33337 6.18016L5.94004 5.50683L8.00004 1.3335Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconUnfavorite16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6.67468 4.01047L7.99535 1.33447L10.0527 5.50314L14.6527 6.16981L11.7053 9.03914M11.7133 11.7125L12.1053 13.9965L8.00001 11.8331L3.88535 13.9965L4.67135 9.41447L1.33801 6.16981L5.55601 5.55847"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconEdit16({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
@@ -314,11 +341,23 @@ export default function ItemDetailTopBar({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
-              {!archived && !deleted && onCopy ? (
+              {!archived && !deleted ? (
                 <>
-                  <DropdownMenuItem className="gap-2" onSelect={onCopy}>
-                    <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
-                    <span>{t("web.items.menu.copy")}</span>
+                  {onCopy ? (
+                    <DropdownMenuItem className="gap-2" onSelect={onCopy}>
+                      <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
+                      <span>{t("web.items.menu.copy")}</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem className="gap-2" onSelect={onToggleFavorite}>
+                    {favorite ? (
+                      <IconUnfavorite16 className="text-foreground" />
+                    ) : (
+                      <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                    )}
+                    <span>
+                      {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
+                    </span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="mx-1 my-1" />
                 </>
