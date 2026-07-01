@@ -48,7 +48,7 @@ export function getDefaultSectionsForCategory(
           value: "",
           copyValue: "",
           editableLabel: true,
-          deletable: true,
+          deletable: false,
           required: true,
           urlAutofillScope: "entire-site",
         },

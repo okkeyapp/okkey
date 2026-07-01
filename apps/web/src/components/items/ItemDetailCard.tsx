@@ -83,8 +83,11 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     : t("web.newItemPopup.noFolder");
 
   const category = item && isItemCategoryId(item.categoryId) ? getItemCategoryDefinition(item.categoryId) : undefined;
-  const formSections = useMemo(() => (item ? itemPlaintextToKeyFormSections(item) : []), [item]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+  const formSections = useMemo(
+    () => (item ? itemPlaintextToKeyFormSections(item, keyFormMessages) : []),
+    [item, keyFormMessages],
+  );
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
   const handleRecoveryCodesValueChange = useCallback(
     async ({ fieldId, value }: RecoveryCodesValueChange) => {

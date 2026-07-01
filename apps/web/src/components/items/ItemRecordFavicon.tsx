@@ -22,7 +22,7 @@ type ItemRecordFaviconProps = {
   alt?: string;
 };
 
-/** Login/password: remote favicon or monogram. Other categories: category icon only. */
+/** Login/password: remote favicon or monogram, then category icon. Other categories: category icon only. */
 export default function ItemRecordFavicon({
   categoryId,
   title,
@@ -31,19 +31,28 @@ export default function ItemRecordFavicon({
   className,
   alt = "",
 }: ItemRecordFaviconProps) {
+  const category = isItemCategoryId(categoryId) ? getItemCategoryDefinition(categoryId) : undefined;
+  const categoryIcon = category ? (
+    <ItemCategoryIcon
+      categoryId={category.id}
+      pixelSize={categoryIconPixelSize(size)}
+      className="shrink-0 text-white"
+    />
+  ) : undefined;
+
   if (isLoginItemCategory(categoryId)) {
     return (
       <Favicon
         name={title}
         urls={urls?.length ? urls : undefined}
         size={size}
+        color={category?.iconColor}
         className={className}
         alt={alt}
+        icon={categoryIcon}
       />
     );
   }
-
-  const category = isItemCategoryId(categoryId) ? getItemCategoryDefinition(categoryId) : undefined;
 
   return (
     <Favicon
@@ -51,15 +60,7 @@ export default function ItemRecordFavicon({
       color={category?.iconColor}
       className={className}
       alt={alt}
-      icon={
-        category ? (
-          <ItemCategoryIcon
-            categoryId={category.id}
-            pixelSize={categoryIconPixelSize(size)}
-            className="shrink-0 text-white"
-          />
-        ) : undefined
-      }
+      icon={categoryIcon}
     />
   );
 }

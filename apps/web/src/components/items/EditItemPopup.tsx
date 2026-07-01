@@ -10,8 +10,10 @@ import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useLocale } from "../../locale/LocaleContext";
 import { runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
+import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import {
   EDIT_ITEM_POPUP_ID,
   POPUP_QUERY_PARAM,
@@ -47,6 +49,8 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
   const [saveError, setSaveError] = useState<string | null>(null);
   const { getItemById, updateItem } = useWorkspaceItems();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
+  const { locale } = useLocale();
+  const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
 
   const item = itemId ? getItemById(itemId) : undefined;
   const folderId = item ? itemFolderByItemId.get(item.itemId) ?? NO_FOLDER_VALUE : NO_FOLDER_VALUE;
@@ -61,11 +65,11 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
       categoryId: item.categoryId,
       vaultId: item.vaultId,
       folderId,
-      sections: itemPlaintextToKeyFormSections(item),
+      sections: itemPlaintextToKeyFormSections(item, keyFormMessages),
       tags: item.tags ?? [],
       createdAtMs: item.createdAtMs,
     };
-  }, [item, folderId]);
+  }, [item, folderId, keyFormMessages]);
 
   function closePopup() {
     setShowValidation(false);

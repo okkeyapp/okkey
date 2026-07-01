@@ -188,15 +188,13 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           placeholder={t("web.newItemPopup.recordNamePlaceholder", { category: categoryLabel })}
           className={cn(
             "h-10 min-w-0 flex-1 text-xl font-semibold leading-6",
-            recordNameInvalid && "border-destructive focus-visible:ring-destructive/30",
+            recordNameInvalid &&
+              "border-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:ring-0",
           )}
           aria-label={t("web.newItemPopup.recordNameLabel")}
           aria-invalid={recordNameInvalid || undefined}
         />
       </div>
-      {recordNameInvalid ? (
-        <p className="text-sm text-destructive">{t("web.newItemPopup.validation.recordNameRequired")}</p>
-      ) : null}
 
       <KeyFormEditor
         key={initialValues?.itemId ?? category.id}

@@ -2,6 +2,9 @@ import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
 import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, getSecretKindFromRaw, serializeKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
+import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
+import { getDefaultSectionsForCategory } from "../components/items/itemCategoryDefaultSections";
+import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import { isItemFieldFilled } from "./keyFormFilledFields";
 
 function formFieldType(field: ItemFieldV2): string {
@@ -89,6 +92,9 @@ function isFieldDeletable(
   }
 
   if (sectionId === "credentials") {
+    if (field.id === "login" || field.id === "password") {
+      return false;
+    }
     if (type === "totp") {
       return true;
     }
@@ -121,6 +127,98 @@ function isFieldLabelEditable(
   return false;
 }
 
+function isFieldRequired(
+  sectionId: string,
+  field: ItemFieldV2,
+  sectionFields: ItemFieldV2[],
+  isPresetSection: boolean,
+): boolean {
+  if (!isPresetSection) {
+    return false;
+  }
+
+  if (sectionId === "credentials" && (field.id === "login" || field.type === "password")) {
+    return true;
+  }
+
+  if (sectionId === "websites" && formFieldType(field) === "url") {
+    return sectionFields.filter((candidate) => formFieldType(candidate) === "url").length > 0;
+  }
+
+  return false;
+}
+
+function mergeLoginPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("login", messages);
+  const loadedById = new Map(loaded.map((section) => [section.id, section]));
+
+  const mergedPreset = defaults.map((defaultSection) => {
+    const loadedSection = loadedById.get(defaultSection.id);
+    if (!loadedSection) {
+      return defaultSection;
+    }
+
+    if (defaultSection.id === "websites") {
+      const urlFields = loadedSection.fields.filter((field) => field.type === "url");
+      if (urlFields.length === 0) {
+        return defaultSection;
+      }
+
+      return {
+        ...defaultSection,
+        ...loadedSection,
+        fields: urlFields.map((field) => ({
+          ...field,
+          required: true,
+          deletable: urlFields.length > 1,
+          editableLabel: true,
+        })),
+      };
+    }
+
+    if (defaultSection.id === "credentials") {
+      const defaultFieldsById = new Map(defaultSection.fields.map((field) => [field.id, field]));
+      const mergedFields: KeyFormEditorField[] = [];
+
+      for (const defaultField of defaultSection.fields) {
+        const loadedField = loadedSection.fields.find((field) => field.id === defaultField.id);
+        mergedFields.push(
+          loadedField
+            ? {
+                ...defaultField,
+                ...loadedField,
+                deletable: false,
+                required: true,
+                editableLabel: false,
+                secret: defaultField.id === "password" ? true : loadedField.secret,
+              }
+            : defaultField,
+        );
+      }
+
+      for (const loadedField of loadedSection.fields) {
+        if (!defaultFieldsById.has(loadedField.id)) {
+          mergedFields.push(loadedField);
+        }
+      }
+
+      return {
+        ...defaultSection,
+        ...loadedSection,
+        fields: mergedFields,
+      };
+    }
+
+    return loadedSection;
+  });
+
+  const additional = loaded.filter((section) => !defaults.some((defaultSection) => defaultSection.id === section.id));
+  return [...mergedPreset, ...additional];
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -140,12 +238,16 @@ function toFormField(
     secret: type === "password" || type === "secret",
     editableLabel: isFieldLabelEditable(sectionId, field, isPresetSection),
     deletable,
+    required: isFieldRequired(sectionId, field, sectionFields, isPresetSection),
     ...(secretKind ? { secretKind } : {}),
     ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
   };
 }
 
-export function itemPlaintextToKeyFormSections(item: ItemPlaintextV2): KeyFormEditorSection[] {
+export function itemPlaintextToKeyFormSections(
+  item: ItemPlaintextV2,
+  messages?: KeyFormEditorMessages,
+): KeyFormEditorSection[] {
   const sectionsById = new Map(item.sections.map((section) => [section.id, section]));
   const orderedSectionIds = [...item.sections]
     .sort((a, b) => a.order - b.order)
@@ -161,7 +263,7 @@ export function itemPlaintextToKeyFormSections(item: ItemPlaintextV2): KeyFormEd
     fieldsBySection.set(field.sectionId, bucket);
   }
 
-  return orderedSectionIds
+  const sections = orderedSectionIds
     .map((sectionId) => {
       const section = sectionsById.get(sectionId);
       const sectionFields = (fieldsBySection.get(sectionId) ?? []).sort((a, b) => a.order - b.order);
@@ -178,4 +280,10 @@ export function itemPlaintextToKeyFormSections(item: ItemPlaintextV2): KeyFormEd
       } satisfies KeyFormEditorSection;
     })
     .filter((section): section is KeyFormEditorSection => section !== null);
+
+  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "login") {
+    return mergeLoginPresetSections(sections, messages);
+  }
+
+  return sections;
 }

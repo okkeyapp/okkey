@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils.js";
 
 export type KeyFieldOverlayPanelProps = React.ComponentPropsWithoutRef<"div">;
 
-export const keyFieldOverlayPanelClassName = cn("absolute left-0 top-full z-40 mt-2");
+export const keyFieldOverlayPanelClassName = cn("absolute left-0 top-full z-50 mt-2");
 
 const keyFieldOverlayPanelSurfaceClassName = cn(
   "relative overflow-hidden rounded-md bg-popover p-3 text-popover-foreground",
