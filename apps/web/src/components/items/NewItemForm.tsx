@@ -108,10 +108,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       (category ? getDefaultSectionsForCategory(category.id, keyFormMessages) : []),
     [initialValues?.sections, prefillValues?.sections, category, keyFormMessages],
   );
-  const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>(() => {
-    const sections = initialValues?.sections ?? prefillValues?.sections;
-    return sections ? collectWebsiteUrlsFromSections(sections) : [];
-  });
+  const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>(() =>
+    prefillValues?.sections ? collectWebsiteUrlsFromSections(prefillValues.sections) : [],
+  );
   const suggestedRecordName = useMemo(
     () => suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls),
     [committedWebsiteUrls],
@@ -127,13 +126,6 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const handleWebsiteUrlsBlur = useCallback((sections: KeyFormEditorSection[]) => {
     setCommittedWebsiteUrls(collectWebsiteUrlsFromSections(sections));
   }, []);
-
-  useEffect(() => {
-    if (!isEditMode) {
-      return;
-    }
-    setCommittedWebsiteUrls(collectWebsiteUrlsFromSections(initialValues?.sections ?? []));
-  }, [isEditMode, initialValues?.sections]);
 
   useEffect(() => {
     if (isEditMode || isCopyMode) {
@@ -202,6 +194,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         <ItemRecordFavicon
           categoryId={category.id}
           title={trimmedRecordName || undefined}
+          faviconId={initialValues?.faviconId}
           previewImageSrc={previewImageSrc}
           previewLoading={previewFaviconLoading}
           size={40}
