@@ -19,6 +19,7 @@ import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useLocale } from "../../locale/LocaleContext";
 import {
   EDIT_ITEM_POPUP_ID,
+  NEW_ITEM_POPUP_ID,
   buildPopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
@@ -26,7 +27,7 @@ import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_P
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor, type RecoveryCodesValueChange } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
-import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
+import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "./itemCategoryCatalog";
 import ItemRecordFavicon from "./ItemRecordFavicon";
 import ItemActivitySection from "./ItemActivitySection";
 import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
@@ -151,6 +152,22 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     );
   }
 
+  function openCopyPopup() {
+    if (!isItemCategoryId(item.categoryId)) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(NEW_ITEM_POPUP_ID, itemCategoryIdToPopupSlug(item.categoryId)), {
+          copyFromItemId: itemId,
+        }),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
   function handleBack() {
     setSearchParams(
       (prev) => {
@@ -186,6 +203,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
         showBack={isItemsMobileListView}
         onBack={handleBack}
         onEdit={openEditPopup}
+        onCopy={openCopyPopup}
         onToggleFavorite={() => {
           void setItemFavorite(itemId, !(listRecord?.favorite ?? false));
         }}

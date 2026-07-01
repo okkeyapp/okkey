@@ -1,7 +1,7 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
 import { Button, Popup } from "@okkey/ui";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteDevKeyFieldFile } from "../../api/key-field-files";
@@ -10,11 +10,15 @@ import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments"
 import { syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
+import { buildItemCopyPrefillValues } from "../../items/buildItemCopyPrefill";
 import { runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
 import { buildItemFromNewItemSavePayload } from "./NewItemForm";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useLocale } from "../../locale/LocaleContext";
+import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import {
+  COPY_ITEM_QUERY_PARAM,
   NEW_ITEM_POPUP_ID,
   POPUP_QUERY_PARAM,
   buildPopupQueryValue,
@@ -22,10 +26,10 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import { ITEM_QUERY_PARAM } from "../../routes/paths";
-import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
+import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug, popupSlugToItemCategoryId } from "./itemCategoryCatalog";
 import { getCategoryLabel } from "./NewItemCategoryCard";
 import NewItemCategoryPicker from "./NewItemCategoryPicker";
-import NewItemForm, { type NewItemFormHandle } from "./NewItemForm";
+import NewItemForm, { type NewItemFormHandle, type NewItemFormPrefillValues } from "./NewItemForm";
 import { BackChevronIcon } from "./itemCategoryIcons";
 import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
@@ -44,17 +48,27 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const open = activePopup?.popupId === NEW_ITEM_POPUP_ID;
   const selectedCategoryId =
-    open && activePopup.menuItemId && isItemCategoryId(activePopup.menuItemId)
-      ? activePopup.menuItemId
-      : null;
+    open && activePopup.menuItemId ? popupSlugToItemCategoryId(activePopup.menuItemId) : null;
+  const copyFromItemId = open ? searchParams.get(COPY_ITEM_QUERY_PARAM)?.trim() ?? "" : "";
 
   const formRef = useRef<NewItemFormHandle>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const { createItem } = useWorkspaceItems();
-  const { assignItemToFolder } = useWorkspaceFolders();
+  const { createItem, getItemById } = useWorkspaceItems();
+  const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
   const { accessToken } = useAuthVault();
+  const { locale } = useLocale();
+  const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+
+  const copySourceItem = copyFromItemId ? getItemById(copyFromItemId) : undefined;
+  const copyPrefillValues = useMemo((): NewItemFormPrefillValues | undefined => {
+    if (!copySourceItem || !selectedCategoryId || copySourceItem.categoryId !== selectedCategoryId) {
+      return undefined;
+    }
+    const folderId = itemFolderByItemId.get(copySourceItem.itemId) ?? NO_FOLDER_VALUE;
+    return buildItemCopyPrefillValues(copySourceItem, folderId, keyFormMessages);
+  }, [copySourceItem, selectedCategoryId, itemFolderByItemId, keyFormMessages]);
 
   const { favoriteIds, favoriteIdSet, ready, toggleFavorite, reorderFavorites } =
     useItemCategoryPreferences(workspaceId);
@@ -73,12 +87,18 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   }
 
   function selectCategory(categoryId: string) {
+    if (!isItemCategoryId(categoryId)) {
+      return;
+    }
     setShowValidation(false);
     setSaveError(null);
     navigate(
       {
         pathname: location.pathname,
-        search: popupQuerySearch(location.search, buildPopupQueryValue(NEW_ITEM_POPUP_ID, categoryId)),
+        search: popupQuerySearch(
+          location.search,
+          buildPopupQueryValue(NEW_ITEM_POPUP_ID, itemCategoryIdToPopupSlug(categoryId)),
+        ),
         hash: location.hash,
       },
       { replace: false },
@@ -145,6 +165,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       );
       const params = new URLSearchParams(location.search);
       params.delete(POPUP_QUERY_PARAM);
+      params.delete(COPY_ITEM_QUERY_PARAM);
       params.set(ITEM_QUERY_PARAM, itemId);
       const nextSearch = params.toString();
       navigate(
@@ -190,6 +211,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
     t("web.items.createRecord")
   );
 
+  const showItemForm = Boolean(selectedCategoryId && (!copyFromItemId || copyPrefillValues));
+
   return (
     <Popup
       id={NEW_ITEM_POPUP_ID}
@@ -199,7 +222,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       closeDisabled={saving}
       panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
       footer={
-        selectedCategoryId ? (
+        showItemForm ? (
           <>
             <Button type="button" variant="outline" onClick={closePopup} disabled={saving}>
               {t("web.newItemPopup.cancel")}
@@ -219,17 +242,21 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       }
     >
       {saveError ? <p className="mb-4 text-sm text-destructive">{saveError}</p> : null}
-      {selectedCategoryId ? (
+      {selectedCategoryId && copyFromItemId && !copyPrefillValues ? (
+        <p className="text-sm text-muted-foreground">{t("web.newItemPopup.copySourceUnavailable")}</p>
+      ) : null}
+      {showItemForm ? (
         <NewItemForm
           ref={formRef}
           t={t}
-          categoryId={selectedCategoryId}
+          categoryId={selectedCategoryId!}
           workspaceName={workspaceName}
           vaults={vaults}
           vaultsListReady={vaultsListReady}
           showValidation={showValidation}
+          prefillValues={copyPrefillValues}
         />
-      ) : (
+      ) : !selectedCategoryId ? (
         <NewItemCategoryPicker
           t={t}
           favoriteIds={favoriteIds}
@@ -239,7 +266,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           onReorderFavorites={reorderFavorites}
           onSelectCategory={selectCategory}
         />
-      )}
+      ) : null}
     </Popup>
   );
 }

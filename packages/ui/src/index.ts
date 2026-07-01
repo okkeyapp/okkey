@@ -95,6 +95,7 @@ export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";
 export { Popup, type PopupMenu, type PopupMenuItem, type PopupProps } from "./components/ui/popup.js";
 export {
   KeyField,
+  KeyFieldCopyIcon,
   KeyForm,
   KeySection,
   keyFieldTypeOptions,

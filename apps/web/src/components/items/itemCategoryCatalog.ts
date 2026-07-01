@@ -103,3 +103,21 @@ export function sortCategoriesByFavoriteOrder(
       return leftIndex - rightIndex;
     });
 }
+
+/** Popup query slug for category ids, e.g. `secure_note` → `secureNote`. */
+export function itemCategoryIdToPopupSlug(categoryId: ItemCategoryId): string {
+  return categoryId.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+/** Resolves a popup category slug back to an internal category id. */
+export function popupSlugToItemCategoryId(slug: string): ItemCategoryId | null {
+  const trimmed = slug.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const snakeCase = trimmed.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  if (isItemCategoryId(snakeCase)) {
+    return snakeCase;
+  }
+  return isItemCategoryId(trimmed) ? trimmed : null;
+}

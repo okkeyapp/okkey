@@ -8,7 +8,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  KeyFieldCopyIcon,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -196,6 +198,7 @@ type ItemDetailTopBarProps = {
   showBack?: boolean;
   onBack?: () => void;
   onEdit: () => void;
+  onCopy?: () => void;
   onToggleFavorite: () => void;
   onToggleArchive: () => void;
   onToggleDelete: () => void;
@@ -215,6 +218,7 @@ export default function ItemDetailTopBar({
   showBack = false,
   onBack,
   onEdit,
+  onCopy,
   onToggleFavorite,
   onToggleArchive,
   onToggleDelete,
@@ -310,6 +314,15 @@ export default function ItemDetailTopBar({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
+              {!archived && !deleted && onCopy ? (
+                <>
+                  <DropdownMenuItem className="gap-2" onSelect={onCopy}>
+                    <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
+                    <span>{t("web.items.menu.copy")}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="mx-1 my-1" />
+                </>
+              ) : null}
               {!deleted ? (
                 <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
                   {archived ? (

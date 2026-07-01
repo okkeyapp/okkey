@@ -85,7 +85,7 @@ function GripIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-function CopyIcon(props: React.SVGProps<SVGSVGElement>) {
+export function KeyFieldCopyIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
       <path d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
@@ -341,7 +341,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const currentCopyIcon = isCopied
       ? copySuccessIcon ?? <CopySuccessIcon className="size-4" />
-      : copyIcon ?? <CopyIcon className="size-4" />;
+      : copyIcon ?? <KeyFieldCopyIcon className="size-4" />;
 
     const resizeTextarea = React.useCallback(() => {
       if (!shouldAutoResizeTextarea) {

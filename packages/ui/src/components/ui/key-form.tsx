@@ -105,6 +105,7 @@ KeyForm.displayName = "KeyForm";
 export { KeySection, type KeySectionProps, type KeySectionVariant } from "./key-section.js";
 export {
   KeyField,
+  KeyFieldCopyIcon,
   keyFieldTypeOptions,
   type KeyFieldProps,
   type KeyFieldTypeOption,

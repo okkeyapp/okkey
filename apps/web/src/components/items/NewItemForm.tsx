@@ -35,6 +35,14 @@ export type NewItemSavePayload = {
   createdAtMs?: number;
 };
 
+export type NewItemFormPrefillValues = {
+  recordName: string;
+  vaultId: string;
+  folderId: string;
+  sections: KeyFormEditorSection[];
+  tags: string[];
+};
+
 export type NewItemFormInitialValues = {
   itemId: string;
   recordName: string;
@@ -62,41 +70,48 @@ type NewItemFormProps = {
   vaultsListReady: boolean;
   showValidation?: boolean;
   initialValues?: NewItemFormInitialValues;
+  prefillValues?: NewItemFormPrefillValues;
 };
 
 const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function NewItemForm(
-  { t, categoryId, workspaceName, vaults, vaultsListReady, showValidation = false, initialValues },
+  { t, categoryId, workspaceName, vaults, vaultsListReady, showValidation = false, initialValues, prefillValues },
   ref,
 ) {
   const isEditMode = Boolean(initialValues);
+  const isCopyMode = Boolean(prefillValues);
   const { accessToken } = useAuthVault();
   const itemIdRef = useRef(initialValues?.itemId ?? generateEntityId());
+  const formInstanceKeyRef = useRef(initialValues?.itemId ?? (isCopyMode ? generateEntityId() : categoryId));
   const { locale } = useLocale();
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
-  const [recordName, setRecordName] = useState(initialValues?.recordName ?? "");
-  const recordNameEditedRef = useRef(Boolean(initialValues));
+  const [recordName, setRecordName] = useState(initialValues?.recordName ?? prefillValues?.recordName ?? "");
+  const recordNameEditedRef = useRef(Boolean(initialValues ?? prefillValues));
   const [formSections, setFormSections] = useState<KeyFormEditorSection[] | null>(
-    initialValues?.sections ?? null,
+    initialValues?.sections ?? prefillValues?.sections ?? null,
   );
-  const [tags, setTags] = useState<string[]>(initialValues?.tags ?? []);
-  const [vaultId, setVaultId] = useState(initialValues?.vaultId ?? "");
-  const [folderId, setFolderId] = useState(initialValues?.folderId ?? NO_FOLDER_VALUE);
+  const [tags, setTags] = useState<string[]>(initialValues?.tags ?? prefillValues?.tags ?? []);
+  const [vaultId, setVaultId] = useState(initialValues?.vaultId ?? prefillValues?.vaultId ?? "");
+  const [folderId, setFolderId] = useState(initialValues?.folderId ?? prefillValues?.folderId ?? NO_FOLDER_VALUE);
   const [syncedVaultId] = useSyncedNewItemVaultId(vaults, vaultsListReady);
   useEffect(() => {
-    if (!isEditMode && syncedVaultId && !vaultId) {
+    if (!isEditMode && !isCopyMode && syncedVaultId && !vaultId) {
       setVaultId(syncedVaultId);
     }
-  }, [isEditMode, syncedVaultId, vaultId]);
+  }, [isEditMode, isCopyMode, syncedVaultId, vaultId]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
   const initialSections = useMemo(
-    () => initialValues?.sections ?? (category ? getDefaultSectionsForCategory(category.id, keyFormMessages) : []),
-    [initialValues?.sections, category, keyFormMessages],
+    () =>
+      initialValues?.sections ??
+      prefillValues?.sections ??
+      (category ? getDefaultSectionsForCategory(category.id, keyFormMessages) : []),
+    [initialValues?.sections, prefillValues?.sections, category, keyFormMessages],
   );
-  const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>(() =>
-    initialValues?.sections ? collectWebsiteUrlsFromSections(initialValues.sections) : [],
-  );
+  const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>(() => {
+    const sections = initialValues?.sections ?? prefillValues?.sections;
+    return sections ? collectWebsiteUrlsFromSections(sections) : [];
+  });
   const suggestedRecordName = useMemo(
     () => suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls),
     [committedWebsiteUrls],
@@ -121,7 +136,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   }, [isEditMode, initialValues?.sections]);
 
   useEffect(() => {
-    if (isEditMode) {
+    if (isEditMode || isCopyMode) {
       return;
     }
     setRecordName("");
@@ -129,7 +144,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     setFormSections(null);
     setTags([]);
     setCommittedWebsiteUrls([]);
-  }, [categoryId, isEditMode]);
+  }, [categoryId, isEditMode, isCopyMode]);
 
   useEffect(() => {
     if (recordNameEditedRef.current) {
@@ -140,8 +155,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
 
   const fileBaselineSectionsRef = useRef<KeyFormEditorSection[]>([]);
   useEffect(() => {
-    fileBaselineSectionsRef.current = structuredClone(initialValues?.sections ?? initialSections);
-  }, [initialValues?.itemId, categoryId, initialValues?.sections, initialSections]);
+    fileBaselineSectionsRef.current = structuredClone(
+      initialValues?.sections ?? prefillValues?.sections ?? initialSections,
+    );
+  }, [initialValues?.itemId, categoryId, initialValues?.sections, prefillValues?.sections, initialSections]);
 
   useImperativeHandle(
     ref,
@@ -208,7 +225,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       </div>
 
       <KeyFormEditor
-        key={initialValues?.itemId ?? category.id}
+        key={formInstanceKeyRef.current}
         mode="edit"
         initialSections={initialSections}
         addSectionLabel={t("web.newItemPopup.addSectionWithField")}

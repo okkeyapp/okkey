@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  KeyFieldCopyIcon,
   ScrollArea,
   SidebarGroupLabel,
   Spinner,
@@ -22,8 +23,9 @@ import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
+import { isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
-import { EDIT_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
+import { EDIT_ITEM_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
 import {
   FILTER_QUERY_ARCHIVED,
@@ -1010,6 +1012,22 @@ export default function ItemsListLeftPane({
     );
   };
 
+  const openCopyPopup = (row: ItemsListRecord) => {
+    if (!isItemCategoryId(row.categoryId)) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(NEW_ITEM_POPUP_ID, itemCategoryIdToPopupSlug(row.categoryId)), {
+          copyFromItemId: row.id,
+        }),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  };
+
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listHeaderScrolled = useRadixScrollAreaScrolled(listScrollRef);
 
@@ -1341,6 +1359,10 @@ export default function ItemsListLeftPane({
                                       <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
                                         <IconEdit16 />
                                         <span>{t("web.items.menu.edit")}</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem className="gap-2" onSelect={() => openCopyPopup(row)}>
+                                        <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
+                                        <span>{t("web.items.menu.copy")}</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         className="gap-2"
