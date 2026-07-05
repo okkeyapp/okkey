@@ -30,6 +30,9 @@ import type {
   AccountEmailChangeStartResponseDto,
   WorkspaceItemCategoryPreferencesResponseDto,
   WorkspaceItemCategoryPreferencesUpdateRequestDto,
+  WorkspaceItemTemplateCreateRequestDto,
+  WorkspaceItemTemplateCreateResponseDto,
+  WorkspaceItemTemplatesListResponseDto,
   WorkspaceSettingsResponseDto,
   WorkspaceSettingsUpdateRequestDto,
 } from "../../types/src/index.js";
@@ -85,6 +88,10 @@ export class ApiClient {
 
   async put<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
     return this.request<T>("PUT", path, body, options);
+  }
+
+  async delete<T>(path: string, options?: ApiRequestOptions): Promise<T> {
+    return this.request<T>("DELETE", path, undefined, options);
   }
 
   async request<T>(
@@ -229,6 +236,28 @@ export class CoreApiClient {
     return this.api.put<WorkspaceItemCategoryPreferencesResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/item-category-preferences`,
       body,
+    );
+  }
+
+  listWorkspaceItemTemplates(workspaceId: string): Promise<WorkspaceItemTemplatesListResponseDto> {
+    return this.api.get<WorkspaceItemTemplatesListResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/item-templates`,
+    );
+  }
+
+  createWorkspaceItemTemplate(
+    workspaceId: string,
+    body: WorkspaceItemTemplateCreateRequestDto,
+  ): Promise<WorkspaceItemTemplateCreateResponseDto> {
+    return this.api.post<WorkspaceItemTemplateCreateResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/item-templates`,
+      body,
+    );
+  }
+
+  deleteWorkspaceItemTemplate(workspaceId: string, templateId: string): Promise<{ ok: true }> {
+    return this.api.delete<{ ok: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/item-templates/${encodeURIComponent(templateId)}`,
     );
   }
 

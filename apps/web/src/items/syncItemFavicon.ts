@@ -49,7 +49,11 @@ export async function syncItemFaviconForPlaintext(
   }
 
   if (faviconSource === "manual") {
-    return applyFaviconToItem(item, item.faviconId ?? previous?.faviconId, "manual");
+    const faviconId =
+      item.faviconId ??
+      previous?.faviconId ??
+      (syncInput?.reuseFaviconId?.trim() || undefined);
+    return applyFaviconToItem(item, faviconId, "manual");
   }
 
   if (item.categoryId !== ITEM_CATEGORY_LOGIN) {

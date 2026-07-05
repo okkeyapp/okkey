@@ -1,5 +1,6 @@
 export const POPUP_QUERY_PARAM = "popup";
 export const COPY_ITEM_QUERY_PARAM = "copyFrom";
+export const ITEM_TEMPLATE_QUERY_PARAM = "template";
 export const SETTINGS_POPUP_ID = "settings";
 export const FOLDERS_POPUP_ID = "folders";
 export const NEW_ITEM_POPUP_ID = "newItem";
@@ -7,6 +8,7 @@ export const EDIT_ITEM_POPUP_ID = "editItem";
 
 export type PopupQuerySearchOptions = {
   copyFromItemId?: string;
+  templateId?: string;
 };
 
 export function parsePopupQueryValue(value: string | null): { popupId: string; menuItemId?: string } | null {
@@ -34,6 +36,7 @@ export function popupQuerySearch(
   const params = new URLSearchParams(currentSearch);
   params.delete(POPUP_QUERY_PARAM);
   params.delete(COPY_ITEM_QUERY_PARAM);
+  params.delete(ITEM_TEMPLATE_QUERY_PARAM);
   const baseSearch = params.toString();
 
   const queryParts: string[] = [];
@@ -45,6 +48,9 @@ export function popupQuerySearch(
   }
   if (options?.copyFromItemId) {
     queryParts.push(`${COPY_ITEM_QUERY_PARAM}=${encodeURIComponent(options.copyFromItemId)}`);
+  }
+  if (options?.templateId) {
+    queryParts.push(`${ITEM_TEMPLATE_QUERY_PARAM}=${encodeURIComponent(options.templateId)}`);
   }
 
   if (queryParts.length === 0) {

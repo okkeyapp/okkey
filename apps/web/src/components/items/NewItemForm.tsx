@@ -10,6 +10,7 @@ import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
 import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
 import { useItemFormFavicon, type ItemFormFaviconSyncInput } from "../../items/useItemFormFavicon";
+import type { ItemTemplateFormSnapshot } from "../../items/itemTemplateHelpers";
 import {
   validateNewItemForm,
   type NewItemFormValidationIssue,
@@ -44,6 +45,8 @@ export type NewItemFormPrefillValues = {
   folderId: string;
   sections: KeyFormEditorSection[];
   tags: string[];
+  faviconId?: string;
+  faviconSource?: ItemFaviconSource;
 };
 
 export type NewItemFormInitialValues = {
@@ -65,6 +68,7 @@ export type NewItemFormHandle = {
   getFileBaselineSections: () => KeyFormEditorSection[];
   getCurrentSections: () => KeyFormEditorSection[];
   getFaviconSyncInput: () => ItemFormFaviconSyncInput;
+  getTemplateSnapshot: () => ItemTemplateFormSnapshot | null;
 };
 
 type NewItemFormProps = {
@@ -76,22 +80,29 @@ type NewItemFormProps = {
   showValidation?: boolean;
   initialValues?: NewItemFormInitialValues;
   prefillValues?: NewItemFormPrefillValues;
+  /** When creating from a workspace template — enables auto-title from template name. */
+  templateName?: string;
 };
 
 const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function NewItemForm(
-  { t, categoryId, workspaceName, vaults, vaultsListReady, showValidation = false, initialValues, prefillValues },
+  { t, categoryId, workspaceName, vaults, vaultsListReady, showValidation = false, initialValues, prefillValues, templateName },
   ref,
 ) {
   const isEditMode = Boolean(initialValues);
-  const isCopyMode = Boolean(prefillValues);
+  const isTemplateMode = Boolean(templateName);
+  const isCopyMode = Boolean(prefillValues) && !isTemplateMode;
   const { accessToken } = useAuthVault();
   const itemIdRef = useRef(initialValues?.itemId ?? generateEntityId());
-  const formInstanceKeyRef = useRef(initialValues?.itemId ?? (isCopyMode ? generateEntityId() : categoryId));
+  const formInstanceKeyRef = useRef(
+    initialValues?.itemId ?? (isCopyMode || isTemplateMode ? generateEntityId() : categoryId),
+  );
   const { locale } = useLocale();
   const category = getItemCategoryDefinition(categoryId);
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
-  const [recordName, setRecordName] = useState(initialValues?.recordName ?? prefillValues?.recordName ?? "");
-  const recordNameEditedRef = useRef(Boolean(initialValues ?? prefillValues));
+  const [recordName, setRecordName] = useState(
+    initialValues?.recordName ?? (isCopyMode ? (prefillValues?.recordName ?? "") : ""),
+  );
+  const recordNameEditedRef = useRef(Boolean(initialValues ?? (isCopyMode && prefillValues)));
   const recordNameInputRef = useRef<HTMLInputElement>(null);
   const [formSections, setFormSections] = useState<KeyFormEditorSection[] | null>(
     initialValues?.sections ?? prefillValues?.sections ?? null,
@@ -101,10 +112,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const [folderId, setFolderId] = useState(initialValues?.folderId ?? prefillValues?.folderId ?? NO_FOLDER_VALUE);
   const [syncedVaultId] = useSyncedNewItemVaultId(vaults, vaultsListReady);
   useEffect(() => {
-    if (!isEditMode && !isCopyMode && syncedVaultId && !vaultId) {
+    if (!isEditMode && !isCopyMode && !isTemplateMode && syncedVaultId && !vaultId) {
       setVaultId(syncedVaultId);
     }
-  }, [isEditMode, isCopyMode, syncedVaultId, vaultId]);
+  }, [isEditMode, isCopyMode, isTemplateMode, syncedVaultId, vaultId]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
@@ -122,19 +133,22 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     if (category?.id === "login") {
       return suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls);
     }
+    if (isTemplateMode && templateName) {
+      return templateName;
+    }
     if (category) {
       return categoryLabel;
     }
     return "";
-  }, [category, categoryLabel, committedWebsiteUrls]);
+  }, [category, categoryLabel, committedWebsiteUrls, isTemplateMode, templateName]);
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
     urls: committedWebsiteUrls,
-    initialFaviconId: initialValues?.faviconId,
-    initialFaviconSource: initialValues?.faviconSource,
+    initialFaviconId: initialValues?.faviconId ?? prefillValues?.faviconId,
+    initialFaviconSource: initialValues?.faviconSource ?? prefillValues?.faviconSource,
   });
   const {
     previewImageSrc,
@@ -149,7 +163,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   }, []);
 
   useEffect(() => {
-    if (isEditMode || isCopyMode) {
+    if (isEditMode || isCopyMode || isTemplateMode) {
       return;
     }
     setRecordName("");
@@ -157,7 +171,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     setFormSections(null);
     setTags([]);
     setCommittedWebsiteUrls([]);
-  }, [categoryId, isEditMode, isCopyMode]);
+  }, [categoryId, isEditMode, isCopyMode, isTemplateMode]);
 
   useEffect(() => {
     if (recordNameEditedRef.current) {
@@ -181,7 +195,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [categoryId, isEditMode, isCopyMode]);
+  }, [categoryId, isEditMode, isCopyMode, isTemplateMode]);
 
   const fileBaselineSectionsRef = useRef<KeyFormEditorSection[]>([]);
   useEffect(() => {
@@ -219,6 +233,19 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       getFileBaselineSections: () => fileBaselineSectionsRef.current,
       getCurrentSections: () => formSections ?? initialSections,
       getFaviconSyncInput: () => getSyncInput(),
+      getTemplateSnapshot: () => {
+        if (!category) {
+          return null;
+        }
+        return {
+          categoryId: category.id,
+          recordName: trimmedRecordName,
+          vaultId,
+          folderId,
+          sections: structuredClone(formSections ?? initialSections),
+          tags: [...tags],
+        };
+      },
     }),
     [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, tags, getSyncInput],
   );
@@ -240,7 +267,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           <ItemRecordFavicon
             categoryId={category.id}
             title={trimmedRecordName || undefined}
-            faviconId={initialValues?.faviconId}
+            faviconId={initialValues?.faviconId ?? prefillValues?.faviconId}
             previewImageSrc={previewImageSrc}
             previewLoading={previewLoading}
             size={40}

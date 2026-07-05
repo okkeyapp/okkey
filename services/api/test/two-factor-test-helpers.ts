@@ -86,6 +86,34 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0003);
   }
+
+  const templatesTable = await storage.postgres.query<{ exists: boolean }>(
+    "SELECT to_regclass('public.workspace_item_templates') IS NOT NULL AS exists",
+  );
+  if (!templatesTable[0]?.exists) {
+    const migration0005 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0005_workspace_item_templates.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0005);
+  }
+
+  const favoriteOrderColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_member_item_category_preferences'
+        AND column_name = 'favorite_order'
+    ) AS exists`,
+  );
+  if (!favoriteOrderColumn[0]?.exists) {
+    const migration0006 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0006_favorite_order.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0006);
+  }
 }
 
 export async function cleanupUserData(

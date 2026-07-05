@@ -17,6 +17,7 @@ import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
 import { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
+import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import {
@@ -79,6 +80,11 @@ async function main(): Promise<void> {
   });
   const itemCategoryPreferencesService = new ItemCategoryPreferencesService({
     preferences: storage.repositories.workspaceMemberItemCategoryPreferences,
+    workspaces: storage.repositories.workspaces,
+    templates: storage.repositories.workspaceItemTemplates,
+  });
+  const itemTemplatesService = new ItemTemplatesService({
+    templates: storage.repositories.workspaceItemTemplates,
     workspaces: storage.repositories.workspaces,
   });
   const workspaceSettingsService = new WorkspaceSettingsService({
@@ -165,6 +171,7 @@ async function main(): Promise<void> {
     usersRepository: storage.repositories.users,
     vaultService,
     itemCategoryPreferencesService,
+    itemTemplatesService,
     workspaceSettingsService,
     vaultUnlockBootstrapService,
     vaultSharingService,

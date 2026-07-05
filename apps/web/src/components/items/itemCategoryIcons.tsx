@@ -354,3 +354,63 @@ export function StarIcon({ filled, className }: { filled: boolean; className?: s
     </svg>
   );
 }
+
+export function IconActions16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={className}>
+      <path
+        d="M7.99992 8.66675C8.36811 8.66675 8.66659 8.36827 8.66659 8.00008C8.66659 7.63189 8.36811 7.33341 7.99992 7.33341C7.63173 7.33341 7.33325 7.63189 7.33325 8.00008C7.33325 8.36827 7.63173 8.66675 7.99992 8.66675Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.99992 4.00008C8.36811 4.00008 8.66659 3.7016 8.66659 3.33341C8.66659 2.96522 8.36811 2.66675 7.99992 2.66675C7.63173 2.66675 7.33325 2.96522 7.33325 3.33341C7.33325 3.7016 7.63173 4.00008 7.99992 4.00008Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.99992 13.3334C8.36811 13.3334 8.66659 13.0349 8.66659 12.6667C8.66659 12.2986 8.36811 12.0001 7.99992 12.0001C7.63173 12.0001 7.33325 12.2986 7.33325 12.6667C7.33325 13.0349 7.63173 13.3334 7.99992 13.3334Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconSaveTemplate16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={className}>
+      <path
+        d="M2.66663 3.33317C2.66663 3.15636 2.73686 2.98679 2.86189 2.86177C2.98691 2.73674 3.15648 2.6665 3.33329 2.6665H12.6666C12.8434 2.6665 13.013 2.73674 13.138 2.86177C13.2631 2.98679 13.3333 3.15636 13.3333 3.33317V4.6665C13.3333 4.84331 13.2631 5.01288 13.138 5.13791C13.013 5.26293 12.8434 5.33317 12.6666 5.33317H3.33329C3.15648 5.33317 2.98691 5.26293 2.86189 5.13791C2.73686 5.01288 2.66663 4.84331 2.66663 4.6665V3.33317Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.66663 8.66667C2.66663 8.48986 2.73686 8.32029 2.86189 8.19526C2.98691 8.07024 3.15648 8 3.33329 8H5.99996C6.17677 8 6.34634 8.07024 6.47136 8.19526C6.59639 8.32029 6.66663 8.48986 6.66663 8.66667V12.6667C6.66663 12.8435 6.59639 13.013 6.47136 13.1381C6.34634 13.2631 6.17677 13.3333 5.99996 13.3333H3.33329C3.15648 13.3333 2.98691 13.2631 2.86189 13.1381C2.73686 13.013 2.66663 12.8435 2.66663 12.6667V8.66667Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9.33337 8H13.3334" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 10.6665H13.3334" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.33337 13.3335H13.3334" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconDelete16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={className}>
+      <path
+        d="M2 3.99992H14M12.6667 3.99992V13.3333C12.6667 13.9999 12 14.6666 11.3333 14.6666H4.66667C4 14.6666 3.33333 13.9999 3.33333 13.3333V3.99992M5.33333 3.99992V2.66659C5.33333 1.99992 6 1.33325 6.66667 1.33325H9.33333C10 1.33325 10.6667 1.99992 10.6667 2.66659V3.99992M6.66667 7.33325V11.3333M9.33333 7.33325V11.3333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

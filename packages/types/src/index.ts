@@ -645,9 +645,47 @@ export interface VaultUnlockBootstrapResponseDto {
 /** `GET /workspaces/:workspaceId/item-category-preferences` (Bearer). */
 export interface WorkspaceItemCategoryPreferencesResponseDto {
   favorite_category_ids: string[];
+  favorite_template_ids: string[];
+  favorite_order: string[];
 }
 
 /** `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer). */
 export interface WorkspaceItemCategoryPreferencesUpdateRequestDto {
   favorite_category_ids: string[];
+  favorite_template_ids: string[];
+  favorite_order: string[];
+}
+
+export interface WorkspaceItemTemplatePayloadDto {
+  record_name: string;
+  vault_id: EntityId;
+  folder_id: string;
+  sections: unknown[];
+  tags: string[];
+  favicon_source?: ItemFaviconSource;
+}
+
+export interface WorkspaceItemTemplateDto {
+  id: EntityId;
+  name: string;
+  category_id: string;
+  payload: WorkspaceItemTemplatePayloadDto;
+  favicon_id?: EntityId;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceItemTemplatesListResponseDto {
+  templates: WorkspaceItemTemplateDto[];
+}
+
+export interface WorkspaceItemTemplateCreateRequestDto {
+  name: string;
+  category_id: string;
+  payload: WorkspaceItemTemplatePayloadDto;
+  favicon_id?: EntityId;
+}
+
+export interface WorkspaceItemTemplateCreateResponseDto {
+  template: WorkspaceItemTemplateDto;
 }

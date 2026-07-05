@@ -82,4 +82,18 @@ describe("syncItemFaviconForPlaintext", () => {
     expect(synced.faviconId).toBe("1000000000000000008");
     expect(synced.faviconSource).toBe("manual");
   });
+
+  it("reuses template favicon id on new item when manual source and no new png", async () => {
+    const upsertPng = vi.spyOn(itemFaviconsApi, "upsertItemFaviconPng");
+    const item = baseItem({ categoryId: "server" });
+
+    const synced = await syncItemFaviconForPlaintext("token", item, undefined, {
+      faviconSource: "manual",
+      reuseFaviconId: "1000000000000000007",
+    });
+
+    expect(upsertPng).not.toHaveBeenCalled();
+    expect(synced.faviconId).toBe("1000000000000000007");
+    expect(synced.faviconSource).toBe("manual");
+  });
 });

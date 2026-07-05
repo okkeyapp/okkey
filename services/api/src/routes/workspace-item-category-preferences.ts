@@ -4,6 +4,9 @@ import {
   ItemCategoryPreferencesService,
   ItemCategoryPreferencesServiceError,
   parseFavoriteCategoryIdsPayload,
+  parseFavoriteOrderPayload,
+  parseFavoriteTemplateIdsPayload,
+  buildDefaultFavoriteOrder,
 } from "../item-category-preferences/service.ts";
 
 function errorPayload(code: string, message: string, requestId: string) {
@@ -12,6 +15,8 @@ function errorPayload(code: string, message: string, requestId: string) {
 
 type ItemCategoryPreferencesBody = {
   favorite_category_ids?: unknown;
+  favorite_template_ids?: unknown;
+  favorite_order?: unknown;
 };
 
 export function createWorkspaceItemCategoryPreferencesRoute(
@@ -33,8 +38,12 @@ export function createWorkspaceItemCategoryPreferencesRoute(
 
     try {
       if (ctx.req.method === "GET") {
-        const favoriteCategoryIds = await service.getFavoriteCategoryIds(workspaceId, userId);
-        json(ctx.res, 200, { favorite_category_ids: favoriteCategoryIds });
+        const preferences = await service.getPreferences(workspaceId, userId);
+        json(ctx.res, 200, {
+          favorite_category_ids: preferences.favoriteCategoryIds,
+          favorite_template_ids: preferences.favoriteTemplateIds,
+          favorite_order: preferences.favoriteOrder,
+        });
         return;
       }
 
@@ -48,9 +57,38 @@ export function createWorkspaceItemCategoryPreferencesRoute(
         );
         return;
       }
+      const favoriteTemplateIds = parseFavoriteTemplateIdsPayload(body.favorite_template_ids);
+      if (favoriteTemplateIds === null) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("INVALID_FAVORITE_TEMPLATE_IDS", "favorite_template_ids must be a string array", ctx.requestId),
+        );
+        return;
+      }
+      const favoriteOrder =
+        body.favorite_order === undefined
+          ? buildDefaultFavoriteOrder(favoriteCategoryIds, favoriteTemplateIds)
+          : parseFavoriteOrderPayload(body.favorite_order);
+      if (favoriteOrder === null) {
+        json(
+          ctx.res,
+          400,
+          errorPayload("INVALID_FAVORITE_ORDER", "favorite_order must be a string array", ctx.requestId),
+        );
+        return;
+      }
 
-      const updated = await service.updateFavoriteCategoryIds(workspaceId, userId, favoriteCategoryIds);
-      json(ctx.res, 200, { favorite_category_ids: updated });
+      const updated = await service.updatePreferences(workspaceId, userId, {
+        favoriteCategoryIds,
+        favoriteTemplateIds,
+        favoriteOrder,
+      });
+      json(ctx.res, 200, {
+        favorite_category_ids: updated.favoriteCategoryIds,
+        favorite_template_ids: updated.favoriteTemplateIds,
+        favorite_order: updated.favoriteOrder,
+      });
     } catch (error) {
       handleError(ctx.requestId, ctx.res, error);
     }

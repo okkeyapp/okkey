@@ -15,50 +15,64 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
+import type { WorkspaceItemTemplateDto } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Button } from "@okkey/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import NewItemCategoryCard, { getCategoryLabel } from "./NewItemCategoryCard";
+import NewItemTemplateCard from "./NewItemTemplateCard";
+import { parseFavoriteOrderEntry } from "./favoriteOrder";
 import {
   ITEM_CATEGORY_GROUPS,
+  ITEM_CATEGORY_GROUP_AUTHORIZATION,
   categoriesForGroup,
-  sortCategoriesByFavoriteOrder,
+  getItemCategoryDefinition,
   type ItemCategoryDefinition,
 } from "./itemCategoryCatalog";
 import { DoneIcon, ReorderIcon } from "./itemCategoryIcons";
 
 type NewItemCategoryPickerProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
-  favoriteIds: readonly string[];
+  favoriteOrder: readonly string[];
   favoriteIdSet: ReadonlySet<string>;
+  favoriteTemplateIdSet: ReadonlySet<string>;
+  templates: readonly WorkspaceItemTemplateDto[];
+  templatesReady: boolean;
   ready: boolean;
   onToggleFavorite: (categoryId: string) => void;
-  onReorderFavorites: (nextFavoriteIds: string[]) => void;
+  onToggleTemplateFavorite: (templateId: string) => void;
+  onReorderFavorites: (nextFavoriteOrder: string[]) => void;
   onSelectCategory: (categoryId: string) => void;
+  onSelectTemplate: (template: WorkspaceItemTemplateDto) => void;
 };
 
 export default function NewItemCategoryPicker({
   t,
-  favoriteIds,
+  favoriteOrder,
   favoriteIdSet,
+  favoriteTemplateIdSet,
+  templates,
+  templatesReady,
   ready,
   onToggleFavorite,
+  onToggleTemplateFavorite,
   onReorderFavorites,
   onSelectCategory,
+  onSelectTemplate,
 }: NewItemCategoryPickerProps) {
-  const hasFavorites = favoriteIds.length > 0;
-  const canReorderFavorites = favoriteIds.length >= 2;
+  const hasFavorites = favoriteOrder.length > 0;
+  const canReorderFavorites = favoriteOrder.length >= 2;
   const [showAllCategoriesOverride, setShowAllCategoriesOverride] = useState<boolean | null>(null);
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const prevFavoriteCountRef = useRef(favoriteIds.length);
+  const prevFavoriteCountRef = useRef(favoriteOrder.length);
 
   const showAllCategories = !hasFavorites || (showAllCategoriesOverride ?? false);
 
   useEffect(() => {
     const previousCount = prevFavoriteCountRef.current;
-    const currentCount = favoriteIds.length;
+    const currentCount = favoriteOrder.length;
 
     if (previousCount === 0 && currentCount === 1) {
       setShowAllCategoriesOverride(true);
@@ -67,7 +81,7 @@ export default function NewItemCategoryPicker({
     }
 
     prevFavoriteCountRef.current = currentCount;
-  }, [favoriteIds.length]);
+  }, [favoriteOrder.length]);
 
   useEffect(() => {
     if (!canReorderFavorites) {
@@ -77,19 +91,16 @@ export default function NewItemCategoryPicker({
   }, [canReorderFavorites]);
 
   const showGroupedSections = ready && (!hasFavorites || showAllCategories);
-  const favoriteCategories = useMemo(
-    () => sortCategoriesByFavoriteOrder(favoriteIds, favoriteIds),
-    [favoriteIds],
-  );
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const templatesById = useMemo(() => new Map(templates.map((template) => [template.id, template])), [templates]);
 
-  const activeDragCategory = activeDragId
-    ? favoriteCategories.find((category) => category.id === activeDragId)
-    : undefined;
+  const activeDragEntry = activeDragId ? parseFavoriteOrderEntry(activeDragId) : null;
+  const activeDragCategory =
+    activeDragEntry?.type === "category"
+      ? getItemCategoryDefinition(activeDragEntry.id)
+      : undefined;
+  const activeDragTemplate =
+    activeDragEntry?.type === "template" ? templatesById.get(activeDragEntry.id) : undefined;
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDragId(String(event.active.id));
@@ -101,13 +112,18 @@ export default function NewItemCategoryPicker({
     if (!over || active.id === over.id) {
       return;
     }
-    const oldIndex = favoriteIds.indexOf(String(active.id));
-    const newIndex = favoriteIds.indexOf(String(over.id));
+    const oldIndex = favoriteOrder.indexOf(String(active.id));
+    const newIndex = favoriteOrder.indexOf(String(over.id));
     if (oldIndex < 0 || newIndex < 0) {
       return;
     }
-    onReorderFavorites(arrayMove([...favoriteIds], oldIndex, newIndex));
+    onReorderFavorites(arrayMove([...favoriteOrder], oldIndex, newIndex));
   }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   function toggleReorderMode() {
     setIsReorderMode((current) => !current);
@@ -146,23 +162,59 @@ export default function NewItemCategoryPicker({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext items={favoriteIds} strategy={rectSortingStrategy}>
+            <SortableContext items={favoriteOrder} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {favoriteCategories.map((category, index) => (
-                  <NewItemCategoryCard
-                    key={category.id}
-                    category={category}
-                    label={getCategoryLabel(t, category)}
-                    isFavorite
-                    favoriteAriaLabel={t("web.newItemPopup.removeFavorite")}
-                    size="featured"
-                    isReorderMode={isReorderMode}
-                    wiggleIndex={index}
-                    sortable
-                    onSelect={() => onSelectCategory(category.id)}
-                    onToggleFavorite={() => onToggleFavorite(category.id)}
-                  />
-                ))}
+                {favoriteOrder.map((orderEntry, index) => {
+                  const parsed = parseFavoriteOrderEntry(orderEntry);
+                  if (!parsed) {
+                    return null;
+                  }
+                  if (parsed.type === "category") {
+                    const category = getItemCategoryDefinition(parsed.id);
+                    if (!category || !favoriteIdSet.has(parsed.id)) {
+                      return null;
+                    }
+                    return (
+                      <NewItemCategoryCard
+                        key={orderEntry}
+                        category={category}
+                        label={getCategoryLabel(t, category)}
+                        isFavorite
+                        favoriteAriaLabel={t("web.newItemPopup.removeFavorite")}
+                        size="featured"
+                        isReorderMode={isReorderMode}
+                        wiggleIndex={index}
+                        sortable
+                        sortableId={orderEntry}
+                        onSelect={() => onSelectCategory(category.id)}
+                        onToggleFavorite={() => onToggleFavorite(category.id)}
+                      />
+                    );
+                  }
+                  const template = templatesById.get(parsed.id);
+                  if (!template || !favoriteTemplateIdSet.has(parsed.id)) {
+                    return null;
+                  }
+                  return (
+                    <NewItemTemplateCard
+                      key={orderEntry}
+                      templateId={template.id}
+                      label={template.name}
+                      categoryId={template.category_id}
+                      faviconId={template.favicon_id}
+                      faviconSource={template.payload.favicon_source}
+                      isFavorite
+                      size="featured"
+                      isReorderMode={isReorderMode}
+                      wiggleIndex={index}
+                      sortable
+                      sortableId={orderEntry}
+                      favoriteAriaLabel={t("web.newItemPopup.removeFavorite")}
+                      onSelect={() => onSelectTemplate(template)}
+                      onToggleFavorite={() => onToggleTemplateFavorite(template.id)}
+                    />
+                  );
+                })}
               </div>
             </SortableContext>
 
@@ -179,24 +231,51 @@ export default function NewItemCategoryPicker({
                   onToggleFavorite={() => undefined}
                 />
               ) : null}
+              {activeDragTemplate ? (
+                <NewItemTemplateCard
+                  templateId={activeDragTemplate.id}
+                  label={activeDragTemplate.name}
+                  categoryId={activeDragTemplate.category_id}
+                  faviconId={activeDragTemplate.favicon_id}
+                  faviconSource={activeDragTemplate.payload.favicon_source}
+                  isFavorite
+                  size="featured"
+                  isDragging
+                  favoriteAriaLabel={t("web.newItemPopup.removeFavorite")}
+                  onSelect={() => undefined}
+                  onToggleFavorite={() => undefined}
+                />
+              ) : null}
             </DragOverlay>
           </DndContext>
         </section>
       ) : null}
 
-      {showGroupedSections
-        ? ITEM_CATEGORY_GROUPS.map((group) => (
-            <CategoryGroupSection
-              key={group.id}
-              title={t(group.labelKey)}
-              categories={categoriesForGroup(group.id)}
-              favoriteIdSet={favoriteIdSet}
-              t={t}
-              onSelectCategory={onSelectCategory}
-              onToggleFavorite={onToggleFavorite}
-            />
-          ))
-        : null}
+      {showGroupedSections ? (
+        <>
+          {ITEM_CATEGORY_GROUPS.map((group) => (
+            <div key={group.id} className="contents">
+              {group.id === ITEM_CATEGORY_GROUP_AUTHORIZATION && templatesReady && templates.length > 0 ? (
+                <TemplatesSection
+                  t={t}
+                  templates={templates}
+                  favoriteTemplateIdSet={favoriteTemplateIdSet}
+                  onSelectTemplate={onSelectTemplate}
+                  onToggleTemplateFavorite={onToggleTemplateFavorite}
+                />
+              ) : null}
+              <CategoryGroupSection
+                title={t(group.labelKey)}
+                categories={categoriesForGroup(group.id)}
+                favoriteIdSet={favoriteIdSet}
+                t={t}
+                onSelectCategory={onSelectCategory}
+                onToggleFavorite={onToggleFavorite}
+              />
+            </div>
+          ))}
+        </>
+      ) : null}
 
       {hasFavorites ? (
         <Button
@@ -217,6 +296,49 @@ export default function NewItemCategoryPicker({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function TemplatesSection({
+  t,
+  templates,
+  favoriteTemplateIdSet,
+  onSelectTemplate,
+  onToggleTemplateFavorite,
+}: {
+  t: NewItemCategoryPickerProps["t"];
+  templates: readonly WorkspaceItemTemplateDto[];
+  favoriteTemplateIdSet: ReadonlySet<string>;
+  onSelectTemplate: (template: WorkspaceItemTemplateDto) => void;
+  onToggleTemplateFavorite: (templateId: string) => void;
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <h3 className="text-sm font-medium leading-5 text-card-foreground">
+        {t("web.newItemPopup.templatesSection")}
+      </h3>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        {templates.map((template) => {
+          const isFavorite = favoriteTemplateIdSet.has(template.id);
+          return (
+            <NewItemTemplateCard
+              key={template.id}
+              templateId={template.id}
+              label={template.name}
+              categoryId={template.category_id}
+              faviconId={template.favicon_id}
+              faviconSource={template.payload.favicon_source}
+              isFavorite={isFavorite}
+              favoriteAriaLabel={
+                isFavorite ? t("web.newItemPopup.removeFavorite") : t("web.newItemPopup.addFavorite")
+              }
+              onSelect={() => onSelectTemplate(template)}
+              onToggleFavorite={() => onToggleTemplateFavorite(template.id)}
+            />
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

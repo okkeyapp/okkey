@@ -13,6 +13,8 @@ function revokeObjectUrl(url: string | null): void {
 export type ItemFormFaviconSyncInput = {
   faviconSource?: ItemFaviconSource;
   manualFaviconPng?: Uint8Array | null;
+  /** Reuse an existing stored favicon (e.g. from template/copy) when no new PNG is pending. */
+  reuseFaviconId?: string;
 };
 
 export function useItemFormFavicon(input: {
@@ -26,6 +28,7 @@ export function useItemFormFavicon(input: {
   const [manualPreviewUrl, setManualPreviewUrl] = useState<string | undefined>();
   const [pendingManualPng, setPendingManualPng] = useState<Uint8Array | null>(null);
   const pendingManualPngRef = useRef<Uint8Array | null>(null);
+  const initialFaviconIdRef = useRef(input.initialFaviconId);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const manualPreviewUrlRef = useRef<string | null>(null);
 
@@ -46,6 +49,7 @@ export function useItemFormFavicon(input: {
   );
 
   useEffect(() => {
+    initialFaviconIdRef.current = input.initialFaviconId;
     setFaviconSource(input.initialFaviconSource);
     pendingManualPngRef.current = null;
     setPendingManualPng(null);
@@ -76,9 +80,14 @@ export function useItemFormFavicon(input: {
 
   const getSyncInput = useCallback((): ItemFormFaviconSyncInput => {
     const manualFaviconPng = pendingManualPngRef.current ?? pendingManualPng;
+    const reuseFaviconId =
+      !manualFaviconPng && faviconSource === "manual"
+        ? initialFaviconIdRef.current?.trim() || undefined
+        : undefined;
     return {
       faviconSource,
       ...(manualFaviconPng && manualFaviconPng.byteLength > 0 ? { manualFaviconPng } : {}),
+      ...(reuseFaviconId ? { reuseFaviconId } : {}),
     };
   }, [faviconSource, pendingManualPng]);
 
