@@ -107,6 +107,8 @@
   "web.newItemPopup.newRecordTitle": "Новая запись \"{category}\"",
   "web.newItemPopup.recordNameLabel": "Название записи",
   "web.newItemPopup.recordNamePlaceholder": "Название",
+  "web.newItemPopup.uploadIcon": "Загрузить иконку",
+  "web.newItemPopup.uploadIconInvalid": "Выберите изображение JPG или PNG.",
   "web.newItemPopup.addSectionWithField": "Добавить секцию с полем",
   "web.newItemPopup.addField": "Добавить поле",
   "web.newItemPopup.tagsLabel": "Теги",

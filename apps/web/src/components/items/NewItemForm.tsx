@@ -1,3 +1,4 @@
+import type { ItemFaviconSource } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
@@ -8,7 +9,7 @@ import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
 import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
-import { useItemFormFaviconPreview } from "../../items/useItemFormFaviconPreview";
+import { useItemFormFavicon, type ItemFormFaviconSyncInput } from "../../items/useItemFormFavicon";
 import {
   validateNewItemForm,
   type NewItemFormValidationIssue,
@@ -21,6 +22,7 @@ import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
 import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
 import ItemRecordFavicon from "./ItemRecordFavicon";
+import { ItemRecordFaviconField } from "./ItemRecordFaviconField";
 import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -54,6 +56,7 @@ export type NewItemFormInitialValues = {
   tags: string[];
   createdAtMs: number;
   faviconId?: string;
+  faviconSource?: ItemFaviconSource;
 };
 
 export type NewItemFormHandle = {
@@ -61,6 +64,7 @@ export type NewItemFormHandle = {
   getSavePayload: () => NewItemSavePayload | null;
   getFileBaselineSections: () => KeyFormEditorSection[];
   getCurrentSections: () => KeyFormEditorSection[];
+  getFaviconSyncInput: () => ItemFormFaviconSyncInput;
 };
 
 type NewItemFormProps = {
@@ -125,11 +129,20 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   }, [category, categoryLabel, committedWebsiteUrls]);
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
-  const { previewImageSrc, isLoading: previewFaviconLoading } = useItemFormFaviconPreview({
+  const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
     urls: committedWebsiteUrls,
+    initialFaviconId: initialValues?.faviconId,
+    initialFaviconSource: initialValues?.faviconSource,
   });
+  const {
+    previewImageSrc,
+    previewLoading,
+    uploadError,
+    uploadIconFile,
+    getSyncInput,
+  } = faviconState;
 
   const handleWebsiteUrlsBlur = useCallback((sections: KeyFormEditorSection[]) => {
     setCommittedWebsiteUrls(collectWebsiteUrlsFromSections(sections));
@@ -205,8 +218,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       },
       getFileBaselineSections: () => fileBaselineSectionsRef.current,
       getCurrentSections: () => formSections ?? initialSections,
+      getFaviconSyncInput: () => getSyncInput(),
     }),
-    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, tags],
+    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, tags, getSyncInput],
   );
 
   if (!category) {
@@ -216,15 +230,23 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-4">
-        <ItemRecordFavicon
-          categoryId={category.id}
-          title={trimmedRecordName || undefined}
-          faviconId={initialValues?.faviconId}
-          previewImageSrc={previewImageSrc}
-          previewLoading={previewFaviconLoading}
-          size={40}
-          alt=""
-        />
+        <ItemRecordFaviconField
+          showUploadControl
+          uploadLabel={t("web.newItemPopup.uploadIcon")}
+          invalidFileMessage={t("web.newItemPopup.uploadIconInvalid")}
+          uploadError={uploadError}
+          onUploadFile={uploadIconFile}
+        >
+          <ItemRecordFavicon
+            categoryId={category.id}
+            title={trimmedRecordName || undefined}
+            faviconId={initialValues?.faviconId}
+            previewImageSrc={previewImageSrc}
+            previewLoading={previewLoading}
+            size={40}
+            alt=""
+          />
+        </ItemRecordFaviconField>
         <Input
           ref={recordNameInputRef}
           value={recordName}
@@ -287,7 +309,11 @@ export function buildItemFromNewItemSavePayload(payload: NewItemSavePayload) {
   });
 }
 
-export function buildItemFromEditSavePayload(payload: NewItemSavePayload, existingCreatedAtMs: number): ItemPlaintextV2 {
+export function buildItemFromEditSavePayload(
+  payload: NewItemSavePayload,
+  existingCreatedAtMs: number,
+  existing?: Pick<ItemPlaintextV2, "faviconId" | "faviconSource">,
+): ItemPlaintextV2 {
   const built = keyFormSectionsToItemPlaintext({
     sections: payload.sections,
     itemId: payload.itemId,
@@ -300,6 +326,8 @@ export function buildItemFromEditSavePayload(payload: NewItemSavePayload, existi
     ...built,
     createdAtMs: existingCreatedAtMs,
     updatedAtMs: Date.now(),
+    ...(existing?.faviconId ? { faviconId: existing.faviconId } : {}),
+    ...(existing?.faviconSource ? { faviconSource: existing.faviconSource } : {}),
   };
 }
 

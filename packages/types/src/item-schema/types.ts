@@ -8,6 +8,8 @@ export const ITEM_PLAINTEXT_SCHEMA_VERSION_LATEST = ITEM_PLAINTEXT_SCHEMA_VERSIO
 
 /** Stable category codes (extend by adding new ids + presets). */
 export const ITEM_CATEGORY_LOGIN = "login" as const;
+
+export type ItemFaviconSource = "manual" | "website";
 export const ITEM_CATEGORY_SECURE_NOTE = "secure_note" as const;
 export const ITEM_CATEGORY_CREDIT_CARD = "credit_card" as const;
 
@@ -124,4 +126,6 @@ export interface ItemPlaintextV2 {
   tags?: string[];
   /** Server-stored favicon blob id (MinIO); set after favicon upsert on save. */
   faviconId?: EntityId;
+  /** How the favicon was set; manual disables website auto-fetch for login items. */
+  faviconSource?: ItemFaviconSource;
 }

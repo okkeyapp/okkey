@@ -21,6 +21,7 @@ export function useItemFormFaviconPreview(input: {
   accessToken: string | null;
   categoryId: string;
   urls: readonly string[];
+  disabled?: boolean;
 }): ItemFormFaviconPreviewState {
   const urlsKey = input.urls.join("\u0001");
   const [previewImageSrc, setPreviewImageSrc] = useState<string | undefined>();
@@ -41,7 +42,7 @@ export function useItemFormFaviconPreview(input: {
     blobUrlRef.current = null;
     setPreviewImageSrc(undefined);
 
-    if (input.categoryId !== ITEM_CATEGORY_LOGIN) {
+    if (input.disabled || input.categoryId !== ITEM_CATEGORY_LOGIN) {
       setIsLoading(false);
       return;
     }
@@ -81,7 +82,7 @@ export function useItemFormFaviconPreview(input: {
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [urlsKey, input.accessToken, input.categoryId, input.urls]);
+  }, [urlsKey, input.accessToken, input.categoryId, input.urls, input.disabled]);
 
   return { previewImageSrc, isLoading };
 }

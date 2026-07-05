@@ -105,7 +105,21 @@ export function createItemFaviconPreviewRoute(
 type UpsertBody = {
   urls?: string[];
   clear?: boolean;
+  pngBase64?: string;
 };
+
+function decodePngBase64(value: string): Uint8Array | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const bytes = Buffer.from(trimmed, "base64");
+    return bytes.byteLength > 0 ? new Uint8Array(bytes) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function createItemFaviconUpsertRoute(
   service: ItemFaviconService,
@@ -141,6 +155,23 @@ export function createItemFaviconUpsertRoute(
       if (body.clear === true) {
         await service.clear(vaultId, itemId, userId);
         json(ctx.res, 200, { faviconId: null });
+        return;
+      }
+
+      const pngBase64 = typeof body.pngBase64 === "string" ? body.pngBase64 : undefined;
+      if (pngBase64 !== undefined) {
+        const pngBytes = decodePngBase64(pngBase64);
+        if (!pngBytes) {
+          json(ctx.res, 400, {
+            error: "BAD_REQUEST",
+            message: "pngBase64 must be a non-empty base64-encoded PNG",
+            requestId: ctx.requestId,
+          });
+          return;
+        }
+
+        const result = await service.upsertFromPngBytes(vaultId, itemId, userId, pngBytes);
+        json(ctx.res, 200, result);
         return;
       }
 

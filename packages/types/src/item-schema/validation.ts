@@ -141,6 +141,9 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0);
   const faviconId = typeof raw.faviconId === "string" && raw.faviconId.trim() ? raw.faviconId.trim() : undefined;
+  const faviconSourceRaw = raw.faviconSource;
+  const faviconSource =
+    faviconSourceRaw === "manual" || faviconSourceRaw === "website" ? faviconSourceRaw : undefined;
   return {
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
     itemId,
@@ -156,6 +159,7 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
     fields,
     ...(tags.length > 0 ? { tags } : {}),
     ...(faviconId ? { faviconId } : {}),
+    ...(faviconSource ? { faviconSource } : {}),
   };
 }
 

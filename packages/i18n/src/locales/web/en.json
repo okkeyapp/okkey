@@ -107,6 +107,8 @@
   "web.newItemPopup.newRecordTitle": "New item \"{category}\"",
   "web.newItemPopup.recordNameLabel": "Item name",
   "web.newItemPopup.recordNamePlaceholder": "Name",
+  "web.newItemPopup.uploadIcon": "Upload icon",
+  "web.newItemPopup.uploadIconInvalid": "Choose a JPG or PNG image.",
   "web.newItemPopup.addSectionWithField": "Add section with field",
   "web.newItemPopup.addField": "Add field",
   "web.newItemPopup.tagsLabel": "Tags",

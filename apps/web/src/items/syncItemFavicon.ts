@@ -1,7 +1,8 @@
-import type { ItemPlaintextV2 } from "@okkey/types";
+import type { ItemFaviconSource, ItemPlaintextV2 } from "@okkey/types";
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 
-import { clearItemFavicon, upsertItemFavicon } from "../api/item-favicons";
+import { clearItemFavicon, upsertItemFavicon, upsertItemFaviconPng } from "../api/item-favicons";
+import type { ItemFormFaviconSyncInput } from "./useItemFormFavicon";
 
 function collectUrls(item: ItemPlaintextV2): string[] {
   return item.fields
@@ -10,12 +11,23 @@ function collectUrls(item: ItemPlaintextV2): string[] {
     .filter((url) => url.length > 0);
 }
 
-export function applyFaviconIdToItem(item: ItemPlaintextV2, faviconId?: string): ItemPlaintextV2 {
-  if (!faviconId) {
-    const { faviconId: _removed, ...rest } = item;
-    return rest;
+export function applyFaviconToItem(
+  item: ItemPlaintextV2,
+  faviconId?: string,
+  faviconSource?: ItemFaviconSource,
+): ItemPlaintextV2 {
+  const next: ItemPlaintextV2 = { ...item };
+  if (faviconId) {
+    next.faviconId = faviconId;
+  } else {
+    delete next.faviconId;
   }
-  return { ...item, faviconId };
+  if (faviconSource) {
+    next.faviconSource = faviconSource;
+  } else {
+    delete next.faviconSource;
+  }
+  return next;
 }
 
 /** Persist favicon to MinIO only when saving the item (not during form preview). */
@@ -23,12 +35,28 @@ export async function syncItemFaviconForPlaintext(
   accessToken: string,
   item: ItemPlaintextV2,
   previous?: ItemPlaintextV2,
+  syncInput?: ItemFormFaviconSyncInput,
 ): Promise<ItemPlaintextV2> {
+  const faviconSource = syncInput?.faviconSource ?? item.faviconSource;
+
+  if (syncInput?.manualFaviconPng && syncInput.manualFaviconPng.byteLength > 0) {
+    const result = await upsertItemFaviconPng(accessToken, item.vaultId, item.itemId, syncInput.manualFaviconPng);
+    const faviconId = result.faviconId?.trim();
+    if (!faviconId) {
+      throw new Error("FAVICON_MANUAL_UPLOAD_FAILED");
+    }
+    return applyFaviconToItem(item, faviconId, "manual");
+  }
+
+  if (faviconSource === "manual") {
+    return applyFaviconToItem(item, item.faviconId ?? previous?.faviconId, "manual");
+  }
+
   if (item.categoryId !== ITEM_CATEGORY_LOGIN) {
     if (previous?.faviconId) {
       await clearItemFavicon(accessToken, item.vaultId, item.itemId);
     }
-    return applyFaviconIdToItem(item, undefined);
+    return applyFaviconToItem(item, undefined, undefined);
   }
 
   const urls = collectUrls(item);
@@ -37,9 +65,9 @@ export async function syncItemFaviconForPlaintext(
     if (previous?.faviconId) {
       await clearItemFavicon(accessToken, item.vaultId, item.itemId);
     }
-    return applyFaviconIdToItem(item, undefined);
+    return applyFaviconToItem(item, undefined, undefined);
   }
 
   const result = await upsertItemFavicon(accessToken, item.vaultId, item.itemId, urls);
-  return applyFaviconIdToItem(item, result.faviconId ?? undefined);
+  return applyFaviconToItem(item, result.faviconId ?? undefined, "website");
 }

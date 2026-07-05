@@ -67,6 +67,38 @@ export async function upsertItemFavicon(
   return JSON.parse(text) as ItemFaviconUpsertResponseDto;
 }
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index] ?? 0);
+  }
+  return btoa(binary);
+}
+
+export async function upsertItemFaviconPng(
+  accessToken: string,
+  vaultId: string,
+  itemId: string,
+  pngBytes: Uint8Array,
+): Promise<ItemFaviconUpsertResponseDto> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/vaults/${encodeURIComponent(vaultId)}/items/${encodeURIComponent(itemId)}/favicon`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ pngBase64: uint8ArrayToBase64(pngBytes) }),
+    },
+  );
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response.status, text));
+  }
+  return JSON.parse(text) as ItemFaviconUpsertResponseDto;
+}
+
 export async function clearItemFavicon(
   accessToken: string,
   vaultId: string,

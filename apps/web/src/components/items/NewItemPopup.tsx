@@ -129,6 +129,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       setShowValidation(true);
       return;
     }
+    const faviconSyncInput = formRef.current.getFaviconSyncInput();
 
     const selectedVault = vaults.find((vault) => vault.id === payload.vaultId);
     if (selectedVault && !selectedVault.isPersonal) {
@@ -150,7 +151,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             throw new Error("AUTH_REQUIRED");
           }
           let item = buildItemFromNewItemSavePayload(payload);
-          item = await syncItemFaviconForPlaintext(accessToken, item);
+          item = await syncItemFaviconForPlaintext(accessToken, item, undefined, faviconSyncInput);
           const createdItemId = await createItem(item);
           await deleteRemovedKeyFieldFiles(
             formRef.current?.getFileBaselineSections() ?? [],

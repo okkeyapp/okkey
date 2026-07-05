@@ -72,6 +72,7 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
       tags: item.tags ?? [],
       createdAtMs: item.createdAtMs,
       ...(item.faviconId ? { faviconId: item.faviconId } : {}),
+      ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
     };
   }, [item, folderId, keyFormMessages]);
 
@@ -99,6 +100,7 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
       setShowValidation(true);
       return;
     }
+    const faviconSyncInput = formRef.current.getFaviconSyncInput();
 
     const selectedVault = vaults.find((vault) => vault.id === payload.vaultId);
     if (selectedVault && !selectedVault.isPersonal) {
@@ -119,8 +121,13 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
           if (!accessToken) {
             throw new Error("AUTH_REQUIRED");
           }
-          let updatedItem = buildItemFromEditSavePayload(payload, payload.createdAtMs);
-          updatedItem = await syncItemFaviconForPlaintext(accessToken, updatedItem, item);
+          let updatedItem = buildItemFromEditSavePayload(payload, payload.createdAtMs, item);
+          updatedItem = await syncItemFaviconForPlaintext(
+            accessToken,
+            updatedItem,
+            item,
+            faviconSyncInput,
+          );
           await updateItem(updatedItem);
           await deleteRemovedKeyFieldFiles(
             formRef.current?.getFileBaselineSections() ?? initialValues.sections,

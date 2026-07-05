@@ -1,5 +1,4 @@
 import { Favicon } from "@okkey/ui";
-import * as React from "react";
 
 import { buildItemFaviconUrl } from "../../api/item-favicons";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
@@ -30,14 +29,13 @@ type ItemRecordFaviconProps = {
   lazy?: boolean;
 };
 
-/** Login/password: stored favicon, monogram, or category icon. Other categories: category icon only. */
+/** Stored/preview image, monogram (login), or category icon fallback. */
 export default function ItemRecordFavicon({
   categoryId,
   title,
   faviconId,
   previewImageSrc,
   previewLoading = false,
-  urls,
   size = 32,
   className,
   alt = "",
@@ -54,26 +52,15 @@ export default function ItemRecordFavicon({
 
   const imageSrc = previewImageSrc ?? (faviconId ? buildItemFaviconUrl(faviconId) : undefined);
   const skeletonWhileLoading = previewLoading || previewImageSrc != null;
-
-  if (isLoginItemCategory(categoryId)) {
-    return (
-      <Favicon
-        name={title}
-        imageSrc={imageSrc}
-        loading={previewLoading}
-        skeletonWhileLoading={skeletonWhileLoading}
-        lazy={lazy}
-        size={size}
-        color={category?.iconColor}
-        className={className}
-        alt={alt}
-        icon={categoryIcon}
-      />
-    );
-  }
+  const isLogin = isLoginItemCategory(categoryId);
 
   return (
     <Favicon
+      name={isLogin ? title : undefined}
+      imageSrc={imageSrc}
+      loading={previewLoading}
+      skeletonWhileLoading={skeletonWhileLoading}
+      lazy={lazy}
       size={size}
       color={category?.iconColor}
       className={className}

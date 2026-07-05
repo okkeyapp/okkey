@@ -76,10 +76,26 @@ export class ItemFaviconService {
       return { faviconId: null };
     }
 
+    return this.upsertFromPngBytes(vaultId, itemId, userId, remoteBytes);
+  }
+
+  async upsertFromPngBytes(
+    vaultId: string,
+    itemId: string,
+    userId: string,
+    pngBytes: Uint8Array,
+  ): Promise<{ faviconId: string | null }> {
+    await this.assertVaultAccess(vaultId, userId);
+
+    if (pngBytes.byteLength === 0) {
+      await this.clear(vaultId, itemId, userId);
+      return { faviconId: null };
+    }
+
     const faviconId = generateEntityId();
     const previous = await this.favicons.findByVaultAndItem(vaultId, itemId);
 
-    await this.storage.put(faviconId, remoteBytes);
+    await this.storage.put(faviconId, pngBytes);
     try {
       await this.favicons.upsert({ id: faviconId, vaultId, itemId });
     } catch (error) {
