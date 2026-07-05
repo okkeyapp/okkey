@@ -1293,11 +1293,12 @@ export default function ItemsListLeftPane({
                   {section.rows.map((row) => {
                     const rowSelected = selectedIds.has(row.id);
                     const rowActive = activeItemId === row.id;
+                    const rowSubtitle = row.login.trim();
                     return (
                       <li key={row.id}>
                         <div
                           className={cn(
-                            "group flex w-full min-h-[44px] items-center gap-0 overflow-hidden rounded-lg transition-colors",
+                            "group flex h-[60px] w-full items-center gap-0 overflow-hidden rounded-lg transition-colors",
                             "hover:bg-muted/60",
                             rowActive && "bg-muted/80",
                           )}
@@ -1313,7 +1314,7 @@ export default function ItemsListLeftPane({
                                     selectItemInUrl(row.id);
                                   }
                             }
-                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 px-3 py-2.5 text-left"
+                            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 px-3 text-left"
                           >
                             <LazyItemRecordFavicon
                               categoryId={row.categoryId}
@@ -1322,10 +1323,14 @@ export default function ItemsListLeftPane({
                               size={32}
                               className="shrink-0 bg-background"
                             />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium text-foreground">{row.title}</span>
-                              <span className="block truncate text-sm text-muted-foreground">{row.login}</span>
-                            </span>
+                            {rowSubtitle ? (
+                              <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
+                                <span className="block truncate text-sm font-medium leading-5 text-foreground">{row.title}</span>
+                                <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">{rowSubtitle}</span>
+                              </span>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">{row.title}</span>
+                            )}
                           </button>
 
                           <div className="flex shrink-0 self-center pe-1.5">
