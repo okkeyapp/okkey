@@ -1298,9 +1298,9 @@ export default function ItemsListLeftPane({
                       <li key={row.id}>
                         <div
                           className={cn(
-                            "group flex h-[60px] w-full items-center gap-0 overflow-hidden rounded-lg transition-colors",
+                            "group relative z-0 flex h-[60px] w-full items-center gap-0 rounded-lg transition-colors",
                             "hover:bg-muted/60",
-                            rowActive && "bg-muted/80",
+                            rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                           )}
                         >
                           <button
@@ -1363,8 +1363,9 @@ export default function ItemsListLeftPane({
                                     size="iconSm"
                                     className={cn(
                                       "size-8 shrink-0 text-muted-foreground opacity-0 transition-colors transition-opacity",
-                                      "hover:bg-muted/90 hover:text-foreground group-hover:opacity-100",
-                                      "data-[state=open]:bg-muted/90 data-[state=open]:opacity-100 data-[state=open]:text-foreground dark:hover:bg-muted/70 dark:data-[state=open]:bg-muted/70",
+                                      "hover:!bg-foreground/[0.12] hover:text-foreground group-hover:opacity-100",
+                                      "data-[state=open]:!bg-foreground/[0.12] data-[state=open]:opacity-100 data-[state=open]:text-foreground",
+                                      "dark:hover:!bg-white/[0.16] dark:data-[state=open]:!bg-white/[0.16]",
                                     )}
                                     aria-label={t("web.items.list.rowMenuAria")}
                                     onClick={(e) => e.stopPropagation()}
