@@ -46,7 +46,7 @@ export const ITEM_CATEGORY_DEFINITIONS: readonly ItemCategoryDefinition[] = [
   { id: "passport", labelKey: "web.newItemPopup.categories.passport", iconColor: "#854d0e", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "secure_files", labelKey: "web.newItemPopup.categories.secureFiles", iconColor: "#ef4444", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "api_access", labelKey: "web.newItemPopup.categories.apiAccess", iconColor: "#f472b6", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
-  { id: "ssh_key", labelKey: "web.newItemPopup.categories.sshKey", iconColor: "#f97316", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
+  // { id: "ssh_key", labelKey: "web.newItemPopup.categories.sshKey", iconColor: "#f97316", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
   { id: "database", labelKey: "web.newItemPopup.categories.database", iconColor: "#93c5fd", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
   { id: "server", labelKey: "web.newItemPopup.categories.server", iconColor: "#8b5cf6", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
   { id: "wifi_router", labelKey: "web.newItemPopup.categories.wifiRouter", iconColor: "#111827", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },

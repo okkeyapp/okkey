@@ -88,6 +88,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const categoryLabel = category ? getCategoryLabel(t, category) : categoryId;
   const [recordName, setRecordName] = useState(initialValues?.recordName ?? prefillValues?.recordName ?? "");
   const recordNameEditedRef = useRef(Boolean(initialValues ?? prefillValues));
+  const recordNameInputRef = useRef<HTMLInputElement>(null);
   const [formSections, setFormSections] = useState<KeyFormEditorSection[] | null>(
     initialValues?.sections ?? prefillValues?.sections ?? null,
   );
@@ -114,11 +115,14 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     prefillValues?.sections ? collectWebsiteUrlsFromSections(prefillValues.sections) : [],
   );
   const suggestedRecordName = useMemo(() => {
-    if (category?.id === "api_access") {
+    if (category?.id === "login") {
+      return suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls);
+    }
+    if (category) {
       return categoryLabel;
     }
-    return suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls);
-  }, [category?.id, categoryLabel, committedWebsiteUrls]);
+    return "";
+  }, [category, categoryLabel, committedWebsiteUrls]);
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const { previewImageSrc, isLoading: previewFaviconLoading } = useItemFormFaviconPreview({
@@ -148,6 +152,23 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     }
     setRecordName(suggestedRecordName);
   }, [suggestedRecordName]);
+
+  useEffect(() => {
+    if (isEditMode || isCopyMode) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const input = recordNameInputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus();
+      input.select();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [categoryId, isEditMode, isCopyMode]);
 
   const fileBaselineSectionsRef = useRef<KeyFormEditorSection[]>([]);
   useEffect(() => {
@@ -205,6 +226,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           alt=""
         />
         <Input
+          ref={recordNameInputRef}
           value={recordName}
           onChange={(event) => {
             recordNameEditedRef.current = true;
