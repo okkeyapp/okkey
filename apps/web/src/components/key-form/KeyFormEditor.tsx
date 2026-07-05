@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type SVGProps } from "react";
+import type { Locale } from "date-fns";
 import {
   DndContext,
   DragOverlay,
@@ -86,6 +87,11 @@ export type { KeyFormUrlAutofillScope } from "./keyFormI18n";
 
 export type KeyFormEditorSectionVariant = "primary" | "additional";
 
+export type KeyFormSelectOption = {
+  value: string;
+  label: string;
+};
+
 export type KeyFormEditorField = {
   id: string;
   type: string;
@@ -98,6 +104,7 @@ export type KeyFormEditorField = {
   deletable?: boolean;
   required?: boolean;
   urlAutofillScope?: KeyFormUrlAutofillScope;
+  selectOptions?: readonly KeyFormSelectOption[];
 };
 
 export type KeyFormEditorSection = {
@@ -120,6 +127,7 @@ export type KeyFormEditorProps = {
   onRecoveryCodesValueChange?: (change: RecoveryCodesValueChange) => void | Promise<void>;
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
+  datePickerLocale?: Locale;
 };
 
 export type RecoveryCodesValueChange = {
@@ -139,7 +147,66 @@ function fieldValuePlaceholderKey(field: Pick<DemoField, "id" | "type">): string
   if (field.id === "password") {
     return "password";
   }
+  if (field.type === "select") {
+    return "select";
+  }
   return field.type;
+}
+
+function selectOptionLabel(field: DemoField, value: string): string {
+  return field.selectOptions?.find((option) => option.value === value)?.label ?? value;
+}
+
+type KeyFormSelectFieldProps = {
+  field: DemoField;
+  value: ReactNode;
+  mode: KeyFormMode;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+};
+
+function KeyFormSelectField({ field, value, mode, onValueChange, placeholder }: KeyFormSelectFieldProps) {
+  const [open, setOpen] = useState(false);
+  const stringValue = typeof value === "string" ? value : "";
+  const displayLabel = stringValue ? selectOptionLabel(field, stringValue) : "";
+
+  if (mode !== "edit") {
+    return displayLabel;
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "h-5 w-full min-w-0 cursor-pointer truncate bg-transparent p-0 text-left text-sm leading-5 outline-none",
+            displayLabel ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {displayLabel || placeholder}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        collisionPadding={16}
+        className="z-[100] w-max max-w-[min(24rem,calc(100vw-2rem))] p-1"
+      >
+        {(field.selectOptions ?? []).map((option) => (
+          <DropdownMenuItem
+            key={option.value}
+            onSelect={() => {
+              onValueChange(option.value);
+              setOpen(false);
+            }}
+          >
+            {option.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function fieldDisplayLabel(field: Pick<DemoField, "id" | "type" | "label">, messages: KeyFormEditorMessages): string {
@@ -407,6 +474,12 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     }
   }
 
+  if (section.id === "api-access") {
+    if (field.id === "api-name" || field.id === "api-credentials") {
+      return false;
+    }
+  }
+
   if (section.id === "websites" && field.type === "url") {
     return section.fields.filter((item) => item.type === "url").length > 1;
   }
@@ -420,6 +493,10 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
   }
 
   if (section.id === "websites") {
+    return true;
+  }
+
+  if (section.id === "api-access") {
     return true;
   }
 
@@ -1234,6 +1311,7 @@ type SortableFieldProps = {
   fileUploadLabel?: string;
   fileClearLabel?: string;
   surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
+  datePickerLocale?: Locale;
 };
 
 function SortableField({
@@ -1278,9 +1356,20 @@ function SortableField({
   fileUploadLabel,
   fileClearLabel,
   surfaceRounding,
+  datePickerLocale,
 }: SortableFieldProps) {
   const secretKind = getSecretKind(field);
   const isMultiLineSecret = field.type === "secret" && secretKind === "multi-line";
+  const isSelectField = field.type === "select" && Boolean(field.selectOptions?.length);
+  const selectFieldContent = isSelectField ? (
+    <KeyFormSelectField
+      field={field}
+      value={value}
+      mode={mode}
+      onValueChange={onValueChange}
+      placeholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
+    />
+  ) : undefined;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
     data: {
@@ -1300,9 +1389,10 @@ function SortableField({
       label={fieldDisplayLabel(field, messages)}
       surfaceRounding={surfaceRounding}
       value={value}
+      children={selectFieldContent}
       mode={mode}
       editableLabel={field.editableLabel}
-      editableValue={typeof value === "string"}
+      editableValue={typeof value === "string" && !isSelectField}
       multilineValue={field.type === "multiline-text" || isMultiLineSecret}
       secretMultilineValue={isMultiLineSecret}
       dateValue={dateValue}
@@ -1316,7 +1406,11 @@ function SortableField({
       autoFocusValueRequest={autoFocusValueRequest}
       reorderable={reorderable}
       meta={
-        field.type === "recovery-codes" || field.type === "totp" || field.type === "file" || isSecretLikeField(field)
+        field.type === "recovery-codes" ||
+        field.type === "totp" ||
+        field.type === "file" ||
+        field.type === "select" ||
+        isSecretLikeField(field)
           ? null
           : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined, mode)
       }
@@ -1389,6 +1483,7 @@ function SortableField({
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
       fileClearLabel={fileClearLabel ?? messages.file.clear}
       valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
+      datePickerLocale={datePickerLocale}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
     </div>
@@ -1464,6 +1559,7 @@ export function KeyFormEditor({
   onWebsiteUrlsBlur,
   onRecoveryCodesValueChange,
   showValidation = false,
+  datePickerLocale,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
   const fieldTypes = fieldTypesProp ?? englishKeyFieldTypes;
@@ -2577,7 +2673,10 @@ export function KeyFormEditor({
   }
 
   function renderField(section: DemoSection, field: DemoField) {
-    const canReorderField = section.id === "websites" || !(section.variant === "primary" && !section.title);
+    const canReorderField =
+      section.id === "websites" ||
+      section.id === "api-access" ||
+      !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
@@ -2647,6 +2746,7 @@ export function KeyFormEditor({
         onValueBlur={isWebsitesSectionUrlField ? notifyWebsiteUrlsBlur : undefined}
         onValueFocus={shouldOpenGeneratorOnFocus(field) ? () => openPasswordGenerator(field.id) : undefined}
         passwordGeneratorTrigger={isSecretLikeField(field)}
+        datePickerLocale={datePickerLocale}
       />
     );
   }
@@ -2655,6 +2755,7 @@ export function KeyFormEditor({
     const fieldValue = valueForField(section, field);
     const isWebsiteField = field.type === "url";
     const isRecoveryCodesField = field.type === "recovery-codes";
+    const isSelectField = field.type === "select" && Boolean(field.selectOptions?.length);
     const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
     const isMultiLineSecret = field.type === "secret" && getSecretKind(field) === "multi-line";
     const isSecretVisible = visiblePasswordIds.has(field.id);
@@ -2668,9 +2769,20 @@ export function KeyFormEditor({
             : surfaceRoundingForField(section, mode, fieldIndex, false)
         }
         value={fieldValue}
+        children={
+          isSelectField ? (
+            <KeyFormSelectField
+              field={field}
+              value={fieldValue}
+              mode={mode}
+              onValueChange={() => undefined}
+              placeholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
+            />
+          ) : undefined
+        }
         mode={mode}
         editableLabel={field.editableLabel}
-        editableValue={typeof fieldValue === "string"}
+        editableValue={typeof fieldValue === "string" && !isSelectField}
         multilineValue={field.type === "multiline-text" || isMultiLineSecret}
         secretMultilineValue={isMultiLineSecret}
         dateValue={field.type === "date"}
@@ -2686,9 +2798,14 @@ export function KeyFormEditor({
         fileUploadLabel={messages.file.upload}
         fileClearLabel={messages.file.clear}
         valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
+        datePickerLocale={datePickerLocale}
         reorderable
         meta={
-          field.type === "recovery-codes" || field.type === "totp" || field.type === "file" || isSecretLikeField(field)
+          field.type === "recovery-codes" ||
+          field.type === "totp" ||
+          field.type === "file" ||
+          field.type === "select" ||
+          isSecretLikeField(field)
             ? null
             : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)
         }
@@ -2812,9 +2929,11 @@ export function KeyFormEditor({
                 ? fieldTypes
                 : section.id === "websites"
                   ? urlFieldTypes
-                  : section.id === "credentials" && !hasTotpField
-                    ? totpFieldTypes
-                    : [];
+                  : section.id === "api-access"
+                    ? fieldTypes
+                    : section.id === "credentials" && !hasTotpField
+                      ? totpFieldTypes
+                      : [];
             const sectionAddFieldLabel =
               section.id === "websites"
                 ? messages.addUrl
@@ -2824,7 +2943,9 @@ export function KeyFormEditor({
             const sectionOnAddField =
               section.variant === "additional"
                 ? (type: KeyFieldTypeOption) => addField(section.id, type)
-                : section.id === "websites" || (section.id === "credentials" && !hasTotpField)
+                : section.id === "websites" ||
+                    section.id === "api-access" ||
+                    (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)
                   : undefined;
             const fields = (

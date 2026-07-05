@@ -4,6 +4,7 @@ import { generateEntityId } from "@okkey/types";
 import { Input, cn } from "@okkey/ui";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
+import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { collectWebsiteUrlsFromSections, suggestedRecordTitleFromWebsiteUrls } from "../../lib/domainRecordTitle";
 import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
@@ -100,6 +101,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     }
   }, [isEditMode, isCopyMode, syncedVaultId, vaultId]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+  const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
   const initialSections = useMemo(
     () =>
@@ -111,10 +113,12 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const [committedWebsiteUrls, setCommittedWebsiteUrls] = useState<string[]>(() =>
     prefillValues?.sections ? collectWebsiteUrlsFromSections(prefillValues.sections) : [],
   );
-  const suggestedRecordName = useMemo(
-    () => suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls),
-    [committedWebsiteUrls],
-  );
+  const suggestedRecordName = useMemo(() => {
+    if (category?.id === "api_access") {
+      return categoryLabel;
+    }
+    return suggestedRecordTitleFromWebsiteUrls(committedWebsiteUrls);
+  }, [category?.id, categoryLabel, committedWebsiteUrls]);
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const { previewImageSrc, isLoading: previewFaviconLoading } = useItemFormFaviconPreview({
@@ -225,6 +229,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         addFieldLabel={t("web.newItemPopup.addField")}
         fieldTypes={keyFormFieldTypes}
         messages={keyFormMessages}
+        datePickerLocale={datePickerLocale}
         onSectionsChange={setFormSections}
         onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
         showValidation={showValidation}

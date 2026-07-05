@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { Locale } from "date-fns";
 
 import {
   formatKeyFieldDateValue,
@@ -15,12 +16,14 @@ export type KeyFieldDatePickerPanelProps = {
   value: string;
   onValueChange: (value: string) => void;
   onClose?: () => void;
+  locale?: Locale;
 };
 
 function KeyFieldDatePickerPanelComponent({
   value,
   onValueChange,
   onClose,
+  locale,
 }: KeyFieldDatePickerPanelProps) {
   const selectedDate = React.useMemo(() => parseKeyFieldDateValue(value), [value]);
   const [month, setMonth] = React.useState<Date>(() => selectedDate ?? new Date());
@@ -45,6 +48,7 @@ function KeyFieldDatePickerPanelComponent({
       <Calendar
         mode="single"
         captionLayout="label"
+        locale={locale}
         startMonth={calendarStartMonth}
         endMonth={calendarEndMonth}
         selected={selectedDate}

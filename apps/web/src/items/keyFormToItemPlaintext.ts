@@ -9,6 +9,7 @@ import { filterFilledKeyFormSections } from "./keyFormFilledFields";
 const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
   websites: "Websites",
+  "api-access": "API Access",
 };
 
 function wireFieldType(field: KeyFormEditorField): string {
@@ -59,6 +60,7 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
     case "email":
     case "phone":
     case "date":
+    case "select":
       return { kind: "text", text: raw };
     default:
       return { kind: "unknown", declaredType: field.type, raw };

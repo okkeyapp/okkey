@@ -3,7 +3,11 @@ import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, getSecre
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
-import { getDefaultSectionsForCategory } from "../components/items/itemCategoryDefaultSections";
+import {
+  API_ACCESS_SECTION_ID,
+  enrichApiAccessSelectField,
+  getDefaultSectionsForCategory,
+} from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import { isItemFieldFilled } from "./keyFormFilledFields";
 
@@ -14,11 +18,17 @@ function formFieldType(field: ItemFieldV2): string {
   if (field.type === "recovery-codes") {
     return "recovery-codes";
   }
+  if (field.type === "select") {
+    return "select";
+  }
   if (field.value.kind === "unknown" && field.value.declaredType === "secret") {
     return "secret";
   }
   if (field.value.kind === "unknown" && field.value.declaredType === "recovery-codes") {
     return "recovery-codes";
+  }
+  if (field.value.kind === "unknown" && field.value.declaredType === "select") {
+    return "select";
   }
   return field.type;
 }
@@ -66,6 +76,7 @@ function stringValueFromField(field: ItemFieldV2): string {
 const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
   websites: "Websites",
+  [API_ACCESS_SECTION_ID]: "API Access",
 };
 
 function sectionTitleForForm(section: { id: string; title?: string; isPreset?: boolean } | undefined): string | undefined {
@@ -104,6 +115,13 @@ function isFieldDeletable(
     return false;
   }
 
+  if (sectionId === API_ACCESS_SECTION_ID) {
+    if (field.id === "api-name" || field.id === "api-credentials") {
+      return false;
+    }
+    return true;
+  }
+
   if (sectionId === "websites" && type === "url") {
     return sectionFields.filter((candidate) => formFieldType(candidate) === "url").length > 1;
   }
@@ -124,6 +142,10 @@ function isFieldLabelEditable(
     return true;
   }
 
+  if (sectionId === API_ACCESS_SECTION_ID) {
+    return field.id !== "api-name" && field.id !== "api-credentials";
+  }
+
   return false;
 }
 
@@ -138,6 +160,10 @@ function isFieldRequired(
   }
 
   if (sectionId === "credentials" && (field.id === "login" || field.type === "password")) {
+    return true;
+  }
+
+  if (sectionId === API_ACCESS_SECTION_ID && (field.id === "api-name" || field.id === "api-credentials")) {
     return true;
   }
 
@@ -219,17 +245,84 @@ function mergeLoginPresetSections(
   return [...mergedPreset, ...additional];
 }
 
+function mergeApiAccessPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("api_access", messages);
+  const defaultSection = defaults[0];
+  if (!defaultSection) {
+    return loaded;
+  }
+
+  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
+  if (!loadedSection) {
+    return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
+  }
+
+  const presetFieldDefaults = new Map(defaultSection.fields.map((field) => [field.id, field]));
+  const mergedFields: KeyFormEditorField[] = loadedSection.fields.map((loadedField) => {
+    const presetField = presetFieldDefaults.get(loadedField.id);
+    if (!presetField) {
+      return loadedField;
+    }
+
+    if (loadedField.id === "api-name" || loadedField.id === "api-credentials") {
+      return enrichApiAccessSelectField(
+        {
+          ...presetField,
+          ...loadedField,
+          deletable: false,
+          editableLabel: false,
+          required: true,
+          ...(loadedField.id === "api-credentials"
+            ? { type: "secret" as const, secretKind: "single-line" as const }
+            : {}),
+        },
+        messages,
+      );
+    }
+
+    return enrichApiAccessSelectField(
+      {
+        ...presetField,
+        ...loadedField,
+        deletable: true,
+        editableLabel: true,
+      },
+      messages,
+    );
+  });
+
+  for (const presetField of defaultSection.fields) {
+    if (!mergedFields.some((field) => field.id === presetField.id)) {
+      mergedFields.push(presetField);
+    }
+  }
+
+  const additional = loaded.filter((section) => section.id !== defaultSection.id);
+  return [
+    {
+      ...defaultSection,
+      ...loadedSection,
+      fields: mergedFields,
+    },
+    ...additional,
+  ];
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
   sectionFields: ItemFieldV2[],
   isPresetSection: boolean,
+  messages?: KeyFormEditorMessages,
 ): KeyFormEditorField {
   const value = stringValueFromField(field);
   const type = formFieldType(field);
   const deletable = isFieldDeletable(sectionId, field, sectionFields, isPresetSection);
   const secretKind = type === "secret" ? getSecretKindFromRaw(field.value.kind === "unknown" ? field.value.raw : null) : undefined;
-  return {
+  const formField: KeyFormEditorField = {
     id: field.id,
     type,
     label: field.label ?? field.id,
@@ -242,6 +335,8 @@ function toFormField(
     ...(secretKind ? { secretKind } : {}),
     ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
   };
+
+  return messages ? enrichApiAccessSelectField(formField, messages) : formField;
 }
 
 export function itemPlaintextToKeyFormSections(
@@ -271,7 +366,7 @@ export function itemPlaintextToKeyFormSections(
         return null;
       }
       const isPresetSection = Boolean(section?.isPreset);
-      const fields = sectionFields.map((field) => toFormField(field, sectionId, sectionFields, isPresetSection));
+      const fields = sectionFields.map((field) => toFormField(field, sectionId, sectionFields, isPresetSection, messages));
       return {
         id: sectionId,
         variant: section?.isPreset ? "primary" : "additional",
@@ -283,6 +378,10 @@ export function itemPlaintextToKeyFormSections(
 
   if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "login") {
     return mergeLoginPresetSections(sections, messages);
+  }
+
+  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "api_access") {
+    return mergeApiAccessPresetSections(sections, messages);
   }
 
   return sections;

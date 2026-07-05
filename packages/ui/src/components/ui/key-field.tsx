@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { Locale } from "date-fns";
 
 import { cn } from "../../lib/utils.js";
 import {
@@ -26,6 +27,7 @@ import { Button } from "./button.js";
 import { KeyFieldAddressInput } from "./key-field-address-input.js";
 import { KeyFieldDateInput } from "./key-field-date-input.js";
 import { KeyFieldDatePickerPanel } from "./key-field-date-picker-panel.js";
+import { KeyFieldPortaledOverlay } from "./key-field-portaled-overlay.js";
 import { KeyFieldFileInput, KeyFieldFileView, type KeyFieldFileUploadHandler } from "./key-field-file-control.js";
 import { KeyFieldFileLightbox } from "./key-field-file-lightbox.js";
 import { KeyFieldRecoveryCodesInput } from "./key-field-recovery-codes-input.js";
@@ -219,6 +221,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   fileClearLabel?: string;
   valuePlaceholder?: string;
   surfaceRounding?: KeyFieldSurfaceRounding;
+  datePickerLocale?: Locale;
 };
 
 export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
@@ -283,6 +286,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       fileClearLabel = "Clear",
       valuePlaceholder,
       surfaceRounding,
+      datePickerLocale,
       draggable,
       onDragStart,
       onDragEnd,
@@ -300,6 +304,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const ignoreValueBlurRef = React.useRef(false);
     const valueInputRef = React.useRef<HTMLInputElement | null>(null);
     const valueTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const valueContainerRef = React.useRef<HTMLDivElement | null>(null);
     const [draftLabel, setDraftLabel] = React.useState(label);
     const stringValue = typeof value === "string" ? value : undefined;
     const [draftValue, setDraftValue] = React.useState(stringValue ?? "");
@@ -326,7 +331,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const [fileLightboxOpen, setFileLightboxOpen] = React.useState(false);
     const hasValidationError = isInvalid || (fileValue && fileValidationError);
     const isSurfaceActiveByState = (dateValue && isDatePickerOpen) || forceActive;
-    const hasOpenOverlay = Boolean(fieldOverlay) || forceActive;
+    const hasOpenOverlay = Boolean(fieldOverlay) || forceActive || (dateValue && isDatePickerOpen);
+    const showPortaledOverlay = Boolean(fieldOverlay) || (dateValue && canEditValue && isDatePickerOpen);
     const canShowStatusOverlay =
       mode === "view" && Boolean(statusOverlayLabel) && !(recoveryCodesValue && recoveryCodesRevealed);
     const canOpenFileValue = mode === "view" && fileValue && parsedFileValue !== null;
@@ -905,6 +911,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <div
+              ref={valueContainerRef}
               className={cn(
                 "relative min-w-0 flex-1 text-sm leading-5 text-foreground",
                 fileValue ? "min-h-20" : "min-h-5",
@@ -1040,15 +1047,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               ) : (
                 displayedValue
               )}
+            </div>
+            <KeyFieldPortaledOverlay open={showPortaledOverlay} anchorRef={valueContainerRef}>
               {dateValue && canEditValue && isDatePickerOpen ? (
                 <KeyFieldDatePickerPanel
                   value={draftValue}
                   onValueChange={handleDatePickerValueChange}
                   onClose={closeDatePicker}
+                  locale={datePickerLocale}
                 />
               ) : null}
               {fieldOverlay}
-            </div>
+            </KeyFieldPortaledOverlay>
             {meta ? <div className="shrink-0">{meta}</div> : null}
           </div>
         </div>

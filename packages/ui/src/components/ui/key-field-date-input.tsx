@@ -32,7 +32,7 @@ export function KeyFieldDateInput({
       onFocus={onFocus}
       onBlur={onBlur}
       className={cn(
-        "h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none",
+        "h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground",
         className,
       )}
     />

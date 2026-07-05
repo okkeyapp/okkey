@@ -205,13 +205,56 @@ const SelectContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = "popper", onWheel, ...props }, ref) => {
   const { triggerVariant } = React.useContext(SelectUiContext);
+  const [contentNode, setContentNode] = React.useState<React.ComponentRef<typeof SelectPrimitive.Content> | null>(
+    null,
+  );
+  const onWheelRef = React.useRef(onWheel);
+  onWheelRef.current = onWheel;
+
+  const setContentRef = React.useCallback(
+    (node: React.ComponentRef<typeof SelectPrimitive.Content> | null) => {
+      setContentNode(node);
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        (ref as React.MutableRefObject<React.ComponentRef<typeof SelectPrimitive.Content> | null>).current = node;
+      }
+    },
+    [ref],
+  );
+
+  React.useEffect(() => {
+    const host = contentNode;
+    if (!host) {
+      return undefined;
+    }
+
+    function handleWheel(event: WheelEvent) {
+      onWheelRef.current?.(event as unknown as React.WheelEvent<HTMLDivElement>);
+      if (event.defaultPrevented) {
+        return;
+      }
+      const viewport = host!.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+      if (!viewport) {
+        return;
+      }
+      const before = viewport.scrollTop;
+      viewport.scrollTop += event.deltaY;
+      if (viewport.scrollTop !== before) {
+        event.preventDefault();
+      }
+    }
+
+    host.addEventListener("wheel", handleWheel, { passive: false });
+    return () => host.removeEventListener("wheel", handleWheel);
+  }, [contentNode]);
 
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
-        ref={ref}
+        ref={setContentRef}
         className={cn(
-          "relative z-50 overflow-hidden rounded-md border border-input bg-popover p-0 text-popover-foreground shadow-md",
+          "relative z-[100] overflow-hidden rounded-md border border-input bg-popover p-0 text-popover-foreground shadow-md",
           triggerVariant === "inline"
             ? "min-w-[180px] w-max"
             : "w-[var(--radix-select-trigger-width)] min-w-[max(var(--radix-select-trigger-width),180px)]",
@@ -219,21 +262,7 @@ const SelectContent = React.forwardRef<
         )}
         position={position}
         sideOffset={2}
-        onWheel={(event) => {
-          onWheel?.(event);
-          if (event.defaultPrevented) {
-            return;
-          }
-          const viewport = event.currentTarget.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
-          if (!viewport) {
-            return;
-          }
-          const before = viewport.scrollTop;
-          viewport.scrollTop += event.deltaY;
-          if (viewport.scrollTop !== before) {
-            event.preventDefault();
-          }
-        }}
+        collisionPadding={16}
         {...props}
       >
         <ScrollArea className="w-full max-h-[min(15rem,var(--radix-select-content-available-height,80vh))] shrink-0">

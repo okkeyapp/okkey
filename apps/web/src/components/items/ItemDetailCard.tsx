@@ -14,6 +14,7 @@ import {
 } from "../../items/buildItemActivityEntries";
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
 import { patchItemRecoveryCodesField } from "../../items/patchItemRecoveryCodesField";
+import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { formatTagSearchQuery } from "../../items/workspaceItemSearch";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useLocale } from "../../locale/LocaleContext";
@@ -78,6 +79,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
 
   const category = item && isItemCategoryId(item.categoryId) ? getItemCategoryDefinition(item.categoryId) : undefined;
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+  const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const formSections = useMemo(
     () => (item ? itemPlaintextToKeyFormSections(item, keyFormMessages) : []),
     [item, keyFormMessages],
@@ -254,6 +256,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             initialSections={formSections}
             fieldTypes={keyFormFieldTypes}
             messages={keyFormMessages}
+            datePickerLocale={datePickerLocale}
             onRecoveryCodesValueChange={handleRecoveryCodesValueChange}
           />
 

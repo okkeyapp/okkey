@@ -1,4 +1,6 @@
 import * as React from "react";
+import { format } from "date-fns";
+import type { Locale } from "date-fns";
 import { useDayPicker, type MonthCaptionProps } from "react-day-picker";
 
 import {
@@ -29,16 +31,19 @@ function CalendarMonthYearCaption({ calendarMonth }: MonthCaptionProps) {
   const date = calendarMonth.date;
   const month = date.getMonth();
   const year = date.getFullYear();
+  const pickerLocale = dayPickerProps.locale as Locale | undefined;
   const startYear = (dayPickerProps.startMonth ?? new Date(new Date().getFullYear() - 100, 0)).getFullYear();
   const endYear = (dayPickerProps.endMonth ?? new Date(new Date().getFullYear() + 10, 11)).getFullYear();
 
   const monthOptions = React.useMemo(
     () =>
-      englishMonthNames.map((label, index) => ({
+      Array.from({ length: 12 }, (_, index) => ({
         value: String(index),
-        label,
+        label: pickerLocale
+          ? format(new Date(2024, index, 1), "LLLL", { locale: pickerLocale })
+          : (englishMonthNames[index] ?? String(index + 1)),
       })),
-    [],
+    [pickerLocale],
   );
 
   const yearOptions = React.useMemo(

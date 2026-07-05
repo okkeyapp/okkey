@@ -3,6 +3,7 @@ import type { KeyFieldSecretKind } from "@okkey/ui";
 export type { KeyFieldSecretKind };
 
 export type KeyFormSecretFieldLike = {
+  id?: string;
   type: string;
   value: unknown;
   secretKind?: KeyFieldSecretKind;
@@ -50,6 +51,9 @@ export function shouldConcealSecretField(
 }
 
 export function shouldOpenGeneratorOnFocus(field: KeyFormSecretFieldLike): boolean {
+  if (field.id !== "password") {
+    return false;
+  }
   return isFixedPasswordField(field) && isSecretFieldEmpty(field);
 }
 

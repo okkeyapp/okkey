@@ -54,6 +54,12 @@ export type KeyFormEditorMessages = {
   crackTimeLabels: Record<CrackTimeLabelKey, string>;
   fieldLabels: Record<string, string>;
   fieldPlaceholders: Record<string, string>;
+  apiTypeOptions: {
+    loginJson: string;
+    jwt: string;
+    bearer: string;
+    other: string;
+  };
   urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
     street: string;
@@ -96,7 +102,18 @@ export function formatKeyFormMessage(
 const KEY_FIELD_TYPE_IDS = keyFieldTypeOptions.map((type) => type.id);
 
 /** Preset credential fields not listed in {@link keyFieldTypeOptions}. */
-const KEY_FORM_EXTRA_FIELD_KEYS = ["login", "password"] as const;
+const KEY_FORM_EXTRA_FIELD_KEYS = [
+  "login",
+  "password",
+  "apiName",
+  "apiCredentials",
+  "apiType",
+  "apiFilename",
+  "apiValidFrom",
+  "apiValidTo",
+  "apiHostname",
+  "select",
+] as const;
 
 const KEY_FORM_FIELD_KEYS = [...KEY_FIELD_TYPE_IDS, ...KEY_FORM_EXTRA_FIELD_KEYS];
 
@@ -169,6 +186,12 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     },
     fieldLabels,
     fieldPlaceholders,
+    apiTypeOptions: {
+      loginJson: t("web.keyForm.apiType.loginJson"),
+      jwt: t("web.keyForm.apiType.jwt"),
+      bearer: t("web.keyForm.apiType.bearer"),
+      other: t("web.keyForm.apiType.other"),
+    },
     urlAutofillScope: {
       "entire-site": t("web.keyForm.urlAutofill.entireSite"),
       "exact-url": t("web.keyForm.urlAutofill.exactUrl"),
