@@ -24,7 +24,7 @@ import { ACCOUNT_NEW_PATH, AUTH_EMAIL_PATH, AUTH_TWO_FACTOR_PATH } from "../../r
 const OTP_LENGTH = 6;
 
 const otpCellClassName =
-  "h-[54px] w-[54px] min-w-[54px] max-w-[54px] shrink-0 p-0 text-center text-lg font-semibold tabular-nums";
+  "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";
 
 function ResendIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -53,6 +53,8 @@ export default function AuthOtpPage() {
   const email = pendingEmail ?? "";
   const [digits, setDigits] = useState<string[]>(() => Array.from({ length: OTP_LENGTH }, () => ""));
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const autoSubmitEnabledRef = useRef(true);
+  const submitInFlightRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [attemptsHint, setAttemptsHint] = useState<string | null>(null);
@@ -142,15 +144,15 @@ export default function AuthOtpPage() {
     inputsRef.current[focusIndex]?.focus();
   }, []);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!emailChallengeId) {
+  const submitCode = useCallback(async () => {
+    if (!emailChallengeId || submitInFlightRef.current) {
       return;
     }
     const code = digits.join("");
     if (code.length !== OTP_LENGTH) {
       return;
     }
+    submitInFlightRef.current = true;
     setSubmitting(true);
     setFormError(null);
     setAttemptsHint(null);
@@ -186,9 +188,39 @@ export default function AuthOtpPage() {
         setFormError(t("auth.email.errorGeneric"));
       }
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
-  }
+  }, [
+    applyAccessTokenResponse,
+    authClient,
+    digits,
+    emailChallengeId,
+    navigate,
+    setRegistrationAuthStateId,
+    setTwoFactorAuthStateId,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!autoSubmitEnabledRef.current) {
+      return;
+    }
+    if (digits.join("").length !== OTP_LENGTH || submitting) {
+      return;
+    }
+    autoSubmitEnabledRef.current = false;
+    void submitCode();
+  }, [digits, submitting, submitCode]);
+
+  const handleSubmit = useCallback(
+    (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      autoSubmitEnabledRef.current = false;
+      void submitCode();
+    },
+    [submitCode],
+  );
 
   async function handleResend() {
     if (!emailChallengeId) {
@@ -273,7 +305,7 @@ export default function AuthOtpPage() {
           <div
             role="group"
             aria-labelledby="auth-otp-label"
-            className="flex flex-wrap items-center justify-center gap-2.5"
+            className="grid w-full grid-cols-6 gap-2.5"
           >
             {digits.map((digit, index) => (
               <Input
