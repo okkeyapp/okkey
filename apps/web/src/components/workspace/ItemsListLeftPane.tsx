@@ -73,7 +73,7 @@ export type ItemsListRecordWire = {
   categoryId?: string;
   urls: string[];
   title: string;
-  login: string;
+  description: string;
   tags?: string[];
   date: string;
   favorite?: boolean;
@@ -89,7 +89,7 @@ export type ItemsListRecord = {
   urls: string[];
   faviconId?: string;
   title: string;
-  login: string;
+  description: string;
   tags: string[];
   date: Date;
   favorite: boolean;
@@ -1413,7 +1413,7 @@ export default function ItemsListLeftPane({
                   {section.rows.map((row) => {
                     const rowSelected = selectedIds.has(row.id);
                     const rowActive = activeItemId === row.id;
-                    const rowSubtitle = row.login.trim();
+                    const rowSubtitle = row.description.trim();
                     return (
                       <li key={row.id}>
                         <div
