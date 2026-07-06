@@ -1460,11 +1460,6 @@ function SortableField({
           ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
           : "bg-secondary"
       }
-      copyOverlayClassName={
-        section.variant === "additional"
-          ? "bg-[color-mix(in_hsl,color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)_40%,transparent)]"
-          : "bg-secondary/40"
-      }
       copyTextClassName={
         section.variant === "additional"
           ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
@@ -2851,11 +2846,6 @@ export function KeyFormEditor({
           section.variant === "additional"
             ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
             : "bg-secondary"
-        }
-        copyOverlayClassName={
-          section.variant === "additional"
-            ? "bg-[color-mix(in_hsl,color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)_40%,transparent)]"
-            : "bg-secondary/40"
         }
         copyTextClassName={
           section.variant === "additional"

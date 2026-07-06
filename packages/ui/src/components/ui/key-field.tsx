@@ -144,8 +144,16 @@ function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-const keyFieldOverlayPillClassName =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-[50px] border border-black/5 px-3 text-sm font-medium text-foreground dark:border-foreground/25";
+const keyFieldOverlayActionClassName = cn(
+  keyFormFieldSurfaceTransitionClassName,
+  "absolute left-1/2 top-full block box-content w-max -translate-x-1/2 rounded-b-md border-x border-b border-border border-t-0 pb-1 group-focus-within/key-field:border-x-accent group-focus-within/key-field:border-b-accent group-focus-within/key-field:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] group-focus-within/key-field:[clip-path:inset(0_-20px_-20px_-20px)]",
+);
+
+const keyFieldOverlayActionRowClassName =
+  "flex h-[16px] shrink-0 items-center gap-1 px-3 text-[12px] leading-none [&_svg]:!size-3 [&_svg]:shrink-0";
+
+const keyFieldOverlayTriggerClassName =
+  "pointer-events-none absolute inset-0 z-10 invisible group-hover/key-field:visible group-hover/key-field:pointer-events-auto focus-visible:outline-none";
 
 const keyFieldSingleLineControlClassName =
   "m-0 block w-full min-w-0 border-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none";
@@ -192,7 +200,6 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   copyIconPosition?: "start" | "end";
   copyHoverClassName?: string;
   copyHoverActiveClassName?: string;
-  copyOverlayClassName?: string;
   copyTextClassName?: string;
   statusOverlayLabel?: string;
   floatingActions?: React.ReactNode;
@@ -263,7 +270,6 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyIconPosition = "start",
       copyHoverClassName,
       copyHoverActiveClassName,
-      copyOverlayClassName,
       copyTextClassName,
       statusOverlayLabel,
       floatingActions,
@@ -759,7 +765,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           surfaceRounding && keyFieldSurfaceRoundingClassName(surfaceRounding),
           fieldOverlay && "relative",
           (canCopyValue || canOpenFileValue || canShowStatusOverlay || floatingActions) && "relative",
-          (canCopyValue || canOpenFileValue || canShowStatusOverlay) && copyHoverClassName,
+          (canCopyValue || canOpenFileValue || canShowStatusOverlay) && [
+            "overflow-visible",
+            "group-hover/key-field:z-20",
+            isHoverLocked && "z-20",
+            copyHoverClassName,
+          ],
           isHoverLocked && copyHoverActiveClassName,
           className,
           hasOpenOverlay && "relative z-30",
@@ -796,19 +807,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {canCopyValue ? (
           <button
             type="button"
-            className={cn(
-              "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
-              "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
-              "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-              isHoverLocked && "pointer-events-auto opacity-100",
-              copyOverlayClassName ?? "bg-card/20",
-            )}
+            className={cn(keyFieldOverlayTriggerClassName, isHoverLocked && "visible pointer-events-auto")}
             onClick={handleCopyClick}
           >
-            <span className={cn(keyFieldOverlayPillClassName, copyTextClassName ?? "bg-card")}>
-              {copyIconPosition === "start" ? currentCopyIcon : null}
-              {isCopied ? copySuccessLabel : copyLabel}
-              {copyIconPosition === "end" ? currentCopyIcon : null}
+            <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
+              <span className={keyFieldOverlayActionRowClassName}>
+                {copyIconPosition === "start" ? currentCopyIcon : null}
+                {isCopied ? copySuccessLabel : copyLabel}
+                {copyIconPosition === "end" ? currentCopyIcon : null}
+              </span>
             </span>
           </button>
         ) : null}
@@ -816,18 +823,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {canOpenFileValue ? (
           <button
             type="button"
-            className={cn(
-              "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
-              "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
-              "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-              isHoverLocked && "pointer-events-auto opacity-100",
-              copyOverlayClassName ?? "bg-card/20",
-            )}
+            className={cn(keyFieldOverlayTriggerClassName, isHoverLocked && "visible pointer-events-auto")}
             onClick={handleOpenFileClick}
           >
-            <span className={cn(keyFieldOverlayPillClassName, copyTextClassName ?? "bg-card")}>
-              <OpenFileIcon className="size-4" />
-              Open
+            <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
+              <span className={keyFieldOverlayActionRowClassName}>
+                <OpenFileIcon />
+                Open
+              </span>
             </span>
           </button>
         ) : null}
@@ -835,14 +838,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {canShowStatusOverlay ? (
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 z-10 flex rounded-[inherit] items-center justify-center opacity-0 transition-opacity",
-              "group-hover/key-field:opacity-100",
-              isHoverLocked && "opacity-100",
-              copyOverlayClassName ?? "bg-card/20",
+              keyFieldOverlayTriggerClassName,
+              isHoverLocked && "visible",
             )}
           >
-            <span className={cn(keyFieldOverlayPillClassName, copyTextClassName ?? "bg-card")}>
-              {statusOverlayLabel}
+            <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
+              <span className={keyFieldOverlayActionRowClassName}>{statusOverlayLabel}</span>
             </span>
           </div>
         ) : null}
