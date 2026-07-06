@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type SVGProps } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent, type ReactNode, type SVGProps } from "react";
 import type { Locale } from "date-fns";
 import {
   DndContext,
@@ -64,6 +64,7 @@ import {
   type KeyFieldFileValue,
 } from "@okkey/ui";
 import { uploadDevKeyFieldFile } from "../../api/key-field-files";
+import { normalizeSelectOptionsEditorText, appendSelectOptionsEditorLineAtEnd } from "../../items/keyFormSelectField";
 import {
   englishKeyFieldTypes,
   englishKeyFormEditorMessages,
@@ -159,18 +160,51 @@ function selectOptionLabel(field: DemoField, value: string): string {
   return field.selectOptions?.find((option) => option.value === value)?.label ?? value;
 }
 
+function selectOptionsToDraft(options: readonly KeyFormSelectOption[] | undefined): string {
+  return (options ?? []).map((option) => option.label).join("\n");
+}
+
+function parseSelectOptionsDraft(draft: string): KeyFormSelectOption[] {
+  const seen = new Set<string>();
+  const options: KeyFormSelectOption[] = [];
+
+  for (const line of draft.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    options.push({ value: trimmed, label: trimmed });
+  }
+
+  return options;
+}
+
+function selectFieldPlaceholder(field: Pick<DemoField, "id" | "type">, messages: KeyFormEditorMessages): string {
+  return messages.fieldPlaceholders[fieldValuePlaceholderKey(field)] ?? messages.fieldPlaceholders.select;
+}
+
 type KeyFormSelectFieldProps = {
   field: DemoField;
   value: ReactNode;
   mode: KeyFormMode;
   onValueChange: (value: string) => void;
   placeholder: string;
+  emptyOptionsMessage: string;
 };
 
-function KeyFormSelectField({ field, value, mode, onValueChange, placeholder }: KeyFormSelectFieldProps) {
+function KeyFormSelectField({
+  field,
+  value,
+  mode,
+  onValueChange,
+  placeholder,
+  emptyOptionsMessage,
+}: KeyFormSelectFieldProps) {
   const [open, setOpen] = useState(false);
   const stringValue = typeof value === "string" ? value : "";
   const displayLabel = stringValue ? selectOptionLabel(field, stringValue) : "";
+  const hasOptions = Boolean(field.selectOptions?.length);
 
   if (mode !== "edit") {
     return displayLabel;
@@ -193,21 +227,130 @@ function KeyFormSelectField({ field, value, mode, onValueChange, placeholder }: 
         align="start"
         side="bottom"
         collisionPadding={16}
-        className="z-[100] w-max max-w-[min(24rem,calc(100vw-2rem))] p-1"
+        className="z-[100] w-max min-w-[12rem] max-w-[min(24rem,calc(100vw-2rem))] p-1"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
       >
-        {(field.selectOptions ?? []).map((option) => (
-          <DropdownMenuItem
-            key={option.value}
-            onSelect={() => {
-              onValueChange(option.value);
-              setOpen(false);
-            }}
-          >
-            {option.label}
-          </DropdownMenuItem>
-        ))}
+        {hasOptions ? (
+          (field.selectOptions ?? []).map((option) => {
+            const selected = stringValue === option.value;
+            return (
+              <DropdownMenuItem
+                key={option.value}
+                className={cn(
+                  "relative pl-8",
+                  selected && "bg-secondary/60 hover:bg-secondary",
+                )}
+                onSelect={() => {
+                  onValueChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <span className="absolute left-2 flex size-3.5 items-center justify-center">
+                  {selected ? <CheckIcon className="size-4" /> : null}
+                </span>
+                {option.label}
+              </DropdownMenuItem>
+            );
+          })
+        ) : (
+          <div className="px-2 py-1.5 text-sm leading-5 text-muted-foreground">{emptyOptionsMessage}</div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+type KeyFormSelectOptionsInputProps = {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+  autoFocusValue?: boolean;
+  autoFocusValueRequest?: number;
+};
+
+function KeyFormSelectOptionsInput({
+  value,
+  onValueChange,
+  placeholder,
+  autoFocusValue,
+  autoFocusValueRequest,
+}: KeyFormSelectOptionsInputProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingCursorPositionRef = useRef<number | null>(null);
+
+  const resizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeTextarea();
+
+    if (pendingCursorPositionRef.current === null) {
+      return;
+    }
+
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const position = pendingCursorPositionRef.current;
+    pendingCursorPositionRef.current = null;
+    textarea.setSelectionRange(position, position);
+  }, [resizeTextarea, value]);
+
+  useEffect(() => {
+    if (!autoFocusValue) {
+      return;
+    }
+
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.focus();
+    const end = value.length;
+    textarea.setSelectionRange(end, end);
+  }, [autoFocusValue, autoFocusValueRequest, value.length]);
+
+  function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    onValueChange(normalizeSelectOptionsEditorText(event.target.value));
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextValue = appendSelectOptionsEditorLineAtEnd(value);
+    if (nextValue === value) {
+      return;
+    }
+
+    pendingCursorPositionRef.current = nextValue.length;
+    onValueChange(nextValue);
+  }
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      rows={2}
+      placeholder={placeholder}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
+    />
   );
 }
 
@@ -333,6 +476,36 @@ function GearIcon(props: SVGProps<SVGSVGElement>) {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
       <path d="M8.14667 1.33325H7.85333C7.49971 1.33325 7.16057 1.47373 6.91053 1.72378C6.66048 1.97382 6.52 2.31296 6.52 2.66659V2.78659C6.51976 3.0204 6.45804 3.25005 6.34103 3.45248C6.22401 3.65491 6.05583 3.82301 5.85333 3.93992L5.56667 4.10659C5.36398 4.22361 5.13405 4.28522 4.9 4.28522C4.66595 4.28522 4.43603 4.22361 4.23333 4.10659L4.13333 4.05325C3.82738 3.87676 3.46389 3.82888 3.12267 3.92012C2.78145 4.01137 2.49037 4.23428 2.31333 4.53992L2.16667 4.79325C1.99018 5.09921 1.9423 5.46269 2.03354 5.80392C2.12478 6.14514 2.34769 6.43622 2.65333 6.61325L2.75333 6.67992C2.95485 6.79626 3.12241 6.96331 3.23937 7.16447C3.35632 7.36563 3.4186 7.5939 3.42 7.82658V8.16658C3.42093 8.40153 3.35977 8.63255 3.2427 8.83626C3.12563 9.03996 2.95681 9.20911 2.75333 9.32658L2.65333 9.38658C2.34769 9.56362 2.12478 9.8547 2.03354 10.1959C1.9423 10.5371 1.99018 10.9006 2.16667 11.2066L2.31333 11.4599C2.49037 11.7656 2.78145 11.9885 3.12267 12.0797C3.46389 12.171 3.82738 12.1231 4.13333 11.9466L4.23333 11.8933C4.43603 11.7762 4.66595 11.7146 4.9 11.7146C5.13405 11.7146 5.36398 11.7762 5.56667 11.8933L5.85333 12.0599C6.05583 12.1768 6.22401 12.3449 6.34103 12.5474C6.45804 12.7498 6.51976 12.9794 6.52 13.2133V13.3333C6.52 13.6869 6.66048 14.026 6.91053 14.2761C7.16057 14.5261 7.49971 14.6666 7.85333 14.6666H8.14667C8.50029 14.6666 8.83943 14.5261 9.08948 14.2761C9.33953 14.026 9.48 13.6869 9.48 13.3333V13.2133C9.48024 12.9794 9.54196 12.7498 9.65898 12.5474C9.77599 12.3449 9.94418 12.1768 10.1467 12.0599L10.4333 11.8933C10.636 11.7762 10.866 11.7146 11.1 11.7146C11.3341 11.7146 11.564 11.7762 11.7667 11.8933L11.8667 11.9466C12.1726 12.1231 12.5361 12.171 12.8773 12.0797C13.2186 11.9885 13.5096 11.7656 13.6867 11.4599L13.8333 11.1999C14.0098 10.894 14.0577 10.5305 13.9665 10.1893C13.8752 9.84803 13.6523 9.55695 13.3467 9.37992L13.2467 9.32658C13.0432 9.20911 12.8744 9.03996 12.7573 8.83626C12.6402 8.63255 12.5791 8.40153 12.58 8.16658V7.83325C12.5791 7.5983 12.6402 7.36728 12.7573 7.16358C12.8744 6.95988 13.0432 6.79072 13.2467 6.67325L13.3467 6.61325C13.6523 6.43622 13.8752 6.14514 13.9665 5.80392C14.0577 5.46269 14.0098 5.09921 13.8333 4.79325L13.6867 4.53992C13.5096 4.23428 13.2186 4.01137 12.8773 3.92012C12.5361 3.82888 12.1726 3.87676 11.8667 4.05325L11.7667 4.10659C11.564 4.22361 11.3341 4.28522 11.1 4.28522C10.866 4.28522 10.636 4.22361 10.4333 4.10659L10.1467 3.93992C9.94418 3.82301 9.77599 3.65491 9.65898 3.45248C9.54196 3.25005 9.48024 3.0204 9.48 2.78659V2.66659C9.48 2.31296 9.33953 1.97382 9.08948 1.72378C8.83943 1.47373 8.50029 1.33325 8.14667 1.33325Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 9.99992C9.10457 9.99992 10 9.10449 10 7.99992C10 6.89535 9.10457 5.99992 8 5.99992C6.89543 5.99992 6 6.89535 6 7.99992C6 9.10449 6.89543 9.99992 8 9.99992Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EnterSelectEditIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M2.66663 13.3332H5.33329L12.3333 6.33321C12.5084 6.15811 12.6473 5.95024 12.742 5.72147C12.8368 5.4927 12.8856 5.2475 12.8856 4.99988C12.8856 4.75225 12.8368 4.50705 12.742 4.27828C12.6473 4.04951 12.5084 3.84164 12.3333 3.66654C12.1582 3.49145 11.9503 3.35255 11.7216 3.25779C11.4928 3.16303 11.2476 3.11426 11 3.11426C10.7523 3.11426 10.5071 3.16303 10.2784 3.25779C10.0496 3.35255 9.84172 3.49145 9.66663 3.66654L2.66663 10.6665V13.3332Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 4.3335L11.6667 7.00016" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.6666 12.6665H14.6666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ExitSelectEditIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M6.66663 6.66645L2.66663 10.6664V13.3331H5.33329L9.33329 9.33312M10.66 8.00645L12.3293 6.33712C12.6829 5.98349 12.8816 5.50388 12.8816 5.00378C12.8816 4.50369 12.6829 4.02407 12.3293 3.67045C11.9757 3.31683 11.4961 3.11816 10.996 3.11816C10.4959 3.11816 10.0162 3.31683 9.66263 3.67045L7.99596 5.33712"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 4.3335L11.6667 7.00016" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 2L14 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -1314,6 +1487,8 @@ type SortableFieldProps = {
   fileClearLabel?: string;
   surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
   datePickerLocale?: Locale;
+  selectConfigureMode?: boolean;
+  valuePlaceholder?: string;
 };
 
 function SortableField({
@@ -1359,19 +1534,31 @@ function SortableField({
   fileClearLabel,
   surfaceRounding,
   datePickerLocale,
+  selectConfigureMode = false,
+  valuePlaceholder,
 }: SortableFieldProps) {
   const secretKind = getSecretKind(field);
   const isMultiLineSecret = field.type === "secret" && secretKind === "multi-line";
-  const isSelectField = field.type === "select" && Boolean(field.selectOptions?.length);
-  const selectFieldContent = isSelectField ? (
-    <KeyFormSelectField
-      field={field}
-      value={value}
-      mode={mode}
-      onValueChange={onValueChange}
-      placeholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
-    />
-  ) : undefined;
+  const isSelectField = field.type === "select" && !selectConfigureMode;
+  const selectFieldContent =
+    isSelectField ? (
+      <KeyFormSelectField
+        field={field}
+        value={value}
+        mode={mode}
+        onValueChange={onValueChange}
+        placeholder={selectFieldPlaceholder(field, messages)}
+        emptyOptionsMessage={messages.selectNoOptions}
+      />
+    ) : selectConfigureMode ? (
+      <KeyFormSelectOptionsInput
+        value={typeof value === "string" ? value : ""}
+        onValueChange={onValueChange}
+        placeholder={valuePlaceholder ?? messages.selectOptionsPlaceholder}
+        autoFocusValue={autoFocusValue}
+        autoFocusValueRequest={autoFocusValueRequest}
+      />
+    ) : undefined;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.id,
     data: {
@@ -1394,7 +1581,7 @@ function SortableField({
       children={selectFieldContent}
       mode={mode}
       editableLabel={field.editableLabel}
-      editableValue={typeof value === "string" && !isSelectField}
+      editableValue={typeof value === "string" && !isSelectField && !selectConfigureMode}
       multilineValue={field.type === "multiline-text" || isMultiLineSecret}
       secretMultilineValue={isMultiLineSecret}
       dateValue={dateValue}
@@ -1441,7 +1628,8 @@ function SortableField({
         field.type === "note" ||
         field.type === "address" ||
         field.type === "recovery-codes" ||
-        isMultiLineSecret
+        isMultiLineSecret ||
+        selectConfigureMode
           ? "whitespace-pre-wrap break-words"
           : undefined
       }
@@ -1473,7 +1661,7 @@ function SortableField({
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
       fileClearLabel={fileClearLabel ?? messages.file.clear}
-      valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
+      valuePlaceholder={valuePlaceholder ?? messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       datePickerLocale={datePickerLocale}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
@@ -1606,6 +1794,8 @@ export function KeyFormEditor({
   const [visibleRecoveryCodesIds, setVisibleRecoveryCodesIds] = useState<ReadonlySet<string>>(() => new Set());
   const [unmaskedPhoneIds, setUnmaskedPhoneIds] = useState<ReadonlySet<string>>(() => new Set());
   const [disabledMultilineCopyIds, setDisabledMultilineCopyIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectOptionsEditFieldIds, setSelectOptionsEditFieldIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectOptionsDraft, setSelectOptionsDraft] = useState<Record<string, string>>({});
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
   const [activeValueFieldId, setActiveValueFieldId] = useState<string | null>(null);
   const [valueFocusRequest, setValueFocusRequest] = useState(0);
@@ -1734,6 +1924,7 @@ export function KeyFormEditor({
       editableLabel: true,
       secret: type.id === "secret",
       ...(type.id === "secret" ? { secretKind: "password" as const } : {}),
+      ...(type.id === "select" ? { selectOptions: [] as KeyFormSelectOption[] } : {}),
     };
   }
 
@@ -2371,6 +2562,37 @@ export function KeyFormEditor({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        ) : field.type === "select" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
+              >
+                <GearIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1">
+              <DropdownMenuItem onSelect={() => toggleSelectOptionsEditMode(section.id, field)}>
+                {selectOptionsEditFieldIds.has(field.id) ? (
+                  <ExitSelectEditIcon className="size-4" />
+                ) : (
+                  <EnterSelectEditIcon className="size-4" />
+                )}
+                {selectOptionsEditFieldIds.has(field.id) ? messages.exitSelectEdit : messages.enterSelectEdit}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : field.type === "multiline-text" ? (
           <DropdownMenu
             open={isFieldMenuOpen}
@@ -2464,6 +2686,85 @@ export function KeyFormEditor({
       }
       return next;
     });
+  }
+
+  function toggleSelectOptionsEditMode(sectionId: string, field: DemoField) {
+    setOpenFieldMenuId(null);
+    const isEditing = selectOptionsEditFieldIds.has(field.id);
+
+    if (isEditing) {
+      const draft = selectOptionsDraft[field.id] ?? selectOptionsToDraft(field.selectOptions);
+      const options = parseSelectOptionsDraft(draft);
+
+      setSections((current) =>
+        current.map((section) =>
+          section.id === sectionId
+            ? {
+                ...section,
+                fields: section.fields.map((item) => {
+                  if (item.id !== field.id) {
+                    return item;
+                  }
+
+                  const currentValue = typeof item.value === "string" ? item.value : "";
+                  const nextValue = options.some((option) => option.value === currentValue) ? currentValue : "";
+
+                  return {
+                    ...item,
+                    selectOptions: options,
+                    value: nextValue,
+                  };
+                }),
+              }
+            : section,
+        ),
+      );
+
+      setSelectOptionsEditFieldIds((current) => {
+        const next = new Set(current);
+        next.delete(field.id);
+        return next;
+      });
+      setSelectOptionsDraft((current) => {
+        const next = { ...current };
+        delete next[field.id];
+        return next;
+      });
+      return;
+    }
+
+    setSelectOptionsDraft((current) => ({
+      ...current,
+      [field.id]: current[field.id] ?? selectOptionsToDraft(field.selectOptions),
+    }));
+    setSelectOptionsEditFieldIds((current) => new Set(current).add(field.id));
+    focusFieldValue(field.id);
+  }
+
+  function updateSelectOptionsDraft(sectionId: string, fieldId: string, draft: string) {
+    const normalizedDraft = normalizeSelectOptionsEditorText(draft);
+    const options = parseSelectOptionsDraft(normalizedDraft);
+    setSelectOptionsDraft((current) => ({
+      ...current,
+      [fieldId]: normalizedDraft,
+    }));
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === fieldId
+                  ? {
+                      ...field,
+                      selectOptions: options,
+                    }
+                  : field,
+              ),
+            }
+          : section,
+      ),
+    );
   }
 
   async function copyRecoveryCode(sectionId: string, field: DemoField, copiedValue: string) {
@@ -2691,6 +2992,10 @@ export function KeyFormEditor({
         const codes = parseKeyFieldRecoveryCodesValue(field.value);
         return codes.length > 0 && getKeyFieldRecoveryCodesRemainingCount(codes) === 0;
       })();
+    const isSelectOptionsEditMode = field.type === "select" && selectOptionsEditFieldIds.has(field.id);
+    const fieldValue = isSelectOptionsEditMode
+      ? (selectOptionsDraft[field.id] ?? selectOptionsToDraft(field.selectOptions))
+      : valueForField(section, field);
 
     return (
       <SortableField
@@ -2698,7 +3003,7 @@ export function KeyFormEditor({
         section={section}
         field={field}
         surfaceRounding={surfaceRoundingForField(section, mode, fieldIndex, isFieldDraggingInSection)}
-        value={valueForField(section, field)}
+        value={fieldValue}
         mode={mode}
         reorderable={canReorderField}
         autoFocusValue={activeValueFieldId === field.id}
@@ -2733,11 +3038,19 @@ export function KeyFormEditor({
               : undefined
         }
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
-        onValueChange={(value) => updateFieldValue(section.id, field.id, value)}
+        onValueChange={(value) => {
+          if (isSelectOptionsEditMode) {
+            updateSelectOptionsDraft(section.id, field.id, value);
+            return;
+          }
+          updateFieldValue(section.id, field.id, value);
+        }}
         onValueBlur={isWebsitesSectionUrlField ? notifyWebsiteUrlsBlur : undefined}
         onValueFocus={shouldOpenGeneratorOnFocus(field) ? () => openPasswordGenerator(field.id) : undefined}
         passwordGeneratorTrigger={isSecretLikeField(field)}
         datePickerLocale={datePickerLocale}
+        selectConfigureMode={isSelectOptionsEditMode}
+        valuePlaceholder={isSelectOptionsEditMode ? messages.selectOptionsPlaceholder : undefined}
       />
     );
   }
@@ -2746,7 +3059,7 @@ export function KeyFormEditor({
     const fieldValue = valueForField(section, field);
     const isWebsiteField = field.type === "url";
     const isRecoveryCodesField = field.type === "recovery-codes";
-    const isSelectField = field.type === "select" && Boolean(field.selectOptions?.length);
+    const isSelectField = field.type === "select";
     const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
     const isMultiLineSecret = field.type === "secret" && getSecretKind(field) === "multi-line";
     const isSecretVisible = visiblePasswordIds.has(field.id);
@@ -2767,7 +3080,8 @@ export function KeyFormEditor({
               value={fieldValue}
               mode={mode}
               onValueChange={() => undefined}
-              placeholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
+              placeholder={selectFieldPlaceholder(field, messages)}
+              emptyOptionsMessage={messages.selectNoOptions}
             />
           ) : undefined
         }

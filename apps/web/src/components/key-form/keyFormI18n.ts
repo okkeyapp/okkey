@@ -36,6 +36,10 @@ export type KeyFormEditorMessages = {
   disableMask: string;
   enableFullTextCopy: string;
   disableFullTextCopy: string;
+  selectNoOptions: string;
+  enterSelectEdit: string;
+  exitSelectEdit: string;
+  selectOptionsPlaceholder: string;
   showValue: string;
   deleteField: string;
   fieldSettingsAria: string;
@@ -153,6 +157,10 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     disableMask: t("web.keyForm.disableMask"),
     enableFullTextCopy: t("web.keyForm.enableFullTextCopy"),
     disableFullTextCopy: t("web.keyForm.disableFullTextCopy"),
+    selectNoOptions: t("web.keyForm.select.noOptions"),
+    enterSelectEdit: t("web.keyForm.select.enterEdit"),
+    exitSelectEdit: t("web.keyForm.select.exitEdit"),
+    selectOptionsPlaceholder: t("web.keyForm.select.optionsPlaceholder"),
     showValue: t("web.keyForm.showValue"),
     deleteField: t("web.keyForm.deleteField"),
     fieldSettingsAria: template("web.keyForm.fieldSettingsAria"),

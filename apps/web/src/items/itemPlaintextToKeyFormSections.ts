@@ -10,6 +10,7 @@ import {
 } from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import { isItemFieldFilled } from "./keyFormFilledFields";
+import { parseSelectFieldValueFromItem, selectFieldValueFromRaw } from "./keyFormSelectField";
 
 function formFieldType(field: ItemFieldV2): string {
   if (field.type === "note") {
@@ -66,6 +67,9 @@ function stringValueFromField(field: ItemFieldV2): string {
       }
       if (field.value.declaredType === "secret") {
         return coerceSecretRawToFormValue(field.value.raw);
+      }
+      if (field.value.declaredType === "select") {
+        return selectFieldValueFromRaw(field.value.raw);
       }
       return "";
     default:
@@ -322,11 +326,12 @@ function toFormField(
   const type = formFieldType(field);
   const deletable = isFieldDeletable(sectionId, field, sectionFields, isPresetSection);
   const secretKind = type === "secret" ? getSecretKindFromRaw(field.value.kind === "unknown" ? field.value.raw : null) : undefined;
+  const selectField = type === "select" ? parseSelectFieldValueFromItem(field) : undefined;
   const formField: KeyFormEditorField = {
     id: field.id,
     type,
     label: field.label ?? field.id,
-    value,
+    value: selectField?.value ?? value,
     copyValue: type === "password" || type === "secret" || type === "url" ? value : undefined,
     secret: type === "password" || type === "secret",
     editableLabel: isFieldLabelEditable(sectionId, field, isPresetSection),
@@ -334,6 +339,7 @@ function toFormField(
     required: isFieldRequired(sectionId, field, sectionFields, isPresetSection),
     ...(secretKind ? { secretKind } : {}),
     ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
+    ...(selectField?.selectOptions ? { selectOptions: selectField.selectOptions } : {}),
   };
 
   return messages ? enrichApiAccessSelectField(formField, messages) : formField;

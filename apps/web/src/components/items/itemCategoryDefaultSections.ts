@@ -158,6 +158,10 @@ export function enrichApiAccessSelectField(
     return field;
   }
 
+  if (field.selectOptions && field.selectOptions.length > 0) {
+    return field;
+  }
+
   return {
     ...field,
     selectOptions: getApiAccessTypeSelectOptions(messages),

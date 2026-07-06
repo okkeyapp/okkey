@@ -8,6 +8,7 @@ import {
 } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
+import { selectFieldValueFromRaw } from "./keyFormSelectField";
 
 function hasRecoveryCodesContent(value: string): boolean {
   return parseKeyFieldRecoveryCodesValue(value).some((entry) => entry.code.trim().length > 0);
@@ -62,6 +63,9 @@ export function isItemFieldFilled(field: ItemFieldV2): boolean {
       }
       if (field.value.declaredType === "address" && typeof field.value.raw === "string") {
         return hasAddressContent(field.value.raw);
+      }
+      if (field.value.declaredType === "select") {
+        return selectFieldValueFromRaw(field.value.raw).trim().length > 0;
       }
       return false;
     default:

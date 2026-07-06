@@ -58,6 +58,7 @@ export const keyFieldTypeOptions: readonly KeyFieldTypeOption[] = [
   { id: "address", label: "Address", group: "general" },
   { id: "date", label: "Date", group: "general" },
   { id: "url", label: "Website URL", group: "general" },
+  { id: "select", label: "Select", group: "general" },
   { id: "multiline-text", label: "Multiline text", group: "general" },
   { id: "secret", label: "Secret", group: "secret" },
   { id: "totp", label: "Totp", group: "secret" },

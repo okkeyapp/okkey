@@ -5,6 +5,7 @@ import { parseKeyFieldFileValue, serializeKeyFieldSecretRaw } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import { filterFilledKeyFormSections } from "./keyFormFilledFields";
+import { serializeSelectFieldValue } from "./keyFormSelectField";
 
 const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
@@ -60,8 +61,9 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
     case "email":
     case "phone":
     case "date":
-    case "select":
       return { kind: "text", text: raw };
+    case "select":
+      return serializeSelectFieldValue(field);
     default:
       return { kind: "unknown", declaredType: field.type, raw };
   }
