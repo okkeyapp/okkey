@@ -58,7 +58,7 @@ export function ItemRecordFaviconUploadControl({
   }
 
   return (
-    <div className="absolute bottom-0 right-[-2px] z-[2] flex size-[18px] items-center justify-center">
+    <div className="absolute bottom-[-2px] right-[-2px] z-[2] flex size-[18px] items-center justify-center">
       <input
         ref={fileInputRef}
         type="file"
