@@ -55,7 +55,8 @@ export {
   type ItemPlaintextV1,
 } from "./item-plaintext-v1.js";
 
-export type { ItemPlaintextV2, ItemFaviconSource } from "./item-schema/types.js";
+import type { ItemFaviconSource, ItemPlaintextV2 } from "./item-schema/types.js";
+export type { ItemPlaintextV2, ItemFaviconSource };
 export {
   ITEM_PLAINTEXT_SCHEMA_VERSION_V1,
   ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
