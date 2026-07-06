@@ -5,7 +5,8 @@ import type { ItemFaviconSource } from "@okkey/types";
 import { Button, cn } from "@okkey/ui";
 
 import ItemRecordFavicon from "./ItemRecordFavicon";
-import { StarIcon } from "./itemCategoryIcons";
+import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
+import { ItemCategoryIcon, StarIcon } from "./itemCategoryIcons";
 
 export type NewItemTemplateCardProps = {
   templateId: string;
@@ -62,9 +63,10 @@ export default function NewItemTemplateCard({
     );
   }
 
-  const faviconSize = size === "featured" ? 40 : 24;
-  const faviconClassName =
+  const iconPixelSize = size === "featured" ? 24 : 16;
+  const iconBoxClassName =
     size === "featured" ? "size-10 shrink-0 rounded-lg" : "size-6 shrink-0 rounded";
+  const category = isItemCategoryId(categoryId) ? getItemCategoryDefinition(categoryId) : undefined;
 
   const card = (
     <div
@@ -91,12 +93,32 @@ export default function NewItemTemplateCard({
       role={isReorderMode ? undefined : "button"}
       tabIndex={isReorderMode ? -1 : 0}
     >
-      <ItemRecordFavicon
-        categoryId={categoryId}
-        faviconId={faviconId}
-        size={faviconSize}
-        className={faviconClassName}
-      />
+      {faviconId ? (
+        <ItemRecordFavicon
+          categoryId={categoryId}
+          faviconId={faviconId}
+          size={size === "featured" ? 40 : 24}
+          className={iconBoxClassName}
+        />
+      ) : category ? (
+        <div
+          className={cn("flex items-center justify-center text-white", iconBoxClassName)}
+          style={{ backgroundColor: category.iconColor }}
+          aria-hidden
+        >
+          <ItemCategoryIcon
+            categoryId={category.id}
+            pixelSize={iconPixelSize}
+            className="shrink-0 text-white"
+          />
+        </div>
+      ) : (
+        <ItemRecordFavicon
+          categoryId={categoryId}
+          size={size === "featured" ? 40 : 24}
+          className={iconBoxClassName}
+        />
+      )}
       <div className="min-w-0 flex-1 pe-6">
         <p className="text-sm font-medium leading-5 text-foreground [overflow-wrap:anywhere]">{label}</p>
       </div>
