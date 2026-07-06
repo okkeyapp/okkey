@@ -61,9 +61,55 @@ function getLoginDefaultSections(messages: KeyFormEditorMessages): KeyFormEditor
   ];
 }
 
-function getApiAccessDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+function getApiAccessOptionalPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
   const typeSelectOptions = getApiAccessTypeSelectOptions(messages);
 
+  return [
+    {
+      id: "api-type",
+      type: "select",
+      label: messages.fieldLabels.apiType,
+      value: "",
+      selectOptions: typeSelectOptions,
+      editableLabel: true,
+      deletable: true,
+    },
+    {
+      id: "api-filename",
+      type: "text",
+      label: messages.fieldLabels.apiFilename,
+      value: "",
+      editableLabel: true,
+      deletable: true,
+    },
+    {
+      id: "api-valid-from",
+      type: "date",
+      label: messages.fieldLabels.apiValidFrom,
+      value: "",
+      editableLabel: true,
+      deletable: true,
+    },
+    {
+      id: "api-valid-to",
+      type: "date",
+      label: messages.fieldLabels.apiValidTo,
+      value: "",
+      editableLabel: true,
+      deletable: true,
+    },
+    {
+      id: "api-hostname",
+      type: "text",
+      label: messages.fieldLabels.apiHostname,
+      value: "",
+      editableLabel: true,
+      deletable: true,
+    },
+  ];
+}
+
+function getApiAccessDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
   return [
     {
       id: API_ACCESS_SECTION_ID,
@@ -89,50 +135,14 @@ function getApiAccessDefaultSections(messages: KeyFormEditorMessages): KeyFormEd
           deletable: false,
           required: true,
         },
-        {
-          id: "api-type",
-          type: "select",
-          label: messages.fieldLabels.apiType,
-          value: "",
-          selectOptions: typeSelectOptions,
-          editableLabel: true,
-          deletable: true,
-        },
-        {
-          id: "api-filename",
-          type: "text",
-          label: messages.fieldLabels.apiFilename,
-          value: "",
-          editableLabel: true,
-          deletable: true,
-        },
-        {
-          id: "api-valid-from",
-          type: "date",
-          label: messages.fieldLabels.apiValidFrom,
-          value: "",
-          editableLabel: true,
-          deletable: true,
-        },
-        {
-          id: "api-valid-to",
-          type: "date",
-          label: messages.fieldLabels.apiValidTo,
-          value: "",
-          editableLabel: true,
-          deletable: true,
-        },
-        {
-          id: "api-hostname",
-          type: "text",
-          label: messages.fieldLabels.apiHostname,
-          value: "",
-          editableLabel: true,
-          deletable: true,
-        },
+        ...getApiAccessOptionalPresetFields(messages),
       ],
     },
   ];
+}
+
+export function getAllApiAccessPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getApiAccessDefaultSections(messages)[0]?.fields ?? [];
 }
 
 export function getDefaultSectionsForCategory(

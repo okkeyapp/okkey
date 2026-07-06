@@ -6,6 +6,7 @@ import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
 import {
   API_ACCESS_SECTION_ID,
   enrichApiAccessSelectField,
+  getAllApiAccessPresetFields,
   getDefaultSectionsForCategory,
 } from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
@@ -249,6 +250,46 @@ function mergeLoginPresetSections(
   return [...mergedPreset, ...additional];
 }
 
+function isApiAccessRequiredField(fieldId: string): boolean {
+  return fieldId === "api-name" || fieldId === "api-credentials";
+}
+
+function mergeApiAccessPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField | undefined,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  if (!loadedField) {
+    return presetField;
+  }
+
+  if (isApiAccessRequiredField(presetField.id)) {
+    return enrichApiAccessSelectField(
+      {
+        ...presetField,
+        ...loadedField,
+        deletable: false,
+        editableLabel: false,
+        required: true,
+        ...(presetField.id === "api-credentials"
+          ? { type: "secret" as const, secretKind: "single-line" as const }
+          : {}),
+      },
+      messages,
+    );
+  }
+
+  return enrichApiAccessSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      deletable: true,
+      editableLabel: true,
+    },
+    messages,
+  );
+}
+
 function mergeApiAccessPresetSections(
   loaded: KeyFormEditorSection[],
   messages: KeyFormEditorMessages,
@@ -259,48 +300,35 @@ function mergeApiAccessPresetSections(
     return loaded;
   }
 
+  const allPresetFields = getAllApiAccessPresetFields(messages);
+  const requiredPresetFields = defaultSection.fields.filter((field) => isApiAccessRequiredField(field.id));
   const loadedSection = loaded.find((section) => section.id === defaultSection.id);
   if (!loadedSection) {
-    return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
+    return [
+      { ...defaultSection, fields: requiredPresetFields },
+      ...loaded.filter((section) => section.id !== defaultSection.id),
+    ];
   }
 
-  const presetFieldDefaults = new Map(defaultSection.fields.map((field) => [field.id, field]));
-  const mergedFields: KeyFormEditorField[] = loadedSection.fields.map((loadedField) => {
-    const presetField = presetFieldDefaults.get(loadedField.id);
-    if (!presetField) {
-      return loadedField;
+  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
+  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
+  const mergedFields: KeyFormEditorField[] = [];
+
+  for (const presetField of allPresetFields) {
+    const loadedField = loadedById.get(presetField.id);
+    if (loadedField) {
+      mergedFields.push(mergeApiAccessPresetField(presetField, loadedField, messages));
+      continue;
     }
 
-    if (loadedField.id === "api-name" || loadedField.id === "api-credentials") {
-      return enrichApiAccessSelectField(
-        {
-          ...presetField,
-          ...loadedField,
-          deletable: false,
-          editableLabel: false,
-          required: true,
-          ...(loadedField.id === "api-credentials"
-            ? { type: "secret" as const, secretKind: "single-line" as const }
-            : {}),
-        },
-        messages,
-      );
-    }
-
-    return enrichApiAccessSelectField(
-      {
-        ...presetField,
-        ...loadedField,
-        deletable: true,
-        editableLabel: true,
-      },
-      messages,
-    );
-  });
-
-  for (const presetField of defaultSection.fields) {
-    if (!mergedFields.some((field) => field.id === presetField.id)) {
+    if (isApiAccessRequiredField(presetField.id)) {
       mergedFields.push(presetField);
+    }
+  }
+
+  for (const loadedField of loadedSection.fields) {
+    if (!presetFieldDefaults.has(loadedField.id)) {
+      mergedFields.push(enrichApiAccessSelectField(loadedField, messages));
     }
   }
 
