@@ -42,6 +42,8 @@ import {
   cn,
   getKeyFieldSurfaceRounding,
   keyFormAdditionalFieldBorderClassName,
+  mutedSurfaceActiveBgClassName,
+  mutedSurfaceHoverBgClassName,
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
   emptyKeyFieldRecoveryCodesValue,
@@ -1451,19 +1453,13 @@ function SortableField({
       copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
       copyIconPosition={field.type === "url" ? "end" : undefined}
       copyHoverClassName={
-        section.variant === "additional"
-          ? "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
-          : "hover:bg-secondary"
+        section.variant === "additional" ? mutedSurfaceHoverBgClassName : "hover:bg-secondary"
       }
       copyHoverActiveClassName={
-        section.variant === "additional"
-          ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
-          : "bg-secondary"
+        section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
       }
       copyTextClassName={
-        section.variant === "additional"
-          ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
-          : "bg-secondary"
+        section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
       }
       onCopyAction={onCopyAction}
       onLabelChange={onLabelChange}
@@ -2838,19 +2834,13 @@ export function KeyFormEditor({
         copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
         copyIconPosition={field.type === "url" ? "end" : undefined}
         copyHoverClassName={
-          section.variant === "additional"
-            ? "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
-            : "hover:bg-secondary"
+          section.variant === "additional" ? mutedSurfaceHoverBgClassName : "hover:bg-secondary"
         }
         copyHoverActiveClassName={
-          section.variant === "additional"
-            ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
-            : "bg-secondary"
+          section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
         }
         copyTextClassName={
-          section.variant === "additional"
-            ? "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]"
-            : "bg-secondary"
+          section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
         }
         onCopyAction={field.type === "url" ? openWebsite : undefined}
       />

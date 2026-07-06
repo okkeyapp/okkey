@@ -1,5 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
-import { cn } from "@okkey/ui";
+import { cn, mutedSurfaceHoverBgClassName } from "@okkey/ui";
 
 type ItemTagsReadonlyProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -14,7 +14,8 @@ const tagPillClassName = cn(
 
 const tagPillInteractiveClassName = cn(
   tagPillClassName,
-  "cursor-pointer transition-colors hover:bg-slate-200/90 dark:hover:bg-muted/80",
+  "cursor-pointer transition-colors",
+  mutedSurfaceHoverBgClassName,
 );
 
 export default function ItemTagsReadonly({ t, tags, onTagClick }: ItemTagsReadonlyProps) {

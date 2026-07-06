@@ -11,6 +11,10 @@ import {
   ScrollArea,
   SidebarGroupLabel,
   Spinner,
+  mutedSurfaceHoverBgClassName,
+  mutedSurfaceHoverBgImportantClassName,
+  mutedSurfaceOpenBgClassName,
+  mutedSurfaceOpenBgImportantClassName,
   type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
@@ -46,10 +50,10 @@ import {
 const itemsPanelSelectTriggerClassName = cn(
   "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
   "px-2 text-sm text-foreground",
-  "hover:bg-slate-200/90 dark:hover:bg-muted/80",
+  mutedSurfaceHoverBgClassName,
   "focus:border-transparent focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)] focus-visible:border-transparent",
-  "data-[state=open]:border-transparent data-[state=open]:bg-slate-200/90 dark:data-[state=open]:bg-muted/90",
-  "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+  mutedSurfaceOpenBgClassName,
+  "data-[state=open]:border-transparent data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
 );
 
 export type ItemsListRecordWire = {
@@ -1220,9 +1224,11 @@ export default function ItemsListLeftPane({
                 aria-label={t("web.items.list.sortAria")}
                 className={cn(
                   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-slate-100 p-0 text-foreground shadow-none dark:bg-muted",
-                  "hover:bg-slate-200/90 hover:text-foreground dark:hover:bg-muted/80",
+                  mutedSurfaceHoverBgClassName,
+                  "hover:text-foreground",
                   "focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
-                  "data-[state=open]:bg-slate-200/90 data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)] dark:data-[state=open]:bg-muted/90",
+                  mutedSurfaceOpenBgClassName,
+                  "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
                 )}
               >
                 {sortIconForValue(sort)}
@@ -1363,8 +1369,10 @@ export default function ItemsListLeftPane({
                                     size="iconSm"
                                     className={cn(
                                       "size-8 shrink-0 text-muted-foreground opacity-0 transition-colors transition-opacity",
-                                      "hover:!bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)] hover:text-foreground group-hover:opacity-100",
-                                      "data-[state=open]:!bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)] data-[state=open]:opacity-100 data-[state=open]:text-foreground",
+                                      mutedSurfaceHoverBgImportantClassName,
+                                      "hover:text-foreground group-hover:opacity-100",
+                                      "data-[state=open]:opacity-100 data-[state=open]:text-foreground",
+                                      mutedSurfaceOpenBgImportantClassName,
                                     )}
                                     aria-label={t("web.items.list.rowMenuAria")}
                                     onClick={(e) => e.stopPropagation()}

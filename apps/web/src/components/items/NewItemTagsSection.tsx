@@ -1,5 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
-import { cn } from "@okkey/ui";
+import { cn, mutedSurfaceHoverBgClassName } from "@okkey/ui";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 type NewItemTagsSectionProps = {
@@ -183,8 +183,8 @@ export default function NewItemTagsSection({ t, tags, onTagsChange }: NewItemTag
           type="button"
           aria-label={t("web.newItemPopup.addTagAria")}
           className={cn(
-            "inline-flex size-[26px] shrink-0 items-center justify-center rounded-full bg-slate-100 text-foreground",
-            "hover:bg-slate-200/90 dark:bg-muted dark:hover:bg-muted/80",
+            "inline-flex size-[26px] shrink-0 items-center justify-center rounded-full bg-slate-100 text-foreground dark:bg-muted",
+            mutedSurfaceHoverBgClassName,
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           )}
           onPointerDown={handleAddPointerDown}

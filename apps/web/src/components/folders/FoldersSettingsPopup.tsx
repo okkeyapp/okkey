@@ -14,7 +14,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { WebMessageValues } from "@okkey/i18n";
-import { Button, Popup, cn } from "@okkey/ui";
+import { Button, Popup, cn, mutedSurfaceHoverBgClassName } from "@okkey/ui";
 import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -651,7 +651,10 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
         <Button
           type="button"
           variant="secondary"
-          className="h-9 w-full rounded-lg bg-slate-100 font-medium text-foreground shadow-none hover:bg-slate-200/90 dark:bg-muted dark:hover:bg-muted/80"
+          className={cn(
+            "h-9 w-full rounded-lg bg-slate-100 font-medium text-foreground shadow-none dark:bg-muted",
+            mutedSurfaceHoverBgClassName,
+          )}
           onClick={handleAddFolder}
         >
           <PlusIcon className="size-4" />

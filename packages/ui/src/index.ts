@@ -118,6 +118,12 @@ export {
   keyFormAdditionalDividerBorderTClassName,
   keyFormAdditionalDividerBorderYClassName,
   keyFormAdditionalFieldBorderClassName,
+  mutedSurfaceActiveBgClassName,
+  mutedSurfaceActiveBgImportantClassName,
+  mutedSurfaceHoverBgClassName,
+  mutedSurfaceHoverBgImportantClassName,
+  mutedSurfaceOpenBgClassName,
+  mutedSurfaceOpenBgImportantClassName,
 } from "./lib/input-like-control-classes.js";
 export { Spinner, spinnerVariants, type SpinnerProps } from "./components/ui/spinner.js";
 export { Skeleton, type SkeletonProps } from "./components/ui/skeleton.js";
