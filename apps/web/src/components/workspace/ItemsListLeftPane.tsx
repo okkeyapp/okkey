@@ -1363,9 +1363,8 @@ export default function ItemsListLeftPane({
                                     size="iconSm"
                                     className={cn(
                                       "size-8 shrink-0 text-muted-foreground opacity-0 transition-colors transition-opacity",
-                                      "hover:!bg-foreground/[0.12] hover:text-foreground group-hover:opacity-100",
-                                      "data-[state=open]:!bg-foreground/[0.12] data-[state=open]:opacity-100 data-[state=open]:text-foreground",
-                                      "dark:hover:!bg-white/[0.16] dark:data-[state=open]:!bg-white/[0.16]",
+                                      "hover:!bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)] hover:text-foreground group-hover:opacity-100",
+                                      "data-[state=open]:!bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)] data-[state=open]:opacity-100 data-[state=open]:text-foreground",
                                     )}
                                     aria-label={t("web.items.list.rowMenuAria")}
                                     onClick={(e) => e.stopPropagation()}
