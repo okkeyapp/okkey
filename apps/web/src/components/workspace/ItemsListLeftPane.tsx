@@ -233,7 +233,7 @@ function FilterIconFrame({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[4px] bg-white dark:bg-muted",
+        "inline-flex shrink-0 items-center justify-center rounded-[4px] bg-white dark:bg-background",
         flush ? "p-0" : "p-1",
         wide ? "h-[24px] w-[49px]" : "h-[24px] w-[24px]",
       )}
