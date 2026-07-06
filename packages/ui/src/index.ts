@@ -75,6 +75,9 @@ export {
   DropdownMenuItem,
   DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu.js";
 export { Alert, AlertDescription, AlertTitle, alertVariants } from "./components/ui/alert.js";
@@ -159,6 +162,7 @@ export {
   type SearchableSelectItemProps,
   type SearchableSelectProps,
 } from "./components/ui/searchable-select.js";
+export { SearchIcon } from "./components/ui/select-icons.js";
 export {
   PersonalWorkspaceMark,
   WorkspaceTile,
@@ -251,6 +255,7 @@ export {
   type OkkeySidebarPlainLinksMenuProps,
   type OkkeySidebarVaultItem,
   type OkkeySidebarVaultsMenuProps,
+  type OkkeySidebarDropdownPresentation,
   type OkkeySidebarWorkspaceMenuProps,
   type OkkeySidebarWorkspaceNavItem,
   type OkkeyWorkspaceNavLinkComponent,

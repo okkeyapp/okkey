@@ -1448,7 +1448,7 @@ function SortableField({
       controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
       copyValue={copyValue ?? field.copyValue}
       copyLabel={copyLabel ?? messages.copy}
-      copySuccessLabel={copySuccessLabel ?? messages.copied}
+      copySuccessLabel={copySuccessLabel === undefined ? messages.copied : copySuccessLabel}
       statusOverlayLabel={statusOverlayLabel}
       copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
       copyIconPosition={field.type === "url" ? "end" : undefined}
@@ -2714,7 +2714,7 @@ export function KeyFormEditor({
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
         copyValue={isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted || isFileField ? "" : copyValueForField(field)}
         copyLabel={isWebsiteField ? messages.openWebsite : undefined}
-        copySuccessLabel={isWebsiteField ? null : undefined}
+        copySuccessLabel={isWebsiteField ? null : messages.copied}
         statusOverlayLabel={isRecoveryCodesExhausted ? messages.allCodesUsed : undefined}
         messages={messages}
         concealValue={shouldConcealSecretField(field, isSecretVisible, isPasswordGeneratorOpen)}
@@ -2830,7 +2830,7 @@ export function KeyFormEditor({
         controlButtonClassName={section.variant === "additional" ? "hover:!bg-card" : undefined}
         copyValue={field.copyValue}
         copyLabel={isWebsiteField ? messages.openWebsite : undefined}
-        copySuccessLabel={isWebsiteField ? null : undefined}
+        copySuccessLabel={isWebsiteField ? null : messages.copied}
         copyIcon={field.type === "url" ? <OpenWebsiteIcon className="size-4" /> : undefined}
         copyIconPosition={field.type === "url" ? "end" : undefined}
         copyHoverClassName={

@@ -351,7 +351,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       !(recoveryCodesValue && recoveryCodesRevealed);
     const [isCopied, setIsCopied] = React.useState(false);
     const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const currentCopyIcon = isCopied
+    const showCopySuccess = isCopied && copySuccessLabel != null;
+    const currentCopyIcon = showCopySuccess
       ? copySuccessIcon ?? <CopySuccessIcon className="size-4" />
       : copyIcon ?? <KeyFieldCopyIcon className="size-4" />;
 
@@ -693,10 +694,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
       if (onCopyAction) {
         await onCopyAction(copyText);
-      } else {
-        await navigator.clipboard.writeText(copyText);
+        return;
       }
-      if (copySuccessLabel !== null) {
+
+      await navigator.clipboard.writeText(copyText);
+      if (copySuccessLabel != null) {
         setIsCopied(true);
       }
       if (copyResetTimeoutRef.current) {
@@ -813,7 +815,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
               <span className={keyFieldOverlayActionRowClassName}>
                 {copyIconPosition === "start" ? currentCopyIcon : null}
-                {isCopied ? copySuccessLabel : copyLabel}
+                {showCopySuccess ? copySuccessLabel : copyLabel}
                 {copyIconPosition === "end" ? currentCopyIcon : null}
               </span>
             </span>

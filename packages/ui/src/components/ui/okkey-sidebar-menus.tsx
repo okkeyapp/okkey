@@ -241,6 +241,72 @@ const folderDropdownMenuItemClassName = cn(
   "focus-visible:bg-[rgba(0,0,0,0.05)] focus-visible:text-foreground dark:focus-visible:bg-[rgba(255,255,255,0.08)]",
 );
 
+/** Matches {@link DropdownMenuItem} highlight inside nested filter submenus. */
+const nestedFilterDropdownMenuItemClassName = "cursor-pointer gap-2 outline-none";
+
+const nestedFilterDropdownActiveClassName = "bg-muted/80";
+
+export type OkkeySidebarDropdownPresentation = "default" | "nested-menu";
+
+function dropdownMenuItemClassNameForPresentation(
+  presentation: OkkeySidebarDropdownPresentation,
+  isActive?: boolean,
+  extra?: string,
+) {
+  if (presentation === "nested-menu") {
+    return cn(
+      nestedFilterDropdownMenuItemClassName,
+      isActive && nestedFilterDropdownActiveClassName,
+      extra,
+    );
+  }
+  return cn(
+    folderDropdownMenuItemClassName,
+    isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined,
+    extra,
+  );
+}
+
+function dropdownInteractiveRowClassNameForPresentation(
+  presentation: OkkeySidebarDropdownPresentation,
+  isActive?: boolean,
+  extra?: string,
+) {
+  if (presentation === "nested-menu") {
+    return cn(
+      "group relative flex w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-foreground outline-none transition-[background-color,color]",
+      "hover:bg-secondary hover:text-foreground focus-visible:bg-secondary focus-visible:text-foreground focus-visible:outline-none",
+      isActive && nestedFilterDropdownActiveClassName,
+      extra,
+    );
+  }
+  return cn(
+    folderDropdownInteractiveRowClassName,
+    isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+    extra,
+  );
+}
+
+function folderDropdownBranchLinkClassNameForPresentation(
+  presentation: OkkeySidebarDropdownPresentation,
+  isActive?: boolean,
+) {
+  if (presentation === "nested-menu") {
+    return dropdownInteractiveRowClassNameForPresentation(presentation, isActive, "h-8 min-w-0 flex-1");
+  }
+  return folderDropdownBranchLinkClassName(isActive);
+}
+
+function folderDropdownLeafLinkClassNameForPresentation(
+  presentation: OkkeySidebarDropdownPresentation,
+  isActive?: boolean,
+) {
+  if (presentation === "nested-menu") {
+    return dropdownInteractiveRowClassNameForPresentation(presentation, isActive, "h-8 min-w-0 w-full");
+  }
+  return folderDropdownLeafLinkClassName(isActive);
+}
+
 function withDropdownClose(
   onDropdownClose: (() => void) | undefined,
   onClick?: React.MouseEventHandler<HTMLElement>,
@@ -379,6 +445,8 @@ export type OkkeySidebarVaultItem = {
 
 export type OkkeySidebarVaultsMenuProps = {
   surface: "sidebar-expanded" | "dropdown";
+  /** `nested-menu`: no section header; hover matches standard dropdown items. */
+  dropdownPresentation?: OkkeySidebarDropdownPresentation;
   sectionTitle: string;
   /** `group/<name>` name segment (e.g. `collapsible`). */
   collapsibleGroupName: string;
@@ -453,10 +521,12 @@ function VaultRowDropdown({
   item,
   linkComponent,
   onDropdownClose,
+  dropdownPresentation = "default",
 }: {
   item: OkkeySidebarVaultItem;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
   onDropdownClose?: () => void;
+  dropdownPresentation?: OkkeySidebarDropdownPresentation;
 }) {
   const href = item.to;
   const LinkC = typeof href === "string" && href.length > 0 && linkComponent ? linkComponent : null;
@@ -477,9 +547,9 @@ function VaultRowDropdown({
     return (
       <DropdownMenuItem
         asChild
-        className={cn(
-          folderDropdownMenuItemClassName,
-          item.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined,
+        className={dropdownMenuItemClassNameForPresentation(
+          dropdownPresentation,
+          item.isActive,
           item.rightIcon ? "justify-between gap-2" : undefined,
         )}
         aria-current={item.isActive ? "page" : undefined}
@@ -499,7 +569,11 @@ function VaultRowDropdown({
   if (item.rightIcon) {
     return (
       <DropdownMenuItem
-        className={cn(folderDropdownMenuItemClassName, "justify-between gap-2", item.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined)}
+        className={dropdownMenuItemClassNameForPresentation(
+          dropdownPresentation,
+          item.isActive,
+          "justify-between gap-2",
+        )}
         aria-current={item.isActive ? "page" : undefined}
         onSelect={() => onDropdownClose?.()}
       >
@@ -513,7 +587,7 @@ function VaultRowDropdown({
   }
   return (
     <DropdownMenuItem
-      className={cn(folderDropdownMenuItemClassName, "gap-2", item.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined)}
+      className={dropdownMenuItemClassNameForPresentation(dropdownPresentation, item.isActive, "gap-2")}
       aria-current={item.isActive ? "page" : undefined}
       onSelect={() => onDropdownClose?.()}
     >
@@ -525,6 +599,7 @@ function VaultRowDropdown({
 
 export function OkkeySidebarVaultsMenu({
   surface,
+  dropdownPresentation = "default",
   sectionTitle,
   collapsibleGroupName,
   items,
@@ -591,24 +666,27 @@ export function OkkeySidebarVaultsMenu({
   );
 
   if (surface === "dropdown") {
+    const showDropdownHeader = dropdownPresentation !== "nested-menu";
     return (
       <>
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-          <span className="text-xs font-medium leading-4 text-muted-foreground">{sectionTitle}</span>
-          {showHeaderPlus ? (
-            <NavPlusControlTooltip label={headerPlusAriaLabel ?? "Add"}>
-              <button
-                type="button"
-                className={sidebarSectionPlusButton()}
-                aria-label={headerPlusAriaLabel ?? "Add"}
-                onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
-                onClick={() => onDropdownClose?.()}
-              >
-                <PlusMenuIcon />
-              </button>
-            </NavPlusControlTooltip>
-          ) : null}
-        </div>
+        {showDropdownHeader ? (
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+            <span className="text-xs font-medium leading-4 text-muted-foreground">{sectionTitle}</span>
+            {showHeaderPlus ? (
+              <NavPlusControlTooltip label={headerPlusAriaLabel ?? "Add"}>
+                <button
+                  type="button"
+                  className={sidebarSectionPlusButton()}
+                  aria-label={headerPlusAriaLabel ?? "Add"}
+                  onPointerDown={onHeaderPlusPointerDown ?? ((e) => e.preventDefault())}
+                  onClick={() => onDropdownClose?.()}
+                >
+                  <PlusMenuIcon />
+                </button>
+              </NavPlusControlTooltip>
+            ) : null}
+          </div>
+        ) : null}
         <ScrollArea className="max-h-[360px]">
           <div className="p-1">
             {items.map((item) => (
@@ -617,6 +695,7 @@ export function OkkeySidebarVaultsMenu({
                 item={item}
                 linkComponent={linkComponent}
                 onDropdownClose={onDropdownClose}
+                dropdownPresentation={dropdownPresentation}
               />
             ))}
           </div>
@@ -658,6 +737,8 @@ export type OkkeySidebarFolderTreeNode = {
 
 export type OkkeySidebarFoldersMenuProps = {
   surface: "sidebar-expanded" | "dropdown";
+  /** `nested-menu`: no section header; hover matches standard dropdown items. */
+  dropdownPresentation?: OkkeySidebarDropdownPresentation;
   sectionTitle: string;
   collapsibleGroupName: string;
   tree: OkkeySidebarFolderTreeNode[];
@@ -877,6 +958,7 @@ function FolderSubTreeDropdown({
   linkComponent,
   nestedInBranch = false,
   onDropdownClose,
+  dropdownPresentation = "default",
 }: {
   nodes: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
@@ -884,6 +966,7 @@ function FolderSubTreeDropdown({
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
   nestedInBranch?: boolean;
   onDropdownClose?: () => void;
+  dropdownPresentation?: OkkeySidebarDropdownPresentation;
 }) {
   return (
     <>
@@ -908,8 +991,10 @@ function FolderSubTreeDropdown({
                     <LinkC
                       to={href}
                       className={cn(
-                        folderDropdownBranchLinkClassName(node.isActive),
-                        node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                        folderDropdownBranchLinkClassNameForPresentation(dropdownPresentation, node.isActive),
+                        dropdownPresentation === "default" && node.isActive
+                          ? folderDropdownBranchLinkActiveClassName
+                          : undefined,
                       )}
                       onClick={withDropdownClose(onDropdownClose)}
                     >
@@ -919,8 +1004,10 @@ function FolderSubTreeDropdown({
                     <button
                       type="button"
                       className={cn(
-                        folderDropdownBranchLinkClassName(node.isActive),
-                        node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                        folderDropdownBranchLinkClassNameForPresentation(dropdownPresentation, node.isActive),
+                        dropdownPresentation === "default" && node.isActive
+                          ? folderDropdownBranchLinkActiveClassName
+                          : undefined,
                       )}
                       onClick={() => onDropdownClose?.()}
                     >
@@ -937,6 +1024,7 @@ function FolderSubTreeDropdown({
                       linkComponent={linkComponent}
                       nestedInBranch
                       onDropdownClose={onDropdownClose}
+                      dropdownPresentation={dropdownPresentation}
                     />
                   </SidebarMenuSub>
                 </CollapsibleContent>
@@ -953,8 +1041,10 @@ function FolderSubTreeDropdown({
                 <LinkC
                   to={href}
                   className={cn(
-                    folderDropdownLeafLinkClassName(node.isActive),
-                    node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                    folderDropdownLeafLinkClassNameForPresentation(dropdownPresentation, node.isActive),
+                    dropdownPresentation === "default" && node.isActive
+                      ? folderDropdownBranchLinkActiveClassName
+                      : undefined,
                   )}
                   onClick={withDropdownClose(onDropdownClose)}
                 >
@@ -963,7 +1053,7 @@ function FolderSubTreeDropdown({
               ) : (
                 <button
                   type="button"
-                  className={folderDropdownLeafLinkClassName(node.isActive)}
+                  className={folderDropdownLeafLinkClassNameForPresentation(dropdownPresentation, node.isActive)}
                   onClick={() => onDropdownClose?.()}
                 >
                   {leafBody}
@@ -983,12 +1073,14 @@ function FolderTopTreeDropdown({
   branchGroupName,
   linkComponent,
   onDropdownClose,
+  dropdownPresentation = "default",
 }: {
   nodes: OkkeySidebarFolderTreeNode[];
   leafIcon: React.ReactNode;
   branchGroupName: string;
   linkComponent?: OkkeyWorkspaceNavLinkComponent;
   onDropdownClose?: () => void;
+  dropdownPresentation?: OkkeySidebarDropdownPresentation;
 }) {
   return (
     <div className={cn("flex flex-col", folderTreeGapClassName)}>
@@ -1012,8 +1104,10 @@ function FolderTopTreeDropdown({
                   <LinkC
                     to={href}
                     className={cn(
-                      folderDropdownBranchLinkClassName(node.isActive),
-                      node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                      folderDropdownBranchLinkClassNameForPresentation(dropdownPresentation, node.isActive),
+                      dropdownPresentation === "default" && node.isActive
+                        ? folderDropdownBranchLinkActiveClassName
+                        : undefined,
                     )}
                     onClick={withDropdownClose(onDropdownClose)}
                   >
@@ -1023,8 +1117,10 @@ function FolderTopTreeDropdown({
                   <button
                     type="button"
                     className={cn(
-                      folderDropdownBranchLinkClassName(node.isActive),
-                      node.isActive ? folderDropdownBranchLinkActiveClassName : undefined,
+                      folderDropdownBranchLinkClassNameForPresentation(dropdownPresentation, node.isActive),
+                      dropdownPresentation === "default" && node.isActive
+                        ? folderDropdownBranchLinkActiveClassName
+                        : undefined,
                     )}
                     onClick={() => onDropdownClose?.()}
                   >
@@ -1041,6 +1137,7 @@ function FolderTopTreeDropdown({
                     linkComponent={linkComponent}
                     nestedInBranch
                     onDropdownClose={onDropdownClose}
+                    dropdownPresentation={dropdownPresentation}
                   />
                 </SidebarMenuSub>
               </CollapsibleContent>
@@ -1054,10 +1151,7 @@ function FolderTopTreeDropdown({
             <DropdownMenuItem
               key={node.id}
               asChild
-              className={cn(
-                folderDropdownMenuItemClassName,
-                node.isActive ? "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)]" : undefined,
-              )}
+              className={dropdownMenuItemClassNameForPresentation(dropdownPresentation, node.isActive)}
               onSelect={() => onDropdownClose?.()}
             >
               <LinkC
@@ -1073,7 +1167,7 @@ function FolderTopTreeDropdown({
         return (
           <DropdownMenuItem
             key={node.id}
-            className={folderDropdownMenuItemClassName}
+            className={dropdownMenuItemClassNameForPresentation(dropdownPresentation)}
             onSelect={() => onDropdownClose?.()}
           >
             {leafIcon}
@@ -1087,6 +1181,7 @@ function FolderTopTreeDropdown({
 
 export function OkkeySidebarFoldersMenu({
   surface,
+  dropdownPresentation = "default",
   sectionTitle,
   collapsibleGroupName,
   tree,
@@ -1150,20 +1245,23 @@ export function OkkeySidebarFoldersMenu({
   );
 
   if (surface === "dropdown") {
+    const showDropdownHeader = dropdownPresentation !== "nested-menu";
     return (
       <>
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-          <span className="text-xs font-medium leading-4 text-muted-foreground">{sectionTitle}</span>
-          {showHeaderAction ? (
-            <FolderHeaderActionButton
-              ariaLabel={headerActionAriaLabel}
-              icon={headerActionNode}
-              onClick={onHeaderActionClick ? handleDropdownHeaderAction : handleDropdownHeaderPlus}
-              onPointerDown={onHeaderPlusPointerDown}
-              variant={onHeaderActionClick ? "settings" : "plus"}
-            />
-          ) : null}
-        </div>
+        {showDropdownHeader ? (
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+            <span className="text-xs font-medium leading-4 text-muted-foreground">{sectionTitle}</span>
+            {showHeaderAction ? (
+              <FolderHeaderActionButton
+                ariaLabel={headerActionAriaLabel}
+                icon={headerActionNode}
+                onClick={onHeaderActionClick ? handleDropdownHeaderAction : handleDropdownHeaderPlus}
+                onPointerDown={onHeaderPlusPointerDown}
+                variant={onHeaderActionClick ? "settings" : "plus"}
+              />
+            ) : null}
+          </div>
+        ) : null}
         <ScrollArea className="max-h-[360px]">
           <div className="p-1">
             {isEmpty ? (
@@ -1177,6 +1275,7 @@ export function OkkeySidebarFoldersMenu({
                 branchGroupName="foldd"
                 linkComponent={linkComponent}
                 onDropdownClose={onDropdownClose}
+                dropdownPresentation={dropdownPresentation}
               />
             )}
           </div>

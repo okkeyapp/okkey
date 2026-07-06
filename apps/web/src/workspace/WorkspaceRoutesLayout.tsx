@@ -20,6 +20,7 @@ import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultConte
 import { WorkspaceFoldersProvider, useWorkspaceFolders, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
 import { WorkspaceItemsProvider, useWorkspaceItemsState } from "../items/WorkspaceItemsContext";
 import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspaceFolderTree";
+import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
@@ -40,6 +41,7 @@ import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
   CAPSULES_PATH,
+  CATEGORY_QUERY_PARAM,
   FOLDER_QUERY_PARAM,
   ITEMS_PATH,
   itemsPathAllWorkspaceMerged,
@@ -139,6 +141,7 @@ export default function WorkspaceRoutesLayout() {
   const workspaceParam = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
+  const categoryQ = searchParams.get(CATEGORY_QUERY_PARAM)?.trim() ?? "";
   const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
   const isItemsMobileListView = useItemsMobileListView();
   const itemsPathMergeOptions = useMemo(
@@ -198,7 +201,7 @@ export default function WorkspaceRoutesLayout() {
         return {
           ...item,
           to: itemsPathAllWorkspaceMerged(searchParams, itemsPathMergeOptions),
-          isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !searchQ,
+          isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !categoryQ && !searchQ,
           onAddPointerDown: (e) => {
             e.preventDefault();
             openNewItemPopup();
@@ -210,7 +213,7 @@ export default function WorkspaceRoutesLayout() {
         isActive: item.to === pathname,
       };
     });
-  }, [navPaths, pathname, t, vaultQ, folderQ, searchQ, searchParams, openNewItemPopup, itemsPathMergeOptions]);
+  }, [navPaths, pathname, t, vaultQ, folderQ, categoryQ, searchQ, searchParams, openNewItemPopup, itemsPathMergeOptions]);
 
   // Vault rows: each link is `/items?vault=…`. Active when that vault id matches the query and we are not in folder-only mode (`folder` is cleared if both were set).
   const vaultSidebarItems: OkkeySidebarVaultItem[] = useMemo(() => {
@@ -223,9 +226,9 @@ export default function WorkspaceRoutesLayout() {
       ),
       label: v.name,
       to: itemsPathWithVaultMerged(searchParams, v.id, itemsPathMergeOptions),
-      isActive: pathname === ITEMS_PATH && vaultQ === v.id && !folderQ && !searchQ,
+      isActive: pathname === ITEMS_PATH && vaultQ === v.id && !folderQ && !categoryQ && !searchQ,
     }));
-  }, [vaults, pathname, vaultQ, folderQ, searchQ, searchParams, itemsPathMergeOptions]);
+  }, [vaults, pathname, vaultQ, folderQ, categoryQ, searchQ, searchParams, itemsPathMergeOptions]);
 
   const currentWorkspace = useMemo(
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
@@ -262,13 +265,14 @@ export default function WorkspaceRoutesLayout() {
   );
 
   /**
-   * `/items`: at most one of `vault`, `folder`, or `search`. If `search` is set with vault/folder,
-   * drop vault and folder (search scope). If both vault and folder, drop folder (vault wins).
+   * `/items`: at most one of `vault`, `folder`, `category`, or `search`. If `search` is set with other scopes,
+   * drop them (search scope). If both vault and folder, drop folder (vault wins). Vault/folder drop category.
    */
   useEffect(() => {
-    const conflictSearch = Boolean(searchQ && (vaultQ || folderQ));
+    const conflictSearch = Boolean(searchQ && (vaultQ || folderQ || categoryQ));
     const conflictVaultFolder = Boolean(vaultQ && folderQ);
-    if (!conflictSearch && !conflictVaultFolder) {
+    const conflictCategoryWithVaultOrFolder = Boolean(categoryQ && (vaultQ || folderQ));
+    if (!conflictSearch && !conflictVaultFolder && !conflictCategoryWithVaultOrFolder) {
       return;
     }
     setSearchParams(
@@ -277,16 +281,19 @@ export default function WorkspaceRoutesLayout() {
         if (searchQ) {
           next.delete(VAULT_QUERY_PARAM);
           next.delete(FOLDER_QUERY_PARAM);
+          next.delete(CATEGORY_QUERY_PARAM);
         } else if (vaultQ && folderQ) {
           next.delete(FOLDER_QUERY_PARAM);
+        } else if (categoryQ && (vaultQ || folderQ)) {
+          next.delete(CATEGORY_QUERY_PARAM);
         }
         return next;
       },
       { replace: true },
     );
-  }, [vaultQ, folderQ, searchQ, setSearchParams]);
+  }, [vaultQ, folderQ, categoryQ, searchQ, setSearchParams]);
 
-  /** Drop stale `vault` / `folder` query params when the id is unknown in the current workspace. */
+  /** Drop stale `vault` / `folder` / `category` query params when the id is unknown in the current workspace. */
   useEffect(() => {
     if (pathname !== ITEMS_PATH) {
       return;
@@ -300,8 +307,9 @@ export default function WorkspaceRoutesLayout() {
         foldersReady &&
         !workspaceFolderIdExists(workspaceFoldersState.folderTree, folderQ),
     );
+    const unknownCategory = Boolean(categoryQ && !isItemCategoryId(categoryQ));
 
-    if (!unknownVault && !unknownFolder) {
+    if (!unknownVault && !unknownFolder && !unknownCategory) {
       return;
     }
 
@@ -314,6 +322,9 @@ export default function WorkspaceRoutesLayout() {
         if (unknownFolder) {
           next.delete(FOLDER_QUERY_PARAM);
         }
+        if (unknownCategory) {
+          next.delete(CATEGORY_QUERY_PARAM);
+        }
         return next;
       },
       { replace: true },
@@ -322,6 +333,7 @@ export default function WorkspaceRoutesLayout() {
     pathname,
     vaultQ,
     folderQ,
+    categoryQ,
     vaults,
     vaultsListReady,
     vaultUnlocked,

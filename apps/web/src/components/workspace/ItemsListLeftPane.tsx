@@ -25,18 +25,26 @@ import { useLocale } from "../../locale/LocaleContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
-import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
+import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
-import { isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
+import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { EDIT_ITEM_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
 import {
+  getActiveCategoryLabel,
+  CategoryIconBadge,
+  FilterTagsIcon,
+  ItemsListFilterScopeSubmenus,
+} from "./ItemsListFilterScopeSubmenus";
+import {
+  applyWorkspaceSearchToParams,
   FILTER_QUERY_ARCHIVED,
   FILTER_QUERY_DELETED,
   FILTER_QUERY_FAVOURITES,
   FILTER_QUERY_PARAM,
   FOLDER_QUERY_PARAM,
+  CATEGORY_QUERY_PARAM,
   ITEM_QUERY_PARAM,
   SEARCH_QUERY_PARAM,
   SORT_QUERY_ALPH_ASC,
@@ -45,6 +53,7 @@ import {
   SORT_QUERY_DATE_DESC,
   SORT_QUERY_PARAM,
   VAULT_QUERY_PARAM,
+  itemsPathWithCategoryMerged,
 } from "../../routes/paths";
 
 const itemsPanelSelectTriggerClassName = cn(
@@ -104,6 +113,13 @@ function filterRowsByFolder(rows: readonly ItemsListRecord[], folderId: string):
     return [...rows];
   }
   return rows.filter((r) => r.folderId === folderId);
+}
+
+function filterRowsByCategory(rows: readonly ItemsListRecord[], categoryId: string): ItemsListRecord[] {
+  if (!categoryId) {
+    return [...rows];
+  }
+  return rows.filter((row) => row.categoryId === categoryId);
 }
 
 /** «Все записи» — two-block records glyph (matches sidebar nav), green for filter menu. */
@@ -204,12 +220,21 @@ function ChevronDownGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
-function FilterIconFrame({ children, wide }: { children: ReactNode; wide?: boolean }) {
+function FilterIconFrame({
+  children,
+  wide,
+  flush,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+  /** No inner padding — for 24px category badge that fills the frame. */
+  flush?: boolean;
+}) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[4px] bg-white p-1 dark:bg-muted",
-        /** 4px padding on all sides; wide inner row: 16 + 4 + 1 + 4 + 16 → 4 + 41 + 4 = 49px wide, 4 + 16 + 4 = 24px tall. */
+        "inline-flex shrink-0 items-center justify-center rounded-[4px] bg-white dark:bg-muted",
+        flush ? "p-0" : "p-1",
         wide ? "h-[24px] w-[49px]" : "h-[24px] w-[24px]",
       )}
     >
@@ -794,6 +819,7 @@ export default function ItemsListLeftPane({
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
+  const categoryQ = searchParams.get(CATEGORY_QUERY_PARAM)?.trim() ?? "";
   const filter = filterFromSearchParam(searchParams.get(FILTER_QUERY_PARAM) ?? "");
   const sort = sortFromSearchParam(searchParams.get(SORT_QUERY_PARAM) ?? "");
   const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
@@ -807,9 +833,15 @@ export default function ItemsListLeftPane({
   const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
   const folderScopeLoading = Boolean(folderQ && !itemsListFoldersLoaded && !folderPath);
   const folderTitle = folderPath || (folderScopeLoading ? "" : folderQ);
+  const categoryLabel = categoryQ ? getActiveCategoryLabel(categoryQ, t) : undefined;
+  const categoryDefinition = categoryQ ? getItemCategoryDefinition(categoryQ) : undefined;
 
-  const hasListScope = Boolean(searchQ || vaultQ || folderQ);
+  const categoryScopeActive = Boolean(categoryQ && categoryDefinition && !searchQ && !vaultQ && !folderQ);
+  const tagSearchActive = Boolean(searchQ && parseTagSearchNeedle(searchQ) !== null);
+  const searchScopeLabel = tagSearchActive ? (parseTagSearchNeedle(searchQ) ?? searchQ) : searchQ;
+  const hasListScope = Boolean(searchQ || vaultQ || folderQ || categoryQ);
   const secondaryFilterInTrigger = hasListScope && filterToSearchParam(filter) !== null;
+  const categoryWithSecondaryFilter = categoryScopeActive && secondaryFilterInTrigger;
   const vaultScopeLoading = Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta);
   const scopeTriggerLoading = vaultScopeLoading || folderScopeLoading;
 
@@ -852,6 +884,7 @@ export default function ItemsListLeftPane({
         const n = new URLSearchParams(prev);
         n.delete(VAULT_QUERY_PARAM);
         n.delete(FOLDER_QUERY_PARAM);
+        n.delete(CATEGORY_QUERY_PARAM);
         n.delete(SEARCH_QUERY_PARAM);
         n.delete(FILTER_QUERY_PARAM);
         return n;
@@ -861,11 +894,27 @@ export default function ItemsListLeftPane({
     setFilterMenuOpen(false);
   };
 
+  const navigateToItemsPath = (to: string) => {
+    navigate(to, { replace: true });
+    setFilterMenuOpen(false);
+  };
+
+  const pickCategory = (categoryId: string) => {
+    navigateToItemsPath(itemsPathWithCategoryMerged(searchParams, categoryId));
+  };
+
+  const pickTag = (tag: string) => {
+    setSearchParams((prev) => applyWorkspaceSearchToParams(prev, formatTagSearchQuery(tag)), { replace: true });
+    setFilterMenuOpen(false);
+  };
+
   const sections = useMemo(() => {
     const searchTrim = searchQ.trim();
     let pool: ItemsListRecord[];
     if (searchTrim) {
       pool = records.filter((r) => scoreItemsListRecordSearch(r, searchTrim) > 0);
+    } else if (categoryQ) {
+      pool = filterRowsByCategory(records, categoryQ);
     } else {
       const inVault = filterRowsByVault(records, vaultQ);
       pool = filterRowsByFolder(inVault, folderQ);
@@ -881,7 +930,7 @@ export default function ItemsListLeftPane({
         })
       : sortItems(filtered, sort);
     return buildSections(sorted, sort, locale);
-  }, [filter, sort, locale, vaultQ, folderQ, records, searchQ]);
+  }, [categoryQ, filter, sort, locale, vaultQ, folderQ, records, searchQ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
@@ -1071,11 +1120,35 @@ export default function ItemsListLeftPane({
                   "flex min-h-9 min-w-0 flex-1 cursor-default items-center justify-start gap-2 text-left outline-none",
                 )}
               >
-                <FilterIconFrame wide={secondaryFilterInTrigger}>
+                <FilterIconFrame wide={secondaryFilterInTrigger} flush={categoryScopeActive}>
                   {hasListScope ? (
-                    <span className="flex h-4 items-center gap-1">
+                    <span
+                      className={cn(
+                        "flex items-center",
+                        categoryScopeActive ? "h-full w-full" : "h-4 gap-1",
+                        categoryWithSecondaryFilter && "gap-0",
+                      )}
+                    >
                       {searchQ ? (
-                        <SearchGlyph />
+                        tagSearchActive ? (
+                          <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
+                        ) : (
+                          <SearchGlyph />
+                        )
+                      ) : categoryScopeActive && categoryDefinition ? (
+                        <>
+                          <CategoryIconBadge
+                            categoryId={categoryDefinition.id}
+                            iconColor={categoryDefinition.iconColor}
+                            size={24}
+                            mergeEnd={categoryWithSecondaryFilter}
+                          />
+                          {secondaryFilterInTrigger ? (
+                            <span className="flex flex-1 items-center justify-center">
+                              {filterSecondaryGlyph(filter)}
+                            </span>
+                          ) : null}
+                        </>
                       ) : vaultQ ? (
                         vaultScopeLoading ? (
                           <Spinner size="small" className="size-4 shrink-0" />
@@ -1093,7 +1166,7 @@ export default function ItemsListLeftPane({
                       ) : (
                         <FolderClosedGlyph />
                       )}
-                      {secondaryFilterInTrigger ? (
+                      {!categoryScopeActive && secondaryFilterInTrigger ? (
                         <>
                           <span className="h-4 w-px shrink-0 bg-border/80" aria-hidden />
                           {filterSecondaryGlyph(filter)}
@@ -1106,7 +1179,7 @@ export default function ItemsListLeftPane({
                 </FilterIconFrame>
                 <span className="min-w-0 flex-1 truncate text-left text-sm font-normal text-foreground">
                   {searchQ
-                    ? searchQ
+                    ? searchScopeLabel
                     : vaultQ
                       ? vaultScopeLoading
                         ? null
@@ -1115,6 +1188,8 @@ export default function ItemsListLeftPane({
                         ? folderScopeLoading
                           ? null
                           : folderTitle
+                        : categoryQ
+                          ? (categoryLabel ?? categoryQ)
                         : t(`web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`)}
                 </span>
                 <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
@@ -1130,8 +1205,12 @@ export default function ItemsListLeftPane({
                     )}
                     onSelect={(e) => e.preventDefault()}
                   >
-                    <SearchGlyph className="size-4 shrink-0 text-foreground" />
-                    <span className="min-w-0 flex-1 truncate text-left">{searchQ}</span>
+                    {tagSearchActive ? (
+                      <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
+                    ) : (
+                      <SearchGlyph className="size-4 shrink-0 text-foreground" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-left">{searchScopeLabel}</span>
                     <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="mx-1 my-1" />
@@ -1168,6 +1247,26 @@ export default function ItemsListLeftPane({
                     <span className="min-w-0 flex-1 truncate text-left">
                       {folderScopeLoading ? null : folderTitle}
                     </span>
+                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="mx-1 my-1" />
+                </>
+              ) : null}
+              {!searchQ && !vaultQ && !folderQ && categoryQ && categoryDefinition ? (
+                <>
+                  <DropdownMenuItem
+                    className={cn(
+                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                      "bg-muted/80 data-[highlighted]:bg-secondary",
+                    )}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <CategoryIconBadge
+                      categoryId={categoryDefinition.id}
+                      iconColor={categoryDefinition.iconColor}
+                      size={24}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-left">{categoryLabel ?? categoryQ}</span>
                     <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="mx-1 my-1" />
@@ -1213,6 +1312,21 @@ export default function ItemsListLeftPane({
                 <FilterIconDeleted className="size-4 shrink-0" />
                 <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.recentlyDeleted")}</span>
               </DropdownMenuItem>
+              <ItemsListFilterScopeSubmenus
+                t={t}
+                vaults={vaults}
+                folderTree={folderTree}
+                records={records}
+                searchParams={searchParams}
+                activeVaultId={vaultQ}
+                activeFolderId={folderQ}
+                activeCategoryId={categoryQ}
+                onNavigateTo={navigateToItemsPath}
+                onPickCategory={pickCategory}
+                onPickTag={pickTag}
+                onCloseMenu={() => setFilterMenuOpen(false)}
+                menuOpen={filterMenuOpen}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
 

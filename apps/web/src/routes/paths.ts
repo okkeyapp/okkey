@@ -34,12 +34,13 @@ export const WORKSPACE_QUERY_PARAM = "workspace";
 export const ITEMS_PATH = "/items";
 
 /**
- * `/items` scope: at most one of `vault`, `folder`, or `search` in the URL.
- * The shell (`WorkspaceRoutesLayout`) normalizes conflicts (search clears vault/folder; vault clears folder).
+ * `/items` scope: at most one of `vault`, `folder`, `category`, or `search` in the URL.
+ * The shell (`WorkspaceRoutesLayout`) normalizes conflicts (search clears vault/folder/category; vault clears folder).
  * Sidebar “active” rules treat “All items” as active only when none of these are set.
  */
 export const VAULT_QUERY_PARAM = "vault";
 export const FOLDER_QUERY_PARAM = "folder";
+export const CATEGORY_QUERY_PARAM = "category";
 /** Selected item row on `/items` (master–detail); coexists with `workspace`, `vault`, or `folder`. */
 export const ITEM_QUERY_PARAM = "item";
 
@@ -76,6 +77,7 @@ export function applyWorkspaceSearchToParams(
     next.set(SEARCH_QUERY_PARAM, trimmed);
     next.delete(VAULT_QUERY_PARAM);
     next.delete(FOLDER_QUERY_PARAM);
+    next.delete(CATEGORY_QUERY_PARAM);
     next.delete(FILTER_QUERY_PARAM);
     if (options?.clearItem) {
       next.delete(ITEM_QUERY_PARAM);
@@ -133,6 +135,7 @@ export function itemsPathWithVaultMerged(
     (n) => {
       n.set(VAULT_QUERY_PARAM, vaultId);
       n.delete(FOLDER_QUERY_PARAM);
+      n.delete(CATEGORY_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);
       n.delete(FILTER_QUERY_PARAM);
     },
@@ -150,6 +153,7 @@ export function itemsPathWithFolderMerged(
     (n) => {
       n.set(FOLDER_QUERY_PARAM, folderId);
       n.delete(VAULT_QUERY_PARAM);
+      n.delete(CATEGORY_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);
       n.delete(FILTER_QUERY_PARAM);
     },
@@ -157,13 +161,32 @@ export function itemsPathWithFolderMerged(
   );
 }
 
-/** Sidebar “All items”: drop vault, folder, search, and list filter; keep `item` and `sort`. */
+export function itemsPathWithCategoryMerged(
+  current: URLSearchParams,
+  categoryId: string,
+  options?: MergeItemsLocationOptions,
+): string {
+  return mergeItemsLocationSearch(
+    current,
+    (n) => {
+      n.set(CATEGORY_QUERY_PARAM, categoryId);
+      n.delete(VAULT_QUERY_PARAM);
+      n.delete(FOLDER_QUERY_PARAM);
+      n.delete(SEARCH_QUERY_PARAM);
+      n.delete(FILTER_QUERY_PARAM);
+    },
+    options,
+  );
+}
+
+/** Sidebar “All items”: drop vault, folder, category, search, and list filter; keep `item` and `sort`. */
 export function itemsPathAllWorkspaceMerged(current: URLSearchParams, options?: MergeItemsLocationOptions): string {
   return mergeItemsLocationSearch(
     current,
     (n) => {
       n.delete(VAULT_QUERY_PARAM);
       n.delete(FOLDER_QUERY_PARAM);
+      n.delete(CATEGORY_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);
       n.delete(FILTER_QUERY_PARAM);
     },
