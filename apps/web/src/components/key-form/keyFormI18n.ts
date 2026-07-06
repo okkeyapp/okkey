@@ -64,6 +64,20 @@ export type KeyFormEditorMessages = {
     bearer: string;
     other: string;
   };
+  dbTypeOptions: {
+    postgresql: string;
+    mysql: string;
+    mssql: string;
+    oracle: string;
+    sqlite: string;
+    mongodb: string;
+    redis: string;
+    cassandra: string;
+    elasticsearch: string;
+    snowflake: string;
+    clickhouse: string;
+    other: string;
+  };
   urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
     street: string;
@@ -116,6 +130,15 @@ const KEY_FORM_EXTRA_FIELD_KEYS = [
   "apiValidFrom",
   "apiValidTo",
   "apiHostname",
+  "dbType",
+  "dbServer",
+  "dbPort",
+  "dbDatabase",
+  "dbUsername",
+  "dbPassword",
+  "dbSid",
+  "dbAlias",
+  "dbConnectionParams",
   "select",
 ] as const;
 
@@ -199,6 +222,20 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
       jwt: t("web.keyForm.apiType.jwt"),
       bearer: t("web.keyForm.apiType.bearer"),
       other: t("web.keyForm.apiType.other"),
+    },
+    dbTypeOptions: {
+      postgresql: t("web.keyForm.dbType.postgresql"),
+      mysql: t("web.keyForm.dbType.mysql"),
+      mssql: t("web.keyForm.dbType.mssql"),
+      oracle: t("web.keyForm.dbType.oracle"),
+      sqlite: t("web.keyForm.dbType.sqlite"),
+      mongodb: t("web.keyForm.dbType.mongodb"),
+      redis: t("web.keyForm.dbType.redis"),
+      cassandra: t("web.keyForm.dbType.cassandra"),
+      elasticsearch: t("web.keyForm.dbType.elasticsearch"),
+      snowflake: t("web.keyForm.dbType.snowflake"),
+      clickhouse: t("web.keyForm.dbType.clickhouse"),
+      other: t("web.keyForm.dbType.other"),
     },
     urlAutofillScope: {
       "entire-site": t("web.keyForm.urlAutofill.entireSite"),

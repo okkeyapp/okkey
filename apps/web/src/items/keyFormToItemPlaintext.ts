@@ -4,13 +4,19 @@ import type { EntityId } from "@okkey/types";
 import { parseKeyFieldFileValue, serializeKeyFieldSecretRaw } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
-import { filterFilledKeyFormSections } from "./keyFormFilledFields";
 import { serializeSelectFieldValue } from "./keyFormSelectField";
+
+function sectionsForItemPlaintext(sections: readonly KeyFormEditorSection[]): KeyFormEditorSection[] {
+  return sections
+    .map((section) => ({ ...section, fields: [...section.fields] }))
+    .filter((section) => section.fields.length > 0);
+}
 
 const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
   websites: "Websites",
   "api-access": "API Access",
+  database: "Database",
 };
 
 function wireFieldType(field: KeyFormEditorField): string {
@@ -81,9 +87,9 @@ export function keyFormSectionsToItemPlaintext(input: {
   const now = input.nowMs ?? Date.now();
   const sections: ItemSectionV2[] = [];
   const fields: ItemFieldV2[] = [];
-  const filledSections = filterFilledKeyFormSections(input.sections);
+  const sectionsToSave = sectionsForItemPlaintext(input.sections);
 
-  filledSections.forEach((section, sectionIndex) => {
+  sectionsToSave.forEach((section, sectionIndex) => {
     sections.push({
       id: section.id,
       title: section.title?.trim() || DEFAULT_SECTION_TITLES[section.id] || section.id,

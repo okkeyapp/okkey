@@ -231,7 +231,7 @@ const SearchableSelectContent = React.forwardRef<
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "relative z-50 flex max-h-96 flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
+          "relative z-50 flex max-h-[min(380px,var(--radix-popover-content-available-height,100dvh))] flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
           ctx.variant === "inline"
             ? "min-w-[180px] w-max"
             : "w-[var(--radix-popover-trigger-width)] min-w-[max(var(--radix-popover-trigger-width),180px)]",
@@ -263,8 +263,8 @@ const SearchableSelectContent = React.forwardRef<
             />
           </div>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ScrollArea className="w-full min-h-0 max-h-[min(15rem,var(--radix-popover-content-available-height,100dvh))] shrink-0">
+        <div className="min-h-0 overflow-hidden">
+          <ScrollArea className="w-full max-h-[min(calc(380px-3.25rem),calc(var(--radix-popover-content-available-height,100dvh)-3.25rem))] shrink-0">
             <div
               ref={listboxRef}
               id={ctx.listId}

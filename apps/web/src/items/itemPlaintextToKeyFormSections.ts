@@ -5,8 +5,10 @@ import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key
 import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
 import {
   API_ACCESS_SECTION_ID,
-  enrichApiAccessSelectField,
+  DATABASE_SECTION_ID,
+  enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
+  getAllDatabasePresetFields,
   getDefaultSectionsForCategory,
 } from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
@@ -82,6 +84,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
   websites: "Websites",
   [API_ACCESS_SECTION_ID]: "API Access",
+  [DATABASE_SECTION_ID]: "Database",
 };
 
 function sectionTitleForForm(section: { id: string; title?: string; isPreset?: boolean } | undefined): string | undefined {
@@ -127,6 +130,10 @@ function isFieldDeletable(
     return true;
   }
 
+  if (sectionId === DATABASE_SECTION_ID) {
+    return sectionFields.length > 1;
+  }
+
   if (sectionId === "websites" && type === "url") {
     return sectionFields.filter((candidate) => formFieldType(candidate) === "url").length > 1;
   }
@@ -151,6 +158,10 @@ function isFieldLabelEditable(
     return field.id !== "api-name" && field.id !== "api-credentials";
   }
 
+  if (sectionId === DATABASE_SECTION_ID) {
+    return true;
+  }
+
   return false;
 }
 
@@ -170,6 +181,10 @@ function isFieldRequired(
 
   if (sectionId === API_ACCESS_SECTION_ID && (field.id === "api-name" || field.id === "api-credentials")) {
     return true;
+  }
+
+  if (sectionId === DATABASE_SECTION_ID) {
+    return false;
   }
 
   if (sectionId === "websites" && formFieldType(field) === "url") {
@@ -264,7 +279,7 @@ function mergeApiAccessPresetField(
   }
 
   if (isApiAccessRequiredField(presetField.id)) {
-    return enrichApiAccessSelectField(
+    return enrichCategoryPresetSelectField(
       {
         ...presetField,
         ...loadedField,
@@ -279,7 +294,7 @@ function mergeApiAccessPresetField(
     );
   }
 
-  return enrichApiAccessSelectField(
+  return enrichCategoryPresetSelectField(
     {
       ...presetField,
       ...loadedField,
@@ -328,7 +343,71 @@ function mergeApiAccessPresetSections(
 
   for (const loadedField of loadedSection.fields) {
     if (!presetFieldDefaults.has(loadedField.id)) {
-      mergedFields.push(enrichApiAccessSelectField(loadedField, messages));
+      mergedFields.push(enrichCategoryPresetSelectField(loadedField, messages));
+    }
+  }
+
+  const additional = loaded.filter((section) => section.id !== defaultSection.id);
+  return [
+    {
+      ...defaultSection,
+      ...loadedSection,
+      fields: mergedFields,
+    },
+    ...additional,
+  ];
+}
+
+function mergeDatabasePresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  return enrichCategoryPresetSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      deletable: true,
+      editableLabel: true,
+      required: false,
+      ...(presetField.id === "db-password"
+        ? { type: "secret" as const, secretKind: "password" as const, secret: true }
+        : {}),
+    },
+    messages,
+  );
+}
+
+function mergeDatabasePresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("database", messages);
+  const defaultSection = defaults[0];
+  if (!defaultSection) {
+    return loaded;
+  }
+
+  const allPresetFields = getAllDatabasePresetFields(messages);
+  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
+  if (!loadedSection) {
+    return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
+  }
+
+  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
+  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
+  const mergedFields: KeyFormEditorField[] = [];
+
+  for (const presetField of allPresetFields) {
+    const loadedField = loadedById.get(presetField.id);
+    if (loadedField) {
+      mergedFields.push(mergeDatabasePresetField(presetField, loadedField, messages));
+    }
+  }
+
+  for (const loadedField of loadedSection.fields) {
+    if (!presetFieldDefaults.has(loadedField.id)) {
+      mergedFields.push(enrichCategoryPresetSelectField(loadedField, messages));
     }
   }
 
@@ -370,13 +449,20 @@ function toFormField(
     ...(selectField?.selectOptions ? { selectOptions: selectField.selectOptions } : {}),
   };
 
-  return messages ? enrichApiAccessSelectField(formField, messages) : formField;
+  return messages ? enrichCategoryPresetSelectField(formField, messages) : formField;
 }
+
+export type ItemPlaintextToKeyFormSectionsOptions = {
+  /** When true, empty fields are included (edit/copy). Card view omits this. */
+  includeEmptyFields?: boolean;
+};
 
 export function itemPlaintextToKeyFormSections(
   item: ItemPlaintextV2,
   messages?: KeyFormEditorMessages,
+  options?: ItemPlaintextToKeyFormSectionsOptions,
 ): KeyFormEditorSection[] {
+  const includeEmptyFields = options?.includeEmptyFields ?? false;
   const sectionsById = new Map(item.sections.map((section) => [section.id, section]));
   const orderedSectionIds = [...item.sections]
     .sort((a, b) => a.order - b.order)
@@ -384,7 +470,7 @@ export function itemPlaintextToKeyFormSections(
 
   const fieldsBySection = new Map<string, ItemFieldV2[]>();
   for (const field of item.fields) {
-    if (!isItemFieldFilled(field)) {
+    if (!includeEmptyFields && !isItemFieldFilled(field)) {
       continue;
     }
     const bucket = fieldsBySection.get(field.sectionId) ?? [];
@@ -416,6 +502,10 @@ export function itemPlaintextToKeyFormSections(
 
   if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "api_access") {
     return mergeApiAccessPresetSections(sections, messages);
+  }
+
+  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "database") {
+    return mergeDatabasePresetSections(sections, messages);
   }
 
   return sections;

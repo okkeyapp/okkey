@@ -68,7 +68,7 @@ export default function EditItemPopup({ t, workspaceName, vaults, vaultsListRead
       categoryId: item.categoryId,
       vaultId: item.vaultId,
       folderId,
-      sections: itemPlaintextToKeyFormSections(item, keyFormMessages),
+      sections: itemPlaintextToKeyFormSections(item, keyFormMessages, { includeEmptyFields: true }),
       tags: item.tags ?? [],
       createdAtMs: item.createdAtMs,
       ...(item.faviconId ? { faviconId: item.faviconId } : {}),

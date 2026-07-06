@@ -13,7 +13,7 @@ export function buildItemCopyPrefillValues(
     recordName: item.title,
     vaultId: item.vaultId,
     folderId,
-    sections: structuredClone(itemPlaintextToKeyFormSections(item, messages)),
+    sections: structuredClone(itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true })),
     tags: [...(item.tags ?? [])],
     ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),

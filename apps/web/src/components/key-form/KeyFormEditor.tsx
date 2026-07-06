@@ -33,6 +33,7 @@ import {
   KeyFieldOverlayPanel,
   KeyForm,
   KeySection,
+  ScrollArea,
   Separator,
   Slider,
   Tooltip,
@@ -233,27 +234,31 @@ function KeyFormSelectField({
         }}
       >
         {hasOptions ? (
-          (field.selectOptions ?? []).map((option) => {
-            const selected = stringValue === option.value;
-            return (
-              <DropdownMenuItem
-                key={option.value}
-                className={cn(
-                  "relative pl-8",
-                  selected && "bg-secondary/60 hover:bg-secondary",
-                )}
-                onSelect={() => {
-                  onValueChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                <span className="absolute left-2 flex size-3.5 items-center justify-center">
-                  {selected ? <CheckIcon className="size-4" /> : null}
-                </span>
-                {option.label}
-              </DropdownMenuItem>
-            );
-          })
+          <ScrollArea className="max-h-[380px] w-full">
+            <div className="p-0">
+              {(field.selectOptions ?? []).map((option) => {
+                const selected = stringValue === option.value;
+                return (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className={cn(
+                      "relative pl-8",
+                      selected && "bg-secondary/60 hover:bg-secondary",
+                    )}
+                    onSelect={() => {
+                      onValueChange(option.value);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="absolute left-2 flex size-3.5 items-center justify-center">
+                      {selected ? <CheckIcon className="size-4" /> : null}
+                    </span>
+                    {option.label}
+                  </DropdownMenuItem>
+                );
+              })}
+            </div>
+          </ScrollArea>
         ) : (
           <div className="px-2 py-1.5 text-sm leading-5 text-muted-foreground">{emptyOptionsMessage}</div>
         )}
@@ -655,6 +660,10 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     }
   }
 
+  if (section.id === "database") {
+    return section.fields.length > 1;
+  }
+
   if (section.id === "websites" && field.type === "url") {
     return section.fields.filter((item) => item.type === "url").length > 1;
   }
@@ -672,6 +681,10 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
   }
 
   if (section.id === "api-access") {
+    return true;
+  }
+
+  if (section.id === "database") {
     return true;
   }
 
@@ -2875,6 +2888,21 @@ export function KeyFormEditor({
     return !isValidKeyFieldDateValue(field.value);
   }
 
+  function isEmptyDatabaseSectionField(section: DemoSection, field: DemoField): boolean {
+    if (!showValidation || section.id !== "database") {
+      return false;
+    }
+
+    const hasFilledField = section.fields.some((candidate) => {
+      if (typeof candidate.value !== "string") {
+        return false;
+      }
+      return candidate.value.trim().length > 0;
+    });
+
+    return !hasFilledField;
+  }
+
   function isEmptyRequiredField(field: DemoField): boolean {
     if (!showValidation || !field.required) {
       return false;
@@ -2885,10 +2913,14 @@ export function KeyFormEditor({
     return field.value.trim().length === 0;
   }
 
-  function isInvalidField(field: DemoField): boolean {
+  function isInvalidField(section: DemoSection, field: DemoField): boolean {
     return (
       mode === "edit" &&
-      (isEmptyRequiredField(field) || isInvalidTotpField(field) || isInvalidEmailField(field) || isInvalidDateField(field))
+      (isEmptyRequiredField(field) ||
+        isEmptyDatabaseSectionField(section, field) ||
+        isInvalidTotpField(field) ||
+        isInvalidEmailField(field) ||
+        isInvalidDateField(field))
     );
   }
 
@@ -2907,6 +2939,10 @@ export function KeyFormEditor({
 
     if (field.type === "recovery-codes" && typeof field.value === "string") {
       return getFirstUnusedKeyFieldRecoveryCode(parseKeyFieldRecoveryCodesValue(field.value));
+    }
+
+    if (field.type === "select" && typeof field.value === "string" && field.value.trim().length > 0) {
+      return selectOptionLabel(field, field.value);
     }
 
     return field.copyValue;
@@ -2968,12 +3004,13 @@ export function KeyFormEditor({
     const canReorderField =
       section.id === "websites" ||
       section.id === "api-access" ||
+      section.id === "database" ||
       !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
     const isSecretVisible = visiblePasswordIds.has(field.id);
-    const isFieldInvalid = isInvalidField(field);
+    const isFieldInvalid = isInvalidField(section, field);
     const isFieldDraggingInSection = activeDrag?.type === "field" && activeDrag.sectionId === section.id;
     const isFirstField = section.fields[0]?.id === field.id;
     const isLastField = section.fields[section.fields.length - 1]?.id === field.id;
@@ -3115,7 +3152,7 @@ export function KeyFormEditor({
             : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)
         }
         actions={renderActions(section, field)}
-        isInvalid={isInvalidField(field)}
+        isInvalid={isInvalidField(section, field)}
         concealValue={shouldConcealSecretField(field, isSecretVisible, false)}
         className={cn(
           !isDraggedField && section.variant === "primary" && "border-x-transparent",
@@ -3225,7 +3262,9 @@ export function KeyFormEditor({
                   ? urlFieldTypes
                   : section.id === "api-access"
                     ? fieldTypes
-                    : section.id === "credentials" && !hasTotpField
+                    : section.id === "database"
+                      ? fieldTypes
+                      : section.id === "credentials" && !hasTotpField
                       ? totpFieldTypes
                       : [];
             const sectionAddFieldLabel =
@@ -3239,6 +3278,7 @@ export function KeyFormEditor({
                 ? (type: KeyFieldTypeOption) => addField(section.id, type)
                 : section.id === "websites" ||
                     section.id === "api-access" ||
+                    section.id === "database" ||
                     (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)
                   : undefined;

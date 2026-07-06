@@ -212,10 +212,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           recordName,
           vaultId,
           sections: formSections ?? initialSections,
+          categoryId: category.id,
         }),
       getSavePayload: () => {
         const sections = formSections ?? initialSections;
-        const validation = validateNewItemForm({ recordName, vaultId, sections });
+        const validation = validateNewItemForm({ recordName, vaultId, sections, categoryId: category.id });
         if (!validation.ok || !category) {
           return null;
         }
