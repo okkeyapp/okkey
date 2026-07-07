@@ -5,6 +5,7 @@ type PopupSaveButtonProps = {
   saveLabel: string;
   savingLabel: string;
   onClick: () => void;
+  disabled?: boolean;
   className?: string;
 };
 
@@ -13,10 +14,11 @@ export default function PopupSaveButton({
   saveLabel,
   savingLabel,
   onClick,
+  disabled = false,
   className,
 }: PopupSaveButtonProps) {
   return (
-    <Button type="button" className={className} onClick={onClick} disabled={saving}>
+    <Button type="button" className={className} onClick={onClick} disabled={saving || disabled}>
       {saving ? (
         <>
           <Spinner size="small" className="size-4" />

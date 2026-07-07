@@ -1,9 +1,11 @@
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import { DATABASE_SECTION_ID } from "../components/items/itemCategoryDefaultSections";
+import { isKeyFormFieldFilled } from "./keyFormFilledFields";
 
 export type NewItemFormValidationIssue =
   | { kind: "recordName" }
   | { kind: "vault" }
+  | { kind: "anyField" }
   | { kind: "field"; fieldId: string; sectionId: string };
 
 export type NewItemFormValidationResult = {
@@ -16,6 +18,35 @@ function isFieldValueEmpty(field: KeyFormEditorField): boolean {
     return true;
   }
   return field.value.trim().length === 0;
+}
+
+export function isConfiguredNewItemForm(
+  categoryId: string | undefined,
+  sections: readonly KeyFormEditorSection[] | null,
+): boolean {
+  if (categoryId === "database") {
+    return true;
+  }
+
+  for (const section of sections ?? []) {
+    for (const field of section.fields) {
+      if (field.required) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function appendUnconfiguredFormIssues(
+  sections: readonly KeyFormEditorSection[],
+  issues: NewItemFormValidationIssue[],
+): void {
+  const hasAnyFilledField = sections.some((section) => section.fields.some(isKeyFormFieldFilled));
+  if (!hasAnyFilledField) {
+    issues.push({ kind: "anyField" });
+  }
 }
 
 function appendDatabaseSectionIssues(
@@ -66,6 +97,8 @@ export function validateNewItemForm(input: {
 
   if (input.categoryId === "database") {
     appendDatabaseSectionIssues(input.sections ?? [], issues);
+  } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
+    appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }
 
   return { ok: issues.length === 0, issues };

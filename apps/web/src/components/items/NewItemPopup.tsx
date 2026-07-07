@@ -64,6 +64,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
 
   const formRef = useRef<NewItemFormHandle>(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [canSave, setCanSave] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
@@ -75,8 +76,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const { accessToken } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const { favoriteOrder, favoriteIdSet, favoriteTemplateIdSet, ready, toggleFavorite, toggleTemplateFavorite, reorderFavorites } =
-    useItemCategoryPreferences(workspaceId);
-  const { templates, ready: templatesReady, refresh: refreshTemplates } = useWorkspaceItemTemplates(workspaceId);
+    useItemCategoryPreferences();
+  const { templates, ready: templatesReady, refresh: refreshTemplates } = useWorkspaceItemTemplates();
   const { locale } = useLocale();
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
 
@@ -391,6 +392,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
               </Button>
               <PopupSaveButton
                 saving={saving}
+                disabled={!canSave}
                 saveLabel={t("web.newItemPopup.save")}
                 savingLabel={t("web.newItemPopup.saving")}
                 onClick={() => void handleSave()}
@@ -423,6 +425,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           showValidation={showValidation}
           prefillValues={formPrefillValues}
           templateName={activeTemplate?.name}
+          onCanSaveChange={setCanSave}
         />
       ) : !selectedCategoryId ? (
         <NewItemCategoryPicker

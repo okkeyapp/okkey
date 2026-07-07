@@ -1,6 +1,51 @@
 import { describe, expect, it } from "vitest";
 
-import { validateNewItemForm } from "./validateNewItemForm";
+import { isConfiguredNewItemForm, validateNewItemForm } from "./validateNewItemForm";
+
+describe("validateNewItemForm unconfigured", () => {
+  const baseInput = {
+    recordName: "My note",
+    vaultId: "vault-1",
+    categoryId: "secure_note" as const,
+  };
+
+  it("requires at least one filled field when the form has no required fields", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "section-1",
+          fields: [{ id: "field-1", type: "text", label: "Note", value: "" }],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([{ kind: "anyField" }]);
+  });
+
+  it("passes when name and at least one field are filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "section-1",
+          fields: [{ id: "field-1", type: "text", label: "Note", value: "Secret text" }],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("treats categories without required fields as unconfigured", () => {
+    expect(
+      isConfiguredNewItemForm("secure_note", [
+        { id: "section-1", fields: [{ id: "field-1", type: "text", label: "Note", value: "" }] },
+      ]),
+    ).toBe(false);
+  });
+});
 
 describe("validateNewItemForm database", () => {
   const baseInput = {

@@ -82,10 +82,22 @@ type NewItemFormProps = {
   prefillValues?: NewItemFormPrefillValues;
   /** When creating from a workspace template — enables auto-title from template name. */
   templateName?: string;
+  onCanSaveChange?: (canSave: boolean) => void;
 };
 
 const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function NewItemForm(
-  { t, categoryId, workspaceName, vaults, vaultsListReady, showValidation = false, initialValues, prefillValues, templateName },
+  {
+    t,
+    categoryId,
+    workspaceName,
+    vaults,
+    vaultsListReady,
+    showValidation = false,
+    initialValues,
+    prefillValues,
+    templateName,
+    onCanSaveChange,
+  },
   ref,
 ) {
   const isEditMode = Boolean(initialValues);
@@ -143,6 +155,21 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   }, [category, categoryLabel, committedWebsiteUrls, isTemplateMode, templateName]);
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
+  const currentSections = formSections ?? initialSections;
+  const canSave = useMemo(
+    () =>
+      validateNewItemForm({
+        recordName,
+        vaultId,
+        sections: currentSections,
+        categoryId: category?.id,
+      }).ok,
+    [recordName, vaultId, currentSections, category?.id],
+  );
+
+  useEffect(() => {
+    onCanSaveChange?.(canSave);
+  }, [canSave, onCanSaveChange]);
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
