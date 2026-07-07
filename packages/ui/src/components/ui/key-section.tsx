@@ -136,6 +136,18 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
       }
     }
 
+    function focusTitleInputWithSelection() {
+      setIsEditingTitle(true);
+      requestAnimationFrame(() => {
+        const input = titleInputRef.current;
+        if (!input) {
+          return;
+        }
+        input.focus();
+        input.select();
+      });
+    }
+
     return (
       <section
         ref={ref}
@@ -221,7 +233,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                       "size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground",
                       variant === "additional" && "hover:!bg-card",
                     )}
-                    onClick={() => titleInputRef.current?.focus()}
+                    onClick={focusTitleInputWithSelection}
                     aria-label={editSectionTitleAriaLabel}
                   >
                     <PencilIcon className="size-3.5" />

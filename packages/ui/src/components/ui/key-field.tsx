@@ -686,6 +686,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       startEditingLabel();
     }
 
+    function focusLabelInputWithSelection() {
+      startEditingLabel();
+      requestAnimationFrame(() => {
+        const input = labelInputRef.current;
+        if (!input) {
+          return;
+        }
+        input.focus();
+        input.select();
+      });
+    }
+
     function handleValueChange(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
       const nativeEvent = event.nativeEvent instanceof InputEvent ? event.nativeEvent : undefined;
       const nextValue = transformValueInput
@@ -918,7 +930,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
                 onClick={(event) => {
                   event.stopPropagation();
-                  labelInputRef.current?.focus();
+                  focusLabelInputWithSelection();
                 }}
                 aria-label="Редактировать лейбл поля"
               >
