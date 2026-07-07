@@ -225,7 +225,7 @@
   "web.keyForm.fieldPlaceholders.email": "name@example.com",
   "web.keyForm.fieldPlaceholders.phone": "+7 (999) 000-00-00",
   "web.keyForm.fieldPlaceholders.address": "Введите адрес",
-  "web.keyForm.fieldPlaceholders.date": "дд.мм.гггг",
+  "web.keyForm.fieldPlaceholders.date": "дд/мм/гггг",
   "web.keyForm.fieldPlaceholders.url": "https://example.com",
   "web.keyForm.fieldPlaceholders.multiline-text": "Введите текст",
   "web.keyForm.fieldPlaceholders.login": "Введите логин",

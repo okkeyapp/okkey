@@ -29,7 +29,7 @@ export const keyFormFieldSurfaceFocusRingClassName =
 
 /** Destructive validation ring for a KeyField surface. */
 export const keyFormFieldSurfaceErrorRingClassName =
-  "border-x-destructive border-y-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";
+  "border-x-destructive !border-y-destructive focus-within:!border-x-destructive focus-within:!border-y-destructive focus-within:!border-t-destructive focus-within:!border-b-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-within:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";
 
 /** Opaque light hover — visual match for `slate-200/90` over `--secondary`. */
 export const mutedSurfaceHoverBgLightClassName =
