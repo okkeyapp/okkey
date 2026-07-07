@@ -287,6 +287,7 @@
   "web.keyForm.select.optionsPlaceholder": "Одно значение на строку",
   "web.keyForm.showValue": "Показать значение",
   "web.keyForm.deleteField": "Удалить поле",
+  "web.keyForm.deleteSection": "Удалить секцию",
   "web.keyForm.fieldSettingsAria": "Настройки поля «{fieldLabel}»",
   "web.keyForm.openWebsite": "Открыть сайт",
   "web.keyForm.openMap": "Открыть карту",

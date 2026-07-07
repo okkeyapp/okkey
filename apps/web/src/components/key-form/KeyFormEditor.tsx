@@ -769,7 +769,8 @@ function ActionButton({
       variant="ghost"
       size="iconSm"
       className={cn(
-        destructive ? "size-8 min-h-8 min-w-8 text-destructive hover:text-destructive" : "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+        "size-8 min-h-8 min-w-8",
+        destructive ? "text-destructive hover:text-destructive" : "text-muted-foreground hover:text-foreground",
         sectionVariant === "additional" && "hover:!bg-card",
       )}
       aria-label={label}
@@ -1716,6 +1717,7 @@ type SortableSectionProps = {
   editSectionTitleAriaLabel: string;
   onAddField?: (type: KeyFieldTypeOption) => void;
   onTitleChange: (title: string) => void;
+  headerActions?: ReactNode;
   children: ReactNode;
 };
 
@@ -1728,6 +1730,7 @@ function SortableSection({
   editSectionTitleAriaLabel,
   onAddField,
   onTitleChange,
+  headerActions,
   children,
 }: SortableSectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -1756,6 +1759,7 @@ function SortableSection({
         editSectionTitleAriaLabel={editSectionTitleAriaLabel}
         onAddField={onAddField}
         onTitleChange={onTitleChange}
+        headerActions={headerActions}
         dragHandleProps={mode === "edit" && section.variant === "additional" ? { ...attributes, ...listeners } : undefined}
       >
       {children}
@@ -2137,6 +2141,27 @@ export function KeyFormEditor({
     if (shouldSyncWebsiteUrls && nextSections) {
       onWebsiteUrlsBlur?.(nextSections);
     }
+  }
+
+  function removeSection(sectionId: string) {
+    setSections((current) => current.filter((section) => section.id !== sectionId));
+  }
+
+  function renderSectionHeaderActions(section: DemoSection) {
+    if (mode !== "edit" || section.variant !== "additional") {
+      return null;
+    }
+
+    return (
+      <ActionButton
+        label={messages.deleteSection}
+        destructive
+        sectionVariant={section.variant}
+        onClick={() => removeSection(section.id)}
+      >
+        <TrashIcon className="size-4" />
+      </ActionButton>
+    );
   }
 
   function openPasswordGenerator(fieldId: string) {
@@ -3334,6 +3359,7 @@ export function KeyFormEditor({
                   editSectionTitleAriaLabel={messages.editSectionTitleAria}
                   onAddField={sectionOnAddField}
                   onTitleChange={(title) => updateSectionTitle(section.id, title)}
+                  headerActions={renderSectionHeaderActions(section)}
                 >
                   {fields}
                 </SortableSection>

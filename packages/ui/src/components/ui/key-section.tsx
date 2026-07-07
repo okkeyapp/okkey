@@ -96,6 +96,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
     const singleAddFieldType = fieldTypes.length === 1 ? fieldTypes[0] : undefined;
     const shouldShowHeader = Boolean(title) || canEditTitle || Boolean(headerActions);
     const addFieldButtonRef = React.useRef<HTMLButtonElement>(null);
+    const titleInputRef = React.useRef<HTMLInputElement>(null);
     const pendingAddFieldTypeRef = React.useRef<KeyFieldTypeOption | null>(null);
 
     React.useEffect(() => {
@@ -129,6 +130,12 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
       }
     }
 
+    function handleTitleFocus() {
+      if (canEditTitle) {
+        setIsEditingTitle(true);
+      }
+    }
+
     return (
       <section
         ref={ref}
@@ -149,7 +156,7 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
           {shouldShowHeader ? (
             <div
               className={cn(
-                "flex min-w-0 items-center gap-1.5 rounded-t-xl border border-x-transparent border-t-transparent px-4 py-3",
+                "flex h-[46px] min-w-0 items-center gap-2.5 rounded-t-xl border border-x-transparent border-t-transparent px-4",
                 variant === "primary" && "border-b-border",
                 variant === "additional" && keyFormAdditionalDividerBorderBClassName,
                 keyFormFieldSurfaceTransitionClassName,
@@ -172,11 +179,14 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                 </span>
               ) : null}
               <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                {isEditingTitle ? (
+                {canEditTitle ? (
                   <input
+                    ref={titleInputRef}
                     value={draftTitle}
                     placeholder={sectionTitlePlaceholder}
+                    readOnly={!isEditingTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
+                    onFocus={handleTitleFocus}
                     onBlur={commitTitle}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -187,10 +197,10 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                         event.preventDefault();
                         setDraftTitle(title ?? "");
                         setIsEditingTitle(false);
+                        titleInputRef.current?.blur();
                       }
                     }}
-                    autoFocus
-                    className="h-5 min-w-0 flex-1 bg-transparent p-0 text-sm font-semibold leading-5 text-foreground outline-none"
+                    className="h-5 w-auto max-w-full min-w-0 cursor-text bg-transparent p-0 text-sm font-semibold leading-5 text-foreground outline-none [field-sizing:content] focus-visible:ring-0"
                   />
                 ) : (
                   <h3
@@ -211,14 +221,14 @@ export const KeySection = React.forwardRef<HTMLElement, KeySectionProps>(
                       "size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground",
                       variant === "additional" && "hover:!bg-card",
                     )}
-                    onClick={() => setIsEditingTitle(true)}
+                    onClick={() => titleInputRef.current?.focus()}
                     aria-label={editSectionTitleAriaLabel}
                   >
                     <PencilIcon className="size-3.5" />
                   </Button>
                 ) : null}
               </div>
-              {headerActions}
+              {headerActions ? <div className="flex shrink-0 items-center">{headerActions}</div> : null}
             </div>
           ) : null}
 

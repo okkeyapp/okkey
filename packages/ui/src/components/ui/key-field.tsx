@@ -310,6 +310,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const prevSecretMultilineValueRef = React.useRef(secretMultilineValue);
     const ignoreValueBlurRef = React.useRef(false);
     const valueInputRef = React.useRef<HTMLInputElement | null>(null);
+    const labelInputRef = React.useRef<HTMLInputElement | null>(null);
     const valueTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
     const valueContainerRef = React.useRef<HTMLDivElement | null>(null);
     const [draftLabel, setDraftLabel] = React.useState(label);
@@ -673,6 +674,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
     }
 
+    function startEditingLabel() {
+      if (addressValue || recoveryCodesValue || fileValue) {
+        setIsValueFocused(false);
+      }
+      setIsEditingLabel(true);
+    }
+
+    function handleLabelFocus(event: React.FocusEvent<HTMLInputElement>) {
+      event.stopPropagation();
+      startEditingLabel();
+    }
+
     function handleValueChange(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
       const nativeEvent = event.nativeEvent instanceof InputEvent ? event.nativeEvent : undefined;
       const nextValue = transformValueInput
@@ -865,11 +878,14 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            {isEditingLabel ? (
+            {canEditLabel ? (
               <input
+                ref={labelInputRef}
                 data-key-field-label-input
                 value={draftLabel}
+                readOnly={!isEditingLabel}
                 onChange={(event) => setDraftLabel(event.target.value)}
+                onFocus={handleLabelFocus}
                 onBlur={commitLabel}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -880,17 +896,17 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     event.preventDefault();
                     setDraftLabel(label);
                     setIsEditingLabel(false);
+                    labelInputRef.current?.blur();
                   }
                 }}
-                autoFocus
                 className={cn(
-                  "h-5 min-w-0 flex-1 bg-transparent p-0 text-xs text-foreground outline-none",
+                  "h-5 w-auto max-w-full min-w-0 cursor-text bg-transparent p-0 text-xs text-foreground outline-none [field-sizing:content]",
                   "focus-visible:ring-0",
                   labelClassName,
                 )}
               />
             ) : (
-              <span className={cn("min-w-0 truncate text-xs leading-5 text-muted-foreground", canEditLabel && "text-foreground", labelClassName)}>
+              <span className={cn("min-w-0 truncate text-xs leading-5 text-muted-foreground", labelClassName)}>
                 {label}
               </span>
             )}
@@ -900,11 +916,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 variant="ghost"
                 size="iconSm"
                 className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
-                onClick={() => {
-                  if (addressValue || recoveryCodesValue || fileValue) {
-                    setIsValueFocused(false);
-                  }
-                  setIsEditingLabel(true);
+                onClick={(event) => {
+                  event.stopPropagation();
+                  labelInputRef.current?.focus();
                 }}
                 aria-label="Редактировать лейбл поля"
               >

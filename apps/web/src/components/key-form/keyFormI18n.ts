@@ -42,6 +42,7 @@ export type KeyFormEditorMessages = {
   selectOptionsPlaceholder: string;
   showValue: string;
   deleteField: string;
+  deleteSection: string;
   fieldSettingsAria: string;
   openWebsite: string;
   openMap: string;
@@ -195,6 +196,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     selectOptionsPlaceholder: t("web.keyForm.select.optionsPlaceholder"),
     showValue: t("web.keyForm.showValue"),
     deleteField: t("web.keyForm.deleteField"),
+    deleteSection: t("web.keyForm.deleteSection"),
     fieldSettingsAria: template("web.keyForm.fieldSettingsAria"),
     openWebsite: t("web.keyForm.openWebsite"),
     openMap: t("web.keyForm.openMap"),
