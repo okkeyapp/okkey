@@ -289,6 +289,65 @@ describe("itemPlaintextToKeyFormSections wifi_router", () => {
   });
 });
 
+describe("itemPlaintextToKeyFormSections credit_card", () => {
+  it("includes all preset fields for new credit card defaults", () => {
+    const defaults = getDefaultSectionsForCategory("credit_card", messages);
+    const fieldIds = defaults[0]?.fields.map((field) => field.id) ?? [];
+
+    expect(fieldIds).toEqual(["card-number", "card-expiry", "card-pin", "card-holder"]);
+    expect(defaults[0]?.fields.every((field) => field.deletable === false && !field.editableLabel)).toBe(true);
+    expect(defaults[0]?.fields.find((field) => field.id === "card-number")?.type).toBe("card");
+    expect(defaults[0]?.fields.find((field) => field.id === "card-expiry")?.type).toBe("card-expiry");
+    expect(defaults[0]?.fields.find((field) => field.id === "card-pin")?.type).toBe("pin");
+    expect(defaults[0]?.fields.filter((field) => field.required).map((field) => field.id)).toEqual([
+      "card-number",
+      "card-expiry",
+      "card-pin",
+    ]);
+  });
+
+  it("hides empty optional card-holder in card view", () => {
+    const sections = getDefaultSectionsForCategory("credit_card", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => ({
+        ...field,
+        value:
+          field.id === "card-number"
+            ? "4111 1111 1111 1111"
+            : field.id === "card-expiry"
+              ? "12 / 30"
+              : field.id === "card-pin"
+                ? "123"
+                : "",
+      })),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-card-1",
+      vaultId: "vault-1",
+      title: "My card",
+      categoryId: "credit_card",
+      nowMs: 1,
+    });
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual([
+      "card-number",
+      "card-expiry",
+      "card-pin",
+    ]);
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    expect(restoredForEdit[0]?.fields.map((field) => field.id)).toEqual([
+      "card-number",
+      "card-expiry",
+      "card-pin",
+      "card-holder",
+    ]);
+  });
+});
+
 describe("itemPlaintextToKeyFormSections all categories", () => {
   it("hides empty fields in card view but keeps them for edit in any section", () => {
     const sections = [

@@ -190,3 +190,77 @@ describe("validateNewItemForm wifi_router", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("validateNewItemForm credit_card", () => {
+  const baseInput = {
+    recordName: "My card",
+    vaultId: "vault-1",
+    categoryId: "credit_card" as const,
+  };
+
+  const creditCardSections = [
+    {
+      id: "credit-card",
+      variant: "primary" as const,
+      fields: [
+        { id: "card-number", type: "card", label: "Number", value: "", required: true },
+        { id: "card-expiry", type: "card-expiry", label: "Expiry", value: "", required: true },
+        { id: "card-pin", type: "pin", label: "PIN", value: "", required: true },
+        { id: "card-holder", type: "text", label: "Holder", value: "" },
+      ],
+    },
+  ];
+
+  it("requires card number, expiry and pin", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: creditCardSections,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "card-number", sectionId: "credit-card" },
+      { kind: "field", fieldId: "card-expiry", sectionId: "credit-card" },
+      { kind: "field", fieldId: "card-pin", sectionId: "credit-card" },
+    ]);
+  });
+
+  it("passes when required credit card fields are filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          ...creditCardSections[0],
+          fields: [
+            { id: "card-number", type: "card", label: "Number", value: "4111 1111 1111 1111", required: true },
+            { id: "card-expiry", type: "card-expiry", label: "Expiry", value: "12 / 30", required: true },
+            { id: "card-pin", type: "pin", label: "PIN", value: "123", required: true },
+            { id: "card-holder", type: "text", label: "Holder", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("treats incomplete expiry as empty", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          ...creditCardSections[0],
+          fields: [
+            { id: "card-number", type: "card", label: "Number", value: "4111 1111 1111 1111", required: true },
+            { id: "card-expiry", type: "card-expiry", label: "Expiry", value: "12 / 3", required: true },
+            { id: "card-pin", type: "pin", label: "PIN", value: "123", required: true },
+            { id: "card-holder", type: "text", label: "Holder", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([{ kind: "field", fieldId: "card-expiry", sectionId: "credit-card" }]);
+  });
+});
