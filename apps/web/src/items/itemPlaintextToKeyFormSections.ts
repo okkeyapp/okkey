@@ -1,5 +1,5 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
-import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, getSecretKindFromRaw, serializeKeyFieldFileValue } from "@okkey/ui";
+import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, formatCardExpiry, formatCardNumber, getSecretKindFromRaw, serializeKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
@@ -9,17 +9,30 @@ import {
   SERVER_ADMIN_CONSOLE_SECTION_ID,
   SERVER_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
+  CREDIT_CARD_SECTION_ID,
   enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
+  getAllCreditCardPresetFields,
   getAllDatabasePresetFields,
   getAllWifiRouterPresetFields,
   getDefaultSectionsForCategory,
+  isCreditCardRequiredFieldId,
 } from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
-import { isItemFieldFilled } from "./keyFormFilledFields";
+import { filterFilledKeyFormSections, isItemFieldFilled } from "./keyFormFilledFields";
 import { parseSelectFieldValueFromItem, selectFieldValueFromRaw } from "./keyFormSelectField";
 
 function formFieldType(field: ItemFieldV2): string {
+  if (field.id === "card-number") {
+    return "card";
+  }
+  if (field.id === "card-expiry") {
+    return "card-expiry";
+  }
+  if (field.id === "card-pin") {
+    return "pin";
+  }
+
   if (field.type === "note") {
     return "multiline-text";
   }
@@ -90,6 +103,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   [API_ACCESS_SECTION_ID]: "API Access",
   [DATABASE_SECTION_ID]: "Database",
   [WIFI_ROUTER_SECTION_ID]: "Wi‑Fi router",
+  [CREDIT_CARD_SECTION_ID]: "Credit card",
   [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
 };
 
@@ -136,6 +150,10 @@ function isFieldDeletable(
     return true;
   }
 
+  if (sectionId === CREDIT_CARD_SECTION_ID) {
+    return false;
+  }
+
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return sectionFields.length > 1;
   }
@@ -172,6 +190,10 @@ function isFieldLabelEditable(
     return field.id !== "api-name" && field.id !== "api-credentials";
   }
 
+  if (sectionId === CREDIT_CARD_SECTION_ID) {
+    return false;
+  }
+
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return true;
   }
@@ -199,6 +221,10 @@ function isFieldRequired(
 
   if (sectionId === API_ACCESS_SECTION_ID && (field.id === "api-name" || field.id === "api-credentials")) {
     return true;
+  }
+
+  if (sectionId === CREDIT_CARD_SECTION_ID) {
+    return isCreditCardRequiredFieldId(field.id);
   }
 
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
@@ -572,6 +598,83 @@ function mergeWifiRouterPresetSections(
   ];
 }
 
+function mergeCreditCardPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+): KeyFormEditorField {
+  let value = typeof loadedField.value === "string" ? loadedField.value : "";
+
+  if (presetField.type === "card") {
+    value = formatCardNumber(value);
+  }
+  if (presetField.type === "card-expiry") {
+    value = formatCardExpiry(value);
+  }
+
+  return {
+    ...presetField,
+    ...loadedField,
+    type: presetField.type,
+    value,
+    copyValue: presetField.type === "pin" ? value : loadedField.copyValue,
+    deletable: false,
+    editableLabel: false,
+    required: presetField.required ?? isCreditCardRequiredFieldId(presetField.id),
+  };
+}
+
+function mergeCreditCardPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("credit_card", messages);
+  const defaultSection = defaults[0];
+  if (!defaultSection) {
+    return loaded;
+  }
+
+  const allPresetFields = getAllCreditCardPresetFields(messages);
+  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
+  if (!loadedSection) {
+    if (includeEmptyFields) {
+      return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
+    }
+    return loaded.filter((section) => section.id !== defaultSection.id);
+  }
+
+  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
+  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
+  const mergedFields: KeyFormEditorField[] = [];
+
+  for (const presetField of allPresetFields) {
+    const loadedField = loadedById.get(presetField.id);
+    if (loadedField) {
+      mergedFields.push(mergeCreditCardPresetField(presetField, loadedField));
+      continue;
+    }
+    if (includeEmptyFields) {
+      mergedFields.push(presetField);
+    }
+  }
+
+  for (const loadedField of loadedSection.fields) {
+    if (!presetFieldDefaults.has(loadedField.id)) {
+      mergedFields.push(loadedField);
+    }
+  }
+
+  const additional = loaded.filter((section) => section.id !== defaultSection.id);
+  return [
+    {
+      ...defaultSection,
+      ...loadedSection,
+      fields: mergedFields,
+    },
+    ...additional,
+  ];
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -628,7 +731,7 @@ export function itemPlaintextToKeyFormSections(
     fieldsBySection.set(field.sectionId, bucket);
   }
 
-  const sections = orderedSectionIds
+  let sections = orderedSectionIds
     .map((sectionId) => {
       const section = sectionsById.get(sectionId);
       const sectionFields = (fieldsBySection.get(sectionId) ?? []).sort((a, b) => a.order - b.order);
@@ -664,6 +767,14 @@ export function itemPlaintextToKeyFormSections(
 
   if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "wifi_router") {
     return mergeWifiRouterPresetSections(sections, messages);
+  }
+
+  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "credit_card") {
+    sections = mergeCreditCardPresetSections(sections, messages, includeEmptyFields);
+  }
+
+  if (!includeEmptyFields) {
+    return filterFilledKeyFormSections(sections);
   }
 
   return sections;

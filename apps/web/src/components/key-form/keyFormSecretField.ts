@@ -9,6 +9,20 @@ export type KeyFormSecretFieldLike = {
   secretKind?: KeyFieldSecretKind;
 };
 
+export function isPinField(field: KeyFormSecretFieldLike): boolean {
+  return field.type === "pin";
+}
+
+export function shouldConcealPinField(field: KeyFormSecretFieldLike, isVisible: boolean): boolean {
+  if (!isPinField(field)) {
+    return false;
+  }
+  if (isVisible || isSecretFieldEmpty(field)) {
+    return false;
+  }
+  return true;
+}
+
 export function isFixedPasswordField(field: KeyFormSecretFieldLike): boolean {
   return field.type === "password";
 }

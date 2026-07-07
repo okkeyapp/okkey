@@ -7,6 +7,13 @@ export const DATABASE_SECTION_ID = "database";
 export const SERVER_SECTION_ID = "server";
 export const SERVER_ADMIN_CONSOLE_SECTION_ID = "admin-console";
 export const WIFI_ROUTER_SECTION_ID = "wifi-router";
+export const CREDIT_CARD_SECTION_ID = "credit-card";
+
+export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
+
+export function isCreditCardRequiredFieldId(fieldId: string): boolean {
+  return (CREDIT_CARD_REQUIRED_FIELD_IDS as readonly string[]).includes(fieldId);
+}
 
 const FLEXIBLE_PRESET_PRIMARY_SECTION_IDS = [
   DATABASE_SECTION_ID,
@@ -16,6 +23,10 @@ const FLEXIBLE_PRESET_PRIMARY_SECTION_IDS = [
 
 export function isFlexiblePresetPrimarySection(sectionId: string): boolean {
   return (FLEXIBLE_PRESET_PRIMARY_SECTION_IDS as readonly string[]).includes(sectionId);
+}
+
+export function isCreditCardPresetSection(sectionId: string): boolean {
+  return sectionId === CREDIT_CARD_SECTION_ID;
 }
 
 export function getApiAccessTypeSelectOptions(messages: KeyFormEditorMessages): KeyFormSelectOption[] {
@@ -448,6 +459,57 @@ export function getAllWifiRouterPresetFields(messages: KeyFormEditorMessages): K
   return getWifiRouterDefaultSections(messages)[0]?.fields ?? [];
 }
 
+function getCreditCardDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: CREDIT_CARD_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "card-number",
+          type: "card",
+          label: messages.fieldLabels.cardNumber,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+          required: true,
+        },
+        {
+          id: "card-expiry",
+          type: "card-expiry",
+          label: messages.fieldLabels.cardExpiry,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+          required: true,
+        },
+        {
+          id: "card-pin",
+          type: "pin",
+          label: messages.fieldLabels.cardPin,
+          value: "",
+          copyValue: "",
+          editableLabel: false,
+          deletable: false,
+          required: true,
+        },
+        {
+          id: "card-holder",
+          type: "text",
+          label: messages.fieldLabels.cardHolder,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllCreditCardPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getCreditCardDefaultSections(messages)[0]?.fields ?? [];
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -470,6 +532,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "wifi_router") {
     return getWifiRouterDefaultSections(messages);
+  }
+
+  if (categoryId === "credit_card") {
+    return getCreditCardDefaultSections(messages);
   }
 
   return [];

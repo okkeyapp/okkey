@@ -1,5 +1,27 @@
 export { cn } from "./lib/utils.js";
 export {
+  detectCardBrand,
+  formatCardNumber,
+  formatCardNumberInput,
+  normalizeCardNumber,
+  type CardBrand,
+} from "./lib/key-field-card.js";
+export {
+  formatCardExpiry,
+  formatCardExpiryInput,
+  isCardExpiryExpired,
+  isInvalidCardExpiryFieldValue,
+  isValidCardExpiryMonth,
+  normalizeCardExpiry,
+} from "./lib/key-field-card-expiry.js";
+export {
+  concealedPinValue,
+  formatPinInput,
+  KEY_FIELD_PIN_MAX_LENGTH,
+  normalizePinValue,
+} from "./lib/key-field-pin.js";
+export { KeyFieldCardBrandBadge } from "./components/ui/key-field-card-brand.js";
+export {
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
   formatKeyFieldAddressCopyValue,

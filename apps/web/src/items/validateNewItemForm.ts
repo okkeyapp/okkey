@@ -1,7 +1,9 @@
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import {
   WIFI_ROUTER_SECTION_ID,
+  isCreditCardRequiredFieldId,
 } from "../components/items/itemCategoryDefaultSections";
+import { isCreditCardRequiredFieldEmpty } from "./creditCardFormValidation";
 import { isKeyFormFieldFilled } from "./keyFormFilledFields";
 
 export type NewItemFormValidationIssue =
@@ -26,7 +28,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router") {
+  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card") {
     return true;
   }
 
@@ -92,7 +94,11 @@ export function validateNewItemForm(input: {
       if (!field.required) {
         continue;
       }
-      if (isFieldValueEmpty(field)) {
+      const isEmpty =
+        input.categoryId === "credit_card" && isCreditCardRequiredFieldId(field.id)
+          ? isCreditCardRequiredFieldEmpty(field)
+          : isFieldValueEmpty(field);
+      if (isEmpty) {
         issues.push({ kind: "field", fieldId: field.id, sectionId: section.id });
       }
     }

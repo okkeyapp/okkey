@@ -18,6 +18,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   "api-access": "API Access",
   database: "Database",
   "wifi-router": "Wi‑Fi router",
+  "credit-card": "Credit card",
   "admin-console": "Admin console",
 };
 
@@ -69,7 +70,15 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
     case "email":
     case "phone":
     case "date":
+    case "card":
+    case "card-expiry":
       return { kind: "text", text: raw };
+    case "pin":
+      return {
+        kind: "unknown",
+        declaredType: "secret",
+        raw: serializeKeyFieldSecretRaw("password", raw),
+      };
     case "select":
       return serializeSelectFieldValue(field);
     default:

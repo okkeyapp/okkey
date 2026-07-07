@@ -22,6 +22,8 @@ export type KeyFormEditorMessages = {
   copied: string;
   showPassword: string;
   hidePassword: string;
+  showPin: string;
+  hidePin: string;
   showSecret: string;
   hideSecret: string;
   generatePassword: string;
@@ -62,6 +64,7 @@ export type KeyFormEditorMessages = {
   sectionTitles: {
     adminConsole: string;
   };
+  cardExpiryExpired: string;
   apiTypeOptions: {
     loginJson: string;
     jwt: string;
@@ -166,6 +169,10 @@ const KEY_FORM_EXTRA_FIELD_KEYS = [
   "wifiNetworkSecurity",
   "wifiNetworkPassword",
   "wifiConnectedStoragePassword",
+  "cardNumber",
+  "cardExpiry",
+  "cardPin",
+  "cardHolder",
   "select",
 ] as const;
 
@@ -193,6 +200,8 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     copied: t("web.keyForm.copied"),
     showPassword: t("web.keyForm.showPassword"),
     hidePassword: t("web.keyForm.hidePassword"),
+    showPin: t("web.keyForm.showPin"),
+    hidePin: t("web.keyForm.hidePin"),
     showSecret: t("web.keyForm.showSecret"),
     hideSecret: t("web.keyForm.hideSecret"),
     generatePassword: t("web.keyForm.generatePassword"),
@@ -248,6 +257,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     sectionTitles: {
       adminConsole: t("web.keyForm.sectionTitles.adminConsole"),
     },
+    cardExpiryExpired: t("web.keyForm.cardExpiryExpired"),
     apiTypeOptions: {
       loginJson: t("web.keyForm.apiType.loginJson"),
       jwt: t("web.keyForm.apiType.jwt"),

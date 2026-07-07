@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent, type ReactNode, type SVGProps } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentProps, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type SVGProps } from "react";
 import type { Locale } from "date-fns";
 import {
   DndContext,
@@ -49,6 +49,15 @@ import {
   emptyKeyFieldAddressValue,
   emptyKeyFieldRecoveryCodesValue,
   formatKeyFieldAddressCopyValue,
+  formatCardNumberInput,
+  formatCardExpiryInput,
+  formatPinInput,
+  detectCardBrand,
+  normalizeCardNumber,
+  normalizeCardExpiry,
+  isInvalidCardExpiryFieldValue,
+  concealedPinValue,
+  KeyFieldCardBrandBadge,
   getFirstUnusedKeyFieldRecoveryCode,
   getKeyFieldRecoveryCodesRemainingCount,
   getKeyFieldRecoveryCodesUsedCount,
@@ -66,6 +75,7 @@ import {
 } from "@okkey/ui";
 import { uploadDevKeyFieldFile } from "../../api/key-field-files";
 import { normalizeSelectOptionsEditorText, appendSelectOptionsEditorLineAtEnd } from "../../items/keyFormSelectField";
+import { isInvalidCreditCardRequiredField } from "../../items/creditCardFormValidation";
 import {
   englishKeyFieldTypes,
   englishKeyFormEditorMessages,
@@ -83,10 +93,12 @@ import {
   isSecretLikeField,
   secretFieldShowsStrength,
   shouldConcealSecretField,
+  shouldConcealPinField,
   shouldOpenGeneratorOnFocus,
   showSecretLabelKey,
 } from "./keyFormSecretField";
 import {
+  isCreditCardPresetSection,
   isFlexiblePresetPrimarySection,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
 } from "../items/itemCategoryDefaultSections";
@@ -154,6 +166,18 @@ function fieldValuePlaceholderKey(field: Pick<DemoField, "id" | "type">): string
   }
   if (field.id === "password") {
     return "password";
+  }
+  if (field.id === "card-number") {
+    return "cardNumber";
+  }
+  if (field.id === "card-expiry") {
+    return "cardExpiry";
+  }
+  if (field.id === "card-pin") {
+    return "cardPin";
+  }
+  if (field.id === "card-holder") {
+    return "cardHolder";
   }
   if (
     field.id === "server-url" ||
@@ -684,6 +708,10 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     }
   }
 
+  if (isCreditCardPresetSection(section.id)) {
+    return false;
+  }
+
   if (isFlexiblePresetPrimarySection(section.id)) {
     return section.fields.length > 1;
   }
@@ -706,6 +734,10 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
 
   if (section.id === "api-access") {
     return true;
+  }
+
+  if (isCreditCardPresetSection(section.id)) {
+    return false;
   }
 
   if (isFlexiblePresetPrimarySection(section.id)) {
@@ -749,6 +781,38 @@ function surfaceRoundingForField(
   });
 }
 
+function preventMouseFocusOnFieldControl(event: MouseEvent<HTMLElement>) {
+  event.preventDefault();
+}
+
+function blurFieldControlFocus() {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) {
+    active.blur();
+  }
+}
+
+function handleFieldDropdownCloseAutoFocus(event: Event) {
+  event.preventDefault();
+  blurFieldControlFocus();
+}
+
+const FieldChromeButton = forwardRef<HTMLButtonElement, ComponentProps<typeof Button>>(function FieldChromeButton(
+  { onMouseDown, ...props },
+  ref,
+) {
+  return (
+    <Button
+      ref={ref}
+      {...props}
+      onMouseDown={(event) => {
+        preventMouseFocusOnFieldControl(event);
+        onMouseDown?.(event);
+      }}
+    />
+  );
+});
+
 function ActionButton({
   label,
   children,
@@ -763,7 +827,7 @@ function ActionButton({
   onClick?: () => void;
 }) {
   return (
-    <Button
+    <FieldChromeButton
       type="button"
       variant="ghost"
       size="iconSm"
@@ -776,7 +840,7 @@ function ActionButton({
       onClick={onClick}
     >
       {children}
-    </Button>
+    </FieldChromeButton>
   );
 }
 
@@ -836,6 +900,7 @@ function KeyCounter({
   total,
   tone = "success",
   exhausted = false,
+  showPie = true,
 }: {
   children: ReactNode;
   className?: string;
@@ -845,19 +910,90 @@ function KeyCounter({
   total: number;
   tone?: "success" | "warning" | "danger";
   exhausted?: boolean;
+  showPie?: boolean;
 }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center gap-1 rounded-full px-2 pr-1 text-xs leading-5 text-foreground",
+        "inline-flex h-5 items-center gap-1 rounded-full px-2 text-xs leading-5 text-foreground",
+        showPie ? "pr-1" : undefined,
         sectionVariant === "additional" ? "bg-card" : "bg-secondary",
         className,
       )}
     >
       {children}
-      <PieIndicator value={pieValue ?? value} total={total} tone={tone} exhausted={exhausted} />
+      {showPie ? <PieIndicator value={pieValue ?? value} total={total} tone={tone} exhausted={exhausted} /> : null}
     </span>
   );
+}
+
+function KeyFieldMetaBadge({
+  children,
+  className,
+  tone = "danger",
+}: {
+  children: ReactNode;
+  className?: string;
+  tone?: "danger";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 items-center justify-center rounded-full px-2 text-xs leading-5",
+        tone === "danger" && "bg-destructive/10 text-destructive",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function metaForKeyField(
+  field: DemoField,
+  sectionVariant: DemoSectionVariant,
+  messages: KeyFormEditorMessages,
+  value?: ReactNode,
+  mode: KeyFormMode = "view",
+): ReactNode {
+  if (
+    field.type === "recovery-codes" ||
+    field.type === "totp" ||
+    field.type === "file" ||
+    field.type === "select" ||
+    field.type === "pin" ||
+    field.type === "card" ||
+    field.type === "card-expiry" ||
+    isSecretLikeField(field)
+  ) {
+    return null;
+  }
+
+  return metaForField(field.type, sectionVariant, messages, value, mode);
+}
+
+function fieldActionMetaForField(
+  field: DemoField,
+  messages: KeyFormEditorMessages,
+  value?: ReactNode,
+): ReactNode {
+  if (field.type === "card" && typeof value === "string") {
+    if (normalizeCardNumber(value).length === 0) {
+      return null;
+    }
+
+    return <KeyFieldCardBrandBadge brand={detectCardBrand(value)} />;
+  }
+
+  if (field.type === "card-expiry" && typeof value === "string") {
+    if (!isInvalidCardExpiryFieldValue(value)) {
+      return null;
+    }
+
+    return <KeyFieldMetaBadge>{messages.cardExpiryExpired}</KeyFieldMetaBadge>;
+  }
+
+  return null;
 }
 
 type PasswordStrength = {
@@ -1045,6 +1181,9 @@ function secretVisibilityLabels(
   isVisible: boolean,
   messages: KeyFormEditorMessages,
 ): { show: string; hide: string } {
+  if (field.type === "pin") {
+    return { show: messages.showPin, hide: messages.hidePin };
+  }
   if (showSecretLabelKey(field) === "password") {
     return { show: messages.showPassword, hide: messages.hidePassword };
   }
@@ -1495,6 +1634,7 @@ type SortableFieldProps = {
   actions: ReactNode;
   floatingActions?: ReactNode;
   isHoverLocked?: boolean;
+  actionsHideOnFieldHover?: boolean;
   forceActive?: boolean;
   isInvalid?: boolean;
   fieldOverlay?: ReactNode;
@@ -1509,6 +1649,10 @@ type SortableFieldProps = {
   dateValue?: boolean;
   addressValue?: boolean;
   recoveryCodesValue?: boolean;
+  cardValue?: boolean;
+  cardExpiryValue?: boolean;
+  pinValue?: boolean;
+  concealedPinDots?: string;
   recoveryCodesRevealed?: boolean;
   fileValue?: boolean;
   onFileUpload?: (file: File, onProgress: (percent: number) => void) => Promise<KeyFieldFileValue>;
@@ -1542,6 +1686,7 @@ function SortableField({
   actions,
   floatingActions,
   isHoverLocked,
+  actionsHideOnFieldHover,
   forceActive,
   isInvalid,
   fieldOverlay,
@@ -1556,6 +1701,10 @@ function SortableField({
   dateValue,
   addressValue,
   recoveryCodesValue,
+  cardValue,
+  cardExpiryValue,
+  pinValue,
+  concealedPinDots,
   recoveryCodesRevealed,
   fileValue,
   onFileUpload,
@@ -1625,6 +1774,9 @@ function SortableField({
       dateValue={dateValue}
       addressValue={addressValue}
       recoveryCodesValue={recoveryCodesValue}
+      cardValue={cardValue}
+      cardExpiryValue={cardExpiryValue}
+      pinValue={pinValue}
       recoveryCodesRevealed={recoveryCodesRevealed}
       fileValue={fileValue}
       onFileUpload={onFileUpload}
@@ -1632,22 +1784,16 @@ function SortableField({
       autoFocusValue={autoFocusValue}
       autoFocusValueRequest={autoFocusValueRequest}
       reorderable={reorderable}
-      meta={
-        field.type === "recovery-codes" ||
-        field.type === "totp" ||
-        field.type === "file" ||
-        field.type === "select" ||
-        isSecretLikeField(field)
-          ? null
-          : metaForField(field.type, section.variant, messages, typeof value === "string" ? value : undefined, mode)
-      }
+      meta={metaForKeyField(field, section.variant, messages, typeof value === "string" ? value : undefined, mode)}
       actions={actions}
       floatingActions={floatingActions}
       isHoverLocked={isHoverLocked}
+      actionsHideOnFieldHover={actionsHideOnFieldHover}
       forceActive={forceActive}
       isInvalid={isInvalid}
       fieldOverlay={fieldOverlay}
       concealValue={concealValue}
+      concealedValue={concealedPinDots}
       transformValueInput={transformValueInput}
       className={cn(
         section.variant === "primary" && "border-x-transparent",
@@ -2420,33 +2566,38 @@ export function KeyFormEditor({
 
   function renderActions(section: DemoSection, field: DemoField) {
     const canEdit = mode === "edit";
-    const isSecretVisible = isSecretLikeField(field) && visiblePasswordIds.has(field.id);
+    const isSecretVisible =
+      (isSecretLikeField(field) || field.type === "pin") && visiblePasswordIds.has(field.id);
     const isRecoveryCodesRevealed = field.type === "recovery-codes" && visibleRecoveryCodesIds.has(field.id);
     const isFieldMenuOpen = openFieldMenuId === field.id;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
+    const fieldValue = typeof field.value === "string" ? field.value : undefined;
     const fieldMeta = metaForSecretLikeField(
       field,
       section.variant,
       messages,
-      typeof field.value === "string" ? field.value : undefined,
+      fieldValue,
       mode,
     );
+    const fieldActionMeta = fieldActionMetaForField(field, messages, fieldValue);
     const visibilityLabels = secretVisibilityLabels(field, isSecretVisible, messages);
     const currentSecretKind = getSecretKind(field);
     const secretKindOptions: KeyFieldSecretKind[] = ["password", "single-line", "multi-line"];
 
     if (!canEdit) {
       const showRecoveryCodesMeta = field.type === "recovery-codes" && !isRecoveryCodesRevealed;
-      return (secretFieldShowsStrength(field) || showRecoveryCodesMeta) && fieldMeta ? (
-        <span className={cn("transition-opacity group-hover/key-field:opacity-0", isFieldMenuOpen && "opacity-0")}>
-          {fieldMeta}
-        </span>
-      ) : null;
+      const viewMeta = secretFieldShowsStrength(field)
+        ? fieldMeta
+        : showRecoveryCodesMeta
+          ? fieldMeta
+          : fieldActionMeta;
+      return viewMeta ? <span className="flex items-center">{viewMeta}</span> : null;
     }
 
     return (
       <>
         {secretFieldShowsStrength(field) ? fieldMeta : null}
+        {fieldActionMeta ? <span className="flex items-center self-center">{fieldActionMeta}</span> : null}
         {isFixedPasswordField(field) ? (
           <>
             <DropdownMenu
@@ -2454,7 +2605,7 @@ export function KeyFormEditor({
               onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
             >
               <DropdownMenuTrigger asChild>
-                <Button
+                <FieldChromeButton
                   type="button"
                   variant="ghost"
                   size="iconSm"
@@ -2468,9 +2619,9 @@ export function KeyFormEditor({
                   aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
                 >
                   <GearIcon className="size-4" />
-                </Button>
+                </FieldChromeButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
+              <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
                 <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
                   {isSecretVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
                   {isSecretVisible ? visibilityLabels.hide : visibilityLabels.show}
@@ -2489,7 +2640,7 @@ export function KeyFormEditor({
               onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
             >
               <DropdownMenuTrigger asChild>
-                <Button
+                <FieldChromeButton
                   type="button"
                   variant="ghost"
                   size="iconSm"
@@ -2503,7 +2654,7 @@ export function KeyFormEditor({
                   aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
                 >
                   <GearIcon className="size-4" />
-                </Button>
+                </FieldChromeButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
@@ -2511,6 +2662,7 @@ export function KeyFormEditor({
                 className="min-w-[15rem] p-1"
                 onCloseAutoFocus={(event) => {
                   event.preventDefault();
+                  blurFieldControlFocus();
                   flushPendingSecretKindFocus();
                 }}
               >
@@ -2541,7 +2693,7 @@ export function KeyFormEditor({
             onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
           >
             <DropdownMenuTrigger asChild>
-              <Button
+              <FieldChromeButton
                 type="button"
                 variant="ghost"
                 size="iconSm"
@@ -2553,7 +2705,7 @@ export function KeyFormEditor({
                 aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
-              </Button>
+              </FieldChromeButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
               <DropdownMenuItem onSelect={() => resetTotpSecret(section.id, field.id)}>
@@ -2568,7 +2720,7 @@ export function KeyFormEditor({
             onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
           >
             <DropdownMenuTrigger asChild>
-              <Button
+              <FieldChromeButton
                 type="button"
                 variant="ghost"
                 size="iconSm"
@@ -2580,9 +2732,9 @@ export function KeyFormEditor({
                 aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
-              </Button>
+              </FieldChromeButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[15rem] p-1">
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[15rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
               {URL_AUTOFILL_SCOPES.map((scope) => {
                 const selected = (field.urlAutofillScope ?? "entire-site") === scope;
                 return (
@@ -2603,7 +2755,7 @@ export function KeyFormEditor({
             onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
           >
             <DropdownMenuTrigger asChild>
-              <Button
+              <FieldChromeButton
                 type="button"
                 variant="ghost"
                 size="iconSm"
@@ -2615,12 +2767,39 @@ export function KeyFormEditor({
                 aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
-              </Button>
+              </FieldChromeButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1">
               <DropdownMenuItem onSelect={() => togglePhoneMask(field.id)}>
                 {unmaskedPhoneIds.has(field.id) ? <EnableMaskIcon className="size-4" /> : <DisableMaskIcon className="size-4" />}
                 {unmaskedPhoneIds.has(field.id) ? messages.enableMask : messages.disableMask}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : field.type === "pin" ? (
+          <DropdownMenu
+            open={isFieldMenuOpen}
+            onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
+          >
+            <DropdownMenuTrigger asChild>
+              <FieldChromeButton
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className={cn(
+                  "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
+                  section.variant === "additional" && "hover:!bg-card",
+                  isFieldMenuOpen && "!bg-white text-foreground hover:!bg-white dark:!bg-card dark:hover:!bg-card",
+                )}
+                aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
+              >
+                <GearIcon className="size-4" />
+              </FieldChromeButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[13rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
+              <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
+                {isSecretVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
+                {isSecretVisible ? visibilityLabels.hide : visibilityLabels.show}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -2630,7 +2809,7 @@ export function KeyFormEditor({
             onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
           >
             <DropdownMenuTrigger asChild>
-              <Button
+              <FieldChromeButton
                 type="button"
                 variant="ghost"
                 size="iconSm"
@@ -2642,9 +2821,9 @@ export function KeyFormEditor({
                 aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
-              </Button>
+              </FieldChromeButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1">
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
               <DropdownMenuItem onSelect={() => toggleSelectOptionsEditMode(section.id, field)}>
                 {selectOptionsEditFieldIds.has(field.id) ? (
                   <ExitSelectEditIcon className="size-4" />
@@ -2661,7 +2840,7 @@ export function KeyFormEditor({
             onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}
           >
             <DropdownMenuTrigger asChild>
-              <Button
+              <FieldChromeButton
                 type="button"
                 variant="ghost"
                 size="iconSm"
@@ -2673,9 +2852,9 @@ export function KeyFormEditor({
                 aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
               >
                 <GearIcon className="size-4" />
-              </Button>
+              </FieldChromeButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1">
+            <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
               <DropdownMenuItem onSelect={() => toggleMultilineCopy(field.id)}>
                 {disabledMultilineCopyIds.has(field.id) ? <EnableCopyIcon className="size-4" /> : <DisableCopyIcon className="size-4" />}
                 {disabledMultilineCopyIds.has(field.id) ? messages.enableFullTextCopy : messages.disableFullTextCopy}
@@ -2970,6 +3149,7 @@ export function KeyFormEditor({
     return (
       mode === "edit" &&
       (isEmptyRequiredField(field) ||
+        isInvalidCreditCardRequiredField(field) ||
         isEmptyConfiguredSectionField(section, field) ||
         isInvalidTotpField(field) ||
         isInvalidEmailField(field) ||
@@ -2984,6 +3164,14 @@ export function KeyFormEditor({
 
     if (field.type === "phone" && typeof field.value === "string") {
       return unmaskedPhoneIds.has(field.id) ? field.value : normalizePhoneValue(field.value);
+    }
+
+    if (field.type === "card" && typeof field.value === "string") {
+      return normalizeCardNumber(field.value);
+    }
+
+    if (field.type === "card-expiry" && typeof field.value === "string") {
+      return normalizeCardExpiry(field.value);
     }
 
     if (field.type === "address" && typeof field.value === "string") {
@@ -3004,7 +3192,11 @@ export function KeyFormEditor({
   function renderFloatingActions(field: DemoField) {
     if (
       mode !== "view" ||
-      (!isSecretLikeField(field) && field.type !== "url" && field.type !== "address" && field.type !== "recovery-codes")
+      (!isSecretLikeField(field) &&
+        field.type !== "pin" &&
+        field.type !== "url" &&
+        field.type !== "address" &&
+        field.type !== "recovery-codes")
     ) {
       return null;
     }
@@ -3015,19 +3207,27 @@ export function KeyFormEditor({
     const isOpen = openFieldMenuId === field.id;
 
     return (
-      <DropdownMenu open={isOpen} onOpenChange={(open) => setOpenFieldMenuId(open ? field.id : null)}>
+      <DropdownMenu
+        open={isOpen}
+        onOpenChange={(open) => {
+          setOpenFieldMenuId(open ? field.id : null);
+          if (!open) {
+            blurFieldControlFocus();
+          }
+        }}
+      >
         <DropdownMenuTrigger asChild>
-          <Button
+          <FieldChromeButton
             type="button"
             variant="outline"
             size="iconSm"
             aria-label={formatKeyFormMessage(messages.fieldSettingsAria, { fieldLabel: field.label })}
           >
             <SettingsIcon />
-          </Button>
+          </FieldChromeButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={6} className="min-w-[11rem] p-1">
-          {isSecretLikeField(field) ? (
+        <DropdownMenuContent align="end" sideOffset={6} className="min-w-[11rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
+          {isSecretLikeField(field) || field.type === "pin" ? (
             <DropdownMenuItem onSelect={() => togglePasswordVisibility(field.id)}>
               {isSecretVisible ? <HidePasswordIcon className="size-4" /> : <ShowPasswordIcon className="size-4" />}
               {isSecretVisible ? visibilityLabels.hide : visibilityLabels.show}
@@ -3055,11 +3255,12 @@ export function KeyFormEditor({
 
   function renderField(section: DemoSection, field: DemoField) {
     const canReorderField =
-      section.id === "websites" ||
+      !isCreditCardPresetSection(section.id) &&
+      (section.id === "websites" ||
       section.id === "api-access" ||
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
-      !(section.variant === "primary" && !section.title);
+      !(section.variant === "primary" && !section.title));
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
     const isPasswordGeneratorOpen = passwordGeneratorFieldId === field.id;
@@ -3071,6 +3272,9 @@ export function KeyFormEditor({
     const hasAddFieldButton = keySectionCanAddField(section, mode);
     const fieldIndex = section.fields.findIndex((item) => item.id === field.id);
     const isPhoneMaskEnabled = field.type === "phone" && !unmaskedPhoneIds.has(field.id);
+    const isCardField = field.type === "card";
+    const isCardExpiryField = field.type === "card-expiry";
+    const isPinFieldType = field.type === "pin";
     const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
     const isRecoveryCodesField = field.type === "recovery-codes";
     const isFileField = field.type === "file";
@@ -3087,6 +3291,8 @@ export function KeyFormEditor({
     const fieldValue = isSelectOptionsEditMode
       ? (selectOptionsDraft[field.id] ?? selectOptionsToDraft(field.selectOptions))
       : valueForField(section, field);
+    const fieldActions = renderActions(section, field);
+    const fieldFloatingActions = renderFloatingActions(field);
 
     return (
       <SortableField
@@ -3099,8 +3305,9 @@ export function KeyFormEditor({
         reorderable={canReorderField}
         autoFocusValue={activeValueFieldId === field.id}
         autoFocusValueRequest={activeValueFieldId === field.id ? valueFocusRequest : undefined}
-        actions={renderActions(section, field)}
-        floatingActions={renderFloatingActions(field)}
+        actions={fieldActions}
+        floatingActions={fieldFloatingActions}
+        actionsHideOnFieldHover={mode === "view" && Boolean(fieldActions) && Boolean(fieldFloatingActions)}
         isHoverLocked={openFieldMenuId === field.id}
         forceActive={isPasswordGeneratorOpen}
         isInvalid={isFieldInvalid}
@@ -3108,19 +3315,43 @@ export function KeyFormEditor({
         showBottomBorder={section.variant === "additional" && activeDrag?.type === "field"}
         hideTopBorder={section.variant === "primary" && !section.title && isFirstField && !isFieldDraggingInSection}
         hideBottomBorder={section.variant === "primary" && isLastField && !hasAddFieldButton}
-        copyValue={isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted || isFileField ? "" : copyValueForField(field)}
+        copyValue={
+          isMultilineCopyDisabled || isRecoveryCodesRevealed || isRecoveryCodesExhausted || isFileField
+            ? ""
+            : copyValueForField(field)
+        }
         copyLabel={isWebsiteField ? messages.openWebsite : undefined}
         copySuccessLabel={isWebsiteField ? null : messages.copied}
         statusOverlayLabel={isRecoveryCodesExhausted ? messages.allCodesUsed : undefined}
         messages={messages}
-        concealValue={shouldConcealSecretField(field, isSecretVisible, isPasswordGeneratorOpen)}
+        concealValue={
+          isPinFieldType
+            ? shouldConcealPinField(field, isSecretVisible)
+            : shouldConcealSecretField(field, isSecretVisible, isPasswordGeneratorOpen)
+        }
+        concealedPinDots={
+          isPinFieldType && typeof field.value === "string" ? concealedPinValue(field.value.length) : undefined
+        }
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
+        cardValue={isCardField}
+        cardExpiryValue={isCardExpiryField}
+        pinValue={isPinFieldType}
         recoveryCodesValue={isRecoveryCodesField}
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={isFileField}
         onFileUpload={handleKeyFieldFileUpload}
-        transformValueInput={isPhoneMaskEnabled ? formatMaskedPhoneInput : undefined}
+        transformValueInput={
+          isCardField
+            ? formatCardNumberInput
+            : isCardExpiryField
+              ? formatCardExpiryInput
+              : isPinFieldType
+                ? formatPinInput
+                : isPhoneMaskEnabled
+                  ? formatMaskedPhoneInput
+                  : undefined
+        }
         onCopyAction={
           isRecoveryCodesField
             ? (value) => copyRecoveryCode(section.id, field, value)
@@ -3154,6 +3385,7 @@ export function KeyFormEditor({
     const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
     const isMultiLineSecret = field.type === "secret" && getSecretKind(field) === "multi-line";
     const isSecretVisible = visiblePasswordIds.has(field.id);
+    const isPinFieldType = field.type === "pin";
 
     return (
       <KeyField
@@ -3183,6 +3415,9 @@ export function KeyFormEditor({
         secretMultilineValue={isMultiLineSecret}
         dateValue={field.type === "date"}
         addressValue={field.type === "address"}
+        cardValue={field.type === "card"}
+        cardExpiryValue={field.type === "card-expiry"}
+        pinValue={isPinFieldType}
         recoveryCodesValue={isRecoveryCodesField}
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={field.type === "file"}
@@ -3196,18 +3431,17 @@ export function KeyFormEditor({
         valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
         datePickerLocale={datePickerLocale}
         reorderable
-        meta={
-          field.type === "recovery-codes" ||
-          field.type === "totp" ||
-          field.type === "file" ||
-          field.type === "select" ||
-          isSecretLikeField(field)
-            ? null
-            : metaForField(field.type, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)
-        }
+        meta={metaForKeyField(field, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)}
         actions={renderActions(section, field)}
         isInvalid={isInvalidField(section, field)}
-        concealValue={shouldConcealSecretField(field, isSecretVisible, false)}
+        concealValue={
+          isPinFieldType
+            ? shouldConcealPinField(field, isSecretVisible)
+            : shouldConcealSecretField(field, isSecretVisible, false)
+        }
+        concealedValue={
+          isPinFieldType && typeof fieldValue === "string" ? concealedPinValue(fieldValue.length) : undefined
+        }
         className={cn(
           !isDraggedField && section.variant === "primary" && "border-x-transparent",
           !isDraggedField &&

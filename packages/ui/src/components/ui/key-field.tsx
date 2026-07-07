@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Locale } from "date-fns";
 
+import type { KeyFieldValueTransformContext } from "../../lib/key-field-value-transform.js";
 import { cn } from "../../lib/utils.js";
 import {
   keyFormFieldSurfaceErrorRingClassName,
@@ -38,11 +39,7 @@ import {
 
 export type KeyFormMode = "view" | "edit";
 
-export type KeyFieldValueTransformContext = {
-  previousValue: string;
-  selectionStart: number | null;
-  inputType?: string;
-};
+export type { KeyFieldValueTransformContext } from "../../lib/key-field-value-transform.js";
 
 export type KeyFieldTypeOption = {
   id: string;
@@ -173,6 +170,9 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   dateValue?: boolean;
   addressValue?: boolean;
   recoveryCodesValue?: boolean;
+  cardValue?: boolean;
+  cardExpiryValue?: boolean;
+  pinValue?: boolean;
   recoveryCodesRevealed?: boolean;
   fileValue?: boolean;
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
@@ -205,6 +205,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   statusOverlayLabel?: string;
   floatingActions?: React.ReactNode;
   isHoverLocked?: boolean;
+  /** Hides the actions column on field hover so floating controls stay clickable. */
+  actionsHideOnFieldHover?: boolean;
   forceActive?: boolean;
   isInvalid?: boolean;
   fieldOverlay?: React.ReactNode;
@@ -246,6 +248,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       dateValue = false,
       addressValue = false,
       recoveryCodesValue = false,
+      cardValue = false,
+      cardExpiryValue = false,
+      pinValue = false,
       recoveryCodesRevealed = false,
       fileValue = false,
       fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
@@ -275,6 +280,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       statusOverlayLabel,
       floatingActions,
       isHoverLocked = false,
+      actionsHideOnFieldHover = false,
       forceActive = false,
       isInvalid = false,
       fieldOverlay,
@@ -351,6 +357,13 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyText.length > 0 &&
       !fileValue &&
       !(recoveryCodesValue && recoveryCodesRevealed);
+    const hasValueOverlay = canCopyValue || canOpenFileValue || canShowStatusOverlay;
+    const actionsWrapperClassName = cn(
+      "relative z-30 flex shrink-0 items-center gap-1",
+      actionsHideOnFieldHover &&
+        "transition-opacity group-hover/key-field:invisible group-hover/key-field:pointer-events-none group-hover/key-field:opacity-0",
+      actionsHideOnFieldHover && isHoverLocked && "invisible pointer-events-none opacity-0",
+    );
     const [isCopied, setIsCopied] = React.useState(false);
     const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const showCopySuccess = isCopied && copySuccessLabel != null;
@@ -792,8 +805,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           keyFormFieldSurfaceTransitionClassName,
           surfaceRounding && keyFieldSurfaceRoundingClassName(surfaceRounding),
           fieldOverlay && "relative",
-          (canCopyValue || canOpenFileValue || canShowStatusOverlay || floatingActions) && "relative",
-          (canCopyValue || canOpenFileValue || canShowStatusOverlay) && [
+          hasValueOverlay && "relative",
+          hasValueOverlay && [
             "overflow-visible",
             "group-hover/key-field:z-20",
             isHoverLocked && "z-20",
@@ -879,7 +892,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {floatingActions ? (
           <div
             className={cn(
-              "pointer-events-none absolute right-4 top-1/2 z-20 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity",
+              "pointer-events-none absolute right-4 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity",
               "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
               isHoverLocked && "pointer-events-auto opacity-100",
             )}
@@ -946,6 +959,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 "relative min-w-0 flex-1 text-sm leading-5 text-foreground",
                 fileValue ? "min-h-20" : "min-h-5",
                 mode === "view" && !canEditValue && !addressValue && !recoveryCodesValue && !fileValue && "break-all",
+                mode === "view" && canCopyValue && "select-none",
                 valueClassName,
               )}
             >
@@ -1058,6 +1072,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       onValueFocus?.();
                     }}
                     onBlur={handleValueControlBlur}
+                    inputMode={cardValue || cardExpiryValue || pinValue ? "numeric" : undefined}
+                    maxLength={pinValue ? 3 : undefined}
                     {...(passwordGeneratorTrigger ? { "data-password-generator-trigger": true } : {})}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
@@ -1094,7 +1110,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         </div>
 
         {canEditValue && parsedFileValue && fileValue ? (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className={actionsWrapperClassName}>
             <Button
               type="button"
               variant="outline"
@@ -1108,7 +1124,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             {actions}
           </div>
         ) : actions ? (
-          <div className="flex shrink-0 items-center gap-1">{actions}</div>
+          <div className={actionsWrapperClassName}>{actions}</div>
         ) : null}
         {fileLightboxOpen && parsedFileValue && isKeyFieldFileImageMimeType(parsedFileValue.mimeType) ? (
           <KeyFieldFileLightbox file={parsedFileValue} onClose={() => setFileLightboxOpen(false)} />
