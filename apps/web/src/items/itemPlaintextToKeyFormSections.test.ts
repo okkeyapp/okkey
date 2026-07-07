@@ -268,6 +268,27 @@ describe("itemPlaintextToKeyFormSections database", () => {
   });
 });
 
+describe("itemPlaintextToKeyFormSections wifi_router", () => {
+  it("includes all preset fields for new wifi-router defaults", () => {
+    const defaults = getDefaultSectionsForCategory("wifi_router", messages);
+    const fieldIds = defaults[0]?.fields.map((field) => field.id) ?? [];
+
+    expect(fieldIds).toEqual([
+      "wifi-station-name",
+      "wifi-station-password",
+      "wifi-server-ip",
+      "wifi-airport-id",
+      "wifi-network-name",
+      "wifi-network-security",
+      "wifi-network-password",
+      "wifi-connected-storage-password",
+    ]);
+    expect(defaults[0]?.fields.every((field) => field.deletable && field.editableLabel)).toBe(true);
+    expect(defaults[0]?.fields.find((field) => field.id === "wifi-network-security")?.selectOptions?.length).toBe(7);
+    expect(defaults[0]?.fields.find((field) => field.id === "wifi-network-password")?.secretKind).toBe("password");
+  });
+});
+
 describe("itemPlaintextToKeyFormSections all categories", () => {
   it("hides empty fields in card view but keeps them for edit in any section", () => {
     const sections = [

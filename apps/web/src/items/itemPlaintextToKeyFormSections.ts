@@ -8,9 +8,11 @@ import {
   DATABASE_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
   SERVER_SECTION_ID,
+  WIFI_ROUTER_SECTION_ID,
   enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
   getAllDatabasePresetFields,
+  getAllWifiRouterPresetFields,
   getDefaultSectionsForCategory,
 } from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
@@ -87,6 +89,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   websites: "Websites",
   [API_ACCESS_SECTION_ID]: "API Access",
   [DATABASE_SECTION_ID]: "Database",
+  [WIFI_ROUTER_SECTION_ID]: "Wi‑Fi router",
   [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
 };
 
@@ -133,7 +136,7 @@ function isFieldDeletable(
     return true;
   }
 
-  if (sectionId === DATABASE_SECTION_ID) {
+  if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return sectionFields.length > 1;
   }
 
@@ -169,7 +172,7 @@ function isFieldLabelEditable(
     return field.id !== "api-name" && field.id !== "api-credentials";
   }
 
-  if (sectionId === DATABASE_SECTION_ID) {
+  if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return true;
   }
 
@@ -198,7 +201,7 @@ function isFieldRequired(
     return true;
   }
 
-  if (sectionId === DATABASE_SECTION_ID) {
+  if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return false;
   }
 
@@ -502,6 +505,73 @@ function mergeServerPresetSections(
   return [...mergedPreset, ...additional];
 }
 
+function mergeWifiRouterPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  const isPasswordSecret =
+    presetField.id === "wifi-station-password" ||
+    presetField.id === "wifi-network-password" ||
+    presetField.id === "wifi-connected-storage-password";
+
+  return enrichCategoryPresetSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      deletable: true,
+      editableLabel: true,
+      required: false,
+      ...(isPasswordSecret ? { type: "secret" as const, secretKind: "password" as const, secret: true } : {}),
+    },
+    messages,
+  );
+}
+
+function mergeWifiRouterPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("wifi_router", messages);
+  const defaultSection = defaults[0];
+  if (!defaultSection) {
+    return loaded;
+  }
+
+  const allPresetFields = getAllWifiRouterPresetFields(messages);
+  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
+  if (!loadedSection) {
+    return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
+  }
+
+  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
+  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
+  const mergedFields: KeyFormEditorField[] = [];
+
+  for (const presetField of allPresetFields) {
+    const loadedField = loadedById.get(presetField.id);
+    if (loadedField) {
+      mergedFields.push(mergeWifiRouterPresetField(presetField, loadedField, messages));
+    }
+  }
+
+  for (const loadedField of loadedSection.fields) {
+    if (!presetFieldDefaults.has(loadedField.id)) {
+      mergedFields.push(enrichCategoryPresetSelectField(loadedField, messages));
+    }
+  }
+
+  const additional = loaded.filter((section) => section.id !== defaultSection.id);
+  return [
+    {
+      ...defaultSection,
+      ...loadedSection,
+      fields: mergedFields,
+    },
+    ...additional,
+  ];
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -590,6 +660,10 @@ export function itemPlaintextToKeyFormSections(
 
   if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "server") {
     return mergeServerPresetSections(sections, messages);
+  }
+
+  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "wifi_router") {
+    return mergeWifiRouterPresetSections(sections, messages);
   }
 
   return sections;

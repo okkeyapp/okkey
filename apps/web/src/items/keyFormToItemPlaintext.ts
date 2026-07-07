@@ -17,6 +17,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   websites: "Websites",
   "api-access": "API Access",
   database: "Database",
+  "wifi-router": "Wi‑Fi router",
   "admin-console": "Admin console",
 };
 

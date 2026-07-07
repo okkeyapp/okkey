@@ -1,5 +1,7 @@
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
-import { DATABASE_SECTION_ID, SERVER_SECTION_ID } from "../components/items/itemCategoryDefaultSections";
+import {
+  WIFI_ROUTER_SECTION_ID,
+} from "../components/items/itemCategoryDefaultSections";
 import { isKeyFormFieldFilled } from "./keyFormFilledFields";
 
 export type NewItemFormValidationIssue =
@@ -24,7 +26,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database" || categoryId === "server") {
+  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router") {
     return true;
   }
 
@@ -49,41 +51,23 @@ function appendUnconfiguredFormIssues(
   }
 }
 
-function appendDatabaseSectionIssues(
+function appendFlexiblePresetSectionIssues(
+  sectionId: string,
   sections: readonly KeyFormEditorSection[],
   issues: NewItemFormValidationIssue[],
 ): void {
-  const databaseSection = sections.find((section) => section.id === DATABASE_SECTION_ID);
-  if (!databaseSection || databaseSection.fields.length === 0) {
+  const section = sections.find((candidate) => candidate.id === sectionId);
+  if (!section || section.fields.length === 0) {
     return;
   }
 
-  const hasFilledField = databaseSection.fields.some((field) => !isFieldValueEmpty(field));
+  const hasFilledField = section.fields.some((field) => !isFieldValueEmpty(field));
   if (hasFilledField) {
     return;
   }
 
-  for (const field of databaseSection.fields) {
-    issues.push({ kind: "field", fieldId: field.id, sectionId: databaseSection.id });
-  }
-}
-
-function appendServerSectionIssues(
-  sections: readonly KeyFormEditorSection[],
-  issues: NewItemFormValidationIssue[],
-): void {
-  const serverSection = sections.find((section) => section.id === SERVER_SECTION_ID);
-  if (!serverSection || serverSection.fields.length === 0) {
-    return;
-  }
-
-  const hasFilledField = serverSection.fields.some((field) => !isFieldValueEmpty(field));
-  if (hasFilledField) {
-    return;
-  }
-
-  for (const field of serverSection.fields) {
-    issues.push({ kind: "field", fieldId: field.id, sectionId: serverSection.id });
+  for (const field of section.fields) {
+    issues.push({ kind: "field", fieldId: field.id, sectionId: section.id });
   }
 }
 
@@ -115,9 +99,11 @@ export function validateNewItemForm(input: {
   }
 
   if (input.categoryId === "database") {
-    appendDatabaseSectionIssues(input.sections ?? [], issues);
+    appendFlexiblePresetSectionIssues("database", input.sections ?? [], issues);
   } else if (input.categoryId === "server") {
-    appendServerSectionIssues(input.sections ?? [], issues);
+    appendFlexiblePresetSectionIssues("server", input.sections ?? [], issues);
+  } else if (input.categoryId === "wifi_router") {
+    appendFlexiblePresetSectionIssues(WIFI_ROUTER_SECTION_ID, input.sections ?? [], issues);
   } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }

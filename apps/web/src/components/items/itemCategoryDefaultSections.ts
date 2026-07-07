@@ -6,6 +6,17 @@ export const API_ACCESS_SECTION_ID = "api-access";
 export const DATABASE_SECTION_ID = "database";
 export const SERVER_SECTION_ID = "server";
 export const SERVER_ADMIN_CONSOLE_SECTION_ID = "admin-console";
+export const WIFI_ROUTER_SECTION_ID = "wifi-router";
+
+const FLEXIBLE_PRESET_PRIMARY_SECTION_IDS = [
+  DATABASE_SECTION_ID,
+  SERVER_SECTION_ID,
+  WIFI_ROUTER_SECTION_ID,
+] as const;
+
+export function isFlexiblePresetPrimarySection(sectionId: string): boolean {
+  return (FLEXIBLE_PRESET_PRIMARY_SECTION_IDS as readonly string[]).includes(sectionId);
+}
 
 export function getApiAccessTypeSelectOptions(messages: KeyFormEditorMessages): KeyFormSelectOption[] {
   return [
@@ -334,6 +345,109 @@ export function getAllServerPresetFields(messages: KeyFormEditorMessages): KeyFo
   return getServerDefaultSections(messages).flatMap((section) => section.fields);
 }
 
+export function getWifiRouterSecuritySelectOptions(messages: KeyFormEditorMessages): KeyFormSelectOption[] {
+  return [
+    { value: "wep", label: messages.wifiSecurityOptions.wep },
+    { value: "wpa", label: messages.wifiSecurityOptions.wpa },
+    { value: "wpa2-enterprise", label: messages.wifiSecurityOptions.wpa2Enterprise },
+    { value: "wpa2-personal", label: messages.wifiSecurityOptions.wpa2Personal },
+    { value: "wpa3-enterprise", label: messages.wifiSecurityOptions.wpa3Enterprise },
+    { value: "wpa3-personal", label: messages.wifiSecurityOptions.wpa3Personal },
+    { value: "none", label: messages.wifiSecurityOptions.none },
+  ];
+}
+
+function getWifiRouterDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  const securitySelectOptions = getWifiRouterSecuritySelectOptions(messages);
+
+  return [
+    {
+      id: WIFI_ROUTER_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "wifi-station-name",
+          type: "text",
+          label: messages.fieldLabels.wifiStationName,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-station-password",
+          type: "secret",
+          label: messages.fieldLabels.wifiStationPassword,
+          value: "",
+          copyValue: "",
+          secretKind: "password",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-server-ip",
+          type: "text",
+          label: messages.fieldLabels.wifiServerIp,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-airport-id",
+          type: "text",
+          label: messages.fieldLabels.wifiAirportId,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-network-name",
+          type: "text",
+          label: messages.fieldLabels.wifiNetworkName,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-network-security",
+          type: "select",
+          label: messages.fieldLabels.wifiNetworkSecurity,
+          value: "",
+          selectOptions: securitySelectOptions,
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-network-password",
+          type: "secret",
+          label: messages.fieldLabels.wifiNetworkPassword,
+          value: "",
+          copyValue: "",
+          secretKind: "password",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "wifi-connected-storage-password",
+          type: "secret",
+          label: messages.fieldLabels.wifiConnectedStoragePassword,
+          value: "",
+          copyValue: "",
+          secretKind: "password",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllWifiRouterPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getWifiRouterDefaultSections(messages)[0]?.fields ?? [];
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -352,6 +466,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "server") {
     return getServerDefaultSections(messages);
+  }
+
+  if (categoryId === "wifi_router") {
+    return getWifiRouterDefaultSections(messages);
   }
 
   return [];
@@ -393,9 +511,30 @@ export function enrichDatabaseSelectField(
   };
 }
 
+export function enrichWifiRouterSelectField(
+  field: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  if (field.type !== "select" || field.id !== "wifi-network-security") {
+    return field;
+  }
+
+  if (field.selectOptions && field.selectOptions.length > 0) {
+    return field;
+  }
+
+  return {
+    ...field,
+    selectOptions: getWifiRouterSecuritySelectOptions(messages),
+  };
+}
+
 export function enrichCategoryPresetSelectField(
   field: KeyFormEditorField,
   messages: KeyFormEditorMessages,
 ): KeyFormEditorField {
-  return enrichDatabaseSelectField(enrichApiAccessSelectField(field, messages), messages);
+  return enrichWifiRouterSelectField(
+    enrichDatabaseSelectField(enrichApiAccessSelectField(field, messages), messages),
+    messages,
+  );
 }

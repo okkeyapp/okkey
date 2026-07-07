@@ -142,3 +142,51 @@ describe("validateNewItemForm database", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("validateNewItemForm wifi_router", () => {
+  const baseInput = {
+    recordName: "Home router",
+    vaultId: "vault-1",
+    categoryId: "wifi_router" as const,
+  };
+
+  it("requires at least one filled field in the wifi-router section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "wifi-router",
+          variant: "primary" as const,
+          fields: [
+            { id: "wifi-network-name", type: "text", label: "Network", value: "" },
+            { id: "wifi-network-password", type: "secret", label: "Password", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "wifi-network-name", sectionId: "wifi-router" },
+      { kind: "field", fieldId: "wifi-network-password", sectionId: "wifi-router" },
+    ]);
+  });
+
+  it("passes when at least one wifi-router field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "wifi-router",
+          variant: "primary" as const,
+          fields: [
+            { id: "wifi-network-name", type: "text", label: "Network", value: "Home Wi‑Fi" },
+            { id: "wifi-network-password", type: "secret", label: "Password", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});

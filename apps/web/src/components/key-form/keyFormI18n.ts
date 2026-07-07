@@ -82,6 +82,15 @@ export type KeyFormEditorMessages = {
     clickhouse: string;
     other: string;
   };
+  wifiSecurityOptions: {
+    wep: string;
+    wpa: string;
+    wpa2Enterprise: string;
+    wpa2Personal: string;
+    wpa3Enterprise: string;
+    wpa3Personal: string;
+    none: string;
+  };
   urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
     street: string;
@@ -149,6 +158,14 @@ const KEY_FORM_EXTRA_FIELD_KEYS = [
   "adminConsoleUrl",
   "adminConsoleLogin",
   "adminConsolePassword",
+  "wifiStationName",
+  "wifiStationPassword",
+  "wifiServerIp",
+  "wifiAirportId",
+  "wifiNetworkName",
+  "wifiNetworkSecurity",
+  "wifiNetworkPassword",
+  "wifiConnectedStoragePassword",
   "select",
 ] as const;
 
@@ -250,6 +267,15 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
       snowflake: t("web.keyForm.dbType.snowflake"),
       clickhouse: t("web.keyForm.dbType.clickhouse"),
       other: t("web.keyForm.dbType.other"),
+    },
+    wifiSecurityOptions: {
+      wep: t("web.keyForm.wifiSecurity.wep"),
+      wpa: t("web.keyForm.wifiSecurity.wpa"),
+      wpa2Enterprise: t("web.keyForm.wifiSecurity.wpa2Enterprise"),
+      wpa2Personal: t("web.keyForm.wifiSecurity.wpa2Personal"),
+      wpa3Enterprise: t("web.keyForm.wifiSecurity.wpa3Enterprise"),
+      wpa3Personal: t("web.keyForm.wifiSecurity.wpa3Personal"),
+      none: t("web.keyForm.wifiSecurity.none"),
     },
     urlAutofillScope: {
       "entire-site": t("web.keyForm.urlAutofill.entireSite"),
