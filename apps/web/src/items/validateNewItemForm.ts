@@ -1,5 +1,5 @@
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
-import { DATABASE_SECTION_ID } from "../components/items/itemCategoryDefaultSections";
+import { DATABASE_SECTION_ID, SERVER_SECTION_ID } from "../components/items/itemCategoryDefaultSections";
 import { isKeyFormFieldFilled } from "./keyFormFilledFields";
 
 export type NewItemFormValidationIssue =
@@ -24,7 +24,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database") {
+  if (categoryId === "database" || categoryId === "server") {
     return true;
   }
 
@@ -68,6 +68,25 @@ function appendDatabaseSectionIssues(
   }
 }
 
+function appendServerSectionIssues(
+  sections: readonly KeyFormEditorSection[],
+  issues: NewItemFormValidationIssue[],
+): void {
+  const serverSection = sections.find((section) => section.id === SERVER_SECTION_ID);
+  if (!serverSection || serverSection.fields.length === 0) {
+    return;
+  }
+
+  const hasFilledField = serverSection.fields.some((field) => !isFieldValueEmpty(field));
+  if (hasFilledField) {
+    return;
+  }
+
+  for (const field of serverSection.fields) {
+    issues.push({ kind: "field", fieldId: field.id, sectionId: serverSection.id });
+  }
+}
+
 export function validateNewItemForm(input: {
   recordName: string;
   vaultId: string;
@@ -97,6 +116,8 @@ export function validateNewItemForm(input: {
 
   if (input.categoryId === "database") {
     appendDatabaseSectionIssues(input.sections ?? [], issues);
+  } else if (input.categoryId === "server") {
+    appendServerSectionIssues(input.sections ?? [], issues);
   } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }

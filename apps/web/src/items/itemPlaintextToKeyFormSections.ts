@@ -6,6 +6,8 @@ import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
 import {
   API_ACCESS_SECTION_ID,
   DATABASE_SECTION_ID,
+  SERVER_ADMIN_CONSOLE_SECTION_ID,
+  SERVER_SECTION_ID,
   enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
   getAllDatabasePresetFields,
@@ -85,6 +87,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   websites: "Websites",
   [API_ACCESS_SECTION_ID]: "API Access",
   [DATABASE_SECTION_ID]: "Database",
+  [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
 };
 
 function sectionTitleForForm(section: { id: string; title?: string; isPreset?: boolean } | undefined): string | undefined {
@@ -134,6 +137,14 @@ function isFieldDeletable(
     return sectionFields.length > 1;
   }
 
+  if (sectionId === SERVER_SECTION_ID) {
+    return sectionFields.length > 1;
+  }
+
+  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID) {
+    return true;
+  }
+
   if (sectionId === "websites" && type === "url") {
     return sectionFields.filter((candidate) => formFieldType(candidate) === "url").length > 1;
   }
@@ -162,6 +173,10 @@ function isFieldLabelEditable(
     return true;
   }
 
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID) {
+    return true;
+  }
+
   return false;
 }
 
@@ -184,6 +199,10 @@ function isFieldRequired(
   }
 
   if (sectionId === DATABASE_SECTION_ID) {
+    return false;
+  }
+
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID) {
     return false;
   }
 
@@ -422,6 +441,67 @@ function mergeDatabasePresetSections(
   ];
 }
 
+function mergeServerPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+): KeyFormEditorField {
+  return {
+    ...presetField,
+    ...loadedField,
+    deletable: true,
+    editableLabel: true,
+    required: false,
+    ...(presetField.id === "server-password" || presetField.id === "admin-console-password"
+      ? { type: "secret" as const, secretKind: "password" as const, secret: true }
+      : {}),
+  };
+}
+
+function mergeServerPresetSection(
+  defaultSection: KeyFormEditorSection,
+  loaded: KeyFormEditorSection[],
+): KeyFormEditorSection {
+  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
+  if (!loadedSection) {
+    return defaultSection;
+  }
+
+  const presetFieldDefaults = new Map(defaultSection.fields.map((field) => [field.id, field]));
+  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
+  const mergedFields: KeyFormEditorField[] = [];
+
+  for (const presetField of defaultSection.fields) {
+    const loadedField = loadedById.get(presetField.id);
+    if (loadedField) {
+      mergedFields.push(mergeServerPresetField(presetField, loadedField));
+    }
+  }
+
+  for (const loadedField of loadedSection.fields) {
+    if (!presetFieldDefaults.has(loadedField.id)) {
+      mergedFields.push(loadedField);
+    }
+  }
+
+  return {
+    ...defaultSection,
+    ...loadedSection,
+    title: defaultSection.title ?? loadedSection.title,
+    fields: mergedFields,
+  };
+}
+
+function mergeServerPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("server", messages);
+  const defaultIds = new Set(defaults.map((section) => section.id));
+  const mergedPreset = defaults.map((defaultSection) => mergeServerPresetSection(defaultSection, loaded));
+  const additional = loaded.filter((section) => !defaultIds.has(section.id));
+  return [...mergedPreset, ...additional];
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -506,6 +586,10 @@ export function itemPlaintextToKeyFormSections(
 
   if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "database") {
     return mergeDatabasePresetSections(sections, messages);
+  }
+
+  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "server") {
+    return mergeServerPresetSections(sections, messages);
   }
 
   return sections;

@@ -17,6 +17,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   websites: "Websites",
   "api-access": "API Access",
   database: "Database",
+  "admin-console": "Admin console",
 };
 
 function wireFieldType(field: KeyFormEditorField): string {

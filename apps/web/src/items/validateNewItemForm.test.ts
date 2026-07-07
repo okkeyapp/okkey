@@ -47,6 +47,54 @@ describe("validateNewItemForm unconfigured", () => {
   });
 });
 
+describe("validateNewItemForm server", () => {
+  const baseInput = {
+    recordName: "Prod server",
+    vaultId: "vault-1",
+    categoryId: "server" as const,
+  };
+
+  it("requires at least one filled field in the server section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "server",
+          variant: "primary" as const,
+          fields: [
+            { id: "server-url", type: "text", label: "URL", value: "" },
+            { id: "server-login", type: "text", label: "Login", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "server-url", sectionId: "server" },
+      { kind: "field", fieldId: "server-login", sectionId: "server" },
+    ]);
+  });
+
+  it("passes when at least one server field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "server",
+          variant: "primary" as const,
+          fields: [
+            { id: "server-url", type: "text", label: "URL", value: "server.example.com" },
+            { id: "server-login", type: "text", label: "Login", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("validateNewItemForm database", () => {
   const baseInput = {
     recordName: "Prod DB",

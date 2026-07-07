@@ -58,6 +58,9 @@ export type KeyFormEditorMessages = {
   crackTimeLabels: Record<CrackTimeLabelKey, string>;
   fieldLabels: Record<string, string>;
   fieldPlaceholders: Record<string, string>;
+  sectionTitles: {
+    adminConsole: string;
+  };
   apiTypeOptions: {
     loginJson: string;
     jwt: string;
@@ -139,6 +142,12 @@ const KEY_FORM_EXTRA_FIELD_KEYS = [
   "dbSid",
   "dbAlias",
   "dbConnectionParams",
+  "serverUrl",
+  "serverLogin",
+  "serverPassword",
+  "adminConsoleUrl",
+  "adminConsoleLogin",
+  "adminConsolePassword",
   "select",
 ] as const;
 
@@ -217,6 +226,9 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     },
     fieldLabels,
     fieldPlaceholders,
+    sectionTitles: {
+      adminConsole: t("web.keyForm.sectionTitles.adminConsole"),
+    },
     apiTypeOptions: {
       loginJson: t("web.keyForm.apiType.loginJson"),
       jwt: t("web.keyForm.apiType.jwt"),

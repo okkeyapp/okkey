@@ -86,6 +86,11 @@ import {
   shouldOpenGeneratorOnFocus,
   showSecretLabelKey,
 } from "./keyFormSecretField";
+import {
+  DATABASE_SECTION_ID,
+  SERVER_ADMIN_CONSOLE_SECTION_ID,
+  SERVER_SECTION_ID,
+} from "../items/itemCategoryDefaultSections";
 
 export type { KeyFormUrlAutofillScope } from "./keyFormI18n";
 
@@ -150,6 +155,26 @@ function fieldValuePlaceholderKey(field: Pick<DemoField, "id" | "type">): string
   }
   if (field.id === "password") {
     return "password";
+  }
+  if (
+    field.id === "server-url" ||
+    field.id === "server-login" ||
+    field.id === "server-password" ||
+    field.id === "admin-console-url" ||
+    field.id === "admin-console-login" ||
+    field.id === "admin-console-password"
+  ) {
+    return field.id === "server-url"
+      ? "serverUrl"
+      : field.id === "server-login"
+        ? "serverLogin"
+        : field.id === "server-password"
+          ? "serverPassword"
+          : field.id === "admin-console-url"
+            ? "adminConsoleUrl"
+            : field.id === "admin-console-login"
+              ? "adminConsoleLogin"
+              : "adminConsolePassword";
   }
   if (field.type === "select") {
     return "select";
@@ -660,7 +685,7 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     }
   }
 
-  if (section.id === "database") {
+  if (section.id === DATABASE_SECTION_ID || section.id === SERVER_SECTION_ID) {
     return section.fields.length > 1;
   }
 
@@ -684,7 +709,7 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
     return true;
   }
 
-  if (section.id === "database") {
+  if (section.id === DATABASE_SECTION_ID || section.id === SERVER_SECTION_ID) {
     return true;
   }
 
@@ -2888,8 +2913,12 @@ export function KeyFormEditor({
     return !isValidKeyFieldDateValue(field.value);
   }
 
-  function isEmptyDatabaseSectionField(section: DemoSection, field: DemoField): boolean {
-    if (!showValidation || section.id !== "database") {
+  function isEmptyConfiguredSectionField(section: DemoSection, field: DemoField): boolean {
+    if (!showValidation) {
+      return false;
+    }
+
+    if (section.id !== DATABASE_SECTION_ID && section.id !== SERVER_SECTION_ID) {
       return false;
     }
 
@@ -2917,7 +2946,7 @@ export function KeyFormEditor({
     return (
       mode === "edit" &&
       (isEmptyRequiredField(field) ||
-        isEmptyDatabaseSectionField(section, field) ||
+        isEmptyConfiguredSectionField(section, field) ||
         isInvalidTotpField(field) ||
         isInvalidEmailField(field) ||
         isInvalidDateField(field))
@@ -3004,7 +3033,9 @@ export function KeyFormEditor({
     const canReorderField =
       section.id === "websites" ||
       section.id === "api-access" ||
-      section.id === "database" ||
+      section.id === DATABASE_SECTION_ID ||
+      section.id === SERVER_SECTION_ID ||
+      section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
       !(section.variant === "primary" && !section.title);
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
@@ -3226,7 +3257,9 @@ export function KeyFormEditor({
           className="rounded-xl shadow-lg"
           style={activeDrag.width ? { width: activeDrag.width } : undefined}
         >
-          {section.fields.map((field, fieldIndex) => renderFieldPreview(section, field, false, fieldIndex))}
+          {section.fields.map((field, fieldIndex) => (
+            <div key={field.id}>{renderFieldPreview(section, field, false, fieldIndex)}</div>
+          ))}
         </KeySection>
       );
     }
@@ -3262,7 +3295,7 @@ export function KeyFormEditor({
                   ? urlFieldTypes
                   : section.id === "api-access"
                     ? fieldTypes
-                    : section.id === "database"
+                    : section.id === DATABASE_SECTION_ID || section.id === SERVER_SECTION_ID
                       ? fieldTypes
                       : section.id === "credentials" && !hasTotpField
                       ? totpFieldTypes
@@ -3278,7 +3311,8 @@ export function KeyFormEditor({
                 ? (type: KeyFieldTypeOption) => addField(section.id, type)
                 : section.id === "websites" ||
                     section.id === "api-access" ||
-                    section.id === "database" ||
+                    section.id === DATABASE_SECTION_ID ||
+                    section.id === SERVER_SECTION_ID ||
                     (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)
                   : undefined;

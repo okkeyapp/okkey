@@ -4,6 +4,8 @@ import type { ItemCategoryId } from "./itemCategoryCatalog";
 
 export const API_ACCESS_SECTION_ID = "api-access";
 export const DATABASE_SECTION_ID = "database";
+export const SERVER_SECTION_ID = "server";
+export const SERVER_ADMIN_CONSOLE_SECTION_ID = "admin-console";
 
 export function getApiAccessTypeSelectOptions(messages: KeyFormEditorMessages): KeyFormSelectOption[] {
   return [
@@ -256,6 +258,82 @@ export function getAllDatabasePresetFields(messages: KeyFormEditorMessages): Key
   return getDatabaseDefaultSections(messages)[0]?.fields ?? [];
 }
 
+function getServerDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: SERVER_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "server-url",
+          type: "text",
+          label: messages.fieldLabels.serverUrl,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "server-login",
+          type: "text",
+          label: messages.fieldLabels.serverLogin,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "server-password",
+          type: "secret",
+          label: messages.fieldLabels.serverPassword,
+          value: "",
+          copyValue: "",
+          secretKind: "password",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+    {
+      id: SERVER_ADMIN_CONSOLE_SECTION_ID,
+      variant: "additional",
+      title: messages.sectionTitles.adminConsole,
+      fields: [
+        {
+          id: "admin-console-url",
+          type: "text",
+          label: messages.fieldLabels.adminConsoleUrl,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "admin-console-login",
+          type: "text",
+          label: messages.fieldLabels.adminConsoleLogin,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "admin-console-password",
+          type: "secret",
+          label: messages.fieldLabels.adminConsolePassword,
+          value: "",
+          copyValue: "",
+          secretKind: "password",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllServerPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getServerDefaultSections(messages).flatMap((section) => section.fields);
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -270,6 +348,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "database") {
     return getDatabaseDefaultSections(messages);
+  }
+
+  if (categoryId === "server") {
+    return getServerDefaultSections(messages);
   }
 
   return [];
