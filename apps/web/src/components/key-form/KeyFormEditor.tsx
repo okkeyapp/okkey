@@ -3151,7 +3151,7 @@ export function KeyFormEditor({
     return (
       mode === "edit" &&
       (isEmptyRequiredField(field) ||
-        isInvalidCreditCardRequiredField(field) ||
+        (showValidation && isInvalidCreditCardRequiredField(field)) ||
         isEmptyConfiguredSectionField(section, field) ||
         isInvalidTotpField(field) ||
         isInvalidEmailField(field) ||
