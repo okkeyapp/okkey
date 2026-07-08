@@ -264,3 +264,75 @@ describe("validateNewItemForm credit_card", () => {
     expect(result.issues).toEqual([{ kind: "field", fieldId: "card-expiry", sectionId: "credit-card" }]);
   });
 });
+
+describe("validateNewItemForm bank_account", () => {
+  const baseInput = {
+    recordName: "Main account",
+    vaultId: "vault-1",
+    categoryId: "bank_account" as const,
+  };
+
+  it("requires at least one filled field in the bank account section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "bank-account",
+          variant: "primary" as const,
+          fields: [
+            { id: "bank-name", type: "text", label: "Bank", value: "" },
+            { id: "bank-iban", type: "text", label: "IBAN", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "bank-name", sectionId: "bank-account" },
+      { kind: "field", fieldId: "bank-iban", sectionId: "bank-account" },
+    ]);
+  });
+
+  it("passes when at least one bank account field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "bank-account",
+          variant: "primary" as const,
+          fields: [
+            { id: "bank-name", type: "text", label: "Bank", value: "Example Bank" },
+            { id: "bank-iban", type: "text", label: "IBAN", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not require bank details section fields", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "bank-account",
+          variant: "primary" as const,
+          fields: [{ id: "bank-name", type: "text", label: "Bank", value: "Example Bank" }],
+        },
+        {
+          id: "bank-details",
+          variant: "additional" as const,
+          title: "Bank details",
+          fields: [
+            { id: "bank-address", type: "text", label: "Address", value: "" },
+            { id: "bank-phone", type: "phone", label: "Phone", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});

@@ -1,5 +1,6 @@
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import {
+  BANK_ACCOUNT_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
   isCreditCardRequiredFieldId,
 } from "../components/items/itemCategoryDefaultSections";
@@ -28,7 +29,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card") {
+  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account") {
     return true;
   }
 
@@ -110,6 +111,8 @@ export function validateNewItemForm(input: {
     appendFlexiblePresetSectionIssues("server", input.sections ?? [], issues);
   } else if (input.categoryId === "wifi_router") {
     appendFlexiblePresetSectionIssues(WIFI_ROUTER_SECTION_ID, input.sections ?? [], issues);
+  } else if (input.categoryId === "bank_account") {
+    appendFlexiblePresetSectionIssues(BANK_ACCOUNT_SECTION_ID, input.sections ?? [], issues);
   } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }

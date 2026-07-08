@@ -423,4 +423,148 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
       "field-2",
     ]);
   });
+
+  it("hides empty preset sections in card view", () => {
+    const sections = getDefaultSectionsForCategory("bank_account", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) =>
+        field.id === "bank-name"
+          ? { ...field, value: "Example Bank" }
+          : { ...field, value: "" },
+      ),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-bank-1",
+      vaultId: "vault-1",
+      title: "Main account",
+      categoryId: "bank_account",
+      nowMs: 1,
+    });
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+
+    expect(restoredForCard.map((section) => section.id)).toEqual(["bank-account"]);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual(["bank-name"]);
+  });
+
+  it("hides empty additional preset sections in card view", () => {
+    const sections = getDefaultSectionsForCategory("server", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) =>
+        field.id === "server-url"
+          ? { ...field, value: "server.example.com" }
+          : { ...field, value: "" },
+      ),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-server-1",
+      vaultId: "vault-1",
+      title: "Prod server",
+      categoryId: "server",
+      nowMs: 1,
+    });
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+
+    expect(restoredForCard.map((section) => section.id)).toEqual(["server"]);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual(["server-url"]);
+  });
+
+  it("preserves custom field order in preset sections", () => {
+    const sections = [
+      {
+        id: "bank-account",
+        variant: "primary" as const,
+        fields: [
+          { id: "bank-iban", type: "text" as const, label: "IBAN", value: "DE00", deletable: true, editableLabel: true },
+          { id: "bank-name", type: "text" as const, label: "Bank", value: "Example Bank", deletable: true, editableLabel: true },
+          { id: "custom-note", type: "text" as const, label: "Note", value: "VIP", deletable: true, editableLabel: true },
+        ],
+      },
+    ];
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-bank-order-1",
+      vaultId: "vault-1",
+      title: "Main account",
+      categoryId: "bank_account",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    expect(restoredForEdit[0]?.fields.map((field) => field.id)).toEqual(["bank-iban", "bank-name", "custom-note"]);
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual(["bank-iban", "bank-name", "custom-note"]);
+  });
+
+  it("preserves custom section order in preset categories", () => {
+    const sections = [
+      {
+        id: "server",
+        variant: "primary" as const,
+        fields: [
+          { id: "server-url", type: "text" as const, label: "URL", value: "server.example.com", deletable: true, editableLabel: true },
+        ],
+      },
+      {
+        id: "section-custom",
+        variant: "additional" as const,
+        title: "Custom",
+        fields: [
+          { id: "custom-field", type: "text" as const, label: "Custom", value: "value", deletable: true, editableLabel: true },
+        ],
+      },
+      {
+        id: "admin-console",
+        variant: "additional" as const,
+        title: "Admin console",
+        fields: [
+          { id: "admin-console-url", type: "text" as const, label: "Console URL", value: "admin.example.com", deletable: true, editableLabel: true },
+        ],
+      },
+    ];
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-server-order-1",
+      vaultId: "vault-1",
+      title: "Prod server",
+      categoryId: "server",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    expect(restoredForEdit.map((section) => section.id)).toEqual(["server", "section-custom", "admin-console"]);
+  });
+
+  it("preserves custom field order for unconfigured categories", () => {
+    const sections = [
+      {
+        id: "section-main",
+        variant: "primary" as const,
+        fields: [
+          { id: "field-b", type: "text" as const, label: "B", value: "beta", deletable: true, editableLabel: true },
+          { id: "field-a", type: "text" as const, label: "A", value: "alpha", deletable: true, editableLabel: true },
+        ],
+      },
+    ];
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-note-order-1",
+      vaultId: "vault-1",
+      title: "Secure note",
+      categoryId: "secure_note",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    expect(restoredForEdit[0]?.fields.map((field) => field.id)).toEqual(["field-b", "field-a"]);
+  });
 });

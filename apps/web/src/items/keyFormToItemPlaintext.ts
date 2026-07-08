@@ -20,6 +20,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   "wifi-router": "Wi‑Fi router",
   "credit-card": "Credit card",
   "admin-console": "Admin console",
+  "bank-details": "Bank details",
 };
 
 function wireFieldType(field: KeyFormEditorField): string {

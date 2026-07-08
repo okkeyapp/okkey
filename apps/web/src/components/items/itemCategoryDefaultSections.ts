@@ -8,6 +8,8 @@ export const SERVER_SECTION_ID = "server";
 export const SERVER_ADMIN_CONSOLE_SECTION_ID = "admin-console";
 export const WIFI_ROUTER_SECTION_ID = "wifi-router";
 export const CREDIT_CARD_SECTION_ID = "credit-card";
+export const BANK_ACCOUNT_SECTION_ID = "bank-account";
+export const BANK_DETAILS_SECTION_ID = "bank-details";
 
 export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
 
@@ -19,6 +21,7 @@ const FLEXIBLE_PRESET_PRIMARY_SECTION_IDS = [
   DATABASE_SECTION_ID,
   SERVER_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
+  BANK_ACCOUNT_SECTION_ID,
 ] as const;
 
 export function isFlexiblePresetPrimarySection(sectionId: string): boolean {
@@ -510,6 +513,84 @@ export function getAllCreditCardPresetFields(messages: KeyFormEditorMessages): K
   return getCreditCardDefaultSections(messages)[0]?.fields ?? [];
 }
 
+function getBankAccountDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: BANK_ACCOUNT_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "bank-name",
+          type: "text",
+          label: messages.fieldLabels.bankName,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "bank-account-holder",
+          type: "text",
+          label: messages.fieldLabels.bankAccountHolder,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "bank-account-number",
+          type: "text",
+          label: messages.fieldLabels.bankAccountNumber,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "bank-swift",
+          type: "text",
+          label: messages.fieldLabels.bankSwift,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "bank-iban",
+          type: "text",
+          label: messages.fieldLabels.bankIban,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+    {
+      id: BANK_DETAILS_SECTION_ID,
+      variant: "additional",
+      title: messages.sectionTitles.bankDetails,
+      fields: [
+        {
+          id: "bank-address",
+          type: "text",
+          label: messages.fieldLabels.bankAddress,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "bank-phone",
+          type: "phone",
+          label: messages.fieldLabels.bankPhone,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllBankAccountPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getBankAccountDefaultSections(messages).flatMap((section) => section.fields);
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -536,6 +617,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "credit_card") {
     return getCreditCardDefaultSections(messages);
+  }
+
+  if (categoryId === "bank_account") {
+    return getBankAccountDefaultSections(messages);
   }
 
   return [];

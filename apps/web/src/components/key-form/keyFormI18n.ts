@@ -63,6 +63,7 @@ export type KeyFormEditorMessages = {
   fieldPlaceholders: Record<string, string>;
   sectionTitles: {
     adminConsole: string;
+    bankDetails: string;
   };
   cardExpiryExpired: string;
   apiTypeOptions: {
@@ -136,7 +137,7 @@ export function formatKeyFormMessage(
 const KEY_FIELD_TYPE_IDS = keyFieldTypeOptions.map((type) => type.id);
 
 /** Preset credential fields not listed in {@link keyFieldTypeOptions}. */
-const KEY_FORM_EXTRA_FIELD_KEYS = [
+const KEY_FORM_EXTRA_FIELD_PLACEHOLDER_KEYS = [
   "login",
   "password",
   "apiName",
@@ -176,7 +177,24 @@ const KEY_FORM_EXTRA_FIELD_KEYS = [
   "select",
 ] as const;
 
-const KEY_FORM_FIELD_KEYS = [...KEY_FIELD_TYPE_IDS, ...KEY_FORM_EXTRA_FIELD_KEYS];
+/** Preset field labels without dedicated placeholder copy (use type-based placeholders). */
+const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
+  "bankName",
+  "bankAccountHolder",
+  "bankAccountNumber",
+  "bankSwift",
+  "bankIban",
+  "bankAddress",
+  "bankPhone",
+] as const;
+
+const KEY_FORM_LABEL_KEYS = [
+  ...KEY_FIELD_TYPE_IDS,
+  ...KEY_FORM_EXTRA_FIELD_PLACEHOLDER_KEYS,
+  ...KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS,
+];
+
+const KEY_FORM_PLACEHOLDER_KEYS = [...KEY_FIELD_TYPE_IDS, ...KEY_FORM_EXTRA_FIELD_PLACEHOLDER_KEYS];
 
 export function createLocalizedKeyFieldTypes(locale: WebLocale): KeyFieldTypeOption[] {
   return keyFieldTypeOptions.map((type) => ({
@@ -189,10 +207,10 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
   const t: Translate = (messageKey) => formatWebMessage(locale, messageKey);
   const template: Translate = (messageKey) => getWebMessagePattern(locale, messageKey);
   const fieldLabels = Object.fromEntries(
-    KEY_FORM_FIELD_KEYS.map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
+    KEY_FORM_LABEL_KEYS.map((id) => [id, t(`web.keyForm.fieldLabels.${id}`)]),
   );
   const fieldPlaceholders = Object.fromEntries(
-    KEY_FORM_FIELD_KEYS.map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
+    KEY_FORM_PLACEHOLDER_KEYS.map((id) => [id, t(`web.keyForm.fieldPlaceholders.${id}`)]),
   );
 
   return {
@@ -256,6 +274,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     fieldPlaceholders,
     sectionTitles: {
       adminConsole: t("web.keyForm.sectionTitles.adminConsole"),
+      bankDetails: t("web.keyForm.sectionTitles.bankDetails"),
     },
     cardExpiryExpired: t("web.keyForm.cardExpiryExpired"),
     apiTypeOptions: {

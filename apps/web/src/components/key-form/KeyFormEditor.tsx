@@ -98,6 +98,7 @@ import {
   showSecretLabelKey,
 } from "./keyFormSecretField";
 import {
+  BANK_DETAILS_SECTION_ID,
   isCreditCardPresetSection,
   isFlexiblePresetPrimarySection,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
@@ -3260,6 +3261,7 @@ export function KeyFormEditor({
       section.id === "api-access" ||
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
+      section.id === BANK_DETAILS_SECTION_ID ||
       !(section.variant === "primary" && !section.title));
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;

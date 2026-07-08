@@ -5,6 +5,8 @@ import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key
 import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
 import {
   API_ACCESS_SECTION_ID,
+  BANK_ACCOUNT_SECTION_ID,
+  BANK_DETAILS_SECTION_ID,
   DATABASE_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
   SERVER_SECTION_ID,
@@ -105,6 +107,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   [WIFI_ROUTER_SECTION_ID]: "Wi‑Fi router",
   [CREDIT_CARD_SECTION_ID]: "Credit card",
   [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
+  [BANK_DETAILS_SECTION_ID]: "Bank details",
 };
 
 function sectionTitleForForm(section: { id: string; title?: string; isPreset?: boolean } | undefined): string | undefined {
@@ -158,11 +161,11 @@ function isFieldDeletable(
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID) {
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID) {
+  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID) {
     return true;
   }
 
@@ -198,7 +201,7 @@ function isFieldLabelEditable(
     return true;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID) {
     return true;
   }
 
@@ -231,7 +234,7 @@ function isFieldRequired(
     return false;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID) {
     return false;
   }
 
@@ -242,75 +245,168 @@ function isFieldRequired(
   return false;
 }
 
+type MergePresetFieldFn = (
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+) => KeyFormEditorField;
+
+function mergePresetFieldsPreservingOrder(input: {
+  loadedFields: readonly KeyFormEditorField[];
+  presetFieldsById: ReadonlyMap<string, KeyFormEditorField>;
+  mergeField: MergePresetFieldFn;
+  includeMissingPresets: boolean;
+  presetFieldOrder: readonly KeyFormEditorField[];
+  isMissingPresetIncluded?: (presetField: KeyFormEditorField) => boolean;
+  enrichCustomField?: (field: KeyFormEditorField) => KeyFormEditorField;
+}): KeyFormEditorField[] {
+  const {
+    loadedFields,
+    presetFieldsById,
+    mergeField,
+    includeMissingPresets,
+    presetFieldOrder,
+    isMissingPresetIncluded = () => true,
+    enrichCustomField = (field) => field,
+  } = input;
+
+  const merged: KeyFormEditorField[] = [];
+  const seenPresetIds = new Set<string>();
+
+  for (const loadedField of loadedFields) {
+    const presetField = presetFieldsById.get(loadedField.id);
+    if (presetField) {
+      merged.push(mergeField(presetField, loadedField));
+      seenPresetIds.add(loadedField.id);
+      continue;
+    }
+    merged.push(enrichCustomField(loadedField));
+  }
+
+  if (!includeMissingPresets) {
+    return merged;
+  }
+
+  for (const presetField of presetFieldOrder) {
+    if (seenPresetIds.has(presetField.id) || !isMissingPresetIncluded(presetField)) {
+      continue;
+    }
+    merged.push(presetField);
+  }
+
+  return merged;
+}
+
+function mergePresetSectionsPreservingOrder(input: {
+  loadedSections: readonly KeyFormEditorSection[];
+  defaultSections: readonly KeyFormEditorSection[];
+  includeMissingSections: boolean;
+  mergeSection: (defaultSection: KeyFormEditorSection, loadedSection: KeyFormEditorSection) => KeyFormEditorSection;
+}): KeyFormEditorSection[] {
+  const { loadedSections, defaultSections, includeMissingSections, mergeSection } = input;
+  const defaultsById = new Map(defaultSections.map((section) => [section.id, section]));
+  const merged: KeyFormEditorSection[] = [];
+  const seenPresetSectionIds = new Set<string>();
+
+  for (const loadedSection of loadedSections) {
+    const defaultSection = defaultsById.get(loadedSection.id);
+    if (defaultSection) {
+      merged.push(mergeSection(defaultSection, loadedSection));
+      seenPresetSectionIds.add(loadedSection.id);
+      continue;
+    }
+    merged.push(loadedSection);
+  }
+
+  if (!includeMissingSections) {
+    return merged;
+  }
+
+  for (const defaultSection of defaultSections) {
+    if (seenPresetSectionIds.has(defaultSection.id)) {
+      continue;
+    }
+
+    const defaultIndex = defaultSections.findIndex((section) => section.id === defaultSection.id);
+    let insertAt = merged.length;
+
+    for (let index = defaultIndex - 1; index >= 0; index -= 1) {
+      const priorId = defaultSections[index]?.id;
+      if (priorId && seenPresetSectionIds.has(priorId)) {
+        insertAt = merged.findIndex((section) => section.id === priorId) + 1;
+        break;
+      }
+    }
+
+    if (insertAt === merged.length && defaultIndex === 0) {
+      insertAt = 0;
+    }
+
+    merged.splice(insertAt, 0, defaultSection);
+    seenPresetSectionIds.add(defaultSection.id);
+  }
+
+  return merged;
+}
+
 function mergeLoginPresetSections(
   loaded: KeyFormEditorSection[],
   messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
 ): KeyFormEditorSection[] {
   const defaults = getDefaultSectionsForCategory("login", messages);
-  const loadedById = new Map(loaded.map((section) => [section.id, section]));
 
-  const mergedPreset = defaults.map((defaultSection) => {
-    const loadedSection = loadedById.get(defaultSection.id);
-    if (!loadedSection) {
-      return defaultSection;
-    }
-
-    if (defaultSection.id === "websites") {
-      const urlFields = loadedSection.fields.filter((field) => field.type === "url");
-      if (urlFields.length === 0) {
-        return defaultSection;
-      }
-
-      return {
-        ...defaultSection,
-        ...loadedSection,
-        fields: urlFields.map((field) => ({
-          ...field,
-          required: true,
-          deletable: urlFields.length > 1,
-          editableLabel: true,
-        })),
-      };
-    }
-
-    if (defaultSection.id === "credentials") {
-      const defaultFieldsById = new Map(defaultSection.fields.map((field) => [field.id, field]));
-      const mergedFields: KeyFormEditorField[] = [];
-
-      for (const defaultField of defaultSection.fields) {
-        const loadedField = loadedSection.fields.find((field) => field.id === defaultField.id);
-        mergedFields.push(
-          loadedField
-            ? {
-                ...defaultField,
-                ...loadedField,
-                deletable: false,
-                required: true,
-                editableLabel: false,
-                secret: defaultField.id === "password" ? true : loadedField.secret,
-              }
-            : defaultField,
-        );
-      }
-
-      for (const loadedField of loadedSection.fields) {
-        if (!defaultFieldsById.has(loadedField.id)) {
-          mergedFields.push(loadedField);
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => {
+      if (defaultSection.id === "websites") {
+        const urlFields = loadedSection.fields.filter((field) => field.type === "url");
+        if (urlFields.length === 0) {
+          return includeEmptyFields ? defaultSection : { ...defaultSection, ...loadedSection, fields: [] };
         }
+
+        return {
+          ...defaultSection,
+          ...loadedSection,
+          fields: urlFields.map((field) => ({
+            ...field,
+            required: true,
+            deletable: urlFields.length > 1,
+            editableLabel: true,
+          })),
+        };
+      }
+
+      if (defaultSection.id === "credentials") {
+        const presetFieldsById = new Map(defaultSection.fields.map((field) => [field.id, field]));
+
+        return {
+          ...defaultSection,
+          ...loadedSection,
+          fields: mergePresetFieldsPreservingOrder({
+            loadedFields: loadedSection.fields,
+            presetFieldsById,
+            presetFieldOrder: defaultSection.fields,
+            includeMissingPresets: includeEmptyFields,
+            mergeField: (presetField, loadedField) => ({
+              ...presetField,
+              ...loadedField,
+              deletable: false,
+              required: true,
+              editableLabel: false,
+              secret: presetField.id === "password" ? true : loadedField.secret,
+            }),
+          }),
+        };
       }
 
       return {
         ...defaultSection,
         ...loadedSection,
-        fields: mergedFields,
       };
-    }
-
-    return loadedSection;
+    },
   });
-
-  const additional = loaded.filter((section) => !defaults.some((defaultSection) => defaultSection.id === section.id));
-  return [...mergedPreset, ...additional];
 }
 
 function isApiAccessRequiredField(fieldId: string): boolean {
@@ -356,6 +452,7 @@ function mergeApiAccessPresetField(
 function mergeApiAccessPresetSections(
   loaded: KeyFormEditorSection[],
   messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
 ): KeyFormEditorSection[] {
   const defaults = getDefaultSectionsForCategory("api_access", messages);
   const defaultSection = defaults[0];
@@ -364,46 +461,26 @@ function mergeApiAccessPresetSections(
   }
 
   const allPresetFields = getAllApiAccessPresetFields(messages);
-  const requiredPresetFields = defaultSection.fields.filter((field) => isApiAccessRequiredField(field.id));
-  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
-  if (!loadedSection) {
-    return [
-      { ...defaultSection, fields: requiredPresetFields },
-      ...loaded.filter((section) => section.id !== defaultSection.id),
-    ];
-  }
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
 
-  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
-  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
-  const mergedFields: KeyFormEditorField[] = [];
-
-  for (const presetField of allPresetFields) {
-    const loadedField = loadedById.get(presetField.id);
-    if (loadedField) {
-      mergedFields.push(mergeApiAccessPresetField(presetField, loadedField, messages));
-      continue;
-    }
-
-    if (isApiAccessRequiredField(presetField.id)) {
-      mergedFields.push(presetField);
-    }
-  }
-
-  for (const loadedField of loadedSection.fields) {
-    if (!presetFieldDefaults.has(loadedField.id)) {
-      mergedFields.push(enrichCategoryPresetSelectField(loadedField, messages));
-    }
-  }
-
-  const additional = loaded.filter((section) => section.id !== defaultSection.id);
-  return [
-    {
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
       ...defaultSection,
       ...loadedSection,
-      fields: mergedFields,
-    },
-    ...additional,
-  ];
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: true,
+        isMissingPresetIncluded: (presetField) => isApiAccessRequiredField(presetField.id),
+        mergeField: (presetField, loadedField) => mergeApiAccessPresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      }),
+    }),
+  });
 }
 
 function mergeDatabasePresetField(
@@ -429,6 +506,7 @@ function mergeDatabasePresetField(
 function mergeDatabasePresetSections(
   loaded: KeyFormEditorSection[],
   messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
 ): KeyFormEditorSection[] {
   const defaults = getDefaultSectionsForCategory("database", messages);
   const defaultSection = defaults[0];
@@ -437,37 +515,25 @@ function mergeDatabasePresetSections(
   }
 
   const allPresetFields = getAllDatabasePresetFields(messages);
-  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
-  if (!loadedSection) {
-    return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
-  }
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
 
-  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
-  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
-  const mergedFields: KeyFormEditorField[] = [];
-
-  for (const presetField of allPresetFields) {
-    const loadedField = loadedById.get(presetField.id);
-    if (loadedField) {
-      mergedFields.push(mergeDatabasePresetField(presetField, loadedField, messages));
-    }
-  }
-
-  for (const loadedField of loadedSection.fields) {
-    if (!presetFieldDefaults.has(loadedField.id)) {
-      mergedFields.push(enrichCategoryPresetSelectField(loadedField, messages));
-    }
-  }
-
-  const additional = loaded.filter((section) => section.id !== defaultSection.id);
-  return [
-    {
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
       ...defaultSection,
       ...loadedSection,
-      fields: mergedFields,
-    },
-    ...additional,
-  ];
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: false,
+        mergeField: (presetField, loadedField) => mergeDatabasePresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      }),
+    }),
+  });
 }
 
 function mergeServerPresetField(
@@ -486,49 +552,69 @@ function mergeServerPresetField(
   };
 }
 
-function mergeServerPresetSection(
-  defaultSection: KeyFormEditorSection,
-  loaded: KeyFormEditorSection[],
-): KeyFormEditorSection {
-  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
-  if (!loadedSection) {
-    return defaultSection;
-  }
-
-  const presetFieldDefaults = new Map(defaultSection.fields.map((field) => [field.id, field]));
-  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
-  const mergedFields: KeyFormEditorField[] = [];
-
-  for (const presetField of defaultSection.fields) {
-    const loadedField = loadedById.get(presetField.id);
-    if (loadedField) {
-      mergedFields.push(mergeServerPresetField(presetField, loadedField));
-    }
-  }
-
-  for (const loadedField of loadedSection.fields) {
-    if (!presetFieldDefaults.has(loadedField.id)) {
-      mergedFields.push(loadedField);
-    }
-  }
-
-  return {
-    ...defaultSection,
-    ...loadedSection,
-    title: defaultSection.title ?? loadedSection.title,
-    fields: mergedFields,
-  };
-}
-
 function mergeServerPresetSections(
   loaded: KeyFormEditorSection[],
   messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
 ): KeyFormEditorSection[] {
   const defaults = getDefaultSectionsForCategory("server", messages);
-  const defaultIds = new Set(defaults.map((section) => section.id));
-  const mergedPreset = defaults.map((defaultSection) => mergeServerPresetSection(defaultSection, loaded));
-  const additional = loaded.filter((section) => !defaultIds.has(section.id));
-  return [...mergedPreset, ...additional];
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
+      ...defaultSection,
+      ...loadedSection,
+      title: defaultSection.title ?? loadedSection.title,
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById: new Map(defaultSection.fields.map((field) => [field.id, field])),
+        presetFieldOrder: defaultSection.fields,
+        includeMissingPresets: false,
+        mergeField: mergeServerPresetField,
+      }),
+    }),
+  });
+}
+
+function mergeBankAccountPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+): KeyFormEditorField {
+  return {
+    ...presetField,
+    ...loadedField,
+    deletable: true,
+    editableLabel: true,
+    required: false,
+  };
+}
+
+function mergeBankAccountPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("bank_account", messages);
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
+      ...defaultSection,
+      ...loadedSection,
+      title: defaultSection.title ?? loadedSection.title,
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById: new Map(defaultSection.fields.map((field) => [field.id, field])),
+        presetFieldOrder: defaultSection.fields,
+        includeMissingPresets: false,
+        mergeField: mergeBankAccountPresetField,
+      }),
+    }),
+  });
 }
 
 function mergeWifiRouterPresetField(
@@ -557,6 +643,7 @@ function mergeWifiRouterPresetField(
 function mergeWifiRouterPresetSections(
   loaded: KeyFormEditorSection[],
   messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
 ): KeyFormEditorSection[] {
   const defaults = getDefaultSectionsForCategory("wifi_router", messages);
   const defaultSection = defaults[0];
@@ -565,37 +652,25 @@ function mergeWifiRouterPresetSections(
   }
 
   const allPresetFields = getAllWifiRouterPresetFields(messages);
-  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
-  if (!loadedSection) {
-    return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
-  }
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
 
-  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
-  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
-  const mergedFields: KeyFormEditorField[] = [];
-
-  for (const presetField of allPresetFields) {
-    const loadedField = loadedById.get(presetField.id);
-    if (loadedField) {
-      mergedFields.push(mergeWifiRouterPresetField(presetField, loadedField, messages));
-    }
-  }
-
-  for (const loadedField of loadedSection.fields) {
-    if (!presetFieldDefaults.has(loadedField.id)) {
-      mergedFields.push(enrichCategoryPresetSelectField(loadedField, messages));
-    }
-  }
-
-  const additional = loaded.filter((section) => section.id !== defaultSection.id);
-  return [
-    {
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
       ...defaultSection,
       ...loadedSection,
-      fields: mergedFields,
-    },
-    ...additional,
-  ];
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: false,
+        mergeField: (presetField, loadedField) => mergeWifiRouterPresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      }),
+    }),
+  });
 }
 
 function mergeCreditCardPresetField(
@@ -635,44 +710,24 @@ function mergeCreditCardPresetSections(
   }
 
   const allPresetFields = getAllCreditCardPresetFields(messages);
-  const loadedSection = loaded.find((section) => section.id === defaultSection.id);
-  if (!loadedSection) {
-    if (includeEmptyFields) {
-      return [...defaults, ...loaded.filter((section) => section.id !== defaultSection.id)];
-    }
-    return loaded.filter((section) => section.id !== defaultSection.id);
-  }
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
 
-  const presetFieldDefaults = new Map(allPresetFields.map((field) => [field.id, field]));
-  const loadedById = new Map(loadedSection.fields.map((field) => [field.id, field]));
-  const mergedFields: KeyFormEditorField[] = [];
-
-  for (const presetField of allPresetFields) {
-    const loadedField = loadedById.get(presetField.id);
-    if (loadedField) {
-      mergedFields.push(mergeCreditCardPresetField(presetField, loadedField));
-      continue;
-    }
-    if (includeEmptyFields) {
-      mergedFields.push(presetField);
-    }
-  }
-
-  for (const loadedField of loadedSection.fields) {
-    if (!presetFieldDefaults.has(loadedField.id)) {
-      mergedFields.push(loadedField);
-    }
-  }
-
-  const additional = loaded.filter((section) => section.id !== defaultSection.id);
-  return [
-    {
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
       ...defaultSection,
       ...loadedSection,
-      fields: mergedFields,
-    },
-    ...additional,
-  ];
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: includeEmptyFields,
+        mergeField: mergeCreditCardPresetField,
+      }),
+    }),
+  });
 }
 
 function toFormField(
@@ -750,26 +805,18 @@ export function itemPlaintextToKeyFormSections(
     .filter((section): section is KeyFormEditorSection => section !== null);
 
   if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "login") {
-    return mergeLoginPresetSections(sections, messages);
-  }
-
-  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "api_access") {
-    return mergeApiAccessPresetSections(sections, messages);
-  }
-
-  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "database") {
-    return mergeDatabasePresetSections(sections, messages);
-  }
-
-  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "server") {
-    return mergeServerPresetSections(sections, messages);
-  }
-
-  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "wifi_router") {
-    return mergeWifiRouterPresetSections(sections, messages);
-  }
-
-  if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "credit_card") {
+    sections = mergeLoginPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "api_access") {
+    sections = mergeApiAccessPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "database") {
+    sections = mergeDatabasePresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "server") {
+    sections = mergeServerPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "bank_account") {
+    sections = mergeBankAccountPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "wifi_router") {
+    sections = mergeWifiRouterPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "credit_card") {
     sections = mergeCreditCardPresetSections(sections, messages, includeEmptyFields);
   }
 
