@@ -7,6 +7,8 @@ import {
   API_ACCESS_SECTION_ID,
   BANK_ACCOUNT_SECTION_ID,
   BANK_DETAILS_SECTION_ID,
+  CRYPTO_WALLET_SECTION_ID,
+  CRYPTO_WALLET_WALLET_SECTION_ID,
   DATABASE_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
   SERVER_SECTION_ID,
@@ -108,6 +110,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   [CREDIT_CARD_SECTION_ID]: "Credit card",
   [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
   [BANK_DETAILS_SECTION_ID]: "Bank details",
+  [CRYPTO_WALLET_WALLET_SECTION_ID]: "Wallet",
 };
 
 function sectionTitleForForm(section: { id: string; title?: string; isPreset?: boolean } | undefined): string | undefined {
@@ -161,11 +164,11 @@ function isFieldDeletable(
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID) {
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID) {
+  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID) {
     return true;
   }
 
@@ -201,7 +204,7 @@ function isFieldLabelEditable(
     return true;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID) {
     return true;
   }
 
@@ -234,7 +237,7 @@ function isFieldRequired(
     return false;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID) {
     return false;
   }
 
@@ -617,6 +620,50 @@ function mergeBankAccountPresetSections(
   });
 }
 
+function mergeCryptoWalletPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+): KeyFormEditorField {
+  const isSingleLineSecret = presetField.id === "crypto-access-pin" || presetField.id === "crypto-passphrase";
+
+  return {
+    ...presetField,
+    ...loadedField,
+    deletable: true,
+    editableLabel: true,
+    required: false,
+    ...(isSingleLineSecret
+      ? { type: "secret" as const, secretKind: "single-line" as const, secret: true }
+      : {}),
+  };
+}
+
+function mergeCryptoWalletPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("crypto_wallet", messages);
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => ({
+      ...defaultSection,
+      ...loadedSection,
+      title: defaultSection.title ?? loadedSection.title,
+      fields: mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById: new Map(defaultSection.fields.map((field) => [field.id, field])),
+        presetFieldOrder: defaultSection.fields,
+        includeMissingPresets: false,
+        mergeField: mergeCryptoWalletPresetField,
+      }),
+    }),
+  });
+}
+
 function mergeWifiRouterPresetField(
   presetField: KeyFormEditorField,
   loadedField: KeyFormEditorField,
@@ -814,6 +861,8 @@ export function itemPlaintextToKeyFormSections(
     sections = mergeServerPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "bank_account") {
     sections = mergeBankAccountPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "crypto_wallet") {
+    sections = mergeCryptoWalletPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "wifi_router") {
     sections = mergeWifiRouterPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "credit_card") {

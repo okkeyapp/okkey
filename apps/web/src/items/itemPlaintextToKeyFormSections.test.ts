@@ -567,4 +567,30 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
     const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
     expect(restoredForEdit[0]?.fields.map((field) => field.id)).toEqual(["field-b", "field-a"]);
   });
+
+  it("hides empty wallet section in card view for crypto wallet", () => {
+    const sections = getDefaultSectionsForCategory("crypto_wallet", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) =>
+        field.id === "crypto-access-pin"
+          ? { ...field, value: "1234" }
+          : { ...field, value: "" },
+      ),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-crypto-1",
+      vaultId: "vault-1",
+      title: "BTC wallet",
+      categoryId: "crypto_wallet",
+      nowMs: 1,
+    });
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+
+    expect(restoredForCard.map((section) => section.id)).toEqual(["crypto-wallet"]);
+    expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual(["crypto-access-pin"]);
+    expect(restoredForCard[0]?.fields[0]?.secretKind).toBe("single-line");
+  });
 });

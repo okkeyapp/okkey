@@ -64,6 +64,7 @@ export type KeyFormEditorMessages = {
   sectionTitles: {
     adminConsole: string;
     bankDetails: string;
+    cryptoWallet: string;
   };
   cardExpiryExpired: string;
   apiTypeOptions: {
@@ -186,6 +187,9 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "bankIban",
   "bankAddress",
   "bankPhone",
+  "cryptoAccessPin",
+  "cryptoPassphrase",
+  "cryptoWalletAddress",
 ] as const;
 
 const KEY_FORM_LABEL_KEYS = [
@@ -275,6 +279,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     sectionTitles: {
       adminConsole: t("web.keyForm.sectionTitles.adminConsole"),
       bankDetails: t("web.keyForm.sectionTitles.bankDetails"),
+      cryptoWallet: t("web.keyForm.sectionTitles.cryptoWallet"),
     },
     cardExpiryExpired: t("web.keyForm.cardExpiryExpired"),
     apiTypeOptions: {

@@ -99,6 +99,7 @@ import {
 } from "./keyFormSecretField";
 import {
   BANK_DETAILS_SECTION_ID,
+  CRYPTO_WALLET_WALLET_SECTION_ID,
   isCreditCardPresetSection,
   isFlexiblePresetPrimarySection,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
@@ -3262,6 +3263,7 @@ export function KeyFormEditor({
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
       section.id === BANK_DETAILS_SECTION_ID ||
+      section.id === CRYPTO_WALLET_WALLET_SECTION_ID ||
       !(section.variant === "primary" && !section.title));
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;

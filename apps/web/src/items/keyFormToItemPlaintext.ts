@@ -21,6 +21,7 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   "credit-card": "Credit card",
   "admin-console": "Admin console",
   "bank-details": "Bank details",
+  wallet: "Wallet",
 };
 
 function wireFieldType(field: KeyFormEditorField): string {

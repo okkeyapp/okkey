@@ -10,6 +10,8 @@ export const WIFI_ROUTER_SECTION_ID = "wifi-router";
 export const CREDIT_CARD_SECTION_ID = "credit-card";
 export const BANK_ACCOUNT_SECTION_ID = "bank-account";
 export const BANK_DETAILS_SECTION_ID = "bank-details";
+export const CRYPTO_WALLET_SECTION_ID = "crypto-wallet";
+export const CRYPTO_WALLET_WALLET_SECTION_ID = "wallet";
 
 export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
 
@@ -22,6 +24,7 @@ const FLEXIBLE_PRESET_PRIMARY_SECTION_IDS = [
   SERVER_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
   BANK_ACCOUNT_SECTION_ID,
+  CRYPTO_WALLET_SECTION_ID,
 ] as const;
 
 export function isFlexiblePresetPrimarySection(sectionId: string): boolean {
@@ -591,6 +594,58 @@ export function getAllBankAccountPresetFields(messages: KeyFormEditorMessages): 
   return getBankAccountDefaultSections(messages).flatMap((section) => section.fields);
 }
 
+function getCryptoWalletDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: CRYPTO_WALLET_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "crypto-access-pin",
+          type: "secret",
+          label: messages.fieldLabels.cryptoAccessPin,
+          value: "",
+          copyValue: "",
+          secretKind: "single-line",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "crypto-passphrase",
+          type: "secret",
+          label: messages.fieldLabels.cryptoPassphrase,
+          value: "",
+          copyValue: "",
+          secretKind: "single-line",
+          secret: true,
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+    {
+      id: CRYPTO_WALLET_WALLET_SECTION_ID,
+      variant: "additional",
+      title: messages.sectionTitles.cryptoWallet,
+      fields: [
+        {
+          id: "crypto-wallet-address",
+          type: "text",
+          label: messages.fieldLabels.cryptoWalletAddress,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllCryptoWalletPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getCryptoWalletDefaultSections(messages).flatMap((section) => section.fields);
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -621,6 +676,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "bank_account") {
     return getBankAccountDefaultSections(messages);
+  }
+
+  if (categoryId === "crypto_wallet") {
+    return getCryptoWalletDefaultSections(messages);
   }
 
   return [];

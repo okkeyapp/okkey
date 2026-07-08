@@ -336,3 +336,51 @@ describe("validateNewItemForm bank_account", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("validateNewItemForm crypto_wallet", () => {
+  const baseInput = {
+    recordName: "Main wallet",
+    vaultId: "vault-1",
+    categoryId: "crypto_wallet" as const,
+  };
+
+  it("requires at least one filled field in the crypto wallet section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "crypto-wallet",
+          variant: "primary" as const,
+          fields: [
+            { id: "crypto-access-pin", type: "secret", label: "PIN", value: "", secretKind: "single-line" },
+            { id: "crypto-passphrase", type: "secret", label: "Passphrase", value: "", secretKind: "single-line" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "crypto-access-pin", sectionId: "crypto-wallet" },
+      { kind: "field", fieldId: "crypto-passphrase", sectionId: "crypto-wallet" },
+    ]);
+  });
+
+  it("passes when at least one crypto wallet field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "crypto-wallet",
+          variant: "primary" as const,
+          fields: [
+            { id: "crypto-access-pin", type: "secret", label: "PIN", value: "1234", secretKind: "single-line" },
+            { id: "crypto-passphrase", type: "secret", label: "Passphrase", value: "", secretKind: "single-line" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
