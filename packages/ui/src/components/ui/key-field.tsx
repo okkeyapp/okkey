@@ -144,7 +144,7 @@ function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
 
 const keyFieldOverlayActionClassName = cn(
   keyFormFieldSurfaceTransitionClassName,
-  "absolute left-1/2 top-full block box-content w-max -translate-x-1/2 rounded-b-md border-x border-b border-border border-t-0 pb-1 group-focus-within/key-field:border-x-accent group-focus-within/key-field:border-b-accent group-focus-within/key-field:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] group-focus-within/key-field:[clip-path:inset(0_-20px_-20px_-20px)]",
+  "absolute left-1/2 bottom-full block box-content w-max -translate-x-1/2 rounded-t-md border-x border-t border-border border-b-0 pt-1 group-focus-within/key-field:border-x-accent group-focus-within/key-field:border-t-accent group-focus-within/key-field:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] group-focus-within/key-field:[clip-path:inset(-20px_-20px_0_-20px)]",
 );
 
 const keyFieldOverlayActionRowClassName =
