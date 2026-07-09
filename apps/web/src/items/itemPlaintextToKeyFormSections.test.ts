@@ -604,6 +604,7 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
     expect(defaults[0]?.fields.map((field) => field.id)).toEqual([
       "first-name",
       "last-name",
+      "middle-name",
       "initials",
       "gender",
       "birth-date",
@@ -668,6 +669,7 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
     expect(primary?.fields.map((field) => field.id)).toEqual([
       "first-name",
       "last-name",
+      "middle-name",
       "initials",
       "gender",
       "birth-date",

@@ -236,6 +236,7 @@
   "web.keyForm.fieldLabels.cryptoWalletAddress": "wallet address",
   "web.keyForm.fieldLabels.personalFirstName": "first name",
   "web.keyForm.fieldLabels.personalLastName": "last name",
+  "web.keyForm.fieldLabels.personalMiddleName": "middle name",
   "web.keyForm.fieldLabels.personalInitials": "initials",
   "web.keyForm.fieldLabels.personalGender": "gender",
   "web.keyForm.fieldLabels.personalBirthDate": "date of birth",

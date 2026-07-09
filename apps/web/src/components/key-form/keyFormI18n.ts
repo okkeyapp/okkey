@@ -197,6 +197,7 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "cryptoWalletAddress",
   "personalFirstName",
   "personalLastName",
+  "personalMiddleName",
   "personalInitials",
   "personalGender",
   "personalBirthDate",

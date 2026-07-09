@@ -1,7 +1,7 @@
 import type { ItemPlaintextV2 } from "@okkey/types";
 
 import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane";
-import { readFirstNonSecretFilledFieldDescription } from "./itemListRecordDescription";
+import { readItemListRecordDescription } from "./itemListRecordDescription";
 
 function collectUrls(item: ItemPlaintextV2): string[] {
   return item.fields
@@ -22,7 +22,7 @@ export function itemPlaintextToListRecord(
     urls: collectUrls(item),
     ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     title: item.title,
-    description: readFirstNonSecretFilledFieldDescription(item),
+    description: readItemListRecordDescription(item),
     tags: [...(item.tags ?? [])],
     date: new Date(item.updatedAtMs),
     favorite: input.favorite,

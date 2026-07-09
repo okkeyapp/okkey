@@ -18,6 +18,7 @@ export const PERSONAL_DATA_WORK_SECTION_ID = "personal-data-work";
 export const PERSONAL_DATA_PRESET_FIELD_IDS = [
   "first-name",
   "last-name",
+  "middle-name",
   "initials",
   "gender",
   "birth-date",
@@ -704,6 +705,14 @@ function getPersonalDataDefaultSections(messages: KeyFormEditorMessages): KeyFor
           id: "last-name",
           type: "text",
           label: messages.fieldLabels.personalLastName,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "middle-name",
+          type: "text",
+          label: messages.fieldLabels.personalMiddleName,
           value: "",
           editableLabel: false,
           deletable: false,

@@ -89,3 +89,45 @@ export function readFirstNonSecretFilledFieldDescription(item: ItemPlaintextV2):
 
   return "";
 }
+
+function readTextFieldValueById(item: ItemPlaintextV2, fieldId: string): string {
+  const field = item.fields.find((candidate) => candidate.id === fieldId);
+  if (!field || !isItemFieldFilled(field) || isSecretItemField(field)) {
+    return "";
+  }
+
+  return itemFieldDisplayValue(field);
+}
+
+function joinFilledParts(parts: string[]): string {
+  return parts.filter((part) => part.length > 0).join(" ");
+}
+
+export function readPersonalDataListDescription(item: ItemPlaintextV2): string {
+  const firstName = readTextFieldValueById(item, "first-name");
+  const lastName = readTextFieldValueById(item, "last-name");
+  const middleName = readTextFieldValueById(item, "middle-name");
+  const initials = readTextFieldValueById(item, "initials");
+
+  if (firstName && lastName) {
+    return joinFilledParts([firstName, lastName]);
+  }
+
+  if (firstName && middleName) {
+    return joinFilledParts([firstName, middleName]);
+  }
+
+  if (lastName && initials) {
+    return joinFilledParts([lastName, initials]);
+  }
+
+  return readFirstNonSecretFilledFieldDescription(item);
+}
+
+export function readItemListRecordDescription(item: ItemPlaintextV2): string {
+  if (item.categoryId === "personal_data") {
+    return readPersonalDataListDescription(item);
+  }
+
+  return readFirstNonSecretFilledFieldDescription(item);
+}

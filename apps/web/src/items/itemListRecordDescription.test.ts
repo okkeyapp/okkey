@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
-import { readFirstNonSecretFilledFieldDescription } from "./itemListRecordDescription";
+import { readFirstNonSecretFilledFieldDescription, readPersonalDataListDescription } from "./itemListRecordDescription";
 import { keyFormSectionsToItemPlaintext } from "./keyFormToItemPlaintext";
 
 describe("readFirstNonSecretFilledFieldDescription", () => {
@@ -176,6 +176,75 @@ describe("readFirstNonSecretFilledFieldDescription", () => {
     });
 
     expect(readFirstNonSecretFilledFieldDescription(item)).toBe("");
+  });
+});
+
+function createPersonalDataItem(fields: Array<{ id: string; value: string }>) {
+  return keyFormSectionsToItemPlaintext({
+    itemId: "item-personal-list",
+    vaultId: "vault-1",
+    title: "Personal",
+    categoryId: "personal_data",
+    nowMs: 1,
+    sections: [
+      {
+        id: "personal-data",
+        variant: "primary",
+        fields: fields.map((field) => ({
+          id: field.id,
+          type: "text" as const,
+          label: field.id,
+          value: field.value,
+          deletable: false,
+          editableLabel: false,
+        })),
+      },
+    ],
+  });
+}
+
+describe("readPersonalDataListDescription", () => {
+  it("returns first and last name when both are filled", () => {
+    const item = createPersonalDataItem([
+      { id: "first-name", value: "Иван" },
+      { id: "last-name", value: "Петров" },
+    ]);
+
+    expect(readPersonalDataListDescription(item)).toBe("Иван Петров");
+  });
+
+  it("returns first and middle name when last name is empty", () => {
+    const item = createPersonalDataItem([
+      { id: "first-name", value: "Иван" },
+      { id: "middle-name", value: "Сергеевич" },
+    ]);
+
+    expect(readPersonalDataListDescription(item)).toBe("Иван Сергеевич");
+  });
+
+  it("returns last name and initials when first name is empty", () => {
+    const item = createPersonalDataItem([
+      { id: "last-name", value: "Петров" },
+      { id: "initials", value: "И.С." },
+    ]);
+
+    expect(readPersonalDataListDescription(item)).toBe("Петров И.С.");
+  });
+
+  it("prefers first and last name over first and middle name", () => {
+    const item = createPersonalDataItem([
+      { id: "first-name", value: "Иван" },
+      { id: "last-name", value: "Петров" },
+      { id: "middle-name", value: "Сергеевич" },
+    ]);
+
+    expect(readPersonalDataListDescription(item)).toBe("Иван Петров");
+  });
+
+  it("falls back to first filled non-secret field", () => {
+    const item = createPersonalDataItem([{ id: "phone", value: "+7 900 000-00-00" }]);
+
+    expect(readPersonalDataListDescription(item)).toBe("+7 900 000-00-00");
   });
 });
 

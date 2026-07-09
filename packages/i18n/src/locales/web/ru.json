@@ -236,6 +236,7 @@
   "web.keyForm.fieldLabels.cryptoWalletAddress": "адрес кошелька",
   "web.keyForm.fieldLabels.personalFirstName": "имя",
   "web.keyForm.fieldLabels.personalLastName": "фамилия",
+  "web.keyForm.fieldLabels.personalMiddleName": "отчество",
   "web.keyForm.fieldLabels.personalInitials": "инициалы",
   "web.keyForm.fieldLabels.personalGender": "пол",
   "web.keyForm.fieldLabels.personalBirthDate": "дата рождения",
