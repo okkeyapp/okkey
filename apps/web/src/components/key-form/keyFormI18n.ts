@@ -220,6 +220,7 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "passportBirthPlace",
   "passportIssueDate",
   "passportExpiryDate",
+  "secureNote",
 ] as const;
 
 const KEY_FORM_LABEL_KEYS = [

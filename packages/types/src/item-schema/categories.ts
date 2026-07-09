@@ -17,7 +17,7 @@ export interface CategoryDefinition {
 }
 
 const SEC_LOGIN = "s-login-general";
-const SEC_NOTE = "s-note-body";
+const SEC_NOTE = "secure-note";
 const SEC_CARD = "s-card-main";
 
 export const ITEM_CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
@@ -39,7 +39,7 @@ export const ITEM_CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
     displayNameKey: "itemCategory.secureNote",
     sections: [{ id: SEC_NOTE, title: "Note", order: 0, isPreset: true }],
     fieldTemplates: [
-      { id: "f-note-body", type: "note", sectionId: SEC_NOTE, order: 0, label: "Notes" },
+      { id: "note", type: "note", sectionId: SEC_NOTE, order: 0, label: "Note" },
     ],
   },
   [ITEM_CATEGORY_CREDIT_CARD]: {

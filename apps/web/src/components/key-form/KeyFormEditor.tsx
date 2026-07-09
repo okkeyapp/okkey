@@ -107,6 +107,7 @@ import {
   isPassportPresetFieldId,
   isPassportPresetSection,
   isSecureFilesPresetSection,
+  isSecureNotePresetSection,
   PERSONAL_DATA_WORK_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
 } from "../items/itemCategoryDefaultSections";
@@ -133,6 +134,8 @@ export type KeyFormEditorField = {
   deletable?: boolean;
   required?: boolean;
   urlAutofillScope?: KeyFormUrlAutofillScope;
+  /** When true, view mode hides click-to-copy for multiline text. */
+  disableClickCopy?: boolean;
   selectOptions?: readonly KeyFormSelectOption[];
 };
 
@@ -703,7 +706,7 @@ function sectionHasTotpField(section: DemoSection): boolean {
 }
 
 function canDeleteField(section: DemoSection, field: DemoField): boolean {
-  if (isSecureFilesPresetSection(section.id)) {
+  if (isSecureFilesPresetSection(section.id) || isSecureNotePresetSection(section.id)) {
     return section.fields.length > 1;
   }
 
@@ -771,7 +774,7 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
     return true;
   }
 
-  if (isSecureFilesPresetSection(section.id)) {
+  if (isSecureFilesPresetSection(section.id) || isSecureNotePresetSection(section.id)) {
     return true;
   }
 
@@ -2017,7 +2020,6 @@ export function KeyFormEditor({
   const [visiblePasswordIds, setVisiblePasswordIds] = useState<ReadonlySet<string>>(() => new Set());
   const [visibleRecoveryCodesIds, setVisibleRecoveryCodesIds] = useState<ReadonlySet<string>>(() => new Set());
   const [unmaskedPhoneIds, setUnmaskedPhoneIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [disabledMultilineCopyIds, setDisabledMultilineCopyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [selectOptionsEditFieldIds, setSelectOptionsEditFieldIds] = useState<ReadonlySet<string>>(() => new Set());
   const [selectOptionsDraft, setSelectOptionsDraft] = useState<Record<string, string>>({});
   const [openFieldMenuId, setOpenFieldMenuId] = useState<string | null>(null);
@@ -2897,9 +2899,9 @@ export function KeyFormEditor({
               </FieldChromeButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={6} className="min-w-[14rem] p-1" onCloseAutoFocus={handleFieldDropdownCloseAutoFocus}>
-              <DropdownMenuItem onSelect={() => toggleMultilineCopy(field.id)}>
-                {disabledMultilineCopyIds.has(field.id) ? <EnableCopyIcon className="size-4" /> : <DisableCopyIcon className="size-4" />}
-                {disabledMultilineCopyIds.has(field.id) ? messages.enableFullTextCopy : messages.disableFullTextCopy}
+              <DropdownMenuItem onSelect={() => toggleMultilineCopy(section.id, field.id)}>
+                {field.disableClickCopy ? <EnableCopyIcon className="size-4" /> : <DisableCopyIcon className="size-4" />}
+                {field.disableClickCopy ? messages.enableFullTextCopy : messages.disableFullTextCopy}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -2959,16 +2961,21 @@ export function KeyFormEditor({
     });
   }
 
-  function toggleMultilineCopy(fieldId: string) {
-    setDisabledMultilineCopyIds((current) => {
-      const next = new Set(current);
-      if (next.has(fieldId)) {
-        next.delete(fieldId);
-      } else {
-        next.add(fieldId);
-      }
-      return next;
-    });
+  function toggleMultilineCopy(sectionId: string, fieldId: string) {
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              fields: section.fields.map((field) =>
+                field.id === fieldId && field.type === "multiline-text"
+                  ? { ...field, disableClickCopy: !field.disableClickCopy }
+                  : field,
+              ),
+            }
+          : section,
+      ),
+    );
   }
 
   function toggleSelectOptionsEditMode(sectionId: string, field: DemoField) {
@@ -3163,7 +3170,7 @@ export function KeyFormEditor({
       return false;
     }
 
-    if (!isFlexiblePresetPrimarySection(section.id) && !isPassportPresetSection(section.id) && !isSecureFilesPresetSection(section.id)) {
+    if (!isFlexiblePresetPrimarySection(section.id) && !isPassportPresetSection(section.id) && !isSecureFilesPresetSection(section.id) && !isSecureNotePresetSection(section.id)) {
       return false;
     }
 
@@ -3299,6 +3306,7 @@ export function KeyFormEditor({
       isPersonalDataPresetSection(section.id) ||
       isPassportPresetSection(section.id) ||
       isSecureFilesPresetSection(section.id) ||
+      isSecureNotePresetSection(section.id) ||
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
       section.id === BANK_DETAILS_SECTION_ID ||
@@ -3319,7 +3327,7 @@ export function KeyFormEditor({
     const isCardField = field.type === "card";
     const isCardExpiryField = field.type === "card-expiry";
     const isPinFieldType = field.type === "pin";
-    const isMultilineCopyDisabled = field.type === "multiline-text" && disabledMultilineCopyIds.has(field.id);
+    const isMultilineCopyDisabled = field.type === "multiline-text" && field.disableClickCopy === true;
     const isRecoveryCodesField = field.type === "recovery-codes";
     const isFileField = field.type === "file";
     const isRecoveryCodesRevealed = isRecoveryCodesField && visibleRecoveryCodesIds.has(field.id);
@@ -3596,7 +3604,7 @@ export function KeyFormEditor({
                 ? fieldTypes
                 : section.id === "websites"
                   ? urlFieldTypes
-                  : section.id === "api-access" || isPersonalDataPresetSection(section.id) || isPassportPresetSection(section.id) || isSecureFilesPresetSection(section.id)
+                  : section.id === "api-access" || isPersonalDataPresetSection(section.id) || isPassportPresetSection(section.id) || isSecureFilesPresetSection(section.id) || isSecureNotePresetSection(section.id)
                     ? fieldTypes
                     : isFlexiblePresetPrimarySection(section.id)
                       ? fieldTypes
@@ -3617,6 +3625,7 @@ export function KeyFormEditor({
                     isPersonalDataPresetSection(section.id) ||
                     isPassportPresetSection(section.id) ||
                     isSecureFilesPresetSection(section.id) ||
+                    isSecureNotePresetSection(section.id) ||
                     isFlexiblePresetPrimarySection(section.id) ||
                     (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)

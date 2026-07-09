@@ -1,4 +1,4 @@
-import type { ItemFieldV2, ItemPlaintextV2, ItemSectionV2, FieldValueV2 } from "./types.js";
+import type { ItemFieldV2, ItemPlaintextV2, ItemSectionV2, FieldValueNote, FieldValueV2 } from "./types.js";
 import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2 } from "./types.js";
 import { emptyValueForFieldType } from "./field-defaults.js";
 
@@ -41,8 +41,16 @@ export function normalizeFieldValue(type: string, value: unknown): FieldValueV2 
       };
     case "url":
       return { kind: "url", url: typeof value.url === "string" ? value.url : "" };
-    case "note":
-      return { kind: "note", note: typeof value.note === "string" ? value.note : "" };
+    case "note": {
+      const noteValue: FieldValueNote = {
+        kind: "note",
+        note: typeof value.note === "string" ? value.note : "",
+      };
+      if (value.disableClickCopy === true) {
+        noteValue.disableClickCopy = true;
+      }
+      return noteValue;
+    }
     case "file":
       return {
         kind: "file",

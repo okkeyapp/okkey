@@ -52,8 +52,13 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
       return { kind: "url", url: raw };
     case "totp":
       return { kind: "totp", secretBase32: raw, periodSeconds: 30, digits: 6 };
-    case "multiline-text":
-      return { kind: "note", note: raw };
+    case "multiline-text": {
+      const noteValue: { kind: "note"; note: string; disableClickCopy?: boolean } = { kind: "note", note: raw };
+      if (field.disableClickCopy) {
+        noteValue.disableClickCopy = true;
+      }
+      return noteValue;
+    }
     case "file": {
       const parsed = parseKeyFieldFileValue(raw);
       if (parsed) {

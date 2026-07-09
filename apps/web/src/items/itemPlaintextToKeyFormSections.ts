@@ -18,6 +18,7 @@ import {
   CREDIT_CARD_SECTION_ID,
   PASSPORT_SECTION_ID,
   SECURE_FILES_SECTION_ID,
+  SECURE_NOTE_SECTION_ID,
   enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
   getAllCreditCardPresetFields,
@@ -25,6 +26,7 @@ import {
   getAllPassportPresetFields,
   getAllPersonalDataPrimaryPresetFields,
   getAllSecureFilesPresetFields,
+  getAllSecureNotePresetFields,
   getAllWifiRouterPresetFields,
   getDefaultSectionsForCategory,
   isCreditCardRequiredFieldId,
@@ -184,6 +186,10 @@ function isFieldDeletable(
     return sectionFields.length > 1;
   }
 
+  if (sectionId === SECURE_NOTE_SECTION_ID) {
+    return sectionFields.length > 1;
+  }
+
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return sectionFields.length > 1;
   }
@@ -233,6 +239,10 @@ function isFieldLabelEditable(
   }
 
   if (sectionId === SECURE_FILES_SECTION_ID) {
+    return true;
+  }
+
+  if (sectionId === SECURE_NOTE_SECTION_ID) {
     return true;
   }
 
@@ -1003,6 +1013,80 @@ function mergeSecureFilesPresetSections(
   });
 }
 
+function mergeSecureNotePresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  return enrichCategoryPresetSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      type: "multiline-text",
+      editableLabel: true,
+      required: false,
+    },
+    messages,
+  );
+}
+
+function normalizeSecureNoteLoadedSections(loaded: KeyFormEditorSection[]): KeyFormEditorSection[] {
+  return loaded.map((section) => {
+    if (section.id !== "s-note-body") {
+      return section;
+    }
+
+    return {
+      ...section,
+      id: SECURE_NOTE_SECTION_ID,
+      fields: section.fields.map((field) =>
+        field.id === "f-note-body" ? { ...field, id: "note", type: "multiline-text" } : field,
+      ),
+    };
+  });
+}
+
+function mergeSecureNotePresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("secure_note", messages);
+  const defaultSection = defaults[0];
+  if (!defaultSection) {
+    return loaded;
+  }
+
+  const allPresetFields = getAllSecureNotePresetFields(messages);
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: normalizeSecureNoteLoadedSections(loaded),
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => {
+      const fields = mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: includeEmptyFields,
+        mergeField: (presetField, loadedField) => mergeSecureNotePresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      });
+      const canDeleteFields = fields.length > 1;
+
+      return {
+        ...defaultSection,
+        ...loadedSection,
+        fields: fields.map((field) => ({
+          ...field,
+          deletable: canDeleteFields,
+        })),
+      };
+    },
+  });
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -1027,6 +1111,9 @@ function toFormField(
     required: isFieldRequired(sectionId, field, sectionFields, isPresetSection),
     ...(secretKind ? { secretKind } : {}),
     ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
+    ...(type === "multiline-text" && field.value.kind === "note" && field.value.disableClickCopy
+      ? { disableClickCopy: true }
+      : {}),
     ...(selectField?.selectOptions ? { selectOptions: selectField.selectOptions } : {}),
   };
 
@@ -1099,6 +1186,8 @@ export function itemPlaintextToKeyFormSections(
     sections = mergePassportPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "secure_files") {
     sections = mergeSecureFilesPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "secure_note") {
+    sections = mergeSecureNotePresetSections(sections, messages, includeEmptyFields);
   }
 
   if (!includeEmptyFields) {

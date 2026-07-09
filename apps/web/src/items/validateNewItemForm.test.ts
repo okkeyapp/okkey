@@ -7,7 +7,7 @@ describe("validateNewItemForm unconfigured", () => {
   const baseInput = {
     recordName: "My note",
     vaultId: "vault-1",
-    categoryId: "secure_note" as const,
+    categoryId: "login" as const,
   };
 
   it("requires at least one filled field when the form has no required fields", () => {
@@ -41,10 +41,10 @@ describe("validateNewItemForm unconfigured", () => {
 
   it("treats categories without required fields as unconfigured", () => {
     expect(
-      isConfiguredNewItemForm("secure_note", [
-        { id: "section-1", fields: [{ id: "field-1", type: "text", label: "Note", value: "" }] },
+      isConfiguredNewItemForm("login", [
+        { id: "credentials", fields: [{ id: "login", type: "text", label: "Login", value: "", required: true }] },
       ]),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
@@ -500,6 +500,59 @@ describe("validateNewItemForm passport", () => {
     });
 
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("validateNewItemForm secure_note", () => {
+  const baseInput = {
+    recordName: "My note",
+    vaultId: "vault-1",
+    categoryId: "secure_note" as const,
+  };
+
+  it("requires at least one filled field in the secure note section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "secure-note",
+          variant: "primary" as const,
+          fields: [
+            { id: "note", type: "multiline-text", label: "заметка", value: "" },
+            { id: "custom-field", type: "text", label: "Hint", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "note", sectionId: "secure-note" },
+      { kind: "field", fieldId: "custom-field", sectionId: "secure-note" },
+    ]);
+  });
+
+  it("passes when the note field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "secure-note",
+          variant: "primary" as const,
+          fields: [{ id: "note", type: "multiline-text", label: "заметка", value: "Secret text" }],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("treats secure note as configured", () => {
+    expect(
+      isConfiguredNewItemForm("secure_note", [
+        { id: "secure-note", fields: [{ id: "note", type: "multiline-text", label: "заметка", value: "" }] },
+      ]),
+    ).toBe(true);
   });
 });
 

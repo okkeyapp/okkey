@@ -28,7 +28,7 @@ test("v1 → v2 migration maps title to secure_note preset", () => {
   assert.equal(v2.categoryId, ITEM_CATEGORY_SECURE_NOTE);
   assert.equal(v2.title, "Hello");
   assert.equal(v2.updatedAtMs, 20);
-  const noteField = v2.fields.find((f) => f.id === "f-note-body");
+  const noteField = v2.fields.find((f) => f.id === "note");
   assert.ok(noteField);
   assert.equal(noteField?.value.kind, "note");
   if (noteField?.value.kind === "note") {

@@ -16,6 +16,7 @@ export const PERSONAL_DATA_SECTION_ID = "personal-data";
 export const PERSONAL_DATA_WORK_SECTION_ID = "personal-data-work";
 export const PASSPORT_SECTION_ID = "passport";
 export const SECURE_FILES_SECTION_ID = "secure-files";
+export const SECURE_NOTE_SECTION_ID = "secure-note";
 
 export const PERSONAL_DATA_PRESET_FIELD_IDS = [
   "first-name",
@@ -46,6 +47,7 @@ export const PASSPORT_PRESET_FIELD_IDS = [
 ] as const;
 
 export const SECURE_FILES_PRESET_FIELD_IDS = ["secure-file"] as const;
+export const SECURE_NOTE_PRESET_FIELD_IDS = ["note"] as const;
 
 export function isPersonalDataPresetSection(sectionId: string): boolean {
   return sectionId === PERSONAL_DATA_SECTION_ID;
@@ -77,6 +79,14 @@ export function isSecureFilesPresetSection(sectionId: string): boolean {
 
 export function isSecureFilesPresetFieldId(fieldId: string): boolean {
   return (SECURE_FILES_PRESET_FIELD_IDS as readonly string[]).includes(fieldId);
+}
+
+export function isSecureNotePresetSection(sectionId: string): boolean {
+  return sectionId === SECURE_NOTE_SECTION_ID;
+}
+
+export function isSecureNotePresetFieldId(fieldId: string): boolean {
+  return (SECURE_NOTE_PRESET_FIELD_IDS as readonly string[]).includes(fieldId);
 }
 
 export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
@@ -989,6 +999,29 @@ export function getAllSecureFilesPresetFields(messages: KeyFormEditorMessages): 
   return getSecureFilesDefaultSections(messages)[0]?.fields ?? [];
 }
 
+function getSecureNoteDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: SECURE_NOTE_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "note",
+          type: "multiline-text",
+          label: messages.fieldLabels.secureNote,
+          value: "",
+          editableLabel: true,
+          deletable: false,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllSecureNotePresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getSecureNoteDefaultSections(messages)[0]?.fields ?? [];
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -1035,6 +1068,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "secure_files") {
     return getSecureFilesDefaultSections(messages);
+  }
+
+  if (categoryId === "secure_note") {
+    return getSecureNoteDefaultSections(messages);
   }
 
   return [];

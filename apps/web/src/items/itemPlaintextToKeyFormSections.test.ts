@@ -352,9 +352,17 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
   it("hides empty fields in card view but keeps them for edit in any section", () => {
     const sections = [
       {
-        id: "section-main",
+        id: "secure-note",
         variant: "primary" as const,
         fields: [
+          {
+            id: "note",
+            type: "multiline-text" as const,
+            label: "заметка",
+            value: "",
+            deletable: true,
+            editableLabel: true,
+          },
           {
             id: "field-filled",
             type: "text" as const,
@@ -407,7 +415,7 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
       nowMs: 1,
     });
 
-    expect(item.fields.map((field) => field.id)).toEqual(["field-filled", "field-empty", "field-1", "field-2"]);
+    expect(item.fields.map((field) => field.id)).toEqual(["note", "field-filled", "field-empty", "field-1", "field-2"]);
 
     const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
     expect(restoredForCard.flatMap((section) => section.fields.map((field) => field.id))).toEqual([
@@ -417,6 +425,7 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
 
     const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
     expect(restoredForEdit.flatMap((section) => section.fields.map((field) => field.id))).toEqual([
+      "note",
       "field-filled",
       "field-empty",
       "field-1",
@@ -543,14 +552,15 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
     expect(restoredForEdit.map((section) => section.id)).toEqual(["server", "section-custom", "admin-console"]);
   });
 
-  it("preserves custom field order for unconfigured categories", () => {
+  it("preserves custom field order for secure note", () => {
     const sections = [
       {
-        id: "section-main",
+        id: "secure-note",
         variant: "primary" as const,
         fields: [
           { id: "field-b", type: "text" as const, label: "B", value: "beta", deletable: true, editableLabel: true },
           { id: "field-a", type: "text" as const, label: "A", value: "alpha", deletable: true, editableLabel: true },
+          { id: "note", type: "multiline-text" as const, label: "заметка", value: "body", deletable: true, editableLabel: true },
         ],
       },
     ];
@@ -565,7 +575,7 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
     });
 
     const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
-    expect(restoredForEdit[0]?.fields.map((field) => field.id)).toEqual(["field-b", "field-a"]);
+    expect(restoredForEdit[0]?.fields.map((field) => field.id)).toEqual(["field-b", "field-a", "note"]);
   });
 
   it("hides empty wallet section in card view for crypto wallet", () => {
@@ -770,6 +780,124 @@ describe("itemPlaintextToKeyFormSections passport", () => {
     expect(primary?.fields.find((field) => field.id === "custom-note")).toMatchObject({
       value: "VIP",
       deletable: true,
+      editableLabel: true,
+    });
+  });
+});
+
+describe("itemPlaintextToKeyFormSections secure_note", () => {
+  it("includes note preset with editable label", () => {
+    const defaults = getDefaultSectionsForCategory("secure_note", messages);
+
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.id).toBe("secure-note");
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual(["note"]);
+    expect(defaults[0]?.fields[0]).toMatchObject({
+      type: "multiline-text",
+      label: "заметка",
+      deletable: false,
+      editableLabel: true,
+    });
+  });
+
+  it("round-trips custom fields and preserves note preset metadata", () => {
+    const sections = getDefaultSectionsForCategory("secure_note", messages).map((section) => ({
+      ...section,
+      fields: [
+        ...section.fields.map((field) =>
+          field.id === "note" ? { ...field, value: "Saved note" } : field,
+        ),
+        {
+          id: "custom-hint",
+          type: "text" as const,
+          label: "Hint",
+          value: "VIP",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-secure-note-1",
+      vaultId: "vault-1",
+      title: "Secure note",
+      categoryId: "secure_note",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "secure-note");
+
+    expect(primary?.fields.map((field) => field.id)).toEqual(["note", "custom-hint"]);
+    expect(primary?.fields.find((field) => field.id === "note")).toMatchObject({
+      type: "multiline-text",
+      value: "Saved note",
+      deletable: true,
+      editableLabel: true,
+    });
+    expect(primary?.fields.find((field) => field.id === "custom-hint")).toMatchObject({
+      value: "VIP",
+      deletable: true,
+      editableLabel: true,
+    });
+  });
+
+  it("round-trips multiline click-to-copy preference", () => {
+    const sections = getDefaultSectionsForCategory("secure_note", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) =>
+        field.id === "note" ? { ...field, value: "Secret note", disableClickCopy: true } : field,
+      ),
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-secure-note-copy-1",
+      vaultId: "vault-1",
+      title: "Secure note",
+      categoryId: "secure_note",
+      nowMs: 1,
+    });
+
+    const noteField = item.fields.find((field) => field.id === "note");
+    expect(noteField?.value.kind).toBe("note");
+    if (noteField?.value.kind === "note") {
+      expect(noteField.value.disableClickCopy).toBe(true);
+    }
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    expect(restoredForEdit[0]?.fields.find((field) => field.id === "note")).toMatchObject({
+      type: "multiline-text",
+      value: "Secret note",
+      disableClickCopy: true,
+    });
+  });
+
+  it("normalizes legacy migrated note ids", () => {
+    const item = keyFormSectionsToItemPlaintext({
+      sections: [
+        {
+          id: "s-note-body",
+          variant: "primary" as const,
+          fields: [{ id: "f-note-body", type: "multiline-text" as const, label: "Notes", value: "Legacy note" }],
+        },
+      ],
+      itemId: "item-legacy-note-1",
+      vaultId: "vault-1",
+      title: "Legacy note",
+      categoryId: "secure_note",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "secure-note");
+
+    expect(primary?.fields.map((field) => field.id)).toEqual(["note"]);
+    expect(primary?.fields[0]).toMatchObject({
+      type: "multiline-text",
+      value: "Legacy note",
       editableLabel: true,
     });
   });

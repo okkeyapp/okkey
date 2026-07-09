@@ -4,6 +4,7 @@ import {
   CRYPTO_WALLET_SECTION_ID,
   PASSPORT_SECTION_ID,
   SECURE_FILES_SECTION_ID,
+  SECURE_NOTE_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
   isCreditCardRequiredFieldId,
 } from "../components/items/itemCategoryDefaultSections";
@@ -33,7 +34,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data" || categoryId === "passport" || categoryId === "secure_files") {
+  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data" || categoryId === "passport" || categoryId === "secure_files" || categoryId === "secure_note") {
     return true;
   }
 
@@ -126,6 +127,8 @@ export function validateNewItemForm(input: {
     appendFlexiblePresetSectionIssues(PASSPORT_SECTION_ID, input.sections ?? [], issues);
   } else if (input.categoryId === "secure_files") {
     appendFlexiblePresetSectionIssues(SECURE_FILES_SECTION_ID, input.sections ?? [], issues, isKeyFormFieldFilled);
+  } else if (input.categoryId === "secure_note") {
+    appendFlexiblePresetSectionIssues(SECURE_NOTE_SECTION_ID, input.sections ?? [], issues, isKeyFormFieldFilled);
   } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }

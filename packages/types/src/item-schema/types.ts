@@ -67,6 +67,8 @@ export interface FieldValueUrl {
 export interface FieldValueNote {
   kind: "note";
   note: string;
+  /** When true, view mode hides click-to-copy for the full multiline value. */
+  disableClickCopy?: boolean;
 }
 
 export interface FieldValueFile {
