@@ -48,6 +48,8 @@ export type SearchableSelectProps = {
   searchEmptyMessage?: string;
   /** Label for current value when content items have not mounted yet. */
   selectedLabel?: React.ReactNode;
+  open?: boolean;
+  defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 };
@@ -62,27 +64,33 @@ function SearchableSelect({
   searchPlaceholder = "Search...",
   searchEmptyMessage = "No items found",
   selectedLabel,
+  open: openProp,
+  defaultOpen,
   onOpenChange,
   children,
 }: SearchableSelectProps) {
-  const [open, setOpenState] = React.useState(false);
+  const [openUncontrolled, setOpenUncontrolled] = React.useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [valueUncontrolled, setValueUncontrolled] = React.useState(defaultValue ?? "");
   const [labelMap, setLabelMap] = React.useState<Record<string, React.ReactNode>>({});
   const isControlled = valueProp !== undefined;
+  const isOpenControlled = openProp !== undefined;
   const value = isControlled ? valueProp! : valueUncontrolled;
   const listId = React.useId();
   const searchInputId = React.useId();
+  const open = isOpenControlled ? openProp! : openUncontrolled;
 
   const setOpen = React.useCallback(
     (next: boolean) => {
-      setOpenState(next);
+      if (!isOpenControlled) {
+        setOpenUncontrolled(next);
+      }
       if (!next) {
         setSearchQuery("");
       }
       onOpenChange?.(next);
     },
-    [onOpenChange],
+    [isOpenControlled, onOpenChange],
   );
 
   const setValue = React.useCallback(

@@ -57,6 +57,7 @@ export function KeyFieldAddressInput({
   const postalCodeInputRef = React.useRef<HTMLInputElement>(null);
   const countryTriggerRef = React.useRef<HTMLDivElement>(null);
   const isCountrySelectOpenRef = React.useRef(false);
+  const [countrySelectOpen, setCountrySelectOpen] = React.useState(false);
   const isFocusedRef = React.useRef(false);
 
   const setFocused = React.useCallback(
@@ -93,6 +94,7 @@ export function KeyFieldAddressInput({
   const handleCountryOpenChange = React.useCallback(
     (open: boolean) => {
       isCountrySelectOpenRef.current = open;
+      setCountrySelectOpen(open);
       window.setTimeout(syncFocusState, 0);
     },
     [syncFocusState],
@@ -174,6 +176,13 @@ export function KeyFieldAddressInput({
     postalCodeInputRef.current?.focus();
   }
 
+  function focusCountryField(openDropdown = false) {
+    countryTriggerRef.current?.focus();
+    if (openDropdown) {
+      setCountrySelectOpen(true);
+    }
+  }
+
   function focusNextField(currentField: AddressFieldKey) {
     const currentIndex = addressFieldOrder.indexOf(currentField);
     if (currentIndex === -1) {
@@ -185,11 +194,15 @@ export function KeyFieldAddressInput({
       return;
     }
 
-    countryTriggerRef.current?.focus();
+    focusCountryField(true);
   }
 
-  function handleTabKey(event: React.KeyboardEvent<HTMLInputElement>, field: AddressFieldKey) {
-    if (event.key !== "Tab" || event.shiftKey) {
+  function handleFieldNavigationKey(event: React.KeyboardEvent<HTMLInputElement>, field: AddressFieldKey) {
+    if (event.shiftKey) {
+      return;
+    }
+
+    if (event.key !== "Tab" && event.key !== "Enter") {
       return;
     }
 
@@ -212,13 +225,14 @@ export function KeyFieldAddressInput({
           value={address[field]}
           placeholder={addressFieldPlaceholders[field]}
           onChange={(event) => updateAddressField(field, event.target.value)}
-          onKeyDown={(event) => handleTabKey(event, field)}
+          onKeyDown={(event) => handleFieldNavigationKey(event, field)}
           className={addressInputClassName}
         />
       ))}
       <SearchableSelect
         value={address.country || undefined}
         onValueChange={(nextCountry) => updateAddressField("country", nextCountry)}
+        open={countrySelectOpen}
         onOpenChange={handleCountryOpenChange}
         placeholder={addressFieldPlaceholders.country}
         variant="inline"
