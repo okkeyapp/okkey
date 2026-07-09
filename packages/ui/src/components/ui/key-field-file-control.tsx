@@ -73,18 +73,33 @@ export type KeyFieldFileControlProps = {
   uploadConstraints?: KeyFieldFileUploadConstraints;
   onValidationErrorChange?: (hasError: boolean) => void;
   onOpen?: () => void;
+  onResolveFileUrl?: (file: KeyFieldFileValue) => Promise<string>;
   className?: string;
   uploadLabel?: string;
 };
 
+const resolvedPreviewUrlCache = new Map<string, string>();
+const pendingPreviewUrlCache = new Map<string, Promise<string>>();
+
+function cachePreviewUrl(attachmentId: string, url: string): string {
+  const previous = resolvedPreviewUrlCache.get(attachmentId);
+  if (previous?.startsWith("blob:") && previous !== url) {
+    URL.revokeObjectURL(previous);
+  }
+  resolvedPreviewUrlCache.set(attachmentId, url);
+  return url;
+}
+
 function FileThumbnail({
   file,
   onClick,
+  loading,
 }: {
   file: KeyFieldFileValue;
   onClick?: () => void;
+  loading?: boolean;
 }) {
-  const isImage = isKeyFieldFileImageMimeType(file.mimeType);
+  const isImage = isKeyFieldFileImageMimeType(file.mimeType) && Boolean(file.url);
   const clickable = Boolean(onClick);
 
   return (
@@ -99,7 +114,9 @@ function FileThumbnail({
       )}
       aria-label={clickable ? file.name : undefined}
     >
-      {isImage ? (
+      {loading ? (
+        <span className="size-full animate-pulse bg-muted-foreground/10" aria-hidden />
+      ) : isImage && file.url ? (
         <img src={file.url} alt={file.name} className="size-full object-cover" />
       ) : (
         <FileExtensionBadge file={file} />
@@ -116,6 +133,7 @@ export function KeyFieldFileControl({
   uploadConstraints = defaultKeyFieldFileUploadConstraints,
   onValidationErrorChange,
   onOpen,
+  onResolveFileUrl,
   className,
   uploadLabel = "Upload file",
 }: KeyFieldFileControlProps) {
@@ -125,8 +143,85 @@ export function KeyFieldFileControl({
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const [hasValidationError, setHasValidationError] = React.useState(false);
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  const [resolvedPreviewUrl, setResolvedPreviewUrl] = React.useState<string | null>(() => {
+    const parsed = parseKeyFieldFileValue(value);
+    return parsed ? resolvedPreviewUrlCache.get(parsed.attachmentId) ?? null : null;
+  });
+  const [previewLoading, setPreviewLoading] = React.useState(false);
   const parsedFile = parseKeyFieldFileValue(value);
+  const displayFile =
+    parsedFile && resolvedPreviewUrl
+      ? { ...parsedFile, url: resolvedPreviewUrl }
+      : parsedFile;
+  const shouldResolvePreview = Boolean(
+    parsedFile &&
+      !parsedFile.url &&
+      !resolvedPreviewUrl &&
+      isKeyFieldFileImageMimeType(parsedFile.mimeType) &&
+      onResolveFileUrl,
+  );
   const uploadHint = formatKeyFieldFileUploadHint(uploadConstraints);
+
+  React.useEffect(() => {
+    return () => {
+      if (parsedFile?.url?.startsWith("blob:")) {
+        URL.revokeObjectURL(parsedFile.url);
+      }
+    };
+  }, [parsedFile?.url]);
+
+  React.useEffect(() => {
+    setResolvedPreviewUrl(parsedFile ? resolvedPreviewUrlCache.get(parsedFile.attachmentId) ?? null : null);
+  }, [parsedFile?.attachmentId]);
+
+  React.useEffect(() => {
+    if (!parsedFile || parsedFile.url || !isKeyFieldFileImageMimeType(parsedFile.mimeType) || !onResolveFileUrl) {
+      setPreviewLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const cachedUrl = resolvedPreviewUrlCache.get(parsedFile.attachmentId);
+    if (cachedUrl) {
+      setResolvedPreviewUrl(cachedUrl);
+      setPreviewLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let pending = pendingPreviewUrlCache.get(parsedFile.attachmentId);
+    if (!pending) {
+      pending = onResolveFileUrl(parsedFile)
+        .then((url) => cachePreviewUrl(parsedFile.attachmentId, url))
+        .finally(() => {
+          pendingPreviewUrlCache.delete(parsedFile.attachmentId);
+        });
+      pendingPreviewUrlCache.set(parsedFile.attachmentId, pending);
+    }
+
+    setPreviewLoading(true);
+    void pending
+      .then((url) => {
+        if (!cancelled) {
+          setResolvedPreviewUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedPreviewUrl(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onResolveFileUrl, parsedFile?.attachmentId, parsedFile?.mimeType, parsedFile?.url]);
 
   React.useEffect(() => {
     if (parsedFile) {
@@ -156,8 +251,14 @@ export function KeyFieldFileControl({
 
     try {
       const uploaded = await onUploadFile(selectedFile, setUploadProgress);
+      const previewUrl = uploaded.url ?? (isKeyFieldFileImageMimeType(uploaded.mimeType)
+        ? URL.createObjectURL(selectedFile)
+        : undefined);
+      if (previewUrl) {
+        cachePreviewUrl(uploaded.attachmentId, previewUrl);
+      }
       setUploadProgress(100);
-      onValueChange(serializeKeyFieldFileValue(uploaded));
+      onValueChange(serializeKeyFieldFileValue({ ...uploaded, url: previewUrl }));
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -181,7 +282,7 @@ export function KeyFieldFileControl({
   }
 
   function handlePreviewClick() {
-    if (!parsedFile) {
+    if (!displayFile) {
       return;
     }
 
@@ -190,28 +291,30 @@ export function KeyFieldFileControl({
       return;
     }
 
-    if (isKeyFieldFileImageMimeType(parsedFile.mimeType)) {
+    if (displayFile.url && isKeyFieldFileImageMimeType(displayFile.mimeType)) {
       setLightboxOpen(true);
       return;
     }
 
-    window.open(parsedFile.url, "_blank", "noopener,noreferrer");
+    if (displayFile.url) {
+      window.open(displayFile.url, "_blank", "noopener,noreferrer");
+    }
   }
 
-  if (parsedFile) {
+  if (displayFile) {
     return (
       <>
         <div className={cn("flex min-h-20 items-center gap-3", className)}>
-          <FileThumbnail file={parsedFile} onClick={handlePreviewClick} />
+          <FileThumbnail file={displayFile} onClick={handlePreviewClick} loading={previewLoading || shouldResolvePreview} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{parsedFile.name}</p>
+            <p className="truncate text-sm font-medium text-foreground">{displayFile.name}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {formatKeyFieldFileMeta(parsedFile.name, parsedFile.mimeType, parsedFile.sizeBytes)}
+              {formatKeyFieldFileMeta(displayFile.name, displayFile.mimeType, displayFile.sizeBytes)}
             </p>
           </div>
         </div>
-        {lightboxOpen && !onOpen && isKeyFieldFileImageMimeType(parsedFile.mimeType) ? (
-          <KeyFieldFileLightbox file={parsedFile} onClose={() => setLightboxOpen(false)} />
+        {lightboxOpen && !onOpen && displayFile.url && isKeyFieldFileImageMimeType(displayFile.mimeType) ? (
+          <KeyFieldFileLightbox file={{ ...displayFile, url: displayFile.url }} onClose={() => setLightboxOpen(false)} />
         ) : null}
       </>
     );

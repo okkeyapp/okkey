@@ -82,13 +82,13 @@ function stringValueFromField(field: ItemFieldV2): string {
     case "file":
       if (field.value.kind === "file") {
         const fileValue = field.value;
-        if (fileValue.attachmentId?.trim() && fileValue.url?.trim()) {
+        if (fileValue.attachmentId?.trim()) {
           return serializeKeyFieldFileValue({
             attachmentId: fileValue.attachmentId.trim(),
             name: fileValue.name ?? "",
             mimeType: fileValue.mimeType ?? "application/octet-stream",
             sizeBytes: fileValue.sizeBytes ?? 0,
-            url: fileValue.url.trim(),
+            url: fileValue.url?.trim() || undefined,
           });
         }
         return fileValue.name ?? "";

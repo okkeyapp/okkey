@@ -206,6 +206,12 @@ export {
 
 export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";
 export {
+  encryptAttachmentPayload,
+  decryptAttachmentPayload,
+  type AttachmentAadContext,
+  type EncryptedAttachmentPayload,
+} from "./attachment.js";
+export {
   generateCapsuleKey,
   encryptCapsulePayload,
   decryptCapsulePayload,

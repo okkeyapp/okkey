@@ -2,7 +2,8 @@ import type { ItemFaviconSource } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
-import { Input, cn } from "@okkey/ui";
+import { Input, cn, serializeKeyFieldFileValue } from "@okkey/ui";
+import type { KeyFieldFileValue } from "@okkey/ui";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { getDatePickerLocale } from "../../lib/datePickerLocale";
@@ -27,6 +28,10 @@ import { ItemRecordFaviconField } from "./ItemRecordFaviconField";
 import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import {
+  downloadKeyFieldFileAttachment,
+  uploadKeyFieldFileAttachment,
+} from "../../api/key-field-files";
 
 export type NewItemSavePayload = {
   itemId: string;
@@ -37,6 +42,11 @@ export type NewItemSavePayload = {
   sections: KeyFormEditorSection[];
   tags: string[];
   createdAtMs?: number;
+};
+
+export type PendingFileUploadResult = {
+  payload: NewItemSavePayload;
+  uploadedFiles: KeyFieldFileValue[];
 };
 
 export type NewItemFormPrefillValues = {
@@ -65,6 +75,7 @@ export type NewItemFormInitialValues = {
 export type NewItemFormHandle = {
   validate: () => NewItemFormValidationResult;
   getSavePayload: () => NewItemSavePayload | null;
+  uploadPendingFiles: (payload: NewItemSavePayload) => Promise<PendingFileUploadResult>;
   getFileBaselineSections: () => KeyFormEditorSection[];
   getCurrentSections: () => KeyFormEditorSection[];
   getFaviconSyncInput: () => ItemFormFaviconSyncInput;
@@ -103,8 +114,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const isEditMode = Boolean(initialValues);
   const isTemplateMode = Boolean(templateName);
   const isCopyMode = Boolean(prefillValues) && !isTemplateMode;
-  const { accessToken } = useAuthVault();
+  const { accessToken, vaultKey } = useAuthVault();
   const itemIdRef = useRef(initialValues?.itemId ?? generateEntityId());
+  const pendingFileByIdRef = useRef(new Map<string, File>());
   const formInstanceKeyRef = useRef(
     initialValues?.itemId ?? (isCopyMode || isTemplateMode ? generateEntityId() : categoryId),
   );
@@ -121,6 +133,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   );
   const [tags, setTags] = useState<string[]>(initialValues?.tags ?? prefillValues?.tags ?? []);
   const [vaultId, setVaultId] = useState(initialValues?.vaultId ?? prefillValues?.vaultId ?? "");
+  const selectedVault = useMemo(() => vaults.find((vault) => vault.id === vaultId), [vaultId, vaults]);
   const [folderId, setFolderId] = useState(initialValues?.folderId ?? prefillValues?.folderId ?? NO_FOLDER_VALUE);
   const [syncedVaultId] = useSyncedNewItemVaultId(vaults, vaultsListReady);
   useEffect(() => {
@@ -131,6 +144,42 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
+  const resolveFileVaultContext = useCallback(() => {
+    if (!accessToken || !vaultKey) {
+      throw new Error("AUTH_REQUIRED");
+    }
+    if (!selectedVault) {
+      throw new Error("VAULT_REQUIRED");
+    }
+    if (!selectedVault.isPersonal) {
+      throw new Error("SHARED_VAULT_KEY_UNWRAP_UNSUPPORTED");
+    }
+    return {
+      accessToken,
+      vaultId: selectedVault.id,
+      itemId: itemIdRef.current,
+      vaultKey,
+    };
+  }, [accessToken, selectedVault, vaultKey]);
+  const handleFileUpload = useCallback(async (file: File): Promise<KeyFieldFileValue> => {
+    const pendingAttachmentId = `pending:${generateEntityId()}`;
+    pendingFileByIdRef.current.set(pendingAttachmentId, file);
+    return {
+      attachmentId: pendingAttachmentId,
+      name: file.name,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      url: URL.createObjectURL(file),
+    };
+  }, []);
+  const handleFileOpen = useCallback(
+    (file: KeyFieldFileValue) =>
+      downloadKeyFieldFileAttachment({
+        ...resolveFileVaultContext(),
+        file,
+      }),
+    [resolveFileVaultContext],
+  );
   const initialSections = useMemo(
     () =>
       initialValues?.sections ??
@@ -258,6 +307,67 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           createdAtMs: initialValues?.createdAtMs,
         };
       },
+      uploadPendingFiles: async (payload) => {
+        const pendingIdsInPayload = new Set<string>();
+        for (const section of payload.sections) {
+          for (const field of section.fields) {
+            if (field.type !== "file" || typeof field.value !== "string") {
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(field.value) as Partial<KeyFieldFileValue>;
+              if (typeof parsed.attachmentId === "string" && pendingFileByIdRef.current.has(parsed.attachmentId)) {
+                pendingIdsInPayload.add(parsed.attachmentId);
+              }
+            } catch {
+              /* ignore malformed draft value */
+            }
+          }
+        }
+
+        for (const pendingId of pendingFileByIdRef.current.keys()) {
+          if (!pendingIdsInPayload.has(pendingId)) {
+            pendingFileByIdRef.current.delete(pendingId);
+          }
+        }
+
+        const pendingEntries = [...pendingFileByIdRef.current.entries()].filter(([pendingId]) => pendingIdsInPayload.has(pendingId));
+        if (pendingEntries.length === 0) {
+          return { payload, uploadedFiles: [] };
+        }
+
+        const uploadedByPendingId = new Map<string, KeyFieldFileValue>();
+        for (const [pendingId, file] of pendingEntries) {
+          const uploaded = await uploadKeyFieldFileAttachment({
+            ...resolveFileVaultContext(),
+            file,
+          });
+          uploadedByPendingId.set(pendingId, uploaded);
+        }
+
+        const sections = payload.sections.map((section) => ({
+          ...section,
+          fields: section.fields.map((field) => {
+            if (field.type !== "file" || typeof field.value !== "string") {
+              return field;
+            }
+            try {
+              const parsed = JSON.parse(field.value) as Partial<KeyFieldFileValue>;
+              const uploaded = typeof parsed.attachmentId === "string" ? uploadedByPendingId.get(parsed.attachmentId) : undefined;
+              if (!uploaded) {
+                return field;
+              }
+              return {
+                ...field,
+                value: serializeKeyFieldFileValue(uploaded),
+              };
+            } catch {
+              return field;
+            }
+          }),
+        }));
+        return { payload: { ...payload, sections }, uploadedFiles: [...uploadedByPendingId.values()] };
+      },
       getFileBaselineSections: () => fileBaselineSectionsRef.current,
       getCurrentSections: () => formSections ?? initialSections,
       getFaviconSyncInput: () => getSyncInput(),
@@ -275,7 +385,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         };
       },
     }),
-    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, tags, getSyncInput],
+    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, tags, getSyncInput, resolveFileVaultContext],
   );
 
   if (!category) {
@@ -331,6 +441,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         datePickerLocale={datePickerLocale}
         onSectionsChange={setFormSections}
         onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
+        onFileUpload={handleFileUpload}
+        onFileOpen={handleFileOpen}
         showValidation={showValidation}
       />
 

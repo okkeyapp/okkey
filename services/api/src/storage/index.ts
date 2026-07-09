@@ -18,6 +18,7 @@ import { WorkspacePersonalEventsRepository } from "./workspace-personal-events.t
 import { VaultItemSoftDeletesRepository } from "./vault-item-soft-deletes.ts";
 import { VaultItemFaviconsRepository } from "./vault-item-favicons.ts";
 import { WorkspaceItemTemplatesRepository } from "./workspace-item-templates.ts";
+import { AttachmentsRepository } from "./attachments.ts";
 
 export interface StorageLayer {
   postgres: PostgresDatabase;
@@ -37,6 +38,7 @@ export interface StorageLayer {
     vaultItemSoftDeletes: VaultItemSoftDeletesRepository;
     vaultItemFavicons: VaultItemFaviconsRepository;
     workspaceItemTemplates: WorkspaceItemTemplatesRepository;
+    attachments: AttachmentsRepository;
   };
   ping(): Promise<void>;
   close(): Promise<void>;
@@ -64,6 +66,7 @@ export async function createStorageLayer(
     vaultItemSoftDeletes: new VaultItemSoftDeletesRepository(postgres),
     vaultItemFavicons: new VaultItemFaviconsRepository(postgres),
     workspaceItemTemplates: new WorkspaceItemTemplatesRepository(postgres),
+    attachments: new AttachmentsRepository(postgres),
   };
 
   logger.info("storage initialized", {

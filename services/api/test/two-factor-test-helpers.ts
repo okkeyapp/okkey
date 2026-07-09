@@ -114,6 +114,23 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0006);
   }
+
+  const attachmentsItemFk = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.table_constraints
+      WHERE table_schema = 'public'
+        AND table_name = 'attachments'
+        AND constraint_name = 'attachments_item_id_fkey'
+    ) AS exists`,
+  );
+  if (attachmentsItemFk[0]?.exists) {
+    const migration0007 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0007_attachments_event_log_items.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0007);
+  }
 }
 
 export async function cleanupUserData(

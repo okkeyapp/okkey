@@ -63,7 +63,6 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
           name: parsed.name,
           mimeType: parsed.mimeType,
           sizeBytes: parsed.sizeBytes,
-          url: parsed.url,
         };
       }
       return { kind: "file", name: raw };

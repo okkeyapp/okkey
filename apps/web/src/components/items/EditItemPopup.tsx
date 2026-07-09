@@ -5,7 +5,7 @@ import { Button, Popup } from "@okkey/ui";
 import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { deleteDevKeyFieldFile } from "../../api/key-field-files";
+import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
@@ -190,21 +190,31 @@ export default function EditItemPopup({
           if (!accessToken) {
             throw new Error("AUTH_REQUIRED");
           }
-          let updatedItem = buildItemFromEditSavePayload(payload, payload.createdAtMs, item);
-          updatedItem = await syncItemFaviconForPlaintext(
-            accessToken,
-            updatedItem,
-            item,
-            faviconSyncInput,
-          );
-          await updateItem(updatedItem);
+          const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
+          let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
+          try {
+            updatedItem = await syncItemFaviconForPlaintext(
+              accessToken,
+              updatedItem,
+              item,
+              faviconSyncInput,
+            );
+            await updateItem(updatedItem);
+          } catch (error) {
+            await Promise.allSettled(
+              uploadedFiles.map((file) =>
+                deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
+              ),
+            );
+            throw error;
+          }
           await deleteRemovedKeyFieldFiles(
             formRef.current?.getFileBaselineSections() ?? initialValues.sections,
-            formRef.current?.getCurrentSections() ?? payload.sections,
-            deleteDevKeyFieldFile,
+            uploadedPayload.sections,
+            (file) => deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
           );
-          if (payload.folderId !== folderId && payload.folderId !== NO_FOLDER_VALUE) {
-            await assignItemToFolder(payload.itemId, payload.folderId);
+          if (uploadedPayload.folderId !== folderId && uploadedPayload.folderId !== NO_FOLDER_VALUE) {
+            await assignItemToFolder(uploadedPayload.itemId, uploadedPayload.folderId);
           }
         },
       );

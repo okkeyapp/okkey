@@ -19,13 +19,14 @@ export interface KeyFieldFileStorageConfig {
 
 export interface StoredKeyFieldFile {
   attachmentId: string;
+  storageKey: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
 }
 
-function objectKey(attachmentId: string): string {
-  return `dev/key-field-attachments/${attachmentId}`;
+export function keyFieldAttachmentStorageKey(vaultId: string, attachmentId: string): string {
+  return `attachments/${vaultId}/${attachmentId}`;
 }
 
 function sanitizeFileName(name: string): string {
@@ -82,16 +83,23 @@ export class KeyFieldFileStorage {
     }
   }
 
-  async upload(fileName: string, mimeType: string, body: Uint8Array): Promise<StoredKeyFieldFile> {
+  async upload(input: {
+    vaultId: string;
+    fileName: string;
+    mimeType: string;
+    body: Uint8Array;
+    sizeBytes?: number;
+  }): Promise<StoredKeyFieldFile> {
     const attachmentId = generateEntityId();
-    const safeName = sanitizeFileName(fileName);
-    const contentType = mimeType.trim() || "application/octet-stream";
+    const storageKey = keyFieldAttachmentStorageKey(input.vaultId, attachmentId);
+    const safeName = sanitizeFileName(input.fileName);
+    const contentType = input.mimeType.trim() || "application/octet-stream";
 
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
-        Key: objectKey(attachmentId),
-        Body: body,
+        Key: storageKey,
+        Body: input.body,
         ContentType: contentType,
         Metadata: {
           "original-name-b64": encodeMetadataFileName(safeName),
@@ -102,18 +110,19 @@ export class KeyFieldFileStorage {
 
     return {
       attachmentId,
+      storageKey,
       name: safeName,
       mimeType: contentType,
-      sizeBytes: body.byteLength,
+      sizeBytes: input.sizeBytes ?? input.body.byteLength,
     };
   }
 
-  async get(attachmentId: string): Promise<{ body: Uint8Array; name: string; mimeType: string } | null> {
+  async get(storageKey: string): Promise<{ body: Uint8Array; name: string; mimeType: string } | null> {
     try {
       const response = await this.client.send(
         new GetObjectCommand({
           Bucket: this.bucket,
-          Key: objectKey(attachmentId),
+          Key: storageKey,
         }),
       );
 
@@ -140,10 +149,14 @@ export class KeyFieldFileStorage {
   }
 
   async delete(attachmentId: string): Promise<void> {
+    await this.deleteByStorageKey(attachmentId);
+  }
+
+  async deleteByStorageKey(storageKey: string): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({
         Bucket: this.bucket,
-        Key: objectKey(attachmentId),
+        Key: storageKey,
       }),
     );
   }

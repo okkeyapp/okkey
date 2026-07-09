@@ -1,5 +1,5 @@
 import type { Vault } from "@okkey/types";
-import { Button, Spinner } from "@okkey/ui";
+import { Button, Spinner, type KeyFieldFileValue } from "@okkey/ui";
 import { useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -35,6 +35,7 @@ import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
 import ItemDetailTopBar from "./ItemDetailTopBar";
 import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
+import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
 
 type ItemDetailCardProps = {
   itemId: string;
@@ -55,7 +56,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
-  const { profile, userId } = useAuthVault();
+  const { accessToken, profile, userId, vaultKey } = useAuthVault();
   const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet } =
     useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
@@ -95,6 +96,21 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
       await updateItemQuiet(patchItemRecoveryCodesField(currentItem, fieldId, value));
     },
     [getItemById, itemId, updateItemQuiet],
+  );
+  const handleFileOpen = useCallback(
+    (file: KeyFieldFileValue) => {
+      if (!accessToken || !vaultKey || !item || !vault?.isPersonal) {
+        throw new Error("SHARED_VAULT_KEY_UNWRAP_UNSUPPORTED");
+      }
+      return downloadKeyFieldFileAttachment({
+        accessToken,
+        vaultId: item.vaultId,
+        itemId: item.itemId,
+        vaultKey,
+        file,
+      });
+    },
+    [accessToken, item, vault?.isPersonal, vaultKey],
   );
   const activityEntries = useMemo(() => {
     if (!item) {
@@ -258,6 +274,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             messages={keyFormMessages}
             datePickerLocale={datePickerLocale}
             onRecoveryCodesValueChange={handleRecoveryCodesValueChange}
+            onFileOpen={handleFileOpen}
           />
 
           {(item.tags ?? []).length > 0 ? (

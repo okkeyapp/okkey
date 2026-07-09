@@ -3,7 +3,7 @@ export type KeyFieldFileValue = {
   name: string;
   mimeType: string;
   sizeBytes: number;
-  url: string;
+  url?: string;
 };
 
 export function serializeKeyFieldFileValue(value: KeyFieldFileValue | null): string {
@@ -31,13 +31,12 @@ export function parseKeyFieldFileValue(value: string): KeyFieldFileValue | null 
       typeof record.attachmentId !== "string" ||
       typeof record.name !== "string" ||
       typeof record.mimeType !== "string" ||
-      typeof record.sizeBytes !== "number" ||
-      typeof record.url !== "string"
+      typeof record.sizeBytes !== "number"
     ) {
       return null;
     }
 
-    if (!record.attachmentId.trim() || !record.url.trim()) {
+    if (!record.attachmentId.trim()) {
       return null;
     }
 
@@ -46,7 +45,7 @@ export function parseKeyFieldFileValue(value: string): KeyFieldFileValue | null 
       name: record.name,
       mimeType: record.mimeType,
       sizeBytes: record.sizeBytes,
-      url: record.url,
+      url: typeof record.url === "string" && record.url.trim() ? record.url : undefined,
     };
   } catch {
     return null;
@@ -59,10 +58,6 @@ export function hasKeyFieldFileAttachment(value: string): boolean {
 
 export function isKeyFieldFileImageMimeType(mimeType: string): boolean {
   return mimeType.startsWith("image/");
-}
-
-export function buildKeyFieldFileDownloadUrl(apiBaseUrl: string, attachmentId: string): string {
-  return `${apiBaseUrl.replace(/\/$/, "")}/dev/key-field-files/${encodeURIComponent(attachmentId)}`;
 }
 
 function getFileExtension(name: string): string {

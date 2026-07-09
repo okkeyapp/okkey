@@ -73,7 +73,6 @@ import {
   type KeyFormMode,
   type KeyFieldFileValue,
 } from "@okkey/ui";
-import { uploadDevKeyFieldFile } from "../../api/key-field-files";
 import { normalizeSelectOptionsEditorText, appendSelectOptionsEditorLineAtEnd } from "../../items/keyFormSelectField";
 import { isInvalidCreditCardRequiredField } from "../../items/creditCardFormValidation";
 import { isInvalidPersonalDataNameField } from "../../items/personalDataFormValidation";
@@ -155,6 +154,8 @@ export type KeyFormEditorProps = {
   onSectionsChange?: (sections: KeyFormEditorSection[]) => void;
   onWebsiteUrlsBlur?: (sections: KeyFormEditorSection[]) => void;
   onRecoveryCodesValueChange?: (change: RecoveryCodesValueChange) => void | Promise<void>;
+  onFileUpload?: (file: File, onProgress: (percent: number) => void) => Promise<KeyFieldFileValue>;
+  onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
   datePickerLocale?: Locale;
@@ -1690,7 +1691,7 @@ type SortableFieldProps = {
   recoveryCodesRevealed?: boolean;
   fileValue?: boolean;
   onFileUpload?: (file: File, onProgress: (percent: number) => void) => Promise<KeyFieldFileValue>;
-  onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
+  onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
   statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
   onValueBlur?: () => void;
@@ -1742,7 +1743,7 @@ function SortableField({
   recoveryCodesRevealed,
   fileValue,
   onFileUpload,
-  onFileDelete,
+  onFileOpen,
   statusOverlayLabel,
   onCopyAction,
   onValueBlur,
@@ -1814,7 +1815,7 @@ function SortableField({
       recoveryCodesRevealed={recoveryCodesRevealed}
       fileValue={fileValue}
       onFileUpload={onFileUpload}
-      onFileDelete={onFileDelete}
+      onFileOpen={onFileOpen}
       autoFocusValue={autoFocusValue}
       autoFocusValueRequest={autoFocusValueRequest}
       reorderable={reorderable}
@@ -1960,6 +1961,8 @@ export function KeyFormEditor({
   onRecoveryCodesValueChange,
   showValidation = false,
   datePickerLocale,
+  onFileUpload,
+  onFileOpen,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
   const fieldTypes = fieldTypesProp ?? englishKeyFieldTypes;
@@ -2064,8 +2067,13 @@ export function KeyFormEditor({
   }, []);
 
   const handleKeyFieldFileUpload = useCallback(
-    (file: File, onProgress: (percent: number) => void) => uploadDevKeyFieldFile(file, onProgress),
-    [],
+    (file: File, onProgress: (percent: number) => void) => {
+      if (!onFileUpload) {
+        throw new Error("FILE_UPLOAD_UNAVAILABLE");
+      }
+      return onFileUpload(file, onProgress);
+    },
+    [onFileUpload],
   );
 
   useEffect(() => {
@@ -3377,6 +3385,7 @@ export function KeyFormEditor({
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={isFileField}
         onFileUpload={handleKeyFieldFileUpload}
+        onFileOpen={onFileOpen}
         transformValueInput={
           isCardField
             ? formatCardNumberInput
@@ -3458,6 +3467,7 @@ export function KeyFormEditor({
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={field.type === "file"}
         onFileUpload={handleKeyFieldFileUpload}
+        onFileOpen={onFileOpen}
         addressFieldPlaceholders={messages.address}
         addressSearchCountriesPlaceholder={messages.address.searchCountries}
         addressNoCountriesFoundMessage={messages.address.noCountriesFound}

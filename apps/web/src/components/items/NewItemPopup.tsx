@@ -5,7 +5,7 @@ import { Button, Popup } from "@okkey/ui";
 import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { deleteDevKeyFieldFile } from "../../api/key-field-files";
+import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import { syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
@@ -297,16 +297,27 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           if (!accessToken) {
             throw new Error("AUTH_REQUIRED");
           }
-          let item = buildItemFromNewItemSavePayload(payload);
-          item = await syncItemFaviconForPlaintext(accessToken, item, undefined, faviconSyncInput);
-          const createdItemId = await createItem(item);
+          const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
+          let item = buildItemFromNewItemSavePayload(uploadedPayload);
+          let createdItemId: string;
+          try {
+            item = await syncItemFaviconForPlaintext(accessToken, item, undefined, faviconSyncInput);
+            createdItemId = await createItem(item);
+          } catch (error) {
+            await Promise.allSettled(
+              uploadedFiles.map((file) =>
+                deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
+              ),
+            );
+            throw error;
+          }
           await deleteRemovedKeyFieldFiles(
             formRef.current?.getFileBaselineSections() ?? [],
-            formRef.current?.getCurrentSections() ?? payload.sections,
-            deleteDevKeyFieldFile,
+            uploadedPayload.sections,
+            (file) => deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
           );
-          if (payload.folderId !== NO_FOLDER_VALUE) {
-            await assignItemToFolder(createdItemId, payload.folderId);
+          if (uploadedPayload.folderId !== NO_FOLDER_VALUE) {
+            await assignItemToFolder(createdItemId, uploadedPayload.folderId);
           }
           return createdItemId;
         },

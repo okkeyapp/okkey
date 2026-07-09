@@ -177,7 +177,7 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   fileValue?: boolean;
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   onFileUpload?: KeyFieldFileUploadHandler;
-  onFileDelete?: (file: KeyFieldFileValue) => Promise<void>;
+  onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
   autoFocusValue?: boolean;
   /** Bumps when the parent requests value focus again for the same field. */
   autoFocusValueRequest?: number;
@@ -255,7 +255,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       fileValue = false,
       fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
       onFileUpload,
-      onFileDelete,
+      onFileOpen,
       autoFocusValue = false,
       autoFocusValueRequest = 0,
       reorderable = false,
@@ -342,7 +342,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       recoveryCodesValue && typeof stringValue === "string" ? parseKeyFieldRecoveryCodesValue(stringValue) : [];
     const parsedFileValue = fileValue ? parseKeyFieldFileValue(draftValue) : null;
     const [fileValidationError, setFileValidationError] = React.useState(false);
-    const [fileLightboxOpen, setFileLightboxOpen] = React.useState(false);
+    const [fileLightboxFile, setFileLightboxFile] = React.useState<(KeyFieldFileValue & { url: string }) | null>(null);
     const hasValidationError = isInvalid || (fileValue && fileValidationError);
     const isSurfaceActiveByState = (dateValue && isDatePickerOpen) || forceActive;
     const hasOpenOverlay = Boolean(fieldOverlay) || forceActive || (dateValue && isDatePickerOpen);
@@ -622,6 +622,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       [],
     );
 
+    React.useEffect(
+      () => () => {
+        if (fileLightboxFile?.url.startsWith("blob:")) {
+          URL.revokeObjectURL(fileLightboxFile.url);
+        }
+      },
+      [fileLightboxFile],
+    );
+
     const closeDatePicker = React.useCallback(() => {
       setIsDatePickerOpen(false);
       setIsValueFocused(false);
@@ -755,17 +764,41 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       handleOpenFile();
     }
 
+    async function resolveFileUrl(file: KeyFieldFileValue): Promise<string | null> {
+      if (file.url) {
+        return file.url;
+      }
+      if (!onFileOpen) {
+        return null;
+      }
+      return onFileOpen(file);
+    }
+
+    function closeFileLightbox() {
+      if (fileLightboxFile?.url.startsWith("blob:")) {
+        URL.revokeObjectURL(fileLightboxFile.url);
+      }
+      setFileLightboxFile(null);
+    }
+
     function handleOpenFile() {
       if (!parsedFileValue) {
         return;
       }
 
-      if (isKeyFieldFileImageMimeType(parsedFileValue.mimeType)) {
-        setFileLightboxOpen(true);
-        return;
-      }
+      void (async () => {
+        const url = await resolveFileUrl(parsedFileValue);
+        if (!url) {
+          return;
+        }
 
-      window.open(parsedFileValue.url, "_blank", "noopener,noreferrer");
+        if (isKeyFieldFileImageMimeType(parsedFileValue.mimeType)) {
+          setFileLightboxFile({ ...parsedFileValue, url });
+          return;
+        }
+
+        window.open(url, "_blank", "noopener,noreferrer");
+      })();
     }
 
     function handleFileClear() {
@@ -1031,6 +1064,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       onValueChange?.(nextValue);
                     }}
                     onUploadFile={onFileUpload}
+                    onResolveFileUrl={onFileOpen}
                     uploadConstraints={fileUploadConstraints}
                     onValidationErrorChange={setFileValidationError}
                     uploadLabel={fileUploadLabel}
@@ -1085,7 +1119,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                   <KeyFieldRecoveryCodesConcealedView codes={parsedRecoveryCodesValue} />
                 )
               ) : fileValue ? (
-                <KeyFieldFileView value={draftValue} onOpen={mode === "view" ? handleOpenFile : undefined} />
+                <KeyFieldFileView
+                  value={draftValue}
+                  onOpen={mode === "view" ? handleOpenFile : undefined}
+                  onResolveFileUrl={onFileOpen}
+                />
               ) : addressValue ? (
                 formattedAddressValue
               ) : secretMultilineValue && !shouldConcealValue ? (
@@ -1126,8 +1164,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         ) : actions ? (
           <div className={actionsWrapperClassName}>{actions}</div>
         ) : null}
-        {fileLightboxOpen && parsedFileValue && isKeyFieldFileImageMimeType(parsedFileValue.mimeType) ? (
-          <KeyFieldFileLightbox file={parsedFileValue} onClose={() => setFileLightboxOpen(false)} />
+        {fileLightboxFile ? (
+          <KeyFieldFileLightbox file={fileLightboxFile} onClose={closeFileLightbox} />
         ) : null}
       </div>
     );

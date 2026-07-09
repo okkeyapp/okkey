@@ -5,7 +5,7 @@ import type { KeyFieldFileValue } from "../../lib/key-field-file.js";
 import { Button } from "./button.js";
 
 export type KeyFieldFileLightboxProps = {
-  file: KeyFieldFileValue;
+  file: KeyFieldFileValue & { url: string };
   onClose: () => void;
 };
 

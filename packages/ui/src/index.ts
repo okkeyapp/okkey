@@ -61,7 +61,6 @@ export {
   type KeyFieldSecretRaw,
 } from "./lib/key-field-secret.js";
 export {
-  buildKeyFieldFileDownloadUrl,
   defaultKeyFieldFileUploadConstraints,
   formatKeyFieldFileMeta,
   formatKeyFieldFileSize,

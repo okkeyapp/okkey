@@ -273,6 +273,7 @@ created_at
 ```
 
 Files are stored in object storage, e.g. S3, MinIO
+`item_id` is the client-side item id from the encrypted event log and is not a foreign key to the legacy `items` table.
 
 ---
 

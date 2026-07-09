@@ -87,13 +87,13 @@ import type { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import type { UsersRepository } from "./storage/repositories.ts";
 import type { EmailChangeService } from "./account/email-change.ts";
-import type { KeyFieldFileStorage } from "./storage/key-field-file-storage.ts";
+import type { AttachmentService } from "./attachments/service.ts";
 import type { ItemFaviconService } from "./favicon/service.ts";
 import {
-  createDevKeyFieldFileDeleteRoute,
-  createDevKeyFieldFileGetRoute,
-  createDevKeyFieldFileUploadRoute,
-} from "./routes/dev-key-field-files.ts";
+  createAttachmentDeleteRoute,
+  createAttachmentDownloadRoute,
+  createAttachmentUploadRoute,
+} from "./routes/attachments.ts";
 import {
   createItemFaviconDeleteRoute,
   createItemFaviconGetRoute,
@@ -120,7 +120,7 @@ export interface AppDeps {
   itemTemplatesService?: ItemTemplatesService;
   workspaceSettingsService?: WorkspaceSettingsService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
-  keyFieldFileStorage?: KeyFieldFileStorage;
+  attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
 }
 
@@ -380,21 +380,21 @@ export function createApiApp(
       createCapsuleRevokeRoute(deps.capsuleService, resolveUserId),
     );
   }
-  if (deps.keyFieldFileStorage) {
+  if (deps.attachmentService) {
     app.route(
       "POST",
-      "/dev/key-field-files",
-      createDevKeyFieldFileUploadRoute(deps.keyFieldFileStorage, config),
+      "/vaults/:vaultId/items/:itemId/attachments",
+      createAttachmentUploadRoute(deps.attachmentService, resolveUserId),
     );
     app.route(
       "GET",
-      "/dev/key-field-files/:attachmentId",
-      createDevKeyFieldFileGetRoute(deps.keyFieldFileStorage, config),
+      "/vaults/:vaultId/items/:itemId/attachments/:attachmentId",
+      createAttachmentDownloadRoute(deps.attachmentService, resolveUserId),
     );
     app.route(
       "DELETE",
-      "/dev/key-field-files/:attachmentId",
-      createDevKeyFieldFileDeleteRoute(deps.keyFieldFileStorage, config),
+      "/vaults/:vaultId/items/:itemId/attachments/:attachmentId",
+      createAttachmentDeleteRoute(deps.attachmentService, resolveUserId),
     );
   }
 

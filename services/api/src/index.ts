@@ -26,6 +26,7 @@ import {
 } from "./storage/key-field-file-storage.ts";
 import { ItemFaviconStorage } from "./storage/item-favicon-storage.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
+import { AttachmentService } from "./attachments/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 
 async function main(): Promise<void> {
@@ -158,6 +159,13 @@ async function main(): Promise<void> {
         vaults: storage.repositories.vaults,
       })
     : undefined;
+  const attachmentService = keyFieldFileStorage
+    ? new AttachmentService({
+        storage: keyFieldFileStorage,
+        attachments: storage.repositories.attachments,
+        vaults: storage.repositories.vaults,
+      })
+    : undefined;
   const itemPurgeService = new ItemPurgeService({
     events: storage.repositories.events,
     softDeletes: storage.repositories.vaultItemSoftDeletes,
@@ -181,7 +189,7 @@ async function main(): Promise<void> {
     sessionService,
     twoFactorService,
     capsuleService,
-    keyFieldFileStorage,
+    attachmentService,
     itemFaviconService,
   });
 

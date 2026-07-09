@@ -53,7 +53,7 @@ export function isItemFieldFilled(field: ItemFieldV2): boolean {
     case "note":
       return field.value.note.trim().length > 0;
     case "file":
-      return Boolean(field.value.attachmentId?.trim() && field.value.url?.trim());
+      return Boolean(field.value.attachmentId?.trim());
     case "unknown":
       if (field.value.declaredType === "recovery-codes") {
         return hasRecoveryCodesContent(coerceRecoveryCodesRawToFormValue(field.value.raw));
