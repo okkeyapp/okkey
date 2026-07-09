@@ -17,12 +17,14 @@ import {
   WIFI_ROUTER_SECTION_ID,
   CREDIT_CARD_SECTION_ID,
   PASSPORT_SECTION_ID,
+  SECURE_FILES_SECTION_ID,
   enrichCategoryPresetSelectField,
   getAllApiAccessPresetFields,
   getAllCreditCardPresetFields,
   getAllDatabasePresetFields,
   getAllPassportPresetFields,
   getAllPersonalDataPrimaryPresetFields,
+  getAllSecureFilesPresetFields,
   getAllWifiRouterPresetFields,
   getDefaultSectionsForCategory,
   isCreditCardRequiredFieldId,
@@ -178,6 +180,10 @@ function isFieldDeletable(
     return !isPassportPresetFieldId(field.id);
   }
 
+  if (sectionId === SECURE_FILES_SECTION_ID) {
+    return sectionFields.length > 1;
+  }
+
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return sectionFields.length > 1;
   }
@@ -224,6 +230,10 @@ function isFieldLabelEditable(
 
   if (sectionId === PASSPORT_SECTION_ID) {
     return !isPassportPresetFieldId(field.id);
+  }
+
+  if (sectionId === SECURE_FILES_SECTION_ID) {
+    return true;
   }
 
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
@@ -936,6 +946,63 @@ function mergePassportPresetSections(
   });
 }
 
+function mergeSecureFilesPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  return enrichCategoryPresetSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      editableLabel: true,
+      required: false,
+    },
+    messages,
+  );
+}
+
+function mergeSecureFilesPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("secure_files", messages);
+  const defaultSection = defaults[0];
+  if (!defaultSection) {
+    return loaded;
+  }
+
+  const allPresetFields = getAllSecureFilesPresetFields(messages);
+  const presetFieldsById = new Map(allPresetFields.map((field) => [field.id, field]));
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => {
+      const fields = mergePresetFieldsPreservingOrder({
+        loadedFields: loadedSection.fields,
+        presetFieldsById,
+        presetFieldOrder: allPresetFields,
+        includeMissingPresets: includeEmptyFields,
+        mergeField: (presetField, loadedField) => mergeSecureFilesPresetField(presetField, loadedField, messages),
+        enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+      });
+      const canDeleteFields = fields.length > 1;
+
+      return {
+        ...defaultSection,
+        ...loadedSection,
+        fields: fields.map((field) => ({
+          ...field,
+          deletable: canDeleteFields,
+        })),
+      };
+    },
+  });
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -1030,6 +1097,8 @@ export function itemPlaintextToKeyFormSections(
     sections = mergePersonalDataPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "passport") {
     sections = mergePassportPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "secure_files") {
+    sections = mergeSecureFilesPresetSections(sections, messages, includeEmptyFields);
   }
 
   if (!includeEmptyFields) {

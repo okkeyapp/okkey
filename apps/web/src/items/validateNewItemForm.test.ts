@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serializeKeyFieldFileValue } from "@okkey/ui";
 
 import { isConfiguredNewItemForm, validateNewItemForm } from "./validateNewItemForm";
 
@@ -493,6 +494,77 @@ describe("validateNewItemForm passport", () => {
           fields: [
             { id: "passport-type", type: "text", label: "Type", value: "" },
             { id: "passport-number", type: "text", label: "Number", value: "1234 567890" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("validateNewItemForm secure_files", () => {
+  const baseInput = {
+    recordName: "Secure file",
+    vaultId: "vault-1",
+    categoryId: "secure_files" as const,
+  };
+
+  const filledFileValue = serializeKeyFieldFileValue({
+    attachmentId: "att-1",
+    name: "secret.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 1024,
+    url: "https://example.com/files/att-1",
+  });
+
+  it("requires at least one filled field in the secure files section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "secure-files",
+          variant: "primary" as const,
+          fields: [
+            { id: "secure-file", type: "file", label: "файл", value: "" },
+            { id: "custom-note", type: "text", label: "Note", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "secure-file", sectionId: "secure-files" },
+      { kind: "field", fieldId: "custom-note", sectionId: "secure-files" },
+    ]);
+  });
+
+  it("passes when the file field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "secure-files",
+          variant: "primary" as const,
+          fields: [{ id: "secure-file", type: "file", label: "файл", value: filledFileValue }],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("passes when a custom field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "secure-files",
+          variant: "primary" as const,
+          fields: [
+            { id: "secure-file", type: "file", label: "файл", value: "" },
+            { id: "custom-note", type: "text", label: "Note", value: "Secret" },
           ],
         },
       ],

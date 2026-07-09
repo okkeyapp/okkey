@@ -774,3 +774,60 @@ describe("itemPlaintextToKeyFormSections passport", () => {
     });
   });
 });
+
+describe("itemPlaintextToKeyFormSections secure_files", () => {
+  it("includes locked file preset with editable label", () => {
+    const defaults = getDefaultSectionsForCategory("secure_files", messages);
+
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.id).toBe("secure-files");
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual(["secure-file"]);
+    expect(defaults[0]?.fields[0]).toMatchObject({
+      type: "file",
+      label: "файл",
+      deletable: false,
+      editableLabel: true,
+    });
+  });
+
+  it("round-trips custom fields and preserves locked file preset metadata", () => {
+    const sections = getDefaultSectionsForCategory("secure_files", messages).map((section) => ({
+      ...section,
+      fields: [
+        ...section.fields,
+        {
+          id: "custom-note",
+          type: "text" as const,
+          label: "Note",
+          value: "Secret",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-secure-files-1",
+      vaultId: "vault-1",
+      title: "Secure file",
+      categoryId: "secure_files",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "secure-files");
+
+    expect(primary?.fields.map((field) => field.id)).toEqual(["secure-file", "custom-note"]);
+    expect(primary?.fields.find((field) => field.id === "secure-file")).toMatchObject({
+      type: "file",
+      deletable: true,
+      editableLabel: true,
+    });
+    expect(primary?.fields.find((field) => field.id === "custom-note")).toMatchObject({
+      value: "Secret",
+      deletable: true,
+      editableLabel: true,
+    });
+  });
+});

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 import type { KeyFieldFileValue } from "../../lib/key-field-file.js";
 import { Button } from "./button.js";
@@ -49,8 +50,12 @@ export function KeyFieldFileLightbox({ file, onClose }: KeyFieldFileLightboxProp
     window.open(file.url, "_blank", "noopener,noreferrer");
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-label={file.name}>
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-label={file.name}>
       <div className="absolute right-4 top-4 flex items-center gap-2">
         <Button
           type="button"
@@ -74,6 +79,7 @@ export function KeyFieldFileLightbox({ file, onClose }: KeyFieldFileLightboxProp
         </Button>
       </div>
       <img src={file.url} alt={file.name} className="max-h-full max-w-full object-contain" />
-    </div>
+    </div>,
+    document.body,
   );
 }

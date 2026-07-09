@@ -15,6 +15,7 @@ export const CRYPTO_WALLET_WALLET_SECTION_ID = "wallet";
 export const PERSONAL_DATA_SECTION_ID = "personal-data";
 export const PERSONAL_DATA_WORK_SECTION_ID = "personal-data-work";
 export const PASSPORT_SECTION_ID = "passport";
+export const SECURE_FILES_SECTION_ID = "secure-files";
 
 export const PERSONAL_DATA_PRESET_FIELD_IDS = [
   "first-name",
@@ -44,6 +45,8 @@ export const PASSPORT_PRESET_FIELD_IDS = [
   "expiry-date",
 ] as const;
 
+export const SECURE_FILES_PRESET_FIELD_IDS = ["secure-file"] as const;
+
 export function isPersonalDataPresetSection(sectionId: string): boolean {
   return sectionId === PERSONAL_DATA_SECTION_ID;
 }
@@ -66,6 +69,14 @@ export function isPassportPresetSection(sectionId: string): boolean {
 
 export function isPassportPresetFieldId(fieldId: string): boolean {
   return (PASSPORT_PRESET_FIELD_IDS as readonly string[]).includes(fieldId);
+}
+
+export function isSecureFilesPresetSection(sectionId: string): boolean {
+  return sectionId === SECURE_FILES_SECTION_ID;
+}
+
+export function isSecureFilesPresetFieldId(fieldId: string): boolean {
+  return (SECURE_FILES_PRESET_FIELD_IDS as readonly string[]).includes(fieldId);
 }
 
 export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
@@ -955,6 +966,29 @@ export function getAllPassportPresetFields(messages: KeyFormEditorMessages): Key
   return getPassportDefaultSections(messages)[0]?.fields ?? [];
 }
 
+function getSecureFilesDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  return [
+    {
+      id: SECURE_FILES_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "secure-file",
+          type: "file",
+          label: messages.fieldLabels.file,
+          value: "",
+          editableLabel: true,
+          deletable: false,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllSecureFilesPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getSecureFilesDefaultSections(messages)[0]?.fields ?? [];
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -997,6 +1031,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "passport") {
     return getPassportDefaultSections(messages);
+  }
+
+  if (categoryId === "secure_files") {
+    return getSecureFilesDefaultSections(messages);
   }
 
   return [];

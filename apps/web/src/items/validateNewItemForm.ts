@@ -3,6 +3,7 @@ import {
   BANK_ACCOUNT_SECTION_ID,
   CRYPTO_WALLET_SECTION_ID,
   PASSPORT_SECTION_ID,
+  SECURE_FILES_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
   isCreditCardRequiredFieldId,
 } from "../components/items/itemCategoryDefaultSections";
@@ -32,7 +33,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data" || categoryId === "passport") {
+  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data" || categoryId === "passport" || categoryId === "secure_files") {
     return true;
   }
 
@@ -61,13 +62,14 @@ function appendFlexiblePresetSectionIssues(
   sectionId: string,
   sections: readonly KeyFormEditorSection[],
   issues: NewItemFormValidationIssue[],
+  isFieldFilled: (field: KeyFormEditorField) => boolean = (field) => !isFieldValueEmpty(field),
 ): void {
   const section = sections.find((candidate) => candidate.id === sectionId);
   if (!section || section.fields.length === 0) {
     return;
   }
 
-  const hasFilledField = section.fields.some((field) => !isFieldValueEmpty(field));
+  const hasFilledField = section.fields.some(isFieldFilled);
   if (hasFilledField) {
     return;
   }
@@ -122,6 +124,8 @@ export function validateNewItemForm(input: {
     appendPersonalDataNameIssues(input.sections ?? [], issues);
   } else if (input.categoryId === "passport") {
     appendFlexiblePresetSectionIssues(PASSPORT_SECTION_ID, input.sections ?? [], issues);
+  } else if (input.categoryId === "secure_files") {
+    appendFlexiblePresetSectionIssues(SECURE_FILES_SECTION_ID, input.sections ?? [], issues, isKeyFormFieldFilled);
   } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }

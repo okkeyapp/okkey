@@ -107,9 +107,11 @@ import {
   isPersonalDataPresetSection,
   isPassportPresetFieldId,
   isPassportPresetSection,
+  isSecureFilesPresetSection,
   PERSONAL_DATA_WORK_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
 } from "../items/itemCategoryDefaultSections";
+import { isKeyFormFieldFilled } from "../../items/keyFormFilledFields";
 
 export type { KeyFormUrlAutofillScope } from "./keyFormI18n";
 
@@ -700,6 +702,10 @@ function sectionHasTotpField(section: DemoSection): boolean {
 }
 
 function canDeleteField(section: DemoSection, field: DemoField): boolean {
+  if (isSecureFilesPresetSection(section.id)) {
+    return section.fields.length > 1;
+  }
+
   if (field.deletable === false) {
     return false;
   }
@@ -761,6 +767,10 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
   }
 
   if (isPassportPresetSection(section.id)) {
+    return true;
+  }
+
+  if (isSecureFilesPresetSection(section.id)) {
     return true;
   }
 
@@ -3145,16 +3155,11 @@ export function KeyFormEditor({
       return false;
     }
 
-    if (!isFlexiblePresetPrimarySection(section.id) && !isPassportPresetSection(section.id)) {
+    if (!isFlexiblePresetPrimarySection(section.id) && !isPassportPresetSection(section.id) && !isSecureFilesPresetSection(section.id)) {
       return false;
     }
 
-    const hasFilledField = section.fields.some((candidate) => {
-      if (typeof candidate.value !== "string") {
-        return false;
-      }
-      return candidate.value.trim().length > 0;
-    });
+    const hasFilledField = section.fields.some((candidate) => isKeyFormFieldFilled(candidate));
 
     return !hasFilledField;
   }
@@ -3285,6 +3290,7 @@ export function KeyFormEditor({
       section.id === "api-access" ||
       isPersonalDataPresetSection(section.id) ||
       isPassportPresetSection(section.id) ||
+      isSecureFilesPresetSection(section.id) ||
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
       section.id === BANK_DETAILS_SECTION_ID ||
@@ -3580,7 +3586,7 @@ export function KeyFormEditor({
                 ? fieldTypes
                 : section.id === "websites"
                   ? urlFieldTypes
-                  : section.id === "api-access" || isPersonalDataPresetSection(section.id) || isPassportPresetSection(section.id)
+                  : section.id === "api-access" || isPersonalDataPresetSection(section.id) || isPassportPresetSection(section.id) || isSecureFilesPresetSection(section.id)
                     ? fieldTypes
                     : isFlexiblePresetPrimarySection(section.id)
                       ? fieldTypes
@@ -3600,6 +3606,7 @@ export function KeyFormEditor({
                     section.id === "api-access" ||
                     isPersonalDataPresetSection(section.id) ||
                     isPassportPresetSection(section.id) ||
+                    isSecureFilesPresetSection(section.id) ||
                     isFlexiblePresetPrimarySection(section.id) ||
                     (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)
