@@ -24,13 +24,13 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useLocale } from "../../locale/LocaleContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
-import { useRadixScrollAreaScrolled } from "../../hooks/useRadixScrollAreaScrolled";
+import { useRadixScrollAreaScrolled, useRadixScrollAreaScrollEdges } from "../../hooks/useRadixScrollAreaScrolled";
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { EDIT_ITEM_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
-import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "./stickyHeaderShadow";
+import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName, stickyFooterShadowClassName, stickyFooterSurfaceClassName } from "./stickyHeaderShadow";
 import {
   getActiveCategoryLabel,
   CategoryIconBadge,
@@ -1097,6 +1097,7 @@ export default function ItemsListLeftPane({
 
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listHeaderScrolled = useRadixScrollAreaScrolled(listScrollRef);
+  const listScrollEdges = useRadixScrollAreaScrollEdges(listScrollRef);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1575,7 +1576,13 @@ export default function ItemsListLeftPane({
       </ScrollArea>
 
       {selectionMode ? (
-        <div className="flex shrink-0 items-center border-t border-border bg-background px-2 py-2">
+        <div
+          className={cn(
+            stickyFooterSurfaceClassName,
+            stickyFooterShadowClassName(listScrollEdges.fromBottom),
+            "flex shrink-0 items-center border-t border-border px-2 py-2",
+          )}
+        >
           <Button
             type="button"
             variant="ghost"

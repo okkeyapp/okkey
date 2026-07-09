@@ -119,6 +119,13 @@ export { Switch, type SwitchProps } from "./components/ui/switch.js";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area.js";
 export { Popup, type PopupMenu, type PopupMenuItem, type PopupProps } from "./components/ui/popup.js";
 export {
+  getScrollAreaViewport,
+  popupChromeSurfaceClassName,
+  popupFooterShadowClassName,
+  readPopupScrollEdges,
+  type PopupScrollEdges,
+} from "./lib/popup-scroll-shadow.js";
+export {
   KeyField,
   KeyFieldCopyIcon,
   KeyForm,

@@ -1,7 +1,9 @@
 import { useEffect, useState, type RefObject } from "react";
 
+import { getScrollAreaViewport, readPopupScrollEdges, type PopupScrollEdges } from "@okkey/ui";
+
 function getRadixScrollAreaViewport(root: HTMLElement): HTMLElement | null {
-  return root.querySelector("[data-radix-scroll-area-viewport]");
+  return getScrollAreaViewport(root);
 }
 
 export function useRadixScrollAreaScrolled(
@@ -31,6 +33,41 @@ export function useRadixScrollAreaScrolled(
   }, [scrollAreaRef, threshold]);
 
   return scrolled;
+}
+
+export function useRadixScrollAreaScrollEdges(
+  scrollAreaRef: RefObject<HTMLElement | null>,
+): PopupScrollEdges {
+  const [edges, setEdges] = useState<PopupScrollEdges>({ fromTop: false, fromBottom: false });
+
+  useEffect(() => {
+    const root = scrollAreaRef.current;
+    if (!root) {
+      return;
+    }
+
+    const viewport = getRadixScrollAreaViewport(root);
+    if (!viewport) {
+      return;
+    }
+
+    const update = () => {
+      setEdges(readPopupScrollEdges(viewport));
+    };
+
+    update();
+    viewport.addEventListener("scroll", update, { passive: true });
+
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    resizeObserver?.observe(viewport);
+
+    return () => {
+      viewport.removeEventListener("scroll", update);
+      resizeObserver?.disconnect();
+    };
+  }, [scrollAreaRef]);
+
+  return edges;
 }
 
 export function useScrollAncestorScrolled(
