@@ -1629,8 +1629,8 @@ export default function ItemsListLeftPane({
           <DropdownMenu open={bulkActionsMenuOpen} onOpenChange={setBulkActionsMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="secondary" size="sm" className="ms-auto shrink-0 gap-2">
-                <IconActions16 />
                 {t("web.items.list.actions")}
+                <IconActions16 className="size-4 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 p-1">
