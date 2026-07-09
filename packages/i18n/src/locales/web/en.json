@@ -111,6 +111,7 @@
   "web.newItemPopup.saveErrorSharedVaultUnsupported": "Saving to a shared vault is not supported yet. Choose your personal vault.",
   "web.newItemPopup.favoritesSection": "Favorite categories",
   "web.newItemPopup.reorder": "Reorder",
+  "web.newItemPopup.reorderMobile": "Sort",
   "web.newItemPopup.doneReorder": "Done",
   "web.newItemPopup.showAllCategories": "Show all categories",
   "web.newItemPopup.showFavoritesOnly": "Show favorite categories only",

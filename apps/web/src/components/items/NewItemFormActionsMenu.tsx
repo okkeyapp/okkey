@@ -5,6 +5,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  cn,
 } from "@okkey/ui";
 import { useState } from "react";
 
@@ -30,9 +31,18 @@ export default function NewItemFormActionsMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="secondary" className="shrink-0 gap-2" disabled={disabled}>
+        <Button
+          type="button"
+          variant="secondary"
+          className={cn(
+            "shrink-0 gap-2",
+            "max-md:!size-9 max-md:!min-h-9 max-md:!min-w-9 max-md:gap-0 max-md:rounded-md max-md:px-0",
+          )}
+          disabled={disabled}
+          aria-label={t("web.items.list.actions")}
+        >
           <IconActions16 className="size-4 shrink-0 text-foreground" />
-          {t("web.items.list.actions")}
+          <span className="hidden md:inline">{t("web.items.list.actions")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56 p-1">

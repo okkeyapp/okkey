@@ -111,6 +111,7 @@
   "web.newItemPopup.saveErrorSharedVaultUnsupported": "Сохранение в общий сейф пока недоступно. Выберите личный сейф.",
   "web.newItemPopup.favoritesSection": "Избранные категории",
   "web.newItemPopup.reorder": "Изменить порядок",
+  "web.newItemPopup.reorderMobile": "Сортировать",
   "web.newItemPopup.doneReorder": "Готово",
   "web.newItemPopup.showAllCategories": "Показать все категории",
   "web.newItemPopup.showFavoritesOnly": "Показать только избранные категории",

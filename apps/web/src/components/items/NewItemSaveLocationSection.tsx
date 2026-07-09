@@ -26,17 +26,18 @@ type NewItemSaveLocationSectionProps = {
 
 const saveLocationTriggerClassName = cn(
   "!w-auto inline-flex h-7 min-h-7 max-h-7 max-w-full shrink-0 items-center gap-2 rounded-md bg-background px-2 py-0 text-sm leading-5 text-foreground shadow-none",
+  "max-md:min-w-0 max-md:flex-1 max-md:shrink max-md:!w-full",
   "hover:!bg-background",
   "focus-visible:!shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
   "data-[state=open]:!shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-  "[&>span:first-child]:flex-none [&>span:first-child]:truncate [&>span:first-child]:leading-5",
+  "[&>span:first-child]:min-w-0 [&>span:first-child]:flex-1 [&>span:first-child]:truncate [&>span:first-child]:leading-5",
 );
 
 function FolderSelectLabel({ label }: { label: string }) {
   return (
-    <span className="inline-flex h-5 min-w-0 items-center gap-2">
+    <span className="inline-flex h-5 min-w-0 max-w-full items-center gap-2">
       <FolderClosedIcon />
-      <span className="truncate leading-5">{label}</span>
+      <span className="min-w-0 flex-1 truncate leading-5">{label}</span>
     </span>
   );
 }
@@ -64,11 +65,11 @@ function vaultLeadingEmoji(vault: Vault | undefined): string {
 
 function VaultSelectLabel({ vault }: { vault: Vault | undefined }) {
   return (
-    <span className="inline-flex h-5 min-w-0 items-center gap-2">
+    <span className="inline-flex h-5 min-w-0 max-w-full items-center gap-2">
       <span className="inline-flex size-4 shrink-0 items-center justify-center text-base leading-none" aria-hidden>
         {vaultLeadingEmoji(vault)}
       </span>
-      <span className="truncate leading-5">{vault?.name ?? "…"}</span>
+      <span className="min-w-0 flex-1 truncate leading-5">{vault?.name ?? "…"}</span>
     </span>
   );
 }
@@ -149,12 +150,13 @@ export default function NewItemSaveLocationSection({
       aria-label={t("web.newItemPopup.saveLocationAria")}
     >
       <p className="text-xs leading-5 text-muted-foreground">{t("web.newItemPopup.saveLocationLabel")}</p>
-      <div className="-mx-1 mt-0.5 overflow-x-auto px-1 py-0.5">
-        <div className="flex min-w-0 flex-nowrap items-center gap-2">
-        <span className="shrink-0 text-sm font-medium text-foreground">{workspaceName}</span>
-        <span className="shrink-0 text-sm text-foreground" aria-hidden>
+      <div className="-mx-1 mt-0.5 overflow-x-auto px-1 py-0.5 max-md:overflow-x-hidden">
+        <div className="flex min-w-0 flex-nowrap items-center gap-2 max-md:w-full">
+        <span className="hidden shrink-0 text-sm font-medium text-foreground md:inline">{workspaceName}</span>
+        <span className="hidden shrink-0 text-sm text-foreground md:inline" aria-hidden>
           →
         </span>
+        <div className="min-w-0 max-md:flex-1">
         <SearchableSelect
           variant="inline"
           value={vaultId}
@@ -165,7 +167,7 @@ export default function NewItemSaveLocationSection({
           searchPlaceholder={t("web.newItemPopup.vaultSearch")}
           searchEmptyMessage={t("web.newItemPopup.vaultSearchEmpty")}
         >
-          <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[11rem]")} />
+          <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[11rem] max-md:max-w-none")} />
           <SearchableSelectContent align="start" className="min-w-[14rem]">
             {vaults.map((vault) => (
               <SearchableSelectItem
@@ -179,9 +181,11 @@ export default function NewItemSaveLocationSection({
             ))}
           </SearchableSelectContent>
         </SearchableSelect>
+        </div>
         <span className="shrink-0 text-sm text-foreground" aria-hidden>
           •
         </span>
+        <div className="min-w-0 max-md:flex-1">
         <SearchableSelect
           variant="inline"
           value={folderId}
@@ -191,7 +195,7 @@ export default function NewItemSaveLocationSection({
           searchPlaceholder={t("web.newItemPopup.folderSearch")}
           searchEmptyMessage={t("web.newItemPopup.folderSearchEmpty")}
         >
-          <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[15rem]")} />
+          <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[15rem] max-md:max-w-none")} />
           <SearchableSelectContent align="start" className="min-w-[16rem]">
             <SearchableSelectItem
               value={NO_FOLDER_VALUE}
@@ -217,6 +221,7 @@ export default function NewItemSaveLocationSection({
             />
           </SearchableSelectContent>
         </SearchableSelect>
+        </div>
         </div>
       </div>
     </section>

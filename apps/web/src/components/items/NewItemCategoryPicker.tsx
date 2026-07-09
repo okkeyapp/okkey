@@ -151,7 +151,14 @@ export default function NewItemCategoryPicker({
                 ) : (
                   <ReorderIcon className="size-4 shrink-0 text-foreground" />
                 )}
-                {isReorderMode ? t("web.newItemPopup.doneReorder") : t("web.newItemPopup.reorder")}
+                {isReorderMode ? (
+                  t("web.newItemPopup.doneReorder")
+                ) : (
+                  <>
+                    <span className="md:hidden">{t("web.newItemPopup.reorderMobile")}</span>
+                    <span className="hidden md:inline">{t("web.newItemPopup.reorder")}</span>
+                  </>
+                )}
               </Button>
             ) : null}
           </div>

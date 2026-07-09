@@ -182,12 +182,20 @@
   }
 
   @media (max-width: 767px) {
-    .okkey-popup-panel {
+    .okkey-popup-sheet {
       animation: okkey-popup-sheet-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .okkey-popup-panel[data-state="closing"] {
+    .okkey-popup-sheet[data-state="closing"] {
       animation: okkey-popup-sheet-out 200ms ease-in forwards;
+    }
+
+    .okkey-popup-panel {
+      animation: none;
+    }
+
+    .okkey-popup-panel[data-state="closing"] {
+      animation: none;
     }
   }
 
@@ -242,7 +250,7 @@
 
   @keyframes okkey-popup-sheet-out {
     from {
-      transform: translateY(0);
+      transform: translateY(var(--okkey-sheet-drag-y, 0px));
     }
     to {
       transform: translateY(100%);
