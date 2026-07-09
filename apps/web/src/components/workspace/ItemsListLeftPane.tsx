@@ -29,6 +29,8 @@ import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch 
 import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { EDIT_ITEM_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName, stickyFooterShadowClassName, stickyFooterSurfaceClassName } from "./stickyHeaderShadow";
 import {
@@ -790,6 +792,37 @@ function buildSections(sorted: readonly ItemsListRecord[], sort: ItemsListSort, 
 
 export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean };
 
+function ItemsListRecordFavicon({
+  row,
+  vaults,
+}: {
+  row: ItemsListRecord;
+  vaults: readonly ItemsListPaneVault[];
+}) {
+  const { accessToken, vaultKey } = useAuthVault();
+  const vault = vaults.find((entry) => entry.id === row.vaultId);
+  const faviconUrl = useItemFaviconAttachmentUrl({
+    accessToken,
+    vaultKey,
+    vaultId: row.vaultId,
+    itemId: row.id,
+    faviconId: row.faviconId,
+    enabled: vault?.isPersonal,
+  });
+
+  return (
+    <LazyItemRecordFavicon
+      categoryId={row.categoryId}
+      title={row.title}
+      faviconId={row.faviconId}
+      previewImageSrc={faviconUrl.imageSrc}
+      previewLoading={faviconUrl.loading}
+      size={32}
+      className="shrink-0 bg-background"
+    />
+  );
+}
+
 type ItemsListLeftPaneProps = {
   vaults: readonly ItemsListPaneVault[];
   folderTree: readonly OkkeySidebarFolderTreeNode[];
@@ -1437,13 +1470,7 @@ export default function ItemsListLeftPane({
                             }
                             className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 px-3 text-left"
                           >
-                            <LazyItemRecordFavicon
-                              categoryId={row.categoryId}
-                              title={row.title}
-                              faviconId={row.faviconId}
-                              size={32}
-                              className="shrink-0 bg-background"
-                            />
+                            <ItemsListRecordFavicon row={row} vaults={vaults} />
                             {rowSubtitle ? (
                               <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
                                 <span className="block truncate text-sm font-medium leading-5 text-foreground">{row.title}</span>

@@ -13,6 +13,7 @@ type SaveItemTemplatePopupProps = {
   t: (messageKey: string) => string;
   saving: boolean;
   error: string | null;
+  initialTemplateName?: string;
   onClose: () => void;
   onSave: (input: SaveItemTemplateInput) => void;
 };
@@ -22,6 +23,7 @@ export default function SaveItemTemplatePopup({
   t,
   saving,
   error,
+  initialTemplateName = "",
   onClose,
   onSave,
 }: SaveItemTemplatePopupProps) {
@@ -34,8 +36,10 @@ export default function SaveItemTemplatePopup({
       setTemplateName("");
       setAddToFavorite(false);
       setShowValidation(false);
+      return;
     }
-  }, [open]);
+    setTemplateName(initialTemplateName.trim());
+  }, [initialTemplateName, open]);
 
   if (!open) {
     return null;

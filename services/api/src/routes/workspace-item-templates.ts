@@ -7,6 +7,7 @@ function errorPayload(code: string, message: string, requestId: string) {
 }
 
 type CreateTemplateBody = {
+  id?: unknown;
   name?: unknown;
   category_id?: unknown;
   payload?: unknown;
@@ -64,6 +65,7 @@ export function createWorkspaceItemTemplatesCreateRoute(
       return;
     }
 
+    const templateId = typeof body.id === "string" ? body.id : "";
     const name = typeof body.name === "string" ? body.name : "";
     const categoryId = typeof body.category_id === "string" ? body.category_id : "";
     const payload = body.payload;
@@ -76,6 +78,7 @@ export function createWorkspaceItemTemplatesCreateRoute(
 
     try {
       const template = await service.create(workspaceId, userId, {
+        id: templateId,
         name,
         category_id: categoryId,
         payload: payload as {

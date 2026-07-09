@@ -42,7 +42,35 @@ export async function uploadKeyFieldFileAttachment(input: {
   onProgress?: (percent: number) => void;
 }): Promise<KeyFieldFileValue> {
   const plaintext = new Uint8Array(await input.file.arrayBuffer());
-  const encrypted = await encryptAttachmentPayload(input.vaultKey, plaintext, {
+  const uploaded = await uploadEncryptedAttachment({
+    accessToken: input.accessToken,
+    vaultId: input.vaultId,
+    itemId: input.itemId,
+    vaultKey: input.vaultKey,
+    plaintext,
+    name: input.file.name,
+    mimeType: input.file.type || "application/octet-stream",
+    sizeBytes: input.file.size,
+    onProgress: input.onProgress,
+  });
+  return {
+    ...uploaded,
+    url: isKeyFieldFileImageMimeType(uploaded.mimeType) ? URL.createObjectURL(input.file) : uploaded.url,
+  };
+}
+
+export async function uploadEncryptedAttachment(input: {
+  accessToken: string;
+  vaultId: string;
+  itemId: string;
+  vaultKey: Uint8Array;
+  plaintext: Uint8Array;
+  name: string;
+  mimeType: string;
+  sizeBytes?: number;
+  onProgress?: (percent: number) => void;
+}): Promise<KeyFieldFileValue> {
+  const encrypted = await encryptAttachmentPayload(input.vaultKey, input.plaintext, {
     vaultId: input.vaultId,
     itemId: input.itemId,
   });
@@ -55,9 +83,9 @@ export async function uploadKeyFieldFileAttachment(input: {
     );
     xhr.setRequestHeader("Authorization", `Bearer ${input.accessToken}`);
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
-    xhr.setRequestHeader("X-File-Mime-Type", input.file.type || "application/octet-stream");
-    xhr.setRequestHeader("X-File-Name", encodeURIComponent(input.file.name));
-    xhr.setRequestHeader("X-File-Size", String(input.file.size));
+    xhr.setRequestHeader("X-File-Mime-Type", input.mimeType || "application/octet-stream");
+    xhr.setRequestHeader("X-File-Name", encodeURIComponent(input.name));
+    xhr.setRequestHeader("X-File-Size", String(input.sizeBytes ?? input.plaintext.byteLength));
     xhr.setRequestHeader("X-Encrypted-Key", bytesToBase64(encrypted.encryptedKey));
 
     xhr.upload.onprogress = (event) => {
@@ -72,12 +100,7 @@ export async function uploadKeyFieldFileAttachment(input: {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const uploaded = JSON.parse(xhr.responseText) as KeyFieldFileValue;
-          resolve({
-            ...uploaded,
-            url: isKeyFieldFileImageMimeType(uploaded.mimeType)
-              ? URL.createObjectURL(input.file)
-              : uploaded.url,
-          });
+          resolve(uploaded);
           return;
         } catch {
           reject(new Error("Invalid upload response"));
@@ -103,6 +126,18 @@ export async function downloadKeyFieldFileAttachment(input: {
   vaultKey: Uint8Array;
   file: KeyFieldFileValue;
 }): Promise<string> {
+  const downloaded = await downloadKeyFieldFileAttachmentBytes(input);
+  const blob = new Blob([downloaded.plaintext], { type: downloaded.mimeType });
+  return URL.createObjectURL(blob);
+}
+
+export async function downloadKeyFieldFileAttachmentBytes(input: {
+  accessToken: string;
+  vaultId: string;
+  itemId: string;
+  vaultKey: Uint8Array;
+  file: KeyFieldFileValue;
+}): Promise<{ plaintext: Uint8Array; name: string; mimeType: string; sizeBytes: number }> {
   const response = await fetch(
     `${getApiBaseUrl()}/vaults/${encodeURIComponent(input.vaultId)}/items/${encodeURIComponent(input.itemId)}/attachments/${encodeURIComponent(input.file.attachmentId)}`,
     {
@@ -132,8 +167,12 @@ export async function downloadKeyFieldFileAttachment(input: {
       itemId: input.itemId,
     },
   );
-  const blob = new Blob([plaintext], { type: input.file.mimeType || "application/octet-stream" });
-  return URL.createObjectURL(blob);
+  return {
+    plaintext,
+    name: input.file.name,
+    mimeType: input.file.mimeType || "application/octet-stream",
+    sizeBytes: plaintext.byteLength,
+  };
 }
 
 export async function deleteKeyFieldFileAttachment(input: {

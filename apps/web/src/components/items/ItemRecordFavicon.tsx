@@ -1,6 +1,5 @@
 import { Favicon } from "@okkey/ui";
 
-import { buildItemFaviconUrl } from "../../api/item-favicons";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
 import { ItemCategoryIcon, type CategoryIconPixelSize } from "./itemCategoryIcons";
 
@@ -33,7 +32,6 @@ type ItemRecordFaviconProps = {
 export default function ItemRecordFavicon({
   categoryId,
   title,
-  faviconId,
   previewImageSrc,
   previewLoading = false,
   size = 32,
@@ -50,7 +48,7 @@ export default function ItemRecordFavicon({
     />
   ) : undefined;
 
-  const imageSrc = previewImageSrc ?? (faviconId ? buildItemFaviconUrl(faviconId) : undefined);
+  const imageSrc = previewImageSrc;
   const skeletonWhileLoading = previewLoading || previewImageSrc != null;
   const isLogin = isLoginItemCategory(categoryId);
 

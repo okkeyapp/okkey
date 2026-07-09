@@ -1,7 +1,7 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
-import { Button, Popup } from "@okkey/ui";
+import { Button, Popup, type KeyFieldFileValue } from "@okkey/ui";
 import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -15,7 +15,7 @@ import {
   buildTemplateCreatePayload,
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
-import { syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
+import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useLocale } from "../../locale/LocaleContext";
@@ -70,7 +70,7 @@ export default function EditItemPopup({
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
   const { getItemById, updateItem } = useWorkspaceItems();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
-  const { accessToken } = useAuthVault();
+  const { accessToken, vaultKey } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const { favoriteTemplateIdSet, toggleTemplateFavorite } = useItemCategoryPreferences();
   const { refresh: refreshTemplates } = useWorkspaceItemTemplates();
@@ -93,7 +93,9 @@ export default function EditItemPopup({
       sections: itemPlaintextToKeyFormSections(item, keyFormMessages, { includeEmptyFields: true }),
       tags: item.tags ?? [],
       createdAtMs: item.createdAtMs,
+      attachmentItemId: item.itemId,
       ...(item.faviconId ? { faviconId: item.faviconId } : {}),
+      ...(item.faviconId ? { faviconItemId: item.itemId } : {}),
       ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
     };
   }, [item, folderId, keyFormMessages]);
@@ -114,7 +116,7 @@ export default function EditItemPopup({
   async function handleSaveTemplate({ templateName, addToFavorite }: { templateName: string; addToFavorite: boolean }) {
     const snapshot = formRef.current?.getTemplateSnapshot();
     const faviconSyncInput = formRef.current?.getFaviconSyncInput();
-    if (!snapshot || !core || !accessToken || !isItemCategoryId(snapshot.categoryId)) {
+    if (!snapshot || !core || !accessToken || !vaultKey || !isItemCategoryId(snapshot.categoryId)) {
       setSaveTemplateError(t("web.saveItemTemplatePopup.saveErrorGeneric"));
       return;
     }
@@ -130,19 +132,52 @@ export default function EditItemPopup({
         },
         async () => {
           const draftTemplateId = generateEntityId();
+          const templateFiles = await formRef.current!.uploadPendingFiles(
+            {
+              itemId: draftTemplateId,
+              vaultId: snapshot.vaultId,
+              folderId: snapshot.folderId,
+              recordName: snapshot.recordName,
+              categoryId: snapshot.categoryId,
+              sections: snapshot.sections,
+              tags: snapshot.tags,
+            },
+            { targetItemId: draftTemplateId, sourceItemId: snapshot.attachmentItemId },
+          );
+          const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections };
           const favicon = await syncTemplateFaviconForSnapshot(
             accessToken,
+            vaultKey,
             draftTemplateId,
-            snapshot,
+            uploadedSnapshot,
             faviconSyncInput,
           );
           const body = buildTemplateCreatePayload(
-            snapshot,
+            draftTemplateId,
+            uploadedSnapshot,
             templateName,
             favicon.faviconId,
             favicon.faviconSource,
           );
-          const response = await core.createWorkspaceItemTemplate(workspaceId, body);
+          let response;
+          try {
+            response = await core.createWorkspaceItemTemplate(workspaceId, body);
+          } catch (error) {
+            const filesToDelete = favicon.uploadedFavicon
+              ? [...templateFiles.uploadedFiles, favicon.uploadedFavicon]
+              : templateFiles.uploadedFiles;
+            await Promise.allSettled(
+              filesToDelete.map((file) =>
+                deleteKeyFieldFileAttachment({
+                  accessToken,
+                  vaultId: uploadedSnapshot.vaultId,
+                  itemId: draftTemplateId,
+                  file,
+                }),
+              ),
+            );
+            throw error;
+          }
           await refreshTemplates();
           return response.template;
         },
@@ -187,22 +222,27 @@ export default function EditItemPopup({
           error: t("web.editItemPopup.saveErrorGeneric"),
         },
         async () => {
-          if (!accessToken) {
+          if (!accessToken || !vaultKey) {
             throw new Error("AUTH_REQUIRED");
           }
           const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
           let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
+          let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
-            updatedItem = await syncItemFaviconForPlaintext(
+            const faviconSync = await syncItemFaviconForPlaintext(
               accessToken,
+              vaultKey,
               updatedItem,
               item,
               faviconSyncInput,
             );
+            updatedItem = faviconSync.item;
+            uploadedFavicon = faviconSync.uploadedFavicon;
             await updateItem(updatedItem);
           } catch (error) {
+            const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;
             await Promise.allSettled(
-              uploadedFiles.map((file) =>
+              filesToDelete.map((file) =>
                 deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
               ),
             );
@@ -213,6 +253,14 @@ export default function EditItemPopup({
             uploadedPayload.sections,
             (file) => deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
           );
+          if (item.faviconId && item.faviconId !== updatedItem.faviconId) {
+            await deleteKeyFieldFileAttachment({
+              accessToken,
+              vaultId: item.vaultId,
+              itemId: item.itemId,
+              file: keyFieldFileValueFromFaviconId(item.faviconId),
+            });
+          }
           if (uploadedPayload.folderId !== folderId && uploadedPayload.folderId !== NO_FOLDER_VALUE) {
             await assignItemToFolder(uploadedPayload.itemId, uploadedPayload.folderId);
           }
@@ -283,6 +331,7 @@ export default function EditItemPopup({
         t={t}
         saving={savingTemplate}
         error={saveTemplateError}
+        initialTemplateName={formRef.current?.getTemplateSnapshot()?.recordName ?? ""}
         onClose={() => setSaveTemplateOpen(false)}
         onSave={(input) => void handleSaveTemplate(input)}
       />

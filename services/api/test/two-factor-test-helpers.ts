@@ -131,6 +131,17 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0007);
   }
+
+  const legacyFaviconsTable = await storage.postgres.query<{ exists: boolean }>(
+    "SELECT to_regclass('public.vault_item_favicons') IS NOT NULL AS exists",
+  );
+  if (legacyFaviconsTable[0]?.exists) {
+    const migration0008 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0008_drop_vault_item_favicons.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0008);
+  }
 }
 
 export async function cleanupUserData(

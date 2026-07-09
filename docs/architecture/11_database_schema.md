@@ -272,7 +272,7 @@ size
 created_at
 ```
 
-Files are stored in object storage, e.g. S3, MinIO
+Encrypted files and favicons are stored in object storage, e.g. S3, MinIO, under the shared `attachments/...` keyspace.
 `item_id` is the client-side item id from the encrypted event log and is not a foreign key to the legacy `items` table.
 
 ---

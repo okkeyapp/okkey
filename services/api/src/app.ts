@@ -94,12 +94,7 @@ import {
   createAttachmentDownloadRoute,
   createAttachmentUploadRoute,
 } from "./routes/attachments.ts";
-import {
-  createItemFaviconDeleteRoute,
-  createItemFaviconGetRoute,
-  createItemFaviconPreviewRoute,
-  createItemFaviconUpsertRoute,
-} from "./routes/item-favicons.ts";
+import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
@@ -399,21 +394,10 @@ export function createApiApp(
   }
 
   if (deps.itemFaviconService) {
-    app.route("GET", "/favicons/:faviconId", createItemFaviconGetRoute(deps.itemFaviconService));
     app.route(
       "POST",
       "/favicon/preview",
       createItemFaviconPreviewRoute(deps.itemFaviconService, resolveUserId),
-    );
-    app.route(
-      "PUT",
-      "/vaults/:vaultId/items/:itemId/favicon",
-      createItemFaviconUpsertRoute(deps.itemFaviconService, resolveUserId),
-    );
-    app.route(
-      "DELETE",
-      "/vaults/:vaultId/items/:itemId/favicon",
-      createItemFaviconDeleteRoute(deps.itemFaviconService, resolveUserId),
     );
   }
 

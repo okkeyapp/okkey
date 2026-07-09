@@ -103,4 +103,24 @@ export class AttachmentsRepository {
     );
     return rows[0] ? mapRow(rows[0]) : null;
   }
+
+  async deleteByVaultAndItem(vaultId: string, itemId: string): Promise<AttachmentRecord[]> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      item_id: string | null;
+      storage_key: string;
+      encrypted_key: Uint8Array | Buffer;
+      size: string | number;
+      created_at: string;
+    }>(
+      `
+        DELETE FROM attachments
+        WHERE vault_id = $1 AND item_id = $2
+        RETURNING id, vault_id, item_id, storage_key, encrypted_key, size, created_at
+      `,
+      [vaultId, itemId],
+    );
+    return rows.map(mapRow);
+  }
 }

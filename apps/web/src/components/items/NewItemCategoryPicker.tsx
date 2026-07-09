@@ -206,6 +206,7 @@ export default function NewItemCategoryPicker({
                     <NewItemTemplateCard
                       key={orderEntry}
                       templateId={template.id}
+                      vaultId={template.payload.vault_id}
                       label={template.name}
                       categoryId={template.category_id}
                       faviconId={template.favicon_id}
@@ -241,6 +242,7 @@ export default function NewItemCategoryPicker({
               {activeDragTemplate ? (
                 <NewItemTemplateCard
                   templateId={activeDragTemplate.id}
+                  vaultId={activeDragTemplate.payload.vault_id}
                   label={activeDragTemplate.name}
                   categoryId={activeDragTemplate.category_id}
                   faviconId={activeDragTemplate.favicon_id}
@@ -331,6 +333,7 @@ function TemplatesSection({
             <NewItemTemplateCard
               key={template.id}
               templateId={template.id}
+              vaultId={template.payload.vault_id}
               label={template.name}
               categoryId={template.category_id}
               faviconId={template.favicon_id}

@@ -124,7 +124,7 @@ export interface ItemPlaintextV2 {
   fields: ItemFieldV2[];
   /** User-defined labels; omitted when empty. */
   tags?: string[];
-  /** Server-stored favicon blob id (MinIO); set after favicon upsert on save. */
+  /** Encrypted attachment id for the item favicon; set after favicon upload on save. */
   faviconId?: EntityId;
   /** How the favicon was set; manual disables website auto-fetch for login items. */
   faviconSource?: ItemFaviconSource;

@@ -15,6 +15,7 @@ export type ItemFormFaviconSyncInput = {
   manualFaviconPng?: Uint8Array | null;
   /** Reuse an existing stored favicon (e.g. from template/copy) when no new PNG is pending. */
   reuseFaviconId?: string;
+  reuseFaviconItemId?: string;
 };
 
 export function useItemFormFavicon(input: {
@@ -22,6 +23,7 @@ export function useItemFormFavicon(input: {
   categoryId: string;
   urls: readonly string[];
   initialFaviconId?: string;
+  initialFaviconItemId?: string;
   initialFaviconSource?: ItemFaviconSource;
 }) {
   const [faviconSource, setFaviconSource] = useState<ItemFaviconSource | undefined>(input.initialFaviconSource);
@@ -29,6 +31,7 @@ export function useItemFormFavicon(input: {
   const [pendingManualPng, setPendingManualPng] = useState<Uint8Array | null>(null);
   const pendingManualPngRef = useRef<Uint8Array | null>(null);
   const initialFaviconIdRef = useRef(input.initialFaviconId);
+  const initialFaviconItemIdRef = useRef(input.initialFaviconItemId);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const manualPreviewUrlRef = useRef<string | null>(null);
 
@@ -50,6 +53,7 @@ export function useItemFormFavicon(input: {
 
   useEffect(() => {
     initialFaviconIdRef.current = input.initialFaviconId;
+    initialFaviconItemIdRef.current = input.initialFaviconItemId;
     setFaviconSource(input.initialFaviconSource);
     pendingManualPngRef.current = null;
     setPendingManualPng(null);
@@ -57,7 +61,7 @@ export function useItemFormFavicon(input: {
     revokeObjectUrl(manualPreviewUrlRef.current);
     manualPreviewUrlRef.current = null;
     setManualPreviewUrl(undefined);
-  }, [input.categoryId, input.initialFaviconId, input.initialFaviconSource]);
+  }, [input.categoryId, input.initialFaviconId, input.initialFaviconItemId, input.initialFaviconSource]);
 
   const uploadIconFile = useCallback(async (file: File) => {
     setUploadError(null);
@@ -84,10 +88,12 @@ export function useItemFormFavicon(input: {
       !manualFaviconPng && faviconSource === "manual"
         ? initialFaviconIdRef.current?.trim() || undefined
         : undefined;
+    const reuseFaviconItemId = reuseFaviconId ? initialFaviconItemIdRef.current?.trim() || undefined : undefined;
     return {
       faviconSource,
       ...(manualFaviconPng && manualFaviconPng.byteLength > 0 ? { manualFaviconPng } : {}),
       ...(reuseFaviconId ? { reuseFaviconId } : {}),
+      ...(reuseFaviconItemId ? { reuseFaviconItemId } : {}),
     };
   }, [faviconSource, pendingManualPng]);
 

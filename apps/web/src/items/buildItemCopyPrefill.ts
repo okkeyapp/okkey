@@ -15,7 +15,9 @@ export function buildItemCopyPrefillValues(
     folderId,
     sections: structuredClone(itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true })),
     tags: [...(item.tags ?? [])],
+    attachmentItemId: item.itemId,
     ...(item.faviconId ? { faviconId: item.faviconId } : {}),
+    ...(item.faviconId ? { faviconItemId: item.itemId } : {}),
     ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
   };
 }

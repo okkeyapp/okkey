@@ -20,6 +20,7 @@ test("ItemTemplatesService.create rejects empty template name", async () => {
   await assert.rejects(
     () =>
       service.create("ws-1", "user-1", {
+        id: "1000000000000000001",
         name: "   ",
         category_id: "login",
         payload: {
@@ -55,6 +56,7 @@ test("ItemTemplatesService.create rejects unknown category id", async () => {
   await assert.rejects(
     () =>
       service.create("ws-1", "user-1", {
+        id: "1000000000000000001",
         name: "My template",
         category_id: "unknown",
         payload: {
@@ -71,6 +73,57 @@ test("ItemTemplatesService.create rejects unknown category id", async () => {
       return true;
     },
   );
+});
+
+test("ItemTemplatesService.create uses client-provided template id", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async (input: {
+        id: string;
+        workspaceId: string;
+        name: string;
+        categoryId: string;
+        payloadJson: Record<string, unknown>;
+        faviconId?: string | null;
+        createdBy: string;
+      }) => {
+        assert.equal(input.id, "1000000000000000001");
+        return {
+          id: input.id,
+          workspaceId: input.workspaceId,
+          name: input.name,
+          categoryId: input.categoryId,
+          payloadJson: input.payloadJson,
+          faviconId: input.faviconId ?? null,
+          createdBy: input.createdBy,
+          createdAt: "",
+          updatedAt: "",
+        };
+      },
+    },
+    workspaces: {
+      findById: async () => ({ id: "ws-1" }),
+      hasAccess: async () => true,
+    },
+  });
+
+  const template = await service.create("ws-1", "user-1", {
+    id: "1000000000000000001",
+    name: "My template",
+    category_id: "login",
+    payload: {
+      record_name: "Title",
+      vault_id: "1000000000000000002",
+      folder_id: "__none__",
+      sections: [],
+      tags: [],
+    },
+    favicon_id: "1000000000000000003",
+  });
+
+  assert.equal(template.id, "1000000000000000001");
+  assert.equal(template.favicon_id, "1000000000000000003");
 });
 
 test("ItemTemplatesService.delete rejects missing template", async () => {

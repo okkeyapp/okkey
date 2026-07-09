@@ -1,6 +1,8 @@
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import { WORKSPACE_ITEM_CATEGORY_IDS } from "../item-category-preferences/service.ts";
+import type { AttachmentService } from "../attachments/service.ts";
+import { isEntityId } from "../entity-id.ts";
 
 export class ItemTemplatesServiceError extends Error {
   readonly code: string;
@@ -27,15 +29,18 @@ export type ItemTemplatePayload = {
 export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  attachments?: Pick<AttachmentService, "purgeForItem">;
 }
 
 export class ItemTemplatesService {
   private readonly templates: ItemTemplatesServiceDeps["templates"];
   private readonly workspaces: ItemTemplatesServiceDeps["workspaces"];
+  private readonly attachments?: ItemTemplatesServiceDeps["attachments"];
 
   constructor(deps: ItemTemplatesServiceDeps) {
     this.templates = deps.templates;
     this.workspaces = deps.workspaces;
+    this.attachments = deps.attachments;
   }
 
   async list(workspaceId: string, userId: string) {
@@ -47,9 +52,13 @@ export class ItemTemplatesService {
   async create(
     workspaceId: string,
     userId: string,
-    input: { name: string; category_id: string; payload: ItemTemplatePayload; favicon_id?: string | null },
+    input: { id: string; name: string; category_id: string; payload: ItemTemplatePayload; favicon_id?: string | null },
   ) {
     await this.assertWorkspaceAccess(workspaceId, userId);
+    const templateId = input.id.trim();
+    if (!isEntityId(templateId)) {
+      throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
+    }
     const name = input.name.trim();
     if (!name) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_NAME", 400, "template name is required");
@@ -61,6 +70,7 @@ export class ItemTemplatesService {
     const payload = normalizeTemplatePayload(input.payload);
     const row = await this.templates.create({
       workspaceId,
+      id: templateId,
       name,
       categoryId,
       payloadJson: payload,
@@ -83,6 +93,10 @@ export class ItemTemplatesService {
     const deleted = await this.templates.delete(workspaceId, normalizedTemplateId);
     if (!deleted) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
+    }
+    const vaultId = typeof existing.payloadJson.vault_id === "string" ? existing.payloadJson.vault_id : "";
+    if (vaultId) {
+      await this.attachments?.purgeForItem(vaultId, normalizedTemplateId);
     }
   }
 

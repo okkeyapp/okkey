@@ -7,9 +7,12 @@ import { Button, cn } from "@okkey/ui";
 import ItemRecordFavicon from "./ItemRecordFavicon";
 import { getItemCategoryDefinition, isItemCategoryId } from "./itemCategoryCatalog";
 import { ItemCategoryIcon, StarIcon } from "./itemCategoryIcons";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 
 export type NewItemTemplateCardProps = {
   templateId: string;
+  vaultId: string;
   label: string;
   categoryId: string;
   faviconId?: string;
@@ -39,6 +42,7 @@ const templateCardInteractiveClassName =
 
 export default function NewItemTemplateCard({
   templateId,
+  vaultId,
   label,
   categoryId,
   faviconId,
@@ -67,6 +71,14 @@ export default function NewItemTemplateCard({
   const iconBoxClassName =
     size === "featured" ? "size-10 shrink-0 rounded-lg" : "size-6 shrink-0 rounded";
   const category = isItemCategoryId(categoryId) ? getItemCategoryDefinition(categoryId) : undefined;
+  const { accessToken, vaultKey } = useAuthVault();
+  const faviconUrl = useItemFaviconAttachmentUrl({
+    accessToken,
+    vaultKey,
+    vaultId,
+    itemId: templateId,
+    faviconId,
+  });
 
   const card = (
     <div
@@ -97,6 +109,8 @@ export default function NewItemTemplateCard({
         <ItemRecordFavicon
           categoryId={categoryId}
           faviconId={faviconId}
+          previewImageSrc={faviconUrl.imageSrc}
+          previewLoading={faviconUrl.loading}
           size={size === "featured" ? 40 : 24}
           className={iconBoxClassName}
         />
@@ -154,6 +168,7 @@ export default function NewItemTemplateCard({
   return (
     <SortableNewItemTemplateCard
       templateId={templateId}
+      vaultId={vaultId}
       label={label}
       categoryId={categoryId}
       faviconId={faviconId}

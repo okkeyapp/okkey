@@ -1,4 +1,3 @@
-import { generateEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "./postgres.ts";
 
 export type WorkspaceItemTemplateRecord = {
@@ -72,6 +71,7 @@ export class WorkspaceItemTemplatesRepository {
   }
 
   async create(input: {
+    id: string;
     workspaceId: string;
     name: string;
     categoryId: string;
@@ -79,7 +79,6 @@ export class WorkspaceItemTemplatesRepository {
     faviconId?: string | null;
     createdBy: string;
   }): Promise<WorkspaceItemTemplateRecord> {
-    const id = generateEntityId();
     const rows = await this.db.query<TemplateRow>(
       `
         INSERT INTO workspace_item_templates (
@@ -89,7 +88,7 @@ export class WorkspaceItemTemplatesRepository {
         RETURNING id, workspace_id, name, category_id, payload_json, favicon_id, created_by, created_at, updated_at
       `,
       [
-        id,
+        input.id,
         input.workspaceId,
         input.name,
         input.categoryId,

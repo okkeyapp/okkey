@@ -128,6 +128,12 @@ export class AttachmentService {
     }
   }
 
+  /** Remove all item attachments during hard purge, without a user session. */
+  async purgeForItem(vaultId: string, itemId: string): Promise<void> {
+    const removed = await this.attachments.deleteByVaultAndItem(vaultId, itemId);
+    await Promise.all(removed.map((record) => this.storage.deleteByStorageKey(record.storageKey).catch(() => undefined)));
+  }
+
   private async assertVaultAccess(vaultId: string, userId: string): Promise<void> {
     const allowed = await this.vaults.canReadVault(vaultId, userId);
     if (!allowed) {

@@ -36,6 +36,7 @@ import ItemDetailTopBar from "./ItemDetailTopBar";
 import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
+import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 
 type ItemDetailCardProps = {
   itemId: string;
@@ -73,6 +74,15 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     [records, itemId],
   );
   const vault = vaults.find((candidate) => candidate.id === (item?.vaultId ?? listRecord?.vaultId));
+  const faviconId = item?.faviconId ?? listRecord?.faviconId;
+  const faviconUrl = useItemFaviconAttachmentUrl({
+    accessToken,
+    vaultKey,
+    vaultId: item?.vaultId ?? listRecord?.vaultId,
+    itemId: item?.itemId ?? listRecord?.id,
+    faviconId,
+    enabled: vault?.isPersonal,
+  });
   const folderId = listRecord?.folderId ?? null;
   const folderLabel = folderId
     ? findWorkspaceFolderPathById(folderTree, folderId) || folderId
@@ -259,7 +269,9 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             <ItemRecordFavicon
               categoryId={item.categoryId}
               title={item.title}
-              faviconId={item.faviconId ?? listRecord?.faviconId}
+              faviconId={faviconId}
+              previewImageSrc={faviconUrl.imageSrc}
+              previewLoading={faviconUrl.loading}
               size={40}
               alt=""
             />

@@ -24,7 +24,6 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
-import { ItemFaviconStorage } from "./storage/item-favicon-storage.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
@@ -84,10 +83,6 @@ async function main(): Promise<void> {
     workspaces: storage.repositories.workspaces,
     templates: storage.repositories.workspaceItemTemplates,
   });
-  const itemTemplatesService = new ItemTemplatesService({
-    templates: storage.repositories.workspaceItemTemplates,
-    workspaces: storage.repositories.workspaces,
-  });
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
   });
@@ -135,9 +130,6 @@ async function main(): Promise<void> {
   const keyFieldFileStorage = keyFieldFileStorageConfig
     ? new KeyFieldFileStorage(keyFieldFileStorageConfig)
     : undefined;
-  const itemFaviconStorage = keyFieldFileStorageConfig
-    ? new ItemFaviconStorage(keyFieldFileStorageConfig)
-    : undefined;
   if (keyFieldFileStorage) {
     await keyFieldFileStorage.ensureBucket();
     logger.info("key field file storage initialized", {
@@ -145,20 +137,7 @@ async function main(): Promise<void> {
       endpoint: keyFieldFileStorageConfig?.endpoint,
     });
   }
-  if (itemFaviconStorage) {
-    await itemFaviconStorage.ensureBucket();
-    logger.info("item favicon storage initialized", {
-      bucket: keyFieldFileStorageConfig?.bucket,
-      endpoint: keyFieldFileStorageConfig?.endpoint,
-    });
-  }
-  const itemFaviconService = itemFaviconStorage
-    ? new ItemFaviconService({
-        storage: itemFaviconStorage,
-        favicons: storage.repositories.vaultItemFavicons,
-        vaults: storage.repositories.vaults,
-      })
-    : undefined;
+  const itemFaviconService = new ItemFaviconService();
   const attachmentService = keyFieldFileStorage
     ? new AttachmentService({
         storage: keyFieldFileStorage,
@@ -166,10 +145,15 @@ async function main(): Promise<void> {
         vaults: storage.repositories.vaults,
       })
     : undefined;
+  const itemTemplatesService = new ItemTemplatesService({
+    templates: storage.repositories.workspaceItemTemplates,
+    workspaces: storage.repositories.workspaces,
+    attachments: attachmentService,
+  });
   const itemPurgeService = new ItemPurgeService({
     events: storage.repositories.events,
     softDeletes: storage.repositories.vaultItemSoftDeletes,
-    favicons: itemFaviconService,
+    attachments: attachmentService,
   });
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),

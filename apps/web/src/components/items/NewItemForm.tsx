@@ -29,9 +29,11 @@ import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSa
 import NewItemTagsSection from "./NewItemTagsSection";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import {
+  downloadKeyFieldFileAttachmentBytes,
   downloadKeyFieldFileAttachment,
-  uploadKeyFieldFileAttachment,
+  uploadEncryptedAttachment,
 } from "../../api/key-field-files";
+import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 
 export type NewItemSavePayload = {
   itemId: string;
@@ -41,6 +43,7 @@ export type NewItemSavePayload = {
   categoryId: string;
   sections: KeyFormEditorSection[];
   tags: string[];
+  attachmentItemId?: string;
   createdAtMs?: number;
 };
 
@@ -55,7 +58,9 @@ export type NewItemFormPrefillValues = {
   folderId: string;
   sections: KeyFormEditorSection[];
   tags: string[];
+  attachmentItemId?: string;
   faviconId?: string;
+  faviconItemId?: string;
   faviconSource?: ItemFaviconSource;
 };
 
@@ -68,14 +73,19 @@ export type NewItemFormInitialValues = {
   sections: KeyFormEditorSection[];
   tags: string[];
   createdAtMs: number;
+  attachmentItemId?: string;
   faviconId?: string;
+  faviconItemId?: string;
   faviconSource?: ItemFaviconSource;
 };
 
 export type NewItemFormHandle = {
   validate: () => NewItemFormValidationResult;
   getSavePayload: () => NewItemSavePayload | null;
-  uploadPendingFiles: (payload: NewItemSavePayload) => Promise<PendingFileUploadResult>;
+  uploadPendingFiles: (
+    payload: NewItemSavePayload,
+    options?: { targetItemId?: string; sourceItemId?: string },
+  ) => Promise<PendingFileUploadResult>;
   getFileBaselineSections: () => KeyFormEditorSection[];
   getCurrentSections: () => KeyFormEditorSection[];
   getFaviconSyncInput: () => ItemFormFaviconSyncInput;
@@ -161,6 +171,13 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       vaultKey,
     };
   }, [accessToken, selectedVault, vaultKey]);
+  const resolveAttachmentContext = useCallback(
+    (itemId: string) => ({
+      ...resolveFileVaultContext(),
+      itemId,
+    }),
+    [resolveFileVaultContext],
+  );
   const handleFileUpload = useCallback(async (file: File): Promise<KeyFieldFileValue> => {
     const pendingAttachmentId = `pending:${generateEntityId()}`;
     pendingFileByIdRef.current.set(pendingAttachmentId, file);
@@ -172,13 +189,20 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
       url: URL.createObjectURL(file),
     };
   }, []);
+  const sourceAttachmentItemId =
+    initialValues?.attachmentItemId ??
+    prefillValues?.attachmentItemId ??
+    initialValues?.itemId ??
+    itemIdRef.current;
   const handleFileOpen = useCallback(
     (file: KeyFieldFileValue) =>
       downloadKeyFieldFileAttachment({
-        ...resolveFileVaultContext(),
+        ...resolveAttachmentContext(
+          pendingFileByIdRef.current.has(file.attachmentId) ? itemIdRef.current : sourceAttachmentItemId,
+        ),
         file,
       }),
-    [resolveFileVaultContext],
+    [resolveAttachmentContext, sourceAttachmentItemId],
   );
   const initialSections = useMemo(
     () =>
@@ -224,6 +248,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     categoryId,
     urls: committedWebsiteUrls,
     initialFaviconId: initialValues?.faviconId ?? prefillValues?.faviconId,
+    initialFaviconItemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId,
     initialFaviconSource: initialValues?.faviconSource ?? prefillValues?.faviconSource,
   });
   const {
@@ -233,6 +258,15 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     uploadIconFile,
     getSyncInput,
   } = faviconState;
+  const initialFaviconId = initialValues?.faviconId ?? prefillValues?.faviconId;
+  const storedFaviconUrl = useItemFaviconAttachmentUrl({
+    accessToken,
+    vaultKey,
+    vaultId,
+    itemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId ?? itemIdRef.current,
+    faviconId: initialFaviconId,
+    enabled: selectedVault?.isPersonal && !previewImageSrc,
+  });
 
   const handleWebsiteUrlsBlur = useCallback((sections: KeyFormEditorSection[]) => {
     setCommittedWebsiteUrls(collectWebsiteUrlsFromSections(sections));
@@ -307,8 +341,16 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           createdAtMs: initialValues?.createdAtMs,
         };
       },
-      uploadPendingFiles: async (payload) => {
+      uploadPendingFiles: async (payload, options) => {
+        const targetItemId = options?.targetItemId ?? payload.itemId;
+        const sourceItemId =
+          options?.sourceItemId ??
+          initialValues?.attachmentItemId ??
+          prefillValues?.attachmentItemId ??
+          initialValues?.itemId ??
+          payload.itemId;
         const pendingIdsInPayload = new Set<string>();
+        const attachmentsToCopy = new Map<string, KeyFieldFileValue>();
         for (const section of payload.sections) {
           for (const field of section.fields) {
             if (field.type !== "file" || typeof field.value !== "string") {
@@ -318,6 +360,19 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
               const parsed = JSON.parse(field.value) as Partial<KeyFieldFileValue>;
               if (typeof parsed.attachmentId === "string" && pendingFileByIdRef.current.has(parsed.attachmentId)) {
                 pendingIdsInPayload.add(parsed.attachmentId);
+              } else if (
+                typeof parsed.attachmentId === "string" &&
+                typeof parsed.name === "string" &&
+                typeof parsed.mimeType === "string" &&
+                typeof parsed.sizeBytes === "number" &&
+                sourceItemId !== targetItemId
+              ) {
+                attachmentsToCopy.set(parsed.attachmentId, {
+                  attachmentId: parsed.attachmentId,
+                  name: parsed.name,
+                  mimeType: parsed.mimeType,
+                  sizeBytes: parsed.sizeBytes,
+                });
               }
             } catch {
               /* ignore malformed draft value */
@@ -332,17 +387,35 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         }
 
         const pendingEntries = [...pendingFileByIdRef.current.entries()].filter(([pendingId]) => pendingIdsInPayload.has(pendingId));
-        if (pendingEntries.length === 0) {
+        if (pendingEntries.length === 0 && attachmentsToCopy.size === 0) {
           return { payload, uploadedFiles: [] };
         }
 
         const uploadedByPendingId = new Map<string, KeyFieldFileValue>();
         for (const [pendingId, file] of pendingEntries) {
-          const uploaded = await uploadKeyFieldFileAttachment({
-            ...resolveFileVaultContext(),
-            file,
+          const uploaded = await uploadEncryptedAttachment({
+            ...resolveAttachmentContext(targetItemId),
+            plaintext: new Uint8Array(await file.arrayBuffer()),
+            name: file.name,
+            mimeType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
           });
           uploadedByPendingId.set(pendingId, uploaded);
+        }
+        const uploadedByCopiedId = new Map<string, KeyFieldFileValue>();
+        for (const file of attachmentsToCopy.values()) {
+          const downloaded = await downloadKeyFieldFileAttachmentBytes({
+            ...resolveAttachmentContext(sourceItemId),
+            file,
+          });
+          const uploaded = await uploadEncryptedAttachment({
+            ...resolveAttachmentContext(targetItemId),
+            plaintext: downloaded.plaintext,
+            name: file.name,
+            mimeType: file.mimeType || downloaded.mimeType,
+            sizeBytes: downloaded.sizeBytes,
+          });
+          uploadedByCopiedId.set(file.attachmentId, uploaded);
         }
 
         const sections = payload.sections.map((section) => ({
@@ -353,7 +426,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
             }
             try {
               const parsed = JSON.parse(field.value) as Partial<KeyFieldFileValue>;
-              const uploaded = typeof parsed.attachmentId === "string" ? uploadedByPendingId.get(parsed.attachmentId) : undefined;
+              const uploaded =
+                typeof parsed.attachmentId === "string"
+                  ? uploadedByPendingId.get(parsed.attachmentId) ?? uploadedByCopiedId.get(parsed.attachmentId)
+                  : undefined;
               if (!uploaded) {
                 return field;
               }
@@ -366,7 +442,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
             }
           }),
         }));
-        return { payload: { ...payload, sections }, uploadedFiles: [...uploadedByPendingId.values()] };
+        return {
+          payload: { ...payload, itemId: targetItemId, sections },
+          uploadedFiles: [...uploadedByPendingId.values(), ...uploadedByCopiedId.values()],
+        };
       },
       getFileBaselineSections: () => fileBaselineSectionsRef.current,
       getCurrentSections: () => formSections ?? initialSections,
@@ -382,10 +461,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           folderId,
           sections: structuredClone(formSections ?? initialSections),
           tags: [...tags],
+          attachmentItemId: sourceAttachmentItemId,
         };
       },
     }),
-    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, tags, getSyncInput, resolveFileVaultContext],
+    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, getSyncInput, resolveAttachmentContext],
   );
 
   if (!category) {
@@ -405,9 +485,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           <ItemRecordFavicon
             categoryId={category.id}
             title={trimmedRecordName || undefined}
-            faviconId={initialValues?.faviconId ?? prefillValues?.faviconId}
-            previewImageSrc={previewImageSrc}
-            previewLoading={previewLoading}
+            faviconId={initialFaviconId}
+            previewImageSrc={previewImageSrc ?? storedFaviconUrl.imageSrc}
+            previewLoading={previewLoading || storedFaviconUrl.loading}
             size={40}
             alt=""
           />
