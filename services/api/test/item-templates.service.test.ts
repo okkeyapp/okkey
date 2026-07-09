@@ -151,3 +151,60 @@ test("ItemTemplatesService.delete rejects missing template", async () => {
     },
   );
 });
+
+test("ItemTemplatesService.delete purges template attachments by template id", async () => {
+  let purgedTemplateId = "";
+  let purgedAttachmentIds: string[] = [];
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      findById: async () => ({
+        id: "1000000000000000001",
+        workspaceId: "ws-1",
+        name: "Template",
+        categoryId: "login",
+        payloadJson: {
+          vault_id: "1000000000000000002",
+          sections: [
+            {
+              fields: [
+                {
+                  type: "file",
+                  value: JSON.stringify({
+                    attachmentId: "1000000000000000004",
+                    name: "doc.pdf",
+                    mimeType: "application/pdf",
+                    sizeBytes: 10,
+                  }),
+                },
+              ],
+            },
+          ],
+        },
+        faviconId: "1000000000000000003",
+        createdBy: "user-1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      create: async () => {
+        throw new Error("should not be called");
+      },
+      delete: async () => true,
+    },
+    workspaces: {
+      findById: async () => ({ id: "ws-1" }),
+      hasAccess: async () => true,
+    },
+    attachments: {
+      async purgeForTemplate(templateId: string, referencedAttachmentIds: Iterable<string>) {
+        purgedTemplateId = templateId;
+        purgedAttachmentIds = [...referencedAttachmentIds];
+      },
+    },
+  });
+
+  await service.delete("ws-1", "user-1", "1000000000000000001");
+
+  assert.equal(purgedTemplateId, "1000000000000000001");
+  assert.deepEqual(purgedAttachmentIds, ["1000000000000000003", "1000000000000000004"]);
+});

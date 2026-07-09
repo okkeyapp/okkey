@@ -29,7 +29,7 @@ export type ItemTemplatePayload = {
 export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
-  attachments?: Pick<AttachmentService, "purgeForItem">;
+  attachments?: Pick<AttachmentService, "purgeForTemplate">;
 }
 
 export class ItemTemplatesService {
@@ -90,13 +90,14 @@ export class ItemTemplatesService {
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
+    await this.attachments?.purgeForTemplate(
+      normalizedTemplateId,
+      collectTemplateAttachmentIds(existing.payloadJson, existing.faviconId),
+    );
+
     const deleted = await this.templates.delete(workspaceId, normalizedTemplateId);
     if (!deleted) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
-    }
-    const vaultId = typeof existing.payloadJson.vault_id === "string" ? existing.payloadJson.vault_id : "";
-    if (vaultId) {
-      await this.attachments?.purgeForItem(vaultId, normalizedTemplateId);
     }
   }
 
@@ -110,6 +111,52 @@ export class ItemTemplatesService {
       throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
     }
   }
+}
+
+function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, faviconId: string | null): string[] {
+  const ids = new Set<string>();
+  const normalizedFaviconId = faviconId?.trim();
+  if (normalizedFaviconId) {
+    ids.add(normalizedFaviconId);
+  }
+
+  const sections = payloadJson.sections;
+  if (!Array.isArray(sections)) {
+    return [...ids];
+  }
+
+  for (const section of sections) {
+    if (!section || typeof section !== "object") {
+      continue;
+    }
+    const fields = (section as { fields?: unknown }).fields;
+    if (!Array.isArray(fields)) {
+      continue;
+    }
+    for (const field of fields) {
+      if (!field || typeof field !== "object") {
+        continue;
+      }
+      const typedField = field as { type?: unknown; value?: unknown };
+      if (typedField.type !== "file" || typeof typedField.value !== "string") {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(typedField.value) as { attachmentId?: unknown };
+        if (typeof parsed.attachmentId !== "string") {
+          continue;
+        }
+        const attachmentId = parsed.attachmentId.trim();
+        if (attachmentId && !attachmentId.startsWith("pending:")) {
+          ids.add(attachmentId);
+        }
+      } catch {
+        /* ignore malformed file field payload */
+      }
+    }
+  }
+
+  return [...ids];
 }
 
 function normalizeTemplatePayload(raw: ItemTemplatePayload): Record<string, unknown> {

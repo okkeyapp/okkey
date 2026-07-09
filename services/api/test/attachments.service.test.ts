@@ -127,3 +127,110 @@ test("AttachmentService purges all item attachment objects", async () => {
     "attachments/1000000000000000001/1000000000000000004",
   ]);
 });
+
+test("AttachmentService purges all attachment objects by item id", async () => {
+  const deletedStorageKeys: string[] = [];
+  const storage = {
+    async deleteByStorageKey(storageKey: string) {
+      deletedStorageKeys.push(storageKey);
+    },
+  } as unknown as KeyFieldFileStorage;
+  const attachments = {
+    async deleteByItem(itemId: string) {
+      assert.equal(itemId, "1000000000000000002");
+      return [
+        {
+          id: "1000000000000000003",
+          vaultId: "1000000000000000001",
+          itemId,
+          storageKey: "attachments/1000000000000000001/1000000000000000003",
+          encryptedKey: Uint8Array.from([1]),
+          size: 10,
+          createdAt: "",
+        },
+        {
+          id: "1000000000000000004",
+          vaultId: "1000000000000000005",
+          itemId,
+          storageKey: "attachments/1000000000000000005/1000000000000000004",
+          encryptedKey: Uint8Array.from([2]),
+          size: 20,
+          createdAt: "",
+        },
+      ];
+    },
+  } as unknown as AttachmentsRepository;
+  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault">;
+
+  const service = new AttachmentService({ storage, attachments, vaults });
+
+  await service.purgeForItemId("1000000000000000002");
+
+  assert.deepEqual(deletedStorageKeys, [
+    "attachments/1000000000000000001/1000000000000000003",
+    "attachments/1000000000000000005/1000000000000000004",
+  ]);
+});
+
+test("AttachmentService purges template attachments by scope and referenced ids", async () => {
+  const deletedStorageKeys: string[] = [];
+  const storage = {
+    async deleteByStorageKey(storageKey: string) {
+      deletedStorageKeys.push(storageKey);
+    },
+  } as unknown as KeyFieldFileStorage;
+  const attachments = {
+    async deleteByItem(itemId: string) {
+      assert.equal(itemId, "1000000000000000002");
+      return [
+        {
+          id: "1000000000000000003",
+          vaultId: "1000000000000000001",
+          itemId,
+          storageKey: "attachments/1000000000000000001/1000000000000000003",
+          encryptedKey: Uint8Array.from([1]),
+          size: 10,
+          createdAt: "",
+        },
+      ];
+    },
+    async findById(attachmentId: string) {
+      if (attachmentId === "1000000000000000004") {
+        return {
+          id: "1000000000000000004",
+          vaultId: "1000000000000000001",
+          itemId: "1000000000000000009",
+          storageKey: "attachments/1000000000000000001/1000000000000000004",
+          encryptedKey: Uint8Array.from([2]),
+          size: 20,
+          createdAt: "",
+        };
+      }
+      return null;
+    },
+    async deleteById(attachmentId: string) {
+      if (attachmentId === "1000000000000000004") {
+        return {
+          id: "1000000000000000004",
+          vaultId: "1000000000000000001",
+          itemId: "1000000000000000009",
+          storageKey: "attachments/1000000000000000001/1000000000000000004",
+          encryptedKey: Uint8Array.from([2]),
+          size: 20,
+          createdAt: "",
+        };
+      }
+      return null;
+    },
+  } as unknown as AttachmentsRepository;
+  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault">;
+
+  const service = new AttachmentService({ storage, attachments, vaults });
+
+  await service.purgeForTemplate("1000000000000000002", ["1000000000000000003", "1000000000000000004"]);
+
+  assert.deepEqual(deletedStorageKeys, [
+    "attachments/1000000000000000001/1000000000000000003",
+    "attachments/1000000000000000001/1000000000000000004",
+  ]);
+});

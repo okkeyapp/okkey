@@ -131,7 +131,41 @@ export class AttachmentService {
   /** Remove all item attachments during hard purge, without a user session. */
   async purgeForItem(vaultId: string, itemId: string): Promise<void> {
     const removed = await this.attachments.deleteByVaultAndItem(vaultId, itemId);
-    await Promise.all(removed.map((record) => this.storage.deleteByStorageKey(record.storageKey).catch(() => undefined)));
+    await this.deleteStorageRecords(removed);
+  }
+
+  /** Remove all attachments for a client-generated item/template id, regardless of vault scope. */
+  async purgeForItemId(itemId: string): Promise<void> {
+    const removed = await this.attachments.deleteByItem(itemId);
+    await this.deleteStorageRecords(removed);
+  }
+
+  /** Remove template/item attachments by scope and any ids referenced in persisted metadata. */
+  async purgeForTemplate(templateId: string, referencedAttachmentIds: Iterable<string>): Promise<void> {
+    await this.purgeForItemId(templateId);
+
+    const seen = new Set<string>();
+    for (const rawId of referencedAttachmentIds) {
+      const attachmentId = rawId.trim();
+      if (!attachmentId || seen.has(attachmentId)) {
+        continue;
+      }
+      seen.add(attachmentId);
+
+      const existing = await this.attachments.findById(attachmentId);
+      if (!existing) {
+        continue;
+      }
+
+      const removed = await this.attachments.deleteById(attachmentId);
+      if (removed) {
+        await this.storage.deleteByStorageKey(removed.storageKey).catch(() => undefined);
+      }
+    }
+  }
+
+  private async deleteStorageRecords(records: AttachmentRecord[]): Promise<void> {
+    await Promise.all(records.map((record) => this.storage.deleteByStorageKey(record.storageKey).catch(() => undefined)));
   }
 
   private async assertVaultAccess(vaultId: string, userId: string): Promise<void> {

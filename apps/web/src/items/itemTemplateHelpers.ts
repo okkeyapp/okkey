@@ -78,7 +78,10 @@ export async function syncTemplateFaviconForSnapshot(
   if (syncInput?.faviconSource === "manual") {
     const reuseFaviconId = syncInput.reuseFaviconId?.trim();
     const reuseFaviconItemId = syncInput.reuseFaviconItemId?.trim();
-    if (reuseFaviconId && reuseFaviconItemId && reuseFaviconItemId !== templateId) {
+    if (reuseFaviconId && reuseFaviconItemId) {
+      if (reuseFaviconItemId === templateId) {
+        return { faviconId: reuseFaviconId, faviconSource: "manual" };
+      }
       const downloaded = await downloadKeyFieldFileAttachmentBytes({
         accessToken,
         vaultId: snapshot.vaultId,
@@ -87,9 +90,6 @@ export async function syncTemplateFaviconForSnapshot(
         file: keyFieldFileValueFromFaviconId(reuseFaviconId),
       });
       return uploadTemplateFavicon(downloaded.plaintext, "manual");
-    }
-    if (reuseFaviconId) {
-      return { faviconId: reuseFaviconId, faviconSource: "manual" };
     }
     return { faviconSource: "manual" };
   }

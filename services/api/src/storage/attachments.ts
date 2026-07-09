@@ -123,4 +123,64 @@ export class AttachmentsRepository {
     );
     return rows.map(mapRow);
   }
+
+  async findById(attachmentId: string): Promise<AttachmentRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      item_id: string | null;
+      storage_key: string;
+      encrypted_key: Uint8Array | Buffer;
+      size: string | number;
+      created_at: string;
+    }>(
+      `
+        SELECT id, vault_id, item_id, storage_key, encrypted_key, size, created_at
+        FROM attachments
+        WHERE id = $1
+      `,
+      [attachmentId],
+    );
+    return rows[0] ? mapRow(rows[0]) : null;
+  }
+
+  async deleteById(attachmentId: string): Promise<AttachmentRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      item_id: string | null;
+      storage_key: string;
+      encrypted_key: Uint8Array | Buffer;
+      size: string | number;
+      created_at: string;
+    }>(
+      `
+        DELETE FROM attachments
+        WHERE id = $1
+        RETURNING id, vault_id, item_id, storage_key, encrypted_key, size, created_at
+      `,
+      [attachmentId],
+    );
+    return rows[0] ? mapRow(rows[0]) : null;
+  }
+
+  async deleteByItem(itemId: string): Promise<AttachmentRecord[]> {
+    const rows = await this.db.query<{
+      id: string;
+      vault_id: string;
+      item_id: string | null;
+      storage_key: string;
+      encrypted_key: Uint8Array | Buffer;
+      size: string | number;
+      created_at: string;
+    }>(
+      `
+        DELETE FROM attachments
+        WHERE item_id = $1
+        RETURNING id, vault_id, item_id, storage_key, encrypted_key, size, created_at
+      `,
+      [itemId],
+    );
+    return rows.map(mapRow);
+  }
 }
