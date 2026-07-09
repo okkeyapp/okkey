@@ -3,13 +3,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
   cn,
 } from "@okkey/ui";
 import { useState } from "react";
 
-import { IconActions16, IconDelete16, IconSaveTemplate16 } from "./itemCategoryIcons";
+import { IconActions16, IconDelete16, IconSaveTemplate16, IconUpdateTemplate16 } from "./itemCategoryIcons";
 
 type NewItemFormActionsMenuProps = {
   t: (messageKey: string) => string;
@@ -61,7 +60,7 @@ export default function NewItemFormActionsMenu({
               onUpdateTemplate();
             }}
           >
-            <IconSaveTemplate16 className="size-4 shrink-0 text-foreground" />
+            <IconUpdateTemplate16 className="size-4 shrink-0 text-foreground" />
             <span className="whitespace-nowrap">{t("web.newItemPopup.updateTemplate")}</span>
           </DropdownMenuItem>
         ) : null}
@@ -76,19 +75,16 @@ export default function NewItemFormActionsMenu({
           <span className="whitespace-nowrap">{saveTemplateLabel}</span>
         </DropdownMenuItem>
         {showDeleteTemplate && onDeleteTemplate ? (
-          <>
-            <DropdownMenuSeparator className="mx-1 my-1" />
-            <DropdownMenuItem
-              className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
-              onSelect={() => {
-                setOpen(false);
-                onDeleteTemplate();
-              }}
-            >
-              <IconDelete16 className="size-4 shrink-0" />
-              <span className="whitespace-nowrap">{t("web.newItemPopup.deleteTemplate")}</span>
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem
+            className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+            onSelect={() => {
+              setOpen(false);
+              onDeleteTemplate();
+            }}
+          >
+            <IconDelete16 className="size-4 shrink-0" />
+            <span className="whitespace-nowrap">{t("web.newItemPopup.deleteTemplate")}</span>
+          </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

@@ -306,13 +306,32 @@ export function BackChevronIcon(props: IconProps) {
 
 export function ReorderIcon(props: IconProps) {
   return (
-    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden {...props}>
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
       <path
-        d="M10.6667 8.00008H2M10.6667 12.0001H2M6.66667 4.00008H2M14 12.0001V5.33341C14 4.97979 13.8595 4.64065 13.6095 4.39061C13.3594 4.14056 13.0203 4.00008 12.6667 4.00008H9.33333M10.6667 2.66675L9.33333 4.00008L10.6667 5.33341"
+        d="M10.6666 14H12.6666C13.2066 14 13.6533 13.5533 13.6533 13.0133L13.6666 13C13.6666 12.4533 13.2066 12 12.6666 12H10.6666V14Z"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      <path
+        d="M10.6666 10.0001H12.3333C12.8933 9.99341 13.3333 10.4401 13.3333 11.0001C13.3333 11.5601 12.8933 12.0001 12.3333 12.0001H10.6666V10.0001Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.66663 6V3.33333C2.66663 2.64267 3.26329 2 3.99996 2C4.73663 2 5.33329 2.64267 5.33329 3.33333V6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M1.99329 7.98682C1.99329 9.57812 2.62543 11.1042 3.75065 12.2295C4.87586 13.3547 6.40199 13.9868 7.99329 13.9868M13.9933 7.98682C13.9933 6.39552 13.3611 4.86939 12.2359 3.74418C11.1107 2.61896 9.58459 1.98682 7.99329 1.98682"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M5.33329 4.6665H2.66663" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -376,6 +395,21 @@ export function IconActions16({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+export function IconUpdateTemplate16({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={className}>
+      <path
+        d="M2.66663 13.3332H5.33329L12.3333 6.33321C12.5084 6.15811 12.6473 5.95024 12.742 5.72147C12.8368 5.4927 12.8856 5.2475 12.8856 4.99988C12.8856 4.75225 12.8368 4.50705 12.742 4.27828C12.6473 4.04951 12.5084 3.84164 12.3333 3.66654C12.1582 3.49145 11.9503 3.35255 11.7216 3.25779C11.4928 3.16303 11.2476 3.11426 11 3.11426C10.7523 3.11426 10.5071 3.16303 10.2784 3.25779C10.0496 3.35255 9.84172 3.49145 9.66663 3.66654L2.66663 10.6665V13.3332Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 4.3335L11.6667 7.00016" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.6666 12.6665H14.6666" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
