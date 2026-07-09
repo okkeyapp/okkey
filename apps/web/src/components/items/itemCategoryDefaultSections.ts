@@ -12,6 +12,37 @@ export const BANK_ACCOUNT_SECTION_ID = "bank-account";
 export const BANK_DETAILS_SECTION_ID = "bank-details";
 export const CRYPTO_WALLET_SECTION_ID = "crypto-wallet";
 export const CRYPTO_WALLET_WALLET_SECTION_ID = "wallet";
+export const PERSONAL_DATA_SECTION_ID = "personal-data";
+export const PERSONAL_DATA_WORK_SECTION_ID = "personal-data-work";
+
+export const PERSONAL_DATA_PRESET_FIELD_IDS = [
+  "first-name",
+  "last-name",
+  "initials",
+  "gender",
+  "birth-date",
+  "phone",
+  "email",
+  "address",
+] as const;
+
+export const PERSONAL_DATA_REQUIRED_NAME_FIELD_IDS = ["first-name", "last-name"] as const;
+
+export function isPersonalDataPresetSection(sectionId: string): boolean {
+  return sectionId === PERSONAL_DATA_SECTION_ID;
+}
+
+export function isPersonalDataWorkSection(sectionId: string): boolean {
+  return sectionId === PERSONAL_DATA_WORK_SECTION_ID;
+}
+
+export function isPersonalDataPresetFieldId(fieldId: string): boolean {
+  return (PERSONAL_DATA_PRESET_FIELD_IDS as readonly string[]).includes(fieldId);
+}
+
+export function isPersonalDataRequiredNameFieldId(fieldId: string): boolean {
+  return (PERSONAL_DATA_REQUIRED_NAME_FIELD_IDS as readonly string[]).includes(fieldId);
+}
 
 export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
 
@@ -646,6 +677,146 @@ export function getAllCryptoWalletPresetFields(messages: KeyFormEditorMessages):
   return getCryptoWalletDefaultSections(messages).flatMap((section) => section.fields);
 }
 
+export function getPersonalDataGenderSelectOptions(messages: KeyFormEditorMessages): KeyFormSelectOption[] {
+  return [
+    { value: "male", label: messages.personalDataGenderOptions.male },
+    { value: "female", label: messages.personalDataGenderOptions.female },
+  ];
+}
+
+function getPersonalDataDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  const genderSelectOptions = getPersonalDataGenderSelectOptions(messages);
+
+  return [
+    {
+      id: PERSONAL_DATA_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "first-name",
+          type: "text",
+          label: messages.fieldLabels.personalFirstName,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "last-name",
+          type: "text",
+          label: messages.fieldLabels.personalLastName,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "initials",
+          type: "text",
+          label: messages.fieldLabels.personalInitials,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "gender",
+          type: "select",
+          label: messages.fieldLabels.personalGender,
+          value: "",
+          selectOptions: genderSelectOptions,
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "birth-date",
+          type: "date",
+          label: messages.fieldLabels.personalBirthDate,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "phone",
+          type: "phone",
+          label: messages.fieldLabels.personalPhone,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "email",
+          type: "email",
+          label: messages.fieldLabels.personalEmail,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "address",
+          type: "address",
+          label: messages.fieldLabels.personalAddress,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+      ],
+    },
+    {
+      id: PERSONAL_DATA_WORK_SECTION_ID,
+      variant: "additional",
+      title: messages.sectionTitles.personalWork,
+      fields: [
+        {
+          id: "work-company",
+          type: "text",
+          label: messages.fieldLabels.personalWorkCompany,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "work-department",
+          type: "text",
+          label: messages.fieldLabels.personalWorkDepartment,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "work-position",
+          type: "text",
+          label: messages.fieldLabels.personalWorkPosition,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "work-phone",
+          type: "phone",
+          label: messages.fieldLabels.personalWorkPhone,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+        {
+          id: "work-email",
+          type: "email",
+          label: messages.fieldLabels.personalWorkEmail,
+          value: "",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllPersonalDataPrimaryPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getPersonalDataDefaultSections(messages)[0]?.fields ?? [];
+}
+
+export function getAllPersonalDataPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getPersonalDataDefaultSections(messages).flatMap((section) => section.fields);
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -680,6 +851,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "crypto_wallet") {
     return getCryptoWalletDefaultSections(messages);
+  }
+
+  if (categoryId === "personal_data") {
+    return getPersonalDataDefaultSections(messages);
   }
 
   return [];
@@ -739,12 +914,33 @@ export function enrichWifiRouterSelectField(
   };
 }
 
+export function enrichPersonalDataSelectField(
+  field: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  if (field.type !== "select" || field.id !== "gender") {
+    return field;
+  }
+
+  if (field.selectOptions && field.selectOptions.length > 0) {
+    return field;
+  }
+
+  return {
+    ...field,
+    selectOptions: getPersonalDataGenderSelectOptions(messages),
+  };
+}
+
 export function enrichCategoryPresetSelectField(
   field: KeyFormEditorField,
   messages: KeyFormEditorMessages,
 ): KeyFormEditorField {
-  return enrichWifiRouterSelectField(
-    enrichDatabaseSelectField(enrichApiAccessSelectField(field, messages), messages),
+  return enrichPersonalDataSelectField(
+    enrichWifiRouterSelectField(
+      enrichDatabaseSelectField(enrichApiAccessSelectField(field, messages), messages),
+      messages,
+    ),
     messages,
   );
 }

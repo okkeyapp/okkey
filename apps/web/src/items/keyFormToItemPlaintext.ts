@@ -21,6 +21,8 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   "credit-card": "Credit card",
   "admin-console": "Admin console",
   "bank-details": "Bank details",
+  "personal-data": "Personal data",
+  "personal-data-work": "Work",
   wallet: "Wallet",
 };
 

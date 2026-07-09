@@ -7,6 +7,7 @@ import {
 } from "../components/items/itemCategoryDefaultSections";
 import { isCreditCardRequiredFieldEmpty } from "./creditCardFormValidation";
 import { isKeyFormFieldFilled } from "./keyFormFilledFields";
+import { appendPersonalDataNameIssues } from "./personalDataFormValidation";
 
 export type NewItemFormValidationIssue =
   | { kind: "recordName" }
@@ -30,7 +31,7 @@ export function isConfiguredNewItemForm(
   categoryId: string | undefined,
   sections: readonly KeyFormEditorSection[] | null,
 ): boolean {
-  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet") {
+  if (categoryId === "database" || categoryId === "server" || categoryId === "wifi_router" || categoryId === "credit_card" || categoryId === "bank_account" || categoryId === "crypto_wallet" || categoryId === "personal_data") {
     return true;
   }
 
@@ -116,6 +117,8 @@ export function validateNewItemForm(input: {
     appendFlexiblePresetSectionIssues(BANK_ACCOUNT_SECTION_ID, input.sections ?? [], issues);
   } else if (input.categoryId === "crypto_wallet") {
     appendFlexiblePresetSectionIssues(CRYPTO_WALLET_SECTION_ID, input.sections ?? [], issues);
+  } else if (input.categoryId === "personal_data") {
+    appendPersonalDataNameIssues(input.sections ?? [], issues);
   } else if (!isConfiguredNewItemForm(input.categoryId, input.sections)) {
     appendUnconfiguredFormIssues(input.sections ?? [], issues);
   }

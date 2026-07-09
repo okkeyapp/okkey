@@ -76,6 +76,7 @@ import {
 import { uploadDevKeyFieldFile } from "../../api/key-field-files";
 import { normalizeSelectOptionsEditorText, appendSelectOptionsEditorLineAtEnd } from "../../items/keyFormSelectField";
 import { isInvalidCreditCardRequiredField } from "../../items/creditCardFormValidation";
+import { isInvalidPersonalDataNameField } from "../../items/personalDataFormValidation";
 import {
   englishKeyFieldTypes,
   englishKeyFormEditorMessages,
@@ -102,6 +103,9 @@ import {
   CRYPTO_WALLET_WALLET_SECTION_ID,
   isCreditCardPresetSection,
   isFlexiblePresetPrimarySection,
+  isPersonalDataPresetFieldId,
+  isPersonalDataPresetSection,
+  PERSONAL_DATA_WORK_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
 } from "../items/itemCategoryDefaultSections";
 
@@ -714,6 +718,10 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     return false;
   }
 
+  if (isPersonalDataPresetSection(section.id)) {
+    return !isPersonalDataPresetFieldId(field.id);
+  }
+
   if (isFlexiblePresetPrimarySection(section.id)) {
     return section.fields.length > 1;
   }
@@ -740,6 +748,10 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
 
   if (isCreditCardPresetSection(section.id)) {
     return false;
+  }
+
+  if (isPersonalDataPresetSection(section.id)) {
+    return true;
   }
 
   if (isFlexiblePresetPrimarySection(section.id)) {
@@ -3152,6 +3164,7 @@ export function KeyFormEditor({
       mode === "edit" &&
       (isEmptyRequiredField(field) ||
         (showValidation && isInvalidCreditCardRequiredField(field)) ||
+        (showValidation && isInvalidPersonalDataNameField(section, field)) ||
         isEmptyConfiguredSectionField(section, field) ||
         isInvalidTotpField(field) ||
         isInvalidEmailField(field) ||
@@ -3260,10 +3273,12 @@ export function KeyFormEditor({
       !isCreditCardPresetSection(section.id) &&
       (section.id === "websites" ||
       section.id === "api-access" ||
+      isPersonalDataPresetSection(section.id) ||
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
       section.id === BANK_DETAILS_SECTION_ID ||
       section.id === CRYPTO_WALLET_WALLET_SECTION_ID ||
+      section.id === PERSONAL_DATA_WORK_SECTION_ID ||
       !(section.variant === "primary" && !section.title));
     const isWebsiteField = field.type === "url";
     const isWebsitesSectionUrlField = section.id === "websites" && isWebsiteField;
@@ -3554,7 +3569,7 @@ export function KeyFormEditor({
                 ? fieldTypes
                 : section.id === "websites"
                   ? urlFieldTypes
-                  : section.id === "api-access"
+                  : section.id === "api-access" || isPersonalDataPresetSection(section.id)
                     ? fieldTypes
                     : isFlexiblePresetPrimarySection(section.id)
                       ? fieldTypes
@@ -3572,6 +3587,7 @@ export function KeyFormEditor({
                 ? (type: KeyFieldTypeOption) => addField(section.id, type)
                 : section.id === "websites" ||
                     section.id === "api-access" ||
+                    isPersonalDataPresetSection(section.id) ||
                     isFlexiblePresetPrimarySection(section.id) ||
                     (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)

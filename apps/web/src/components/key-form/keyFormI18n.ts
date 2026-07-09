@@ -65,6 +65,7 @@ export type KeyFormEditorMessages = {
     adminConsole: string;
     bankDetails: string;
     cryptoWallet: string;
+    personalWork: string;
   };
   cardExpiryExpired: string;
   apiTypeOptions: {
@@ -95,6 +96,10 @@ export type KeyFormEditorMessages = {
     wpa3Enterprise: string;
     wpa3Personal: string;
     none: string;
+  };
+  personalDataGenderOptions: {
+    male: string;
+    female: string;
   };
   urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
@@ -190,6 +195,19 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "cryptoAccessPin",
   "cryptoPassphrase",
   "cryptoWalletAddress",
+  "personalFirstName",
+  "personalLastName",
+  "personalInitials",
+  "personalGender",
+  "personalBirthDate",
+  "personalPhone",
+  "personalEmail",
+  "personalAddress",
+  "personalWorkCompany",
+  "personalWorkDepartment",
+  "personalWorkPosition",
+  "personalWorkPhone",
+  "personalWorkEmail",
 ] as const;
 
 const KEY_FORM_LABEL_KEYS = [
@@ -280,6 +298,7 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
       adminConsole: t("web.keyForm.sectionTitles.adminConsole"),
       bankDetails: t("web.keyForm.sectionTitles.bankDetails"),
       cryptoWallet: t("web.keyForm.sectionTitles.cryptoWallet"),
+      personalWork: t("web.keyForm.sectionTitles.personalWork"),
     },
     cardExpiryExpired: t("web.keyForm.cardExpiryExpired"),
     apiTypeOptions: {
@@ -310,6 +329,10 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
       wpa3Enterprise: t("web.keyForm.wifiSecurity.wpa3Enterprise"),
       wpa3Personal: t("web.keyForm.wifiSecurity.wpa3Personal"),
       none: t("web.keyForm.wifiSecurity.none"),
+    },
+    personalDataGenderOptions: {
+      male: t("web.keyForm.personalDataGender.male"),
+      female: t("web.keyForm.personalDataGender.female"),
     },
     urlAutofillScope: {
       "entire-site": t("web.keyForm.urlAutofill.entireSite"),

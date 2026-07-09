@@ -384,3 +384,72 @@ describe("validateNewItemForm crypto_wallet", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("validateNewItemForm personal_data", () => {
+  const baseInput = {
+    recordName: "John Doe",
+    vaultId: "vault-1",
+    categoryId: "personal_data" as const,
+  };
+
+  const personalDataSections = [
+    {
+      id: "personal-data",
+      variant: "primary" as const,
+      fields: [
+        { id: "first-name", type: "text", label: "First name", value: "" },
+        { id: "last-name", type: "text", label: "Last name", value: "" },
+        { id: "phone", type: "phone", label: "Phone", value: "" },
+      ],
+    },
+  ];
+
+  it("requires first name or last name before save", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: personalDataSections,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "first-name", sectionId: "personal-data" },
+      { kind: "field", fieldId: "last-name", sectionId: "personal-data" },
+    ]);
+  });
+
+  it("passes when first name is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          ...personalDataSections[0],
+          fields: [
+            { id: "first-name", type: "text", label: "First name", value: "Ivan" },
+            { id: "last-name", type: "text", label: "Last name", value: "" },
+            { id: "phone", type: "phone", label: "Phone", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("passes when last name is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          ...personalDataSections[0],
+          fields: [
+            { id: "first-name", type: "text", label: "First name", value: "" },
+            { id: "last-name", type: "text", label: "Last name", value: "Petrov" },
+            { id: "phone", type: "phone", label: "Phone", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});

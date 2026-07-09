@@ -10,6 +10,8 @@ import {
   CRYPTO_WALLET_SECTION_ID,
   CRYPTO_WALLET_WALLET_SECTION_ID,
   DATABASE_SECTION_ID,
+  PERSONAL_DATA_SECTION_ID,
+  PERSONAL_DATA_WORK_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
   SERVER_SECTION_ID,
   WIFI_ROUTER_SECTION_ID,
@@ -18,9 +20,11 @@ import {
   getAllApiAccessPresetFields,
   getAllCreditCardPresetFields,
   getAllDatabasePresetFields,
+  getAllPersonalDataPrimaryPresetFields,
   getAllWifiRouterPresetFields,
   getDefaultSectionsForCategory,
   isCreditCardRequiredFieldId,
+  isPersonalDataPresetFieldId,
 } from "../components/items/itemCategoryDefaultSections";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import { filterFilledKeyFormSections, isItemFieldFilled } from "./keyFormFilledFields";
@@ -108,6 +112,8 @@ const DEFAULT_SECTION_TITLES: Record<string, string> = {
   [DATABASE_SECTION_ID]: "Database",
   [WIFI_ROUTER_SECTION_ID]: "Wi‑Fi router",
   [CREDIT_CARD_SECTION_ID]: "Credit card",
+  [PERSONAL_DATA_SECTION_ID]: "Personal data",
+  [PERSONAL_DATA_WORK_SECTION_ID]: "Work",
   [SERVER_ADMIN_CONSOLE_SECTION_ID]: "Admin console",
   [BANK_DETAILS_SECTION_ID]: "Bank details",
   [CRYPTO_WALLET_WALLET_SECTION_ID]: "Wallet",
@@ -160,6 +166,10 @@ function isFieldDeletable(
     return false;
   }
 
+  if (sectionId === PERSONAL_DATA_SECTION_ID) {
+    return !isPersonalDataPresetFieldId(field.id);
+  }
+
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return sectionFields.length > 1;
   }
@@ -168,7 +178,7 @@ function isFieldDeletable(
     return sectionFields.length > 1;
   }
 
-  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID) {
+  if (sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID || sectionId === PERSONAL_DATA_WORK_SECTION_ID) {
     return true;
   }
 
@@ -200,11 +210,15 @@ function isFieldLabelEditable(
     return false;
   }
 
+  if (sectionId === PERSONAL_DATA_SECTION_ID) {
+    return !isPersonalDataPresetFieldId(field.id);
+  }
+
   if (sectionId === DATABASE_SECTION_ID || sectionId === WIFI_ROUTER_SECTION_ID) {
     return true;
   }
 
-  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID) {
+  if (sectionId === SERVER_SECTION_ID || sectionId === SERVER_ADMIN_CONSOLE_SECTION_ID || sectionId === BANK_ACCOUNT_SECTION_ID || sectionId === BANK_DETAILS_SECTION_ID || sectionId === CRYPTO_WALLET_SECTION_ID || sectionId === CRYPTO_WALLET_WALLET_SECTION_ID || sectionId === PERSONAL_DATA_WORK_SECTION_ID) {
     return true;
   }
 
@@ -777,6 +791,89 @@ function mergeCreditCardPresetSections(
   });
 }
 
+function mergePersonalDataPrimaryPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+  messages: KeyFormEditorMessages,
+): KeyFormEditorField {
+  return enrichCategoryPresetSelectField(
+    {
+      ...presetField,
+      ...loadedField,
+      deletable: false,
+      editableLabel: false,
+      required: false,
+    },
+    messages,
+  );
+}
+
+function mergePersonalDataWorkPresetField(
+  presetField: KeyFormEditorField,
+  loadedField: KeyFormEditorField,
+): KeyFormEditorField {
+  return {
+    ...presetField,
+    ...loadedField,
+    deletable: true,
+    editableLabel: true,
+    required: false,
+  };
+}
+
+function mergePersonalDataPresetSections(
+  loaded: KeyFormEditorSection[],
+  messages: KeyFormEditorMessages,
+  includeEmptyFields: boolean,
+): KeyFormEditorSection[] {
+  const defaults = getDefaultSectionsForCategory("personal_data", messages);
+  const primaryPresetFields = getAllPersonalDataPrimaryPresetFields(messages);
+  const primaryPresetFieldsById = new Map(primaryPresetFields.map((field) => [field.id, field]));
+
+  return mergePresetSectionsPreservingOrder({
+    loadedSections: loaded,
+    defaultSections: defaults,
+    includeMissingSections: includeEmptyFields,
+    mergeSection: (defaultSection, loadedSection) => {
+      if (defaultSection.id === PERSONAL_DATA_SECTION_ID) {
+        return {
+          ...defaultSection,
+          ...loadedSection,
+          fields: mergePresetFieldsPreservingOrder({
+            loadedFields: loadedSection.fields,
+            presetFieldsById: primaryPresetFieldsById,
+            presetFieldOrder: primaryPresetFields,
+            includeMissingPresets: includeEmptyFields,
+            mergeField: (presetField, loadedField) =>
+              mergePersonalDataPrimaryPresetField(presetField, loadedField, messages),
+            enrichCustomField: (field) => enrichCategoryPresetSelectField(field, messages),
+          }),
+        };
+      }
+
+      if (defaultSection.id === PERSONAL_DATA_WORK_SECTION_ID) {
+        return {
+          ...defaultSection,
+          ...loadedSection,
+          title: defaultSection.title ?? loadedSection.title,
+          fields: mergePresetFieldsPreservingOrder({
+            loadedFields: loadedSection.fields,
+            presetFieldsById: new Map(defaultSection.fields.map((field) => [field.id, field])),
+            presetFieldOrder: defaultSection.fields,
+            includeMissingPresets: false,
+            mergeField: mergePersonalDataWorkPresetField,
+          }),
+        };
+      }
+
+      return {
+        ...defaultSection,
+        ...loadedSection,
+      };
+    },
+  });
+}
+
 function toFormField(
   field: ItemFieldV2,
   sectionId: string,
@@ -867,6 +964,8 @@ export function itemPlaintextToKeyFormSections(
     sections = mergeWifiRouterPresetSections(sections, messages, includeEmptyFields);
   } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "credit_card") {
     sections = mergeCreditCardPresetSections(sections, messages, includeEmptyFields);
+  } else if (messages && isItemCategoryId(item.categoryId) && item.categoryId === "personal_data") {
+    sections = mergePersonalDataPresetSections(sections, messages, includeEmptyFields);
   }
 
   if (!includeEmptyFields) {

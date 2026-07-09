@@ -594,3 +594,97 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
     expect(restoredForCard[0]?.fields[0]?.secretKind).toBe("single-line");
   });
 });
+
+describe("itemPlaintextToKeyFormSections personal_data", () => {
+  it("includes locked primary presets and editable work section defaults", () => {
+    const defaults = getDefaultSectionsForCategory("personal_data", messages);
+
+    expect(defaults).toHaveLength(2);
+    expect(defaults[0]?.id).toBe("personal-data");
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual([
+      "first-name",
+      "last-name",
+      "initials",
+      "gender",
+      "birth-date",
+      "phone",
+      "email",
+      "address",
+    ]);
+    expect(defaults[0]?.fields.every((field) => field.deletable === false && field.editableLabel === false)).toBe(true);
+    expect(defaults[0]?.fields.find((field) => field.id === "gender")?.selectOptions).toEqual([
+      { value: "male", label: "Мужской" },
+      { value: "female", label: "Женский" },
+    ]);
+
+    expect(defaults[1]?.id).toBe("personal-data-work");
+    expect(defaults[1]?.title).toBe("Работа");
+    expect(defaults[1]?.fields.map((field) => field.id)).toEqual([
+      "work-company",
+      "work-department",
+      "work-position",
+      "work-phone",
+      "work-email",
+    ]);
+    expect(defaults[1]?.fields.every((field) => field.deletable && field.editableLabel)).toBe(true);
+  });
+
+  it("round-trips custom primary fields and preserves locked preset metadata", () => {
+    const sections = getDefaultSectionsForCategory("personal_data", messages).map((section) => {
+      if (section.id !== "personal-data") {
+        return section;
+      }
+
+      return {
+        ...section,
+        fields: [
+          ...section.fields.map((field) =>
+            field.id === "first-name" ? { ...field, value: "Ivan" } : field,
+          ),
+          {
+            id: "custom-note",
+            type: "text" as const,
+            label: "Note",
+            value: "VIP",
+            editableLabel: true,
+            deletable: true,
+          },
+        ],
+      };
+    });
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-personal-1",
+      vaultId: "vault-1",
+      title: "John Doe",
+      categoryId: "personal_data",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "personal-data");
+
+    expect(primary?.fields.map((field) => field.id)).toEqual([
+      "first-name",
+      "last-name",
+      "initials",
+      "gender",
+      "birth-date",
+      "phone",
+      "email",
+      "address",
+      "custom-note",
+    ]);
+    expect(primary?.fields.find((field) => field.id === "first-name")).toMatchObject({
+      value: "Ivan",
+      deletable: false,
+      editableLabel: false,
+    });
+    expect(primary?.fields.find((field) => field.id === "custom-note")).toMatchObject({
+      value: "VIP",
+      deletable: true,
+      editableLabel: true,
+    });
+  });
+});
