@@ -104,31 +104,6 @@ function CopySuccessIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-function ClearFileIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path
-        d="M9.33337 2V4.66667C9.33337 4.84348 9.40361 5.01305 9.52864 5.13807C9.65366 5.2631 9.82323 5.33333 10 5.33333H12.6667"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M11.3334 14H4.66671C4.31309 14 3.97395 13.8595 3.7239 13.6095C3.47385 13.3594 3.33337 13.0203 3.33337 12.6667V3.33333C3.33337 2.97971 3.47385 2.64057 3.7239 2.39052C3.97395 2.14048 4.31309 2 4.66671 2H9.33337L12.6667 5.33333V12.6667C12.6667 13.0203 12.5262 13.3594 12.2762 13.6095C12.0261 13.8595 11.687 14 11.3334 14Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M6.66663 8L9.33329 10.6667M9.33329 8L6.66663 10.6667"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
@@ -296,7 +271,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       addressNoCountriesFoundMessage,
       recoveryCodesPlaceholder,
       fileUploadLabel,
-      fileClearLabel = "Clear",
+      fileClearLabel = "Delete file",
       valuePlaceholder,
       surfaceRounding,
       datePickerLocale,
@@ -1068,6 +1043,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     uploadConstraints={fileUploadConstraints}
                     onValidationErrorChange={setFileValidationError}
                     uploadLabel={fileUploadLabel}
+                    onClear={handleFileClear}
+                    deleteLabel={fileClearLabel}
                   />
                 ) : addressValue ? (
                   <KeyFieldAddressInput
@@ -1147,21 +1124,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           </div>
         </div>
 
-        {canEditValue && parsedFileValue && fileValue ? (
-          <div className={actionsWrapperClassName}>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn("h-8 px-3", controlButtonClassName)}
-              onClick={handleFileClear}
-            >
-              <ClearFileIcon className="size-4" />
-              {fileClearLabel}
-            </Button>
-            {actions}
-          </div>
-        ) : actions ? (
+        {actions ? (
           <div className={actionsWrapperClassName}>{actions}</div>
         ) : null}
         {fileLightboxFile ? (

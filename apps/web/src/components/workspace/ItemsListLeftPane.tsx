@@ -56,6 +56,7 @@ import {
   SORT_QUERY_PARAM,
   VAULT_QUERY_PARAM,
   itemsPathWithCategoryMerged,
+  withoutOpenItemQueryParam,
 } from "../../routes/paths";
 
 const itemsPanelSelectTriggerClassName = cn(
@@ -1042,6 +1043,7 @@ export default function ItemsListLeftPane({
     void (async () => {
       await setItemDeleted(row.id, deleted);
       if (deleted) {
+        setSearchParams((prev) => withoutOpenItemQueryParam(prev, [row.id]), { replace: true });
         if (row.favorite) {
           await setItemFavorite(row.id, false);
         }
@@ -1078,6 +1080,7 @@ export default function ItemsListLeftPane({
     void finishBulkSelection(async () => {
       await setItemsDeleted(itemIds, deleted);
       if (deleted) {
+        setSearchParams((prev) => withoutOpenItemQueryParam(prev, itemIds), { replace: true });
         const favoriteIds = rows.filter((row) => row.favorite).map((row) => row.id);
         if (favoriteIds.length) {
           await setItemsFavorite(favoriteIds, false);

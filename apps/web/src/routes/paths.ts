@@ -60,6 +60,19 @@ export const SORT_QUERY_ALPH_DESC = "alph-desc";
 /** Full-text-ish search on `/items` (top bar); coexists with other `?` params. */
 export const SEARCH_QUERY_PARAM = "search";
 
+/** Drop `?item=` when one of the deleted items is currently open in the detail panel. */
+export function withoutOpenItemQueryParam(
+  prev: URLSearchParams,
+  itemIds: readonly string[],
+): URLSearchParams {
+  const next = new URLSearchParams(prev);
+  const activeItemId = next.get(ITEM_QUERY_PARAM)?.trim() ?? "";
+  if (activeItemId && itemIds.includes(activeItemId)) {
+    next.delete(ITEM_QUERY_PARAM);
+  }
+  return next;
+}
+
 export type ApplyWorkspaceSearchQueryOptions = {
   /** Drop selected item row (mobile list-only view). */
   clearItem?: boolean;

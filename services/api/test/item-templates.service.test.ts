@@ -126,6 +126,115 @@ test("ItemTemplatesService.create uses client-provided template id", async () =>
   assert.equal(template.favicon_id, "1000000000000000003");
 });
 
+test("ItemTemplatesService.update rejects missing template", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      findById: async () => null,
+      create: async () => {
+        throw new Error("should not be called");
+      },
+      update: async () => null,
+      delete: async () => false,
+    },
+    workspaces: {
+      findById: async () => ({ id: "ws-1" }),
+      hasAccess: async () => true,
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.update("ws-1", "user-1", "missing-template", {
+        name: "Updated",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "vault-1",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "TEMPLATE_NOT_FOUND");
+      return true;
+    },
+  );
+});
+
+test("ItemTemplatesService.update persists template changes", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      findById: async () => ({
+        id: "1000000000000000001",
+        workspaceId: "ws-1",
+        name: "Old name",
+        categoryId: "login",
+        payloadJson: {
+          record_name: "Title",
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+        faviconId: "1000000000000000003",
+        createdBy: "user-1",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      create: async () => {
+        throw new Error("should not be called");
+      },
+      update: async (input: {
+        workspaceId: string;
+        templateId: string;
+        name: string;
+        categoryId: string;
+        payloadJson: Record<string, unknown>;
+        faviconId?: string | null;
+      }) => {
+        assert.equal(input.templateId, "1000000000000000001");
+        assert.equal(input.name, "Updated name");
+        return {
+          id: input.templateId,
+          workspaceId: input.workspaceId,
+          name: input.name,
+          categoryId: input.categoryId,
+          payloadJson: input.payloadJson,
+          faviconId: input.faviconId ?? null,
+          createdBy: "user-1",
+          createdAt: "",
+          updatedAt: "",
+        };
+      },
+      delete: async () => false,
+    },
+    workspaces: {
+      findById: async () => ({ id: "ws-1" }),
+      hasAccess: async () => true,
+    },
+  });
+
+  const template = await service.update("ws-1", "user-1", "1000000000000000001", {
+    name: "Updated name",
+    category_id: "login",
+    payload: {
+      record_name: "Title",
+      vault_id: "1000000000000000002",
+      folder_id: "__none__",
+      sections: [],
+      tags: ["work"],
+    },
+    favicon_id: "1000000000000000003",
+  });
+
+  assert.equal(template.name, "Updated name");
+  assert.deepEqual(template.payload.tags, ["work"]);
+});
+
 test("ItemTemplatesService.delete rejects missing template", async () => {
   const service = new ItemTemplatesService({
     templates: {

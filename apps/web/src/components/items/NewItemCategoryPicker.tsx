@@ -45,6 +45,8 @@ type NewItemCategoryPickerProps = {
   onReorderFavorites: (nextFavoriteOrder: string[]) => void;
   onSelectCategory: (categoryId: string) => void;
   onSelectTemplate: (template: WorkspaceItemTemplateDto) => void;
+  showAllCategoriesExpanded: boolean;
+  onShowAllCategoriesExpandedChange: (expanded: boolean) => void;
 };
 
 export default function NewItemCategoryPicker({
@@ -60,28 +62,29 @@ export default function NewItemCategoryPicker({
   onReorderFavorites,
   onSelectCategory,
   onSelectTemplate,
+  showAllCategoriesExpanded,
+  onShowAllCategoriesExpandedChange,
 }: NewItemCategoryPickerProps) {
   const hasFavorites = favoriteOrder.length > 0;
   const canReorderFavorites = favoriteOrder.length >= 2;
-  const [showAllCategoriesOverride, setShowAllCategoriesOverride] = useState<boolean | null>(null);
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const prevFavoriteCountRef = useRef(favoriteOrder.length);
 
-  const showAllCategories = !hasFavorites || (showAllCategoriesOverride ?? false);
+  const showAllCategories = !hasFavorites || showAllCategoriesExpanded;
 
   useEffect(() => {
     const previousCount = prevFavoriteCountRef.current;
     const currentCount = favoriteOrder.length;
 
     if (previousCount === 0 && currentCount === 1) {
-      setShowAllCategoriesOverride(true);
+      onShowAllCategoriesExpandedChange(true);
     } else if (currentCount === 0) {
-      setShowAllCategoriesOverride(null);
+      onShowAllCategoriesExpandedChange(false);
     }
 
     prevFavoriteCountRef.current = currentCount;
-  }, [favoriteOrder.length]);
+  }, [favoriteOrder.length, onShowAllCategoriesExpandedChange]);
 
   useEffect(() => {
     if (!canReorderFavorites) {
@@ -292,10 +295,7 @@ export default function NewItemCategoryPicker({
           variant="secondary"
           className="h-9 w-full rounded-lg text-sm font-medium"
           onClick={() => {
-            setShowAllCategoriesOverride((current) => {
-              const showingAll = !hasFavorites || (current ?? false);
-              return showingAll ? false : true;
-            });
+            onShowAllCategoriesExpandedChange(!showAllCategories);
             setIsReorderMode(false);
           }}
         >

@@ -14,7 +14,9 @@ import { IconActions16, IconDelete16, IconSaveTemplate16 } from "./itemCategoryI
 type NewItemFormActionsMenuProps = {
   t: (messageKey: string) => string;
   disabled?: boolean;
+  isEditingTemplate?: boolean;
   showDeleteTemplate?: boolean;
+  onUpdateTemplate?: () => void;
   onSaveTemplate: () => void;
   onDeleteTemplate?: () => void;
 };
@@ -22,11 +24,16 @@ type NewItemFormActionsMenuProps = {
 export default function NewItemFormActionsMenu({
   t,
   disabled = false,
+  isEditingTemplate = false,
   showDeleteTemplate = false,
+  onUpdateTemplate,
   onSaveTemplate,
   onDeleteTemplate,
 }: NewItemFormActionsMenuProps) {
   const [open, setOpen] = useState(false);
+  const saveTemplateLabel = isEditingTemplate
+    ? t("web.newItemPopup.saveAsNewTemplate")
+    : t("web.newItemPopup.saveTemplate");
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -41,11 +48,23 @@ export default function NewItemFormActionsMenu({
           disabled={disabled}
           aria-label={t("web.items.list.actions")}
         >
-          <IconActions16 className="size-4 shrink-0 text-foreground" />
           <span className="hidden md:inline">{t("web.items.list.actions")}</span>
+          <IconActions16 className="size-4 shrink-0 text-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56 p-1">
+      <DropdownMenuContent align="start" className="w-auto min-w-56 p-1">
+        {isEditingTemplate && onUpdateTemplate ? (
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => {
+              setOpen(false);
+              onUpdateTemplate();
+            }}
+          >
+            <IconSaveTemplate16 className="size-4 shrink-0 text-foreground" />
+            <span className="whitespace-nowrap">{t("web.newItemPopup.updateTemplate")}</span>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           className="gap-2"
           onSelect={() => {
@@ -54,7 +73,7 @@ export default function NewItemFormActionsMenu({
           }}
         >
           <IconSaveTemplate16 className="size-4 shrink-0 text-foreground" />
-          <span>{t("web.newItemPopup.saveTemplate")}</span>
+          <span className="whitespace-nowrap">{saveTemplateLabel}</span>
         </DropdownMenuItem>
         {showDeleteTemplate && onDeleteTemplate ? (
           <>
@@ -67,7 +86,7 @@ export default function NewItemFormActionsMenu({
               }}
             >
               <IconDelete16 className="size-4 shrink-0" />
-              <span>{t("web.newItemPopup.deleteTemplate")}</span>
+              <span className="whitespace-nowrap">{t("web.newItemPopup.deleteTemplate")}</span>
             </DropdownMenuItem>
           </>
         ) : null}

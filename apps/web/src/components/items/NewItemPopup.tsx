@@ -2,16 +2,17 @@ import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault, WorkspaceItemTemplateDto } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
 import { Button, Popup, type KeyFieldFileValue } from "@okkey/ui";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
-import { syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
+import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import {
   buildTemplateCreatePayload,
   buildTemplatePrefillValues,
+  buildTemplateUpdatePayload,
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
@@ -68,6 +69,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templatePopupMode, setTemplatePopupMode] = useState<"create" | "update">("create");
+  const [categoryPickerShowAllExpanded, setCategoryPickerShowAllExpanded] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
@@ -109,6 +112,12 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
     }
     return templates.find((entry) => entry.id === templateId);
   }, [templateId, templates]);
+
+  useEffect(() => {
+    if (!open) {
+      setCategoryPickerShowAllExpanded(false);
+    }
+  }, [open]);
 
   function closePopup() {
     setShowValidation(false);
@@ -251,6 +260,104 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       );
     } catch (error) {
       setSaveTemplateError(error instanceof Error ? error.message : t("web.saveItemTemplatePopup.saveErrorGeneric"));
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleUpdateTemplate({ templateName, addToFavorite }: { templateName: string; addToFavorite: boolean }) {
+    const snapshot = formRef.current?.getTemplateSnapshot();
+    const faviconSyncInput = formRef.current?.getFaviconSyncInput();
+    if (!snapshot || !core || !accessToken || !vaultKey || !templateId || !activeTemplate || !isItemCategoryId(snapshot.categoryId)) {
+      setSaveTemplateError(t("web.updateItemTemplatePopup.saveErrorGeneric"));
+      return;
+    }
+
+    setSavingTemplate(true);
+    setSaveTemplateError(null);
+    try {
+      await runSaveWithToast(
+        {
+          loading: t("web.toast.save.loading"),
+          success: t("web.updateItemTemplatePopup.saveSuccess"),
+          error: t("web.updateItemTemplatePopup.saveErrorGeneric"),
+        },
+        async () => {
+          const templateFiles = await formRef.current!.uploadPendingFiles(
+            {
+              itemId: templateId,
+              vaultId: snapshot.vaultId,
+              folderId: snapshot.folderId,
+              recordName: snapshot.recordName,
+              categoryId: snapshot.categoryId,
+              sections: snapshot.sections,
+              tags: snapshot.tags,
+            },
+            { targetItemId: templateId, sourceItemId: snapshot.attachmentItemId ?? templateId },
+          );
+          const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections, attachmentItemId: templateId };
+          const favicon = await syncTemplateFaviconForSnapshot(
+            accessToken,
+            vaultKey,
+            templateId,
+            uploadedSnapshot,
+            faviconSyncInput,
+          );
+          const body = buildTemplateUpdatePayload(
+            uploadedSnapshot,
+            templateName,
+            favicon.faviconId ?? null,
+            favicon.faviconSource,
+          );
+          try {
+            await core.updateWorkspaceItemTemplate(workspaceId, templateId, body);
+          } catch (error) {
+            const filesToDelete = favicon.uploadedFavicon
+              ? [...templateFiles.uploadedFiles, favicon.uploadedFavicon]
+              : templateFiles.uploadedFiles;
+            await Promise.allSettled(
+              filesToDelete.map((file) =>
+                deleteKeyFieldFileAttachment({
+                  accessToken,
+                  vaultId: uploadedSnapshot.vaultId,
+                  itemId: templateId,
+                  file,
+                }),
+              ),
+            );
+            throw error;
+          }
+          await deleteRemovedKeyFieldFiles(
+            formRef.current?.getFileBaselineSections() ?? [],
+            uploadedSnapshot.sections,
+            (file) =>
+              deleteKeyFieldFileAttachment({
+                accessToken,
+                vaultId: uploadedSnapshot.vaultId,
+                itemId: templateId,
+                file,
+              }),
+          );
+          if (activeTemplate.favicon_id && activeTemplate.favicon_id !== (favicon.faviconId ?? null)) {
+            await deleteKeyFieldFileAttachment({
+              accessToken,
+              vaultId: uploadedSnapshot.vaultId,
+              itemId: templateId,
+              file: keyFieldFileValueFromFaviconId(activeTemplate.favicon_id),
+            });
+          }
+          await refreshTemplates();
+        },
+      );
+      const isFavorite = favoriteTemplateIdSet.has(templateId);
+      if (addToFavorite !== isFavorite) {
+        toggleTemplateFavorite(templateId);
+      }
+      setSaveTemplateOpen(false);
+      setShowValidation(false);
+      setSaveError(null);
+    } catch (error) {
+      setSaveTemplateError(error instanceof Error ? error.message : t("web.updateItemTemplatePopup.saveErrorGeneric"));
     } finally {
       setSavingTemplate(false);
     }
@@ -427,9 +534,16 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             <NewItemFormActionsMenu
               t={t}
               disabled={saving || savingTemplate || deletingTemplate}
+              isEditingTemplate={Boolean(templateId && activeTemplate)}
               showDeleteTemplate={Boolean(templateId && activeTemplate)}
+              onUpdateTemplate={() => {
+                setSaveTemplateError(null);
+                setTemplatePopupMode("update");
+                setSaveTemplateOpen(true);
+              }}
               onSaveTemplate={() => {
                 setSaveTemplateError(null);
+                setTemplatePopupMode("create");
                 setSaveTemplateOpen(true);
               }}
               onDeleteTemplate={() => void handleDeleteTemplate()}
@@ -489,17 +603,30 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           onReorderFavorites={reorderFavorites}
           onSelectCategory={selectCategory}
           onSelectTemplate={selectTemplate}
+          showAllCategoriesExpanded={categoryPickerShowAllExpanded}
+          onShowAllCategoriesExpandedChange={setCategoryPickerShowAllExpanded}
         />
       ) : null}
     </Popup>
     <SaveItemTemplatePopup
       open={saveTemplateOpen}
+      mode={templatePopupMode}
       t={t}
       saving={savingTemplate}
       error={saveTemplateError}
-      initialTemplateName={formRef.current?.getTemplateSnapshot()?.recordName ?? ""}
+      initialTemplateName={
+        templatePopupMode === "update"
+          ? activeTemplate?.name ?? ""
+          : formRef.current?.getTemplateSnapshot()?.recordName ?? ""
+      }
+      templateReferenceName={activeTemplate?.name}
+      initialAddToFavorite={
+        templatePopupMode === "update" && templateId ? favoriteTemplateIdSet.has(templateId) : false
+      }
       onClose={() => setSaveTemplateOpen(false)}
-      onSave={(input) => void handleSaveTemplate(input)}
+      onSave={(input) =>
+        void (templatePopupMode === "update" ? handleUpdateTemplate(input) : handleSaveTemplate(input))
+      }
     />
     </>
   );

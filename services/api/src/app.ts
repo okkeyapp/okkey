@@ -48,6 +48,7 @@ import {
   createWorkspaceItemTemplatesCreateRoute,
   createWorkspaceItemTemplatesDeleteRoute,
   createWorkspaceItemTemplatesListRoute,
+  createWorkspaceItemTemplatesUpdateRoute,
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
 import {
@@ -268,6 +269,11 @@ export function createApiApp(
         "DELETE",
         "/workspaces/:workspaceId/item-templates/:templateId",
         createWorkspaceItemTemplatesDeleteRoute(deps.itemTemplatesService, resolveUserId),
+      );
+      app.route(
+        "PATCH",
+        "/workspaces/:workspaceId/item-templates/:templateId",
+        createWorkspaceItemTemplatesUpdateRoute(deps.itemTemplatesService, resolveUserId),
       );
     }
     if (deps.workspaceSettingsService) {

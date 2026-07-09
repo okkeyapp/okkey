@@ -74,6 +74,8 @@ export type KeyFieldFileControlProps = {
   onValidationErrorChange?: (hasError: boolean) => void;
   onOpen?: () => void;
   onResolveFileUrl?: (file: KeyFieldFileValue) => Promise<string>;
+  onClear?: () => void;
+  deleteLabel?: string;
   className?: string;
   uploadLabel?: string;
 };
@@ -134,6 +136,8 @@ export function KeyFieldFileControl({
   onValidationErrorChange,
   onOpen,
   onResolveFileUrl,
+  onClear,
+  deleteLabel,
   className,
   uploadLabel = "Upload file",
 }: KeyFieldFileControlProps) {
@@ -311,6 +315,15 @@ export function KeyFieldFileControl({
             <p className="mt-0.5 text-xs text-muted-foreground">
               {formatKeyFieldFileMeta(displayFile.name, displayFile.mimeType, displayFile.sizeBytes)}
             </p>
+            {mode === "edit" && onClear && deleteLabel ? (
+              <button
+                type="button"
+                onClick={onClear}
+                className="mt-1 text-xs font-medium text-destructive hover:underline"
+              >
+                {deleteLabel}
+              </button>
+            ) : null}
           </div>
         </div>
         {lightboxOpen && !onOpen && displayFile.url && isKeyFieldFileImageMimeType(displayFile.mimeType) ? (

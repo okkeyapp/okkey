@@ -28,6 +28,27 @@ export type ItemTemplateFormSnapshot = {
   attachmentItemId?: string;
 };
 
+export function buildTemplateUpdatePayload(
+  snapshot: ItemTemplateFormSnapshot,
+  templateName: string,
+  faviconId?: string | null,
+  faviconSource?: ItemFaviconSource,
+) {
+  return {
+    name: templateName.trim(),
+    category_id: snapshot.categoryId,
+    payload: {
+      record_name: snapshot.recordName,
+      vault_id: snapshot.vaultId,
+      folder_id: snapshot.folderId,
+      sections: structuredClone(snapshot.sections),
+      tags: [...snapshot.tags],
+      ...(faviconSource ? { favicon_source: faviconSource } : {}),
+    },
+    favicon_id: faviconId ?? null,
+  };
+}
+
 export function buildTemplateCreatePayload(
   templateId: string,
   snapshot: ItemTemplateFormSnapshot,

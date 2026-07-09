@@ -32,6 +32,8 @@ import type {
   WorkspaceItemCategoryPreferencesUpdateRequestDto,
   WorkspaceItemTemplateCreateRequestDto,
   WorkspaceItemTemplateCreateResponseDto,
+  WorkspaceItemTemplateUpdateRequestDto,
+  WorkspaceItemTemplateUpdateResponseDto,
   WorkspaceItemTemplatesListResponseDto,
   WorkspaceSettingsResponseDto,
   WorkspaceSettingsUpdateRequestDto,
@@ -251,6 +253,17 @@ export class CoreApiClient {
   ): Promise<WorkspaceItemTemplateCreateResponseDto> {
     return this.api.post<WorkspaceItemTemplateCreateResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/item-templates`,
+      body,
+    );
+  }
+
+  updateWorkspaceItemTemplate(
+    workspaceId: string,
+    templateId: string,
+    body: WorkspaceItemTemplateUpdateRequestDto,
+  ): Promise<WorkspaceItemTemplateUpdateResponseDto> {
+    return this.api.patch<WorkspaceItemTemplateUpdateResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/item-templates/${encodeURIComponent(templateId)}`,
       body,
     );
   }

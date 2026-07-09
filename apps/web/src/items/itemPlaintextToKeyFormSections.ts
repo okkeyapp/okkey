@@ -1134,13 +1134,21 @@ export function itemPlaintextToKeyFormSections(
   const sectionsById = new Map(item.sections.map((section) => [section.id, section]));
   const orderedSectionIds = [...item.sections]
     .sort((a, b) => a.order - b.order)
-    .map((section) => section.id);
+    .map((section) => section.id)
+    .filter((sectionId, index, sectionIds) => sectionIds.indexOf(sectionId) === index);
 
   const fieldsBySection = new Map<string, ItemFieldV2[]>();
+  const seenFieldIdsBySection = new Map<string, Set<string>>();
   for (const field of item.fields) {
     if (!includeEmptyFields && !isItemFieldFilled(field)) {
       continue;
     }
+    const seenFieldIds = seenFieldIdsBySection.get(field.sectionId) ?? new Set<string>();
+    if (seenFieldIds.has(field.id)) {
+      continue;
+    }
+    seenFieldIds.add(field.id);
+    seenFieldIdsBySection.set(field.sectionId, seenFieldIds);
     const bucket = fieldsBySection.get(field.sectionId) ?? [];
     bucket.push(field);
     fieldsBySection.set(field.sectionId, bucket);

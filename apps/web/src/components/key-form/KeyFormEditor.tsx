@@ -1882,7 +1882,7 @@ function SortableField({
       addressNoCountriesFoundMessage={(addressFieldPlaceholders ?? messages.address).noCountriesFound}
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
-      fileClearLabel={fileClearLabel ?? messages.file.clear}
+      fileClearLabel={fileClearLabel ?? messages.file.delete}
       valuePlaceholder={valuePlaceholder ?? messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       datePickerLocale={datePickerLocale}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
@@ -3348,7 +3348,7 @@ export function KeyFormEditor({
 
     return (
       <SortableField
-        key={field.id}
+        key={`${section.id}-${field.id}`}
         section={section}
         field={field}
         surfaceRounding={surfaceRoundingForField(section, mode, fieldIndex, isFieldDraggingInSection)}
@@ -3481,7 +3481,7 @@ export function KeyFormEditor({
         addressNoCountriesFoundMessage={messages.address.noCountriesFound}
         recoveryCodesPlaceholder={messages.recoveryCodesPlaceholder}
         fileUploadLabel={messages.file.upload}
-        fileClearLabel={messages.file.clear}
+        fileClearLabel={messages.file.delete}
         valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
         datePickerLocale={datePickerLocale}
         reorderable
@@ -3569,7 +3569,7 @@ export function KeyFormEditor({
           style={activeDrag.width ? { width: activeDrag.width } : undefined}
         >
           {section.fields.map((field, fieldIndex) => (
-            <div key={field.id}>{renderFieldPreview(section, field, false, fieldIndex)}</div>
+            <div key={`${section.id}-${field.id}-${fieldIndex}`}>{renderFieldPreview(section, field, false, fieldIndex)}</div>
           ))}
         </KeySection>
       );
@@ -3597,7 +3597,7 @@ export function KeyFormEditor({
           items={sections.filter((section) => section.variant === "additional").map((section) => section.id)}
           strategy={verticalListSortingStrategy}
         >
-          {sections.map((section) => {
+          {sections.map((section, sectionIndex) => {
             const hasTotpField = section.id === "credentials" && sectionHasTotpField(section);
             const addableFieldTypes =
               section.variant === "additional"
@@ -3639,7 +3639,7 @@ export function KeyFormEditor({
             if (section.variant === "additional") {
               return (
                 <SortableSection
-                  key={section.id}
+                  key={`${section.id}-${sectionIndex}`}
                   section={section}
                   mode={mode}
                   fieldTypes={addableFieldTypes}
@@ -3657,7 +3657,7 @@ export function KeyFormEditor({
 
             return (
               <KeySection
-                key={section.id}
+                key={`${section.id}-${sectionIndex}`}
                 title={section.title}
                 variant={section.variant}
                 mode={mode}

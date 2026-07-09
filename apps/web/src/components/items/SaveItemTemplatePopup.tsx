@@ -1,3 +1,4 @@
+import type { WebMessageValues } from "@okkey/i18n";
 import { Button, Checkbox, Input, Popup } from "@okkey/ui";
 import { useEffect, useState } from "react";
 
@@ -8,28 +9,37 @@ export type SaveItemTemplateInput = {
   addToFavorite: boolean;
 };
 
+type SaveItemTemplatePopupMode = "create" | "update";
+
 type SaveItemTemplatePopupProps = {
   open: boolean;
-  t: (messageKey: string) => string;
+  mode?: SaveItemTemplatePopupMode;
+  t: (messageKey: string, values?: WebMessageValues) => string;
   saving: boolean;
   error: string | null;
   initialTemplateName?: string;
+  templateReferenceName?: string;
+  initialAddToFavorite?: boolean;
   onClose: () => void;
   onSave: (input: SaveItemTemplateInput) => void;
 };
 
 export default function SaveItemTemplatePopup({
   open,
+  mode = "create",
   t,
   saving,
   error,
   initialTemplateName = "",
+  templateReferenceName = "",
+  initialAddToFavorite = false,
   onClose,
   onSave,
 }: SaveItemTemplatePopupProps) {
   const [templateName, setTemplateName] = useState("");
   const [addToFavorite, setAddToFavorite] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
+  const isUpdateMode = mode === "update";
 
   useEffect(() => {
     if (!open) {
@@ -39,7 +49,8 @@ export default function SaveItemTemplatePopup({
       return;
     }
     setTemplateName(initialTemplateName.trim());
-  }, [initialTemplateName, open]);
+    setAddToFavorite(initialAddToFavorite);
+  }, [initialAddToFavorite, initialTemplateName, open]);
 
   if (!open) {
     return null;
@@ -70,8 +81,12 @@ export default function SaveItemTemplatePopup({
     <Popup
       className="z-[60]"
       width={420}
-      header={t("web.saveItemTemplatePopup.title")}
-      description={t("web.saveItemTemplatePopup.hint")}
+      header={t(isUpdateMode ? "web.updateItemTemplatePopup.title" : "web.saveItemTemplatePopup.title")}
+      description={
+        isUpdateMode
+          ? t("web.updateItemTemplatePopup.hint", { name: templateReferenceName || trimmedName })
+          : t("web.saveItemTemplatePopup.hint")
+      }
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
       closeDisabled={saving}

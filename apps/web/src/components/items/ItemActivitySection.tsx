@@ -145,7 +145,7 @@ export default function ItemActivitySection({ t, entries }: ItemActivitySectionP
           const isFirst = index === 0;
 
           return (
-            <div key={entry.id} className="flex gap-3 overflow-visible">
+            <div key={`${entry.id}-${entry.atMs}-${index}`} className="flex gap-3 overflow-visible">
               <div className={cn("relative w-6 shrink-0 self-stretch overflow-visible", !isLast && "pb-2.5")}>
                 <div className="relative z-[1] flex h-5 w-full shrink-0 items-center justify-center">
                   {isFirst && canExpand ? (

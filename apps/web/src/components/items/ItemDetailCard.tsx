@@ -24,7 +24,7 @@ import {
   buildPopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
-import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_PARAM } from "../../routes/paths";
+import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_PARAM, withoutOpenItemQueryParam } from "../../routes/paths";
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor, type RecoveryCodesValueChange } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
@@ -252,6 +252,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
           void (async () => {
             await setItemDeleted(itemId, nextDeleted);
             if (nextDeleted) {
+              setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
               if (listRecord?.favorite) {
                 await setItemFavorite(itemId, false);
               }
@@ -300,7 +301,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             className="-mr-1 pt-4 md:hidden"
           />
 
-          <ItemActivitySection t={t} entries={activityEntries} />
+          <ItemActivitySection key={`activity-${itemId}`} t={t} entries={activityEntries} />
         </div>
       </div>
     </div>

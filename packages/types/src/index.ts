@@ -686,3 +686,14 @@ export interface WorkspaceItemTemplateCreateRequestDto {
 export interface WorkspaceItemTemplateCreateResponseDto {
   template: WorkspaceItemTemplateDto;
 }
+
+export interface WorkspaceItemTemplateUpdateRequestDto {
+  name: string;
+  category_id: string;
+  payload: WorkspaceItemTemplatePayloadDto;
+  favicon_id?: EntityId | null;
+}
+
+export interface WorkspaceItemTemplateUpdateResponseDto {
+  template: WorkspaceItemTemplateDto;
+}

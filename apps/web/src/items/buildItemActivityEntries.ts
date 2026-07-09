@@ -49,8 +49,16 @@ export function mapItemActivityWireEntries(
   entries: readonly ItemActivityWireEntry[],
   resolveActorLabel: (actorId: string | null) => string,
 ): ItemActivityEntry[] {
+  const seenIds = new Set<string>();
   return [...entries]
     .sort((a, b) => b.atMs - a.atMs)
+    .filter((entry) => {
+      if (seenIds.has(entry.id)) {
+        return false;
+      }
+      seenIds.add(entry.id);
+      return true;
+    })
     .map((entry) => ({
       id: entry.id,
       actionKey: entry.actionKey,

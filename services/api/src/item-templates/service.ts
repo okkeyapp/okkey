@@ -80,6 +80,44 @@ export class ItemTemplatesService {
     return toTemplateDto(row);
   }
 
+  async update(
+    workspaceId: string,
+    userId: string,
+    templateId: string,
+    input: { name: string; category_id: string; payload: ItemTemplatePayload; favicon_id?: string | null },
+  ) {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+    const normalizedTemplateId = templateId.trim();
+    if (!normalizedTemplateId) {
+      throw new ItemTemplatesServiceError("INVALID_TEMPLATE_ID", 400, "template id is required");
+    }
+    const existing = await this.templates.findById(workspaceId, normalizedTemplateId);
+    if (!existing) {
+      throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
+    }
+    const name = input.name.trim();
+    if (!name) {
+      throw new ItemTemplatesServiceError("INVALID_TEMPLATE_NAME", 400, "template name is required");
+    }
+    const categoryId = input.category_id.trim();
+    if (!allowedCategoryIdSet.has(categoryId)) {
+      throw new ItemTemplatesServiceError("INVALID_CATEGORY_ID", 400, "unknown category id");
+    }
+    const payload = normalizeTemplatePayload(input.payload);
+    const row = await this.templates.update({
+      workspaceId,
+      templateId: normalizedTemplateId,
+      name,
+      categoryId,
+      payloadJson: payload,
+      faviconId: input.favicon_id === undefined ? existing.faviconId : input.favicon_id?.trim() || null,
+    });
+    if (!row) {
+      throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
+    }
+    return toTemplateDto(row);
+  }
+
   async delete(workspaceId: string, userId: string, templateId: string): Promise<void> {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const normalizedTemplateId = templateId.trim();

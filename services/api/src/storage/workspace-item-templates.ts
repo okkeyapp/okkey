@@ -111,4 +111,31 @@ export class WorkspaceItemTemplatesRepository {
     );
     return rows.length > 0;
   }
+
+  async update(input: {
+    workspaceId: string;
+    templateId: string;
+    name: string;
+    categoryId: string;
+    payloadJson: Record<string, unknown>;
+    faviconId?: string | null;
+  }): Promise<WorkspaceItemTemplateRecord | null> {
+    const rows = await this.db.query<TemplateRow>(
+      `
+        UPDATE workspace_item_templates
+        SET name = $3, category_id = $4, payload_json = $5::jsonb, favicon_id = $6, updated_at = now()
+        WHERE workspace_id = $1 AND id = $2
+        RETURNING id, workspace_id, name, category_id, payload_json, favicon_id, created_by, created_at, updated_at
+      `,
+      [
+        input.workspaceId,
+        input.templateId,
+        input.name,
+        input.categoryId,
+        JSON.stringify(input.payloadJson),
+        input.faviconId ?? null,
+      ],
+    );
+    return rows[0] ? mapTemplateRow(rows[0]) : null;
+  }
 }

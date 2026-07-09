@@ -81,11 +81,10 @@ async function readCachedState(
     }
     const vaults = new Map<string, VaultItemsMaterializedState>();
     for (const [vaultId, snapshot] of row.vaults) {
-      const hasActivity = Boolean(snapshot.itemActivity);
       vaults.set(vaultId, {
         items: new Map(snapshot.items),
         itemActivity: new Map(snapshot.itemActivity ?? []),
-        lastAppliedVersion: hasActivity ? snapshot.lastAppliedVersion : 0,
+        lastAppliedVersion: snapshot.lastAppliedVersion,
       });
     }
     return vaults;
@@ -153,6 +152,9 @@ function appendItemActivity(
   actionKey: ItemActivityWireEntry["actionKey"],
 ): void {
   const list = itemActivity.get(itemId) ?? [];
+  if (list.some((entry) => entry.id === event.id)) {
+    return;
+  }
   list.push({
     id: event.id,
     actionKey,
