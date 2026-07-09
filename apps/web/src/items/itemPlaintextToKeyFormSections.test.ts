@@ -690,3 +690,87 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
     });
   });
 });
+
+describe("itemPlaintextToKeyFormSections passport", () => {
+  it("includes locked primary presets with gender options", () => {
+    const defaults = getDefaultSectionsForCategory("passport", messages);
+
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.id).toBe("passport");
+    expect(defaults[0]?.fields.map((field) => field.id)).toEqual([
+      "passport-type",
+      "issuing-country",
+      "passport-number",
+      "full-name",
+      "gender",
+      "nationality",
+      "issuing-authority",
+      "birth-date",
+      "birth-place",
+      "issue-date",
+      "expiry-date",
+    ]);
+    expect(defaults[0]?.fields.every((field) => field.deletable === false && field.editableLabel === false)).toBe(true);
+    expect(defaults[0]?.fields.find((field) => field.id === "gender")?.selectOptions).toEqual([
+      { value: "male", label: "Мужской" },
+      { value: "female", label: "Женский" },
+    ]);
+    expect(defaults[0]?.fields.find((field) => field.id === "passport-number")?.label).toBe("серия номер");
+  });
+
+  it("round-trips custom fields and preserves locked preset metadata", () => {
+    const sections = getDefaultSectionsForCategory("passport", messages).map((section) => ({
+      ...section,
+      fields: [
+        ...section.fields.map((field) =>
+          field.id === "full-name" ? { ...field, value: "Ivan Petrov" } : field,
+        ),
+        {
+          id: "custom-note",
+          type: "text" as const,
+          label: "Note",
+          value: "VIP",
+          editableLabel: true,
+          deletable: true,
+        },
+      ],
+    }));
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-passport-1",
+      vaultId: "vault-1",
+      title: "Passport",
+      categoryId: "passport",
+      nowMs: 1,
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const primary = restoredForEdit.find((section) => section.id === "passport");
+
+    expect(primary?.fields.map((field) => field.id)).toEqual([
+      "passport-type",
+      "issuing-country",
+      "passport-number",
+      "full-name",
+      "gender",
+      "nationality",
+      "issuing-authority",
+      "birth-date",
+      "birth-place",
+      "issue-date",
+      "expiry-date",
+      "custom-note",
+    ]);
+    expect(primary?.fields.find((field) => field.id === "full-name")).toMatchObject({
+      value: "Ivan Petrov",
+      deletable: false,
+      editableLabel: false,
+    });
+    expect(primary?.fields.find((field) => field.id === "custom-note")).toMatchObject({
+      value: "VIP",
+      deletable: true,
+      editableLabel: true,
+    });
+  });
+});

@@ -209,6 +209,17 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "personalWorkPosition",
   "personalWorkPhone",
   "personalWorkEmail",
+  "passportType",
+  "passportIssuingCountry",
+  "passportNumber",
+  "passportFullName",
+  "passportGender",
+  "passportNationality",
+  "passportIssuingAuthority",
+  "passportBirthDate",
+  "passportBirthPlace",
+  "passportIssueDate",
+  "passportExpiryDate",
 ] as const;
 
 const KEY_FORM_LABEL_KEYS = [

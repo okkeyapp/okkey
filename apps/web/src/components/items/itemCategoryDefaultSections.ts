@@ -14,6 +14,7 @@ export const CRYPTO_WALLET_SECTION_ID = "crypto-wallet";
 export const CRYPTO_WALLET_WALLET_SECTION_ID = "wallet";
 export const PERSONAL_DATA_SECTION_ID = "personal-data";
 export const PERSONAL_DATA_WORK_SECTION_ID = "personal-data-work";
+export const PASSPORT_SECTION_ID = "passport";
 
 export const PERSONAL_DATA_PRESET_FIELD_IDS = [
   "first-name",
@@ -29,6 +30,20 @@ export const PERSONAL_DATA_PRESET_FIELD_IDS = [
 
 export const PERSONAL_DATA_REQUIRED_NAME_FIELD_IDS = ["first-name", "last-name"] as const;
 
+export const PASSPORT_PRESET_FIELD_IDS = [
+  "passport-type",
+  "issuing-country",
+  "passport-number",
+  "full-name",
+  "gender",
+  "nationality",
+  "issuing-authority",
+  "birth-date",
+  "birth-place",
+  "issue-date",
+  "expiry-date",
+] as const;
+
 export function isPersonalDataPresetSection(sectionId: string): boolean {
   return sectionId === PERSONAL_DATA_SECTION_ID;
 }
@@ -43,6 +58,14 @@ export function isPersonalDataPresetFieldId(fieldId: string): boolean {
 
 export function isPersonalDataRequiredNameFieldId(fieldId: string): boolean {
   return (PERSONAL_DATA_REQUIRED_NAME_FIELD_IDS as readonly string[]).includes(fieldId);
+}
+
+export function isPassportPresetSection(sectionId: string): boolean {
+  return sectionId === PASSPORT_SECTION_ID;
+}
+
+export function isPassportPresetFieldId(fieldId: string): boolean {
+  return (PASSPORT_PRESET_FIELD_IDS as readonly string[]).includes(fieldId);
 }
 
 export const CREDIT_CARD_REQUIRED_FIELD_IDS = ["card-number", "card-expiry", "card-pin"] as const;
@@ -826,6 +849,112 @@ export function getAllPersonalDataPresetFields(messages: KeyFormEditorMessages):
   return getPersonalDataDefaultSections(messages).flatMap((section) => section.fields);
 }
 
+function getPassportDefaultSections(messages: KeyFormEditorMessages): KeyFormEditorSection[] {
+  const genderSelectOptions = getPersonalDataGenderSelectOptions(messages);
+
+  return [
+    {
+      id: PASSPORT_SECTION_ID,
+      variant: "primary",
+      fields: [
+        {
+          id: "passport-type",
+          type: "text",
+          label: messages.fieldLabels.passportType,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "issuing-country",
+          type: "text",
+          label: messages.fieldLabels.passportIssuingCountry,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "passport-number",
+          type: "text",
+          label: messages.fieldLabels.passportNumber,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "full-name",
+          type: "text",
+          label: messages.fieldLabels.passportFullName,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "gender",
+          type: "select",
+          label: messages.fieldLabels.passportGender,
+          value: "",
+          selectOptions: genderSelectOptions,
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "nationality",
+          type: "text",
+          label: messages.fieldLabels.passportNationality,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "issuing-authority",
+          type: "text",
+          label: messages.fieldLabels.passportIssuingAuthority,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "birth-date",
+          type: "date",
+          label: messages.fieldLabels.passportBirthDate,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "birth-place",
+          type: "text",
+          label: messages.fieldLabels.passportBirthPlace,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "issue-date",
+          type: "date",
+          label: messages.fieldLabels.passportIssueDate,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "expiry-date",
+          type: "date",
+          label: messages.fieldLabels.passportExpiryDate,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+      ],
+    },
+  ];
+}
+
+export function getAllPassportPresetFields(messages: KeyFormEditorMessages): KeyFormEditorField[] {
+  return getPassportDefaultSections(messages)[0]?.fields ?? [];
+}
+
 export function getDefaultSectionsForCategory(
   categoryId: ItemCategoryId,
   messages: KeyFormEditorMessages,
@@ -864,6 +993,10 @@ export function getDefaultSectionsForCategory(
 
   if (categoryId === "personal_data") {
     return getPersonalDataDefaultSections(messages);
+  }
+
+  if (categoryId === "passport") {
+    return getPassportDefaultSections(messages);
   }
 
   return [];

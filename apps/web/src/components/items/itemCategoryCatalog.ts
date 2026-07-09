@@ -43,7 +43,7 @@ export const ITEM_CATEGORY_DEFINITIONS: readonly ItemCategoryDefinition[] = [
   { id: "secure_note", labelKey: "web.newItemPopup.categories.secureNote", iconColor: "#facc15", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "credit_card", labelKey: "web.newItemPopup.categories.creditCard", iconColor: "#0d9488", groupId: ITEM_CATEGORY_GROUP_FINANCE },
   { id: "personal_data", labelKey: "web.newItemPopup.categories.personalData", iconColor: "#22c55e", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
-  { id: "passport", labelKey: "web.newItemPopup.categories.passport", iconColor: "#854d0e", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
+  { id: "passport", labelKey: "web.newItemPopup.categories.passport", iconColor: "#9f1239", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "secure_files", labelKey: "web.newItemPopup.categories.secureFiles", iconColor: "#ef4444", groupId: ITEM_CATEGORY_GROUP_PERSONAL },
   { id: "api_access", labelKey: "web.newItemPopup.categories.apiAccess", iconColor: "#f472b6", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },
   // { id: "ssh_key", labelKey: "web.newItemPopup.categories.sshKey", iconColor: "#f97316", groupId: ITEM_CATEGORY_GROUP_AUTHORIZATION },

@@ -453,3 +453,51 @@ describe("validateNewItemForm personal_data", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("validateNewItemForm passport", () => {
+  const baseInput = {
+    recordName: "Passport",
+    vaultId: "vault-1",
+    categoryId: "passport" as const,
+  };
+
+  it("requires at least one filled field in the passport section", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "passport",
+          variant: "primary" as const,
+          fields: [
+            { id: "passport-type", type: "text", label: "Type", value: "" },
+            { id: "passport-number", type: "text", label: "Number", value: "" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      { kind: "field", fieldId: "passport-type", sectionId: "passport" },
+      { kind: "field", fieldId: "passport-number", sectionId: "passport" },
+    ]);
+  });
+
+  it("passes when at least one passport field is filled", () => {
+    const result = validateNewItemForm({
+      ...baseInput,
+      sections: [
+        {
+          id: "passport",
+          variant: "primary" as const,
+          fields: [
+            { id: "passport-type", type: "text", label: "Type", value: "" },
+            { id: "passport-number", type: "text", label: "Number", value: "1234 567890" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});

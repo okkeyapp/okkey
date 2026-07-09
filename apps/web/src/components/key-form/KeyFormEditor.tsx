@@ -105,6 +105,8 @@ import {
   isFlexiblePresetPrimarySection,
   isPersonalDataPresetFieldId,
   isPersonalDataPresetSection,
+  isPassportPresetFieldId,
+  isPassportPresetSection,
   PERSONAL_DATA_WORK_SECTION_ID,
   SERVER_ADMIN_CONSOLE_SECTION_ID,
 } from "../items/itemCategoryDefaultSections";
@@ -722,6 +724,10 @@ function canDeleteField(section: DemoSection, field: DemoField): boolean {
     return !isPersonalDataPresetFieldId(field.id);
   }
 
+  if (isPassportPresetSection(section.id)) {
+    return !isPassportPresetFieldId(field.id);
+  }
+
   if (isFlexiblePresetPrimarySection(section.id)) {
     return section.fields.length > 1;
   }
@@ -751,6 +757,10 @@ function sectionHasAddFieldButton(section: DemoSection, mode: KeyFormMode): bool
   }
 
   if (isPersonalDataPresetSection(section.id)) {
+    return true;
+  }
+
+  if (isPassportPresetSection(section.id)) {
     return true;
   }
 
@@ -3135,7 +3145,7 @@ export function KeyFormEditor({
       return false;
     }
 
-    if (!isFlexiblePresetPrimarySection(section.id)) {
+    if (!isFlexiblePresetPrimarySection(section.id) && !isPassportPresetSection(section.id)) {
       return false;
     }
 
@@ -3274,6 +3284,7 @@ export function KeyFormEditor({
       (section.id === "websites" ||
       section.id === "api-access" ||
       isPersonalDataPresetSection(section.id) ||
+      isPassportPresetSection(section.id) ||
       isFlexiblePresetPrimarySection(section.id) ||
       section.id === SERVER_ADMIN_CONSOLE_SECTION_ID ||
       section.id === BANK_DETAILS_SECTION_ID ||
@@ -3569,7 +3580,7 @@ export function KeyFormEditor({
                 ? fieldTypes
                 : section.id === "websites"
                   ? urlFieldTypes
-                  : section.id === "api-access" || isPersonalDataPresetSection(section.id)
+                  : section.id === "api-access" || isPersonalDataPresetSection(section.id) || isPassportPresetSection(section.id)
                     ? fieldTypes
                     : isFlexiblePresetPrimarySection(section.id)
                       ? fieldTypes
@@ -3588,6 +3599,7 @@ export function KeyFormEditor({
                 : section.id === "websites" ||
                     section.id === "api-access" ||
                     isPersonalDataPresetSection(section.id) ||
+                    isPassportPresetSection(section.id) ||
                     isFlexiblePresetPrimarySection(section.id) ||
                     (section.id === "credentials" && !hasTotpField)
                   ? (type: KeyFieldTypeOption) => addField(section.id, type)
