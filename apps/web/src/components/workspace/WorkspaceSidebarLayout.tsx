@@ -34,7 +34,7 @@ const mainPanelOuterClassName = cn(
   "max-md:mb-0 max-md:ms-0 max-md:me-0",
 );
 
-const mainPanelClassName = cn(mainPanelChromeClassName, "overflow-y-auto");
+const mainPanelClassName = cn(mainPanelChromeClassName, "overflow-hidden");
 
 export type WorkspaceSidebarLayoutProps = {
   title: string;
@@ -249,11 +249,14 @@ export default function WorkspaceSidebarLayout({
               </>
             ) : (
               <div className={cn(mainPanelClassName, itemsMobilePanelChromeClassName, "flex min-h-0 flex-1 flex-col")}>
-                {!hideShellMainHeader ? (
-                  <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
-                ) : null}
-
-                <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+                <ScrollArea className="min-h-0 flex-1">
+                  <div className="flex min-h-full flex-col">
+                    {!hideShellMainHeader ? (
+                      <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
+                    ) : null}
+                    {children}
+                  </div>
+                </ScrollArea>
               </div>
             )}
           </div>

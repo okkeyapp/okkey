@@ -359,10 +359,10 @@ function PopupMobileMenu({ menu }: { menu: PopupMenu }) {
   const icon = activeItem?.icon;
 
   return (
-    <div className="pb-1 md:hidden">
+    <div className="md:hidden">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" className="h-10 min-h-10 w-full justify-between gap-2">
+          <Button type="button" variant="outline" className="h-9 min-h-9 w-full justify-between gap-2">
             <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               {icon ? <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span> : null}
               <span className="truncate">{label}</span>

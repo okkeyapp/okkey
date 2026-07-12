@@ -1,8 +1,10 @@
 import type { Vault, Workspace } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Button, buttonVariants, cn } from "@okkey/ui";
+import { useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { useScrollAncestorScrolled } from "../../../hooks/useRadixScrollAreaScrolled";
 import { useLocale } from "../../../locale/LocaleContext";
 import {
   DEFAULT_WORKSPACE_SETTINGS_SECTION,
@@ -13,6 +15,7 @@ import {
   SETTINGS_MAIN_PATH,
 } from "../../../routes/paths";
 import WorkspaceSettingsGeneralSection from "./WorkspaceSettingsGeneralSection";
+import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import { ChevronRightIcon } from "./workspaceSettingsIcons";
 
@@ -61,10 +64,12 @@ export default function WorkspaceSettingsPage({
   const workspaceName = workspace?.name ?? "…";
   const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
   const sectionHref = (section: WorkspaceSettingsSectionId) => settingsPath(section);
+  const pageRootRef = useRef<HTMLDivElement>(null);
+  const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0, activeSection);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-[52px] shrink-0 items-center border-b border-border">
+    <div ref={pageRootRef} className="flex min-h-full min-w-0 flex-1 flex-col">
+      <header className="hidden h-[52px] shrink-0 items-center border-b border-border md:flex">
         <nav
           aria-label={t("web.workspaceSettings.breadcrumbsAria")}
           className="flex min-w-0 flex-1 items-center overflow-hidden ps-5 pe-5"
@@ -99,7 +104,15 @@ export default function WorkspaceSettingsPage({
         </nav>
       </header>
 
-      <div className="flex flex-1 flex-col items-center px-4 pb-8 pt-4 md:px-6 md:pt-8">
+      <WorkspaceSettingsMobileHeader
+        activeSection={activeSection}
+        itemsHref={itemsHref}
+        headerScrolled={headerScrolled}
+        t={t}
+        sectionHref={sectionHref}
+      />
+
+      <div className="flex flex-1 flex-col items-center px-4 py-6 md:px-6 md:pb-8 md:pt-8">
         <div className="flex w-full max-w-[900px] flex-col gap-4 md:flex-row">
           <WorkspaceSettingsSidebar activeSection={activeSection} t={t} sectionHref={sectionHref} />
           <main className="min-w-0 flex-1">
