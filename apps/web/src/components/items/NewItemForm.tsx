@@ -90,6 +90,7 @@ export type NewItemFormHandle = {
   getCurrentSections: () => KeyFormEditorSection[];
   getFaviconSyncInput: () => ItemFormFaviconSyncInput;
   getTemplateSnapshot: () => ItemTemplateFormSnapshot | null;
+  hasUnsavedChanges: () => boolean;
 };
 
 type NewItemFormProps = {
@@ -308,11 +309,62 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   }, [categoryId, isEditMode, isCopyMode, isTemplateMode]);
 
   const fileBaselineSectionsRef = useRef<KeyFormEditorSection[]>([]);
+  const formBaselineRef = useRef<{
+    recordName: string;
+    vaultId: string;
+    folderId: string;
+    sectionsJson: string;
+    tagsJson: string;
+  } | null>(null);
+  const formBaselineCapturedRef = useRef(false);
   useEffect(() => {
     fileBaselineSectionsRef.current = structuredClone(
       initialValues?.sections ?? prefillValues?.sections ?? initialSections,
     );
   }, [initialValues?.itemId, categoryId, initialValues?.sections, prefillValues?.sections, initialSections]);
+
+  useEffect(() => {
+    formBaselineCapturedRef.current = false;
+    formBaselineRef.current = null;
+  }, [categoryId, prefillValues, templateName, initialValues?.itemId]);
+
+  useEffect(() => {
+    if (formBaselineCapturedRef.current) {
+      return;
+    }
+    if (!vaultsListReady) {
+      return;
+    }
+    if (!isEditMode && !vaultId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (formBaselineCapturedRef.current) {
+        return;
+      }
+      formBaselineRef.current = {
+        recordName: trimmedRecordName,
+        vaultId,
+        folderId,
+        sectionsJson: JSON.stringify(formSections ?? initialSections),
+        tagsJson: JSON.stringify(tags),
+      };
+      formBaselineCapturedRef.current = true;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [
+    folderId,
+    formSections,
+    initialSections,
+    isEditMode,
+    tags,
+    templateName,
+    trimmedRecordName,
+    vaultId,
+    vaultsListReady,
+  ]);
 
   useImperativeHandle(
     ref,
@@ -464,8 +516,41 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           attachmentItemId: sourceAttachmentItemId,
         };
       },
+      hasUnsavedChanges: () => {
+        if (pendingFileByIdRef.current.size > 0) {
+          return true;
+        }
+        const faviconSyncInput = getSyncInput();
+        if (faviconSyncInput.manualFaviconPng && faviconSyncInput.manualFaviconPng.byteLength > 0) {
+          return true;
+        }
+
+        const baseline = formBaselineRef.current;
+        if (!baseline) {
+          return false;
+        }
+
+        const sections = formSections ?? initialSections;
+        if (JSON.stringify(sections) !== baseline.sectionsJson) {
+          return true;
+        }
+        if (JSON.stringify(tags) !== baseline.tagsJson) {
+          return true;
+        }
+        if (folderId !== baseline.folderId) {
+          return true;
+        }
+        if (vaultId !== baseline.vaultId) {
+          return true;
+        }
+        if (recordNameEditedRef.current && trimmedRecordName !== baseline.recordName) {
+          return true;
+        }
+
+        return false;
+      },
     }),
-    [recordName, vaultId, folderId, formSections, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, getSyncInput, resolveAttachmentContext],
+    [folderId, formSections, getSyncInput, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
   );
 
   if (!category) {

@@ -180,6 +180,8 @@ export type PopupProps = Omit<React.ComponentPropsWithoutRef<"div">, "title"> & 
   menu?: PopupMenu;
   width?: PopupWidth;
   onClose?: () => void;
+  /** Return false to keep the popup open (called before the close animation). */
+  onCloseRequest?: () => boolean | void;
   closeLabel?: string;
   /** When true, overlay click and close button do nothing. */
   closeDisabled?: boolean;
@@ -417,6 +419,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       menu,
       width = 720,
       onClose,
+      onCloseRequest,
       closeLabel = "Close popup",
       closeDisabled = false,
       children,
@@ -450,12 +453,15 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       if (!onClose || isClosing || closeDisabled) {
         return;
       }
+      if (onCloseRequest?.() === false) {
+        return;
+      }
 
       setIsClosing(true);
       closeTimerRef.current = setTimeout(() => {
         onClose();
       }, POPUP_ANIMATION_MS);
-    }, [closeDisabled, isClosing, onClose]);
+    }, [closeDisabled, isClosing, onClose, onCloseRequest]);
 
     const handleSheetDragMove = React.useCallback((offset: number) => {
       setSheetDragOffset(offset);

@@ -41,6 +41,7 @@ import NewItemCategoryPicker from "./NewItemCategoryPicker";
 import NewItemForm, { type NewItemFormHandle, type NewItemFormPrefillValues } from "./NewItemForm";
 import NewItemFormActionsMenu from "./NewItemFormActionsMenu";
 import SaveItemTemplatePopup from "./SaveItemTemplatePopup";
+import ExitNewItemFormConfirmPopup from "./ExitNewItemFormConfirmPopup";
 import { BackChevronIcon } from "./itemCategoryIcons";
 import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
@@ -51,6 +52,8 @@ type NewItemPopupProps = {
   vaults: readonly Vault[];
   vaultsListReady: boolean;
 };
+
+type PendingNewItemExitAction = "close" | "backToCategories";
 
 export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, vaultsListReady }: NewItemPopupProps) {
   const location = useLocation();
@@ -74,6 +77,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
+  const [pendingExitAction, setPendingExitAction] = useState<PendingNewItemExitAction | null>(null);
   const { createItem, getItemById } = useWorkspaceItems();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
   const { accessToken, vaultKey } = useAuthVault();
@@ -116,12 +120,14 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   useEffect(() => {
     if (!open) {
       setCategoryPickerShowAllExpanded(false);
+      setPendingExitAction(null);
     }
   }, [open]);
 
   function closePopup() {
     setShowValidation(false);
     setSaveError(null);
+    setPendingExitAction(null);
     navigate(
       {
         pathname: location.pathname,
@@ -130,6 +136,61 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       },
       { replace: false },
     );
+  }
+
+  function backToCategories() {
+    setShowValidation(false);
+    setSaveError(null);
+    setPendingExitAction(null);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(NEW_ITEM_POPUP_ID)),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
+  function shouldConfirmExitFromForm(): boolean {
+    const formVisible = Boolean(
+      selectedCategoryId && (!copyFromItemId || copyPrefillValues) && (!templateId || templatePrefillValues),
+    );
+    return formVisible && Boolean(formRef.current?.hasUnsavedChanges());
+  }
+
+  function handleCloseRequest(): boolean {
+    if (shouldConfirmExitFromForm()) {
+      setPendingExitAction("close");
+      return false;
+    }
+    return true;
+  }
+
+  function requestClosePopup() {
+    if (handleCloseRequest()) {
+      closePopup();
+    }
+  }
+
+  function requestBackToCategories() {
+    if (shouldConfirmExitFromForm()) {
+      setPendingExitAction("backToCategories");
+      return;
+    }
+    backToCategories();
+  }
+
+  function confirmPendingExit() {
+    const action = pendingExitAction;
+    setPendingExitAction(null);
+    if (action === "backToCategories") {
+      backToCategories();
+      return;
+    }
+    if (action === "close") {
+      closePopup();
+    }
   }
 
   function selectCategory(categoryId: string) {
@@ -392,19 +453,6 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
     }
   }
 
-  function backToCategories() {
-    setShowValidation(false);
-    setSaveError(null);
-    navigate(
-      {
-        pathname: location.pathname,
-        search: popupQuerySearch(location.search, buildPopupQueryValue(NEW_ITEM_POPUP_ID)),
-        hash: location.hash,
-      },
-      { replace: false },
-    );
-  }
-
   async function handleSave() {
     const validation = formRef.current?.validate();
     if (!validation?.ok) {
@@ -503,7 +551,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
         size="iconSm"
         className="!size-7 !min-h-7 !min-w-7 shrink-0 rounded-md"
         aria-label={t("web.newItemPopup.backToCategories")}
-        onClick={backToCategories}
+        onClick={requestBackToCategories}
       >
         <BackChevronIcon />
       </Button>
@@ -526,6 +574,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       header={header}
       closeLabel={t("web.settingsPopup.close")}
       onClose={closePopup}
+      onCloseRequest={showItemForm ? handleCloseRequest : undefined}
       closeDisabled={saving || savingTemplate || deletingTemplate}
       panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
       footer={
@@ -549,7 +598,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
               onDeleteTemplate={() => void handleDeleteTemplate()}
             />
             <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" onClick={closePopup} disabled={saving || savingTemplate || deletingTemplate}>
+              <Button type="button" variant="outline" onClick={requestClosePopup} disabled={saving || savingTemplate || deletingTemplate}>
                 {t("web.newItemPopup.cancel")}
               </Button>
               <PopupSaveButton
@@ -608,6 +657,12 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
         />
       ) : null}
     </Popup>
+    <ExitNewItemFormConfirmPopup
+      open={pendingExitAction !== null}
+      t={t}
+      onClose={() => setPendingExitAction(null)}
+      onConfirm={confirmPendingExit}
+    />
     <SaveItemTemplatePopup
       open={saveTemplateOpen}
       mode={templatePopupMode}
