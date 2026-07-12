@@ -356,17 +356,25 @@ function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar"
 function PopupMobileMenu({ menu }: { menu: PopupMenu }) {
   const activeItem = menu.items.find((item) => isActiveMenuItem(menu, item));
   const label = menu.dropdownLabel ?? activeItem?.label ?? menu.label ?? "Menu";
+  const icon = activeItem?.icon;
 
   return (
-    <div className="hidden max-md:block">
+    <div className="pb-1 md:hidden">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" className="w-full justify-between">
-            <span className="truncate">{label}</span>
-            <PopupChevronDownIcon className="size-4 opacity-70" />
+          <Button type="button" variant="outline" className="h-10 min-h-10 w-full justify-between gap-2">
+            <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+              {icon ? <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span> : null}
+              <span className="truncate">{label}</span>
+            </span>
+            <PopupChevronDownIcon className="size-4 shrink-0 opacity-70" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={6} className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0 p-1">
+        <DropdownMenuContent
+          align="start"
+          sideOffset={6}
+          className="max-h-[min(var(--radix-dropdown-menu-content-available-height),18rem)] w-[var(--radix-dropdown-menu-trigger-width)] min-w-0 overflow-y-auto p-1"
+        >
           <PopupMenuItems menu={menu} surface="dropdown" />
         </DropdownMenuContent>
       </DropdownMenu>
@@ -616,3 +624,5 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
   },
 );
 Popup.displayName = "Popup";
+
+export { PopupMobileMenu };

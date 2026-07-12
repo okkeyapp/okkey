@@ -117,7 +117,7 @@ function sidebarSectionSettingsButton(className?: string) {
 const folderTreeChevronClassName = "size-4 shrink-0 transition group-data-[state=closed]:-rotate-90";
 
 /** Vertical stack spacing in folder tree (sibling rows). */
-const folderTreeGapClassName = "gap-0";
+const folderTreeGapClassName = "gap-1";
 
 const folderTreeCollapsibleClassName = cn("flex flex-col", folderTreeGapClassName);
 
@@ -1320,7 +1320,7 @@ export type OkkeySidebarPlainLinksMenuProps = {
 
 export function OkkeySidebarPlainLinksMenu({ items }: OkkeySidebarPlainLinksMenuProps) {
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col gap-1">
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.id}>

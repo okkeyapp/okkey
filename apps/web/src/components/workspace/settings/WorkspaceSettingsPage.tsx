@@ -40,10 +40,11 @@ function WorkspaceSettingsPlaceholderSection({
 
 const breadcrumbGhostButtonClassName = cn(
   buttonVariants({ variant: "ghost", size: "sm" }),
-  "h-6 min-h-6 max-h-6 min-w-0 max-w-full gap-1.5 px-1 text-sm font-normal text-copy-secondary hover:text-foreground",
+  "h-6 min-h-6 max-h-6 min-w-0 max-w-full gap-1.5 overflow-hidden px-1 text-sm font-normal text-copy-secondary hover:text-foreground",
 );
 
-const breadcrumbStaticClassName = "inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 px-1 text-sm text-foreground";
+const breadcrumbStaticClassName =
+  "inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 overflow-hidden truncate px-1 text-sm text-foreground";
 
 export default function WorkspaceSettingsPage({
   workspaceId,
@@ -63,10 +64,13 @@ export default function WorkspaceSettingsPage({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 border-b border-border py-2">
-        <nav aria-label={t("web.workspaceSettings.breadcrumbsAria")} className="flex min-w-0 items-center ps-5">
-          <ol className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <li className="min-w-0">
+      <header className="flex h-[52px] shrink-0 items-center border-b border-border">
+        <nav
+          aria-label={t("web.workspaceSettings.breadcrumbsAria")}
+          className="flex min-w-0 flex-1 items-center overflow-hidden ps-5 pe-5"
+        >
+          <ol className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden">
+            <li className="min-w-0 shrink">
               <Button asChild variant="ghost" className={breadcrumbGhostButtonClassName}>
                 <Link to={itemsHref} title={workspaceName}>
                   <span className="truncate">{workspaceName}</span>
@@ -76,7 +80,7 @@ export default function WorkspaceSettingsPage({
             <li className="flex shrink-0 items-center text-muted-foreground" aria-hidden>
               <ChevronRightIcon />
             </li>
-            <li className="min-w-0">
+            <li className="min-w-0 shrink">
               <Button asChild variant="ghost" className={breadcrumbGhostButtonClassName}>
                 <Link to={SETTINGS_MAIN_PATH} title={t("web.workspaceSettings.breadcrumbsRoot")}>
                   <span className="truncate">{t("web.workspaceSettings.breadcrumbsRoot")}</span>
@@ -86,15 +90,17 @@ export default function WorkspaceSettingsPage({
             <li className="flex shrink-0 items-center text-muted-foreground" aria-hidden>
               <ChevronRightIcon />
             </li>
-            <li className="min-w-0">
-              <span className={breadcrumbStaticClassName}>{t(`web.workspaceSettings.sections.${activeSection}`)}</span>
+            <li className="min-w-0 shrink">
+              <span className={breadcrumbStaticClassName} title={t(`web.workspaceSettings.sections.${activeSection}`)}>
+                {t(`web.workspaceSettings.sections.${activeSection}`)}
+              </span>
             </li>
           </ol>
         </nav>
       </header>
 
-      <div className="flex flex-1 flex-col items-center px-6 pb-8 pt-8">
-        <div className="flex w-full max-w-[900px] gap-4">
+      <div className="flex flex-1 flex-col items-center px-4 pb-8 pt-4 md:px-6 md:pt-8">
+        <div className="flex w-full max-w-[900px] flex-col gap-4 md:flex-row">
           <WorkspaceSettingsSidebar activeSection={activeSection} t={t} sectionHref={sectionHref} />
           <main className="min-w-0 flex-1">
             {activeSection === "general" ? (

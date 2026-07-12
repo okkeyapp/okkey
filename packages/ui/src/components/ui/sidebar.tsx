@@ -189,7 +189,7 @@ SidebarGroupAction.displayName = "SidebarGroupAction";
 
 export const SidebarMenu = React.forwardRef<HTMLUListElement, React.ComponentPropsWithoutRef<"ul">>(
   ({ className, ...props }, ref) => (
-    <ul ref={ref} data-sidebar="menu" className={cn("flex w-full min-w-0 flex-col gap-0", className)} {...props} />
+    <ul ref={ref} data-sidebar="menu" className={cn("flex w-full min-w-0 flex-col gap-1", className)} {...props} />
   ),
 );
 SidebarMenu.displayName = "SidebarMenu";
@@ -280,7 +280,7 @@ export const SidebarMenuSub = React.forwardRef<HTMLUListElement, React.Component
       ref={ref}
       data-sidebar="menu-sub"
       className={cn(
-        "ml-3.5 mr-0 flex min-w-0 translate-x-px flex-col gap-0 border-l border-sidebar-border py-0.5 pl-[7px] pr-0",
+        "ml-3.5 mr-0 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border py-0.5 pl-[7px] pr-0",
         className,
       )}
       {...props}
