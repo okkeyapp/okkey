@@ -1,6 +1,6 @@
 import type { Vault } from "@okkey/types";
 import { Button, Spinner, type KeyFieldFileValue } from "@okkey/ui";
-import { useMemo, useRef, useCallback } from "react";
+import { useMemo, useRef, useCallback, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -33,6 +33,7 @@ import ItemRecordFavicon from "./ItemRecordFavicon";
 import ItemActivitySection from "./ItemActivitySection";
 import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
 import ItemDetailTopBar from "./ItemDetailTopBar";
+import DeleteItemsConfirmPopup from "./DeleteItemsConfirmPopup";
 import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
@@ -62,6 +63,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const headerScrolled = useScrollAncestorScrolled(
     cardRootRef,
     0,
@@ -146,6 +148,31 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
       actorLabel: actorLabelFromProfile(profile),
     });
   }, [item, profile, userId, getItemActivityById, syncVersion]);
+
+  const handleToggleDelete = useCallback(() => {
+    const nextDeleted = !(listRecord?.deleted ?? false);
+    if (!nextDeleted) {
+      void (async () => {
+        await setItemDeleted(itemId, false);
+      })();
+      return;
+    }
+    setDeleteConfirmOpen(true);
+  }, [itemId, listRecord?.deleted, setItemDeleted]);
+
+  const confirmDeleteItem = useCallback(() => {
+    void (async () => {
+      await setItemDeleted(itemId, true);
+      setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
+      if (listRecord?.favorite) {
+        await setItemFavorite(itemId, false);
+      }
+      if (listRecord?.archived) {
+        await setItemArchived(itemId, false);
+      }
+      setDeleteConfirmOpen(false);
+    })();
+  }, [itemId, listRecord?.archived, listRecord?.favorite, setItemArchived, setItemDeleted, setItemFavorite, setSearchParams]);
 
   if (!bootstrapped || loading) {
     return (
@@ -247,21 +274,15 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             }
           })();
         }}
-        onToggleDelete={() => {
-          const nextDeleted = !(listRecord?.deleted ?? false);
-          void (async () => {
-            await setItemDeleted(itemId, nextDeleted);
-            if (nextDeleted) {
-              setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
-              if (listRecord?.favorite) {
-                await setItemFavorite(itemId, false);
-              }
-              if (listRecord?.archived) {
-                await setItemArchived(itemId, false);
-              }
-            }
-          })();
-        }}
+        onToggleDelete={handleToggleDelete}
+      />
+
+      <DeleteItemsConfirmPopup
+        open={deleteConfirmOpen}
+        multiple={false}
+        t={t}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDeleteItem}
       />
 
       <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6 md:py-[36px]">

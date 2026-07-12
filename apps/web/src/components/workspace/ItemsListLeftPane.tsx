@@ -27,6 +27,7 @@ import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled, useRadixScrollAreaScrollEdges } from "../../hooks/useRadixScrollAreaScrolled";
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
+import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -862,6 +863,9 @@ export default function ItemsListLeftPane({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [bulkActionsMenuOpen, setBulkActionsMenuOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ kind: "single"; row: ItemsListRecord } | { kind: "bulk" } | null>(
+    null,
+  );
 
   const vaultMeta = vaultQ ? vaults.find((v) => v.id === vaultQ) : undefined;
   const folderPath = folderQ ? findWorkspaceFolderPathById(folderTree, folderQ) : "";
@@ -1052,6 +1056,34 @@ export default function ItemsListLeftPane({
         }
       }
     })();
+  };
+
+  const requestDeleteRow = (row: ItemsListRecord) => {
+    if (row.deleted) {
+      deleteRow(row, false);
+      return;
+    }
+    setDeleteConfirm({ kind: "single", row });
+  };
+
+  const requestDeleteSelectedItems = () => {
+    const rows = selectedRows.filter((row) => !row.deleted);
+    if (!rows.length) {
+      return;
+    }
+    setDeleteConfirm({ kind: "bulk" });
+  };
+
+  const confirmPendingDelete = () => {
+    if (!deleteConfirm) {
+      return;
+    }
+    if (deleteConfirm.kind === "single") {
+      deleteRow(deleteConfirm.row, true);
+    } else {
+      deleteSelectedItems(true);
+    }
+    setDeleteConfirm(null);
   };
 
   const archiveSelectedItems = (archived: boolean) => {
@@ -1581,7 +1613,7 @@ export default function ItemsListLeftPane({
                                       !row.deleted &&
                                         "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
                                     )}
-                                    onSelect={() => deleteRow(row, !row.deleted)}
+                                    onSelect={() => requestDeleteRow(row)}
                                   >
                                     {row.deleted ? (
                                       <IconRestore16 className="text-foreground" />
@@ -1672,7 +1704,7 @@ export default function ItemsListLeftPane({
               {selectedActions.canDelete ? (
                 <DropdownMenuItem
                   className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
-                  onSelect={() => deleteSelectedItems(true)}
+                  onSelect={() => requestDeleteSelectedItems()}
                 >
                   <IconDelete16 />
                   <span>{t("web.items.menu.delete")}</span>
@@ -1688,6 +1720,14 @@ export default function ItemsListLeftPane({
           </DropdownMenu>
         </div>
       ) : null}
+
+      <DeleteItemsConfirmPopup
+        open={deleteConfirm !== null}
+        multiple={deleteConfirm?.kind === "bulk"}
+        t={t}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmPendingDelete}
+      />
     </div>
   );
 }
