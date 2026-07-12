@@ -4,6 +4,7 @@ import { Button, Popup } from "@okkey/ui";
 type DeleteItemsConfirmPopupProps = {
   open: boolean;
   multiple: boolean;
+  retentionDays: number;
   deleting?: boolean;
   t: (messageKey: string, values?: WebMessageValues) => string;
   onClose: () => void;
@@ -13,6 +14,7 @@ type DeleteItemsConfirmPopupProps = {
 export default function DeleteItemsConfirmPopup({
   open,
   multiple,
+  retentionDays,
   deleting = false,
   t,
   onClose,
@@ -53,6 +55,7 @@ export default function DeleteItemsConfirmPopup({
       <p className="w-full text-sm leading-5 text-muted-foreground">
         {t(
           multiple ? "web.deleteItemsConfirmPopup.descriptionMultiple" : "web.deleteItemsConfirmPopup.descriptionSingle",
+          { days: retentionDays },
         )}
       </p>
     </Popup>

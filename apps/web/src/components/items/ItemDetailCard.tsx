@@ -59,7 +59,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { accessToken, profile, userId, vaultKey } = useAuthVault();
-  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet } =
+  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet, deletedItemsRetentionDays } =
     useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
@@ -280,6 +280,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
       <DeleteItemsConfirmPopup
         open={deleteConfirmOpen}
         multiple={false}
+        retentionDays={deletedItemsRetentionDays}
         t={t}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDeleteItem}

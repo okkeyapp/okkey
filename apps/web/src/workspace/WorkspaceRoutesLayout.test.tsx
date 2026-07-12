@@ -52,6 +52,7 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
     setItemDeleted: vi.fn(),
     setItemsDeleted: vi.fn(),
     refreshItems: vi.fn(),
+    deletedItemsRetentionDays: 30,
   }),
   useWorkspaceItems: () => ({
     records: [],
@@ -70,6 +71,7 @@ vi.mock("../items/WorkspaceItemsContext", () => ({
     setItemDeleted: vi.fn(),
     setItemsDeleted: vi.fn(),
     refreshItems: vi.fn(),
+    deletedItemsRetentionDays: 30,
   }),
 }));
 

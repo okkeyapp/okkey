@@ -39,6 +39,7 @@ export type WorkspaceItemsContextValue = {
   setItemDeleted: (itemId: string, deleted: boolean) => Promise<void>;
   setItemsDeleted: (itemIds: readonly string[], deleted: boolean) => Promise<void>;
   refreshItems: () => Promise<void>;
+  deletedItemsRetentionDays: number;
 };
 
 const WorkspaceItemsContext = createContext<WorkspaceItemsContextValue | null>(null);
@@ -348,6 +349,7 @@ export function useWorkspaceItemsState(input: {
       setItemDeleted,
       setItemsDeleted,
       refreshItems,
+      deletedItemsRetentionDays,
     }),
     [
       records,
@@ -366,6 +368,7 @@ export function useWorkspaceItemsState(input: {
       setItemDeleted,
       setItemsDeleted,
       refreshItems,
+      deletedItemsRetentionDays,
     ],
   );
 }

@@ -849,7 +849,7 @@ export default function ItemsListLeftPane({
   const location = useLocation();
   const navigate = useNavigate();
   const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
-  const { setItemArchived, setItemsArchived, setItemDeleted, setItemsDeleted } = useWorkspaceItems();
+  const { setItemArchived, setItemsArchived, setItemDeleted, setItemsDeleted, deletedItemsRetentionDays } = useWorkspaceItems();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -1724,6 +1724,7 @@ export default function ItemsListLeftPane({
       <DeleteItemsConfirmPopup
         open={deleteConfirm !== null}
         multiple={deleteConfirm?.kind === "bulk"}
+        retentionDays={deletedItemsRetentionDays}
         t={t}
         onClose={() => setDeleteConfirm(null)}
         onConfirm={confirmPendingDelete}
