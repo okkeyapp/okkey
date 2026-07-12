@@ -3,14 +3,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiRequestError } from "@okkey/api";
 import type { Workspace } from "@okkey/types";
-import { Spinner, WorkspaceTile } from "@okkey/ui";
+import { Spinner } from "@okkey/ui";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { writeStoredCurrentWorkspaceId } from "../../auth/workspaceStorage";
 import { ITEMS_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
-
-const PERSONAL_FREE_TILE_COLOR = "#3B82F6";
+import WorkspacesListTile from "./WorkspacesListTile";
 
 /** Matches `WorkspaceTile` / create-workspace button (`workspace-tile.tsx`). */
 const WORKSPACE_TILE_BOX_CLASS = "h-[170px] w-[180px] shrink-0 rounded-xl";
@@ -124,24 +123,19 @@ export default function WorkspacesContent() {
 
   return (
     <WorkspacesListChrome>
-      {workspaces.map((ws) => {
-        const isFree = ws.planTier === "FREE";
-        return (
-          <WorkspaceTile
-            key={ws.id}
-            type="button"
-            title={ws.name}
-            description={t(planDescriptionKey(ws.planTier))}
-            {...(isFree ? { tileColor: PERSONAL_FREE_TILE_COLOR } : { business: true })}
-            onClick={() => {
-              if (userId) {
-                writeStoredCurrentWorkspaceId(userId, ws.id);
-              }
-              navigate(ITEMS_PATH);
-            }}
-          />
-        );
-      })}
+      {workspaces.map((ws) => (
+        <WorkspacesListTile
+          key={ws.id}
+          workspace={ws}
+          description={t(planDescriptionKey(ws.planTier))}
+          onClick={() => {
+            if (userId) {
+              writeStoredCurrentWorkspaceId(userId, ws.id);
+            }
+            navigate(ITEMS_PATH);
+          }}
+        />
+      ))}
 
       <button
         type="button"

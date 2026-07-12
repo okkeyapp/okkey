@@ -25,6 +25,12 @@ export interface Workspace {
   planTier: string;
   /** Days before soft-deleted vault items are permanently purged from the server. */
   deletedItemsRetentionDays: number;
+  /** Hex tile color when no custom logo is set. */
+  tileColor?: string | null;
+  /** Vault storing the encrypted workspace logo attachment. */
+  logoVaultId?: string | null;
+  /** Encrypted logo attachment id. */
+  logoAttachmentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -378,12 +384,25 @@ export interface SyncAppendEventRequestDto {
 
 /** `GET /workspaces/:workspaceId/settings` success body. */
 export interface WorkspaceSettingsResponseDto {
+  name: string;
   deleted_items_retention_days: number;
+  tile_color: string | null;
+  logo_vault_id: string | null;
+  logo_attachment_id: string | null;
 }
 
 /** `PATCH /workspaces/:workspaceId/settings` request body. */
 export interface WorkspaceSettingsUpdateRequestDto {
-  deleted_items_retention_days: number;
+  name?: string;
+  deleted_items_retention_days?: number;
+  tile_color?: string | null;
+  logo_vault_id?: string | null;
+  logo_attachment_id?: string | null;
+}
+
+/** `DELETE /workspaces/:workspaceId/settings` request body. */
+export interface WorkspaceDeleteRequestDto {
+  confirmation_name: string;
 }
 
 /** `GET /vaults/:vaultId/key` success body. */

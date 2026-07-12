@@ -211,6 +211,63 @@ export const CAPSULES_PATH = "/capsules";
 export const MONITORING_PATH = "/monitoring";
 export const TOOLS_PATH = "/tools";
 export const SETTINGS_PATH = "/settings";
+export const SETTINGS_MAIN_PATH = `${SETTINGS_PATH}/main`;
+
+/** @deprecated Query-param settings URLs; use {@link settingsPath} with path segments. */
+export const SETTINGS_SECTION_QUERY_PARAM = "section";
+
+export type WorkspaceSettingsSectionId =
+  | "general"
+  | "roles"
+  | "profiles"
+  | "members"
+  | "vaults"
+  | "plan"
+  | "billing";
+
+export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "general";
+
+const SETTINGS_SECTION_SLUGS: Record<WorkspaceSettingsSectionId, string> = {
+  general: "main",
+  roles: "roles",
+  profiles: "profiles",
+  members: "members",
+  vaults: "vaults",
+  plan: "plan",
+  billing: "billing",
+};
+
+const SETTINGS_SLUG_TO_SECTION: Record<string, WorkspaceSettingsSectionId> = Object.fromEntries(
+  Object.entries(SETTINGS_SECTION_SLUGS).map(([section, slug]) => [slug, section as WorkspaceSettingsSectionId]),
+) as Record<string, WorkspaceSettingsSectionId>;
+
+export function settingsSectionSlug(section: WorkspaceSettingsSectionId = DEFAULT_WORKSPACE_SETTINGS_SECTION): string {
+  return SETTINGS_SECTION_SLUGS[section];
+}
+
+export function settingsPath(section: WorkspaceSettingsSectionId = DEFAULT_WORKSPACE_SETTINGS_SECTION): string {
+  return `${SETTINGS_PATH}/${settingsSectionSlug(section)}`;
+}
+
+export function settingsSectionFromSlug(slug: string): WorkspaceSettingsSectionId | null {
+  return SETTINGS_SLUG_TO_SECTION[slug] ?? null;
+}
+
+export function settingsSectionFromPathname(pathname: string): WorkspaceSettingsSectionId | null {
+  if (pathname === SETTINGS_PATH) {
+    return null;
+  }
+  const prefix = `${SETTINGS_PATH}/`;
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+  const slug = pathname.slice(prefix.length).split("/")[0]?.trim() ?? "";
+  return settingsSectionFromSlug(slug);
+}
+
+export function isSettingsPathname(pathname: string): boolean {
+  return pathname === SETTINGS_PATH || pathname.startsWith(`${SETTINGS_PATH}/`);
+}
 
 /** Top-level app shell routes (each validates workspace access). */
 export const WORKSPACE_APP_SHELL_PATHS = [
@@ -268,6 +325,9 @@ export function workspaceShellPath(pathname: WorkspaceAppShellPath, workspaceId:
 }
 
 export function isWorkspaceAppShellPathname(pathname: string): pathname is WorkspaceAppShellPath {
+  if (isSettingsPathname(pathname)) {
+    return true;
+  }
   return (WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname);
 }
 

@@ -37,6 +37,7 @@ import type {
   WorkspaceItemTemplatesListResponseDto,
   WorkspaceSettingsResponseDto,
   WorkspaceSettingsUpdateRequestDto,
+  WorkspaceDeleteRequestDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -92,8 +93,8 @@ export class ApiClient {
     return this.request<T>("PUT", path, body, options);
   }
 
-  async delete<T>(path: string, options?: ApiRequestOptions): Promise<T> {
-    return this.request<T>("DELETE", path, undefined, options);
+  async delete<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
+    return this.request<T>("DELETE", path, body, options);
   }
 
   async request<T>(
@@ -285,6 +286,13 @@ export class CoreApiClient {
     body: WorkspaceSettingsUpdateRequestDto,
   ): Promise<WorkspaceSettingsResponseDto> {
     return this.api.patch<WorkspaceSettingsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
+      body,
+    );
+  }
+
+  deleteWorkspace(workspaceId: string, body: WorkspaceDeleteRequestDto): Promise<{ ok: true }> {
+    return this.api.delete<{ ok: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
       body,
     );

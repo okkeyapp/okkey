@@ -5,7 +5,6 @@ import {
   cn,
   DropdownMenuItem,
   okkeyWorkspaceShellNavItems,
-  PersonalWorkspaceMark,
   Spinner,
   type OkkeyAppSidebarAccountMenu,
   type OkkeySidebarFolderTreeNode,
@@ -39,6 +38,7 @@ import {
   writeStoredCurrentWorkspaceId,
 } from "../auth/workspaceStorage";
 import WorkspaceSidebarLayout from "../components/workspace/WorkspaceSidebarLayout";
+import WorkspaceTileAvatar from "../components/workspace/WorkspaceTileAvatar";
 import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
@@ -52,6 +52,8 @@ import {
   MONITORING_PATH,
   SEARCH_QUERY_PARAM,
   SETTINGS_PATH,
+  settingsPath,
+  isSettingsPathname,
   TOOLS_PATH,
   VAULT_QUERY_PARAM,
   WORKSPACE_APP_SHELL_PATHS,
@@ -60,8 +62,6 @@ import {
   type WorkspaceAppShellPath,
 } from "../routes/paths";
 import { planTierLabel } from "./planTierLabel";
-
-const PERSONAL_WORKSPACE_TILE_COLOR = "#3B82F6";
 
 function ShellChevrons({ className }: { className?: string }) {
   return (
@@ -85,37 +85,26 @@ function ShellChevrons({ className }: { className?: string }) {
   );
 }
 
-function WorkspaceTileAvatar({ workspace, sizeClass }: { workspace?: Workspace; sizeClass: string }) {
-  if (!workspace) {
-    return <div className={cn("shrink-0 rounded-lg bg-muted", sizeClass)} />;
+function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | null {
+  if ((WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname)) {
+    return pathname as WorkspaceAppShellPath;
   }
-  const isFree = workspace.planTier === "FREE";
-  if (isFree) {
-    return (
-      <div className={cn("shrink-0 overflow-hidden rounded-lg", sizeClass)}>
-        <PersonalWorkspaceMark fillColor={PERSONAL_WORKSPACE_TILE_COLOR} className="block size-full" />
-      </div>
-    );
+  if (isSettingsPathname(pathname)) {
+    return SETTINGS_PATH;
   }
-  return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-lg leading-none",
-        sizeClass,
-      )}
-      aria-hidden
-    >
-      💼
-    </div>
-  );
+  return null;
 }
 
 function isWorkspaceAppShellPath(pathname: string): pathname is WorkspaceAppShellPath {
-  return (WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname);
+  return resolveWorkspaceShellPath(pathname) !== null;
 }
 
-function shellTitleKey(pathname: WorkspaceAppShellPath): string {
-  switch (pathname) {
+function shellTitleKey(pathname: string): string {
+  const shellPath = resolveWorkspaceShellPath(pathname);
+  if (!shellPath) {
+    return "workspaces.shellTitle";
+  }
+  switch (shellPath) {
     case ITEMS_PATH:
       return "web.shell.itemsTitle";
     case CAPSULES_PATH:
@@ -159,6 +148,14 @@ export default function WorkspaceRoutesLayout() {
   const navigateRef = useRef(navigate);
   const setSearchParamsRef = useRef(setSearchParams);
 
+  const refreshWorkspaces = useCallback(async () => {
+    if (!core) {
+      return;
+    }
+    const list = await core.listWorkspaces();
+    setWorkspaceList(list);
+  }, [core]);
+
   useEffect(() => {
     navigateRef.current = navigate;
     setSearchParamsRef.current = setSearchParams;
@@ -170,7 +167,7 @@ export default function WorkspaceRoutesLayout() {
       capsules: CAPSULES_PATH,
       monitoring: MONITORING_PATH,
       tools: TOOLS_PATH,
-      settings: SETTINGS_PATH,
+      settings: settingsPath("general"),
     }),
     [],
   );
@@ -212,7 +209,7 @@ export default function WorkspaceRoutesLayout() {
       }
       return {
         ...item,
-        isActive: item.to === pathname,
+        isActive: item.to.startsWith(SETTINGS_PATH) ? isSettingsPathname(pathname) : item.to === pathname,
       };
     });
   }, [navPaths, pathname, t, vaultQ, folderQ, categoryQ, searchQ, searchParams, openNewItemPopup, itemsPathMergeOptions]);
@@ -517,8 +514,8 @@ export default function WorkspaceRoutesLayout() {
     );
   }
 
-  const isShellNotFound = !isWorkspaceAppShellPath(pathname);
-  const title = isShellNotFound ? t("web.notFound.title") : t(shellTitleKey(pathname as WorkspaceAppShellPath));
+  const isShellNotFound = resolveWorkspaceShellPath(pathname) === null;
+  const title = isShellNotFound ? t("web.notFound.title") : t(shellTitleKey(pathname));
   const description = isShellNotFound
     ? ""
     : currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
@@ -571,6 +568,7 @@ export default function WorkspaceRoutesLayout() {
               vaultKey={vaultKey}
               vaultUnlocked={vaultUnlocked}
               workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
+              refreshWorkspaces={refreshWorkspaces}
             />
           </WorkspaceFoldersProvider>
         );
@@ -604,6 +602,7 @@ type WorkspaceShellWithItemsProps = {
   vaultKey: Uint8Array | null;
   vaultUnlocked: boolean;
   workspaceFoldersBootstrapped: boolean;
+  refreshWorkspaces: () => Promise<void>;
 };
 
 function WorkspaceShellWithItems({
@@ -631,6 +630,7 @@ function WorkspaceShellWithItems({
   vaultKey,
   vaultUnlocked,
   workspaceFoldersBootstrapped,
+  refreshWorkspaces,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const workspaceItemsState = useWorkspaceItemsState({
@@ -668,7 +668,7 @@ function WorkspaceShellWithItems({
           <WorkspaceSidebarLayout
             title={title}
             description={description}
-            hideShellMainHeader={isShellNotFound}
+            hideShellMainHeader={isShellNotFound || isSettingsPathname(pathname)}
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
             workspaceNavItems={workspaceNavItems}
             workspaceNavLink={AppShellNavLink}
@@ -694,7 +694,14 @@ function WorkspaceShellWithItems({
             itemsListRecords={workspaceItemsState.records}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
           >
-            <Outlet context={{ workspaceId: resolvedWorkspaceId, vaults, workspace: currentWorkspace }} />
+            <Outlet
+              context={{
+                workspaceId: resolvedWorkspaceId,
+                vaults,
+                workspace: currentWorkspace,
+                refreshWorkspaces,
+              }}
+            />
           </WorkspaceSidebarLayout>
         </WorkspaceItemsProvider>
       </ItemCategoryPreferencesProvider>

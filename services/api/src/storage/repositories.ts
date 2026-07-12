@@ -290,9 +290,28 @@ export interface WorkspaceRecord {
   ownerId: string;
   planTier: string;
   deletedItemsRetentionDays: number;
+  tileColor: string | null;
+  logoVaultId: string | null;
+  logoAttachmentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+const WORKSPACE_SELECT_COLUMNS =
+  "id, name, owner_id, plan_tier, deleted_items_retention_days, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+
+const WORKSPACE_SELECT_COLUMNS_W =
+  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+
+type WorkspaceRow = BaseRow & {
+  name: string;
+  owner_id: string;
+  plan_tier: string;
+  deleted_items_retention_days: number;
+  tile_color: string | null;
+  logo_vault_id: string | null;
+  logo_attachment_id: string | null;
+};
 
 export class WorkspacesRepository {
   private readonly db: QueryExecutor;
@@ -307,13 +326,11 @@ export class WorkspacesRepository {
     planTier?: string;
   }): Promise<WorkspaceRecord> {
     const id = generateEntityId();
-    const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
-    >(
+    const rows = await this.db.query<WorkspaceRow>(
       `
         INSERT INTO workspaces (id, name, owner_id, plan_tier)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at
+        RETURNING ${WORKSPACE_SELECT_COLUMNS}
       `,
       [id, input.name, input.ownerId, input.planTier ?? "FREE"],
     );
@@ -321,10 +338,8 @@ export class WorkspacesRepository {
   }
 
   async findById(id: string): Promise<WorkspaceRecord | null> {
-    const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
-    >(
-      "SELECT id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at FROM workspaces WHERE id = $1",
+    const rows = await this.db.query<WorkspaceRow>(
+      `SELECT ${WORKSPACE_SELECT_COLUMNS} FROM workspaces WHERE id = $1`,
       [id],
     );
     return rows[0] ? mapWorkspace(rows[0]) : null;
@@ -355,11 +370,9 @@ export class WorkspacesRepository {
   }
 
   async listByOwner(ownerId: string): Promise<WorkspaceRecord[]> {
-    const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
-    >(
+    const rows = await this.db.query<WorkspaceRow>(
       `
-        SELECT id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at
+        SELECT ${WORKSPACE_SELECT_COLUMNS}
         FROM workspaces
         WHERE owner_id = $1
         ORDER BY created_at ASC
@@ -371,17 +384,15 @@ export class WorkspacesRepository {
 
   /** Workspaces where the user is owner or a workspace member (deduplicated). */
   async listAccessibleByUser(userId: string): Promise<WorkspaceRecord[]> {
-    const rows = await this.db.query<
-      BaseRow & { name: string; owner_id: string; plan_tier: string; deleted_items_retention_days: number }
-    >(
+    const rows = await this.db.query<WorkspaceRow>(
       `
-        SELECT id, name, owner_id, plan_tier, deleted_items_retention_days, created_at, updated_at
+        SELECT ${WORKSPACE_SELECT_COLUMNS}
         FROM (
-          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.created_at, w.updated_at
+          SELECT ${WORKSPACE_SELECT_COLUMNS_W}
           FROM workspaces w
           WHERE w.owner_id = $1
           UNION
-          SELECT w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.created_at, w.updated_at
+          SELECT ${WORKSPACE_SELECT_COLUMNS_W}
           FROM workspaces w
           INNER JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = $1
         ) sub
@@ -408,6 +419,64 @@ export class WorkspacesRepository {
       [workspaceId, userId],
     );
     return Boolean(rows[0]?.can_access);
+  }
+
+  async updateGeneralSettings(
+    workspaceId: string,
+    input: {
+      name?: string;
+      tileColor?: string | null;
+      logoVaultId?: string | null;
+      logoAttachmentId?: string | null;
+      deletedItemsRetentionDays?: number;
+    },
+  ): Promise<WorkspaceRecord> {
+    const sets: string[] = ["updated_at = now()"];
+    const values: unknown[] = [workspaceId];
+    let paramIndex = 2;
+
+    if (input.name !== undefined) {
+      sets.push(`name = $${paramIndex++}`);
+      values.push(input.name);
+    }
+    if (input.tileColor !== undefined) {
+      sets.push(`tile_color = $${paramIndex++}`);
+      values.push(input.tileColor);
+    }
+    if (input.logoVaultId !== undefined) {
+      sets.push(`logo_vault_id = $${paramIndex++}`);
+      values.push(input.logoVaultId);
+    }
+    if (input.logoAttachmentId !== undefined) {
+      sets.push(`logo_attachment_id = $${paramIndex++}`);
+      values.push(input.logoAttachmentId);
+    }
+    if (input.deletedItemsRetentionDays !== undefined) {
+      sets.push(`deleted_items_retention_days = $${paramIndex++}`);
+      values.push(input.deletedItemsRetentionDays);
+    }
+
+    const rows = await this.db.query<WorkspaceRow>(
+      `
+        UPDATE workspaces
+        SET ${sets.join(", ")}
+        WHERE id = $1
+        RETURNING ${WORKSPACE_SELECT_COLUMNS}
+      `,
+      values,
+    );
+    if (!rows[0]) {
+      throw new EntityNotFoundError("workspace", workspaceId);
+    }
+    return mapWorkspace(rows[0]);
+  }
+
+  async deleteOwnedWorkspace(workspaceId: string, ownerId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      "DELETE FROM workspaces WHERE id = $1 AND owner_id = $2 RETURNING id",
+      [workspaceId, ownerId],
+    );
+    return Boolean(rows[0]?.id);
   }
 }
 
@@ -1592,20 +1661,16 @@ function mapUser(
   };
 }
 
-function mapWorkspace(
-  row: BaseRow & {
-    name: string;
-    owner_id: string;
-    plan_tier: string;
-    deleted_items_retention_days: number;
-  },
-): WorkspaceRecord {
+function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
   return {
     id: row.id,
     name: row.name,
     ownerId: row.owner_id,
     planTier: row.plan_tier,
     deletedItemsRetentionDays: row.deleted_items_retention_days,
+    tileColor: row.tile_color,
+    logoVaultId: row.logo_vault_id,
+    logoAttachmentId: row.logo_attachment_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };

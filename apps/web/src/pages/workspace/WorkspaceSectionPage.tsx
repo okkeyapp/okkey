@@ -3,18 +3,19 @@ import { useLocation, useOutletContext, useSearchParams } from "react-router-dom
 
 import ItemDetailCard from "../../components/items/ItemDetailCard";
 import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
-import WorkspaceSettingsSection from "../../components/workspace/WorkspaceSettingsSection";
+import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
 import { useLocale } from "../../locale/LocaleContext";
-import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, SETTINGS_PATH, VAULT_QUERY_PARAM } from "../../routes/paths";
+import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, isSettingsPathname, VAULT_QUERY_PARAM } from "../../routes/paths";
 
 export type WorkspaceShellOutletContext = {
   workspaceId: string;
   vaults: readonly Vault[];
   workspace?: Workspace;
+  refreshWorkspaces?: () => Promise<void>;
 };
 
 export default function WorkspaceSectionPage() {
-  const { workspaceId, vaults, workspace } = useOutletContext<WorkspaceShellOutletContext>();
+  const { workspaceId, vaults, workspace, refreshWorkspaces } = useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -22,10 +23,17 @@ export default function WorkspaceSectionPage() {
   const folderId = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const itemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsRoute = location.pathname === ITEMS_PATH;
-  const isSettingsRoute = location.pathname === SETTINGS_PATH;
+  const isSettingsRoute = isSettingsPathname(location.pathname);
 
   if (isSettingsRoute) {
-    return <WorkspaceSettingsSection workspaceId={workspaceId} workspace={workspace} />;
+    return (
+      <WorkspaceSettingsPage
+        workspaceId={workspaceId}
+        workspace={workspace}
+        vaults={vaults}
+        onSettingsChanged={() => void refreshWorkspaces?.()}
+      />
+    );
   }
 
   if (isItemsRoute) {

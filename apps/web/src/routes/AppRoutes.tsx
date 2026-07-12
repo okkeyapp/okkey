@@ -45,6 +45,7 @@ import {
   MONITORING_PATH,
   ROOT_PATH,
   SETTINGS_PATH,
+  settingsPath,
   TOOLS_PATH,
   UNLOCK_PASSWORD_LEGACY_PATH,
   WORKSPACES_PATH,
@@ -130,7 +131,8 @@ export default function AppRoutes() {
           <Route path={CAPSULES_PATH} element={<WorkspaceSectionPage />} />
           <Route path={MONITORING_PATH} element={<WorkspaceSectionPage />} />
           <Route path={TOOLS_PATH} element={<WorkspaceSectionPage />} />
-          <Route path={SETTINGS_PATH} element={<WorkspaceSectionPage />} />
+          <Route path={SETTINGS_PATH} element={<Navigate to={settingsPath("general")} replace />} />
+          <Route path={`${SETTINGS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path="*" element={<WorkspaceNotFoundPage />} />
         </Route>
       </Route>

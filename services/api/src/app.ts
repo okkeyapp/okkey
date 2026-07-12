@@ -287,6 +287,11 @@ export function createApiApp(
         "/workspaces/:workspaceId/settings",
         createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
       );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/settings",
+        createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
+      );
     }
     if (deps.workspacePersonalSyncService) {
       app.route(
