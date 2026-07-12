@@ -28,6 +28,12 @@ const mainPanelChromeClassName = cn(
 
 const itemsMobilePanelChromeClassName = "max-md:rounded-none max-md:shadow-none";
 
+const mainPanelOuterClassName = cn(
+  "mt-2 mr-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col p-0",
+  "ml-2 min-[991px]:ml-0",
+  "max-md:mb-0 max-md:ms-0 max-md:me-0",
+);
+
 const mainPanelClassName = cn(mainPanelChromeClassName, "overflow-y-auto");
 
 export type WorkspaceSidebarLayoutProps = {
@@ -199,9 +205,8 @@ export default function WorkspaceSidebarLayout({
           </div>
           <div
             className={cn(
-              "mt-2 mr-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col p-0",
-              "ml-2 min-[991px]:ml-0",
-              isItemsTwoPane ? "gap-2 md:flex-row max-md:mb-0 max-md:ms-0 max-md:me-0 max-md:gap-0" : undefined,
+              mainPanelOuterClassName,
+              isItemsTwoPane ? "gap-2 md:flex-row max-md:gap-0" : undefined,
             )}
           >
             {isItemsTwoPane ? (
@@ -243,7 +248,7 @@ export default function WorkspaceSidebarLayout({
                 </div>
               </>
             ) : (
-              <div className={cn(mainPanelClassName, "flex min-h-0 flex-1 flex-col")}>
+              <div className={cn(mainPanelClassName, itemsMobilePanelChromeClassName, "flex min-h-0 flex-1 flex-col")}>
                 {!hideShellMainHeader ? (
                   <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
                 ) : null}
