@@ -48,7 +48,7 @@ A named grouping of fields inside an item. Preset sections come first; custom se
 A personal, user-only grouping of items. Folders can be nested. Deleting a folder does not delete the contained items.
 
 ## Capsule
-A secure sharing mechanism for items, fields, or files. Capsules support access controls such as expiration, view limits, password access, and recipient restrictions.
+A secure sharing mechanism for items, fields, or files. Capsules support access controls such as expiration, view limits, password access, and recipient restrictions. On the **FREE** plan, capsules are available but access settings are unavailable (link sharing only).
 
 ## Monitoring
 Security analytics and health metrics for a workspace (password strength, reuse, weak passwords, passkey/2FA coverage, and related reports).

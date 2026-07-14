@@ -1738,7 +1738,10 @@ paths:
   /workspaces/{workspaceId}/capsules:
     post:
       tags: [Capsules]
-      description: Create capsule. Key transport mode is restricted to safe modes (`fragment`, `out_of_band`).
+      description: >
+        Create capsule. Key transport mode is restricted to safe modes (`fragment`, `out_of_band`).
+        On FREE plan, capsules are allowed but access settings (`expiresAt`, `maxViews`, `password`,
+        `allowedRecipientEmails`) are unavailable.
       security:
         - bearerAuth: []
       parameters:

@@ -116,7 +116,8 @@ Roles do not grant access to vault content by themselves. Profiles do not grant 
 ### Capsules (Core)
 
 - Capsules are a core sharing mechanism for items, fields, or files.
-- Access controls (expiration, view limits, password) are enforced on the server for access policies, while decryption happens client-side.
+- Access controls (expiration, view limits, password, recipient restrictions) are enforced on the server for access policies, while decryption happens client-side.
+- On the **FREE** plan, capsules are available but access settings are unavailable (create/open/revoke with link sharing only; no expiry, view limits, password, or recipient allowlist).
 
 ## Access Evaluation (Simplified)
 

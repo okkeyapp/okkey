@@ -746,7 +746,7 @@ Capsules store encrypted payloads only; decryption happens client-side.
 
 ### `POST /workspaces/:workspaceId/capsules`
 
-Creates a capsule for authenticated creator. FREE plan is gated.
+Creates a capsule for authenticated creator. On **FREE** plan, capsules are allowed but **access settings** are rejected: `expiresAt`, `maxViews`, `password`, and `allowedRecipientEmails` must be omitted (or the server returns `CAPSULE_ACCESS_SETTINGS_NOT_AVAILABLE` / `403`). Paid tiers may use the full policy surface.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
@@ -767,7 +767,7 @@ Creates a capsule for authenticated creator. FREE plan is gated.
 
 `capsuleId`, `type`, `expiresAt`, `maxViews`, `viewCount`, `passwordRequired`, `createdAt`
 
-**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `FEATURE_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `PAYLOAD_TOO_LARGE`.
+**Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `CAPSULE_ACCESS_SETTINGS_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `PAYLOAD_TOO_LARGE`.
 
 ### `GET /capsules/:capsuleId`
 

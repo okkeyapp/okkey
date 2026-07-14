@@ -29,7 +29,7 @@ The open-source Core provides the FREE plan baseline:
 - One personal vault per workspace; shared vaults are unavailable.
 - Files are unavailable.
 - Folders are available.
-- Capsules are unavailable.
+- Capsules are available; access settings are unavailable (no expiry, view limits, password, or recipient restrictions).
 - Monitoring is unavailable.
 - Tools are available: generator, import, export.
 - Workspace settings: main settings available.
