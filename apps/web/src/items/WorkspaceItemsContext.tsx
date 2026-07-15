@@ -11,6 +11,12 @@ import {
 
 import type { CoreClient } from "@okkey/api";
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
+import type { KeyFieldFileUploadConstraints } from "@okkey/ui";
+import { buildKeyFieldFileUploadConstraints } from "@okkey/ui";
+import {
+  DEFAULT_ALLOWED_FILE_EXTENSIONS,
+  DEFAULT_MAX_FILE_SIZE_MB,
+} from "@okkey/types";
 
 import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
@@ -40,6 +46,10 @@ export type WorkspaceItemsContextValue = {
   setItemsDeleted: (itemIds: readonly string[], deleted: boolean) => Promise<void>;
   refreshItems: () => Promise<void>;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions: readonly string[];
+  maxFileSizeMb: number;
+  filesInItemsEnabled: boolean;
+  fileUploadConstraints: KeyFieldFileUploadConstraints;
 };
 
 const WorkspaceItemsContext = createContext<WorkspaceItemsContextValue | null>(null);
@@ -55,6 +65,9 @@ export function useWorkspaceItemsState(input: {
   itemFolderByItemId: ReadonlyMap<string, string | null>;
   itemFavoriteByItemId: ReadonlySet<string>;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions?: readonly string[];
+  maxFileSizeMb?: number;
+  filesInItemsEnabled?: boolean;
 }): WorkspaceItemsContextValue {
   const {
     userId,
@@ -67,7 +80,14 @@ export function useWorkspaceItemsState(input: {
     itemFolderByItemId,
     itemFavoriteByItemId,
     deletedItemsRetentionDays,
+    allowedFileExtensions = DEFAULT_ALLOWED_FILE_EXTENSIONS,
+    maxFileSizeMb = DEFAULT_MAX_FILE_SIZE_MB,
+    filesInItemsEnabled = true,
   } = input;
+  const fileUploadConstraints = useMemo(
+    () => buildKeyFieldFileUploadConstraints(allowedFileExtensions, maxFileSizeMb),
+    [allowedFileExtensions, maxFileSizeMb],
+  );
   const [records, setRecords] = useState<ItemsListRecord[]>([]);
   const [items, setItems] = useState<ItemPlaintextV2[]>([]);
   const [loading, setLoading] = useState(false);
@@ -350,6 +370,10 @@ export function useWorkspaceItemsState(input: {
       setItemsDeleted,
       refreshItems,
       deletedItemsRetentionDays,
+      allowedFileExtensions,
+      maxFileSizeMb,
+      filesInItemsEnabled,
+      fileUploadConstraints,
     }),
     [
       records,
@@ -369,6 +393,10 @@ export function useWorkspaceItemsState(input: {
       setItemsDeleted,
       refreshItems,
       deletedItemsRetentionDays,
+      allowedFileExtensions,
+      maxFileSizeMb,
+      filesInItemsEnabled,
+      fileUploadConstraints,
     ],
   );
 }

@@ -89,6 +89,16 @@ export function categoriesForGroup(groupId: ItemCategoryGroupId): ItemCategoryDe
   return ITEM_CATEGORY_DEFINITIONS.filter((category) => category.groupId === groupId);
 }
 
+export function filterItemCategoriesForFilesEnabled(
+  categories: readonly ItemCategoryDefinition[],
+  filesInItemsEnabled: boolean,
+): ItemCategoryDefinition[] {
+  if (filesInItemsEnabled) {
+    return [...categories];
+  }
+  return categories.filter((category) => category.id !== "secure_files");
+}
+
 export function sortCategoriesByFavoriteOrder(
   categoryIds: readonly string[],
   favoriteOrder: readonly string[],

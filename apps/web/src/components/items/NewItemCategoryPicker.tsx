@@ -27,6 +27,7 @@ import {
   ITEM_CATEGORY_GROUPS,
   ITEM_CATEGORY_GROUP_AUTHORIZATION,
   categoriesForGroup,
+  filterItemCategoriesForFilesEnabled,
   getItemCategoryDefinition,
   type ItemCategoryDefinition,
 } from "./itemCategoryCatalog";
@@ -47,6 +48,7 @@ type NewItemCategoryPickerProps = {
   onSelectTemplate: (template: WorkspaceItemTemplateDto) => void;
   showAllCategoriesExpanded: boolean;
   onShowAllCategoriesExpandedChange: (expanded: boolean) => void;
+  filesInItemsEnabled?: boolean;
 };
 
 export default function NewItemCategoryPicker({
@@ -64,6 +66,7 @@ export default function NewItemCategoryPicker({
   onSelectTemplate,
   showAllCategoriesExpanded,
   onShowAllCategoriesExpandedChange,
+  filesInItemsEnabled = true,
 }: NewItemCategoryPickerProps) {
   const hasFavorites = favoriteOrder.length > 0;
   const canReorderFavorites = favoriteOrder.length >= 2;
@@ -181,7 +184,7 @@ export default function NewItemCategoryPicker({
                   }
                   if (parsed.type === "category") {
                     const category = getItemCategoryDefinition(parsed.id);
-                    if (!category || !favoriteIdSet.has(parsed.id)) {
+                    if (!category || !favoriteIdSet.has(parsed.id) || (parsed.id === "secure_files" && !filesInItemsEnabled)) {
                       return null;
                     }
                     return (
@@ -278,7 +281,7 @@ export default function NewItemCategoryPicker({
               ) : null}
               <CategoryGroupSection
                 title={t(group.labelKey)}
-                categories={categoriesForGroup(group.id)}
+                categories={filterItemCategoriesForFilesEnabled(categoriesForGroup(group.id), filesInItemsEnabled)}
                 favoriteIdSet={favoriteIdSet}
                 t={t}
                 onSelectCategory={onSelectCategory}

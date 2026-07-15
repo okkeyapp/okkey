@@ -1,7 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import {
+  parseAllowedFileExtensionsPayload,
   parseDeletedItemsRetentionDaysPayload,
+  parseFilesInItemsEnabledPayload,
+  parseMaxFileSizeMbPayload,
   parseOptionalNamePayload,
   parseOptionalStringPayload,
   WorkspaceSettingsService,
@@ -15,6 +18,9 @@ function errorPayload(code: string, message: string, requestId: string) {
 type WorkspaceSettingsBody = {
   name?: unknown;
   deleted_items_retention_days?: unknown;
+  allowed_file_extensions?: unknown;
+  max_file_size_mb?: unknown;
+  files_in_items_enabled?: unknown;
   tile_color?: unknown;
   logo_vault_id?: unknown;
   logo_attachment_id?: unknown;
@@ -27,6 +33,9 @@ type WorkspaceDeleteBody = {
 function serializeSettings(settings: {
   name: string;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions: string[];
+  maxFileSizeMb: number;
+  filesInItemsEnabled: boolean;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -34,6 +43,9 @@ function serializeSettings(settings: {
   return {
     name: settings.name,
     deleted_items_retention_days: settings.deletedItemsRetentionDays,
+    allowed_file_extensions: settings.allowedFileExtensions,
+    max_file_size_mb: settings.maxFileSizeMb,
+    files_in_items_enabled: settings.filesInItemsEnabled,
     tile_color: settings.tileColor,
     logo_vault_id: settings.logoVaultId,
     logo_attachment_id: settings.logoAttachmentId,
@@ -77,6 +89,9 @@ export function createWorkspaceSettingsRoute(
       const patch: {
         name?: string;
         deletedItemsRetentionDays?: number;
+        allowedFileExtensions?: string[];
+        maxFileSizeMb?: number;
+        filesInItemsEnabled?: boolean;
         tileColor?: string | null;
         logoVaultId?: string | null;
         logoAttachmentId?: string | null;
@@ -102,6 +117,57 @@ export function createWorkspaceSettingsRoute(
           return;
         }
         patch.deletedItemsRetentionDays = retentionDays;
+      }
+
+      if (body.allowed_file_extensions !== undefined) {
+        const allowedFileExtensions = parseAllowedFileExtensionsPayload(body.allowed_file_extensions);
+        if (allowedFileExtensions === null) {
+          json(
+            ctx.res,
+            400,
+            errorPayload(
+              "INVALID_ALLOWED_FILE_EXTENSIONS",
+              "allowed_file_extensions must be an array of strings",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        patch.allowedFileExtensions = allowedFileExtensions;
+      }
+
+      if (body.max_file_size_mb !== undefined) {
+        const maxFileSizeMb = parseMaxFileSizeMbPayload(body.max_file_size_mb);
+        if (maxFileSizeMb === null) {
+          json(
+            ctx.res,
+            400,
+            errorPayload(
+              "INVALID_MAX_FILE_SIZE_MB",
+              "max_file_size_mb must be an integer between 1 and 1024",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        patch.maxFileSizeMb = maxFileSizeMb;
+      }
+
+      if (body.files_in_items_enabled !== undefined) {
+        const filesInItemsEnabled = parseFilesInItemsEnabledPayload(body.files_in_items_enabled);
+        if (filesInItemsEnabled === null) {
+          json(
+            ctx.res,
+            400,
+            errorPayload(
+              "INVALID_FILES_IN_ITEMS_ENABLED",
+              "files_in_items_enabled must be a boolean",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        patch.filesInItemsEnabled = filesInItemsEnabled;
       }
 
       const tileColor = parseOptionalStringPayload(body.tile_color);

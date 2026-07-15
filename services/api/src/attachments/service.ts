@@ -1,6 +1,11 @@
 import type { KeyFieldFileStorage } from "../storage/key-field-file-storage.ts";
 import type { AttachmentsRepository, AttachmentRecord } from "../storage/attachments.ts";
-import type { VaultsRepository } from "../storage/repositories.ts";
+import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import {
+  DEFAULT_MAX_FILE_SIZE_MB,
+  maxFileSizeBytesFromMb,
+  normalizeFileExtensionTag,
+} from "@okkey/types";
 
 export class AttachmentServiceError extends Error {
   readonly code: string;
@@ -41,30 +46,52 @@ export interface AttachmentDownloadResult {
 export interface AttachmentServiceDeps {
   storage: KeyFieldFileStorage;
   attachments: AttachmentsRepository;
-  vaults: Pick<VaultsRepository, "canReadVault">;
+  vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
+  workspaces: Pick<WorkspacesRepository, "findById">;
 }
 
-const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+const ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES = 1024 * 1024;
 
 export class AttachmentService {
   private readonly storage: KeyFieldFileStorage;
   private readonly attachments: AttachmentsRepository;
-  private readonly vaults: Pick<VaultsRepository, "canReadVault">;
+  private readonly vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
+  private readonly workspaces: Pick<WorkspacesRepository, "findById">;
 
   constructor(deps: AttachmentServiceDeps) {
     this.storage = deps.storage;
     this.attachments = deps.attachments;
     this.vaults = deps.vaults;
+    this.workspaces = deps.workspaces;
   }
 
   async upload(input: AttachmentUploadInput): Promise<AttachmentUploadResult> {
     await this.assertVaultAccess(input.vaultId, input.userId);
 
+    const uploadLimits = await this.resolveUploadLimits(input.vaultId);
+
+    if (!uploadLimits.filesInItemsEnabled) {
+      throw new AttachmentServiceError(
+        "FILES_IN_ITEMS_DISABLED",
+        403,
+        "File uploads in items are disabled for this workspace",
+      );
+    }
+
     if (input.encryptedBody.byteLength === 0) {
       throw new AttachmentServiceError("BAD_REQUEST", 400, "File body is required");
     }
-    if (input.encryptedBody.byteLength > MAX_ATTACHMENT_BYTES) {
+    if (input.sizeBytes <= 0 || input.sizeBytes > uploadLimits.maxSizeBytes) {
       throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
+    }
+    if (input.encryptedBody.byteLength > uploadLimits.maxSizeBytes + ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES) {
+      throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
+    }
+    if (
+      uploadLimits.allowedExtensions.length > 0 &&
+      !isAllowedAttachmentExtension(input.fileName, uploadLimits.allowedExtensions)
+    ) {
+      throw new AttachmentServiceError("INVALID_FILE_TYPE", 400, "File type is not allowed");
     }
     if (input.encryptedKey.byteLength === 0) {
       throw new AttachmentServiceError("INVALID_ATTACHMENT_METADATA", 400, "Encrypted attachment key is required");
@@ -174,4 +201,55 @@ export class AttachmentService {
       throw new AttachmentServiceError("FORBIDDEN", 403, "Vault access denied");
     }
   }
+
+  private async resolveUploadLimits(vaultId: string): Promise<{
+    allowedExtensions: string[];
+    maxSizeBytes: number;
+    filesInItemsEnabled: boolean;
+  }> {
+    const vault = await this.vaults.findById(vaultId);
+    if (!vault) {
+      return {
+        allowedExtensions: [],
+        maxSizeBytes: maxFileSizeBytesFromMb(DEFAULT_MAX_FILE_SIZE_MB),
+        filesInItemsEnabled: true,
+      };
+    }
+
+    const workspace = await this.workspaces.findById(vault.workspaceId);
+    if (!workspace) {
+      return {
+        allowedExtensions: [],
+        maxSizeBytes: maxFileSizeBytesFromMb(DEFAULT_MAX_FILE_SIZE_MB),
+        filesInItemsEnabled: true,
+      };
+    }
+
+    return {
+      allowedExtensions: workspace.allowedFileExtensions,
+      maxSizeBytes: maxFileSizeBytesFromMb(workspace.maxFileSizeMb),
+      filesInItemsEnabled: workspace.filesInItemsEnabled,
+    };
+  }
+}
+
+function attachmentExtensionFromFileName(fileName: string): string {
+  const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();
+  const dotIndex = baseName.lastIndexOf(".");
+  if (dotIndex <= 0 || dotIndex === baseName.length - 1) {
+    return "";
+  }
+
+  const extension = normalizeFileExtensionTag(baseName.slice(dotIndex + 1));
+  return extension === "jpeg" ? "jpg" : extension;
+}
+
+function isAllowedAttachmentExtension(fileName: string, allowedExtensions: readonly string[]): boolean {
+  const extension = attachmentExtensionFromFileName(fileName);
+  if (!extension) {
+    return false;
+  }
+
+  const allowed = new Set(allowedExtensions.map((item) => normalizeFileExtensionTag(item)));
+  return allowed.has(extension);
 }

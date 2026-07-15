@@ -23,6 +23,21 @@ export interface User {
 
 export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30 as const;
 
+export {
+  DEFAULT_ALLOWED_FILE_EXTENSIONS,
+  DEFAULT_MAX_FILE_SIZE_MB,
+  MAX_MAX_FILE_SIZE_MB,
+  MIN_MAX_FILE_SIZE_MB,
+  formatMaxFileSizeMb,
+  maxFileSizeBytesFromMb,
+  normalizeAllowedFileExtensions,
+  normalizeFileExtensionTag,
+  normalizeMaxFileSizeMbInput,
+  parseMaxFileSizeMbFromInput,
+  clampMaxFileSizeMb,
+  resolveMaxFileSizeMbFromInput,
+} from "./workspace-file-upload.js";
+
 export interface Workspace {
   id: EntityId;
   name: string;
@@ -30,6 +45,12 @@ export interface Workspace {
   planTier: string;
   /** Days before soft-deleted vault items are permanently purged from the server. */
   deletedItemsRetentionDays: number;
+  /** Lowercase extensions allowed for item file uploads; empty means any extension. */
+  allowedFileExtensions: string[];
+  /** Maximum item file upload size in megabytes. */
+  maxFileSizeMb: number;
+  /** When false, users cannot add file fields or upload files in items. */
+  filesInItemsEnabled: boolean;
   /** Hex tile color when no custom logo is set. */
   tileColor?: string | null;
   /** Vault storing the encrypted workspace logo attachment. */
@@ -397,6 +418,9 @@ export interface SyncAppendEventRequestDto {
 export interface WorkspaceSettingsResponseDto {
   name: string;
   deleted_items_retention_days: number;
+  allowed_file_extensions: string[];
+  max_file_size_mb: number;
+  files_in_items_enabled: boolean;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
@@ -406,6 +430,9 @@ export interface WorkspaceSettingsResponseDto {
 export interface WorkspaceSettingsUpdateRequestDto {
   name?: string;
   deleted_items_retention_days?: number;
+  allowed_file_extensions?: string[];
+  max_file_size_mb?: number;
+  files_in_items_enabled?: boolean;
   tile_color?: string | null;
   logo_vault_id?: string | null;
   logo_attachment_id?: string | null;

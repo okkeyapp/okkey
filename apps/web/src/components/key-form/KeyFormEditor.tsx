@@ -72,6 +72,8 @@ import {
   type KeyFieldSecretKind,
   type KeyFormMode,
   type KeyFieldFileValue,
+  type KeyFieldFileUploadConstraints,
+  defaultKeyFieldFileUploadConstraints,
 } from "@okkey/ui";
 import { normalizeSelectOptionsEditorText, appendSelectOptionsEditorLineAtEnd } from "../../items/keyFormSelectField";
 import { isInvalidCreditCardRequiredField } from "../../items/creditCardFormValidation";
@@ -162,6 +164,9 @@ export type KeyFormEditorProps = {
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
   datePickerLocale?: Locale;
+  fileUploadConstraints?: KeyFieldFileUploadConstraints;
+  /** When false, file field type is hidden and existing file fields cannot be cleared or re-uploaded. */
+  allowFileFields?: boolean;
 };
 
 export type RecoveryCodesValueChange = {
@@ -1705,6 +1710,8 @@ type SortableFieldProps = {
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
   fileClearLabel?: string;
+  fileClearEnabled?: boolean;
+  fileUploadConstraints?: KeyFieldFileUploadConstraints;
   surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
   datePickerLocale?: Locale;
   selectConfigureMode?: boolean;
@@ -1757,6 +1764,8 @@ function SortableField({
   recoveryCodesPlaceholder,
   fileUploadLabel,
   fileClearLabel,
+  fileClearEnabled = true,
+  fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
   surfaceRounding,
   datePickerLocale,
   selectConfigureMode = false,
@@ -1819,6 +1828,7 @@ function SortableField({
       fileValue={fileValue}
       onFileUpload={onFileUpload}
       onFileOpen={onFileOpen}
+      fileUploadConstraints={fileUploadConstraints}
       autoFocusValue={autoFocusValue}
       autoFocusValueRequest={autoFocusValueRequest}
       reorderable={reorderable}
@@ -1883,6 +1893,7 @@ function SortableField({
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
       fileClearLabel={fileClearLabel ?? messages.file.delete}
+      fileClearEnabled={fileClearEnabled}
       valuePlaceholder={valuePlaceholder ?? messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       datePickerLocale={datePickerLocale}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
@@ -1966,9 +1977,17 @@ export function KeyFormEditor({
   datePickerLocale,
   onFileUpload,
   onFileOpen,
+  fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
+  allowFileFields = true,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
-  const fieldTypes = fieldTypesProp ?? englishKeyFieldTypes;
+  const fieldTypes = useMemo(() => {
+    const types = fieldTypesProp ?? englishKeyFieldTypes;
+    if (allowFileFields) {
+      return types;
+    }
+    return types.filter((type) => type.id !== "file");
+  }, [allowFileFields, fieldTypesProp]);
   const [sections, setSections] = useState<DemoSection[]>(() => [...initialSections]);
   const sectionsRef = useRef(sections);
   sectionsRef.current = sections;
@@ -3392,8 +3411,10 @@ export function KeyFormEditor({
         recoveryCodesValue={isRecoveryCodesField}
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={isFileField}
-        onFileUpload={handleKeyFieldFileUpload}
+        onFileUpload={allowFileFields ? handleKeyFieldFileUpload : undefined}
         onFileOpen={onFileOpen}
+        fileUploadConstraints={fileUploadConstraints}
+        fileClearEnabled={allowFileFields}
         transformValueInput={
           isCardField
             ? formatCardNumberInput
@@ -3474,8 +3495,10 @@ export function KeyFormEditor({
         recoveryCodesValue={isRecoveryCodesField}
         recoveryCodesRevealed={isRecoveryCodesRevealed}
         fileValue={field.type === "file"}
-        onFileUpload={handleKeyFieldFileUpload}
+        onFileUpload={allowFileFields ? handleKeyFieldFileUpload : undefined}
         onFileOpen={onFileOpen}
+        fileUploadConstraints={fileUploadConstraints}
+        fileClearEnabled={allowFileFields}
         addressFieldPlaceholders={messages.address}
         addressSearchCountriesPlaceholder={messages.address.searchCountries}
         addressNoCountriesFoundMessage={messages.address.noCountriesFound}

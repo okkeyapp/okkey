@@ -78,7 +78,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
   const [pendingExitAction, setPendingExitAction] = useState<PendingNewItemExitAction | null>(null);
-  const { createItem, getItemById } = useWorkspaceItems();
+  const { createItem, getItemById, filesInItemsEnabled } = useWorkspaceItems();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
   const { accessToken, vaultKey } = useAuthVault();
   const core = useAuthenticatedCoreClient();
@@ -654,6 +654,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           onSelectTemplate={selectTemplate}
           showAllCategoriesExpanded={categoryPickerShowAllExpanded}
           onShowAllCategoriesExpandedChange={setCategoryPickerShowAllExpanded}
+          filesInItemsEnabled={filesInItemsEnabled}
         />
       ) : null}
     </Popup>

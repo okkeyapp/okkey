@@ -238,6 +238,16 @@ export function createLocalizedKeyFieldTypes(locale: WebLocale): KeyFieldTypeOpt
   }));
 }
 
+export function filterKeyFieldTypesForFilesEnabled(
+  types: readonly KeyFieldTypeOption[],
+  filesInItemsEnabled: boolean,
+): KeyFieldTypeOption[] {
+  if (filesInItemsEnabled) {
+    return [...types];
+  }
+  return types.filter((type) => type.id !== "file");
+}
+
 export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMessages {
   const t: Translate = (messageKey) => formatWebMessage(locale, messageKey);
   const template: Translate = (messageKey) => getWebMessagePattern(locale, messageKey);

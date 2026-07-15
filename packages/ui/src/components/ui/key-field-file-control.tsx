@@ -333,7 +333,7 @@ export function KeyFieldFileControl({
     );
   }
 
-  if (mode === "view") {
+  if (mode === "view" || !onUploadFile) {
     return null;
   }
 

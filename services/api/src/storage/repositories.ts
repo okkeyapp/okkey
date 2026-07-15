@@ -290,6 +290,9 @@ export interface WorkspaceRecord {
   ownerId: string;
   planTier: string;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions: string[];
+  maxFileSizeMb: number;
+  filesInItemsEnabled: boolean;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -298,16 +301,19 @@ export interface WorkspaceRecord {
 }
 
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, deleted_items_retention_days, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+  "id, name, owner_id, plan_tier, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
   owner_id: string;
   plan_tier: string;
   deleted_items_retention_days: number;
+  allowed_file_extensions: string[];
+  max_file_size_mb: number;
+  files_in_items_enabled: boolean;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
@@ -429,6 +435,9 @@ export class WorkspacesRepository {
       logoVaultId?: string | null;
       logoAttachmentId?: string | null;
       deletedItemsRetentionDays?: number;
+      allowedFileExtensions?: string[];
+      maxFileSizeMb?: number;
+      filesInItemsEnabled?: boolean;
     },
   ): Promise<WorkspaceRecord> {
     const sets: string[] = ["updated_at = now()"];
@@ -454,6 +463,18 @@ export class WorkspacesRepository {
     if (input.deletedItemsRetentionDays !== undefined) {
       sets.push(`deleted_items_retention_days = $${paramIndex++}`);
       values.push(input.deletedItemsRetentionDays);
+    }
+    if (input.allowedFileExtensions !== undefined) {
+      sets.push(`allowed_file_extensions = $${paramIndex++}`);
+      values.push(input.allowedFileExtensions);
+    }
+    if (input.maxFileSizeMb !== undefined) {
+      sets.push(`max_file_size_mb = $${paramIndex++}`);
+      values.push(input.maxFileSizeMb);
+    }
+    if (input.filesInItemsEnabled !== undefined) {
+      sets.push(`files_in_items_enabled = $${paramIndex++}`);
+      values.push(input.filesInItemsEnabled);
     }
 
     const rows = await this.db.query<WorkspaceRow>(
@@ -1668,6 +1689,9 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     ownerId: row.owner_id,
     planTier: row.plan_tier,
     deletedItemsRetentionDays: row.deleted_items_retention_days,
+    allowedFileExtensions: row.allowed_file_extensions ?? [],
+    maxFileSizeMb: Number(row.max_file_size_mb),
+    filesInItemsEnabled: row.files_in_items_enabled ?? true,
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,
     logoAttachmentId: row.logo_attachment_id,

@@ -44,6 +44,9 @@ function renderRolesSection(planTier = "FREE") {
           ownerId: "user-1",
           planTier,
           deletedItemsRetentionDays: 30,
+          allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
+          maxFileSizeMb: 2,
+          filesInItemsEnabled: true,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }}

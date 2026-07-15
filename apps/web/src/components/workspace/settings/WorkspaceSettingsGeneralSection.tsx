@@ -1,4 +1,12 @@
-import type { Vault, Workspace } from "@okkey/types";
+import {
+  DEFAULT_ALLOWED_FILE_EXTENSIONS,
+  DEFAULT_MAX_FILE_SIZE_MB,
+  formatMaxFileSizeMb,
+  normalizeAllowedFileExtensions,
+  normalizeMaxFileSizeMbInput,
+  parseMaxFileSizeMbFromInput,
+  resolveMaxFileSizeMbFromInput,
+} from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import {
   Button,
@@ -9,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  Switch,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -22,7 +31,9 @@ import { useWorkspaceLogoUrl } from "../../../hooks/useWorkspaceLogoUrl";
 import { runSaveWithToast } from "../../../lib/saveWithToast";
 import { WORKSPACES_PATH } from "../../../routes/paths";
 import WorkspaceLogoTile from "../WorkspaceLogoTile";
+import type { Vault, Workspace } from "@okkey/types";
 import DeleteWorkspaceConfirmPopup from "./DeleteWorkspaceConfirmPopup";
+import FileExtensionTagsInput from "./FileExtensionTagsInput";
 import WorkspaceTileColorPicker from "./WorkspaceTileColorPicker";
 import {
   DEFAULT_WORKSPACE_TILE_COLOR,
@@ -66,6 +77,10 @@ export default function WorkspaceSettingsGeneralSection({
   const [logoVaultId, setLogoVaultId] = useState<string | null>(null);
   const [logoAttachmentId, setLogoAttachmentId] = useState<string | null>(null);
   const [deletedItemsRetentionDays, setDeletedItemsRetentionDays] = useState(30);
+  const [allowedFileExtensions, setAllowedFileExtensions] = useState<string[]>([...DEFAULT_ALLOWED_FILE_EXTENSIONS]);
+  const [maxFileSizeMb, setMaxFileSizeMb] = useState(DEFAULT_MAX_FILE_SIZE_MB);
+  const [maxFileSizeMbInput, setMaxFileSizeMbInput] = useState(formatMaxFileSizeMb(DEFAULT_MAX_FILE_SIZE_MB));
+  const [filesInItemsEnabled, setFilesInItemsEnabled] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
 
@@ -103,6 +118,10 @@ export default function WorkspaceSettingsGeneralSection({
       setLogoVaultId(settings.logo_vault_id);
       setLogoAttachmentId(settings.logo_attachment_id);
       setDeletedItemsRetentionDays(settings.deleted_items_retention_days);
+      setAllowedFileExtensions(settings.allowed_file_extensions);
+      setMaxFileSizeMb(settings.max_file_size_mb);
+      setMaxFileSizeMbInput(formatMaxFileSizeMb(settings.max_file_size_mb));
+      setFilesInItemsEnabled(settings.files_in_items_enabled);
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : t(SAVE_TOAST.error));
     } finally {
@@ -128,6 +147,10 @@ export default function WorkspaceSettingsGeneralSection({
     setLogoVaultId(updated.logo_vault_id);
     setLogoAttachmentId(updated.logo_attachment_id);
     setDeletedItemsRetentionDays(updated.deleted_items_retention_days);
+    setAllowedFileExtensions(updated.allowed_file_extensions);
+    setMaxFileSizeMb(updated.max_file_size_mb);
+    setMaxFileSizeMbInput(formatMaxFileSizeMb(updated.max_file_size_mb));
+    setFilesInItemsEnabled(updated.files_in_items_enabled);
     onSettingsChanged?.();
   }
 
@@ -165,6 +188,37 @@ export default function WorkspaceSettingsGeneralSection({
       return;
     }
     await persistSettings({ deleted_items_retention_days: nextDays });
+  }
+
+  async function handleAllowedFileExtensionsCommit(nextExtensions: string[]) {
+    const normalized = normalizeAllowedFileExtensions(nextExtensions);
+    const current = normalizeAllowedFileExtensions(allowedFileExtensions);
+    if (normalized.length === current.length && normalized.every((item, index) => item === current[index])) {
+      return;
+    }
+    await persistSettings({ allowed_file_extensions: normalized });
+  }
+
+  async function handleMaxFileSizeMbBlur() {
+    const resolved = resolveMaxFileSizeMbFromInput(maxFileSizeMbInput);
+    setMaxFileSizeMbInput(formatMaxFileSizeMb(resolved));
+    if (resolved === maxFileSizeMb) {
+      return;
+    }
+    await persistSettings({ max_file_size_mb: resolved });
+  }
+
+  async function handleFilesInItemsEnabledChange(nextEnabled: boolean) {
+    if (nextEnabled === filesInItemsEnabled) {
+      return;
+    }
+    const previousEnabled = filesInItemsEnabled;
+    setFilesInItemsEnabled(nextEnabled);
+    try {
+      await persistSettings({ files_in_items_enabled: nextEnabled });
+    } catch {
+      setFilesInItemsEnabled(previousEnabled);
+    }
   }
 
   const retentionDayOptions = useMemo(
@@ -345,33 +399,89 @@ export default function WorkspaceSettingsGeneralSection({
               onBlur={() => void handleNameBlur()}
             />
           </div>
+        </div>
 
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="deleted-items-retention" className="text-sm font-medium text-foreground">
-                {t("web.workspaceSettings.deletedItemsRetention.label")}
-              </label>
-              <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.deletedItemsRetention.description")}</p>
+        <div className="flex flex-col gap-6">
+          <h3 className="text-lg font-semibold text-foreground">{t("web.workspaceSettings.general.itemsSection")}</h3>
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="deleted-items-retention" className="text-sm font-medium text-foreground">
+                  {t("web.workspaceSettings.deletedItemsRetention.label")}
+                </label>
+                <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.deletedItemsRetention.description")}</p>
+              </div>
+              <Select
+                value={String(deletedItemsRetentionDays)}
+                disabled={!isOwner || saving}
+                onValueChange={(value) => void handleRetentionChange(Number(value))}
+              >
+                <SelectTrigger id="deleted-items-retention" className="h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {retentionDayOptions.map((days) => {
+                    const labelKey = DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS[days as keyof typeof DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS];
+                    return (
+                      <SelectItem key={days} value={String(days)}>
+                        {labelKey ? t(labelKey) : `${days}`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
-            <Select
-              value={String(deletedItemsRetentionDays)}
-              disabled={!isOwner || saving}
-              onValueChange={(value) => void handleRetentionChange(Number(value))}
-            >
-              <SelectTrigger id="deleted-items-retention" className="h-9 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {retentionDayOptions.map((days) => {
-                  const labelKey = DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS[days as keyof typeof DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS];
-                  return (
-                    <SelectItem key={days} value={String(days)}>
-                      {labelKey ? t(labelKey) : `${days}`}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-sm font-medium text-foreground">{t("web.workspaceSettings.filesInItems.label")}</p>
+                <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.filesInItems.description")}</p>
+              </div>
+              <Switch
+                size="lg"
+                checked={filesInItemsEnabled}
+                disabled={!isOwner || saving}
+                onCheckedChange={(checked) => void handleFilesInItemsEnabledChange(checked)}
+                aria-label={t("web.workspaceSettings.filesInItems.label")}
+              />
+            </div>
+
+            {filesInItemsEnabled ? (
+              <>
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="allowed-file-extensions" className="text-sm font-medium text-foreground">
+                      {t("web.workspaceSettings.allowedFileExtensions.label")}
+                    </label>
+                    <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.allowedFileExtensions.description")}</p>
+                  </div>
+                  <FileExtensionTagsInput
+                    value={allowedFileExtensions}
+                    disabled={!isOwner || saving}
+                    placeholder={t("web.workspaceSettings.allowedFileExtensions.placeholder")}
+                    removeTagAriaLabel={(tag) => t("web.workspaceSettings.allowedFileExtensions.removeTagAria", { tag })}
+                    inputAriaLabel={t("web.workspaceSettings.allowedFileExtensions.inputAria")}
+                    onCommit={(extensions) => void handleAllowedFileExtensionsCommit(extensions)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <label htmlFor="max-file-size-mb" className="text-sm font-medium text-foreground">
+                    {t("web.workspaceSettings.maxFileSizeMb.label")}
+                  </label>
+                  <Input
+                    id="max-file-size-mb"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={maxFileSizeMbInput}
+                    disabled={!isOwner || saving}
+                    onChange={(event) => setMaxFileSizeMbInput(normalizeMaxFileSizeMbInput(event.target.value))}
+                    onBlur={() => void handleMaxFileSizeMbBlur()}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
 

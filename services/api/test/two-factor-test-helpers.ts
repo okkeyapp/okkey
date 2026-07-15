@@ -176,6 +176,78 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0010);
   }
+
+  const fileUploadSettingsColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'allowed_file_extensions'
+      ) AS exists
+    `,
+  );
+  if (!fileUploadSettingsColumn[0]?.exists) {
+    const migration0012 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0012_workspace_file_upload_settings.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0012);
+  }
+
+  const maxFileSizeDecimalColumn = await storage.postgres.query<{ data_type: string }>(
+    `
+      SELECT data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspaces'
+        AND column_name = 'max_file_size_mb'
+    `,
+  );
+  if (maxFileSizeDecimalColumn[0]?.data_type !== "numeric") {
+    const migration0013 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0013_workspace_max_file_size_decimal.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0013);
+  }
+
+  const maxFileSizeIntegerColumn = await storage.postgres.query<{ data_type: string }>(
+    `
+      SELECT data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspaces'
+        AND column_name = 'max_file_size_mb'
+    `,
+  );
+  if (maxFileSizeIntegerColumn[0]?.data_type !== "integer") {
+    const migration0014 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0014_workspace_max_file_size_integer.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0014);
+  }
+
+  const filesInItemsEnabledColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'files_in_items_enabled'
+      ) AS exists
+    `,
+  );
+  if (!filesInItemsEnabledColumn[0]?.exists) {
+    const migration0015 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0015_workspace_files_in_items_enabled.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0015);
+  }
 }
 
 export async function cleanupUserData(

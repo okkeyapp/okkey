@@ -151,6 +151,7 @@ async function main(): Promise<void> {
         storage: keyFieldFileStorage,
         attachments: storage.repositories.attachments,
         vaults: storage.repositories.vaults,
+        workspaces: storage.repositories.workspaces,
       })
     : undefined;
   const itemTemplatesService = new ItemTemplatesService({

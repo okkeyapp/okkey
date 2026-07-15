@@ -180,6 +180,10 @@ export function formatKeyFieldFileSize(sizeBytes: number): string {
 
   if (sizeBytes < 1024 * 1024 * 1024) {
     const megabytes = sizeBytes / (1024 * 1024);
+    const roundedMegabytes = Math.round(megabytes);
+    if (Math.abs(megabytes - roundedMegabytes) < 1e-9) {
+      return `${roundedMegabytes} MB`;
+    }
     return `${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`;
   }
 
@@ -197,8 +201,8 @@ export type KeyFieldFileUploadConstraints = {
 };
 
 export const defaultKeyFieldFileUploadConstraints: KeyFieldFileUploadConstraints = {
-  allowedExtensions: ["jpg", "png", "pdf", "mp4", "doc", "docx"],
-  maxSizeBytes: 50 * 1024 * 1024,
+  allowedExtensions: ["jpg", "png", "pdf", "zip", "rar"],
+  maxSizeBytes: 2 * 1024 * 1024,
 };
 
 const mimeTypeByExtension: Record<string, string[]> = {
@@ -209,11 +213,27 @@ const mimeTypeByExtension: Record<string, string[]> = {
   mp4: ["video/mp4"],
   doc: ["application/msword"],
   docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  zip: ["application/zip", "application/x-zip-compressed"],
+  rar: ["application/vnd.rar", "application/x-rar-compressed"],
 };
 
+export function buildKeyFieldFileUploadConstraints(
+  allowedExtensions: readonly string[],
+  maxSizeMb: number,
+): KeyFieldFileUploadConstraints {
+  return {
+    allowedExtensions: allowedExtensions.map((extension) => extension.toLowerCase()),
+    maxSizeBytes: maxSizeMb * 1024 * 1024,
+  };
+}
+
 export function formatKeyFieldFileUploadHint(constraints: KeyFieldFileUploadConstraints): string {
+  const maxPart = `max: ${formatKeyFieldFileSize(constraints.maxSizeBytes)}`;
+  if (constraints.allowedExtensions.length === 0) {
+    return maxPart;
+  }
   const types = constraints.allowedExtensions.map((extension) => extension.toLowerCase()).join(", ");
-  return `${types} · max: ${formatKeyFieldFileSize(constraints.maxSizeBytes)}`;
+  return `${types} · ${maxPart}`;
 }
 
 function normalizeUploadExtension(file: File): string {
@@ -245,17 +265,19 @@ export function validateKeyFieldFileUpload(
   constraints: KeyFieldFileUploadConstraints,
 ): boolean {
   const extension = normalizeUploadExtension(file);
-  if (extension) {
-    if (!isAllowedKeyFieldFileExtension(extension, constraints)) {
-      return false;
-    }
-  } else {
-    const mimeType = file.type.trim().toLowerCase();
-    const allowedMimeTypes = constraints.allowedExtensions.flatMap(
-      (allowedExtension) => mimeTypeByExtension[allowedExtension.toLowerCase()] ?? [],
-    );
-    if (!mimeType || !allowedMimeTypes.includes(mimeType)) {
-      return false;
+  if (constraints.allowedExtensions.length > 0) {
+    if (extension) {
+      if (!isAllowedKeyFieldFileExtension(extension, constraints)) {
+        return false;
+      }
+    } else {
+      const mimeType = file.type.trim().toLowerCase();
+      const allowedMimeTypes = constraints.allowedExtensions.flatMap(
+        (allowedExtension) => mimeTypeByExtension[allowedExtension.toLowerCase()] ?? [],
+      );
+      if (!mimeType || !allowedMimeTypes.includes(mimeType)) {
+        return false;
+      }
     }
   }
 

@@ -1,4 +1,9 @@
 import type { WorkspacesRepository } from "../storage/repositories.ts";
+import {
+  MAX_MAX_FILE_SIZE_MB,
+  MIN_MAX_FILE_SIZE_MB,
+  normalizeAllowedFileExtensions,
+} from "@okkey/types";
 
 export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30;
 export const DEFAULT_WORKSPACE_TILE_COLOR = "#3B82F6";
@@ -9,6 +14,9 @@ export const MAX_DELETED_ITEMS_RETENTION_DAYS = 3650;
 export type WorkspaceSettingsSnapshot = {
   name: string;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions: string[];
+  maxFileSizeMb: number;
+  filesInItemsEnabled: boolean;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -17,6 +25,9 @@ export type WorkspaceSettingsSnapshot = {
 export type WorkspaceSettingsPatch = {
   name?: string;
   deletedItemsRetentionDays?: number;
+  allowedFileExtensions?: string[];
+  maxFileSizeMb?: number;
+  filesInItemsEnabled?: boolean;
   tileColor?: string | null;
   logoVaultId?: string | null;
   logoAttachmentId?: string | null;
@@ -65,6 +76,15 @@ export class WorkspaceSettingsService {
     }
     if (patch.deletedItemsRetentionDays !== undefined) {
       update.deletedItemsRetentionDays = sanitizeDeletedItemsRetentionDays(patch.deletedItemsRetentionDays);
+    }
+    if (patch.allowedFileExtensions !== undefined) {
+      update.allowedFileExtensions = sanitizeAllowedFileExtensions(patch.allowedFileExtensions);
+    }
+    if (patch.maxFileSizeMb !== undefined) {
+      update.maxFileSizeMb = sanitizeMaxFileSizeMb(patch.maxFileSizeMb);
+    }
+    if (patch.filesInItemsEnabled !== undefined) {
+      update.filesInItemsEnabled = sanitizeFilesInItemsEnabled(patch.filesInItemsEnabled);
     }
     if (patch.tileColor !== undefined) {
       update.tileColor = patch.tileColor === null ? null : sanitizeTileColor(patch.tileColor);
@@ -127,6 +147,9 @@ export class WorkspaceSettingsService {
 function toSettingsSnapshot(workspace: {
   name: string;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions: string[];
+  maxFileSizeMb: number;
+  filesInItemsEnabled: boolean;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -134,6 +157,9 @@ function toSettingsSnapshot(workspace: {
   return {
     name: workspace.name,
     deletedItemsRetentionDays: workspace.deletedItemsRetentionDays,
+    allowedFileExtensions: workspace.allowedFileExtensions,
+    maxFileSizeMb: workspace.maxFileSizeMb,
+    filesInItemsEnabled: workspace.filesInItemsEnabled,
     tileColor: workspace.tileColor,
     logoVaultId: workspace.logoVaultId,
     logoAttachmentId: workspace.logoAttachmentId,
@@ -190,6 +216,92 @@ export function parseDeletedItemsRetentionDaysPayload(value: unknown): number | 
   } catch {
     return null;
   }
+}
+
+export function sanitizeAllowedFileExtensions(value: readonly string[]): string[] {
+  if (!Array.isArray(value)) {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_ALLOWED_FILE_EXTENSIONS",
+      400,
+      "allowed_file_extensions must be an array of strings",
+    );
+  }
+  if (value.length > 100) {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_ALLOWED_FILE_EXTENSIONS",
+      400,
+      "allowed_file_extensions is too long",
+    );
+  }
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new WorkspaceSettingsServiceError(
+        "INVALID_ALLOWED_FILE_EXTENSIONS",
+        400,
+        "allowed_file_extensions must be an array of strings",
+      );
+    }
+  }
+  return normalizeAllowedFileExtensions(value);
+}
+
+export function parseAllowedFileExtensionsPayload(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  try {
+    return sanitizeAllowedFileExtensions(value);
+  } catch {
+    return null;
+  }
+}
+
+export function sanitizeMaxFileSizeMb(value: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_MAX_FILE_SIZE_MB",
+      400,
+      "max_file_size_mb must be an integer",
+    );
+  }
+
+  if (value < MIN_MAX_FILE_SIZE_MB || value > MAX_MAX_FILE_SIZE_MB) {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_MAX_FILE_SIZE_MB",
+      400,
+      `max_file_size_mb must be between ${MIN_MAX_FILE_SIZE_MB} and ${MAX_MAX_FILE_SIZE_MB}`,
+    );
+  }
+  return value;
+}
+
+export function parseMaxFileSizeMbPayload(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    return null;
+  }
+  try {
+    return sanitizeMaxFileSizeMb(value);
+  } catch {
+    return null;
+  }
+}
+
+export function sanitizeFilesInItemsEnabled(value: boolean): boolean {
+  if (typeof value !== "boolean") {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_FILES_IN_ITEMS_ENABLED",
+      400,
+      "files_in_items_enabled must be a boolean",
+    );
+  }
+  return value;
+}
+
+export function parseFilesInItemsEnabledPayload(value: unknown): boolean | null {
+  if (typeof value !== "boolean") {
+    return null;
+  }
+  return sanitizeFilesInItemsEnabled(value);
 }
 
 export function parseOptionalStringPayload(value: unknown): string | null | undefined {

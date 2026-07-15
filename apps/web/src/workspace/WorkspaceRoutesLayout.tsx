@@ -1,6 +1,10 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace } from "@okkey/types";
-import { DEFAULT_DELETED_ITEMS_RETENTION_DAYS } from "@okkey/types";
+import {
+  DEFAULT_ALLOWED_FILE_EXTENSIONS,
+  DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
+  DEFAULT_MAX_FILE_SIZE_MB,
+} from "@okkey/types";
 import {
   cn,
   DropdownMenuItem,
@@ -549,6 +553,11 @@ export default function WorkspaceRoutesLayout() {
               deletedItemsRetentionDays={
                 currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
               }
+              allowedFileExtensions={
+                currentWorkspace?.allowedFileExtensions ?? DEFAULT_ALLOWED_FILE_EXTENSIONS
+              }
+              maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
+              filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
               currentWorkspace={currentWorkspace}
               vaults={vaults}
               vaultsListReady={vaultsListReady}
@@ -586,6 +595,9 @@ type WorkspaceShellWithItemsProps = {
   resolvedWorkspaceId: string;
   currentWorkspaceName: string;
   deletedItemsRetentionDays: number;
+  allowedFileExtensions: readonly string[];
+  maxFileSizeMb: number;
+  filesInItemsEnabled: boolean;
   currentWorkspace?: Workspace;
   vaults: Vault[];
   vaultsListReady: boolean;
@@ -614,6 +626,9 @@ function WorkspaceShellWithItems({
   resolvedWorkspaceId,
   currentWorkspaceName,
   deletedItemsRetentionDays,
+  allowedFileExtensions,
+  maxFileSizeMb,
+  filesInItemsEnabled,
   currentWorkspace,
   vaults,
   vaultsListReady,
@@ -644,6 +659,9 @@ function WorkspaceShellWithItems({
     itemFolderByItemId,
     itemFavoriteByItemId,
     deletedItemsRetentionDays,
+    allowedFileExtensions,
+    maxFileSizeMb,
+    filesInItemsEnabled,
   });
 
   return (

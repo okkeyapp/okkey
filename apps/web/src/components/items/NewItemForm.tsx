@@ -19,7 +19,7 @@ import {
 } from "../../items/validateNewItemForm";
 import { useLocale } from "../../locale/LocaleContext";
 import { KeyFormEditor, type KeyFormEditorSection } from "../key-form/KeyFormEditor";
-import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
+import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes, filterKeyFieldTypesForFilesEnabled } from "../key-form/keyFormI18n";
 import { getCategoryLabel } from "./NewItemCategoryCard";
 import { getItemCategoryDefinition } from "./itemCategoryCatalog";
 import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections";
@@ -28,6 +28,7 @@ import { ItemRecordFaviconField } from "./ItemRecordFaviconField";
 import NewItemSaveLocationSection, { useSyncedNewItemVaultId } from "./NewItemSaveLocationSection";
 import NewItemTagsSection from "./NewItemTagsSection";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import {
   downloadKeyFieldFileAttachmentBytes,
   downloadKeyFieldFileAttachment,
@@ -126,6 +127,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const isTemplateMode = Boolean(templateName);
   const isCopyMode = Boolean(prefillValues) && !isTemplateMode;
   const { accessToken, vaultKey } = useAuthVault();
+  const { fileUploadConstraints, filesInItemsEnabled } = useWorkspaceItems();
   const itemIdRef = useRef(initialValues?.itemId ?? generateEntityId());
   const pendingFileByIdRef = useRef(new Map<string, File>());
   const formInstanceKeyRef = useRef(
@@ -154,7 +156,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   }, [isEditMode, isCopyMode, isTemplateMode, syncedVaultId, vaultId]);
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
-  const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
+  const keyFormFieldTypes = useMemo(
+    () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), filesInItemsEnabled),
+    [locale, filesInItemsEnabled],
+  );
   const resolveFileVaultContext = useCallback(() => {
     if (!accessToken || !vaultKey) {
       throw new Error("AUTH_REQUIRED");
@@ -608,6 +613,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
         onFileUpload={handleFileUpload}
         onFileOpen={handleFileOpen}
+        fileUploadConstraints={fileUploadConstraints}
+        allowFileFields={filesInItemsEnabled}
         showValidation={showValidation}
       />
 

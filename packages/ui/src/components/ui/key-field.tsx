@@ -204,6 +204,8 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
   fileClearLabel?: string;
+  /** When false, the file field cannot be cleared in edit mode (delete field instead). */
+  fileClearEnabled?: boolean;
   valuePlaceholder?: string;
   surfaceRounding?: KeyFieldSurfaceRounding;
   datePickerLocale?: Locale;
@@ -272,6 +274,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       recoveryCodesPlaceholder,
       fileUploadLabel,
       fileClearLabel = "Delete file",
+      fileClearEnabled = true,
       valuePlaceholder,
       surfaceRounding,
       datePickerLocale,
@@ -1043,7 +1046,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     uploadConstraints={fileUploadConstraints}
                     onValidationErrorChange={setFileValidationError}
                     uploadLabel={fileUploadLabel}
-                    onClear={handleFileClear}
+                    onClear={fileClearEnabled ? handleFileClear : undefined}
                     deleteLabel={fileClearLabel}
                   />
                 ) : addressValue ? (

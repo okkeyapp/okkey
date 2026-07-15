@@ -27,7 +27,7 @@ import {
 import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_PARAM, withoutOpenItemQueryParam } from "../../routes/paths";
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor, type RecoveryCodesValueChange } from "../key-form/KeyFormEditor";
-import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes } from "../key-form/keyFormI18n";
+import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes, filterKeyFieldTypesForFilesEnabled } from "../key-form/keyFormI18n";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "./itemCategoryCatalog";
 import ItemRecordFavicon from "./ItemRecordFavicon";
 import ItemActivitySection from "./ItemActivitySection";
@@ -59,7 +59,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { accessToken, profile, userId, vaultKey } = useAuthVault();
-  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet, deletedItemsRetentionDays } =
+  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet, deletedItemsRetentionDays, fileUploadConstraints, filesInItemsEnabled } =
     useWorkspaceItems();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
@@ -97,7 +97,10 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     () => (item ? itemPlaintextToKeyFormSections(item, keyFormMessages) : []),
     [item, keyFormMessages],
   );
-  const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
+  const keyFormFieldTypes = useMemo(
+    () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), filesInItemsEnabled),
+    [locale, filesInItemsEnabled],
+  );
   const handleRecoveryCodesValueChange = useCallback(
     async ({ fieldId, value }: RecoveryCodesValueChange) => {
       const currentItem = getItemById(itemId);
@@ -310,6 +313,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
             datePickerLocale={datePickerLocale}
             onRecoveryCodesValueChange={handleRecoveryCodesValueChange}
             onFileOpen={handleFileOpen}
+            fileUploadConstraints={fileUploadConstraints}
           />
 
           {(item.tags ?? []).length > 0 ? (
