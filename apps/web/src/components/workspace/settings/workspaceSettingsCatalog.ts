@@ -1,5 +1,26 @@
 export const DEFAULT_WORKSPACE_TILE_COLOR = "#3b82f6";
 
+export const DELETED_ITEMS_RETENTION_DAY_OPTIONS = [1, 3, 7, 14, 30] as const;
+
+export const DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS: Record<
+  (typeof DELETED_ITEMS_RETENTION_DAY_OPTIONS)[number],
+  string
+> = {
+  1: "web.workspaceSettings.deletedItemsRetention.option1",
+  3: "web.workspaceSettings.deletedItemsRetention.option3",
+  7: "web.workspaceSettings.deletedItemsRetention.option7",
+  14: "web.workspaceSettings.deletedItemsRetention.option14",
+  30: "web.workspaceSettings.deletedItemsRetention.option30",
+};
+
+export function deletedItemsRetentionDayOptions(currentDays: number): number[] {
+  const preset = [...DELETED_ITEMS_RETENTION_DAY_OPTIONS];
+  if (preset.includes(currentDays as (typeof DELETED_ITEMS_RETENTION_DAY_OPTIONS)[number])) {
+    return preset;
+  }
+  return [...preset, currentDays].sort((a, b) => a - b);
+}
+
 /** 7 accent palette colors (user settings) + 3 additional vibrant accents. */
 export const WORKSPACE_TILE_PRESET_COLORS = [
   "#171717",

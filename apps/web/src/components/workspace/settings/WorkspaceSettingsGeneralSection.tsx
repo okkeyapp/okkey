@@ -1,6 +1,15 @@
 import type { Vault, Workspace } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
-import { Button, Input, Spinner } from "@okkey/ui";
+import {
+  Button,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+} from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -15,7 +24,12 @@ import { WORKSPACES_PATH } from "../../../routes/paths";
 import WorkspaceLogoTile from "../WorkspaceLogoTile";
 import DeleteWorkspaceConfirmPopup from "./DeleteWorkspaceConfirmPopup";
 import WorkspaceTileColorPicker from "./WorkspaceTileColorPicker";
-import { DEFAULT_WORKSPACE_TILE_COLOR, readableHexColor } from "./workspaceSettingsCatalog";
+import {
+  DEFAULT_WORKSPACE_TILE_COLOR,
+  DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS,
+  deletedItemsRetentionDayOptions,
+  readableHexColor,
+} from "./workspaceSettingsCatalog";
 import { UploadIcon } from "./workspaceSettingsIcons";
 
 type WorkspaceSettingsGeneralSectionProps = {
@@ -51,6 +65,7 @@ export default function WorkspaceSettingsGeneralSection({
   const [tileColor, setTileColor] = useState(DEFAULT_WORKSPACE_TILE_COLOR);
   const [logoVaultId, setLogoVaultId] = useState<string | null>(null);
   const [logoAttachmentId, setLogoAttachmentId] = useState<string | null>(null);
+  const [deletedItemsRetentionDays, setDeletedItemsRetentionDays] = useState(30);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
 
@@ -87,6 +102,7 @@ export default function WorkspaceSettingsGeneralSection({
       setTileColor(settings.tile_color ?? DEFAULT_WORKSPACE_TILE_COLOR);
       setLogoVaultId(settings.logo_vault_id);
       setLogoAttachmentId(settings.logo_attachment_id);
+      setDeletedItemsRetentionDays(settings.deleted_items_retention_days);
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : t(SAVE_TOAST.error));
     } finally {
@@ -111,6 +127,7 @@ export default function WorkspaceSettingsGeneralSection({
     setTileColor(updated.tile_color ?? DEFAULT_WORKSPACE_TILE_COLOR);
     setLogoVaultId(updated.logo_vault_id);
     setLogoAttachmentId(updated.logo_attachment_id);
+    setDeletedItemsRetentionDays(updated.deleted_items_retention_days);
     onSettingsChanged?.();
   }
 
@@ -142,6 +159,18 @@ export default function WorkspaceSettingsGeneralSection({
     }
     await persistSettings({ name: trimmed });
   }
+
+  async function handleRetentionChange(nextDays: number) {
+    if (nextDays === deletedItemsRetentionDays) {
+      return;
+    }
+    await persistSettings({ deleted_items_retention_days: nextDays });
+  }
+
+  const retentionDayOptions = useMemo(
+    () => deletedItemsRetentionDayOptions(deletedItemsRetentionDays),
+    [deletedItemsRetentionDays],
+  );
 
   async function removeExistingLogoAttachment() {
     if (!accessToken || !vaultKey || !logoVaultId || !logoAttachmentId) {
@@ -315,6 +344,34 @@ export default function WorkspaceSettingsGeneralSection({
               onChange={(event) => setWorkspaceName(event.target.value)}
               onBlur={() => void handleNameBlur()}
             />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="deleted-items-retention" className="text-sm font-medium text-foreground">
+                {t("web.workspaceSettings.deletedItemsRetention.label")}
+              </label>
+              <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.deletedItemsRetention.description")}</p>
+            </div>
+            <Select
+              value={String(deletedItemsRetentionDays)}
+              disabled={!isOwner || saving}
+              onValueChange={(value) => void handleRetentionChange(Number(value))}
+            >
+              <SelectTrigger id="deleted-items-retention" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {retentionDayOptions.map((days) => {
+                  const labelKey = DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS[days as keyof typeof DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS];
+                  return (
+                    <SelectItem key={days} value={String(days)}>
+                      {labelKey ? t(labelKey) : `${days}`}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
