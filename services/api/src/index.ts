@@ -20,6 +20,8 @@ import { ItemCategoryPreferencesService } from "./item-category-preferences/serv
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
+import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
+import { loadEnterprisePlugins } from "./plugins/load-enterprise-plugins.ts";
 import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
@@ -86,6 +88,12 @@ async function main(): Promise<void> {
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
   });
+  const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
+    roles: storage.repositories.workspaceRoles,
+    workspaces: storage.repositories.workspaces,
+    db: storage.postgres,
+  });
+  const enterprisePlugins = await loadEnterprisePlugins(config);
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -155,6 +163,11 @@ async function main(): Promise<void> {
     softDeletes: storage.repositories.vaultItemSoftDeletes,
     attachments: attachmentService,
   });
+  if (enterprisePlugins.length > 0) {
+    logger.info("enterprise modules loaded", {
+      plugins: enterprisePlugins.map((plugin) => plugin.id),
+    });
+  }
   const app = createApiApp(config, logger, {
     readyCheck: () => storage.ping(),
     authService,
@@ -165,6 +178,7 @@ async function main(): Promise<void> {
     itemCategoryPreferencesService,
     itemTemplatesService,
     workspaceSettingsService,
+    workspaceBuiltInRolesService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,
@@ -175,6 +189,10 @@ async function main(): Promise<void> {
     capsuleService,
     attachmentService,
     itemFaviconService,
+  }, {
+    enterprisePlugins,
+    postgres: storage.postgres,
+    workspacesRepository: storage.repositories.workspaces,
   });
 
   const server = createServer(app.handler());

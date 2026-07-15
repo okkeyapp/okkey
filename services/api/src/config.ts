@@ -45,6 +45,9 @@ export interface ApiConfig {
   twoFactorBackupCodesCount: number;
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
+  /** Load enterprise backend plugins from `enterpriseModulesPath`. */
+  enterpriseModulesEnabled: boolean;
+  enterpriseModulesPath: string;
   defaultEmailLocale: string;
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
@@ -195,6 +198,15 @@ function parseCsvList(raw: string | undefined): string[] {
   return [...new Set(raw.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
 }
 
+function resolveEnterpriseModulesPath(explicitPath: string | undefined): string {
+  const trimmed = explicitPath?.trim();
+  if (trimmed) {
+    return path.resolve(trimmed);
+  }
+  const servicesApiDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -300,6 +312,8 @@ export function loadConfig(): ApiConfig {
     allowHeaderUserIdAuth:
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
+    enterpriseModulesEnabled: parseBoolean(process.env.ENTERPRISE_MODULES, false),
+    enterpriseModulesPath: resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",

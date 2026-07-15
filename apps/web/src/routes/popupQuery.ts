@@ -5,6 +5,8 @@ export const SETTINGS_POPUP_ID = "settings";
 export const FOLDERS_POPUP_ID = "folders";
 export const NEW_ITEM_POPUP_ID = "newItem";
 export const EDIT_ITEM_POPUP_ID = "editItem";
+export const NEW_ROLE_POPUP_ID = "newRole";
+export const EDIT_ROLE_POPUP_ID = "editRole";
 
 export type PopupQuerySearchOptions = {
   copyFromItemId?: string;

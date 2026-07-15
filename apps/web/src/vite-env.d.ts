@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
   /** Set to "true" to show dev-only nav links in production builds. */
   readonly VITE_SHOW_DEV_LINKS?: string;
+  /** Load enterprise web modules from okkey-enterprise (default: false). */
+  readonly VITE_ENTERPRISE_MODULES?: string;
 }
 
 interface ImportMeta {

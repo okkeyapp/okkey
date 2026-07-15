@@ -2,6 +2,7 @@ import { DEFAULT_NEW_VAULT_CRYPTO_VERSION } from "../crypto/downgrade.ts";
 import { generateEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
+import { ensureDefaultWorkspaceRoles } from "../workspace-roles/seed.ts";
 
 export interface RegistrationBundleInput {
   email: string;
@@ -92,6 +93,8 @@ export async function insertRegistrationBundle(
   if (!insertedWorkspaceId) {
     throw new Error("workspace insert returned no id");
   }
+
+  await ensureDefaultWorkspaceRoles(tx, insertedWorkspaceId, insertedUserId);
 
   const vaultId = generateEntityId();
   const vaultRows = await tx.query<{ id: string }>(

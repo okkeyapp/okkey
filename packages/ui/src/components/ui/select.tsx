@@ -59,10 +59,8 @@ function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVari
       return cn(accentRing, accentRingIfHoveredWhileOpen, "data-[state=open]:underline");
     case "destructive":
       return cn(
-        "data-[state=open]:outline-none data-[state=open]:border-destructive",
-        "data-[state=open]:bg-destructive data-[state=open]:text-destructive-foreground",
+        "data-[state=open]:outline-none data-[state=open]:bg-destructive/85 data-[state=open]:text-destructive-foreground",
         "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",
-        "data-[state=open]:hover:border-destructive dark:data-[state=open]:hover:border-destructive",
         "data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",
       );
     case "outline":
@@ -289,22 +287,34 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
 const SelectItem = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
+    description?: React.ReactNode;
+  }
+>(({ className, children, description, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
       "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-foreground outline-none data-[highlighted]:bg-secondary data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      description && "items-start py-2.5",
       className,
     )}
     {...props}
   >
-    <span className="absolute left-2 flex size-3.5 items-center justify-center">
+    <span className="absolute left-2 top-1/2 flex size-3.5 -translate-y-1/2 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         <CheckIcon className="size-4" />
       </SelectPrimitive.ItemIndicator>
     </span>
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    {description ? (
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        <span className="whitespace-normal break-words text-xs leading-snug text-muted-foreground">
+          {description}
+        </span>
+      </div>
+    ) : (
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    )}
   </SelectPrimitive.Item>
 ));
 SelectItem.displayName = SelectPrimitive.Item.displayName;

@@ -399,6 +399,33 @@ Lists vaults in a workspace the user may access.
 | `WORKSPACE_NOT_FOUND` | 404 | Unknown workspace id. |
 | `ACCESS_DENIED` | 403 | User not a member of the workspace. |
 
+### `GET /workspaces/:workspaceId/roles`
+
+Lists built-in workspace roles (`owner`, `admin`, `user`) with member counts. Open-core response includes built-in roles only.
+
+When the enterprise `workspace-roles` plugin is enabled (`ENTERPRISE_MODULES=true`), the same route is served by the enterprise module and also returns custom roles with permissions. Permissions use a numeric matrix (`get`/`put`/`delete`: `0|1|2`, `post`: `0|1`). See `okkey-enterprise/docs/api/workspace-roles.md`.
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
+
+**Response `200`:**
+
+```json
+{
+  "roles": [
+    {
+      "id": "1000000000000000001",
+      "kind": "builtin",
+      "builtin_id": "owner",
+      "name": "Owner",
+      "description": "",
+      "member_count": 1
+    }
+  ]
+}
+```
+
+**Errors:** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`.
+
 ### `GET /vaults/:vaultId`
 
 Returns a single vault if the user can read it.

@@ -17,6 +17,7 @@ import { WorkspaceMemberItemCategoryPreferencesRepository } from "./workspace-me
 import { WorkspacePersonalEventsRepository } from "./workspace-personal-events.ts";
 import { VaultItemSoftDeletesRepository } from "./vault-item-soft-deletes.ts";
 import { WorkspaceItemTemplatesRepository } from "./workspace-item-templates.ts";
+import { WorkspaceRolesRepository } from "./workspace-roles.ts";
 import { AttachmentsRepository } from "./attachments.ts";
 
 export interface StorageLayer {
@@ -36,6 +37,7 @@ export interface StorageLayer {
     workspacePersonalEvents: WorkspacePersonalEventsRepository;
     vaultItemSoftDeletes: VaultItemSoftDeletesRepository;
     workspaceItemTemplates: WorkspaceItemTemplatesRepository;
+    workspaceRoles: WorkspaceRolesRepository;
     attachments: AttachmentsRepository;
   };
   ping(): Promise<void>;
@@ -63,6 +65,7 @@ export async function createStorageLayer(
     workspacePersonalEvents: new WorkspacePersonalEventsRepository(postgres),
     vaultItemSoftDeletes: new VaultItemSoftDeletesRepository(postgres),
     workspaceItemTemplates: new WorkspaceItemTemplatesRepository(postgres),
+    workspaceRoles: new WorkspaceRolesRepository(postgres),
     attachments: new AttachmentsRepository(postgres),
   };
 

@@ -51,6 +51,12 @@ import {
   createWorkspaceItemTemplatesUpdateRoute,
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
+import { createWorkspaceBuiltInRolesListRoute } from "./routes/workspace-built-in-roles.ts";
+import type { ApiEnterprisePlugin } from "./plugins/types.ts";
+import type { QueryExecutor } from "./storage/postgres.ts";
+import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
+import type { EmailChangeService } from "./account/email-change.ts";
+import type { WorkspacesRepository } from "./storage/repositories.ts";
 import {
   createWorkspacePersonalEventsAppendRoute,
   createWorkspacePersonalEventsListRoute,
@@ -87,7 +93,6 @@ import type { ItemTemplatesService } from "./item-templates/service.ts";
 import type { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import type { UsersRepository } from "./storage/repositories.ts";
-import type { EmailChangeService } from "./account/email-change.ts";
 import type { AttachmentService } from "./attachments/service.ts";
 import type { ItemFaviconService } from "./favicon/service.ts";
 import {
@@ -96,6 +101,12 @@ import {
   createAttachmentUploadRoute,
 } from "./routes/attachments.ts";
 import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
+
+export interface CreateApiAppOptions {
+  enterprisePlugins?: ApiEnterprisePlugin[];
+  postgres?: QueryExecutor;
+  workspacesRepository?: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+}
 
 export interface AppDeps {
   readyCheck?: () => Promise<void>;
@@ -115,6 +126,7 @@ export interface AppDeps {
   itemCategoryPreferencesService?: ItemCategoryPreferencesService;
   itemTemplatesService?: ItemTemplatesService;
   workspaceSettingsService?: WorkspaceSettingsService;
+  workspaceBuiltInRolesService?: WorkspaceBuiltInRolesService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
@@ -124,6 +136,7 @@ export function createApiApp(
   config: ApiConfig,
   logger: Logger,
   deps: AppDeps = {},
+  options: CreateApiAppOptions = {},
 ): HttpApp {
   const app = new HttpApp();
   const readyCheck = deps.readyCheck ?? (async () => {});
@@ -293,6 +306,16 @@ export function createApiApp(
         createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
       );
     }
+    const hasEnterpriseWorkspaceRoles = (options.enterprisePlugins ?? []).some(
+      (plugin) => plugin.id === "workspace-roles",
+    );
+    if (!hasEnterpriseWorkspaceRoles && deps.workspaceBuiltInRolesService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/roles",
+        createWorkspaceBuiltInRolesListRoute(deps.workspaceBuiltInRolesService, resolveUserId),
+      );
+    }
     if (deps.workspacePersonalSyncService) {
       app.route(
         "GET",
@@ -410,6 +433,20 @@ export function createApiApp(
       "/favicon/preview",
       createItemFaviconPreviewRoute(deps.itemFaviconService, resolveUserId),
     );
+  }
+
+  if (options.postgres && options.workspacesRepository) {
+    for (const plugin of options.enterprisePlugins ?? []) {
+      plugin.register({
+        app,
+        config,
+        resolveUserId,
+        postgres: options.postgres,
+        repositories: {
+          workspaces: options.workspacesRepository,
+        },
+      });
+    }
   }
 
   return app;

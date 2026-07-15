@@ -7,6 +7,11 @@ export {
   isEntityId,
 } from "./entity-id.js";
 import type { EntityId } from "./entity-id.js";
+import type {
+  WorkspaceBuiltInRoleDto,
+  WorkspaceBuiltInRoleId,
+  WorkspaceBuiltInRolesListResponseDto,
+} from "./workspace-roles.js";
 
 export interface User {
   id: EntityId;
@@ -233,6 +238,12 @@ export interface CoreApiErrorBody {
 }
 
 export { assertCryptoVersionNotBelowFloor } from "./crypto-anti-downgrade.js";
+export type {
+  WorkspaceBuiltInRoleDto,
+  WorkspaceBuiltInRoleId,
+  WorkspaceBuiltInRolesListResponseDto,
+  WorkspaceRoleSummary,
+} from "./workspace-roles.js";
 
 /** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */
 export interface EncryptedBlobDto {
@@ -404,6 +415,12 @@ export interface WorkspaceSettingsUpdateRequestDto {
 export interface WorkspaceDeleteRequestDto {
   confirmation_name: string;
 }
+
+/** @deprecated Use WorkspaceBuiltInRoleDto */
+export type WorkspaceRoleDto = WorkspaceBuiltInRoleDto;
+
+/** @deprecated Use WorkspaceBuiltInRolesListResponseDto */
+export type WorkspaceRolesListResponseDto = WorkspaceBuiltInRolesListResponseDto;
 
 /** `GET /vaults/:vaultId/key` success body. */
 export interface VaultKeyGetResponseDto {

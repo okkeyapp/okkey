@@ -142,6 +142,40 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0008);
   }
+
+  const workspaceTileColorColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspaces'
+        AND column_name = 'tile_color'
+    ) AS exists`,
+  );
+  if (!workspaceTileColorColumn[0]?.exists) {
+    const migration0009 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0009_workspace_branding.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0009);
+  }
+
+  const roleBuiltinKeyColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'roles'
+        AND column_name = 'builtin_key'
+    ) AS exists`,
+  );
+  if (!roleBuiltinKeyColumn[0]?.exists) {
+    const migration0010 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0010_workspace_roles.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0010);
+  }
 }
 
 export async function cleanupUserData(

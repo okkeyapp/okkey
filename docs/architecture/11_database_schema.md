@@ -121,11 +121,26 @@ Workspace roles and their permissions.
 id (snowflake bigint string)
 workspace_id
 name
+description
 permissions_json
 is_system
+builtin_key (nullable; owner | admin | user for built-in)
 created_at
 updated_at
 ```
+
+`permissions_json` is a per-resource matrix. Each resource (`settings`, `roles`, `profiles`, `members`, `vaults`, `billing`) has:
+
+```text
+get: 0 | 1 | 2
+post: 0 | 1
+put: 0 | 1 | 2
+delete: 0 | 1 | 2
+```
+
+Values: `0` — no access; `1` — full access; `2` — own objects only (`get` / `put` / `delete`).  
+Built-in defaults: `owner`/`admin` — all `1`; `user` — all `0`.  
+See `okkey-enterprise/docs/api/workspace-roles.md` for the enterprise custom-roles contract.
 
 ### profiles
 

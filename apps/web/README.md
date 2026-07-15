@@ -91,3 +91,36 @@ See also: [`docs/architecture/04_vault_architecture.md`](../../docs/architecture
 ## Environment variables
 
 Client-visible variables must use the `VITE_` prefix. See `.env.example`.
+
+### FREE vs Enterprise web modules
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads `@okkey-enterprise/workspace-roles` from sibling repo `okkey-enterprise/` |
+
+**FREE (open-source only)**
+
+```sh
+cd okkey
+cp apps/web/.env.example apps/web/.env   # VITE_ENTERPRISE_MODULES=false
+yarn dev:api    # terminal 1
+yarn dev:web    # terminal 2 → http://localhost:5173
+```
+
+Workspace → **Settings → Roles**: built-in roles (read-only), custom roles upsell, **Create** disabled.
+
+**Enterprise (Core + okkey-enterprise)**
+
+```sh
+# repositories/okkey and repositories/okkey-enterprise as siblings
+cd okkey
+echo 'VITE_ENTERPRISE_MODULES=true' >> apps/web/.env
+echo 'ENTERPRISE_MODULES=true' >> services/api/.env   # or export before starting API
+yarn dev:web
+```
+
+Start the API with `ENTERPRISE_MODULES=true` so custom role CRUD routes are registered from `okkey-enterprise/backend/`. Without it, the API exposes built-in roles list only.
+
+Custom roles list, **Create** button, and role card modal load from `okkey-enterprise/web/workspace-roles/`. See that package’s README for details.
+
+Paid workspace plans (`planTier !== FREE`) also enable the enterprise slot when the module is present, even without the env flag, once billing assigns a non-FREE tier.

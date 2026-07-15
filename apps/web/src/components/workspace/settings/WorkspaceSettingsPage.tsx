@@ -15,6 +15,7 @@ import {
   SETTINGS_MAIN_PATH,
 } from "../../../routes/paths";
 import WorkspaceSettingsGeneralSection from "./WorkspaceSettingsGeneralSection";
+import WorkspaceSettingsRolesSection from "./roles/WorkspaceSettingsRolesSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import { ChevronRightIcon } from "./workspaceSettingsIcons";
@@ -124,6 +125,8 @@ export default function WorkspaceSettingsPage({
                 t={t}
                 onSettingsChanged={onSettingsChanged}
               />
+            ) : activeSection === "roles" ? (
+              <WorkspaceSettingsRolesSection workspaceId={workspaceId} workspace={workspace} t={t} />
             ) : (
               <WorkspaceSettingsPlaceholderSection section={activeSection} t={t} />
             )}
