@@ -160,6 +160,12 @@ export default function WorkspaceRoutesLayout() {
     setWorkspaceList(list);
   }, [core]);
 
+  const patchWorkspace = useCallback((workspaceId: string, patch: Partial<Workspace>) => {
+    setWorkspaceList((previous) =>
+      previous.map((workspace) => (workspace.id === workspaceId ? { ...workspace, ...patch } : workspace)),
+    );
+  }, []);
+
   useEffect(() => {
     navigateRef.current = navigate;
     setSearchParamsRef.current = setSearchParams;
@@ -578,6 +584,7 @@ export default function WorkspaceRoutesLayout() {
               vaultUnlocked={vaultUnlocked}
               workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
               refreshWorkspaces={refreshWorkspaces}
+              patchWorkspace={patchWorkspace}
             />
           </WorkspaceFoldersProvider>
         );
@@ -615,6 +622,7 @@ type WorkspaceShellWithItemsProps = {
   vaultUnlocked: boolean;
   workspaceFoldersBootstrapped: boolean;
   refreshWorkspaces: () => Promise<void>;
+  patchWorkspace: (workspaceId: string, patch: Partial<Workspace>) => void;
 };
 
 function WorkspaceShellWithItems({
@@ -646,6 +654,7 @@ function WorkspaceShellWithItems({
   vaultUnlocked,
   workspaceFoldersBootstrapped,
   refreshWorkspaces,
+  patchWorkspace,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const workspaceItemsState = useWorkspaceItemsState({
@@ -718,6 +727,7 @@ function WorkspaceShellWithItems({
                 vaults,
                 workspace: currentWorkspace,
                 refreshWorkspaces,
+                patchWorkspace,
               }}
             />
           </WorkspaceSidebarLayout>

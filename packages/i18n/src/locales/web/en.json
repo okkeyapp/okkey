@@ -407,6 +407,8 @@
   "web.keyForm.address.noCountriesFound": "No countries found",
   "web.keyForm.file.upload": "Upload file",
   "web.keyForm.file.delete": "Delete file",
+  "web.keyForm.file.uploadHintMaxPrefix": "max: ",
+  "web.keyForm.file.uploadHintMaxSizeOnlyPrefix": "Maximum size: ",
   "web.keyForm.passwordGenerator.uppercase": "A-Z",
   "web.keyForm.passwordGenerator.lowercase": "a-z",
   "web.keyForm.passwordGenerator.numbers": "0-9",

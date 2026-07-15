@@ -114,6 +114,8 @@ export type KeyFormEditorMessages = {
   file: {
     upload: string;
     delete: string;
+    uploadHintMaxPrefix: string;
+    uploadHintMaxSizeOnlyPrefix: string;
   };
   passwordGenerator: {
     uppercase: string;
@@ -374,6 +376,8 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
     file: {
       upload: t("web.keyForm.file.upload"),
       delete: t("web.keyForm.file.delete"),
+      uploadHintMaxPrefix: t("web.keyForm.file.uploadHintMaxPrefix"),
+      uploadHintMaxSizeOnlyPrefix: t("web.keyForm.file.uploadHintMaxSizeOnlyPrefix"),
     },
     passwordGenerator: {
       uppercase: t("web.keyForm.passwordGenerator.uppercase"),

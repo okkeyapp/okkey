@@ -73,6 +73,7 @@ import {
   type KeyFormMode,
   type KeyFieldFileValue,
   type KeyFieldFileUploadConstraints,
+  type KeyFieldFileUploadHintLabels,
   defaultKeyFieldFileUploadConstraints,
 } from "@okkey/ui";
 import { normalizeSelectOptionsEditorText, appendSelectOptionsEditorLineAtEnd } from "../../items/keyFormSelectField";
@@ -1710,6 +1711,7 @@ type SortableFieldProps = {
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
   fileClearLabel?: string;
+  fileUploadHintLabels?: KeyFieldFileUploadHintLabels;
   fileClearEnabled?: boolean;
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
@@ -1764,6 +1766,7 @@ function SortableField({
   recoveryCodesPlaceholder,
   fileUploadLabel,
   fileClearLabel,
+  fileUploadHintLabels,
   fileClearEnabled = true,
   fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
   surfaceRounding,
@@ -1893,6 +1896,7 @@ function SortableField({
       recoveryCodesPlaceholder={recoveryCodesPlaceholder ?? messages.recoveryCodesPlaceholder}
       fileUploadLabel={fileUploadLabel ?? messages.file.upload}
       fileClearLabel={fileClearLabel ?? messages.file.delete}
+      fileUploadHintLabels={fileUploadHintLabels}
       fileClearEnabled={fileClearEnabled}
       valuePlaceholder={valuePlaceholder ?? messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       datePickerLocale={datePickerLocale}
@@ -1988,6 +1992,13 @@ export function KeyFormEditor({
     }
     return types.filter((type) => type.id !== "file");
   }, [allowFileFields, fieldTypesProp]);
+  const fileUploadHintLabels = useMemo<KeyFieldFileUploadHintLabels>(
+    () => ({
+      maxPrefix: messages.file.uploadHintMaxPrefix,
+      maxSizeOnlyPrefix: messages.file.uploadHintMaxSizeOnlyPrefix,
+    }),
+    [messages.file.uploadHintMaxPrefix, messages.file.uploadHintMaxSizeOnlyPrefix],
+  );
   const [sections, setSections] = useState<DemoSection[]>(() => [...initialSections]);
   const sectionsRef = useRef(sections);
   sectionsRef.current = sections;
@@ -3414,6 +3425,7 @@ export function KeyFormEditor({
         onFileUpload={allowFileFields ? handleKeyFieldFileUpload : undefined}
         onFileOpen={onFileOpen}
         fileUploadConstraints={fileUploadConstraints}
+        fileUploadHintLabels={fileUploadHintLabels}
         fileClearEnabled={allowFileFields}
         transformValueInput={
           isCardField
@@ -3505,6 +3517,7 @@ export function KeyFormEditor({
         recoveryCodesPlaceholder={messages.recoveryCodesPlaceholder}
         fileUploadLabel={messages.file.upload}
         fileClearLabel={messages.file.delete}
+        fileUploadHintLabels={fileUploadHintLabels}
         valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
         datePickerLocale={datePickerLocale}
         reorderable

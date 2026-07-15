@@ -12,10 +12,11 @@ export type WorkspaceShellOutletContext = {
   vaults: readonly Vault[];
   workspace?: Workspace;
   refreshWorkspaces?: () => Promise<void>;
+  patchWorkspace?: (workspaceId: string, patch: Partial<Workspace>) => void;
 };
 
 export default function WorkspaceSectionPage() {
-  const { workspaceId, vaults, workspace, refreshWorkspaces } = useOutletContext<WorkspaceShellOutletContext>();
+  const { workspaceId, vaults, workspace, patchWorkspace } = useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -31,7 +32,7 @@ export default function WorkspaceSectionPage() {
         workspaceId={workspaceId}
         workspace={workspace}
         vaults={vaults}
-        onSettingsChanged={() => void refreshWorkspaces?.()}
+        onSettingsChanged={(patch) => patchWorkspace?.(workspaceId, patch)}
       />
     );
   }

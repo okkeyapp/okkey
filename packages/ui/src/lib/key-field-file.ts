@@ -227,10 +227,25 @@ export function buildKeyFieldFileUploadConstraints(
   };
 }
 
-export function formatKeyFieldFileUploadHint(constraints: KeyFieldFileUploadConstraints): string {
-  const maxPart = `max: ${formatKeyFieldFileSize(constraints.maxSizeBytes)}`;
+export type KeyFieldFileUploadHintLabels = {
+  /** Shown before size when allowed extensions are listed, e.g. `max: `. */
+  maxPrefix: string;
+  /** Shown before size when no extensions are configured, e.g. `Maximum size: `. */
+  maxSizeOnlyPrefix: string;
+};
+
+export const defaultKeyFieldFileUploadHintLabels: KeyFieldFileUploadHintLabels = {
+  maxPrefix: "max: ",
+  maxSizeOnlyPrefix: "Maximum size: ",
+};
+
+export function formatKeyFieldFileUploadHint(
+  constraints: KeyFieldFileUploadConstraints,
+  labels: KeyFieldFileUploadHintLabels = defaultKeyFieldFileUploadHintLabels,
+): string {
+  const maxPart = `${labels.maxPrefix}${formatKeyFieldFileSize(constraints.maxSizeBytes)}`;
   if (constraints.allowedExtensions.length === 0) {
-    return maxPart;
+    return `${labels.maxSizeOnlyPrefix}${formatKeyFieldFileSize(constraints.maxSizeBytes)}`;
   }
   const types = constraints.allowedExtensions.map((extension) => extension.toLowerCase()).join(", ");
   return `${types} · ${maxPart}`;

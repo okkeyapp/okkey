@@ -1,3 +1,5 @@
+import type { Workspace, WorkspaceSettingsResponseDto } from "@okkey/types";
+
 export const DEFAULT_WORKSPACE_TILE_COLOR = "#3b82f6";
 
 export const DELETED_ITEMS_RETENTION_DAY_OPTIONS = [1, 3, 7, 14, 30] as const;
@@ -64,4 +66,29 @@ export function normalizeHexColor(value: string): string | null {
 
 export function readableHexColor(value: string): string {
   return normalizeHexColor(value) ?? value;
+}
+
+export function workspacePatchFromSettingsResponse(
+  updated: WorkspaceSettingsResponseDto,
+): Pick<
+  Workspace,
+  | "name"
+  | "deletedItemsRetentionDays"
+  | "allowedFileExtensions"
+  | "maxFileSizeMb"
+  | "filesInItemsEnabled"
+  | "tileColor"
+  | "logoVaultId"
+  | "logoAttachmentId"
+> {
+  return {
+    name: updated.name,
+    deletedItemsRetentionDays: updated.deleted_items_retention_days,
+    allowedFileExtensions: updated.allowed_file_extensions,
+    maxFileSizeMb: updated.max_file_size_mb,
+    filesInItemsEnabled: updated.files_in_items_enabled,
+    tileColor: updated.tile_color,
+    logoVaultId: updated.logo_vault_id,
+    logoAttachmentId: updated.logo_attachment_id,
+  };
 }

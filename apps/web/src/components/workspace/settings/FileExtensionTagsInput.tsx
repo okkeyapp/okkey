@@ -49,6 +49,13 @@ function mergeExtensionTokens(current: readonly string[], raw: string): string[]
   return next;
 }
 
+function extensionListsEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((item, index) => item === right[index]);
+}
+
 export default function FileExtensionTagsInput({
   value,
   disabled = false,
@@ -64,7 +71,7 @@ export default function FileExtensionTagsInput({
   const [draft, setDraft] = useState("");
 
   useEffect(() => {
-    setLocalExtensions([...value]);
+    setLocalExtensions((prev) => (extensionListsEqual(prev, value) ? prev : [...value]));
   }, [value]);
 
   const commitToParent = (extensions: readonly string[]) => {
@@ -112,7 +119,8 @@ export default function FileExtensionTagsInput({
       ref={containerRef}
       className={cn(
         inputLikeControlClassName,
-        "!h-auto min-h-9 px-[3px] py-[3px]",
+        "!h-auto min-h-9 py-[3px]",
+        localExtensions.length === 0 ? "px-3" : "px-[3px]",
         "flex w-full cursor-text items-center text-left normal-case",
         "focus-within:border-accent focus-within:bg-background focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
         "focus-within:hover:border-accent focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",

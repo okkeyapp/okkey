@@ -66,6 +66,8 @@ export {
   formatKeyFieldFileMeta,
   formatKeyFieldFileSize,
   formatKeyFieldFileUploadHint,
+  defaultKeyFieldFileUploadHintLabels,
+  type KeyFieldFileUploadHintLabels,
   getKeyFieldFileExtensionColor,
   getKeyFieldFileExtensionLabel,
   hasKeyFieldFileAttachment,

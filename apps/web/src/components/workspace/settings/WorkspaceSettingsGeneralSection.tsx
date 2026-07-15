@@ -40,6 +40,7 @@ import {
   DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS,
   deletedItemsRetentionDayOptions,
   readableHexColor,
+  workspacePatchFromSettingsResponse,
 } from "./workspaceSettingsCatalog";
 import { UploadIcon } from "./workspaceSettingsIcons";
 
@@ -48,7 +49,7 @@ type WorkspaceSettingsGeneralSectionProps = {
   workspace?: Workspace;
   vaults: readonly Vault[];
   t: (messageKey: string, values?: WebMessageValues) => string;
-  onSettingsChanged?: () => void;
+  onSettingsChanged?: (patch: ReturnType<typeof workspacePatchFromSettingsResponse>) => void;
 };
 
 const SAVE_TOAST = {
@@ -69,8 +70,8 @@ export default function WorkspaceSettingsGeneralSection({
   const { userId, accessToken, vaultKey } = useAuthVault();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [logoSaving, setLogoSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState(workspace?.name ?? "");
   const [tileColor, setTileColor] = useState(DEFAULT_WORKSPACE_TILE_COLOR);
@@ -109,23 +110,23 @@ export default function WorkspaceSettingsGeneralSection({
     if (!core || !workspaceId) {
       return;
     }
-    setLoading(true);
     setLoadError(null);
     try {
       const settings = await core.getWorkspaceSettings(workspaceId);
-      setWorkspaceName(settings.name);
-      setTileColor(settings.tile_color ?? DEFAULT_WORKSPACE_TILE_COLOR);
-      setLogoVaultId(settings.logo_vault_id);
-      setLogoAttachmentId(settings.logo_attachment_id);
-      setDeletedItemsRetentionDays(settings.deleted_items_retention_days);
-      setAllowedFileExtensions(settings.allowed_file_extensions);
-      setMaxFileSizeMb(settings.max_file_size_mb);
-      setMaxFileSizeMbInput(formatMaxFileSizeMb(settings.max_file_size_mb));
-      setFilesInItemsEnabled(settings.files_in_items_enabled);
+      const patch = workspacePatchFromSettingsResponse(settings);
+      setWorkspaceName(patch.name);
+      setTileColor(patch.tileColor ?? DEFAULT_WORKSPACE_TILE_COLOR);
+      setLogoVaultId(patch.logoVaultId ?? null);
+      setLogoAttachmentId(patch.logoAttachmentId ?? null);
+      setDeletedItemsRetentionDays(patch.deletedItemsRetentionDays);
+      setAllowedFileExtensions([...patch.allowedFileExtensions]);
+      setMaxFileSizeMb(patch.maxFileSizeMb);
+      setMaxFileSizeMbInput(formatMaxFileSizeMb(patch.maxFileSizeMb));
+      setFilesInItemsEnabled(patch.filesInItemsEnabled);
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : t(SAVE_TOAST.error));
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }, [core, t, workspaceId]);
 
@@ -142,23 +143,36 @@ export default function WorkspaceSettingsGeneralSection({
   function applySettingsResponse(
     updated: Awaited<ReturnType<NonNullable<typeof core>["updateWorkspaceSettings"]>>,
   ) {
-    setWorkspaceName(updated.name);
-    setTileColor(updated.tile_color ?? DEFAULT_WORKSPACE_TILE_COLOR);
-    setLogoVaultId(updated.logo_vault_id);
-    setLogoAttachmentId(updated.logo_attachment_id);
-    setDeletedItemsRetentionDays(updated.deleted_items_retention_days);
-    setAllowedFileExtensions(updated.allowed_file_extensions);
-    setMaxFileSizeMb(updated.max_file_size_mb);
-    setMaxFileSizeMbInput(formatMaxFileSizeMb(updated.max_file_size_mb));
-    setFilesInItemsEnabled(updated.files_in_items_enabled);
-    onSettingsChanged?.();
+    const patch = workspacePatchFromSettingsResponse(updated);
+    setWorkspaceName((prev) => (prev === patch.name ? prev : patch.name));
+    setTileColor((prev) => {
+      const next = patch.tileColor ?? DEFAULT_WORKSPACE_TILE_COLOR;
+      return prev === next ? prev : next;
+    });
+    setLogoVaultId((prev) => (prev === patch.logoVaultId ? prev : patch.logoVaultId ?? null));
+    setLogoAttachmentId((prev) => (prev === patch.logoAttachmentId ? prev : patch.logoAttachmentId ?? null));
+    setDeletedItemsRetentionDays((prev) =>
+      prev === patch.deletedItemsRetentionDays ? prev : patch.deletedItemsRetentionDays,
+    );
+    setAllowedFileExtensions((prev) =>
+      prev.length === patch.allowedFileExtensions.length &&
+      prev.every((item, index) => item === patch.allowedFileExtensions[index])
+        ? prev
+        : [...patch.allowedFileExtensions],
+    );
+    setMaxFileSizeMb((prev) => (prev === patch.maxFileSizeMb ? prev : patch.maxFileSizeMb));
+    setMaxFileSizeMbInput((prev) => {
+      const next = formatMaxFileSizeMb(patch.maxFileSizeMb);
+      return prev === next ? prev : next;
+    });
+    setFilesInItemsEnabled((prev) => (prev === patch.filesInItemsEnabled ? prev : patch.filesInItemsEnabled));
+    onSettingsChanged?.(patch);
   }
 
   async function persistSettings(patch: Parameters<NonNullable<typeof core>["updateWorkspaceSettings"]>[1]) {
     if (!core || !isOwner) {
       return;
     }
-    setSaving(true);
     try {
       const updated = await runSaveWithToast(saveToastMessages, async () =>
         core.updateWorkspaceSettings(workspaceId, patch),
@@ -166,8 +180,6 @@ export default function WorkspaceSettingsGeneralSection({
       applySettingsResponse(updated);
     } catch {
       /* toast handles error */
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -248,7 +260,7 @@ export default function WorkspaceSettingsGeneralSection({
     if (!core || !accessToken || !vaultKey || !personalVault) {
       return;
     }
-    setSaving(true);
+    setLogoSaving(true);
     try {
       await runSaveWithToast(saveToastMessages, async () => {
         const uploaded = await uploadKeyFieldFileAttachment({
@@ -270,7 +282,7 @@ export default function WorkspaceSettingsGeneralSection({
     } catch {
       /* toast handles error */
     } finally {
-      setSaving(false);
+      setLogoSaving(false);
     }
   }
 
@@ -278,7 +290,7 @@ export default function WorkspaceSettingsGeneralSection({
     if (!core) {
       return;
     }
-    setSaving(true);
+    setLogoSaving(true);
     try {
       await runSaveWithToast(saveToastMessages, async () => {
         if (logoVaultId && logoAttachmentId) {
@@ -293,7 +305,7 @@ export default function WorkspaceSettingsGeneralSection({
     } catch {
       /* toast handles error */
     } finally {
-      setSaving(false);
+      setLogoSaving(false);
     }
   }
 
@@ -320,7 +332,7 @@ export default function WorkspaceSettingsGeneralSection({
     }
   }
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
         <Spinner />
@@ -360,7 +372,7 @@ export default function WorkspaceSettingsGeneralSection({
                   type="button"
                   variant="outline"
                   className="h-9 gap-1.5 px-3"
-                  disabled={saving}
+                  disabled={logoSaving}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <UploadIcon />
@@ -373,13 +385,13 @@ export default function WorkspaceSettingsGeneralSection({
                     <span className="text-base text-foreground">{t("web.workspaceSettings.general.or")}</span>
                     <WorkspaceTileColorPicker
                       value={tileColor}
-                      disabled={saving}
+                      disabled={logoSaving}
                       t={t}
                       onChange={(color) => void handleColorChange(color)}
                     />
                   </>
                 ) : (
-                  <Button type="button" variant="outline" className="h-9 px-3" disabled={saving} onClick={() => void handleLogoDelete()}>
+                  <Button type="button" variant="outline" className="h-9 px-3" disabled={logoSaving} onClick={() => void handleLogoDelete()}>
                     {t("web.workspaceSettings.general.removeLogo")}
                   </Button>
                 )}
@@ -394,7 +406,7 @@ export default function WorkspaceSettingsGeneralSection({
             <Input
               id="workspace-name"
               value={workspaceName}
-              disabled={!isOwner || saving}
+              disabled={!isOwner}
               onChange={(event) => setWorkspaceName(event.target.value)}
               onBlur={() => void handleNameBlur()}
             />
@@ -413,7 +425,7 @@ export default function WorkspaceSettingsGeneralSection({
               </div>
               <Select
                 value={String(deletedItemsRetentionDays)}
-                disabled={!isOwner || saving}
+                disabled={!isOwner}
                 onValueChange={(value) => void handleRetentionChange(Number(value))}
               >
                 <SelectTrigger id="deleted-items-retention" className="h-9 w-full">
@@ -440,7 +452,7 @@ export default function WorkspaceSettingsGeneralSection({
               <Switch
                 size="lg"
                 checked={filesInItemsEnabled}
-                disabled={!isOwner || saving}
+                disabled={!isOwner}
                 onCheckedChange={(checked) => void handleFilesInItemsEnabledChange(checked)}
                 aria-label={t("web.workspaceSettings.filesInItems.label")}
               />
@@ -457,7 +469,7 @@ export default function WorkspaceSettingsGeneralSection({
                   </div>
                   <FileExtensionTagsInput
                     value={allowedFileExtensions}
-                    disabled={!isOwner || saving}
+                    disabled={!isOwner}
                     placeholder={t("web.workspaceSettings.allowedFileExtensions.placeholder")}
                     removeTagAriaLabel={(tag) => t("web.workspaceSettings.allowedFileExtensions.removeTagAria", { tag })}
                     inputAriaLabel={t("web.workspaceSettings.allowedFileExtensions.inputAria")}
@@ -475,7 +487,7 @@ export default function WorkspaceSettingsGeneralSection({
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={maxFileSizeMbInput}
-                    disabled={!isOwner || saving}
+                    disabled={!isOwner}
                     onChange={(event) => setMaxFileSizeMbInput(normalizeMaxFileSizeMbInput(event.target.value))}
                     onBlur={() => void handleMaxFileSizeMbBlur()}
                   />

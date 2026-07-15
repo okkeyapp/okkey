@@ -19,12 +19,13 @@ import WorkspaceSettingsRolesSection from "./roles/WorkspaceSettingsRolesSection
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import { ChevronRightIcon } from "./workspaceSettingsIcons";
+import type { workspacePatchFromSettingsResponse } from "./workspaceSettingsCatalog";
 
 type WorkspaceSettingsPageProps = {
   workspaceId: string;
   workspace?: Workspace;
   vaults: readonly Vault[];
-  onSettingsChanged?: () => void;
+  onSettingsChanged?: (patch: ReturnType<typeof workspacePatchFromSettingsResponse>) => void;
 };
 
 function WorkspaceSettingsPlaceholderSection({

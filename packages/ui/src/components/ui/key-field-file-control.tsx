@@ -4,6 +4,7 @@ import {
   defaultKeyFieldFileUploadConstraints,
   formatKeyFieldFileMeta,
   formatKeyFieldFileUploadHint,
+  defaultKeyFieldFileUploadHintLabels,
   getKeyFieldFileExtensionColor,
   getKeyFieldFileExtensionLabel,
   isKeyFieldFileImageMimeType,
@@ -11,6 +12,7 @@ import {
   serializeKeyFieldFileValue,
   validateKeyFieldFileUpload,
   type KeyFieldFileUploadConstraints,
+  type KeyFieldFileUploadHintLabels,
   type KeyFieldFileValue,
 } from "../../lib/key-field-file.js";
 import { cn } from "../../lib/utils.js";
@@ -78,6 +80,7 @@ export type KeyFieldFileControlProps = {
   deleteLabel?: string;
   className?: string;
   uploadLabel?: string;
+  uploadHintLabels?: KeyFieldFileUploadHintLabels;
 };
 
 const resolvedPreviewUrlCache = new Map<string, string>();
@@ -140,6 +143,7 @@ export function KeyFieldFileControl({
   deleteLabel,
   className,
   uploadLabel = "Upload file",
+  uploadHintLabels = defaultKeyFieldFileUploadHintLabels,
 }: KeyFieldFileControlProps) {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -164,7 +168,7 @@ export function KeyFieldFileControl({
       isKeyFieldFileImageMimeType(parsedFile.mimeType) &&
       onResolveFileUrl,
   );
-  const uploadHint = formatKeyFieldFileUploadHint(uploadConstraints);
+  const uploadHint = formatKeyFieldFileUploadHint(uploadConstraints, uploadHintLabels);
 
   React.useEffect(() => {
     return () => {
