@@ -1,19 +1,88 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type { WorkspaceBuiltInRoleId, WorkspaceRoleSummary } from "@okkey/types";
 import { Button } from "@okkey/ui";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import type { ComponentType, ReactNode } from "react";
 
+import {
+  EDIT_ROLE_POPUP_ID,
+  POPUP_QUERY_PARAM,
+  buildPopupQueryValue,
+  parsePopupQueryValue,
+  popupQuerySearch,
+} from "../../../../routes/popupQuery";
 import { buildBuiltInRoleSummaries } from "./builtinRoles";
 import RolesListCard from "./RolesListCard";
+
+export type BuiltInRoleCardPopupProps = {
+  popupId: string;
+  builtinId: WorkspaceBuiltInRoleId;
+  name: string;
+  description: string;
+  profilesLink: ReactNode;
+  t: (key: string) => string;
+  onClose: () => void;
+};
 
 type BuiltInRolesListProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   memberCounts?: Partial<Record<WorkspaceBuiltInRoleId, number>>;
   loadError?: string | null;
   onRetry?: () => void;
+  profilesLink?: ReactNode;
+  RoleCardPopup?: ComponentType<BuiltInRoleCardPopupProps>;
 };
 
-export default function BuiltInRolesList({ t, memberCounts, loadError, onRetry }: BuiltInRolesListProps) {
+function isBuiltInRoleId(value: string): value is WorkspaceBuiltInRoleId {
+  return value === "owner" || value === "admin" || value === "user";
+}
+
+export default function BuiltInRolesList({
+  t,
+  memberCounts,
+  loadError,
+  onRetry,
+  profilesLink,
+  RoleCardPopup,
+}: BuiltInRolesListProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
+  const viewingBuiltinId =
+    activePopup?.popupId === EDIT_ROLE_POPUP_ID && activePopup.menuItemId && isBuiltInRoleId(activePopup.menuItemId)
+      ? activePopup.menuItemId
+      : null;
+
   const roles: WorkspaceRoleSummary[] = buildBuiltInRoleSummaries(t, memberCounts);
+  const viewingRole = viewingBuiltinId
+    ? roles.find((role) => role.builtinId === viewingBuiltinId) ?? null
+    : null;
+
+  function openRolePopup(role: WorkspaceRoleSummary) {
+    if (!role.builtinId) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_ROLE_POPUP_ID, role.builtinId)),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
+  function closePopup() {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
 
   return (
     <section className="flex flex-col gap-4">
@@ -31,7 +100,23 @@ export default function BuiltInRolesList({ t, memberCounts, loadError, onRetry }
           ) : null}
         </div>
       ) : null}
-      <RolesListCard roles={roles} t={t} />
+      <RolesListCard
+        roles={roles}
+        t={t}
+        onRoleClick={RoleCardPopup ? openRolePopup : undefined}
+      />
+
+      {viewingRole && viewingBuiltinId && RoleCardPopup && profilesLink ? (
+        <RoleCardPopup
+          popupId={EDIT_ROLE_POPUP_ID}
+          builtinId={viewingBuiltinId}
+          name={viewingRole.name}
+          description={viewingRole.description}
+          profilesLink={profilesLink}
+          t={t}
+          onClose={closePopup}
+        />
+      ) : null}
     </section>
   );
 }

@@ -25,6 +25,7 @@ export default function WorkspaceSettingsRolesSection({
   const core = useAuthenticatedCoreClient();
   const canManageCustom = canManageCustomWorkspaceRoles(workspace?.planTier);
   const EnterpriseRolesSection = enterpriseRolesModule.EnterpriseRolesSection;
+  const BuiltInRoleCardPopup = enterpriseRolesModule.BuiltInRoleCardPopup;
   const profilesLink = (
     <Link
       to={settingsPath("profiles")}
@@ -37,7 +38,13 @@ export default function WorkspaceSettingsRolesSection({
   return (
     <div className="flex flex-col gap-9">
       <RolesSectionHeader t={t} />
-      <BuiltInRolesLoader workspaceId={workspaceId} core={core} t={t} />
+      <BuiltInRolesLoader
+        workspaceId={workspaceId}
+        core={core}
+        t={t}
+        profilesLink={profilesLink}
+        RoleCardPopup={BuiltInRoleCardPopup}
+      />
       {canManageCustom && EnterpriseRolesSection ? (
         <EnterpriseRolesSection
           workspaceId={workspaceId}

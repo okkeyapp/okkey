@@ -33,6 +33,9 @@ export default function DevUIButtonPage() {
             <Button type="button" variant="destructive">
               Destructive
             </Button>
+            <Button type="button" variant="danger">
+              Danger
+            </Button>
             <Button type="button" variant="link">
               Link
             </Button>
@@ -57,6 +60,9 @@ export default function DevUIButtonPage() {
             <Button type="button" size="sm" variant="destructive">
               Destructive
             </Button>
+            <Button type="button" size="sm" variant="danger">
+              Danger
+            </Button>
             <Button type="button" size="sm" variant="link">
               Link
             </Button>
@@ -74,7 +80,8 @@ export default function DevUIButtonPage() {
             <code className="rounded bg-muted px-1 py-0.5">secondary</code> /{" "}
             <code className="rounded bg-muted px-1 py-0.5">outline</code> /{" "}
             <code className="rounded bg-muted px-1 py-0.5">ghost</code> /{" "}
-            <code className="rounded bg-muted px-1 py-0.5">destructive</code>.
+            <code className="rounded bg-muted px-1 py-0.5">destructive</code> /{" "}
+            <code className="rounded bg-muted px-1 py-0.5">danger</code>.
           </p>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">

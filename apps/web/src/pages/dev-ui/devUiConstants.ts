@@ -38,7 +38,7 @@ export const GALLERY_FRUITS = [
 
 export const DEV_UI_SELECT_BUTTON_VARIANTS = ["default", "secondary", "outline", "destructive", "ghost"] as const;
 
-export const DEV_UI_ICON_BUTTON_VARIANTS = ["default", "secondary", "outline", "ghost", "destructive"] as const;
+export const DEV_UI_ICON_BUTTON_VARIANTS = ["default", "secondary", "outline", "ghost", "destructive", "danger"] as const;
 
 export const DEV_UI_YANDEX_FAVICON = "https://favicon.yandex.net/favicon/yandex.ru?size=120";
 

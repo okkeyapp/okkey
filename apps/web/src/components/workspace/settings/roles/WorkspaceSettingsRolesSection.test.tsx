@@ -8,6 +8,7 @@ import WorkspaceSettingsRolesSection from "./WorkspaceSettingsRolesSection";
 
 const enterpriseModuleMock = vi.hoisted(() => ({
   EnterpriseRolesSection: null as ComponentType<unknown> | null,
+  BuiltInRoleCardPopup: null as ComponentType<unknown> | null,
 }));
 
 const coreMock = vi.hoisted(() => ({
@@ -24,6 +25,9 @@ vi.mock("@okkey-enterprise/workspace-roles", () => ({
   default: {
     get EnterpriseRolesSection() {
       return enterpriseModuleMock.EnterpriseRolesSection;
+    },
+    get BuiltInRoleCardPopup() {
+      return enterpriseModuleMock.BuiltInRoleCardPopup;
     },
   },
 }));

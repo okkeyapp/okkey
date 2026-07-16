@@ -1,18 +1,26 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { WorkspaceBuiltInRoleId } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from "react";
 
 import { extractBuiltInMemberCounts } from "./builtinRoles";
-import BuiltInRolesList from "./BuiltInRolesList";
+import BuiltInRolesList, { type BuiltInRoleCardPopupProps } from "./BuiltInRolesList";
 
 type BuiltInRolesLoaderProps = {
   workspaceId: string;
   core: CoreApiClient;
   t: (messageKey: string, values?: WebMessageValues) => string;
+  profilesLink?: ReactNode;
+  RoleCardPopup?: ComponentType<BuiltInRoleCardPopupProps>;
 };
 
-export default function BuiltInRolesLoader({ workspaceId, core, t }: BuiltInRolesLoaderProps) {
+export default function BuiltInRolesLoader({
+  workspaceId,
+  core,
+  t,
+  profilesLink,
+  RoleCardPopup,
+}: BuiltInRolesLoaderProps) {
   const [memberCounts, setMemberCounts] = useState<Partial<Record<WorkspaceBuiltInRoleId, number>>>();
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -31,5 +39,14 @@ export default function BuiltInRolesLoader({ workspaceId, core, t }: BuiltInRole
     void loadRoles();
   }, [loadRoles]);
 
-  return <BuiltInRolesList t={t} memberCounts={memberCounts} loadError={loadError} onRetry={loadRoles} />;
+  return (
+    <BuiltInRolesList
+      t={t}
+      memberCounts={memberCounts}
+      loadError={loadError}
+      onRetry={loadRoles}
+      profilesLink={profilesLink}
+      RoleCardPopup={RoleCardPopup}
+    />
+  );
 }
