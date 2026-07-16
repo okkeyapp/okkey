@@ -415,9 +415,9 @@ export default function WorkspaceSettingsGeneralSection({
 
         <div className="flex flex-col gap-6">
           <h3 className="text-lg font-semibold text-foreground">{t("web.workspaceSettings.general.itemsSection")}</h3>
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
+          <div className="flex flex-col">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 flex-1 space-y-1">
                 <label htmlFor="deleted-items-retention" className="text-sm font-medium text-foreground">
                   {t("web.workspaceSettings.deletedItemsRetention.label")}
                 </label>
@@ -428,7 +428,7 @@ export default function WorkspaceSettingsGeneralSection({
                 disabled={!isOwner}
                 onValueChange={(value) => void handleRetentionChange(Number(value))}
               >
-                <SelectTrigger id="deleted-items-retention" className="h-9 w-full">
+                <SelectTrigger id="deleted-items-retention" className="h-9 w-full shrink-0 sm:w-[150px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -443,6 +443,8 @@ export default function WorkspaceSettingsGeneralSection({
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="my-4 border-t border-border" aria-hidden />
 
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-1">
@@ -460,6 +462,8 @@ export default function WorkspaceSettingsGeneralSection({
 
             {filesInItemsEnabled ? (
               <>
+                <div className="my-4 border-t border-border" aria-hidden />
+
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-col gap-1">
                     <label htmlFor="allowed-file-extensions" className="text-sm font-medium text-foreground">
@@ -477,15 +481,21 @@ export default function WorkspaceSettingsGeneralSection({
                   />
                 </div>
 
-                <div className="flex flex-col gap-3">
-                  <label htmlFor="max-file-size-mb" className="text-sm font-medium text-foreground">
-                    {t("web.workspaceSettings.maxFileSizeMb.label")}
-                  </label>
+                <div className="my-4 border-t border-border" aria-hidden />
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <label htmlFor="max-file-size-mb" className="text-sm font-medium text-foreground">
+                      {t("web.workspaceSettings.maxFileSizeMb.label")}
+                    </label>
+                    <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.maxFileSizeMb.description")}</p>
+                  </div>
                   <Input
                     id="max-file-size-mb"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
+                    className="w-full shrink-0 sm:w-[150px]"
                     value={maxFileSizeMbInput}
                     disabled={!isOwner}
                     onChange={(event) => setMaxFileSizeMbInput(normalizeMaxFileSizeMbInput(event.target.value))}
