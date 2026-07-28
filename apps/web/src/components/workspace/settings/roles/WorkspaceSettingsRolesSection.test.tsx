@@ -111,7 +111,7 @@ describe("WorkspaceSettingsRolesSection", () => {
     }
 
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub;
-    renderRolesSection("TEAM");
+    renderRolesSection("ENTERPRISE");
 
     expect(screen.getByText("Enterprise roles loaded")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Change your plan" })).not.toBeInTheDocument();

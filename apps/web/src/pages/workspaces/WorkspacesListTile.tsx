@@ -1,5 +1,5 @@
 import type { SVGProps } from "react";
-import type { Workspace } from "@okkey/types";
+import { hasPlanFeature, type Workspace } from "@okkey/types";
 import { cn, workspaceTileElevatedShadowClassName } from "@okkey/ui";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -37,7 +37,7 @@ export default function WorkspacesListTile({ workspace, description, onClick }: 
     workspaceId: workspace.id,
     enabled: hasCustomLogo,
   });
-  const showBusinessBadge = workspace.planTier !== "FREE" && !hasCustomLogo;
+  const showBusinessBadge = hasPlanFeature(workspace.planTier, "paidPlanBadge") && !hasCustomLogo;
 
   return (
     <button

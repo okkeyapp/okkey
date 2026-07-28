@@ -9,9 +9,14 @@ export type ApiEnterprisePluginContext = {
   app: HttpApp;
   config: ApiConfig;
   resolveUserId: (req: IncomingMessage) => Promise<string | null>;
-  postgres: QueryExecutor;
+  postgres: QueryExecutor & {
+    transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+  };
   repositories: {
-    workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+    workspaces: Pick<
+      WorkspacesRepository,
+      "findById" | "hasAccess" | "create" | "countOwnedByUser" | "listByOwner"
+    >;
   };
 };
 

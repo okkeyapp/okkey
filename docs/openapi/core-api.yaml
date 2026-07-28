@@ -1741,7 +1741,7 @@ paths:
       description: >
         Create capsule. Key transport mode is restricted to safe modes (`fragment`, `out_of_band`).
         On FREE plan, capsules are allowed but access settings (`expiresAt`, `maxViews`, `password`,
-        `allowedRecipientEmails`) are unavailable.
+        `allowedRecipientEmails`) are unavailable. ENTERPRISE plan unlocks the full access-settings surface.
       security:
         - bearerAuth: []
       parameters:

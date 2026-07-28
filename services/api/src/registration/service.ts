@@ -255,6 +255,7 @@ export class RegistrationService {
           personalWorkspaceName: input.personalWorkspaceName,
           firstName: input.firstName ?? null,
           lastName: input.lastName ?? null,
+          planTier: this.config.defaultWorkspacePlanTier,
         });
       });
 

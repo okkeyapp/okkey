@@ -7,6 +7,7 @@ const config: Config = {
     "./src/**/*.{ts,tsx,js,jsx}",
     "../../packages/ui/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-roles/src/**/*.{ts,tsx,js,jsx}",
+    "../../../okkey-enterprise/web/workspace-tenancy/src/**/*.{ts,tsx,js,jsx}",
   ],
   theme: {
     extend: {

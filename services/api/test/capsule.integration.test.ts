@@ -41,7 +41,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
-  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,
@@ -122,7 +122,7 @@ test("integration: file capsule persists encrypted blob in object storage", asyn
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
-  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,
@@ -162,7 +162,7 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
-  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,
@@ -208,7 +208,7 @@ test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t)
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
-  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,
@@ -256,7 +256,7 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
-  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,
@@ -302,7 +302,7 @@ test("integration: file capsule open tolerates missing object storage blob", asy
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
-  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'TEAM' WHERE id = $1", [workspaceId]);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,
@@ -330,7 +330,7 @@ test("integration: file capsule open tolerates missing object storage blob", asy
   assert.equal(opened.filePayload, undefined);
 });
 
-test("integration: capsule create is blocked on FREE plan", async (t) => {
+test("integration: capsule create works on FREE without access settings", async (t) => {
   const config = loadConfig();
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
@@ -359,11 +359,18 @@ test("integration: capsule create is blocked on FREE plan", async (t) => {
     config,
   });
 
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "item",
+    encryptedPayload: mkBlob("x"),
+  });
+  assert.ok(created.capsuleId);
+
   await assert.rejects(
     () =>
       capsules.createCapsule(workspaceId, userId, {
         type: "item",
-        encryptedPayload: mkBlob("x"),
+        encryptedPayload: mkBlob("y"),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       }),
     (err: unknown) => err instanceof CapsuleServiceError && err.code === "FEATURE_NOT_AVAILABLE",
   );

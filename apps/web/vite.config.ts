@@ -15,6 +15,14 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/enterprise-roles-stub.ts",
   );
+  const enterpriseTenancyPath = path.resolve(
+    enterpriseRoot,
+    "web/workspace-tenancy/src/index.ts",
+  );
+  const enterpriseTenancyStubPath = path.resolve(
+    __dirname,
+    "./src/workspace-features/stubs/workspace-tenancy-stub.ts",
+  );
 
   return {
     plugins: [react()],
@@ -45,6 +53,9 @@ export default defineConfig(({ mode }) => {
         "@okkey/crypto": path.resolve(__dirname, "../../packages/crypto/src"),
         "@okkey/crypto-wasm": path.resolve(__dirname, "../../packages/crypto/dist/okkey_crypto_engine.js"),
         "@okkey-enterprise/workspace-roles": enterpriseModules ? enterpriseRolesPath : enterpriseRolesStubPath,
+        "@okkey-enterprise/workspace-tenancy": enterpriseModules
+          ? enterpriseTenancyPath
+          : enterpriseTenancyStubPath,
         "@okkey-enterprise/types": path.resolve(enterpriseRoot, "packages/types/src"),
         "@okkey-enterprise/api": path.resolve(enterpriseRoot, "packages/api/src"),
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),

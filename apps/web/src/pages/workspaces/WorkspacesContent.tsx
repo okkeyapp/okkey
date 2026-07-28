@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiRequestError } from "@okkey/api";
 import type { Workspace } from "@okkey/types";
 import { Spinner } from "@okkey/ui";
+import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { writeStoredCurrentWorkspaceId } from "../../auth/workspaceStorage";
@@ -40,10 +41,10 @@ function CreateWorkspaceMark(props: SVGProps<SVGSVGElement>) {
 }
 
 function planDescriptionKey(planTier: string): string {
-  if (planTier === "FREE") {
-    return "plan.free";
+  if (planTier === "ENTERPRISE") {
+    return "plan.enterprise";
   }
-  return "plan.enterprise";
+  return "plan.free";
 }
 
 function WorkspacesListChrome({ children }: { children: ReactNode }) {
@@ -82,6 +83,8 @@ export default function WorkspacesContent() {
   const core = useAuthenticatedCoreClient();
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const canCreateWorkspace = workspaceTenancyModule.canCreateWorkspace;
 
   useEffect(() => {
     if (!core) {
@@ -108,6 +111,36 @@ export default function WorkspacesContent() {
       cancelled = true;
     };
   }, [core, t]);
+
+  async function handleCreateWorkspace() {
+    if (!core || !canCreateWorkspace || creating) {
+      return;
+    }
+    const rawName = window.prompt(
+      t("workspaces.createNamePrompt"),
+      t("workspaces.createDefaultName"),
+    );
+    if (rawName === null) {
+      return;
+    }
+    const name = rawName.trim();
+    if (!name) {
+      return;
+    }
+    setCreating(true);
+    setLoadError(null);
+    try {
+      const created = await core.createWorkspace({ name });
+      if (userId) {
+        writeStoredCurrentWorkspaceId(userId, created.id);
+      }
+      navigate(ITEMS_PATH);
+    } catch {
+      setLoadError(t("workspaces.createError"));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   if (loadError) {
     return <p className="okkey-body text-center text-destructive">{loadError}</p>;
@@ -137,18 +170,22 @@ export default function WorkspacesContent() {
         />
       ))}
 
-      <button
-        type="button"
-        aria-label={t("workspaces.createWorkspaceAria")}
-        className={`flex ${WORKSPACE_TILE_BOX_CLASS} flex-col items-center justify-center gap-3 p-6 ${dashedTileChrome} transition-[transform,box-shadow] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
-      >
-        <p className="okkey-body-strong text-center text-copy-primary">
-          {t("workspaces.createLine1")}
-          <br />
-          {t("workspaces.createLine2")}
-        </p>
-        <CreateWorkspaceMark className="shrink-0 text-copy-primary" />
-      </button>
+      {canCreateWorkspace ? (
+        <button
+          type="button"
+          aria-label={t("workspaces.createWorkspaceAria")}
+          disabled={creating}
+          onClick={() => void handleCreateWorkspace()}
+          className={`flex ${WORKSPACE_TILE_BOX_CLASS} flex-col items-center justify-center gap-3 p-6 ${dashedTileChrome} transition-[transform,box-shadow] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50`}
+        >
+          <p className="okkey-body-strong text-center text-copy-primary">
+            {t("workspaces.createLine1")}
+            <br />
+            {t("workspaces.createLine2")}
+          </p>
+          <CreateWorkspaceMark className="shrink-0 text-copy-primary" />
+        </button>
+      ) : null}
     </WorkspacesListChrome>
   );
 }

@@ -1,4 +1,5 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { hasPlanFeature } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import {
@@ -223,8 +224,18 @@ export class CapsuleService {
     if (!workspace.canAccess) {
       throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
     }
-    if (workspace.planTier === "FREE") {
+    if (!hasPlanFeature(workspace.planTier, "capsules")) {
       throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
+    }
+    if (
+      requestsCapsuleAccessSettings(input) &&
+      !hasPlanFeature(workspace.planTier, "capsuleAccessSettings")
+    ) {
+      throw new CapsuleServiceError(
+        "FEATURE_NOT_AVAILABLE",
+        403,
+        "capsule access settings are unavailable on this plan",
+      );
     }
 
     const expiresAt = normalizeFutureIsoDate(input.expiresAt);
@@ -527,6 +538,20 @@ export class CapsuleService {
       }),
     );
   }
+}
+
+function requestsCapsuleAccessSettings(input: {
+  expiresAt?: string;
+  maxViews?: number;
+  password?: string;
+  allowedRecipientEmails?: string[];
+}): boolean {
+  return Boolean(
+    input.expiresAt ||
+      input.maxViews !== undefined ||
+      (input.password && input.password.length > 0) ||
+      (input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0),
+  );
 }
 
 function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {

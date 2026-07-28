@@ -195,6 +195,17 @@ export class CoreApiClient {
     return this.api.get<Workspace[]>("/workspaces");
   }
 
+  /** Requires enterprise SaaS tenancy plugin (`POST /workspaces`). OSS API returns 404. */
+  createWorkspace(body: { name: string }): Promise<{
+    id: string;
+    name: string;
+    ownerId: string;
+    planTier: string;
+    vaultId: string;
+  }> {
+    return this.api.post("/workspaces", body);
+  }
+
   getVaultUnlockBootstrap(deviceFingerprint: string): Promise<VaultUnlockBootstrapResponseDto> {
     const q = new URLSearchParams({ device_fingerprint: deviceFingerprint });
     return this.api.get<VaultUnlockBootstrapResponseDto>(`/vault/unlock-bootstrap?${q.toString()}`);

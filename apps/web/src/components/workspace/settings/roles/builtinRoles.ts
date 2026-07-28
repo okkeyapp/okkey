@@ -1,4 +1,9 @@
-import type { WorkspaceBuiltInRoleId, WorkspaceBuiltInRoleDto, WorkspaceRoleSummary } from "@okkey/types";
+import {
+  hasPlanFeature,
+  type WorkspaceBuiltInRoleId,
+  type WorkspaceBuiltInRoleDto,
+  type WorkspaceRoleSummary,
+} from "@okkey/types";
 
 export type BuiltInRoleDefinition = {
   builtinId: WorkspaceBuiltInRoleId;
@@ -39,11 +44,9 @@ export function buildBuiltInRoleSummaries(
   }));
 }
 
+/** Custom roles require the ENTERPRISE plan feature (module presence is checked separately). */
 export function canManageCustomWorkspaceRoles(planTier: string | undefined): boolean {
-  if (import.meta.env.VITE_ENTERPRISE_MODULES === "true") {
-    return true;
-  }
-  return Boolean(planTier && planTier !== "FREE");
+  return hasPlanFeature(planTier, "customWorkspaceRoles");
 }
 
 export function extractBuiltInMemberCounts(

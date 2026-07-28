@@ -104,8 +104,13 @@ import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
 
 export interface CreateApiAppOptions {
   enterprisePlugins?: ApiEnterprisePlugin[];
-  postgres?: QueryExecutor;
-  workspacesRepository?: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  postgres?: QueryExecutor & {
+    transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
+  };
+  workspacesRepository?: Pick<
+    WorkspacesRepository,
+    "findById" | "hasAccess" | "create" | "countOwnedByUser" | "listByOwner"
+  >;
 }
 
 export interface AppDeps {

@@ -96,7 +96,8 @@ Client-visible variables must use the `VITE_` prefix. See `.env.example`.
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads `@okkey-enterprise/workspace-roles` from sibling repo `okkey-enterprise/` |
+| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads `@okkey-enterprise/workspace-roles` and `@okkey-enterprise/workspace-tenancy` from sibling `okkey-enterprise/` |
+| `VITE_DEPLOYMENT_MODE` | `self_hosted` | `saas` enables multi-workspace create UI (requires enterprise modules) |
 
 **FREE (open-source only)**
 
@@ -107,7 +108,8 @@ yarn dev:api    # terminal 1
 yarn dev:web    # terminal 2 → http://localhost:5173
 ```
 
-Workspace → **Settings → Roles**: built-in roles (read-only), custom roles upsell, **Create** disabled.
+Workspace → **Settings → Roles**: built-in roles (read-only), custom roles upsell, **Create** disabled.  
+Workspaces page: no additional-workspace create tile (self-hosted OSS = 1 workspace).
 
 **Enterprise (Core + okkey-enterprise)**
 
@@ -115,12 +117,22 @@ Workspace → **Settings → Roles**: built-in roles (read-only), custom roles u
 # repositories/okkey and repositories/okkey-enterprise as siblings
 cd okkey
 echo 'VITE_ENTERPRISE_MODULES=true' >> apps/web/.env
-echo 'ENTERPRISE_MODULES=true' >> services/api/.env   # or export before starting API
+echo 'ENTERPRISE_MODULES=true' >> services/api/.env
+# Optional SaaS multi-workspace:
+# echo 'VITE_DEPLOYMENT_MODE=saas' >> apps/web/.env
+# echo 'OKKEY_DEPLOYMENT_MODE=saas' >> services/api/.env
 yarn dev:web
 ```
 
-Start the API with `ENTERPRISE_MODULES=true` so custom role CRUD routes are registered from `okkey-enterprise/backend/`. Without it, the API exposes built-in roles list only.
+With `ENTERPRISE_MODULES=true`, new workspaces get `plan_tier=ENTERPRISE`. Upgrade existing local rows:
 
-Custom roles list, **Create** button, and role card modal load from `okkey-enterprise/web/workspace-roles/`. See that package’s README for details.
+```sql
+UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE plan_tier IN ('FREE','TEAM','PREMIUM','FAMILY');
+```
 
-Paid workspace plans (`planTier !== FREE`) also enable the enterprise slot when the module is present, even without the env flag, once billing assigns a non-FREE tier.
+Start the API with `ENTERPRISE_MODULES=true` so custom role CRUD and (when SaaS) `POST /workspaces` register from `okkey-enterprise/backend/`.
+
+Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
+SaaS create UI gates via `okkey-enterprise/web/workspace-tenancy/` (`canCreateWorkspace` when `VITE_DEPLOYMENT_MODE=saas`).
+
+Plan entitlements use `hasPlanFeature` (`FREE` | `ENTERPRISE`). Module presence alone does not unlock paid features on a FREE workspace.

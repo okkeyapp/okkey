@@ -361,15 +361,30 @@ Lists workspaces the authenticated user may access (owner or `workspace_members`
 | `id` | string | UUID |
 | `name` | string | |
 | `ownerId` | string | UUID |
-| `planTier` | string | e.g. `FREE` |
-| `createdAt` | string | ISO-8601 UTC |
-| `updatedAt` | string | ISO-8601 UTC |
+| `planTier` | string | `FREE` \| `ENTERPRISE` |
 
 **Errors:**
 
 | `error` | HTTP | When |
 |---------|------|------|
 | `AUTH_REQUIRED` | 401 | No valid Bearer session and no allowed dev header. |
+
+### `POST /workspaces`
+
+**Enterprise SaaS only** (`workspace-tenancy` plugin when `OKKEY_DEPLOYMENT_MODE=saas`). Not registered on OSS / self-hosted Core.
+
+**Body:** `{ "name": string }`
+
+**Response `201`:** `{ id, name, ownerId, planTier, vaultId }`
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing auth |
+| `INVALID_NAME` | 400 | Empty or too long name |
+| `WORKSPACE_LIMIT_REACHED` | 403 | Self-hosted max one owned workspace |
+| (route missing) | 404 | Plugin not loaded |
 
 ### `GET /workspaces/:workspaceId/vaults`
 
@@ -773,7 +788,7 @@ Capsules store encrypted payloads only; decryption happens client-side.
 
 ### `POST /workspaces/:workspaceId/capsules`
 
-Creates a capsule for authenticated creator. On **FREE** plan, capsules are allowed but **access settings** are rejected: `expiresAt`, `maxViews`, `password`, and `allowedRecipientEmails` must be omitted (or the server returns `CAPSULE_ACCESS_SETTINGS_NOT_AVAILABLE` / `403`). Paid tiers may use the full policy surface.
+Creates a capsule for authenticated creator. On **FREE** plan, capsules are allowed but **access settings** are rejected: `expiresAt`, `maxViews`, `password`, and `allowedRecipientEmails` must be omitted (or the server returns `FEATURE_NOT_AVAILABLE` / `403`). **ENTERPRISE** plan may use the full policy surface.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 

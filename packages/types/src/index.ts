@@ -7,11 +7,25 @@ export {
   isEntityId,
 } from "./entity-id.js";
 import type { EntityId } from "./entity-id.js";
+import type { PlanTier } from "./plan-features.js";
 import type {
   WorkspaceBuiltInRoleDto,
   WorkspaceBuiltInRoleId,
   WorkspaceBuiltInRolesListResponseDto,
 } from "./workspace-roles.js";
+
+export type {
+  PlanFeature,
+  PlanTier,
+} from "./plan-features.js";
+export {
+  PLAN_FEATURES,
+  PLAN_FEATURE_MATRIX,
+  PLAN_TIERS,
+  hasPlanFeature,
+  isPlanTier,
+  normalizePlanTier,
+} from "./plan-features.js";
 
 export interface User {
   id: EntityId;
@@ -42,7 +56,7 @@ export interface Workspace {
   id: EntityId;
   name: string;
   ownerId: EntityId;
-  planTier: string;
+  planTier: PlanTier;
   /** Days before soft-deleted vault items are permanently purged from the server. */
   deletedItemsRetentionDays: number;
   /** Lowercase extensions allowed for item file uploads; empty means any extension. */

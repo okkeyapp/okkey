@@ -29,6 +29,8 @@ export interface RegistrationBundleInput {
   /** Optional display name fields (stored server-side for UX after client storage loss). */
   firstName?: string | null;
   lastName?: string | null;
+  /** Plan for the personal workspace created at registration. */
+  planTier?: string;
 }
 
 export interface RegistrationBundleResult {
@@ -84,10 +86,10 @@ export async function insertRegistrationBundle(
   const workspaceRows = await tx.query<{ id: string }>(
     `
       INSERT INTO workspaces (id, name, owner_id, plan_tier)
-      VALUES ($1, $2, $3, 'FREE')
+      VALUES ($1, $2, $3, $4)
       RETURNING id
     `,
-    [workspaceId, workspaceLabel, insertedUserId],
+    [workspaceId, workspaceLabel, insertedUserId, input.planTier ?? "FREE"],
   );
   const insertedWorkspaceId = workspaceRows[0]?.id;
   if (!insertedWorkspaceId) {

@@ -4,6 +4,7 @@ import {
   DEFAULT_NEW_VAULT_CRYPTO_VERSION,
 } from "../crypto/downgrade.ts";
 import { entityIdFromDb, generateEntityId } from "../entity-id.ts";
+import type { PlanTier } from "@okkey/types";
 import type { QueryExecutor } from "./postgres.ts";
 import {
   EntityNotFoundError,
@@ -288,7 +289,7 @@ export interface WorkspaceRecord {
   id: string;
   name: string;
   ownerId: string;
-  planTier: string;
+  planTier: PlanTier | string;
   deletedItemsRetentionDays: number;
   allowedFileExtensions: string[];
   maxFileSizeMb: number;
@@ -329,7 +330,7 @@ export class WorkspacesRepository {
   async create(input: {
     name: string;
     ownerId: string;
-    planTier?: string;
+    planTier?: PlanTier | string;
   }): Promise<WorkspaceRecord> {
     const id = generateEntityId();
     const rows = await this.db.query<WorkspaceRow>(
@@ -341,6 +342,14 @@ export class WorkspacesRepository {
       [id, input.name, input.ownerId, input.planTier ?? "FREE"],
     );
     return mapWorkspace(rows[0]);
+  }
+
+  async countOwnedByUser(ownerId: string): Promise<number> {
+    const rows = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM workspaces WHERE owner_id = $1`,
+      [ownerId],
+    );
+    return Number(rows[0]?.count ?? 0);
   }
 
   async findById(id: string): Promise<WorkspaceRecord | null> {

@@ -17,29 +17,62 @@ The open-source core must:
 
 ---
 
+## Plan tiers (Core)
+
+Commercial workspace plan is `workspace.plan_tier`:
+
+- **`FREE`** — open-source baseline
+- **`ENTERPRISE`** — all paid entitlements (today)
+
+Entitlements are resolved only via `hasPlanFeature(planTier, feature)` in `@okkey/types` (`PLAN_FEATURE_MATRIX`).  
+Later product plans (`PREMIUM` / `FAMILY` / `TEAM`) are added by extending the matrix — call sites stay on `hasPlanFeature`.
+
+Current matrix:
+
+| Feature | FREE | ENTERPRISE |
+|---|---|---|
+| `capsules` | yes | yes |
+| `capsuleAccessSettings` | no | yes |
+| `customWorkspaceRoles` | no | yes |
+| `paidPlanBadge` | no | yes |
+
+Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
+
+---
+
+## Deployment mode (Core)
+
+`OKKEY_DEPLOYMENT_MODE` / `VITE_DEPLOYMENT_MODE`:
+
+| Mode | Default | Workspace policy |
+|---|---|---|
+| `self_hosted` | yes | Owner may have **at most one** workspace (API-enforced) |
+| `saas` | no | Multi-workspace **create** only via private enterprise tenancy plugin |
+
+List / switch / delete stay in Core. **`POST /workspaces` is not a Core route.**
+
+---
+
 ## Free (Open-Source) Functionality
 
 The open-source Core provides the FREE plan baseline:
 
-- Upgrade to paid tiers is available only in SaaS or self-hosted deployments with a license.
+- Upgrade to paid tiers is available only in SaaS or self-hosted deployments with a license / enterprise build.
 - Authentication via email + email code.
 - 2FA: authenticator app and backup codes.
-- Self-hosted: only one workspace; enterprise features unavailable.
-- SaaS: users can create FREE workspaces and upgrade to higher tiers.
+- Self-hosted: only one workspace; enterprise feature modules unavailable in OSS builds.
+- SaaS multi-workspace create is **not** open-source (lives in `okkey-enterprise`).
 - One personal vault per workspace; shared vaults are unavailable.
-- Files are unavailable.
 - Folders are available.
 - Capsules are available; access settings are unavailable (no expiry, view limits, password, or recipient restrictions).
 - Monitoring is unavailable.
 - Tools are available: generator, import, export.
 - Workspace settings: main settings available.
-- Workspace settings: roles view-only for default roles.
+- Workspace settings: roles view-only for default roles (custom roles require ENTERPRISE plan + enterprise module).
 - Workspace settings: profiles view-only for default profiles.
 - Workspace settings: members view-only, owner only.
 - Workspace settings: vaults view-only, personal vault only.
-- Workspace settings: change plan available.
-- Workspace settings: payments and billing available.
-- Workspace settings: license available.
+- Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
 - Personal settings: storage available except confidential sections, biometrics, and PIN.
 - Personal settings: login methods only email confirmation.
@@ -54,12 +87,17 @@ The open-source Core provides the FREE plan baseline:
 Enterprise code:
 
 - lives only in `okkey-enterprise/`
-- attaches via Feature Interfaces
+- attaches via Plugin Registry / Feature Interfaces
 - cannot modify core tables (only add new tables)
 - cannot override core auth or crypto flows
 - cannot bypass Core crypto-version policy or downgrade protections
 - cannot introduce legacy crypto exceptions for production traffic
 - cannot redefine Core key lifecycle/zeroization policy for vault key material
+
+Private SaaS surfaces (examples):
+
+- `workspace-roles` — custom roles CRUD
+- `workspace-tenancy` — `POST /workspaces` when `OKKEY_DEPLOYMENT_MODE=saas`
 
 ---
 
@@ -67,8 +105,9 @@ Enterprise code:
 
 Core backend provides:
 
-- Plugin Registry
+- Plugin Registry (`ApiEnterprisePlugin`)
 - Feature Interfaces (AuthProvider, PolicyProvider, AuditProvider)
+- plan feature matrix + deployment-mode workspace limit
 - license/feature-flag hooks
 
 Enterprise implements:
@@ -78,6 +117,8 @@ Enterprise implements:
 - audit logs
 - org policies
 - admin & reporting
+- SaaS workspace tenancy
+- custom workspace roles
 
 ---
 
@@ -87,11 +128,14 @@ Open-source build:
 
 - uses only core modules
 - ships as `okkey/*` images
+- `OKKEY_DEPLOYMENT_MODE=self_hosted`, `ENTERPRISE_MODULES=false`
 
-Enterprise build:
+Enterprise / SaaS build:
 
 - includes enterprise plugins
 - ships as `okkey-enterprise/*` images
+- SaaS: `OKKEY_DEPLOYMENT_MODE=saas` + `ENTERPRISE_MODULES=true`
+- Self-hosted enterprise: `self_hosted` + enterprise modules (1 workspace, ENTERPRISE plan features)
 
 ---
 
@@ -100,3 +144,11 @@ Enterprise build:
 Core schema is stable and public.
 Enterprise migrations **only add** tables and indexes.
 No core table is altered or removed by enterprise code.
+
+Local upgrade of legacy / FREE rows when developing with enterprise modules:
+
+```sql
+UPDATE workspaces
+SET plan_tier = 'ENTERPRISE'
+WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
+```

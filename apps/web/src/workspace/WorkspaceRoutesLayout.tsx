@@ -17,6 +17,7 @@ import {
 } from "@okkey/ui";
 import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
@@ -503,14 +504,53 @@ export default function WorkspaceRoutesLayout() {
         </div>
         <div className="border-t border-border" role="presentation" />
         <div className="p-1">
-          <DropdownMenuItem className="cursor-pointer justify-center gap-2 text-muted-foreground" disabled>
-            <span className="text-sm">+</span>
-            <span>{t("workspaces.createLine1")}</span>
-          </DropdownMenuItem>
+          {workspaceTenancyModule.canCreateWorkspace ? (
+            <DropdownMenuItem
+              className="cursor-pointer justify-center gap-2"
+              onClick={() => {
+                void (async () => {
+                  if (!core) {
+                    return;
+                  }
+                  const rawName = window.prompt(
+                    t("workspaces.createNamePrompt"),
+                    t("workspaces.createDefaultName"),
+                  );
+                  if (rawName === null) {
+                    return;
+                  }
+                  const name = rawName.trim();
+                  if (!name) {
+                    return;
+                  }
+                  try {
+                    const created = await core.createWorkspace({ name });
+                    if (userId) {
+                      writeStoredCurrentWorkspaceId(userId, created.id);
+                    }
+                    await refreshWorkspaces();
+                    setResolvedWorkspaceId(created.id);
+                    setPhase("ready");
+                    navigate(ITEMS_PATH);
+                  } catch {
+                    // Keep dropdown UX minimal; list page surfaces create errors.
+                  }
+                })();
+              }}
+            >
+              <span className="text-sm">+</span>
+              <span>{t("workspaces.createLine1")}</span>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem className="cursor-pointer justify-center gap-2 text-muted-foreground" disabled>
+              <span className="text-sm">+</span>
+              <span>{t("workspaces.createLine1")}</span>
+            </DropdownMenuItem>
+          )}
         </div>
       </>
     );
-  }, [workspaceList, resolvedWorkspaceId, userId, navigate, t]);
+  }, [workspaceList, resolvedWorkspaceId, userId, navigate, t, core, setResolvedWorkspaceId, setPhase, refreshWorkspaces]);
 
   if (phase === "loading" || !resolvedWorkspaceId) {
     return (

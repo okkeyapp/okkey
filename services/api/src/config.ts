@@ -14,9 +14,15 @@ type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api";
 type CryptoRolloutState = "resume" | "stop";
 
+export type DeploymentMode = "self_hosted" | "saas";
+
 export interface ApiConfig {
   nodeEnv: NodeEnv;
   deployEnv: DeployEnv;
+  /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
+  deploymentMode: DeploymentMode;
+  /** Plan assigned to newly created workspaces. ENTERPRISE when enterprise modules are enabled. */
+  defaultWorkspacePlanTier: "FREE" | "ENTERPRISE";
   port: number;
   logLevel: string;
   corsOrigin: string;
@@ -207,6 +213,17 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
   return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
 }
 
+function parseDeploymentMode(value: string | undefined): DeploymentMode {
+  const normalized = (value ?? "self_hosted").trim().toLowerCase();
+  if (normalized === "saas") {
+    return "saas";
+  }
+  if (normalized === "self_hosted" || normalized === "self-hosted") {
+    return "self_hosted";
+  }
+  throw new Error(`OKKEY_DEPLOYMENT_MODE must be "self_hosted" or "saas", got: ${value}`);
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -214,6 +231,9 @@ export function loadConfig(): ApiConfig {
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
+  const enterpriseModulesEnabled = parseBoolean(process.env.ENTERPRISE_MODULES, false);
+  const deploymentMode = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
+  const defaultWorkspacePlanTier = enterpriseModulesEnabled ? "ENTERPRISE" : "FREE";
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
     getAllowedCryptoProfileVersionsByEnv(deployEnv),
@@ -238,6 +258,8 @@ export function loadConfig(): ApiConfig {
   return {
     nodeEnv,
     deployEnv,
+    deploymentMode,
+    defaultWorkspacePlanTier,
     port: parsePort(process.env.PORT),
     logLevel: process.env.LOG_LEVEL ?? "info",
     /** Comma-separated browser origins, or `*` (reflects request Origin when listed). */
@@ -312,7 +334,7 @@ export function loadConfig(): ApiConfig {
     allowHeaderUserIdAuth:
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
-    enterpriseModulesEnabled: parseBoolean(process.env.ENTERPRISE_MODULES, false),
+    enterpriseModulesEnabled,
     enterpriseModulesPath: resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
