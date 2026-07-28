@@ -51,6 +51,8 @@ export type WorkspaceSidebarLayoutProps = {
   | "workspaceNavGroupLabel"
   | "workspaceSwitcherTrigger"
   | "workspaceSwitcherDropdown"
+  | "workspaceSwitcherTo"
+  | "workspaceSwitcherLink"
   | "vaultItems"
   | "vaultNavLink"
   | "vaultSectionTitle"
@@ -140,6 +142,8 @@ export default function WorkspaceSidebarLayout({
   workspaceNavGroupLabel,
   workspaceSwitcherTrigger,
   workspaceSwitcherDropdown,
+  workspaceSwitcherTo,
+  workspaceSwitcherLink,
   vaultItems,
   vaultNavLink,
   vaultSectionTitle,
@@ -179,6 +183,8 @@ export default function WorkspaceSidebarLayout({
           workspaceNavGroupLabel={workspaceNavGroupLabel}
           workspaceSwitcherTrigger={workspaceSwitcherTrigger}
           workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+          workspaceSwitcherTo={workspaceSwitcherTo}
+          workspaceSwitcherLink={workspaceSwitcherLink ?? workspaceNavLink}
           vaultItems={vaultItems}
           vaultNavLink={vaultNavLink}
           vaultSectionTitle={vaultSectionTitle}

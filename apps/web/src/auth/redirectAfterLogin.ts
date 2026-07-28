@@ -1,5 +1,6 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { NavigateFunction } from "react-router-dom";
+import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
 import { DEFAULT_AUTHENTICATED_PATH, ITEMS_PATH, WORKSPACES_PATH } from "../routes/paths";
 import { readStoredSession } from "./sessionAuthStorage";
@@ -14,13 +15,13 @@ export async function navigateAfterSession(
     const workspaces = await core.listWorkspaces();
     const session = readStoredSession();
     const userId = session?.user_id;
-    if (workspaces.length === 1 && userId) {
+    if ((workspaces.length === 1 || !workspaceTenancyModule.canCreateWorkspace) && workspaces[0] && userId) {
       writeStoredCurrentWorkspaceId(userId, workspaces[0].id);
       navigate(ITEMS_PATH, { replace: true });
       return;
     }
-    navigate(WORKSPACES_PATH, { replace: true });
+    navigate(workspaceTenancyModule.canCreateWorkspace ? WORKSPACES_PATH : ITEMS_PATH, { replace: true });
   } catch {
-    navigate(fallback, { replace: true });
+    navigate(fallback === WORKSPACES_PATH && !workspaceTenancyModule.canCreateWorkspace ? ITEMS_PATH : fallback);
   }
 }

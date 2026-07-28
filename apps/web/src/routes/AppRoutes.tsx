@@ -1,3 +1,4 @@
+import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
@@ -124,7 +125,16 @@ export default function AppRoutes() {
       <Route path={UNLOCK_PASSWORD_LEGACY_PATH} element={<LegacyNavigate to={ACCOUNT_LOCK_PATH} />} />
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
       <Route element={<ProtectedVaultLayout />}>
-        <Route path={WORKSPACES_PATH} element={<WorkspacesPage />} />
+        <Route
+          path={WORKSPACES_PATH}
+          element={
+            workspaceTenancyModule.canCreateWorkspace ? (
+              <WorkspacesPage />
+            ) : (
+              <Navigate to={ITEMS_PATH} replace />
+            )
+          }
+        />
         <Route path={LEGACY_WORKSPACE_DETAIL_PATH_PATTERN} element={<LegacyWorkspaceNestedRedirect />} />
         <Route element={<WorkspaceRoutesLayout />}>
           <Route path={ITEMS_PATH} element={<WorkspaceSectionPage />} />

@@ -868,6 +868,13 @@ export type OkkeyAppSidebarProps = {
   workspaceSwitcherTrigger?: (ctx: { expanded: boolean }) => React.ReactNode;
   /** Replaces workspace switcher dropdown panel (list + actions). */
   workspaceSwitcherDropdown?: React.ReactNode;
+  /**
+   * When set, the workspace header is a nav link (no dropdown) — e.g. self-hosted single workspace → `/items`.
+   * Uses `workspaceSwitcherLink` or falls back to `workspaceNavLink`.
+   */
+  workspaceSwitcherTo?: string;
+  /** Link component for {@link workspaceSwitcherTo}; defaults to `workspaceNavLink`. */
+  workspaceSwitcherLink?: OkkeyWorkspaceNavLinkComponent;
   /** Vault list; omit for demo data. */
   vaultItems?: OkkeySidebarVaultItem[];
   vaultNavLink?: OkkeyWorkspaceNavLinkComponent;
@@ -1111,6 +1118,8 @@ function OkkeyAppSidebarInner({
   workspaceNavGroupLabel,
   workspaceSwitcherTrigger,
   workspaceSwitcherDropdown,
+  workspaceSwitcherTo,
+  workspaceSwitcherLink,
   vaultItems,
   vaultNavLink,
   vaultSectionTitle,
@@ -1132,6 +1141,8 @@ function OkkeyAppSidebarInner({
   | "workspaceNavGroupLabel"
   | "workspaceSwitcherTrigger"
   | "workspaceSwitcherDropdown"
+  | "workspaceSwitcherTo"
+  | "workspaceSwitcherLink"
   | "vaultItems"
   | "vaultNavLink"
   | "vaultSectionTitle"
@@ -1154,6 +1165,26 @@ function OkkeyAppSidebarInner({
   const [collapsedFolderDropdownOpen, setCollapsedFolderDropdownOpen] = React.useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
+  const switcherHref = workspaceSwitcherTo?.trim() ?? "";
+  const SwitcherLink =
+    switcherHref.length > 0 ? (workspaceSwitcherLink ?? workspaceNavLink ?? null) : null;
+  const switcherTriggerContent = workspaceSwitcherTrigger ? (
+    workspaceSwitcherTrigger({ expanded: showExpanded })
+  ) : (
+    <DefaultWorkspaceSwitcherTrigger expanded={showExpanded} />
+  );
+  const switcherExpandedClassName = cn(
+    "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+    sidebarRowHoverClassName,
+    sidebarDropdownTriggerOpenClassName,
+    "w-full gap-2 p-2",
+  );
+  const switcherCollapsedClassName = cn(
+    "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
+    sidebarRowHoverClassName,
+    sidebarDropdownTriggerOpenClassName,
+    "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
+  );
   const footerAccount = footerAccountFromProps(accountMenu);
   const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
   const footerPlainItems = React.useMemo((): OkkeySidebarPlainLinkItem[] => {
@@ -1193,66 +1224,56 @@ function OkkeyAppSidebarInner({
         )}
       >
       <SidebarHeader>
-        <DropdownMenu open={workspaceSwitcherOpen} onOpenChange={setWorkspaceSwitcherOpen}>
-          {showExpanded ? (
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
-                  sidebarRowHoverClassName,
-                  sidebarDropdownTriggerOpenClassName,
-                  "w-full gap-2 p-2",
-                )}
-              >
-                {workspaceSwitcherTrigger ? (
-                  workspaceSwitcherTrigger({ expanded: showExpanded })
-                ) : (
-                  <DefaultWorkspaceSwitcherTrigger expanded={showExpanded} />
-                )}
-              </button>
-            </DropdownMenuTrigger>
+        {SwitcherLink ? (
+          showExpanded ? (
+            <SwitcherLink to={switcherHref} className={switcherExpandedClassName}>
+              {switcherTriggerContent}
+            </SwitcherLink>
           ) : (
-            <CollapsedDropdownIconTooltip
-              label={groupLabel}
-              variant="compact"
-              menuOpen={workspaceSwitcherOpen}
-            >
+            <CollapsedDropdownIconTooltip label={groupLabel} variant="compact">
+              <SwitcherLink to={switcherHref} className={switcherCollapsedClassName}>
+                {switcherTriggerContent}
+              </SwitcherLink>
+            </CollapsedDropdownIconTooltip>
+          )
+        ) : (
+          <DropdownMenu open={workspaceSwitcherOpen} onOpenChange={setWorkspaceSwitcherOpen}>
+            {showExpanded ? (
               <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex items-center rounded-lg text-left outline-none ring-sidebar-ring transition focus-visible:ring-2",
-                    sidebarRowHoverClassName,
-                    sidebarDropdownTriggerOpenClassName,
-                    "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
-                  )}
-                >
-                  {workspaceSwitcherTrigger ? (
-                    workspaceSwitcherTrigger({ expanded: showExpanded })
-                  ) : (
-                    <DefaultWorkspaceSwitcherTrigger expanded={showExpanded} />
-                  )}
+                <button type="button" className={switcherExpandedClassName}>
+                  {switcherTriggerContent}
                 </button>
               </DropdownMenuTrigger>
-            </CollapsedDropdownIconTooltip>
-          )}
-          <DropdownMenuContent
-            side={shell.isMobile ? "bottom" : "right"}
-            align="start"
-            sideOffset={shell.isMobile ? 4 : 6}
-            collisionPadding={shell.isMobile ? 12 : 8}
-            className={cn(
-              "p-0",
-              shell.isMobile
-                ? "max-h-[min(28rem,72dvh)] w-[min(18rem,calc(100vw-1.5rem))] overflow-y-auto"
-                : "w-72",
+            ) : (
+              <CollapsedDropdownIconTooltip
+                label={groupLabel}
+                variant="compact"
+                menuOpen={workspaceSwitcherOpen}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={switcherCollapsedClassName}>
+                    {switcherTriggerContent}
+                  </button>
+                </DropdownMenuTrigger>
+              </CollapsedDropdownIconTooltip>
             )}
-            onCloseAutoFocus={(event) => event.preventDefault()}
-          >
-            {workspaceSwitcherDropdown ?? <WorkspaceSwitcherDropdownPanel />}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownMenuContent
+              side={shell.isMobile ? "bottom" : "right"}
+              align="start"
+              sideOffset={shell.isMobile ? 4 : 6}
+              collisionPadding={shell.isMobile ? 12 : 8}
+              className={cn(
+                "p-0",
+                shell.isMobile
+                  ? "max-h-[min(28rem,72dvh)] w-[min(18rem,calc(100vw-1.5rem))] overflow-y-auto"
+                  : "w-72",
+              )}
+              onCloseAutoFocus={(event) => event.preventDefault()}
+            >
+              {workspaceSwitcherDropdown ?? <WorkspaceSwitcherDropdownPanel />}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </SidebarHeader>
 
       <SidebarContent className="flex min-h-0 flex-1 flex-col">
@@ -1515,6 +1536,8 @@ export function OkkeyAppSidebar({
   workspaceNavGroupLabel,
   workspaceSwitcherTrigger,
   workspaceSwitcherDropdown,
+  workspaceSwitcherTo,
+  workspaceSwitcherLink,
   vaultItems,
   vaultNavLink,
   vaultSectionTitle,
@@ -1582,6 +1605,8 @@ export function OkkeyAppSidebar({
                   workspaceNavGroupLabel={workspaceNavGroupLabel}
                   workspaceSwitcherTrigger={workspaceSwitcherTrigger}
                   workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+                  workspaceSwitcherTo={workspaceSwitcherTo}
+                  workspaceSwitcherLink={workspaceSwitcherLink}
                   vaultItems={vaultItems}
                   vaultNavLink={vaultNavLink}
                   vaultSectionTitle={vaultSectionTitle}
@@ -1613,6 +1638,8 @@ export function OkkeyAppSidebar({
                     workspaceNavGroupLabel={workspaceNavGroupLabel}
                     workspaceSwitcherTrigger={workspaceSwitcherTrigger}
                     workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+                    workspaceSwitcherTo={workspaceSwitcherTo}
+                    workspaceSwitcherLink={workspaceSwitcherLink}
                     vaultItems={vaultItems}
                     vaultNavLink={vaultNavLink}
                     vaultSectionTitle={vaultSectionTitle}

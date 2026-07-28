@@ -378,11 +378,14 @@ export default function WorkspaceRoutesLayout() {
         const fromLs = readStoredCurrentWorkspaceId(userId);
         const candidate = fromQuery || fromLs || "";
         const pickSingle = list.length === 1 ? list[0].id : "";
-        const resolved = candidate || pickSingle;
+        const resolved =
+          (candidate && list.some((w) => w.id === candidate) ? candidate : "") || pickSingle;
 
-        if (!resolved || !list.some((w) => w.id === resolved)) {
+        if (!resolved) {
           clearStoredCurrentWorkspaceId(userId);
-          navigateRef.current(WORKSPACES_PATH, { replace: true });
+          if (workspaceTenancyModule.canCreateWorkspace) {
+            navigateRef.current(WORKSPACES_PATH, { replace: true });
+          }
           return;
         }
 
@@ -407,8 +410,10 @@ export default function WorkspaceRoutesLayout() {
           return;
         }
         if (e instanceof ApiRequestError) {
-          navigateRef.current(WORKSPACES_PATH, { replace: true });
-        } else {
+          if (workspaceTenancyModule.canCreateWorkspace) {
+            navigateRef.current(WORKSPACES_PATH, { replace: true });
+          }
+        } else if (workspaceTenancyModule.canCreateWorkspace) {
           navigateRef.current(WORKSPACES_PATH, { replace: true });
         }
       }
@@ -448,29 +453,29 @@ export default function WorkspaceRoutesLayout() {
     };
   }, [core, resolvedWorkspaceId]);
 
+  const isMultiWorkspaceUi = workspaceTenancyModule.canCreateWorkspace;
+
   const workspaceSwitcherTrigger = useMemo(() => {
     return ({ expanded }: { expanded: boolean }) => (
       <>
         <WorkspaceTileAvatar workspace={currentWorkspace} sizeClass={expanded ? "size-8" : "size-9"} />
         {expanded ? (
-          <>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold leading-5 text-foreground">
-                {currentWorkspace?.name ?? "…"}
-              </p>
-              <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
-                {currentWorkspace ? planTierLabel(currentWorkspace.planTier, t) : ""}
-              </p>
-            </div>
-            <ShellChevrons />
-          </>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold leading-5 text-foreground">
+              {currentWorkspace?.name ?? "…"}
+            </p>
+            <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
+              {currentWorkspace ? planTierLabel(currentWorkspace.planTier, t) : ""}
+            </p>
+          </div>
         ) : null}
+        {expanded && isMultiWorkspaceUi ? <ShellChevrons /> : null}
       </>
     );
-  }, [currentWorkspace, t]);
+  }, [currentWorkspace, isMultiWorkspaceUi, t]);
 
   const workspaceSwitcherDropdown = useMemo(() => {
-    if (!userId) {
+    if (!userId || !isMultiWorkspaceUi) {
       return null;
     }
     return (
@@ -550,7 +555,18 @@ export default function WorkspaceRoutesLayout() {
         </div>
       </>
     );
-  }, [workspaceList, resolvedWorkspaceId, userId, navigate, t, core, setResolvedWorkspaceId, setPhase, refreshWorkspaces]);
+  }, [
+    workspaceList,
+    resolvedWorkspaceId,
+    userId,
+    navigate,
+    t,
+    core,
+    setResolvedWorkspaceId,
+    setPhase,
+    refreshWorkspaces,
+    isMultiWorkspaceUi,
+  ]);
 
   if (phase === "loading" || !resolvedWorkspaceId) {
     return (
@@ -609,7 +625,8 @@ export default function WorkspaceRoutesLayout() {
               vaultsListReady={vaultsListReady}
               workspaceNavItems={workspaceNavItems}
               workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-              workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+              workspaceSwitcherDropdown={isMultiWorkspaceUi ? workspaceSwitcherDropdown : undefined}
+              workspaceSwitcherTo={isMultiWorkspaceUi ? undefined : ITEMS_PATH}
               vaultSidebarItems={vaultSidebarItems}
               folderTreeForItems={folderTreeForItems}
               accountMenu={accountMenu}
@@ -651,6 +668,7 @@ type WorkspaceShellWithItemsProps = {
   workspaceNavItems: ReturnType<typeof okkeyWorkspaceShellNavItems>;
   workspaceSwitcherTrigger: ComponentProps<typeof WorkspaceSidebarLayout>["workspaceSwitcherTrigger"];
   workspaceSwitcherDropdown: ComponentProps<typeof WorkspaceSidebarLayout>["workspaceSwitcherDropdown"];
+  workspaceSwitcherTo: ComponentProps<typeof WorkspaceSidebarLayout>["workspaceSwitcherTo"];
   vaultSidebarItems: OkkeySidebarVaultItem[];
   folderTreeForItems: OkkeySidebarFolderTreeNode[];
   accountMenu: OkkeyAppSidebarAccountMenu | undefined;
@@ -683,6 +701,7 @@ function WorkspaceShellWithItems({
   workspaceNavItems,
   workspaceSwitcherTrigger,
   workspaceSwitcherDropdown,
+  workspaceSwitcherTo,
   vaultSidebarItems,
   folderTreeForItems,
   accountMenu,
@@ -742,6 +761,8 @@ function WorkspaceShellWithItems({
             workspaceNavGroupLabel={t("workspaces.shellTitle")}
             workspaceSwitcherTrigger={workspaceSwitcherTrigger}
             workspaceSwitcherDropdown={workspaceSwitcherDropdown}
+            workspaceSwitcherTo={workspaceSwitcherTo}
+            workspaceSwitcherLink={AppShellNavLink}
             vaultItems={vaultSidebarItems}
             vaultNavLink={AppShellNavLink}
             vaultSectionTitle={t("web.nav.vaultsSection")}
