@@ -334,7 +334,7 @@ export default function WorkspaceSettingsGeneralSection({
 
   if (initialLoading) {
     return (
-      <div className="flex min-h-[240px] items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <Spinner />
       </div>
     );
