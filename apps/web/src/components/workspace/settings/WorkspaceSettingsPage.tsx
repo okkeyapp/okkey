@@ -45,11 +45,11 @@ function WorkspaceSettingsPlaceholderSection({
 
 const breadcrumbGhostButtonClassName = cn(
   buttonVariants({ variant: "ghost", size: "sm" }),
-  "h-6 min-h-6 max-h-6 min-w-0 max-w-full gap-1.5 overflow-hidden px-1 text-sm font-normal text-copy-secondary hover:text-foreground",
+  "h-6 min-h-6 max-h-6 min-w-0 max-w-full gap-1.5 px-1 text-sm font-normal text-copy-secondary hover:text-foreground",
 );
 
 const breadcrumbStaticClassName =
-  "inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 overflow-hidden truncate px-1 text-sm text-foreground";
+  "inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 truncate px-1 text-sm text-foreground";
 
 export default function WorkspaceSettingsPage({
   workspaceId,
@@ -71,12 +71,12 @@ export default function WorkspaceSettingsPage({
 
   return (
     <div ref={pageRootRef} className="flex min-h-full min-w-0 flex-1 flex-col">
-      <header className="hidden h-[52px] shrink-0 items-center border-b border-border md:flex">
+      <header className="hidden h-[52px] shrink-0 items-center overflow-visible border-b border-border md:flex">
         <nav
           aria-label={t("web.workspaceSettings.breadcrumbsAria")}
-          className="flex min-w-0 flex-1 items-center overflow-hidden ps-5 pe-5"
+          className="flex min-w-0 flex-1 items-center overflow-visible ps-5 pe-5"
         >
-          <ol className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden">
+          <ol className="flex min-w-0 flex-nowrap items-center gap-1.5">
             <li className="min-w-0 shrink">
               <Button asChild variant="ghost" className={breadcrumbGhostButtonClassName}>
                 <Link to={itemsHref} title={workspaceName}>
