@@ -18,13 +18,13 @@ test("built-in extended profile has full access rules", () => {
   assert.equal(permissions.entries.get, PROFILE_RESOURCE_PERMISSION_ALL);
 });
 
-test("built-in simple profile allows save_to_personal via functions", () => {
+test("built-in simple profile allows favorite, capsules, and save_to_personal via functions", () => {
   const permissions = getBuiltInProfilePermissions("simple");
   assert.deepEqual(permissions, createSimpleProfilePermissions());
   const functions = permissions.rules.find((rule) => rule.kind === "functions");
   assert.ok(functions && functions.kind === "functions");
   assert.equal(functions.scope, "selected");
-  assert.deepEqual(functions.values, ["save_to_personal"]);
+  assert.deepEqual(functions.values, ["favorite", "create_capsules", "save_to_personal"]);
   assert.equal(permissions.entries.get, PROFILE_RESOURCE_PERMISSION_ALL);
   assert.equal(permissions.entries.post, PROFILE_RESOURCE_PERMISSION_NONE);
 });

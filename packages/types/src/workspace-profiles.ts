@@ -2,7 +2,11 @@ export type WorkspaceBuiltInProfileId = "extended" | "simple";
 
 export type ProfilePermissionScope = "all" | "selected" | "all_except";
 
-export type ProfileFunctionActionId = "favorite" | "create_capsules" | "save_to_personal";
+export type ProfileFunctionActionId =
+  | "archive"
+  | "favorite"
+  | "create_capsules"
+  | "save_to_personal";
 
 export type ProfileDatetimeMode =
   | "all_time"
@@ -74,6 +78,7 @@ export type ProfilePermissions = {
 };
 
 export const PROFILE_FUNCTION_ACTION_IDS: readonly ProfileFunctionActionId[] = [
+  "archive",
   "favorite",
   "create_capsules",
   "save_to_personal",
@@ -153,7 +158,7 @@ export function createFullAccessProfilePermissions(): ProfilePermissions {
   };
 }
 
-/** Simple: read records + save to personal vault. */
+/** Simple: read records + favorite, capsules, save to personal. */
 export function createSimpleProfilePermissions(): ProfilePermissions {
   return {
     rules: [
@@ -163,7 +168,7 @@ export function createSimpleProfilePermissions(): ProfilePermissions {
         id: "builtin-functions",
         kind: "functions",
         scope: "selected",
-        values: ["save_to_personal"],
+        values: ["favorite", "create_capsules", "save_to_personal"],
       },
       defaultDatetimeRule(),
     ],
@@ -200,7 +205,10 @@ function isResourcePost(value: unknown): value is ProfileResourcePostPermission 
 
 function isFunctionAction(value: unknown): value is ProfileFunctionActionId {
   return (
-    value === "favorite" || value === "create_capsules" || value === "save_to_personal"
+    value === "archive" ||
+    value === "favorite" ||
+    value === "create_capsules" ||
+    value === "save_to_personal"
   );
 }
 
