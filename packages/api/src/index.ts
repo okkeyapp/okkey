@@ -39,6 +39,7 @@ import type {
   WorkspaceSettingsUpdateRequestDto,
   WorkspaceDeleteRequestDto,
   WorkspaceRolesListResponseDto,
+  WorkspaceBuiltInProfilesListResponseDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -318,6 +319,12 @@ export class CoreApiClient {
   listWorkspaceRoles(workspaceId: string): Promise<WorkspaceRolesListResponseDto> {
     return this.api.get<WorkspaceRolesListResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/roles`,
+    );
+  }
+
+  listWorkspaceProfiles(workspaceId: string): Promise<WorkspaceBuiltInProfilesListResponseDto> {
+    return this.api.get<WorkspaceBuiltInProfilesListResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/profiles`,
     );
   }
 

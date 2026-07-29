@@ -52,9 +52,11 @@ import {
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
 import { createWorkspaceBuiltInRolesListRoute } from "./routes/workspace-built-in-roles.ts";
+import { createWorkspaceBuiltInProfilesListRoute } from "./routes/workspace-built-in-profiles.ts";
 import type { ApiEnterprisePlugin } from "./plugins/types.ts";
 import type { QueryExecutor } from "./storage/postgres.ts";
 import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
+import type { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
 import type { EmailChangeService } from "./account/email-change.ts";
 import type { WorkspacesRepository } from "./storage/repositories.ts";
 import {
@@ -132,6 +134,7 @@ export interface AppDeps {
   itemTemplatesService?: ItemTemplatesService;
   workspaceSettingsService?: WorkspaceSettingsService;
   workspaceBuiltInRolesService?: WorkspaceBuiltInRolesService;
+  workspaceBuiltInProfilesService?: WorkspaceBuiltInProfilesService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
@@ -319,6 +322,16 @@ export function createApiApp(
         "GET",
         "/workspaces/:workspaceId/roles",
         createWorkspaceBuiltInRolesListRoute(deps.workspaceBuiltInRolesService, resolveUserId),
+      );
+    }
+    const hasEnterpriseWorkspaceProfiles = (options.enterprisePlugins ?? []).some(
+      (plugin) => plugin.id === "workspace-profiles",
+    );
+    if (!hasEnterpriseWorkspaceProfiles && deps.workspaceBuiltInProfilesService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/profiles",
+        createWorkspaceBuiltInProfilesListRoute(deps.workspaceBuiltInProfilesService, resolveUserId),
       );
     }
     if (deps.workspacePersonalSyncService) {

@@ -47,8 +47,17 @@ function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
 
 function CalendarDayButton({ className, day, modifiers, ...props }: DayButtonProps) {
   const defaultClassNames = getDefaultClassNames();
+  const hasCluster =
+    Boolean(modifiers.cluster_start) ||
+    Boolean(modifiers.cluster_middle) ||
+    Boolean(modifiers.cluster_end) ||
+    Boolean(modifiers.cluster_single);
   const isSelectedSingle =
-    modifiers.selected && !modifiers.range_start && !modifiers.range_end && !modifiers.range_middle;
+    modifiers.selected &&
+    !modifiers.range_start &&
+    !modifiers.range_end &&
+    !modifiers.range_middle &&
+    (!hasCluster || Boolean(modifiers.cluster_single));
 
   return (
     <Button
@@ -56,15 +65,21 @@ function CalendarDayButton({ className, day, modifiers, ...props }: DayButtonPro
       size="icon"
       data-day={day.date.toLocaleDateString()}
       data-selected-single={isSelectedSingle}
-      data-today={modifiers.today && !isSelectedSingle}
+      data-today={modifiers.today && !isSelectedSingle && !hasCluster}
       data-range-start={modifiers.range_start}
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
+      data-cluster-start={modifiers.cluster_start || undefined}
+      data-cluster-middle={modifiers.cluster_middle || undefined}
+      data-cluster-end={modifiers.cluster_end || undefined}
       className={cn(
         "focus:outline-none focus:shadow-none focus-visible:outline-none focus-visible:shadow-none",
         "data-[today=true]:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)] data-[today=true]:text-foreground data-[today=true]:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]",
         "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[selected-single=true]:hover:bg-primary data-[selected-single=true]:hover:text-primary-foreground",
         "data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground",
+        "data-[cluster-start=true]:rounded-l-md data-[cluster-start=true]:rounded-r-none data-[cluster-start=true]:bg-primary data-[cluster-start=true]:text-primary-foreground data-[cluster-start=true]:hover:bg-primary data-[cluster-start=true]:hover:text-primary-foreground",
+        "data-[cluster-middle=true]:rounded-none data-[cluster-middle=true]:bg-primary data-[cluster-middle=true]:text-primary-foreground data-[cluster-middle=true]:hover:bg-primary data-[cluster-middle=true]:hover:text-primary-foreground",
+        "data-[cluster-end=true]:rounded-r-md data-[cluster-end=true]:rounded-l-none data-[cluster-end=true]:bg-primary data-[cluster-end=true]:text-primary-foreground data-[cluster-end=true]:hover:bg-primary data-[cluster-end=true]:hover:text-primary-foreground",
         "flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none data-[range-end=true]:rounded-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md [&>span]:text-xs [&>span]:opacity-70",
         defaultClassNames.day,
         className,

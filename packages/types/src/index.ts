@@ -279,6 +279,41 @@ export type {
   WorkspaceBuiltInRolesListResponseDto,
   WorkspaceRoleSummary,
 } from "./workspace-roles.js";
+export type {
+  ProfileCategoriesPermissionRule,
+  ProfileDatetimeMode,
+  ProfileDatetimePermissionRule,
+  ProfileEntriesResourcePermissions,
+  ProfileFieldsPermissionRule,
+  ProfileFixedRuleKind,
+  ProfileFunctionActionId,
+  ProfileFunctionsPermissionRule,
+  ProfilePermissionRule,
+  ProfilePermissionScope,
+  ProfilePermissions,
+  ProfileResourcePostPermission,
+  ProfileResourceScopePermission,
+  ProfileScopeRuleKind,
+  WorkspaceBuiltInProfileDto,
+  WorkspaceBuiltInProfileId,
+  WorkspaceBuiltInProfilesListResponseDto,
+  WorkspaceProfileSummary,
+} from "./workspace-profiles.js";
+export {
+  PROFILE_DATETIME_MODES,
+  PROFILE_FIXED_RULE_KINDS,
+  PROFILE_FUNCTION_ACTION_IDS,
+  PROFILE_PERMISSION_SCOPES,
+  PROFILE_RESOURCE_PERMISSION_ALL,
+  PROFILE_RESOURCE_PERMISSION_NONE,
+  PROFILE_RESOURCE_PERMISSION_OWN,
+  PROFILE_SCOPE_RULE_KINDS,
+  createEmptyProfilePermissions,
+  createFullAccessProfilePermissions,
+  createSimpleProfilePermissions,
+  ensureProfilePermissions,
+  getBuiltInProfilePermissions,
+} from "./workspace-profiles.js";
 
 /** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */
 export interface EncryptedBlobDto {

@@ -21,6 +21,7 @@ import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
+import { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
 import { loadEnterprisePlugins } from "./plugins/load-enterprise-plugins.ts";
 import {
   KeyFieldFileStorage,
@@ -90,6 +91,11 @@ async function main(): Promise<void> {
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,
+    workspaces: storage.repositories.workspaces,
+    db: storage.postgres,
+  });
+  const workspaceBuiltInProfilesService = new WorkspaceBuiltInProfilesService({
+    profiles: storage.repositories.workspaceProfiles,
     workspaces: storage.repositories.workspaces,
     db: storage.postgres,
   });
@@ -180,6 +186,7 @@ async function main(): Promise<void> {
     itemTemplatesService,
     workspaceSettingsService,
     workspaceBuiltInRolesService,
+    workspaceBuiltInProfilesService,
     vaultUnlockBootstrapService,
     vaultSharingService,
     syncService,

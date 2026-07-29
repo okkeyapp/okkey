@@ -7,6 +7,8 @@ export const NEW_ITEM_POPUP_ID = "newItem";
 export const EDIT_ITEM_POPUP_ID = "editItem";
 export const NEW_ROLE_POPUP_ID = "newRole";
 export const EDIT_ROLE_POPUP_ID = "editRole";
+export const NEW_PROFILE_POPUP_ID = "newProfile";
+export const EDIT_PROFILE_POPUP_ID = "editProfile";
 
 export type PopupQuerySearchOptions = {
   copyFromItemId?: string;

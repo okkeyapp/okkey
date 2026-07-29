@@ -1,0 +1,46 @@
+import type { WebMessageValues } from "@okkey/i18n";
+
+type ProfilesSectionHeaderProps = {
+  t: (messageKey: string, values?: WebMessageValues) => string;
+};
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className="size-4 shrink-0"
+    >
+      <path
+        d="M14 6V2H10M14 2L6.66667 9.33333M12 8.66667V12.6667C12 13.0203 11.8595 13.3594 11.6095 13.6095C11.3594 13.8595 11.0203 14 10.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V5.33333C2 4.97971 2.14048 4.64057 2.39052 4.39052C2.64057 4.14048 2.97971 4 3.33333 4H7.33333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function ProfilesSectionHeader({ t }: ProfilesSectionHeaderProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold text-foreground">{t("web.workspaceSettings.sections.profiles")}</h2>
+      <p className="text-sm leading-5 text-muted-foreground">
+        {t("web.workspaceSettings.profiles.intro")}{" "}
+        <a
+          href={t("web.workspaceSettings.profiles.learnMoreUrl")}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
+        >
+          {t("web.workspaceSettings.profiles.learnMore")}
+          <ExternalLinkIcon />
+        </a>
+      </p>
+    </div>
+  );
+}

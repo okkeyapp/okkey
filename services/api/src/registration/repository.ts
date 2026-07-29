@@ -3,6 +3,7 @@ import { generateEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import { ensureDefaultWorkspaceRoles } from "../workspace-roles/seed.ts";
+import { ensureDefaultWorkspaceProfiles } from "../workspace-profiles/seed.ts";
 
 export interface RegistrationBundleInput {
   email: string;
@@ -97,6 +98,7 @@ export async function insertRegistrationBundle(
   }
 
   await ensureDefaultWorkspaceRoles(tx, insertedWorkspaceId, insertedUserId);
+  await ensureDefaultWorkspaceProfiles(tx, insertedWorkspaceId);
 
   const vaultId = generateEntityId();
   const vaultRows = await tx.query<{ id: string }>(

@@ -216,6 +216,7 @@ export {
 } from "./components/ui/favicon.js";
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
 export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
+export { CalendarMonthYearCaption } from "./components/ui/calendar-month-year-caption.js";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 export { KeyFieldAddressInput, type KeyFieldAddressInputProps } from "./components/ui/key-field-address-input.js";
 export { KeyFieldRecoveryCodesInput, type KeyFieldRecoveryCodesInputProps } from "./components/ui/key-field-recovery-codes-input.js";

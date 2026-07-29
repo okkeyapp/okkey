@@ -8,6 +8,18 @@ declare module "@okkey-enterprise/workspace-tenancy" {
   export default workspaceTenancyModule;
 }
 
+declare module "@okkey-enterprise/workspace-roles" {
+  import type { WorkspaceSettingsRolesModule } from "./workspace-features/registry";
+  const enterpriseRolesModule: WorkspaceSettingsRolesModule;
+  export default enterpriseRolesModule;
+}
+
+declare module "@okkey-enterprise/workspace-profiles" {
+  import type { WorkspaceSettingsProfilesModule } from "./workspace-features/registry";
+  const enterpriseProfilesModule: WorkspaceSettingsProfilesModule;
+  export default enterpriseProfilesModule;
+}
+
 interface ImportMetaEnv {
   /** Core API origin, e.g. http://localhost:4000 (must not be the Vite dev URL). */
   readonly VITE_API_BASE_URL?: string;

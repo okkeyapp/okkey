@@ -22,6 +22,7 @@ test("hasPlanFeature: FREE baseline", () => {
   assert.equal(hasPlanFeature("FREE", "capsules"), true);
   assert.equal(hasPlanFeature("FREE", "capsuleAccessSettings"), false);
   assert.equal(hasPlanFeature("FREE", "customWorkspaceRoles"), false);
+  assert.equal(hasPlanFeature("FREE", "customWorkspaceProfiles"), false);
   assert.equal(hasPlanFeature("FREE", "paidPlanBadge"), false);
 });
 
@@ -29,6 +30,7 @@ test("hasPlanFeature: ENTERPRISE unlocks paid features", () => {
   assert.equal(hasPlanFeature("ENTERPRISE", "capsules"), true);
   assert.equal(hasPlanFeature("ENTERPRISE", "capsuleAccessSettings"), true);
   assert.equal(hasPlanFeature("ENTERPRISE", "customWorkspaceRoles"), true);
+  assert.equal(hasPlanFeature("ENTERPRISE", "customWorkspaceProfiles"), true);
   assert.equal(hasPlanFeature("ENTERPRISE", "paidPlanBadge"), true);
 });
 
