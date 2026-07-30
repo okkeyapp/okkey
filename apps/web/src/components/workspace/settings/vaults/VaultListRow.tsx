@@ -1,5 +1,5 @@
 import { cn } from "@okkey/ui";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 type VaultListRowProps = {
   icon: string;
@@ -20,6 +20,8 @@ export default function VaultListRow({
   className,
   rounded = "both",
 }: VaultListRowProps) {
+  const [focused, setFocused] = useState(false);
+
   const roundedClass =
     rounded === "both"
       ? "rounded-lg"
@@ -56,12 +58,23 @@ export default function VaultListRow({
     "transition-[color,box-shadow,background-color,border-color]",
     roundedClass,
     onClick && "cursor-pointer hover:bg-secondary",
+    focused && [
+      "z-10 bg-secondary",
+      "!border-accent",
+      "shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+    ],
     className,
   );
 
   if (onClick) {
     return (
-      <button type="button" className={rowClassName} onClick={onClick}>
+      <button
+        type="button"
+        className={rowClassName}
+        onClick={onClick}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      >
         {content}
       </button>
     );

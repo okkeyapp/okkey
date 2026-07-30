@@ -234,10 +234,11 @@ export default function WorkspaceSettingsVaultsSection({
         {!canManageShared ? <SharedVaultsUpsell t={t} /> : null}
 
         {canManageShared && sharedVaults.length > 0 ? (
-          <div className="px-px">
-            <div className="overflow-hidden rounded-lg border border-border">
+          <div className="flex flex-col gap-4 px-px">
+            <div className="rounded-lg border border-border">
               {sharedVaults.map((vault, index) => {
                 const isFirst = index === 0;
+                const isLast = index === sharedVaults.length - 1;
                 return (
                   <VaultListRow
                     key={vault.id}
@@ -248,31 +249,28 @@ export default function WorkspaceSettingsVaultsSection({
                       count: vault.memberCount ?? 0,
                     })}
                     onClick={() => openPopup(buildPopupQueryValue(EDIT_VAULT_POPUP_ID, vault.id))}
-                    rounded={isFirst ? "top" : "none"}
+                    rounded={
+                      isFirst && isLast ? "both" : isFirst ? "top" : isLast ? "bottom" : "none"
+                    }
                     className={cn(
                       !isFirst && "-mt-px border-t-border",
-                      "border-x-transparent border-b-transparent",
+                      "border-x-transparent",
                       isFirst && "border-t-transparent",
+                      isLast && "border-b-transparent",
                     )}
                   />
                 );
               })}
-              <Button
-                type="button"
-                variant="secondary"
-                className={cn(
-                  "relative -mt-px h-8 w-full rounded-b-lg rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
-                  "border-x-transparent border-b-transparent",
-                  "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
-                  "focus:z-10 focus:border-accent focus:!border-t-accent",
-                  "focus-visible:z-10 focus-visible:border-accent focus-visible:!border-t-accent",
-                )}
-                onClick={() => openPopup(NEW_VAULT_POPUP_ID)}
-              >
-                <PlusIcon className="size-4" />
-                {t("web.workspaceSettings.vaults.card.createTitle")}
-              </Button>
             </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-8 w-full gap-1 px-3 font-medium"
+              onClick={() => openPopup(NEW_VAULT_POPUP_ID)}
+            >
+              <PlusIcon className="size-4" />
+              {t("web.workspaceSettings.vaults.card.createTitle")}
+            </Button>
           </div>
         ) : null}
       </section>

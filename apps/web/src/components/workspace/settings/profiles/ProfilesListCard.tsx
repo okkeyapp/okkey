@@ -7,7 +7,7 @@ type ProfilesListCardProps = {
   profiles: readonly WorkspaceProfileSummary[];
   t: (messageKey: string, values?: WebMessageValues) => string;
   onProfileClick?: (profile: WorkspaceProfileSummary) => void;
-  /** Renders below the list inside the same card (e.g. "+ Create profile"). */
+  /** Renders below the list as a full-width secondary button (e.g. "+ Create profile"). */
   footerAction?: {
     label: string;
     onClick: () => void;
@@ -58,10 +58,9 @@ export default function ProfilesListCard({
   }
 
   const lastIndex = profiles.length - 1;
-  const hasFooter = Boolean(footerAction);
 
   return (
-    <div className={cn("px-px", className)}>
+    <div className={cn("flex flex-col gap-4 px-px", className)}>
       <div className="rounded-lg border border-border">
         {profiles.map((profile, index) => {
           const content = (
@@ -85,7 +84,7 @@ export default function ProfilesListCard({
             "relative -mt-px flex w-full items-center gap-4 border border-x-transparent border-y-border px-4 py-4 text-left outline-none",
             "transition-[color,box-shadow,background-color,border-color]",
             index === 0 && "mt-0 rounded-t-lg border-t-transparent",
-            isLastProfile && !hasFooter && "rounded-b-lg border-b-transparent",
+            isLastProfile && "rounded-b-lg border-b-transparent",
             onProfileClick && "cursor-pointer hover:bg-secondary",
             isFocused && [
               "z-10 bg-secondary",
@@ -117,26 +116,20 @@ export default function ProfilesListCard({
             </div>
           );
         })}
-
-        {footerAction ? (
-          <Button
-            type="button"
-            variant="secondary"
-            className={cn(
-              "relative -mt-px h-8 w-full rounded-b-lg rounded-t-none border border-border bg-secondary px-3 font-medium text-foreground shadow-none",
-              "border-x-transparent border-b-transparent",
-              "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
-              "focus:z-10 focus:border-accent focus:!border-t-accent",
-              "focus-visible:z-10 focus-visible:border-accent focus-visible:!border-t-accent",
-            )}
-            onClick={footerAction.onClick}
-            disabled={footerAction.disabled}
-          >
-            <PlusIcon className="size-4" />
-            {footerAction.label}
-          </Button>
-        ) : null}
       </div>
+
+      {footerAction ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-8 w-full gap-1 px-3 font-medium"
+          onClick={footerAction.onClick}
+          disabled={footerAction.disabled}
+        >
+          <PlusIcon className="size-4" />
+          {footerAction.label}
+        </Button>
+      ) : null}
     </div>
   );
 }
