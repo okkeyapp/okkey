@@ -522,6 +522,7 @@
   "web.workspaceSettings.vaults.upsellPrefix": "Shared vaults are not available on your plan. ",
   "web.workspaceSettings.vaults.upsellPlanLink": "Change your plan",
   "web.workspaceSettings.vaults.upsellSuffix": " to unlock shared vaults.",
+  "web.workspaceSettings.vaults.loading": "Loading vaults…",
   "web.workspaceSettings.vaults.card.createTitle": "Create vault",
   "web.workspaceSettings.vaults.card.editTitle": "Edit vault",
   "web.workspaceSettings.vaults.card.personalSubtitle": "Personal vault",

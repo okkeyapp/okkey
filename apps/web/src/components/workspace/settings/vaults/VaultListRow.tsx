@@ -44,17 +44,17 @@ export default function VaultListRow({
           hasDescription ? "gap-1 justify-center" : "justify-center",
         )}
       >
-        <p className="truncate text-sm font-medium text-foreground">{title}</p>
+        <p className="truncate text-sm font-medium leading-5 text-foreground">{title}</p>
         {hasDescription ? (
-          <p className="truncate text-sm text-muted-foreground">{description}</p>
+          <p className="truncate text-sm leading-5 text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      <div className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground">{trailing}</div>
+      <div className="flex shrink-0 items-center gap-1 text-sm leading-5 text-muted-foreground">{trailing}</div>
     </>
   );
 
   const rowClassName = cn(
-    "relative flex w-full items-center gap-4 border border-border px-4 py-4 text-left outline-none",
+    "relative flex h-[78px] w-full items-center gap-4 border border-border px-4 text-left outline-none",
     "transition-[color,box-shadow,background-color,border-color]",
     roundedClass,
     onClick && "cursor-pointer hover:bg-secondary",

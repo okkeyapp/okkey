@@ -27,6 +27,7 @@ type WorkspaceSettingsPageProps = {
   workspaceId: string;
   workspace?: Workspace;
   vaults: readonly Vault[];
+  vaultsListReady?: boolean;
   onSettingsChanged?: (patch: ReturnType<typeof workspacePatchFromSettingsResponse>) => void;
   onVaultsChanged?: () => void | Promise<void>;
 };
@@ -58,6 +59,7 @@ export default function WorkspaceSettingsPage({
   workspaceId,
   workspace,
   vaults,
+  vaultsListReady = true,
   onSettingsChanged,
   onVaultsChanged,
 }: WorkspaceSettingsPageProps) {
@@ -143,6 +145,7 @@ export default function WorkspaceSettingsPage({
                 workspaceId={workspaceId}
                 workspace={workspace}
                 vaults={vaults}
+                vaultsListReady={vaultsListReady}
                 t={t}
                 onVaultsChanged={onVaultsChanged}
               />

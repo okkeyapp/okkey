@@ -10,6 +10,7 @@ import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, isSettingsPathname, V
 export type WorkspaceShellOutletContext = {
   workspaceId: string;
   vaults: readonly Vault[];
+  vaultsListReady?: boolean;
   workspace?: Workspace;
   refreshWorkspaces?: () => Promise<void>;
   patchWorkspace?: (workspaceId: string, patch: Partial<Workspace>) => void;
@@ -17,7 +18,7 @@ export type WorkspaceShellOutletContext = {
 };
 
 export default function WorkspaceSectionPage() {
-  const { workspaceId, vaults, workspace, patchWorkspace, refreshVaults } =
+  const { workspaceId, vaults, vaultsListReady, workspace, patchWorkspace, refreshVaults } =
     useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
   const location = useLocation();
@@ -34,6 +35,7 @@ export default function WorkspaceSectionPage() {
         workspaceId={workspaceId}
         workspace={workspace}
         vaults={vaults}
+        vaultsListReady={vaultsListReady}
         onSettingsChanged={(patch) => patchWorkspace?.(workspaceId, patch)}
         onVaultsChanged={refreshVaults}
       />

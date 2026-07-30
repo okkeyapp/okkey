@@ -60,28 +60,33 @@ export default function RolesListCard({
 
   return (
     <div className={cn("flex flex-col gap-4 px-px", className)}>
-      <div className="rounded-lg border border-border">
+      <div>
         {roles.map((role, index) => {
           const content = (
             <>
               <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-                <p className="truncate text-sm font-medium text-foreground">{role.name}</p>
-                <p className="truncate text-sm text-muted-foreground">{role.description}</p>
+                <p className="truncate text-sm font-medium leading-5 text-foreground">{role.name}</p>
+                <p className="truncate text-sm leading-5 text-muted-foreground">{role.description}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <span className="text-sm text-muted-foreground">{memberCountLabel(role.memberCount, t)}</span>
+                <span className="text-sm leading-5 text-muted-foreground">
+                  {memberCountLabel(role.memberCount, t)}
+                </span>
                 {renderTrailing?.(role)}
               </div>
             </>
           );
 
-          const isLastRole = index === lastIndex;
+          const isFirst = index === 0;
+          const isLast = index === lastIndex;
           const isFocused = onRoleClick != null && focusedRoleId === role.id;
           const rowClassName = cn(
-            "relative -mt-px flex w-full items-center gap-4 border border-x-transparent border-y-border px-4 py-4 text-left outline-none",
+            "relative -mt-px flex h-[78px] w-full items-center gap-4 border border-border px-4 text-left outline-none",
             "transition-[color,box-shadow,background-color,border-color]",
-            index === 0 && "mt-0 rounded-t-lg border-t-transparent",
-            isLastRole && "rounded-b-lg border-b-transparent",
+            isFirst && "mt-0",
+            isFirst && isLast && "rounded-lg",
+            isFirst && !isLast && "rounded-t-lg",
+            isLast && !isFirst && "rounded-b-lg",
             onRoleClick && "cursor-pointer hover:bg-secondary",
             isFocused && [
               "z-10 bg-secondary",

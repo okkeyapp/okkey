@@ -522,6 +522,7 @@
   "web.workspaceSettings.vaults.upsellPrefix": "В вашем тарифном плане общие сейфы недоступны. ",
   "web.workspaceSettings.vaults.upsellPlanLink": "Смените тарифный план",
   "web.workspaceSettings.vaults.upsellSuffix": ", чтобы разблокировать общие сейфы.",
+  "web.workspaceSettings.vaults.loading": "Загрузка сейфов…",
   "web.workspaceSettings.vaults.card.createTitle": "Создать сейф",
   "web.workspaceSettings.vaults.card.editTitle": "Редактировать сейф",
   "web.workspaceSettings.vaults.card.personalSubtitle": "Личный сейф",

@@ -841,6 +841,7 @@ function WorkspaceShellWithItems({
               context={{
                 workspaceId: resolvedWorkspaceId,
                 vaults,
+                vaultsListReady,
                 workspace: currentWorkspace,
                 refreshWorkspaces,
                 patchWorkspace,

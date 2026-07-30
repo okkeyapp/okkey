@@ -19,6 +19,7 @@ import SharedVaultsUpsell from "./SharedVaultsUpsell";
 import VaultCardPopup from "./VaultCardPopup";
 import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
+import SettingsListCardSkeleton from "../SettingsListCardSkeleton";
 import {
   DEFAULT_PERSONAL_VAULT_ICON,
   DEFAULT_SHARED_VAULT_ICON,
@@ -29,6 +30,7 @@ type WorkspaceSettingsVaultsSectionProps = {
   workspaceId: string;
   workspace?: Workspace;
   vaults: readonly Vault[];
+  vaultsListReady?: boolean;
   t: (messageKey: string, values?: WebMessageValues) => string;
   onVaultsChanged?: () => void | Promise<void>;
 };
@@ -58,6 +60,7 @@ export default function WorkspaceSettingsVaultsSection({
   workspaceId,
   workspace,
   vaults,
+  vaultsListReady = true,
   t,
   onVaultsChanged,
 }: WorkspaceSettingsVaultsSectionProps) {
@@ -193,7 +196,13 @@ export default function WorkspaceSettingsVaultsSection({
     <div className="flex flex-col gap-9">
       <VaultsSectionHeader t={t} />
 
-      {personalVault ? (
+      {!vaultsListReady ? (
+        <SettingsListCardSkeleton
+          withLeadingIcon
+          withFooterButton={false}
+          label={t("web.workspaceSettings.vaults.loading")}
+        />
+      ) : personalVault ? (
         <div className="px-px">
           <VaultListRow
             icon={normalizeVaultIcon(personalVault.icon, DEFAULT_PERSONAL_VAULT_ICON)}
@@ -223,6 +232,7 @@ export default function WorkspaceSettingsVaultsSection({
               size="sm"
               className="mt-1.5 shrink-0 gap-1 max-md:h-8 max-md:w-8 max-md:min-h-8 max-md:min-w-8 max-md:rounded-sm max-md:!p-0"
               onClick={() => openPopup(NEW_VAULT_POPUP_ID)}
+              disabled={!vaultsListReady}
               aria-label={t("web.workspaceSettings.vaults.shared.create")}
             >
               <PlusIcon className="size-4" />
@@ -233,9 +243,16 @@ export default function WorkspaceSettingsVaultsSection({
 
         {!canManageShared ? <SharedVaultsUpsell t={t} /> : null}
 
-        {canManageShared && sharedVaults.length > 0 ? (
+        {canManageShared && !vaultsListReady ? (
+          <SettingsListCardSkeleton
+            withLeadingIcon
+            label={t("web.workspaceSettings.vaults.loading")}
+          />
+        ) : null}
+
+        {canManageShared && vaultsListReady && sharedVaults.length > 0 ? (
           <div className="flex flex-col gap-4 px-px">
-            <div className="rounded-lg border border-border">
+            <div>
               {sharedVaults.map((vault, index) => {
                 const isFirst = index === 0;
                 const isLast = index === sharedVaults.length - 1;
@@ -252,12 +269,7 @@ export default function WorkspaceSettingsVaultsSection({
                     rounded={
                       isFirst && isLast ? "both" : isFirst ? "top" : isLast ? "bottom" : "none"
                     }
-                    className={cn(
-                      !isFirst && "-mt-px border-t-border",
-                      "border-x-transparent",
-                      isFirst && "border-t-transparent",
-                      isLast && "border-b-transparent",
-                    )}
+                    className={cn(!isFirst && "-mt-px")}
                   />
                 );
               })}
