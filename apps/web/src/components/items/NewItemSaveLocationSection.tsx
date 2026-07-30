@@ -12,6 +12,10 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE, folderPathExists, type FlatWorkspaceFolder } from "../../folders/workspaceFolderTree";
+import {
+  DEFAULT_SHARED_VAULT_ICON,
+  vaultDisplayIcon,
+} from "../workspace/settings/vaults/vaultIcons";
 
 type NewItemSaveLocationSectionProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -58,9 +62,9 @@ function FolderClosedIcon({ className }: { className?: string }) {
 
 function vaultLeadingEmoji(vault: Vault | undefined): string {
   if (!vault) {
-    return "💼";
+    return DEFAULT_SHARED_VAULT_ICON;
   }
-  return vault.isPersonal ? "🏠" : "💼";
+  return vaultDisplayIcon(vault);
 }
 
 function VaultSelectLabel({ vault }: { vault: Vault | undefined }) {

@@ -40,6 +40,11 @@ import type {
   WorkspaceDeleteRequestDto,
   WorkspaceRolesListResponseDto,
   WorkspaceBuiltInProfilesListResponseDto,
+  VaultCreateRequestDto,
+  VaultUpdateRequestDto,
+  WorkspaceMembersListResponseDto,
+  VaultAccessResponseDto,
+  VaultAccessUpdateRequestDto,
 } from "../../types/src/index.js";
 import { isClientPqCapable } from "../../types/src/index.js";
 
@@ -242,6 +247,16 @@ export class CoreApiClient {
     return this.api.get<Vault[]>(`/workspaces/${encodeURIComponent(workspaceId)}/vaults`);
   }
 
+  createWorkspaceVault(workspaceId: string, body: VaultCreateRequestDto): Promise<Vault> {
+    return this.api.post<Vault>(`/workspaces/${encodeURIComponent(workspaceId)}/vaults`, body);
+  }
+
+  listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMembersListResponseDto> {
+    return this.api.get<WorkspaceMembersListResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    );
+  }
+
   getWorkspaceItemCategoryPreferences(
     workspaceId: string,
   ): Promise<WorkspaceItemCategoryPreferencesResponseDto> {
@@ -330,6 +345,22 @@ export class CoreApiClient {
 
   getVault(vaultId: string): Promise<Vault> {
     return this.api.get<Vault>(`/vaults/${encodeURIComponent(vaultId)}`);
+  }
+
+  updateVault(vaultId: string, body: VaultUpdateRequestDto): Promise<Vault> {
+    return this.api.patch<Vault>(`/vaults/${encodeURIComponent(vaultId)}`, body);
+  }
+
+  deleteVault(vaultId: string): Promise<{ deleted: true }> {
+    return this.api.delete<{ deleted: true }>(`/vaults/${encodeURIComponent(vaultId)}`);
+  }
+
+  getVaultAccess(vaultId: string): Promise<VaultAccessResponseDto> {
+    return this.api.get<VaultAccessResponseDto>(`/vaults/${encodeURIComponent(vaultId)}/access`);
+  }
+
+  updateVaultAccess(vaultId: string, body: VaultAccessUpdateRequestDto): Promise<{ updated: true }> {
+    return this.api.put<{ updated: true }>(`/vaults/${encodeURIComponent(vaultId)}/access`, body);
   }
 
   listVaultEvents(vaultId: string, afterVersion = 0): Promise<SyncEventsListResponseDto> {

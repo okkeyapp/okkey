@@ -77,9 +77,17 @@ async function main(): Promise<void> {
     config,
     log: logger,
   });
+  const vaultSharingService = new VaultSharingService({
+    db: storage.postgres,
+    vaults: storage.repositories.vaults,
+    config,
+    log: logger,
+  });
   const vaultService = new VaultService({
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
+    db: storage.postgres,
+    vaultSharing: vaultSharingService,
   });
   const itemCategoryPreferencesService = new ItemCategoryPreferencesService({
     preferences: storage.repositories.workspaceMemberItemCategoryPreferences,
@@ -103,12 +111,6 @@ async function main(): Promise<void> {
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
-  });
-  const vaultSharingService = new VaultSharingService({
-    db: storage.postgres,
-    vaults: storage.repositories.vaults,
-    config,
-    log: logger,
   });
   const syncService = new SyncService({
     vaults: storage.repositories.vaults,

@@ -2,6 +2,48 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { VaultService, VaultServiceError } from "../src/vault/service.ts";
 
+function vaultsStub(overrides?: Partial<VaultService["vaults"] extends never ? never : object>) {
+  return {
+    listAccessibleByWorkspace: async () => [
+      {
+        id: "v1",
+        workspaceId: "w1",
+        name: "Personal",
+        description: "",
+        icon: "🏠",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ],
+    listByWorkspace: async () => [
+      {
+        id: "v1",
+        workspaceId: "w1",
+        name: "Personal",
+        description: "",
+        icon: "🏠",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ],
+    findById: async () => null,
+    canReadVault: async () => false,
+    canManageVaultSettings: async () => false,
+    create: async () => {
+      throw new Error("not implemented");
+    },
+    updateMetadata: async () => null,
+    deleteById: async () => false,
+    ...overrides,
+  };
+}
+
 test("listWorkspaceVaults returns vaults for accessible workspace", async () => {
   const service = new VaultService({
     workspaces: {
@@ -16,22 +58,7 @@ test("listWorkspaceVaults returns vaults for accessible workspace", async () => 
       hasAccess: async () => true,
       listAccessibleByUser: async () => [],
     },
-    vaults: {
-      listAccessibleByWorkspace: async () => [
-        {
-          id: "v1",
-          workspaceId: "w1",
-          name: "Personal",
-          isPersonal: true,
-          ownerId: "u1",
-          cryptoVersion: 2,
-          createdAt: "",
-          updatedAt: "",
-        },
-      ],
-      findById: async () => null,
-      canReadVault: async () => false,
-    },
+    vaults: vaultsStub(),
   });
 
   const result = await service.listWorkspaceVaults("w1", "u1");
@@ -46,11 +73,7 @@ test("getVault returns 404 when vault missing", async () => {
       hasAccess: async () => false,
       listAccessibleByUser: async () => [],
     },
-    vaults: {
-      findById: async () => null,
-      canReadVault: async () => false,
-      listAccessibleByWorkspace: async () => [],
-    },
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -67,11 +90,13 @@ test("getVault returns 403 when user has no access", async () => {
       hasAccess: async () => false,
       listAccessibleByUser: async () => [],
     },
-    vaults: {
+    vaults: vaultsStub({
       findById: async () => ({
         id: "v1",
         workspaceId: "w1",
         name: "Shared",
+        description: "",
+        icon: "💼",
         isPersonal: false,
         ownerId: null,
         cryptoVersion: 2,
@@ -79,8 +104,7 @@ test("getVault returns 403 when user has no access", async () => {
         updatedAt: "",
       }),
       canReadVault: async () => false,
-      listAccessibleByWorkspace: async () => [],
-    },
+    }),
   });
 
   await assert.rejects(
@@ -105,14 +129,48 @@ test("listAccessibleWorkspaces delegates to workspaces repository", async () => 
       hasAccess: async () => false,
       listAccessibleByUser: async (userId: string) => (userId === "u1" ? [ws] : []),
     },
-    vaults: {
-      findById: async () => null,
-      canReadVault: async () => false,
-      listAccessibleByWorkspace: async () => [],
-    },
+    vaults: vaultsStub(),
   });
 
   const result = await service.listAccessibleWorkspaces("u1");
   assert.equal(result.length, 1);
   assert.equal(result[0].id, "w1");
+});
+
+test("deleteVault rejects personal vaults", async () => {
+  const service = new VaultService({
+    workspaces: {
+      findById: async () => ({
+        id: "w1",
+        name: "Workspace",
+        ownerId: "u1",
+        planTier: "ENTERPRISE",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      hasAccess: async () => true,
+      listAccessibleByUser: async () => [],
+    },
+    vaults: vaultsStub({
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Personal",
+        description: "",
+        icon: "🏠",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canManageVaultSettings: async () => true,
+    }),
+  });
+
+  await assert.rejects(
+    () => service.deleteVault("v1", "u1"),
+    (error: unknown) =>
+      error instanceof VaultServiceError && error.code === "VAULT_DELETE_FORBIDDEN",
+  );
 });

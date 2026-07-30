@@ -15,7 +15,7 @@ import {
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
@@ -35,6 +35,7 @@ import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
   NEW_ITEM_POPUP_ID,
+  NEW_VAULT_POPUP_ID,
   popupQuerySearch,
 } from "../routes/popupQuery";
 import {
@@ -44,6 +45,7 @@ import {
 } from "../auth/workspaceStorage";
 import WorkspaceSidebarLayout from "../components/workspace/WorkspaceSidebarLayout";
 import WorkspaceTileAvatar from "../components/workspace/WorkspaceTileAvatar";
+import { vaultDisplayIcon } from "../components/workspace/settings/vaults/vaultIcons";
 import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
@@ -67,6 +69,27 @@ import {
   type WorkspaceAppShellPath,
 } from "../routes/paths";
 import { planTierLabel } from "./planTierLabel";
+
+function SharedVaultMembersIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M10.6667 14V12.6667C10.6667 11.9594 10.3857 11.2811 9.88565 10.781C9.38555 10.281 8.70728 10 8.00003 10H4.00003C3.29279 10 2.61451 10.281 2.11441 10.781C1.61432 11.2811 1.33337 11.9594 1.33337 12.6667V14M14.6667 13.9999V12.6666C14.6662 12.0757 14.4696 11.5018 14.1076 11.0348C13.7456 10.5678 13.2388 10.2343 12.6667 10.0866M10.6667 2.08659C11.2403 2.23346 11.7487 2.56706 12.1118 3.0348C12.4748 3.50254 12.6719 4.07781 12.6719 4.66992C12.6719 5.26204 12.4748 5.83731 12.1118 6.30505C11.7487 6.77279 11.2403 7.10639 10.6667 7.25326M8.6667 4.66667C8.6667 6.13943 7.47279 7.33333 6.00003 7.33333C4.52727 7.33333 3.33337 6.13943 3.33337 4.66667C3.33337 3.19391 4.52727 2 6.00003 2C7.47279 2 8.6667 3.19391 8.6667 4.66667Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function ShellChevrons({ className }: { className?: string }) {
   return (
@@ -231,14 +254,27 @@ export default function WorkspaceRoutesLayout() {
       id: v.id,
       leading: (
         <span className="text-base leading-none" aria-hidden>
-          {v.isPersonal ? "🏠" : "💼"}
+          {vaultDisplayIcon(v)}
         </span>
       ),
       label: v.name,
+      rightIcon: v.isPersonal ? undefined : <SharedVaultMembersIcon className="size-4" />,
       to: itemsPathWithVaultMerged(searchParams, v.id, itemsPathMergeOptions),
       isActive: pathname === ITEMS_PATH && vaultQ === v.id && !folderQ && !categoryQ && !searchQ,
     }));
   }, [vaults, pathname, vaultQ, folderQ, categoryQ, searchQ, searchParams, itemsPathMergeOptions]);
+
+  const openNewVaultPopup = useCallback(
+    (event: PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      navigate({
+        pathname: settingsPath("vaults"),
+        search: popupQuerySearch("", NEW_VAULT_POPUP_ID),
+        hash: location.hash,
+      });
+    },
+    [location.hash, navigate],
+  );
 
   const currentWorkspace = useMemo(
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
@@ -453,6 +489,18 @@ export default function WorkspaceRoutesLayout() {
     };
   }, [core, resolvedWorkspaceId]);
 
+  const refreshVaults = useCallback(async () => {
+    if (!core || !resolvedWorkspaceId) {
+      return;
+    }
+    try {
+      const list = await core.listWorkspaceVaults(resolvedWorkspaceId);
+      setVaults(list);
+    } catch {
+      /* keep previous list */
+    }
+  }, [core, resolvedWorkspaceId]);
+
   const isMultiWorkspaceUi = workspaceTenancyModule.canCreateWorkspace;
 
   const workspaceSwitcherTrigger = useMemo(() => {
@@ -635,6 +683,7 @@ export default function WorkspaceRoutesLayout() {
                 help: t("web.nav.help"),
               }}
               openFoldersSettingsPopup={openFoldersSettingsPopup}
+              openNewVaultPopup={openNewVaultPopup}
               core={core}
               userId={userId ?? ""}
               vaultKey={vaultKey}
@@ -642,6 +691,7 @@ export default function WorkspaceRoutesLayout() {
               workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
               refreshWorkspaces={refreshWorkspaces}
               patchWorkspace={patchWorkspace}
+              refreshVaults={refreshVaults}
             />
           </WorkspaceFoldersProvider>
         );
@@ -674,6 +724,7 @@ type WorkspaceShellWithItemsProps = {
   accountMenu: OkkeyAppSidebarAccountMenu | undefined;
   footerPlainLinkLabels: { documentation: string; help: string };
   openFoldersSettingsPopup: () => void;
+  openNewVaultPopup: (event: PointerEvent<HTMLButtonElement>) => void;
   core: ReturnType<typeof useAuthenticatedCoreClient>;
   userId: string;
   vaultKey: Uint8Array | null;
@@ -681,6 +732,7 @@ type WorkspaceShellWithItemsProps = {
   workspaceFoldersBootstrapped: boolean;
   refreshWorkspaces: () => Promise<void>;
   patchWorkspace: (workspaceId: string, patch: Partial<Workspace>) => void;
+  refreshVaults: () => Promise<void>;
 };
 
 function WorkspaceShellWithItems({
@@ -707,6 +759,7 @@ function WorkspaceShellWithItems({
   accountMenu,
   footerPlainLinkLabels,
   openFoldersSettingsPopup,
+  openNewVaultPopup,
   core,
   userId,
   vaultKey,
@@ -714,6 +767,7 @@ function WorkspaceShellWithItems({
   workspaceFoldersBootstrapped,
   refreshWorkspaces,
   patchWorkspace,
+  refreshVaults,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const workspaceItemsState = useWorkspaceItemsState({
@@ -774,6 +828,7 @@ function WorkspaceShellWithItems({
             footerPlainLinkLabels={footerPlainLinkLabels}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
             folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
+            onVaultHeaderPlusPointerDown={openNewVaultPopup}
             onFolderHeaderActionClick={openFoldersSettingsPopup}
             itemsListVaults={vaults}
             itemsListVaultsLoaded={vaultsListReady}
@@ -789,6 +844,7 @@ function WorkspaceShellWithItems({
                 workspace: currentWorkspace,
                 refreshWorkspaces,
                 patchWorkspace,
+                refreshVaults,
               }}
             />
           </WorkspaceSidebarLayout>

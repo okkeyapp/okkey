@@ -28,6 +28,7 @@ import { useRadixScrollAreaScrolled, useRadixScrollAreaScrollEdges } from "../..
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
+import { vaultDisplayIcon } from "./settings/vaults/vaultIcons";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -792,7 +793,7 @@ function buildSections(sorted: readonly ItemsListRecord[], sort: ItemsListSort, 
   });
 }
 
-export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean };
+export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean; icon?: string };
 
 function ItemsListRecordFavicon({
   row,
@@ -1223,7 +1224,7 @@ export default function ItemsListLeftPane({
                           <Spinner size="small" className="size-4 shrink-0" />
                         ) : (
                           <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
-                            <span className="text-[14px] leading-none">{vaultMeta?.isPersonal ? "🏠" : "💼"}</span>
+                            <span className="text-[14px] leading-none">{vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}</span>
                           </span>
                         )
                       ) : folderQ ? (
@@ -1295,7 +1296,7 @@ export default function ItemsListLeftPane({
                     onSelect={(e) => e.preventDefault()}
                   >
                     <span className="text-base leading-none" aria-hidden>
-                      {vaultMeta?.isPersonal ? "🏠" : "💼"}
+                      {vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-left">{vaultMeta?.name ?? vaultQ}</span>
                     <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />

@@ -65,7 +65,13 @@ import {
 } from "./routes/workspace-personal-sync.ts";
 import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
+  createVaultAccessGetRoute,
+  createVaultAccessUpdateRoute,
+  createVaultDeleteRoute,
   createVaultGetRoute,
+  createVaultUpdateRoute,
+  createWorkspaceMembersListRoute,
+  createWorkspaceVaultCreateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
@@ -263,6 +269,16 @@ export function createApiApp(
       "/workspaces/:workspaceId/vaults",
       createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId),
     );
+    app.route(
+      "POST",
+      "/workspaces/:workspaceId/vaults",
+      createWorkspaceVaultCreateRoute(deps.vaultService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/workspaces/:workspaceId/members",
+      createWorkspaceMembersListRoute(deps.vaultService, resolveUserId),
+    );
     if (deps.itemCategoryPreferencesService) {
       app.route(
         "GET",
@@ -350,6 +366,26 @@ export function createApiApp(
       "GET",
       "/vaults/:vaultId",
       createVaultGetRoute(deps.vaultService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/vaults/:vaultId",
+      createVaultUpdateRoute(deps.vaultService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/vaults/:vaultId",
+      createVaultDeleteRoute(deps.vaultService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/vaults/:vaultId/access",
+      createVaultAccessGetRoute(deps.vaultService, resolveUserId),
+    );
+    app.route(
+      "PUT",
+      "/vaults/:vaultId/access",
+      createVaultAccessUpdateRoute(deps.vaultService, resolveUserId),
     );
   }
   if (deps.vaultSharingService) {

@@ -7,6 +7,7 @@ export type PlanFeature =
   | "capsuleAccessSettings"
   | "customWorkspaceRoles"
   | "customWorkspaceProfiles"
+  | "sharedVaults"
   | "paidPlanBadge";
 
 export const PLAN_TIERS: readonly PlanTier[] = ["FREE", "ENTERPRISE"] as const;
@@ -16,6 +17,7 @@ export const PLAN_FEATURES: readonly PlanFeature[] = [
   "capsuleAccessSettings",
   "customWorkspaceRoles",
   "customWorkspaceProfiles",
+  "sharedVaults",
   "paidPlanBadge",
 ] as const;
 
@@ -29,6 +31,7 @@ export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>>
     capsuleAccessSettings: false,
     customWorkspaceRoles: false,
     customWorkspaceProfiles: false,
+    sharedVaults: false,
     paidPlanBadge: false,
   },
   ENTERPRISE: {
@@ -36,6 +39,7 @@ export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>>
     capsuleAccessSettings: true,
     customWorkspaceRoles: true,
     customWorkspaceProfiles: true,
+    sharedVaults: true,
     paidPlanBadge: true,
   },
 };

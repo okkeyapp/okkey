@@ -17,6 +17,7 @@ import {
 import WorkspaceSettingsGeneralSection from "./WorkspaceSettingsGeneralSection";
 import WorkspaceSettingsRolesSection from "./roles/WorkspaceSettingsRolesSection";
 import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfilesSection";
+import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import { ChevronRightIcon } from "./workspaceSettingsIcons";
@@ -27,6 +28,7 @@ type WorkspaceSettingsPageProps = {
   workspace?: Workspace;
   vaults: readonly Vault[];
   onSettingsChanged?: (patch: ReturnType<typeof workspacePatchFromSettingsResponse>) => void;
+  onVaultsChanged?: () => void | Promise<void>;
 };
 
 function WorkspaceSettingsPlaceholderSection({
@@ -57,6 +59,7 @@ export default function WorkspaceSettingsPage({
   workspace,
   vaults,
   onSettingsChanged,
+  onVaultsChanged,
 }: WorkspaceSettingsPageProps) {
   const { t } = useLocale();
   const { sectionSlug = "" } = useParams<{ sectionSlug: string }>();
@@ -134,6 +137,14 @@ export default function WorkspaceSettingsPage({
                 workspaceId={workspaceId}
                 workspace={workspace}
                 t={t}
+              />
+            ) : activeSection === "vaults" ? (
+              <WorkspaceSettingsVaultsSection
+                workspaceId={workspaceId}
+                workspace={workspace}
+                vaults={vaults}
+                t={t}
+                onVaultsChanged={onVaultsChanged}
               />
             ) : (
               <WorkspaceSettingsPlaceholderSection section={activeSection} t={t} />

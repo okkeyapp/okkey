@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import { itemsPathWithFolderMerged, itemsPathWithVaultMerged } from "../../routes/paths";
+import { vaultDisplayIcon } from "../workspace/settings/vaults/vaultIcons";
 
 function FolderClosedIcon({ className }: { className?: string }) {
   return (
@@ -51,7 +52,7 @@ function BreadcrumbTrail({
   showFolderLabel,
 }: BreadcrumbTrailProps) {
   const vaultName = vault?.name ?? "…";
-  const vaultEmoji = vault?.isPersonal ? "🏠" : "💼";
+  const vaultEmoji = vault ? vaultDisplayIcon(vault) : "💼";
   const vaultButtonClassName = showVaultLabel ? breadcrumbGhostButtonClassName : breadcrumbIconOnlyButtonClassName;
   const folderButtonClassName = showFolderLabel ? breadcrumbGhostButtonClassName : breadcrumbIconOnlyButtonClassName;
 

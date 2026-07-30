@@ -227,6 +227,17 @@ export {
 export { wrapVaultKeyWithRecoverySecret, unwrapVaultKeyWithRecoverySecret } from "./vault-recovery-key.js";
 
 export {
+  HYBRID_VAULT_KEY_WRAP_SCHEME,
+  VAULT_KEY_WRAP_AAD,
+  generateSharedVaultKey,
+  wrapVaultKeyForRecipient,
+  unwrapVaultKeyForSelf,
+  createOpaqueVaultEventPayload,
+  type WrapVaultKeyForRecipientInput,
+  type UnwrapVaultKeyInput,
+} from "./vault-key-wrap.js";
+
+export {
   OKKEY_CRYPTO_PROFILE_V2,
   MLKEM768_ENCAPSULATION_KEY_LEN,
   MLKEM768_DECAPSULATION_KEY_LEN,

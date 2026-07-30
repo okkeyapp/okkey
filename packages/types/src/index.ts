@@ -79,12 +79,113 @@ export interface Vault {
   id: EntityId;
   workspaceId: EntityId;
   name: string;
+  /** Short description shown in settings lists. */
+  description: string;
+  /** Unicode emoji used as vault icon in UI. */
+  icon: string;
   isPersonal: boolean;
   ownerId?: EntityId | null;
   /** Vault crypto profile floor; never decreases (server-enforced). */
   cryptoVersion: number;
+  /** Members with vault access (membership + profile); omitted on some endpoints. */
+  memberCount?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** `POST /workspaces/:workspaceId/vaults` request body. */
+export interface VaultCreateRequestDto {
+  name: string;
+  description?: string;
+  icon?: string;
+  /** Opaque event payload for `VAULT_CREATE` (client-encrypted). */
+  encryptedPayload: EncryptedBlobDto;
+  signature?: HybridSignatureEnvelopeDto;
+  baseVersion?: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+  members: VaultCreateMemberDto[];
+}
+
+export interface VaultCreateMemberDto {
+  userId: EntityId;
+  /** Content access profile; omit / null = no access (should not appear in create members). */
+  profileId: EntityId;
+  encryptedVaultKey: EncryptedBlobDto;
+  /** Vault share-manager role; default `member`, creator typically `owner`. */
+  role?: string;
+}
+
+/** `PATCH /vaults/:vaultId` request body. */
+export interface VaultUpdateRequestDto {
+  name?: string;
+  description?: string;
+  icon?: string;
+}
+
+/** `GET /workspaces/:workspaceId/members` member row. */
+export interface WorkspaceMemberDto {
+  userId: EntityId;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  publicKey: string;
+  publicPqKey: string | null;
+  roleId: EntityId | null;
+  /** Built-in role key when system role (`owner` | `admin` | `user`), else null. */
+  roleBuiltinKey: string | null;
+}
+
+/** `GET /workspaces/:workspaceId/members` success body. */
+export interface WorkspaceMembersListResponseDto {
+  workspaceId: EntityId;
+  members: WorkspaceMemberDto[];
+}
+
+/** Access assignment for one workspace member on a vault. */
+export interface VaultAccessMemberDto {
+  userId: EntityId;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  role: string | null;
+  profileId: EntityId | null;
+  publicKey: string;
+  publicPqKey: string | null;
+}
+
+/** `GET /vaults/:vaultId/access` success body. */
+export interface VaultAccessResponseDto {
+  vaultId: EntityId;
+  members: VaultAccessMemberDto[];
+}
+
+/**
+ * `PUT /vaults/:vaultId/access` — batch apply access changes on Save.
+ * Grants require `encryptedVaultKey`. Revokes require full `rotatedVaultKeys` for remaining recipients.
+ */
+export interface VaultAccessUpdateRequestDto {
+  grants: Array<{
+    userId: EntityId;
+    profileId: EntityId;
+    encryptedVaultKey: EncryptedBlobDto;
+    role?: string;
+  }>;
+  /** Profile-only updates for users who already have a vault key wrap. */
+  profileUpdates: Array<{
+    userId: EntityId;
+    profileId: EntityId;
+  }>;
+  revokes: Array<{
+    userId: EntityId;
+  }>;
+  /** Required when `revokes` is non-empty: re-wrapped keys for all remaining active recipients. */
+  rotatedVaultKeys?: VaultRotatedKeyDto[];
+  encryptedPayload: EncryptedBlobDto;
+  signature?: HybridSignatureEnvelopeDto;
+  baseVersion: number;
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
 }
 
 export interface Item {
@@ -333,7 +434,9 @@ export interface HybridSignatureEnvelopeDto {
     | "vault.share"
     | "vault.revoke"
     | "vault.rotate"
-    | "vault.member_role_update";
+    | "vault.member_role_update"
+    | "vault.create"
+    | "vault.access_update";
   signer_pq_public_key: string;
   payload_hash: string;
   signature: string;

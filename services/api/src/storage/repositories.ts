@@ -514,10 +514,14 @@ export interface VaultRecord {
   id: string;
   workspaceId: string;
   name: string;
+  description: string;
+  icon: string;
   isPersonal: boolean;
   ownerId: string | null;
   /** Minimum crypto profile for this vault; never decreases (see `assertVaultCryptoFloor`). */
   cryptoVersion: number;
+  /** Present when listed with member counts for settings. */
+  memberCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -532,6 +536,8 @@ export class VaultsRepository {
   async create(input: {
     workspaceId: string;
     name: string;
+    description?: string;
+    icon?: string;
     isPersonal?: boolean;
     ownerId?: string | null;
   }): Promise<VaultRecord> {
@@ -540,20 +546,24 @@ export class VaultsRepository {
       BaseRow & {
         workspace_id: string;
         name: string;
+        description: string;
+        icon: string;
         is_personal: boolean;
         owner_id: string | null;
         crypto_version: number;
       }
     >(
       `
-        INSERT INTO vaults (id, workspace_id, name, is_personal, owner_id, crypto_version)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
+        INSERT INTO vaults (id, workspace_id, name, description, icon, is_personal, owner_id, crypto_version)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, workspace_id, name, description, icon, is_personal, owner_id, crypto_version, created_at, updated_at
       `,
       [
         id,
         input.workspaceId,
         input.name,
+        input.description ?? "",
+        input.icon ?? "",
         input.isPersonal ?? false,
         input.ownerId ?? null,
         DEFAULT_NEW_VAULT_CRYPTO_VERSION,
@@ -567,13 +577,15 @@ export class VaultsRepository {
       BaseRow & {
         workspace_id: string;
         name: string;
+        description: string;
+        icon: string;
         is_personal: boolean;
         owner_id: string | null;
         crypto_version: number;
       }
     >(
       `
-        SELECT id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
+        SELECT id, workspace_id, name, description, icon, is_personal, owner_id, crypto_version, created_at, updated_at
         FROM vaults
         WHERE id = $1
       `,
@@ -582,21 +594,82 @@ export class VaultsRepository {
     return rows[0] ? mapVault(rows[0]) : null;
   }
 
-  async listByWorkspace(workspaceId: string): Promise<VaultRecord[]> {
+  async updateMetadata(
+    id: string,
+    patch: { name?: string; description?: string; icon?: string },
+  ): Promise<VaultRecord | null> {
     const rows = await this.db.query<
       BaseRow & {
         workspace_id: string;
         name: string;
+        description: string;
+        icon: string;
         is_personal: boolean;
         owner_id: string | null;
         crypto_version: number;
       }
     >(
       `
-        SELECT id, workspace_id, name, is_personal, owner_id, crypto_version, created_at, updated_at
-        FROM vaults
-        WHERE workspace_id = $1
-        ORDER BY created_at ASC
+        UPDATE vaults
+        SET
+          name = COALESCE($2, name),
+          description = COALESCE($3, description),
+          icon = COALESCE($4, icon),
+          updated_at = now()
+        WHERE id = $1
+        RETURNING id, workspace_id, name, description, icon, is_personal, owner_id, crypto_version, created_at, updated_at
+      `,
+      [id, patch.name ?? null, patch.description ?? null, patch.icon ?? null],
+    );
+    return rows[0] ? mapVault(rows[0]) : null;
+  }
+
+  async deleteById(id: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM vaults
+        WHERE id = $1
+          AND is_personal = false
+        RETURNING id
+      `,
+      [id],
+    );
+    return Boolean(rows[0]);
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<VaultRecord[]> {
+    const rows = await this.db.query<
+      BaseRow & {
+        workspace_id: string;
+        name: string;
+        description: string;
+        icon: string;
+        is_personal: boolean;
+        owner_id: string | null;
+        crypto_version: number;
+        member_count: number;
+      }
+    >(
+      `
+        SELECT
+          v.id,
+          v.workspace_id,
+          v.name,
+          v.description,
+          v.icon,
+          v.is_personal,
+          v.owner_id,
+          v.crypto_version,
+          v.created_at,
+          v.updated_at,
+          (
+            SELECT COUNT(*)::int
+            FROM vault_members vm
+            WHERE vm.vault_id = v.id
+          ) AS member_count
+        FROM vaults v
+        WHERE v.workspace_id = $1
+        ORDER BY v.is_personal DESC, v.created_at ASC
       `,
       [workspaceId],
     );
@@ -611,9 +684,12 @@ export class VaultsRepository {
       BaseRow & {
         workspace_id: string;
         name: string;
+        description: string;
+        icon: string;
         is_personal: boolean;
         owner_id: string | null;
         crypto_version: number;
+        member_count: number;
       }
     >(
       `
@@ -621,11 +697,18 @@ export class VaultsRepository {
           v.id,
           v.workspace_id,
           v.name,
+          v.description,
+          v.icon,
           v.is_personal,
           v.owner_id,
           v.crypto_version,
           v.created_at,
-          v.updated_at
+          v.updated_at,
+          (
+            SELECT COUNT(*)::int
+            FROM vault_members vm2
+            WHERE vm2.vault_id = v.id
+          ) AS member_count
         FROM vaults v
         LEFT JOIN vault_members vm
           ON vm.vault_id = v.id
@@ -638,7 +721,7 @@ export class VaultsRepository {
             OR vm.user_id IS NOT NULL
             OR v.owner_id = $2
           )
-        ORDER BY v.created_at ASC
+        ORDER BY v.is_personal DESC, v.created_at ASC
       `,
       [workspaceId, userId],
     );
@@ -667,6 +750,35 @@ export class VaultsRepository {
       [vaultId, userId],
     );
     return Boolean(rows[0]?.can_read);
+  }
+
+  async canManageVaultSettings(vaultId: string, userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ can_manage: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM vaults v
+          INNER JOIN workspaces w ON w.id = v.workspace_id
+          LEFT JOIN vault_members vm
+            ON vm.vault_id = v.id
+           AND vm.user_id = $2
+          LEFT JOIN workspace_members wm
+            ON wm.workspace_id = v.workspace_id
+           AND wm.user_id = $2
+          LEFT JOIN roles r
+            ON r.id = wm.role_id
+          WHERE v.id = $1
+            AND (
+              w.owner_id = $2
+              OR v.owner_id = $2
+              OR COALESCE(vm.role, '') IN ('owner', 'admin')
+              OR COALESCE(r.builtin_key, '') IN ('owner', 'admin')
+            )
+        ) AS can_manage
+      `,
+      [vaultId, userId],
+    );
+    return Boolean(rows[0]?.can_manage);
   }
 }
 
@@ -1713,18 +1825,24 @@ function mapVault(
   row: BaseRow & {
     workspace_id: string;
     name: string;
+    description?: string;
+    icon?: string;
     is_personal: boolean;
     owner_id: string | null;
     crypto_version: number;
+    member_count?: number;
   },
 ): VaultRecord {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
     name: row.name,
+    description: row.description ?? "",
+    icon: row.icon ?? "",
     isPersonal: row.is_personal,
     ownerId: row.owner_id,
     cryptoVersion: row.crypto_version,
+    memberCount: row.member_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };

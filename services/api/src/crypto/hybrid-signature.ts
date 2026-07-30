@@ -15,6 +15,8 @@ const REQUIRED_CONTEXTS = new Set([
   "vault.revoke",
   "vault.rotate",
   "vault.member_role_update",
+  "vault.create",
+  "vault.access_update",
 ] as const);
 
 export type SignatureContext =
@@ -22,7 +24,9 @@ export type SignatureContext =
   | "vault.share"
   | "vault.revoke"
   | "vault.rotate"
-  | "vault.member_role_update";
+  | "vault.member_role_update"
+  | "vault.create"
+  | "vault.access_update";
 
 export function parseHybridSignatureEnvelope(
   value: unknown,

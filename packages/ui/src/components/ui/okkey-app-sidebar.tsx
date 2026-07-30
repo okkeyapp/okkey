@@ -895,6 +895,8 @@ export type OkkeyAppSidebarProps = {
   footerPlainLinkLabels?: { documentation: string; help: string };
   /** `aria-label` + tooltip for the vaults section “+” (expanded + collapsed dropdown). Default: gallery English. */
   vaultHeaderPlusAriaLabel?: string;
+  /** Opens create-vault flow when the vaults section “+” is pressed. */
+  onVaultHeaderPlusPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   /** `aria-label` + tooltip for the folders section header action (expanded + collapsed dropdown). Default: gallery English. */
   folderHeaderPlusAriaLabel?: string;
   /** Opens folder settings when the folders section header action is clicked. */
@@ -1131,6 +1133,7 @@ function OkkeyAppSidebarInner({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
+  onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel: _mobileNavCloseLabel = "Close menu",
 }: Pick<
@@ -1154,6 +1157,7 @@ function OkkeyAppSidebarInner({
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "onVaultHeaderPlusPointerDown"
   | "onFolderHeaderActionClick"
   | "mobileNavCloseLabel"
 >) {
@@ -1315,6 +1319,7 @@ function OkkeyAppSidebarInner({
                         items={vaultData}
                         showHeaderPlus
                         headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
+                        onHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                         linkComponent={vaultNavLink}
                         onDropdownClose={() => setCollapsedVaultDropdownOpen(false)}
                       />
@@ -1382,6 +1387,7 @@ function OkkeyAppSidebarInner({
                     items={vaultData}
                     showHeaderPlus
                     headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
+                    onHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                     linkComponent={vaultNavLink}
                   />
                   {showFolders ? (
@@ -1549,6 +1555,7 @@ export function OkkeyAppSidebar({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel,
 }: OkkeyAppSidebarProps) {
@@ -1618,6 +1625,7 @@ export function OkkeyAppSidebar({
                   footerPlainLinkLabels={footerPlainLinkLabels}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                  onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                   onFolderHeaderActionClick={onFolderHeaderActionClick}
                   mobileNavCloseLabel={mobileNavCloseLabel}
                 />
@@ -1651,6 +1659,7 @@ export function OkkeyAppSidebar({
                     footerPlainLinkLabels={footerPlainLinkLabels}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                    onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                     onFolderHeaderActionClick={onFolderHeaderActionClick}
                     mobileNavCloseLabel={mobileNavCloseLabel}
                   />

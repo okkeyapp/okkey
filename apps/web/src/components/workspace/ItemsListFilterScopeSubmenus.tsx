@@ -18,6 +18,7 @@ import { itemsPathWithFolderMerged, itemsPathWithVaultMerged } from "../../route
 import { ITEM_CATEGORY_DEFINITIONS, getItemCategoryDefinition, type ItemCategoryId } from "../items/itemCategoryCatalog";
 import { ItemCategoryIcon } from "../items/itemCategoryIcons";
 import type { ItemsListPaneVault, ItemsListRecord } from "./ItemsListLeftPane";
+import { vaultDisplayIcon } from "./settings/vaults/vaultIcons";
 
 function FilterVaultsIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -365,7 +366,7 @@ export function ItemsListFilterScopeSubmenus({
                 onSelect={() => onNavigateTo(itemsPathWithVaultMerged(searchParams, vault.id))}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center text-[14px] leading-none" aria-hidden>
-                  {vault.isPersonal ? "🏠" : "💼"}
+                  {vaultDisplayIcon(vault)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-left">{vault.name}</span>
               </DropdownMenuItem>

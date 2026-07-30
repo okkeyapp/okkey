@@ -265,6 +265,23 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0016);
   }
+
+  const vaultDescriptionColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'vaults'
+        AND column_name = 'description'
+    ) AS exists`,
+  );
+  if (!vaultDescriptionColumn[0]?.exists) {
+    const migration0017 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0017_vault_metadata.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0017);
+  }
 }
 
 export async function cleanupUserData(

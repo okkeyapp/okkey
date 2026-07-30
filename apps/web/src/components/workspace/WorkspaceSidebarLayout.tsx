@@ -64,10 +64,11 @@ export type WorkspaceSidebarLayoutProps = {
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "onVaultHeaderPlusPointerDown"
   | "onFolderHeaderActionClick"
 > & {
   /** `/items` left pane: workspace vaults for scope label + filtering. */
-  itemsListVaults?: readonly { id: string; name: string; isPersonal: boolean }[];
+  itemsListVaults?: readonly { id: string; name: string; isPersonal: boolean; icon?: string }[];
   /** `/items` left pane: set false until vault list fetch finished (placeholder label for vault scope). */
   itemsListVaultsLoaded?: boolean;
   /** `/items` left pane: set false until folder sync bootstrap finished (placeholder label for folder scope). */
@@ -155,6 +156,7 @@ export default function WorkspaceSidebarLayout({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   itemsListVaults,
   itemsListVaultsLoaded,
@@ -196,6 +198,7 @@ export default function WorkspaceSidebarLayout({
           footerPlainLinkLabels={footerPlainLinkLabels}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+          onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
           onFolderHeaderActionClick={onFolderHeaderActionClick}
         >
           <div className="flex shrink-0 flex-row items-center gap-2 ps-2 pe-2 pt-2 min-[991px]:pe-4">

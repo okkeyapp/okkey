@@ -16,6 +16,8 @@ export const HYBRID_SIGNATURE_REQUIRED_CONTEXTS = new Set<string>([
   "vault.revoke",
   "vault.rotate",
   "vault.member_role_update",
+  "vault.create",
+  "vault.access_update",
 ]);
 
 export interface HybridSignatureEnvelopeV1 {
