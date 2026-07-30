@@ -547,6 +547,7 @@
   "web.workspaceSettings.vaults.errors.profilesMissing": "Workspace profiles not found",
   "web.workspaceSettings.sections.plan": "Change plan",
   "web.workspaceSettings.sections.billing": "Billing & invoices",
+  "web.workspaceSettings.general.loading": "Loading settings…",
   "web.workspaceSettings.general.uploadLogo": "Upload logo",
   "web.workspaceSettings.general.replaceLogo": "Upload logo",
   "web.workspaceSettings.general.removeLogo": "Remove logo",

@@ -547,6 +547,7 @@
   "web.workspaceSettings.vaults.errors.profilesMissing": "Не найдены профили пространства",
   "web.workspaceSettings.sections.plan": "Сменить тариф",
   "web.workspaceSettings.sections.billing": "Оплата и счета",
+  "web.workspaceSettings.general.loading": "Загрузка настроек…",
   "web.workspaceSettings.general.uploadLogo": "Загрузить логотип",
   "web.workspaceSettings.general.replaceLogo": "Загрузить логотип",
   "web.workspaceSettings.general.removeLogo": "Удалить логотип",

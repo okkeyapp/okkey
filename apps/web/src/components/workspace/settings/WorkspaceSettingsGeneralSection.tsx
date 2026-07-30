@@ -16,7 +16,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Spinner,
   Switch,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -34,6 +33,7 @@ import WorkspaceLogoTile from "../WorkspaceLogoTile";
 import type { Vault, Workspace } from "@okkey/types";
 import DeleteWorkspaceConfirmPopup from "./DeleteWorkspaceConfirmPopup";
 import FileExtensionTagsInput from "./FileExtensionTagsInput";
+import WorkspaceSettingsGeneralSkeleton from "./WorkspaceSettingsGeneralSkeleton";
 import WorkspaceTileColorPicker from "./WorkspaceTileColorPicker";
 import {
   DEFAULT_WORKSPACE_TILE_COLOR,
@@ -334,9 +334,10 @@ export default function WorkspaceSettingsGeneralSection({
 
   if (initialLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner />
-      </div>
+      <WorkspaceSettingsGeneralSkeleton
+        showDangerZone={isOwner}
+        label={t("web.workspaceSettings.general.loading")}
+      />
     );
   }
 
