@@ -101,7 +101,12 @@ export default function WorkspaceSettingsVaultsSection({
         if (cancelled) {
           return;
         }
-        setMembers(membersResponse.members);
+        setMembers(
+          membersResponse.members.filter(
+            (member): member is WorkspaceMemberDto & { userId: NonNullable<WorkspaceMemberDto["userId"]> } =>
+              member.status === "active" && member.userId != null && member.publicKey.length > 0,
+          ),
+        );
         setProfiles(
           profilesResponse.profiles.map((profile) => ({
             id: profile.id,

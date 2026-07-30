@@ -11,6 +11,8 @@ export const NEW_PROFILE_POPUP_ID = "newProfile";
 export const EDIT_PROFILE_POPUP_ID = "editProfile";
 export const NEW_VAULT_POPUP_ID = "newVault";
 export const EDIT_VAULT_POPUP_ID = "editVault";
+export const INVITE_MEMBERS_POPUP_ID = "inviteMembers";
+export const EDIT_MEMBER_POPUP_ID = "editMember";
 
 export type PopupQuerySearchOptions = {
   copyFromItemId?: string;

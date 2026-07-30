@@ -136,6 +136,9 @@ function isDraftDirty(
 }
 
 function isLockedMember(member: WorkspaceMemberDto, workspaceOwnerId: string | null): boolean {
+  if (!member.userId) {
+    return true;
+  }
   if (member.userId === workspaceOwnerId) {
     return true;
   }
@@ -199,6 +202,9 @@ export default function VaultCardPopup({
     if (!initialVault && includeAccess && extendedProfileId) {
       const access: Record<string, string | null> = {};
       for (const member of members) {
+        if (!member.userId) {
+          continue;
+        }
         access[member.userId] = isLockedMember(member, workspaceOwnerId)
           ? extendedProfileId
           : null;
@@ -229,10 +235,18 @@ export default function VaultCardPopup({
 
   const accessMembers = useMemo(
     () =>
-      members.map((member) => ({
-        ...member,
-        profileId: draft.accessByUserId[member.userId] ?? null,
-      })),
+      members.flatMap((member) => {
+        if (!member.userId) {
+          return [];
+        }
+        return [
+          {
+            ...member,
+            userId: member.userId,
+            profileId: draft.accessByUserId[member.userId] ?? null,
+          },
+        ];
+      }),
     [members, draft.accessByUserId],
   );
 

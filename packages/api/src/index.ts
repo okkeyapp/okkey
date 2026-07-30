@@ -43,6 +43,11 @@ import type {
   VaultCreateRequestDto,
   VaultUpdateRequestDto,
   WorkspaceMembersListResponseDto,
+  WorkspaceInvitationsCreateRequestDto,
+  WorkspaceInvitationsCreateResponseDto,
+  WorkspaceMemberUpdateRequestDto,
+  MemberVaultAccessResponseDto,
+  MemberVaultAccessUpdateRequestDto,
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
 } from "../../types/src/index.js";
@@ -254,6 +259,56 @@ export class CoreApiClient {
   listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMembersListResponseDto> {
     return this.api.get<WorkspaceMembersListResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    );
+  }
+
+  createWorkspaceInvitations(
+    workspaceId: string,
+    body: WorkspaceInvitationsCreateRequestDto,
+  ): Promise<WorkspaceInvitationsCreateResponseDto> {
+    return this.api.post<WorkspaceInvitationsCreateResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations`,
+      body,
+    );
+  }
+
+  revokeWorkspaceInvitation(workspaceId: string, invitationId: string): Promise<{ revoked: true }> {
+    return this.api.delete<{ revoked: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`,
+    );
+  }
+
+  updateWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+    body: WorkspaceMemberUpdateRequestDto,
+  ): Promise<{ updated: true }> {
+    return this.api.patch<{ updated: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+      body,
+    );
+  }
+
+  deleteWorkspaceMember(workspaceId: string, userId: string): Promise<{ deleted: true }> {
+    return this.api.delete<{ deleted: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+    );
+  }
+
+  getMemberVaultAccess(workspaceId: string, userId: string): Promise<MemberVaultAccessResponseDto> {
+    return this.api.get<MemberVaultAccessResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}/vault-access`,
+    );
+  }
+
+  updateMemberVaultAccess(
+    workspaceId: string,
+    userId: string,
+    body: MemberVaultAccessUpdateRequestDto,
+  ): Promise<{ updated: true }> {
+    return this.api.put<{ updated: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}/vault-access`,
+      body,
     );
   }
 

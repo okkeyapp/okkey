@@ -18,6 +18,7 @@ import WorkspaceSettingsGeneralSection from "./WorkspaceSettingsGeneralSection";
 import WorkspaceSettingsRolesSection from "./roles/WorkspaceSettingsRolesSection";
 import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfilesSection";
 import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
+import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import { ChevronRightIcon } from "./workspaceSettingsIcons";
@@ -148,6 +149,12 @@ export default function WorkspaceSettingsPage({
                 vaultsListReady={vaultsListReady}
                 t={t}
                 onVaultsChanged={onVaultsChanged}
+              />
+            ) : activeSection === "members" ? (
+              <WorkspaceSettingsMembersSection
+                workspaceId={workspaceId}
+                workspace={workspace}
+                t={t}
               />
             ) : (
               <WorkspaceSettingsPlaceholderSection section={activeSection} t={t} />

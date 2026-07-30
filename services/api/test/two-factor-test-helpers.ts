@@ -282,6 +282,22 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0017);
   }
+
+  const workspaceInvitationsTable = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_invitations'
+    ) AS exists`,
+  );
+  if (!workspaceInvitationsTable[0]?.exists) {
+    const migration0018 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0018_workspace_members_invites.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0018);
+  }
 }
 
 export async function cleanupUserData(

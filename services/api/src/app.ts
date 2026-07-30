@@ -70,10 +70,19 @@ import {
   createVaultDeleteRoute,
   createVaultGetRoute,
   createVaultUpdateRoute,
-  createWorkspaceMembersListRoute,
   createWorkspaceVaultCreateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
+import {
+  createMemberVaultAccessGetRoute,
+  createMemberVaultAccessPutRoute,
+  createWorkspaceInvitationDeleteRoute,
+  createWorkspaceInvitationsCreateRoute,
+  createWorkspaceMemberDeleteRoute,
+  createWorkspaceMemberPatchRoute,
+  createWorkspaceMembersListRoute,
+} from "./routes/workspace-members.ts";
+import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
@@ -141,6 +150,7 @@ export interface AppDeps {
   workspaceSettingsService?: WorkspaceSettingsService;
   workspaceBuiltInRolesService?: WorkspaceBuiltInRolesService;
   workspaceBuiltInProfilesService?: WorkspaceBuiltInProfilesService;
+  workspaceMembersService?: WorkspaceMembersService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
   itemFaviconService?: ItemFaviconService;
@@ -274,11 +284,43 @@ export function createApiApp(
       "/workspaces/:workspaceId/vaults",
       createWorkspaceVaultCreateRoute(deps.vaultService, resolveUserId),
     );
-    app.route(
-      "GET",
-      "/workspaces/:workspaceId/members",
-      createWorkspaceMembersListRoute(deps.vaultService, resolveUserId),
-    );
+    if (deps.workspaceMembersService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/members",
+        createWorkspaceMembersListRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/invitations",
+        createWorkspaceInvitationsCreateRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/invitations/:invitationId",
+        createWorkspaceInvitationDeleteRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "PATCH",
+        "/workspaces/:workspaceId/members/:userId",
+        createWorkspaceMemberPatchRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/members/:userId",
+        createWorkspaceMemberDeleteRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/members/:userId/vault-access",
+        createMemberVaultAccessGetRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/members/:userId/vault-access",
+        createMemberVaultAccessPutRoute(deps.workspaceMembersService, resolveUserId),
+      );
+    }
     if (deps.itemCategoryPreferencesService) {
       app.route(
         "GET",

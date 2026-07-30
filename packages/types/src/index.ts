@@ -123,23 +123,114 @@ export interface VaultUpdateRequestDto {
   icon?: string;
 }
 
-/** `GET /workspaces/:workspaceId/members` member row. */
-export interface WorkspaceMemberDto {
+/** Actor reference for member audit trails (inviter / role changer). */
+export interface WorkspaceMemberActorRefDto {
   userId: EntityId;
   email: string;
   firstName: string | null;
   lastName: string | null;
+}
+
+export type WorkspaceMemberStatus = "active" | "pending";
+
+/** `GET /workspaces/:workspaceId/members` member or pending-invite row. */
+export interface WorkspaceMemberDto {
+  /** Null for pending invitations (no user yet). */
+  userId: EntityId | null;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  /** Empty string for pending invitations. */
   publicKey: string;
   publicPqKey: string | null;
   roleId: EntityId | null;
   /** Built-in role key when system role (`owner` | `admin` | `user`), else null. */
   roleBuiltinKey: string | null;
+  roleName: string | null;
+  status: WorkspaceMemberStatus;
+  invitationId: EntityId | null;
+  invitedAt: string | null;
+  invitedBy: WorkspaceMemberActorRefDto | null;
+  roleChangedAt: string | null;
+  roleChangedBy: WorkspaceMemberActorRefDto | null;
+  joinedAt: string | null;
+  lastLoginAt: string | null;
 }
+
+export type WorkspaceMembersPermissionCellDto = {
+  get: 0 | 1 | 2;
+  post: 0 | 1;
+  put: 0 | 1 | 2;
+  delete: 0 | 1 | 2;
+};
 
 /** `GET /workspaces/:workspaceId/members` success body. */
 export interface WorkspaceMembersListResponseDto {
   workspaceId: EntityId;
   members: WorkspaceMemberDto[];
+  actorPermissions: {
+    members: WorkspaceMembersPermissionCellDto;
+  };
+}
+
+/** `POST /workspaces/:workspaceId/invitations` body. */
+export interface WorkspaceInvitationsCreateRequestDto {
+  invitations: Array<{
+    email: string;
+    roleId: EntityId;
+  }>;
+}
+
+/** `POST /workspaces/:workspaceId/invitations` success body. */
+export interface WorkspaceInvitationsCreateResponseDto {
+  workspaceId: EntityId;
+  created: Array<{
+    invitationId: EntityId;
+    email: string;
+    roleId: EntityId;
+  }>;
+}
+
+/** `PATCH /workspaces/:workspaceId/members/:userId` body. */
+export interface WorkspaceMemberUpdateRequestDto {
+  roleId: EntityId;
+}
+
+/** One shared vault access row for a workspace member. */
+export interface MemberVaultAccessEntryDto {
+  vaultId: EntityId;
+  name: string;
+  icon: string;
+  description: string;
+  profileId: EntityId | null;
+}
+
+/** `GET /workspaces/:workspaceId/members/:userId/vault-access` success body. */
+export interface MemberVaultAccessResponseDto {
+  workspaceId: EntityId;
+  userId: EntityId;
+  vaults: MemberVaultAccessEntryDto[];
+}
+
+/**
+ * `PUT /workspaces/:workspaceId/members/:userId/vault-access` —
+ * apply access changes across shared vaults for one member.
+ */
+export interface MemberVaultAccessUpdateRequestDto {
+  changes: Array<{
+    vaultId: EntityId;
+    /** Null revokes access; non-null sets/grants profile. */
+    profileId: EntityId | null;
+    /** Required when granting access to a vault the member did not have. */
+    encryptedVaultKey?: EncryptedBlobDto;
+    /** Required when revoking: re-wrapped keys for remaining recipients on that vault. */
+    rotatedVaultKeys?: VaultRotatedKeyDto[];
+    encryptedPayload?: EncryptedBlobDto;
+    signature?: HybridSignatureEnvelopeDto;
+    baseVersion?: number;
+    idempotencyKey?: string;
+    clientCreatedAt?: string;
+  }>;
 }
 
 /** Access assignment for one workspace member on a vault. */
