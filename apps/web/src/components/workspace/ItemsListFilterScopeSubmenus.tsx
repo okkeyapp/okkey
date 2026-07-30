@@ -172,20 +172,14 @@ export function CategoryIconBadge({
   categoryId,
   iconColor,
   size,
-  mergeEnd,
 }: {
   categoryId: ItemCategoryId;
   iconColor: string;
   size: 20 | 24;
-  /** Left-only radius when abutting a secondary filter icon in the trigger. */
-  mergeEnd?: boolean;
 }) {
   return (
     <span
-      className={cn(
-        "flex shrink-0 items-center justify-center text-white",
-        mergeEnd ? "rounded-l-[4px] rounded-r-none" : "rounded-[4px]",
-      )}
+      className="flex shrink-0 items-center justify-center rounded-[4px] text-white"
       style={{ backgroundColor: iconColor, width: size, height: size }}
     >
       <ItemCategoryIcon categoryId={categoryId} pixelSize={16} className="text-white" />

@@ -1211,7 +1211,6 @@ export default function ItemsListLeftPane({
                             categoryId={categoryDefinition.id}
                             iconColor={categoryDefinition.iconColor}
                             size={24}
-                            mergeEnd={categoryWithSecondaryFilter}
                           />
                           {secondaryFilterInTrigger ? (
                             <span className="flex flex-1 items-center justify-center">
