@@ -510,7 +510,7 @@ export default function WorkspaceSettingsGeneralSection({
         {isOwner ? (
           <div className="flex flex-col gap-6">
             <h3 className="text-lg font-semibold text-destructive">{t("web.workspaceSettings.general.dangerZone")}</h3>
-            <div className="flex flex-col gap-4 rounded-lg bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 rounded-lg bg-red-50 p-4 dark:bg-red-950/40 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-sm font-medium text-destructive">{t("web.workspaceSettings.general.deleteTitle")}</p>
                 <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.general.deleteDescription")}</p>
