@@ -125,7 +125,7 @@ export default function ProfilesListCard({
         <Button
           type="button"
           variant="secondary"
-          className="h-8 w-full gap-1 px-3 font-medium"
+          className="w-full gap-1 font-medium"
           onClick={footerAction.onClick}
           disabled={footerAction.disabled}
         >

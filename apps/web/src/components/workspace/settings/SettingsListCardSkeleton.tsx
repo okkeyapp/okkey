@@ -36,7 +36,7 @@ export default function SettingsListCardSkeleton({
         </div>
         <Skeleton className="h-5 w-16 shrink-0" />
       </div>
-      {withFooterButton ? <Skeleton className="h-8 w-full rounded-md" /> : null}
+      {withFooterButton ? <Skeleton className="h-9 w-full rounded-md" /> : null}
     </div>
   );
 }

@@ -234,8 +234,7 @@ export default function WorkspaceSettingsVaultsSection({
           {canManageShared ? (
             <Button
               type="button"
-              size="sm"
-              className="mt-1.5 shrink-0 gap-1 max-md:h-8 max-md:w-8 max-md:min-h-8 max-md:min-w-8 max-md:rounded-sm max-md:!p-0"
+              className="mt-1.5 shrink-0 gap-1 max-md:h-9 max-md:w-9 max-md:min-h-9 max-md:min-w-9 max-md:rounded-md max-md:!p-0"
               onClick={() => openPopup(NEW_VAULT_POPUP_ID)}
               disabled={!vaultsListReady}
               aria-label={t("web.workspaceSettings.vaults.shared.create")}
@@ -282,7 +281,7 @@ export default function WorkspaceSettingsVaultsSection({
             <Button
               type="button"
               variant="secondary"
-              className="h-8 w-full gap-1 px-3 font-medium"
+              className="w-full gap-1 font-medium"
               onClick={() => openPopup(NEW_VAULT_POPUP_ID)}
             >
               <PlusIcon className="size-4" />
