@@ -139,9 +139,13 @@ function isDraftDirty(
   return false;
 }
 
+function memberAccessKey(member: WorkspaceMemberDto): string | null {
+  return member.userId ?? member.invitationId;
+}
+
 function isLockedMember(member: WorkspaceMemberDto, workspaceOwnerId: string | null): boolean {
-  if (!member.userId) {
-    return true;
+  if (member.status === "pending" || !member.userId) {
+    return false;
   }
   if (member.userId === workspaceOwnerId) {
     return true;
@@ -240,14 +244,16 @@ export default function VaultCardPopup({
   const accessMembers = useMemo(
     () =>
       members.flatMap((member) => {
-        if (!member.userId) {
+        const key = memberAccessKey(member);
+        if (!key) {
           return [];
         }
         return [
           {
             ...member,
-            userId: member.userId,
-            profileId: draft.accessByUserId[member.userId] ?? null,
+            accessKey: key,
+            userId: key,
+            profileId: draft.accessByUserId[key] ?? null,
           },
         ];
       }),
@@ -343,8 +349,13 @@ export default function VaultCardPopup({
               throw new Error(t("web.workspaceSettings.vaults.errors.profilesMissing"));
             }
             const vaultKey = await generateSharedVaultKey();
+            const invitationIds = new Set(
+              members
+                .filter((member) => member.status === "pending" && member.invitationId)
+                .map((member) => member.invitationId!),
+            );
             const withAccess = Object.entries(draft.accessByUserId)
-              .filter(([, profileId]) => Boolean(profileId))
+              .filter(([memberId, profileId]) => Boolean(profileId) && !invitationIds.has(memberId))
               .map(([memberId, profileId]) => ({ userId: memberId, profileId: profileId! }));
             if (!withAccess.some((row) => row.userId === userId)) {
               withAccess.push({ userId, profileId: extendedProfileId });
@@ -367,7 +378,22 @@ export default function VaultCardPopup({
                 role: row.userId === userId ? "owner" : "member",
               })),
             };
-            await core.createWorkspaceVault(workspaceId, body);
+            const created = await core.createWorkspaceVault(workspaceId, body);
+            const invitationUpdates = Object.entries(draft.accessByUserId)
+              .filter(([memberId, profileId]) => invitationIds.has(memberId) && Boolean(profileId))
+              .map(([invitationId, profileId]) => ({
+                invitationId,
+                profileId: profileId!,
+              }));
+            if (invitationUpdates.length > 0) {
+              await core.updateVaultAccess(created.id, {
+                grants: [],
+                profileUpdates: [],
+                revokes: [],
+                invitationUpdates,
+                baseVersion: 0,
+              });
+            }
           } else if (initialVault) {
             await core.updateVault(initialVault.id, {
               name: draft.name.trim(),
@@ -378,15 +404,27 @@ export default function VaultCardPopup({
             if (includeAccess) {
               const prev = initialSnapshot.accessByUserId;
               const next = draft.accessByUserId;
+              const invitationIds = new Set(
+                members
+                  .filter((member) => member.status === "pending" && member.invitationId)
+                  .map((member) => member.invitationId!),
+              );
               const grants: VaultAccessUpdateRequestDto["grants"] = [];
               const profileUpdates: VaultAccessUpdateRequestDto["profileUpdates"] = [];
               const revokes: VaultAccessUpdateRequestDto["revokes"] = [];
+              const invitationUpdates: NonNullable<
+                VaultAccessUpdateRequestDto["invitationUpdates"]
+              > = [];
 
               const allIds = new Set([...Object.keys(prev), ...Object.keys(next)]);
               for (const memberId of allIds) {
                 const before = prev[memberId] ?? null;
                 const after = next[memberId] ?? null;
                 if (before === after) {
+                  continue;
+                }
+                if (invitationIds.has(memberId)) {
+                  invitationUpdates.push({ invitationId: memberId, profileId: after });
                   continue;
                 }
                 if (!before && after) {
@@ -408,9 +446,14 @@ export default function VaultCardPopup({
                 }
               }
 
-              if (grants.length > 0 || revokes.length > 0 || profileUpdates.length > 0) {
+              if (
+                grants.length > 0 ||
+                revokes.length > 0 ||
+                profileUpdates.length > 0 ||
+                invitationUpdates.length > 0
+              ) {
                 const remainingIds = Object.entries(next)
-                  .filter(([, profileId]) => Boolean(profileId))
+                  .filter(([id, profileId]) => Boolean(profileId) && !invitationIds.has(id))
                   .map(([id]) => id);
 
                 let wraps: Map<string, EncryptedBlobDto>;
@@ -454,11 +497,15 @@ export default function VaultCardPopup({
                   grant.encryptedVaultKey = wrapped;
                 }
 
-                const encryptedPayload = await createOpaqueVaultEventPayload("VAULT_ACCESS_UPDATE");
+                const encryptedPayload =
+                  revokes.length > 0
+                    ? await createOpaqueVaultEventPayload("VAULT_ACCESS_UPDATE")
+                    : undefined;
                 await core.updateVaultAccess(initialVault.id, {
                   grants,
                   profileUpdates,
                   revokes,
+                  invitationUpdates,
                   rotatedVaultKeys:
                     revokes.length > 0
                       ? remainingIds.map((id) => ({
@@ -695,6 +742,7 @@ export default function VaultCardPopup({
                     filteredMembers.map((member, index) => {
                     const locked = isLockedMember(member, workspaceOwnerId);
                     const name = memberDisplayName(member);
+                    const showName = name.trim().length > 0 && name !== member.email;
                     const profileValue = member.profileId ?? NO_ACCESS_VALUE;
                     const selectedProfile =
                       profileValue === NO_ACCESS_VALUE
@@ -702,7 +750,7 @@ export default function VaultCardPopup({
                         : profiles.find((profile) => profile.id === profileValue) ?? null;
                     return (
                       <div
-                        key={member.userId}
+                        key={member.accessKey}
                         className={cn(
                           "flex items-center gap-4 px-4 py-4",
                           index > 0 && "border-t border-border",
@@ -716,8 +764,24 @@ export default function VaultCardPopup({
                             size={32}
                           />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-foreground">{name}</p>
-                            <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <p className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
+                                {showName ? name : member.email}
+                              </p>
+                              {member.status === "pending" ? (
+                                <span
+                                  className={cn(
+                                    "relative isolate shrink-0 px-2 text-xs font-normal leading-5 text-background",
+                                    "before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-foreground",
+                                  )}
+                                >
+                                  {t("web.workspaceSettings.members.pendingBadge")}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="truncate text-xs leading-4 text-muted-foreground">
+                              {showName ? member.email : "\u00a0"}
+                            </p>
                           </div>
                         </div>
                         <Select
@@ -732,7 +796,7 @@ export default function VaultCardPopup({
                               ...current,
                               accessByUserId: {
                                 ...current.accessByUserId,
-                                [member.userId]: profileId,
+                                [member.accessKey]: profileId,
                               },
                             }));
                           }}

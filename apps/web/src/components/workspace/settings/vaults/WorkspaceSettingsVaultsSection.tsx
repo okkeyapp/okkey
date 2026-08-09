@@ -102,20 +102,36 @@ export default function WorkspaceSettingsVaultsSection({
           return;
         }
         setMembers(
-          membersResponse.members.filter(
-            (member): member is WorkspaceMemberDto & { userId: NonNullable<WorkspaceMemberDto["userId"]> } =>
-              member.status === "active" && member.userId != null && member.publicKey.length > 0,
-          ),
+          membersResponse.members.filter((member) => {
+            if (member.status === "pending" && member.invitationId != null) {
+              return true;
+            }
+            return (
+              member.status === "active" &&
+              member.userId != null &&
+              member.publicKey.length > 0
+            );
+          }),
         );
         setProfiles(
-          profilesResponse.profiles.map((profile) => ({
-            id: profile.id,
-            name: profile.name,
-            description: profile.description,
-            kind: "builtin" as const,
-            builtinId: profile.builtin_id,
-            applicationCount: profile.application_count,
-          })),
+          profilesResponse.profiles.map((profile) => {
+            const row = profile as {
+              id: string;
+              name: string;
+              description: string;
+              kind?: "builtin" | "custom";
+              builtin_id?: WorkspaceProfileSummary["builtinId"];
+              application_count: number;
+            };
+            return {
+              id: row.id,
+              name: row.name,
+              description: row.description,
+              kind: row.kind ?? "builtin",
+              builtinId: row.builtin_id,
+              applicationCount: row.application_count,
+            };
+          }),
         );
       } catch {
         if (!cancelled) {
@@ -142,10 +158,16 @@ export default function WorkspaceSettingsVaultsSection({
         }
         const map: Record<string, string | null> = {};
         for (const member of members) {
-          map[member.userId] = null;
+          const key = member.userId ?? member.invitationId;
+          if (key) {
+            map[key] = null;
+          }
         }
         for (const row of access.members) {
           map[row.userId] = row.profileId;
+        }
+        for (const row of access.invitations ?? []) {
+          map[row.invitationId] = row.profileId;
         }
         setAccessByVaultId((current) => ({ ...current, [editingVault.id]: map }));
       } catch {

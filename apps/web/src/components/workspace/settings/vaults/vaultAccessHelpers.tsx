@@ -62,6 +62,11 @@ export default function VaultCardActionsMenu({
 
 export type AccessFilterValue = "all" | "with_access" | "without_access" | `profile:${string}`;
 
+function displayNameFromEmail(email: string): string {
+  const local = email.trim().split("@")[0]?.trim() ?? "";
+  return local.length > 0 ? local : email.trim();
+}
+
 export function memberDisplayName(input: {
   firstName: string | null;
   lastName: string | null;
@@ -71,7 +76,7 @@ export function memberDisplayName(input: {
   if (parts.length > 0) {
     return parts.join(" ");
   }
-  return input.email;
+  return displayNameFromEmail(input.email);
 }
 
 export function memberInitials(name: string): string {
@@ -98,7 +103,11 @@ export function MemberFavicon({
   size?: number;
   className?: string;
 }) {
-  const name = [firstName, lastName].filter(Boolean).join(" ").trim() || email;
+  const name = memberDisplayName({
+    firstName: firstName ?? null,
+    lastName: lastName ?? null,
+    email,
+  });
   return <Favicon name={name} size={size} className={className} />;
 }
 

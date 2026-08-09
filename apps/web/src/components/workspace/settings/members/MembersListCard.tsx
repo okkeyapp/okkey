@@ -77,7 +77,7 @@ export default function MembersListCard({
                   <p className="truncate text-sm leading-5 text-muted-foreground">{name}</p>
                 ) : null}
                 {member.status === "pending" ? (
-                  <span className="shrink-0 rounded-md bg-foreground px-2 py-0.5 text-xs font-normal leading-5 text-background">
+                  <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-foreground px-2 text-xs font-normal leading-none text-background">
                     {t("web.workspaceSettings.members.pendingBadge")}
                   </span>
                 ) : null}

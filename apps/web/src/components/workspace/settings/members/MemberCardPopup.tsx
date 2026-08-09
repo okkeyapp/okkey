@@ -29,6 +29,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import ExitNewItemFormConfirmPopup from "../../../items/ExitNewItemFormConfirmPopup";
 import { readVaultBundle } from "../../../../auth/localVaultBundle";
 import { base64ToBytes } from "../../../../auth/base64";
 import { runSaveWithToast } from "../../../../lib/saveWithToast";
@@ -175,6 +176,7 @@ export default function MemberCardPopup({
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
 
   useEffect(() => {
     setRoleId(member.roleId ?? "");
@@ -182,6 +184,7 @@ export default function MemberCardPopup({
     setSearchQuery("");
     setAccessFilter("all");
     setDeleteConfirmOpen(false);
+    setExitConfirmOpen(false);
   }, [member]);
 
   useEffect(() => {
@@ -252,6 +255,20 @@ export default function MemberCardPopup({
       (vault) =>
         (accessByVaultId[vault.vaultId] ?? null) !== (initialVaultAccess[vault.vaultId] ?? null),
     );
+
+  function requestClose() {
+    if (dirty) {
+      setExitConfirmOpen(true);
+      return false;
+    }
+    return true;
+  }
+
+  function handleClose() {
+    if (requestClose()) {
+      onClose();
+    }
+  }
 
   const filterLabel = (value: AccessFilterValue): string => {
     if (value === "all") {
@@ -518,7 +535,7 @@ export default function MemberCardPopup({
         <span />
       )}
       <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" disabled={saving || removing} onClick={onClose}>
+        <Button type="button" variant="outline" disabled={saving || removing} onClick={handleClose}>
           {t("web.newItemPopup.cancel")}
         </Button>
         <Button
@@ -541,6 +558,7 @@ export default function MemberCardPopup({
         header={header}
         closeLabel={t("web.settingsPopup.close")}
         onClose={onClose}
+        onCloseRequest={requestClose}
         closeDisabled={saving || removing}
         footer={footer}
       >
@@ -758,6 +776,16 @@ export default function MemberCardPopup({
           </div>
         </div>
       </Popup>
+
+      <ExitNewItemFormConfirmPopup
+        open={exitConfirmOpen}
+        t={t}
+        onClose={() => setExitConfirmOpen(false)}
+        onConfirm={() => {
+          setExitConfirmOpen(false);
+          onClose();
+        }}
+      />
 
       <DeleteMemberConfirmPopup
         open={deleteConfirmOpen}

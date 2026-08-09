@@ -265,10 +265,19 @@ export interface VaultAccessMemberDto {
   publicPqKey: string | null;
 }
 
+/** Staged access for a pending workspace invitation on a vault. */
+export interface VaultAccessInvitationDto {
+  invitationId: EntityId;
+  email: string;
+  role: string | null;
+  profileId: EntityId | null;
+}
+
 /** `GET /vaults/:vaultId/access` success body. */
 export interface VaultAccessResponseDto {
   vaultId: EntityId;
   members: VaultAccessMemberDto[];
+  invitations: VaultAccessInvitationDto[];
 }
 
 /**
@@ -290,9 +299,18 @@ export interface VaultAccessUpdateRequestDto {
   revokes: Array<{
     userId: EntityId;
   }>;
+  /**
+   * Staged profile assignments for pending invitations (no crypto wraps).
+   * `profileId: null` clears the staged assignment.
+   */
+  invitationUpdates?: Array<{
+    invitationId: EntityId;
+    profileId: EntityId | null;
+  }>;
   /** Required when `revokes` is non-empty: re-wrapped keys for all remaining active recipients. */
   rotatedVaultKeys?: VaultRotatedKeyDto[];
-  encryptedPayload: EncryptedBlobDto;
+  /** Required when revoking; optional for profile/invitation-only updates. */
+  encryptedPayload?: EncryptedBlobDto;
   signature?: HybridSignatureEnvelopeDto;
   baseVersion: number;
   idempotencyKey?: string;

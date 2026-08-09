@@ -73,6 +73,13 @@ export type VaultAccessMemberRecord = {
   publicPqKey: string | null;
 };
 
+export type VaultAccessInvitationRecord = {
+  invitationId: string;
+  email: string;
+  role: string | null;
+  profileId: string | null;
+};
+
 export type VaultAccessUpdateInput = {
   grants: Array<{
     userId: string;
@@ -85,8 +92,13 @@ export type VaultAccessUpdateInput = {
     profileId: string;
   }>;
   revokes: Array<{ userId: string }>;
+  invitationUpdates?: Array<{
+    invitationId: string;
+    profileId: string | null;
+  }>;
   rotatedVaultKeys?: Array<{ userId: string; encryptedVaultKey: unknown }>;
-  encryptedPayload: unknown;
+  /** Required when revoking access; optional for profile/invitation-only updates. */
+  encryptedPayload?: unknown;
   signature?: unknown;
   baseVersion: number;
   idempotencyKey?: string;
@@ -462,7 +474,10 @@ export class VaultService {
     return members;
   }
 
-  async getVaultAccess(vaultId: string, actorId: string): Promise<VaultAccessMemberRecord[]> {
+  async getVaultAccess(
+    vaultId: string,
+    actorId: string,
+  ): Promise<{ members: VaultAccessMemberRecord[]; invitations: VaultAccessInvitationRecord[] }> {
     if (!this.db) {
       throw new VaultServiceError("INTERNAL_SERVER_ERROR", 500, "database not configured");
     }
@@ -509,16 +524,49 @@ export class VaultService {
       [vaultId],
     );
 
-    return rows.map((row) => ({
-      userId: row.user_id,
-      email: row.email,
-      firstName: row.first_name,
-      lastName: row.last_name,
-      role: row.role,
-      profileId: row.profile_id,
-      publicKey: row.public_key,
-      publicPqKey: row.public_pq_key,
-    }));
+    const invitationRows = await this.db.query<{
+      invitation_id: string;
+      email: string;
+      role: string | null;
+      profile_id: string | null;
+    }>(
+      `
+        SELECT
+          wi.id AS invitation_id,
+          wi.email,
+          r.name AS role,
+          iva.profile_id
+        FROM workspace_invitations wi
+        LEFT JOIN roles r ON r.id = wi.role_id
+        LEFT JOIN workspace_invitation_vault_access iva
+          ON iva.invitation_id = wi.id
+         AND iva.vault_id = $1
+        WHERE wi.workspace_id = $2
+          AND wi.status = 'pending'
+          AND wi.expires_at > now()
+        ORDER BY wi.email ASC
+      `,
+      [vaultId, vault.workspaceId],
+    );
+
+    return {
+      members: rows.map((row) => ({
+        userId: row.user_id,
+        email: row.email,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        role: row.role,
+        profileId: row.profile_id,
+        publicKey: row.public_key,
+        publicPqKey: row.public_pq_key,
+      })),
+      invitations: invitationRows.map((row) => ({
+        invitationId: row.invitation_id,
+        email: row.email,
+        role: row.role,
+        profileId: row.profile_id,
+      })),
+    };
   }
 
   async updateVaultAccess(
@@ -543,6 +591,15 @@ export class VaultService {
     }
 
     const workspace = await this.workspaces.findById(vault.workspaceId);
+
+    for (const update of input.invitationUpdates ?? []) {
+      await this.upsertInvitationVaultAccess(
+        vaultId,
+        vault.workspaceId,
+        update.invitationId,
+        update.profileId,
+      );
+    }
 
     // Profile-only updates first (no crypto events).
     for (const update of input.profileUpdates) {
@@ -639,6 +696,71 @@ export class VaultService {
         DO UPDATE SET profile_id = EXCLUDED.profile_id
       `,
       [generateEntityId(), vaultId, userId, profileId],
+    );
+  }
+
+  private async upsertInvitationVaultAccess(
+    vaultId: string,
+    workspaceId: string,
+    invitationId: string,
+    profileId: string | null,
+  ): Promise<void> {
+    if (!this.db) {
+      return;
+    }
+    if (!isEntityId(invitationId)) {
+      throw new VaultServiceError("BAD_REQUEST", 400, "invalid invitationId");
+    }
+    const invitationRows = await this.db.query<{ id: string; status: string }>(
+      `
+        SELECT id, status FROM workspace_invitations
+        WHERE id = $1 AND workspace_id = $2
+        LIMIT 1
+      `,
+      [invitationId, workspaceId],
+    );
+    const invitation = invitationRows[0];
+    if (!invitation) {
+      throw new VaultServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+    if (invitation.status !== "pending") {
+      throw new VaultServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+
+    if (profileId == null) {
+      await this.db.query(
+        `
+          DELETE FROM workspace_invitation_vault_access
+          WHERE invitation_id = $1 AND vault_id = $2
+        `,
+        [invitationId, vaultId],
+      );
+      return;
+    }
+
+    if (!isEntityId(profileId)) {
+      throw new VaultServiceError("BAD_REQUEST", 400, "invalid profileId");
+    }
+    const profileRows = await this.db.query<{ id: string }>(
+      `
+        SELECT id FROM profiles
+        WHERE id = $1 AND workspace_id = $2
+        LIMIT 1
+      `,
+      [profileId, workspaceId],
+    );
+    if (!profileRows[0]) {
+      throw new VaultServiceError("BAD_REQUEST", 400, "profile not found");
+    }
+
+    await this.db.query(
+      `
+        INSERT INTO workspace_invitation_vault_access (invitation_id, vault_id, profile_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (invitation_id, vault_id)
+        DO UPDATE SET profile_id = EXCLUDED.profile_id
+      `,
+      [invitationId, vaultId, profileId],
     );
   }
 

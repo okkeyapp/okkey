@@ -173,8 +173,12 @@ export function createVaultAccessGetRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const members = await vaultService.getVaultAccess(vaultId, userId);
-      json(ctx.res, 200, { vaultId, members });
+      const access = await vaultService.getVaultAccess(vaultId, userId);
+      json(ctx.res, 200, {
+        vaultId,
+        members: access.members,
+        invitations: access.invitations,
+      });
     } catch (error) {
       handleVaultError(ctx.requestId, ctx.res, error);
     }
@@ -202,6 +206,9 @@ export function createVaultAccessUpdateRoute(
       const grantsRaw = Array.isArray(body.grants) ? body.grants : [];
       const profileUpdatesRaw = Array.isArray(body.profileUpdates) ? body.profileUpdates : [];
       const revokesRaw = Array.isArray(body.revokes) ? body.revokes : [];
+      const invitationUpdatesRaw = Array.isArray(body.invitationUpdates)
+        ? body.invitationUpdates
+        : [];
       const rotatedRaw = Array.isArray(body.rotatedVaultKeys) ? body.rotatedVaultKeys : undefined;
 
       await vaultService.updateVaultAccess(vaultId, userId, {
@@ -224,6 +231,13 @@ export function createVaultAccessUpdateRoute(
         revokes: revokesRaw.map((entry) => {
           const row = (entry ?? {}) as Record<string, unknown>;
           return { userId: String(row.userId ?? "") };
+        }),
+        invitationUpdates: invitationUpdatesRaw.map((entry) => {
+          const row = (entry ?? {}) as Record<string, unknown>;
+          return {
+            invitationId: String(row.invitationId ?? ""),
+            profileId: row.profileId == null ? null : String(row.profileId),
+          };
         }),
         rotatedVaultKeys: rotatedRaw?.map((entry) => {
           const row = (entry ?? {}) as Record<string, unknown>;
