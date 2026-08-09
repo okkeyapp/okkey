@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { runSaveWithToast } from "../../../../lib/saveWithToast";
+import { localizedRoleLabel } from "../localizedWorkspaceLabels";
 
 type InviteRow = {
   id: string;
@@ -195,7 +196,7 @@ export default function InviteMembersPopup({
               <SelectContent>
                 {invitableRoles.map((role) => (
                   <SelectItem key={role.id} value={role.id}>
-                    {role.name}
+                    {localizedRoleLabel(role, t)}
                   </SelectItem>
                 ))}
               </SelectContent>

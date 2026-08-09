@@ -26,14 +26,25 @@ import {
   SelectValue,
   cn,
 } from "@okkey/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { readVaultBundle } from "../../../../auth/localVaultBundle";
 import { base64ToBytes } from "../../../../auth/base64";
 import { runSaveWithToast } from "../../../../lib/saveWithToast";
 import { settingsPath } from "../../../../routes/paths";
-import { memberDisplayName, memberInitials } from "../vaults/vaultAccessHelpers";
+import {
+  GHOST_SELECT_PROFILE_ALIGN_CLASS,
+  GHOST_SELECT_ROLE_ALIGN_CLASS,
+  localizedProfileLabel,
+  localizedRoleLabel,
+} from "../localizedWorkspaceLabels";
+import VaultCardActionsMenu, {
+  MemberFavicon,
+  memberDisplayName,
+  type AccessFilterValue,
+} from "../vaults/vaultAccessHelpers";
+import DeleteMemberConfirmPopup from "./DeleteMemberConfirmPopup";
 
 const NO_ACCESS_VALUE = "__none__";
 
@@ -65,6 +76,28 @@ function GearIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="8" cy="8" r="2" stroke="currentColor" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden className={className}>
+      <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
+      <path d="M10.5 10.5L13.5 13.5" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FilterIcon({ className }: { className?: string }) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden className={className}>
+      <path
+        d="M2 3.5H14M4 8H12M6.5 12.5H9.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -122,9 +155,9 @@ export default function MemberCardPopup({
   onSaved,
   onOpenMember,
 }: MemberCardPopupProps) {
+  const isPending = member.status === "pending";
   const isOwner = member.roleBuiltinKey === "owner";
   const displayName = memberDisplayName(member);
-  const initials = memberInitials(displayName);
 
   const assignableRoles = useMemo(
     () => roles.filter((role) => role.builtinId !== "owner"),
@@ -137,25 +170,31 @@ export default function MemberCardPopup({
   const [initialVaultAccess, setInitialVaultAccess] = useState<Record<string, string | null>>({});
   const [accessByVaultId, setAccessByVaultId] = useState<Record<string, string | null>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [accessFilter, setAccessFilter] = useState<AccessFilterValue>("all");
   const [loadingAccess, setLoadingAccess] = useState(true);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     setRoleId(member.roleId ?? "");
     setInitialRoleId(member.roleId ?? "");
     setSearchQuery("");
+    setAccessFilter("all");
+    setDeleteConfirmOpen(false);
   }, [member]);
 
   useEffect(() => {
-    if (!member.userId) {
-      return;
-    }
     let cancelled = false;
     setLoadingAccess(true);
     void (async () => {
       try {
-        const response = await core.getMemberVaultAccess(workspaceId, member.userId!);
+        const response =
+          isPending && member.invitationId
+            ? await core.getInvitationVaultAccess(workspaceId, member.invitationId)
+            : member.userId
+              ? await core.getMemberVaultAccess(workspaceId, member.userId)
+              : { vaults: [] as MemberVaultAccessEntryDto[] };
         if (cancelled) {
           return;
         }
@@ -181,21 +220,63 @@ export default function MemberCardPopup({
     return () => {
       cancelled = true;
     };
-  }, [core, workspaceId, member.userId]);
+  }, [core, workspaceId, member.userId, member.invitationId, isPending]);
 
   const filteredVaults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      return vaultAccess;
-    }
-    return vaultAccess.filter((vault) => vault.name.toLowerCase().includes(q));
-  }, [vaultAccess, searchQuery]);
+    return vaultAccess.filter((vault) => {
+      const profileId = accessByVaultId[vault.vaultId] ?? null;
+      const hasAccess = Boolean(profileId);
+      if (accessFilter === "with_access" && !hasAccess) {
+        return false;
+      }
+      if (accessFilter === "without_access" && hasAccess) {
+        return false;
+      }
+      if (accessFilter.startsWith("profile:")) {
+        const filterProfileId = accessFilter.slice("profile:".length);
+        if (profileId !== filterProfileId) {
+          return false;
+        }
+      }
+      if (!q) {
+        return true;
+      }
+      return vault.name.toLowerCase().includes(q);
+    });
+  }, [vaultAccess, searchQuery, accessFilter, accessByVaultId]);
 
   const dirty =
     roleId !== initialRoleId ||
     vaultAccess.some(
-      (vault) => (accessByVaultId[vault.vaultId] ?? null) !== (initialVaultAccess[vault.vaultId] ?? null),
+      (vault) =>
+        (accessByVaultId[vault.vaultId] ?? null) !== (initialVaultAccess[vault.vaultId] ?? null),
     );
+
+  const filterLabel = (value: AccessFilterValue): string => {
+    if (value === "all") {
+      return t("web.workspaceSettings.vaults.access.filterAll", { count: vaultAccess.length });
+    }
+    if (value === "with_access") {
+      return t("web.workspaceSettings.vaults.access.filterWithAccess");
+    }
+    if (value === "without_access") {
+      return t("web.workspaceSettings.vaults.access.filterWithoutAccess");
+    }
+    const profileId = value.slice("profile:".length);
+    const profile = profiles.find((item) => item.id === profileId);
+    return profile ? localizedProfileLabel(profile, t) : value;
+  };
+
+  function profileSelectLabel(profileId: string | null): string {
+    if (!profileId) {
+      return t("web.workspaceSettings.vaults.access.noAccess");
+    }
+    const profile = profiles.find((item) => item.id === profileId);
+    return profile
+      ? localizedProfileLabel(profile, t)
+      : t("web.workspaceSettings.vaults.access.noAccess");
+  }
 
   async function wrapForUser(
     vaultKey: Uint8Array,
@@ -222,9 +303,16 @@ export default function MemberCardPopup({
   }
 
   async function handleSave() {
-    if (!canPut || !member.userId || !dirty) {
+    if (!canPut || !dirty) {
       return;
     }
+    if (isPending && !member.invitationId) {
+      return;
+    }
+    if (!isPending && !member.userId) {
+      return;
+    }
+
     setSaving(true);
     try {
       await runSaveWithToast(
@@ -234,6 +322,28 @@ export default function MemberCardPopup({
           error: t("web.toast.save.error"),
         },
         async () => {
+          if (isPending) {
+            if (roleId !== initialRoleId && roleId) {
+              await core.updateWorkspaceInvitation(workspaceId, member.invitationId!, { roleId });
+            }
+            const invitationChanges: Array<{ vaultId: string; profileId: string | null }> = [];
+            for (const vault of vaultAccess) {
+              const before = initialVaultAccess[vault.vaultId] ?? null;
+              const after = accessByVaultId[vault.vaultId] ?? null;
+              if (before !== after) {
+                invitationChanges.push({ vaultId: vault.vaultId, profileId: after });
+              }
+            }
+            if (invitationChanges.length > 0) {
+              await core.updateInvitationVaultAccess(workspaceId, member.invitationId!, {
+                changes: invitationChanges,
+              });
+            }
+            await onSaved();
+            onClose();
+            return;
+          }
+
           if (roleId !== initialRoleId && roleId && !isOwner) {
             await core.updateWorkspaceMember(workspaceId, member.userId!, { roleId });
           }
@@ -273,9 +383,12 @@ export default function MemberCardPopup({
               });
             } else if (before && !after) {
               const access = await core.getVaultAccess(vault.vaultId);
-              const remaining = access.members.filter((row) => row.userId !== member.userId && row.profileId);
+              const remaining = access.members.filter(
+                (row) => row.userId !== member.userId && row.profileId,
+              );
               const rotatedKey = await generateSharedVaultKey();
-              const rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlobDto }> = [];
+              const rotatedVaultKeys: Array<{ userId: string; encryptedVaultKey: EncryptedBlobDto }> =
+                [];
               if (!accountVaultKey) {
                 throw new Error(t("web.workspaceSettings.vaults.errors.unlockRequired"));
               }
@@ -333,20 +446,37 @@ export default function MemberCardPopup({
   }
 
   async function handleRemove() {
-    if (!canDelete || !member.userId || isOwner) {
+    if (!canDelete || isOwner) {
       return;
     }
+    if (isPending) {
+      if (!member.invitationId) {
+        return;
+      }
+    } else if (!member.userId) {
+      return;
+    }
+
     setRemoving(true);
     try {
       await runSaveWithToast(
         {
-          loading: t("web.workspaceSettings.members.card.removing"),
-          success: t("web.workspaceSettings.members.card.removed"),
+          loading: isPending
+            ? t("web.workspaceSettings.members.invite.revoking")
+            : t("web.workspaceSettings.members.card.removing"),
+          success: isPending
+            ? t("web.workspaceSettings.members.invite.revoked")
+            : t("web.workspaceSettings.members.card.removed"),
           error: t("web.toast.save.error"),
         },
         async () => {
-          await core.deleteWorkspaceMember(workspaceId, member.userId!);
+          if (isPending) {
+            await core.revokeWorkspaceInvitation(workspaceId, member.invitationId!);
+          } else {
+            await core.deleteWorkspaceMember(workspaceId, member.userId!);
+          }
           await onSaved();
+          setDeleteConfirmOpen(false);
           onClose();
         },
       );
@@ -357,28 +487,36 @@ export default function MemberCardPopup({
     }
   }
 
+  const showActions = canDelete && !isOwner;
+  const deleteMenuLabel = isPending
+    ? t("web.workspaceSettings.members.deleteConfirm.deleteInvite")
+    : t("web.workspaceSettings.members.deleteConfirm.deleteMember");
+
   const header = (
-    <div className="pr-8">
-      <h2 className="text-lg font-semibold text-foreground">
+    <div className="flex min-w-0 items-center gap-3 pr-8">
+      <h2 className="truncate text-lg font-semibold leading-7 text-foreground">
         {t("web.workspaceSettings.members.card.title")}
       </h2>
+      {isPending ? (
+        <span className="shrink-0 rounded-md bg-foreground px-2 py-0.5 text-sm font-normal leading-5 text-background">
+          {t("web.workspaceSettings.members.pendingBadge")}
+        </span>
+      ) : null}
     </div>
   );
 
   const footer = (
     <div className="flex w-full items-center justify-between gap-2">
-      <div>
-        {canDelete && !isOwner ? (
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={saving || removing}
-            onClick={() => void handleRemove()}
-          >
-            {t("web.workspaceSettings.members.card.remove")}
-          </Button>
-        ) : null}
-      </div>
+      {showActions ? (
+        <VaultCardActionsMenu
+          t={t}
+          disabled={saving || removing}
+          deleteLabel={deleteMenuLabel}
+          onDelete={() => setDeleteConfirmOpen(true)}
+        />
+      ) : (
+        <span />
+      )}
       <div className="flex items-center gap-2">
         <Button type="button" variant="outline" disabled={saving || removing} onClick={onClose}>
           {t("web.newItemPopup.cancel")}
@@ -395,180 +533,275 @@ export default function MemberCardPopup({
   );
 
   return (
-    <Popup
-      id={popupId}
-      className="z-[60]"
-      width={720}
-      header={header}
-      closeLabel={t("web.settingsPopup.close")}
-      onClose={onClose}
-      closeDisabled={saving || removing}
-      footer={footer}
-    >
-      <div className="flex flex-col gap-6 pb-2">
-        <div className="flex items-center gap-3">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-secondary text-sm font-semibold text-foreground">
-            {initials}
+    <>
+      <Popup
+        id={popupId}
+        className="z-[60]"
+        width={720}
+        header={header}
+        closeLabel={t("web.settingsPopup.close")}
+        onClose={onClose}
+        closeDisabled={saving || removing}
+        footer={footer}
+      >
+        <div className="flex flex-col gap-6 pb-2">
+          <div className="flex items-center gap-3">
+            <MemberFavicon
+              firstName={member.firstName}
+              lastName={member.lastName}
+              email={member.email}
+              size={48}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold text-foreground">{displayName}</p>
+              <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-base font-semibold text-foreground">{displayName}</p>
-            <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+
+          <div className="flex flex-col">
+            <InfoRow label={t("web.workspaceSettings.members.card.roleLabel")}>
+              <div className="flex min-w-0 flex-1 items-center gap-4">
+                <Select
+                  value={roleId}
+                  disabled={!canPut || isOwner || saving}
+                  variant="button"
+                  buttonVariant="ghost"
+                  buttonSize="sm"
+                  onValueChange={setRoleId}
+                >
+                  <SelectTrigger className={cn("w-auto shrink-0", GHOST_SELECT_ROLE_ALIGN_CLASS)}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(isOwner ? roles : assignableRoles).map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {localizedRoleLabel(role, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Link
+                  to={settingsPath("roles")}
+                  className="ms-auto inline-flex shrink-0 items-center gap-1 text-sm font-medium text-foreground hover:underline"
+                >
+                  <GearIcon className="size-4" />
+                  {t("web.workspaceSettings.members.card.manageRoles")}
+                </Link>
+              </div>
+            </InfoRow>
+
+            <InfoRow label={t("web.workspaceSettings.members.card.invitation")}>
+              <HistoryValue
+                value={formatDateTime(member.invitedAt, locale)}
+                actor={member.invitedBy}
+                actorText={actorLabel(member.invitedBy)}
+                onOpenActor={onOpenMember}
+              />
+            </InfoRow>
+
+            <InfoRow label={t("web.workspaceSettings.members.card.roleChange")}>
+              <HistoryValue
+                value={formatDateTime(member.roleChangedAt, locale)}
+                actor={member.roleChangedBy}
+                actorText={actorLabel(member.roleChangedBy)}
+                onOpenActor={onOpenMember}
+              />
+            </InfoRow>
+
+            <InfoRow label={t("web.workspaceSettings.members.card.joinDate")}>
+              <p className="text-sm text-muted-foreground">
+                {formatDateTime(member.joinedAt, locale)}
+                {member.joinedAt ? ` (${formatRelativeDays(member.joinedAt, t)})` : null}
+              </p>
+            </InfoRow>
+
+            <InfoRow label={t("web.workspaceSettings.members.card.lastLogin")} isLast>
+              <p className="text-sm text-muted-foreground">
+                {formatDateTime(member.lastLoginAt, locale)}
+                {member.lastLoginAt ? ` (${formatRelativeDays(member.lastLoginAt, t)})` : null}
+              </p>
+            </InfoRow>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm font-medium text-foreground">
-            {t("web.workspaceSettings.members.card.roleLabel")}
-          </label>
-          <Select
-            value={roleId}
-            disabled={!canPut || isOwner || saving}
-            onValueChange={setRoleId}
-          >
-            <SelectTrigger className="h-9 w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(isOwner ? roles : assignableRoles).map((role) => (
-                <SelectItem key={role.id} value={role.id}>
-                  {role.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Link
-            to={settingsPath("roles")}
-            className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
-          >
-            <GearIcon className="size-4" />
-            {t("web.workspaceSettings.members.card.manageRoles")}
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-2 text-sm">
-          <HistoryLine
-            label={t("web.workspaceSettings.members.card.invitation")}
-            value={formatDateTime(member.invitedAt, locale)}
-            actor={member.invitedBy}
-            actorText={actorLabel(member.invitedBy)}
-            onOpenActor={onOpenMember}
-          />
-          <HistoryLine
-            label={t("web.workspaceSettings.members.card.roleChange")}
-            value={formatDateTime(member.roleChangedAt, locale)}
-            actor={member.roleChangedBy}
-            actorText={actorLabel(member.roleChangedBy)}
-            onOpenActor={onOpenMember}
-          />
-          <p className="text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {t("web.workspaceSettings.members.card.joinDate")}:
-            </span>{" "}
-            {formatDateTime(member.joinedAt, locale)}
-            {member.joinedAt
-              ? ` (${formatRelativeDays(member.joinedAt, t)})`
-              : null}
-          </p>
-          <p className="text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {t("web.workspaceSettings.members.card.lastLogin")}:
-            </span>{" "}
-            {formatDateTime(member.lastLoginAt, locale)}
-            {member.lastLoginAt
-              ? ` (${formatRelativeDays(member.lastLoginAt, t)})`
-              : null}
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <h3 className="text-base font-semibold text-foreground">
-            {t("web.workspaceSettings.members.card.vaultsTitle")}
-          </h3>
-          <Input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t("web.workspaceSettings.members.card.vaultsSearch")}
-            className="h-9"
-          />
-          {loadingAccess ? (
-            <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.members.loading")}</p>
-          ) : filteredVaults.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t("web.workspaceSettings.members.card.vaultsEmpty")}
+          <div className="flex flex-col gap-1.5">
+            <p className="pb-2.5 text-sm font-medium text-foreground">
+              {t("web.workspaceSettings.members.card.vaultsTitle")}
             </p>
-          ) : (
-            <div className="flex flex-col">
-              {filteredVaults.map((vault, index) => {
-                const isFirst = index === 0;
-                const isLast = index === filteredVaults.length - 1;
-                const value = accessByVaultId[vault.vaultId] ?? NO_ACCESS_VALUE;
-                return (
-                  <div
-                    key={vault.vaultId}
+            <div className="rounded-lg border border-border">
+              <div
+                className={cn(
+                  "flex items-center gap-1 rounded-t-lg bg-secondary px-1 py-1 pe-2",
+                  "border border-transparent",
+                  "transition-[color,box-shadow,border-color]",
+                  "focus-within:z-10 focus-within:border-accent focus-within:rounded-t-lg",
+                  "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                )}
+              >
+                <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 px-3">
+                  <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder={t("web.workspaceSettings.members.card.vaultsSearch")}
                     className={cn(
-                      "flex items-center gap-3 border border-border px-3 py-3",
-                      isFirst && "rounded-t-lg",
-                      isLast && "rounded-b-lg",
-                      !isFirst && "-mt-px",
+                      "h-9 border-0 px-0 outline-none transition-none",
+                      "!bg-transparent !shadow-none",
+                      "hover:!border-transparent hover:!bg-transparent hover:!shadow-none",
+                      "focus:!border-transparent focus:!bg-transparent focus:!shadow-none",
+                      "focus-visible:!border-transparent focus-visible:!bg-transparent focus-visible:!shadow-none focus-visible:!ring-0",
+                    )}
+                  />
+                </div>
+                <Select
+                  value={accessFilter}
+                  onValueChange={(value) => setAccessFilter(value as AccessFilterValue)}
+                  variant="button"
+                  buttonVariant="secondary"
+                  buttonSize="sm"
+                >
+                  <SelectTrigger
+                    className={cn(
+                      "h-auto min-h-0 w-auto shrink-0 gap-2 px-3 py-1.5 shadow-none",
+                      "bg-[color-mix(in_hsl,hsl(var(--secondary))_96%,hsl(var(--foreground))_4%)]",
+                      "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_93%,hsl(var(--foreground))_7%)]",
                     )}
                   >
-                    <span className="text-base" aria-hidden>
-                      {vault.icon || "📁"}
-                    </span>
-                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                      {vault.name}
-                    </p>
-                    <Select
-                      value={value}
-                      disabled={!canPut || saving || isOwner}
-                      onValueChange={(next) => {
-                        setAccessByVaultId((current) => ({
-                          ...current,
-                          [vault.vaultId]: next === NO_ACCESS_VALUE ? null : next,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger className="h-9 w-[160px] shrink-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_ACCESS_VALUE}>
-                          {t("web.workspaceSettings.vaults.access.noAccess")}
-                        </SelectItem>
-                        {profiles.map((profile) => (
-                          <SelectItem key={profile.id} value={profile.id}>
-                            {profile.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                );
-              })}
+                    <FilterIcon className="size-4 shrink-0" />
+                    <SelectValue>{filterLabel(accessFilter)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      {t("web.workspaceSettings.vaults.access.filterAll", {
+                        count: vaultAccess.length,
+                      })}
+                    </SelectItem>
+                    <SelectItem value="with_access">
+                      {t("web.workspaceSettings.vaults.access.filterWithAccess")}
+                    </SelectItem>
+                    <SelectItem value="without_access">
+                      {t("web.workspaceSettings.vaults.access.filterWithoutAccess")}
+                    </SelectItem>
+                    {profiles.map((profile) => (
+                      <SelectItem key={profile.id} value={`profile:${profile.id}`}>
+                        {localizedProfileLabel(profile, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="max-h-[320px] overflow-y-auto">
+                {loadingAccess ? (
+                  <p className="flex h-16 items-center px-4 text-sm text-muted-foreground">
+                    {t("web.workspaceSettings.members.loading")}
+                  </p>
+                ) : filteredVaults.length === 0 ? (
+                  <p className="flex h-16 items-center px-4 text-sm text-muted-foreground">
+                    {t("web.workspaceSettings.members.card.vaultsEmpty")}
+                  </p>
+                ) : (
+                  filteredVaults.map((vault, index) => {
+                    const value = accessByVaultId[vault.vaultId] ?? NO_ACCESS_VALUE;
+                    return (
+                      <div
+                        key={vault.vaultId}
+                        className={cn(
+                          "flex items-center gap-4 px-4 py-4",
+                          index > 0 && "border-t border-border",
+                        )}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className="text-base" aria-hidden>
+                            {vault.icon || "📁"}
+                          </span>
+                          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                            {vault.name}
+                          </p>
+                        </div>
+                        <Select
+                          value={value}
+                          disabled={!canPut || saving || isOwner}
+                          variant="button"
+                          buttonVariant="ghost"
+                          buttonSize="sm"
+                          onValueChange={(next) => {
+                            setAccessByVaultId((current) => ({
+                              ...current,
+                              [vault.vaultId]: next === NO_ACCESS_VALUE ? null : next,
+                            }));
+                          }}
+                        >
+                          <SelectTrigger
+                            className={cn("w-auto shrink-0", GHOST_SELECT_PROFILE_ALIGN_CLASS)}
+                          >
+                            <SelectValue>
+                              {profileSelectLabel(value === NO_ACCESS_VALUE ? null : value)}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_ACCESS_VALUE}>
+                              {t("web.workspaceSettings.vaults.access.noAccess")}
+                            </SelectItem>
+                            {profiles.map((profile) => (
+                              <SelectItem key={profile.id} value={profile.id}>
+                                {localizedProfileLabel(profile, t)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
-    </Popup>
+      </Popup>
+
+      <DeleteMemberConfirmPopup
+        open={deleteConfirmOpen}
+        pending={isPending}
+        t={t}
+        deleting={removing}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => void handleRemove()}
+      />
+    </>
   );
 }
 
-function HistoryLine({
+function InfoRow({
   label,
+  children,
+  isLast = false,
+}: {
+  label: string;
+  children: ReactNode;
+  isLast?: boolean;
+}) {
+  return (
+    <div className={cn("flex h-12 items-center gap-4", !isLast && "border-b border-border")}>
+      <div className="w-[200px] shrink-0 text-sm font-medium text-foreground">{label}</div>
+      <div className="flex min-w-0 flex-1 items-center">{children}</div>
+    </div>
+  );
+}
+
+function HistoryValue({
   value,
   actor,
   actorText,
   onOpenActor,
 }: {
-  label: string;
   value: string;
   actor: WorkspaceMemberDto["invitedBy"];
   actorText: string;
   onOpenActor: (userId: string) => void;
 }) {
   return (
-    <p className="text-muted-foreground">
-      <span className="font-medium text-foreground">{label}:</span> {value}
+    <p className="text-sm text-muted-foreground">
+      {value}
       {actor ? (
         <>
           {", "}

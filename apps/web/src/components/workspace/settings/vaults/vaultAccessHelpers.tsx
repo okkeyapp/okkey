@@ -4,6 +4,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Favicon,
   Input,
   cn,
 } from "@okkey/ui";
@@ -15,12 +16,14 @@ type VaultCardActionsMenuProps = {
   t: (key: string) => string;
   disabled?: boolean;
   onDelete: () => void;
+  deleteLabel?: string;
 };
 
 export default function VaultCardActionsMenu({
   t,
   disabled = false,
   onDelete,
+  deleteLabel,
 }: VaultCardActionsMenuProps) {
   const [open, setOpen] = useState(false);
 
@@ -50,7 +53,7 @@ export default function VaultCardActionsMenu({
           }}
         >
           <IconDelete16 className="size-4" />
-          {t("web.workspaceSettings.vaults.deleteConfirm.delete")}
+          {deleteLabel ?? t("web.workspaceSettings.vaults.deleteConfirm.delete")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -80,6 +83,23 @@ export function memberInitials(name: string): string {
     return parts[0]!.slice(0, 2).toUpperCase();
   }
   return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
+}
+
+export function MemberFavicon({
+  firstName,
+  lastName,
+  email,
+  size = 40,
+  className,
+}: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email: string;
+  size?: number;
+  className?: string;
+}) {
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim() || email;
+  return <Favicon name={name} size={size} className={className} />;
 }
 
 export function useFilteredMembers<

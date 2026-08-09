@@ -6,13 +6,12 @@ import type {
   WorkspaceRoleSummary,
 } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
-import { Button, Input } from "@okkey/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Input, cn } from "@okkey/ui";
+import { useCallback, useEffect, useMemo, useState, type SVGProps } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import { useLocale } from "../../../../locale/LocaleContext";
-import { runSaveWithToast } from "../../../../lib/saveWithToast";
 import {
   buildPopupQueryValue,
   EDIT_MEMBER_POPUP_ID,
@@ -39,6 +38,34 @@ function PlusIcon({ className }: { className?: string }) {
       <path
         d="M3.33337 8H12.6667M8.00004 3.33337V12.6667"
         stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SearchIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 14L11.1 11.1"
+        stroke="currentColor"
+        strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -182,31 +209,23 @@ export default function WorkspaceSettingsMembersSection({
     if (!editMemberId) {
       return null;
     }
-    return members.find((member) => member.userId === editMemberId && member.status === "active") ?? null;
+    return (
+      members.find(
+        (member) =>
+          (member.userId != null && member.userId === editMemberId) ||
+          (member.invitationId != null && member.invitationId === editMemberId),
+      ) ?? null
+    );
   }, [editMemberId, members]);
 
   const canPost = permissions.post >= 1;
   const canPut = permissions.put >= 1;
   const canDelete = permissions.delete >= 1;
 
-  async function handleRevokeInvite(member: WorkspaceMemberDto) {
-    if (!core || !member.invitationId || !canDelete) {
-      return;
-    }
-    try {
-      await runSaveWithToast(
-        {
-          loading: t("web.workspaceSettings.members.invite.revoking"),
-          success: t("web.workspaceSettings.members.invite.revoked"),
-          error: t("web.toast.save.error"),
-        },
-        async () => {
-          await core.revokeWorkspaceInvitation(workspaceId, member.invitationId!);
-          await load();
-        },
-      );
-    } catch {
-      /* toast */
+  function openMemberCard(member: WorkspaceMemberDto) {
+    const id = member.userId ?? member.invitationId;
+    if (id) {
+      openPopup(buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, id));
     }
   }
 
@@ -233,46 +252,34 @@ export default function WorkspaceSettingsMembersSection({
       {!loading && !error ? (
         <>
           {ownerMember ? (
-            <MembersListCard
-              members={[ownerMember]}
-              t={t}
-              onMemberClick={(member) => {
-                if (member.userId) {
-                  openPopup(buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, member.userId));
-                }
-              }}
-            />
+            <MembersListCard members={[ownerMember]} t={t} onMemberClick={openMemberCard} />
           ) : null}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={t("web.workspaceSettings.members.searchPlaceholder")}
-              className="h-9 min-w-0 flex-1"
-            />
-            {canPost ? (
-              <Button
-                type="button"
-                className="h-9 shrink-0 gap-1 px-3"
-                onClick={() => openPopup(INVITE_MEMBERS_POPUP_ID)}
-              >
-                <PlusIcon className="size-4" />
-                {t("web.workspaceSettings.members.invite.action")}
-              </Button>
-            ) : null}
-          </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative w-full min-w-0 max-w-[380px]">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("web.workspaceSettings.members.searchPlaceholder")}
+                  className="h-9 w-full pl-9"
+                />
+              </div>
+              {canPost ? (
+                <Button
+                  type="button"
+                  className="h-9 shrink-0 gap-1 px-3 sm:ms-auto"
+                  onClick={() => openPopup(INVITE_MEMBERS_POPUP_ID)}
+                >
+                  <PlusIcon className="size-4" />
+                  {t("web.workspaceSettings.members.invite.action")}
+                </Button>
+              ) : null}
+            </div>
 
-          <MembersListCard
-            members={otherMembers}
-            t={t}
-            onMemberClick={(member) => {
-              if (member.userId) {
-                openPopup(buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, member.userId));
-              }
-            }}
-            onRevokeInvite={canDelete ? (member) => void handleRevokeInvite(member) : undefined}
-          />
+            <MembersListCard members={otherMembers} t={t} onMemberClick={openMemberCard} />
+          </div>
         </>
       ) : null}
 
@@ -290,7 +297,10 @@ export default function WorkspaceSettingsMembersSection({
 
       {editingMember && core && userId ? (
         <MemberCardPopup
-          popupId={buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, editingMember.userId ?? "")}
+          popupId={buildPopupQueryValue(
+            EDIT_MEMBER_POPUP_ID,
+            editingMember.userId ?? editingMember.invitationId ?? "",
+          )}
           workspaceId={workspaceId}
           member={editingMember}
           core={core}

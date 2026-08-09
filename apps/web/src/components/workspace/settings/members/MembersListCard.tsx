@@ -3,34 +3,30 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { cn } from "@okkey/ui";
 import { useState } from "react";
 
-import { memberDisplayName } from "../vaults/vaultAccessHelpers";
+import { localizedRoleLabel } from "../localizedWorkspaceLabels";
+import { MemberFavicon, memberDisplayName } from "../vaults/vaultAccessHelpers";
 
 type MembersListCardProps = {
   members: readonly WorkspaceMemberDto[];
   t: (messageKey: string, values?: WebMessageValues) => string;
   onMemberClick?: (member: WorkspaceMemberDto) => void;
-  onRevokeInvite?: (member: WorkspaceMemberDto) => void;
   className?: string;
 };
 
 function roleLabel(member: WorkspaceMemberDto, t: MembersListCardProps["t"]): string {
-  if (member.roleBuiltinKey === "owner") {
-    return t("web.workspaceSettings.roles.builtIn.owner");
-  }
-  if (member.roleBuiltinKey === "admin") {
-    return t("web.workspaceSettings.roles.builtIn.admin");
-  }
-  if (member.roleBuiltinKey === "user") {
-    return t("web.workspaceSettings.roles.builtIn.user");
-  }
-  return member.roleName?.trim() || t("web.workspaceSettings.members.roleUnknown");
+  return localizedRoleLabel(
+    {
+      builtinId: member.roleBuiltinKey,
+      name: member.roleName?.trim() || t("web.workspaceSettings.members.roleUnknown"),
+    },
+    t,
+  );
 }
 
 export default function MembersListCard({
   members,
   t,
   onMemberClick,
-  onRevokeInvite,
   className,
 }: MembersListCardProps) {
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -47,7 +43,7 @@ export default function MembersListCard({
         const rowKey = member.userId ?? member.invitationId ?? member.email;
         const isFirst = index === 0;
         const isLast = index === lastIndex;
-        const clickable = member.status === "active" && Boolean(member.userId) && onMemberClick;
+        const clickable = Boolean(onMemberClick) && Boolean(member.userId || member.invitationId);
         const isFocused = clickable && focusedId === rowKey;
         const name = memberDisplayName(member);
         const showName = name.trim().length > 0 && name !== member.email;
@@ -69,36 +65,28 @@ export default function MembersListCard({
 
         const content = (
           <>
+            <MemberFavicon
+              firstName={member.firstName}
+              lastName={member.lastName}
+              email={member.email}
+              size={40}
+            />
             <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
               <div className="flex min-w-0 items-center gap-2">
                 {showName ? (
                   <p className="truncate text-sm leading-5 text-muted-foreground">{name}</p>
                 ) : null}
                 {member.status === "pending" ? (
-                  <span className="shrink-0 rounded-full bg-foreground px-2 py-0.5 text-xs font-medium text-background">
+                  <span className="shrink-0 rounded-md bg-foreground px-2 py-0.5 text-xs font-normal leading-5 text-background">
                     {t("web.workspaceSettings.members.pendingBadge")}
                   </span>
                 ) : null}
               </div>
               <p className="truncate text-sm font-medium leading-5 text-foreground">{member.email}</p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="text-sm leading-5 text-muted-foreground">
-                {roleLabel(member, t)}
-              </span>
-              {member.status === "pending" && member.invitationId && onRevokeInvite ? (
-                <button
-                  type="button"
-                  className="text-sm font-medium text-destructive hover:underline"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRevokeInvite(member);
-                  }}
-                >
-                  {t("web.workspaceSettings.members.invite.revoke")}
-                </button>
-              ) : null}
-            </div>
+            <span className="shrink-0 text-sm leading-5 text-muted-foreground">
+              {roleLabel(member, t)}
+            </span>
           </>
         );
 
