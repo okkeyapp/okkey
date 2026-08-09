@@ -1,6 +1,6 @@
 import { type SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@okkey/ui";
+import { Button, Favicon } from "@okkey/ui";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { AUTH_EMAIL_PATH } from "../../routes/paths";
@@ -16,45 +16,6 @@ function LogOutIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function firstLetter(value: string): string {
-  const t = value.trim();
-  if (t.length === 0) return "";
-  const ch = [...t][0];
-  return ch ?? "";
-}
-
-function buildInitials(firstName: string, lastName: string, email: string): string {
-  const f = firstLetter(firstName);
-  const l = firstLetter(lastName);
-  if (f && l) {
-    return `${f.toLocaleUpperCase()}${l.toLocaleUpperCase()}`;
-  }
-
-  const combined = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
-  const parts = combined.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    const a = firstLetter(parts[0]);
-    const b = firstLetter(parts[parts.length - 1]);
-    return `${a.toLocaleUpperCase()}${b.toLocaleUpperCase()}`;
-  }
-  if (parts.length === 1) {
-    const w = parts[0];
-    const chars = [...w];
-    if (chars.length >= 2) {
-      return `${chars[0].toLocaleUpperCase()}${chars[1].toLocaleUpperCase()}`;
-    }
-    if (chars.length === 1) {
-      return `${chars[0].toLocaleUpperCase()}${chars[0].toLocaleUpperCase()}`;
-    }
-  }
-
-  const local = email.split("@")[0] ?? "";
-  if (local.length >= 2) {
-    return local.slice(0, 2).toUpperCase();
-  }
-  return "??";
-}
-
 export default function AccountUserBar() {
   const { t } = useLocale();
   const navigate = useNavigate();
@@ -65,7 +26,7 @@ export default function AccountUserBar() {
   const email = profile?.email ?? "";
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
   const hasDisplayName = displayName.length > 0;
-  const initials = buildInitials(firstName, lastName, email);
+  const faviconName = hasDisplayName ? displayName : email || "?";
 
   function handleSignOut() {
     logout();
@@ -74,12 +35,7 @@ export default function AccountUserBar() {
 
   return (
     <div className="flex w-full items-center gap-2 rounded-lg border border-border p-2">
-      <div
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-semibold uppercase leading-none text-primary-foreground"
-        aria-hidden
-      >
-        {initials}
-      </div>
+      <Favicon name={faviconName} size={40} aria-hidden />
       <div className="min-w-0 flex-1 text-left">
         <p className="truncate okkey-small font-semibold text-copy-primary">{hasDisplayName ? displayName : email || "—"}</p>
         {hasDisplayName && email ? <p className="truncate text-xs leading-4 text-copy-secondary">{email}</p> : null}

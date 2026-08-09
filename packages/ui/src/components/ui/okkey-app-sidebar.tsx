@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
+import { Favicon } from "./favicon.js";
 import { PersonalWorkspaceMark } from "./workspace-tile.js";
 import {
   OkkeySidebarFoldersMenu,
@@ -433,41 +434,29 @@ const DEMO_PROFILE = {
   email: "alexzorin@okkey.app",
 } as const;
 
-function firstLetter(value: string): string {
-  const t = value.trim();
-  if (t.length === 0) return "";
-  const ch = [...t][0];
-  return ch ?? "";
+function userAccountFaviconName(firstName: string, lastName: string, email: string): string {
+  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  return displayName || email.trim() || "?";
 }
 
-function buildUserInitials(firstName: string, lastName: string, email: string): string {
-  const f = firstLetter(firstName);
-  const l = firstLetter(lastName);
-  if (f && l) {
-    return `${f.toLocaleUpperCase()}${l.toLocaleUpperCase()}`;
-  }
-  const combined = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
-  const parts = combined.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    const a = firstLetter(parts[0]);
-    const b = firstLetter(parts[parts.length - 1]);
-    return `${a.toLocaleUpperCase()}${b.toLocaleUpperCase()}`;
-  }
-  if (parts.length === 1) {
-    const w = parts[0];
-    const chars = [...w];
-    if (chars.length >= 2) {
-      return `${chars[0].toLocaleUpperCase()}${chars[1].toLocaleUpperCase()}`;
-    }
-    if (chars.length === 1) {
-      return `${chars[0].toLocaleUpperCase()}${chars[0].toLocaleUpperCase()}`;
-    }
-  }
-  const local = email.split("@")[0] ?? "";
-  if (local.length >= 2) {
-    return local.slice(0, 2).toUpperCase();
-  }
-  return "??";
+function UserAccountFavicon({
+  firstName,
+  lastName,
+  email,
+  size = 32,
+}: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  size?: number;
+}) {
+  return (
+    <Favicon
+      name={userAccountFaviconName(firstName, lastName, email)}
+      size={size}
+      aria-hidden
+    />
+  );
 }
 
 function CheckMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
@@ -594,17 +583,11 @@ function ProfileAccountDropdownPanel({
 }) {
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
   const titleLine = displayName.length > 0 ? displayName : email;
-  const initials = buildUserInitials(firstName, lastName, email);
 
   return (
     <>
       <div className="flex gap-3 border-b border-border px-3 py-3">
-        <div
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-semibold uppercase leading-none text-primary-foreground"
-          aria-hidden
-        >
-          {initials}
-        </div>
+        <UserAccountFavicon firstName={firstName} lastName={lastName} email={email} size={32} />
         <div className="min-w-0 flex-1 text-left">
           <p className="truncate text-sm font-semibold leading-5 text-foreground">{titleLine}</p>
           {displayName ? <p className="truncate text-xs leading-4 text-muted-foreground">{email}</p> : null}
@@ -631,33 +614,6 @@ function ProfileAccountDropdownPanel({
         </DropdownMenuItem>
       </div>
     </>
-  );
-}
-
-function UserFooterShieldCheckIcon(props: React.SVGProps<SVGSVGElement>) {
-  const clipId = React.useId().replace(/:/g, "");
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      {...props}
-    >
-      <g clipPath={`url(#${clipId})`}>
-        <path
-          d="M7.99868 1.33325L8.07734 1.33792L8.11668 1.34325L8.15734 1.35192L8.23134 1.37459C8.28245 1.39343 8.33104 1.41851 8.37601 1.44925L8.44534 1.50392L8.61534 1.64925C9.96022 2.76629 11.6599 3.36612 13.408 3.34059L13.636 3.33392C13.7851 3.32712 13.9321 3.37052 14.0536 3.45718C14.1751 3.54385 14.2639 3.66876 14.306 3.81192C14.6336 4.9263 14.7339 6.09517 14.6008 7.24906C14.4677 8.40296 14.1041 9.51833 13.5314 10.5289C12.9588 11.5395 12.1889 12.4246 11.2674 13.1318C10.3459 13.8389 9.29167 14.3536 8.16734 14.6453C8.0576 14.6737 7.94242 14.6737 7.83268 14.6453C6.70829 14.3537 5.65399 13.839 4.73243 13.1319C3.81088 12.4248 3.04087 11.5397 2.46816 10.5291C1.89546 9.51851 1.53174 8.40312 1.39864 7.24919C1.26554 6.09526 1.36576 4.92635 1.69334 3.81192C1.73542 3.66876 1.8243 3.54385 1.94578 3.45718C2.06725 3.37052 2.21428 3.32712 2.36334 3.33392C4.18832 3.41734 5.97872 2.81658 7.38401 1.64925L7.55934 1.49925L7.62334 1.44925C7.66831 1.41851 7.7169 1.39343 7.76801 1.37459L7.84268 1.35192C7.86881 1.34561 7.8953 1.34093 7.92201 1.33792L7.99868 1.33325ZM10.472 6.19525C10.4101 6.13327 10.3366 6.0841 10.2556 6.05055C10.1747 6.017 10.088 5.99973 10.0003 5.99973C9.91273 5.99973 9.82598 6.017 9.74505 6.05055C9.66412 6.0841 9.59059 6.13327 9.52868 6.19525L7.33334 8.38992L6.47134 7.52859L6.40868 7.47325C6.27468 7.36964 6.10628 7.32092 5.93766 7.33699C5.76904 7.35305 5.61287 7.43269 5.50084 7.55973C5.38882 7.68678 5.32936 7.8517 5.33453 8.021C5.33969 8.1903 5.40911 8.35128 5.52868 8.47125L6.86201 9.80459L6.92468 9.85992C7.05295 9.95942 7.21311 10.0087 7.37513 9.99851C7.53715 9.98832 7.68988 9.91937 7.80468 9.80459L10.4713 7.13792L10.5267 7.07525C10.6262 6.94698 10.6755 6.78682 10.6653 6.6248C10.6551 6.46278 10.5861 6.31005 10.4713 6.19525H10.472Z"
-          fill="currentColor"
-        />
-      </g>
-      <defs>
-        <clipPath id={clipId}>
-          <rect width="16" height="16" fill="white" />
-        </clipPath>
-      </defs>
-    </svg>
   );
 }
 
@@ -1443,15 +1399,12 @@ function OkkeyAppSidebarInner({
                   "w-full gap-2 p-2",
                 )}
               >
-                <div
-                  className={cn(
-                    "flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white",
-                    "size-8",
-                  )}
-                >
-                  <UserFooterShieldCheckIcon className="shrink-0" />
-                  <span className="text-[10px] font-semibold leading-none">48</span>
-                </div>
+                <UserAccountFavicon
+                  firstName={footerAccount.firstName}
+                  lastName={footerAccount.lastName}
+                  email={footerAccount.email}
+                  size={32}
+                />
                 <>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold leading-5 text-foreground">
@@ -1481,15 +1434,12 @@ function OkkeyAppSidebarInner({
                     "h-9 w-9 min-h-9 min-w-9 shrink-0 justify-center p-0",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-500 text-white",
-                      "size-9",
-                    )}
-                  >
-                    <UserFooterShieldCheckIcon className="shrink-0" />
-                    <span className="text-[10px] font-semibold leading-none">48</span>
-                  </div>
+                  <UserAccountFavicon
+                    firstName={footerAccount.firstName}
+                    lastName={footerAccount.lastName}
+                    email={footerAccount.email}
+                    size={36}
+                  />
                   <span className="sr-only">
                     {footerNameLine ? `${footerNameLine}, ${footerAccount.email}` : footerAccount.email}
                   </span>
