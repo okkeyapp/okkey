@@ -37,9 +37,13 @@ import { base64ToBytes } from "../../../../auth/base64";
 import { runSaveWithToast } from "../../../../lib/saveWithToast";
 
 import DeleteVaultConfirmPopup from "./DeleteVaultConfirmPopup";
+import {
+  GHOST_SELECT_PROFILE_ALIGN_CLASS,
+  localizedProfileLabel,
+} from "../localizedWorkspaceLabels";
 import VaultCardActionsMenu, {
+  MemberFavicon,
   memberDisplayName,
-  memberInitials,
   useFilteredMembers,
   type AccessFilterValue,
 } from "./vaultAccessHelpers";
@@ -517,7 +521,8 @@ export default function VaultCardPopup({
       return t("web.workspaceSettings.vaults.access.filterWithoutAccess");
     }
     const profileId = value.slice("profile:".length);
-    return profiles.find((profile) => profile.id === profileId)?.name ?? value;
+    const profile = profiles.find((item) => item.id === profileId);
+    return profile ? localizedProfileLabel(profile, t) : value;
   };
 
   const footer = (
@@ -674,7 +679,7 @@ export default function VaultCardPopup({
                       </SelectItem>
                       {profiles.map((profile) => (
                         <SelectItem key={profile.id} value={`profile:${profile.id}`}>
-                          {profile.name}
+                          {localizedProfileLabel(profile, t)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -682,10 +687,19 @@ export default function VaultCardPopup({
                 </div>
 
                 <div className="max-h-[320px] overflow-y-auto">
-                  {filteredMembers.map((member, index) => {
+                  {filteredMembers.length === 0 ? (
+                    <p className="flex h-16 items-center px-4 text-sm text-muted-foreground">
+                      {t("web.workspaceSettings.vaults.access.empty")}
+                    </p>
+                  ) : (
+                    filteredMembers.map((member, index) => {
                     const locked = isLockedMember(member, workspaceOwnerId);
                     const name = memberDisplayName(member);
                     const profileValue = member.profileId ?? NO_ACCESS_VALUE;
+                    const selectedProfile =
+                      profileValue === NO_ACCESS_VALUE
+                        ? null
+                        : profiles.find((profile) => profile.id === profileValue) ?? null;
                     return (
                       <div
                         key={member.userId}
@@ -695,9 +709,12 @@ export default function VaultCardPopup({
                         )}
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-xs font-semibold uppercase text-sidebar-primary-foreground">
-                            {memberInitials(name)}
-                          </div>
+                          <MemberFavicon
+                            firstName={member.firstName}
+                            lastName={member.lastName}
+                            email={member.email}
+                            size={32}
+                          />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold text-foreground">{name}</p>
                             <p className="truncate text-xs text-muted-foreground">{member.email}</p>
@@ -722,15 +739,15 @@ export default function VaultCardPopup({
                         >
                           <SelectTrigger
                             className={cn(
-                              "h-auto min-h-0 w-auto shrink-0",
+                              "w-auto shrink-0",
+                              GHOST_SELECT_PROFILE_ALIGN_CLASS,
                               locked && "text-muted-foreground",
                             )}
                           >
                             <SelectValue>
-                              {profileValue === NO_ACCESS_VALUE
-                                ? t("web.workspaceSettings.vaults.access.noAccess")
-                                : profiles.find((profile) => profile.id === profileValue)?.name ??
-                                  t("web.workspaceSettings.vaults.access.noAccess")}
+                              {selectedProfile
+                                ? localizedProfileLabel(selectedProfile, t)
+                                : t("web.workspaceSettings.vaults.access.noAccess")}
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
@@ -739,14 +756,15 @@ export default function VaultCardPopup({
                             </SelectItem>
                             {profiles.map((profile) => (
                               <SelectItem key={profile.id} value={profile.id}>
-                                {profile.name}
+                                {localizedProfileLabel(profile, t)}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                     );
-                  })}
+                  })
+                  )}
                 </div>
               </div>
             </div>
