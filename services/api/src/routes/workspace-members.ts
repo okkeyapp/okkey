@@ -111,6 +111,92 @@ export function createWorkspaceInvitationDeleteRoute(
   };
 }
 
+export function createWorkspaceInvitationPatchRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const invitationId = ctx.params.invitationId;
+    if (!workspaceId || !invitationId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId and invitationId are required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const body = await readJsonBody<Record<string, unknown>>(ctx.req);
+      const roleId = typeof body.roleId === "string" ? body.roleId : "";
+      await membersService.updateInvitationRole(workspaceId, userId, invitationId, roleId);
+      json(ctx.res, 200, { updated: true });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createInvitationVaultAccessGetRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const invitationId = ctx.params.invitationId;
+    if (!workspaceId || !invitationId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId and invitationId are required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const vaults = await membersService.getInvitationVaultAccess(workspaceId, userId, invitationId);
+      json(ctx.res, 200, { workspaceId, invitationId, vaults });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createInvitationVaultAccessPutRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    const invitationId = ctx.params.invitationId;
+    if (!workspaceId || !invitationId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId and invitationId are required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const body = await readJsonBody<Record<string, unknown>>(ctx.req);
+      const raw = Array.isArray(body.changes) ? body.changes : [];
+      const changes = raw.map((entry) => {
+        const row = (entry ?? {}) as Record<string, unknown>;
+        return {
+          vaultId: String(row.vaultId ?? ""),
+          profileId: row.profileId == null ? null : String(row.profileId),
+        };
+      });
+      await membersService.updateInvitationVaultAccess(workspaceId, userId, invitationId, changes);
+      json(ctx.res, 200, { updated: true });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createWorkspaceMemberPatchRoute(
   membersService: WorkspaceMembersService,
   resolveUserId: ResolveUserId,

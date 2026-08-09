@@ -300,6 +300,172 @@ export class WorkspaceMembersService {
     );
   }
 
+  async updateInvitationRole(
+    workspaceId: string,
+    actorId: string,
+    invitationId: string,
+    roleId: string,
+  ): Promise<void> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    await this.assertMembers(workspaceId, actorId, "put");
+    if (!isEntityId(invitationId) || !isEntityId(roleId)) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid ids");
+    }
+
+    const role = await this.loadRole(workspaceId, roleId);
+    if (!role) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "role not found");
+    }
+    if (role.builtinKey === "owner") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "cannot assign owner role");
+    }
+
+    const rows = await this.db.query<{ id: string; status: string; role_id: string }>(
+      `
+        SELECT id, status, role_id FROM workspace_invitations
+        WHERE id = $1 AND workspace_id = $2
+        LIMIT 1
+      `,
+      [invitationId, workspaceId],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+    if (row.status !== "pending") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+    if (row.role_id === roleId) {
+      return;
+    }
+
+    await this.db.query(
+      `
+        UPDATE workspace_invitations
+        SET role_id = $3
+        WHERE id = $1 AND workspace_id = $2 AND status = 'pending'
+      `,
+      [invitationId, workspaceId, roleId],
+    );
+  }
+
+  async getInvitationVaultAccess(
+    workspaceId: string,
+    actorId: string,
+    invitationId: string,
+  ): Promise<MemberVaultAccessEntry[]> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    await this.assertMembers(workspaceId, actorId, "get");
+    await this.requirePendingInvitation(workspaceId, invitationId);
+
+    const rows = await this.db.query<{
+      vault_id: string;
+      name: string;
+      icon: string;
+      description: string;
+      profile_id: string | null;
+    }>(
+      `
+        SELECT
+          v.id AS vault_id,
+          v.name,
+          v.icon,
+          v.description,
+          iva.profile_id
+        FROM vaults v
+        LEFT JOIN workspace_invitation_vault_access iva
+          ON iva.vault_id = v.id AND iva.invitation_id = $2
+        WHERE v.workspace_id = $1
+          AND v.is_personal = false
+        ORDER BY v.created_at ASC, v.id ASC
+      `,
+      [workspaceId, invitationId],
+    );
+
+    return rows.map((row) => ({
+      vaultId: row.vault_id,
+      name: row.name,
+      icon: row.icon,
+      description: row.description,
+      profileId: row.profile_id,
+    }));
+  }
+
+  async updateInvitationVaultAccess(
+    workspaceId: string,
+    actorId: string,
+    invitationId: string,
+    changes: Array<{ vaultId: string; profileId: string | null }>,
+  ): Promise<void> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    await this.assertMembers(workspaceId, actorId, "put");
+    await this.requirePendingInvitation(workspaceId, invitationId);
+    if (!Array.isArray(changes) || changes.length === 0) {
+      return;
+    }
+
+    for (const change of changes) {
+      if (!isEntityId(change.vaultId)) {
+        throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid vaultId");
+      }
+      const vaultRows = await this.db.query<{ id: string; is_personal: boolean }>(
+        `
+          SELECT id, is_personal FROM vaults
+          WHERE id = $1 AND workspace_id = $2
+          LIMIT 1
+        `,
+        [change.vaultId, workspaceId],
+      );
+      const vault = vaultRows[0];
+      if (!vault) {
+        throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "vault not found");
+      }
+      if (vault.is_personal) {
+        throw new WorkspaceMembersServiceError(
+          "BAD_REQUEST",
+          400,
+          "personal vault access cannot be updated",
+        );
+      }
+
+      if (change.profileId == null) {
+        await this.db.query(
+          `
+            DELETE FROM workspace_invitation_vault_access
+            WHERE invitation_id = $1 AND vault_id = $2
+          `,
+          [invitationId, change.vaultId],
+        );
+        continue;
+      }
+
+      if (!isEntityId(change.profileId)) {
+        throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid profileId");
+      }
+      const profileRows = await this.db.query<{ id: string }>(
+        `
+          SELECT id FROM profiles
+          WHERE id = $1 AND workspace_id = $2
+          LIMIT 1
+        `,
+        [change.profileId, workspaceId],
+      );
+      if (!profileRows[0]) {
+        throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "profile not found");
+      }
+
+      await this.db.query(
+        `
+          INSERT INTO workspace_invitation_vault_access (invitation_id, vault_id, profile_id)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (invitation_id, vault_id)
+          DO UPDATE SET profile_id = EXCLUDED.profile_id
+        `,
+        [invitationId, change.vaultId, change.profileId],
+      );
+    }
+  }
+
   async updateMemberRole(
     workspaceId: string,
     actorId: string,
@@ -637,6 +803,27 @@ export class WorkspaceMembersService {
     );
     if (!rows[0]) {
       throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "member not found");
+    }
+  }
+
+  private async requirePendingInvitation(workspaceId: string, invitationId: string): Promise<void> {
+    if (!isEntityId(invitationId)) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid invitationId");
+    }
+    const rows = await this.db.query<{ id: string; status: string }>(
+      `
+        SELECT id, status FROM workspace_invitations
+        WHERE id = $1 AND workspace_id = $2
+        LIMIT 1
+      `,
+      [invitationId, workspaceId],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+    if (row.status !== "pending") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
     }
   }
 

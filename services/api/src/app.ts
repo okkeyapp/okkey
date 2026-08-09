@@ -74,9 +74,12 @@ import {
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
 import {
+  createInvitationVaultAccessGetRoute,
+  createInvitationVaultAccessPutRoute,
   createMemberVaultAccessGetRoute,
   createMemberVaultAccessPutRoute,
   createWorkspaceInvitationDeleteRoute,
+  createWorkspaceInvitationPatchRoute,
   createWorkspaceInvitationsCreateRoute,
   createWorkspaceMemberDeleteRoute,
   createWorkspaceMemberPatchRoute,
@@ -299,6 +302,21 @@ export function createApiApp(
         "DELETE",
         "/workspaces/:workspaceId/invitations/:invitationId",
         createWorkspaceInvitationDeleteRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "PATCH",
+        "/workspaces/:workspaceId/invitations/:invitationId",
+        createWorkspaceInvitationPatchRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/invitations/:invitationId/vault-access",
+        createInvitationVaultAccessGetRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/invitations/:invitationId/vault-access",
+        createInvitationVaultAccessPutRoute(deps.workspaceMembersService, resolveUserId),
       );
       app.route(
         "PATCH",

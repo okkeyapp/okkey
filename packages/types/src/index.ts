@@ -196,6 +196,11 @@ export interface WorkspaceMemberUpdateRequestDto {
   roleId: EntityId;
 }
 
+/** `PATCH /workspaces/:workspaceId/invitations/:invitationId` body. */
+export interface WorkspaceInvitationUpdateRequestDto {
+  roleId: EntityId;
+}
+
 /** One shared vault access row for a workspace member. */
 export interface MemberVaultAccessEntryDto {
   vaultId: EntityId;
@@ -210,6 +215,21 @@ export interface MemberVaultAccessResponseDto {
   workspaceId: EntityId;
   userId: EntityId;
   vaults: MemberVaultAccessEntryDto[];
+}
+
+/** `GET /workspaces/:workspaceId/invitations/:invitationId/vault-access` success body. */
+export interface InvitationVaultAccessResponseDto {
+  workspaceId: EntityId;
+  invitationId: EntityId;
+  vaults: MemberVaultAccessEntryDto[];
+}
+
+/** `PUT /workspaces/:workspaceId/invitations/:invitationId/vault-access` body. */
+export interface InvitationVaultAccessUpdateRequestDto {
+  changes: Array<{
+    vaultId: EntityId;
+    profileId: EntityId | null;
+  }>;
 }
 
 /**

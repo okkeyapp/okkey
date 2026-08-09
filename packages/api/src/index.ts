@@ -45,9 +45,12 @@ import type {
   WorkspaceMembersListResponseDto,
   WorkspaceInvitationsCreateRequestDto,
   WorkspaceInvitationsCreateResponseDto,
+  WorkspaceInvitationUpdateRequestDto,
   WorkspaceMemberUpdateRequestDto,
   MemberVaultAccessResponseDto,
   MemberVaultAccessUpdateRequestDto,
+  InvitationVaultAccessResponseDto,
+  InvitationVaultAccessUpdateRequestDto,
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
 } from "../../types/src/index.js";
@@ -275,6 +278,37 @@ export class CoreApiClient {
   revokeWorkspaceInvitation(workspaceId: string, invitationId: string): Promise<{ revoked: true }> {
     return this.api.delete<{ revoked: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`,
+    );
+  }
+
+  updateWorkspaceInvitation(
+    workspaceId: string,
+    invitationId: string,
+    body: WorkspaceInvitationUpdateRequestDto,
+  ): Promise<{ updated: true }> {
+    return this.api.patch<{ updated: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`,
+      body,
+    );
+  }
+
+  getInvitationVaultAccess(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<InvitationVaultAccessResponseDto> {
+    return this.api.get<InvitationVaultAccessResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/vault-access`,
+    );
+  }
+
+  updateInvitationVaultAccess(
+    workspaceId: string,
+    invitationId: string,
+    body: InvitationVaultAccessUpdateRequestDto,
+  ): Promise<{ updated: true }> {
+    return this.api.put<{ updated: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/vault-access`,
+      body,
     );
   }
 

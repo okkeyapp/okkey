@@ -298,6 +298,21 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0018);
   }
+
+  const invitationVaultAccessTable = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_invitation_vault_access'
+    ) AS exists`,
+  );
+  if (!invitationVaultAccessTable[0]?.exists) {
+    const migration0019 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0019_invitation_vault_access.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0019);
+  }
 }
 
 export async function cleanupUserData(
