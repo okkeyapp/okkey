@@ -1,4 +1,5 @@
 import type { Workspace } from "@okkey/types";
+import { normalizePlanTier } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Link } from "react-router-dom";
 
@@ -24,6 +25,7 @@ export default function WorkspaceSettingsRolesSection({
 }: WorkspaceSettingsRolesSectionProps) {
   const core = useAuthenticatedCoreClient();
   const canManageCustom = canManageCustomWorkspaceRoles(workspace?.planTier);
+  const canOpenBuiltInCards = normalizePlanTier(workspace?.planTier) === "ENTERPRISE";
   const EnterpriseRolesSection = enterpriseRolesModule.EnterpriseRolesSection;
   const BuiltInRoleCardPopup = enterpriseRolesModule.BuiltInRoleCardPopup;
   const profilesLink = (
@@ -43,7 +45,7 @@ export default function WorkspaceSettingsRolesSection({
         core={core}
         t={t}
         profilesLink={profilesLink}
-        RoleCardPopup={BuiltInRoleCardPopup}
+        RoleCardPopup={canOpenBuiltInCards ? BuiltInRoleCardPopup ?? undefined : undefined}
       />
       {canManageCustom && EnterpriseRolesSection ? (
         <EnterpriseRolesSection

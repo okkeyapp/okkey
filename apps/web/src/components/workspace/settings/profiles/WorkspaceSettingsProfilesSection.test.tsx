@@ -105,6 +105,8 @@ function renderProfilesSection(planTier: "FREE" | "ENTERPRISE" = "FREE") {
 
 describe("WorkspaceSettingsProfilesSection", () => {
   it("renders built-in profiles and FREE upsell", async () => {
+    enterpriseModuleMock.EnterpriseProfilesSection = null;
+    enterpriseModuleMock.BuiltInProfileCardPopup = null;
     renderProfilesSection("FREE");
     await waitFor(() => {
       expect(screen.getByText("Built-in profiles")).toBeTruthy();
@@ -113,5 +115,21 @@ describe("WorkspaceSettingsProfilesSection", () => {
     expect(screen.getByText("Simple")).toBeTruthy();
     expect(screen.getByText("Custom profiles")).toBeTruthy();
     expect(screen.getByText("Change your plan")).toBeTruthy();
+  });
+
+  it("keeps built-in profiles non-clickable on FREE even when enterprise popups are loaded", async () => {
+    function BuiltInPopupStub() {
+      return <p>Built-in profile popup</p>;
+    }
+
+    enterpriseModuleMock.EnterpriseProfilesSection = null;
+    enterpriseModuleMock.BuiltInProfileCardPopup = BuiltInPopupStub;
+    renderProfilesSection("FREE");
+
+    await waitFor(() => {
+      expect(screen.getByText("Built-in profiles")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /Extended/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Built-in profile popup")).not.toBeInTheDocument();
   });
 });

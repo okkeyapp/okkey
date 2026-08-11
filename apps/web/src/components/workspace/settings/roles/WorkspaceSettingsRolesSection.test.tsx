@@ -91,6 +91,7 @@ function renderRolesSection(planTier = "FREE") {
 describe("WorkspaceSettingsRolesSection", () => {
   it("renders built-in roles and FREE upsell when custom roles are unavailable", async () => {
     enterpriseModuleMock.EnterpriseRolesSection = null;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
     renderRolesSection("FREE");
 
     expect(screen.getByRole("heading", { name: "Roles" })).toBeInTheDocument();
@@ -105,12 +106,29 @@ describe("WorkspaceSettingsRolesSection", () => {
     expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
   });
 
+  it("keeps built-in roles non-clickable on FREE even when enterprise popups are loaded", async () => {
+    function BuiltInPopupStub() {
+      return <p>Built-in role popup</p>;
+    }
+
+    enterpriseModuleMock.EnterpriseRolesSection = null;
+    enterpriseModuleMock.BuiltInRoleCardPopup = BuiltInPopupStub;
+    renderRolesSection("FREE");
+
+    await waitFor(() => {
+      expect(screen.getByText("Built-in roles")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /Owner/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Built-in role popup")).not.toBeInTheDocument();
+  });
+
   it("renders enterprise custom roles section when module is loaded on paid plan", () => {
     function EnterpriseStub() {
       return <p>Enterprise roles loaded</p>;
     }
 
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
     renderRolesSection("ENTERPRISE");
 
     expect(screen.getByText("Enterprise roles loaded")).toBeInTheDocument();
