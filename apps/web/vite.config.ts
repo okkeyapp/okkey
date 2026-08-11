@@ -31,6 +31,22 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/workspace-tenancy-stub.ts",
   );
+  const enterpriseMembersPath = path.resolve(
+    enterpriseRoot,
+    "web/workspace-members/src/index.ts",
+  );
+  const enterpriseMembersStubPath = path.resolve(
+    __dirname,
+    "./src/workspace-features/stubs/enterprise-members-stub.ts",
+  );
+  const enterpriseSharedVaultsPath = path.resolve(
+    enterpriseRoot,
+    "web/workspace-shared-vaults/src/index.ts",
+  );
+  const enterpriseSharedVaultsStubPath = path.resolve(
+    __dirname,
+    "./src/workspace-features/stubs/enterprise-shared-vaults-stub.ts",
+  );
 
   return {
     plugins: [react()],
@@ -67,6 +83,12 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/workspace-tenancy": enterpriseModules
           ? enterpriseTenancyPath
           : enterpriseTenancyStubPath,
+        "@okkey-enterprise/workspace-members": enterpriseModules
+          ? enterpriseMembersPath
+          : enterpriseMembersStubPath,
+        "@okkey-enterprise/workspace-shared-vaults": enterpriseModules
+          ? enterpriseSharedVaultsPath
+          : enterpriseSharedVaultsStubPath,
         "@okkey-enterprise/types": path.resolve(enterpriseRoot, "packages/types/src"),
         "@okkey-enterprise/api": path.resolve(enterpriseRoot, "packages/api/src"),
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),

@@ -10,6 +10,12 @@ const coreMock = vi.hoisted(() => ({
   listWorkspaceProfiles: vi.fn(),
 }));
 
+vi.mock("@okkey-enterprise/workspace-members", () => ({
+  default: {
+    AdditionalMembersSection: null,
+  },
+}));
+
 vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMock,
   useAuthVault: () => ({ userId: "u1", vaultKey: null }),
@@ -48,8 +54,6 @@ describe("WorkspaceSettingsMembersSection", () => {
 
   it("renders header while loading", () => {
     coreMock.listWorkspaceMembers.mockReturnValue(new Promise(() => undefined));
-    coreMock.listWorkspaceRoles.mockReturnValue(new Promise(() => undefined));
-    coreMock.listWorkspaceProfiles.mockReturnValue(new Promise(() => undefined));
 
     render(
       <MemoryRouter>
@@ -59,7 +63,7 @@ describe("WorkspaceSettingsMembersSection", () => {
     expect(screen.getByText("Участники пространства")).toBeTruthy();
   });
 
-  it("shows additional members upsell on FREE", async () => {
+  it("shows additional members upsell on FREE without enterprise module", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
       members: [
         {
@@ -84,8 +88,6 @@ describe("WorkspaceSettingsMembersSection", () => {
       ],
       actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
     });
-    coreMock.listWorkspaceRoles.mockResolvedValue({ roles: [] });
-    coreMock.listWorkspaceProfiles.mockResolvedValue({ profiles: [] });
 
     render(
       <MemoryRouter>

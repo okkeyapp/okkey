@@ -73,8 +73,8 @@ The open-source Core provides the FREE plan baseline:
 - Workspace settings: main settings available.
 - Workspace settings: roles view-only for default roles (custom roles require ENTERPRISE plan + enterprise module).
 - Workspace settings: profiles view-only for default profiles.
-- Workspace settings: members — owner only; inviting additional members requires ENTERPRISE (`additionalWorkspaceMembers`).
-- Workspace settings: vaults — personal vault metadata editable; shared vaults require ENTERPRISE (`sharedVaults`).
+- Workspace settings: members — owner only in OSS; inviting additional members requires enterprise `workspace-members` plugin **and** `additionalWorkspaceMembers` plan feature.
+- Workspace settings: vaults — personal vault metadata editable when ENTERPRISE plan **and** `workspace-shared-vaults` module (popup inject); shared vaults require the same plugin **and** `sharedVaults` plan feature.
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
 - Personal settings: storage available except confidential sections, biometrics, and PIN.
@@ -97,9 +97,12 @@ Enterprise code:
 - cannot introduce legacy crypto exceptions for production traffic
 - cannot redefine Core key lifecycle/zeroization policy for vault key material
 
-Private SaaS surfaces (examples):
+Private SaaS / paid surfaces (examples):
 
 - `workspace-roles` — custom roles CRUD
+- `workspace-profiles` — custom profiles CRUD
+- `workspace-members` — invite / manage additional members + vault-access orchestration (Core keeps `GET …/members` + list loaders)
+- `workspace-shared-vaults` — shared vault create/delete/access/shares orchestration + UI popups (Core keeps list/get/patch personal + `GET …/key`; wrap/rotate crypto in Core `VaultSharingService`)
 - `workspace-tenancy` — `POST /workspaces` when `OKKEY_DEPLOYMENT_MODE=saas`
 
 ---
@@ -122,6 +125,8 @@ Enterprise implements:
 - admin & reporting
 - SaaS workspace tenancy
 - custom workspace roles
+- additional workspace members (invite / vault-access)
+- shared vaults product surface (create/share/access UI + routes)
 
 ---
 

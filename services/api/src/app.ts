@@ -53,7 +53,7 @@ import {
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
 import { createWorkspaceBuiltInRolesListRoute } from "./routes/workspace-built-in-roles.ts";
 import { createWorkspaceBuiltInProfilesListRoute } from "./routes/workspace-built-in-profiles.ts";
-import type { ApiEnterprisePlugin } from "./plugins/types.ts";
+import type { ApiEnterprisePlugin, ApiEnterprisePluginContext } from "./plugins/types.ts";
 import type { QueryExecutor } from "./storage/postgres.ts";
 import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
 import type { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
@@ -65,26 +65,11 @@ import {
 } from "./routes/workspace-personal-sync.ts";
 import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
-  createVaultAccessGetRoute,
-  createVaultAccessUpdateRoute,
-  createVaultDeleteRoute,
   createVaultGetRoute,
   createVaultUpdateRoute,
-  createWorkspaceVaultCreateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
-import {
-  createInvitationVaultAccessGetRoute,
-  createInvitationVaultAccessPutRoute,
-  createMemberVaultAccessGetRoute,
-  createMemberVaultAccessPutRoute,
-  createWorkspaceInvitationDeleteRoute,
-  createWorkspaceInvitationPatchRoute,
-  createWorkspaceInvitationsCreateRoute,
-  createWorkspaceMemberDeleteRoute,
-  createWorkspaceMemberPatchRoute,
-  createWorkspaceMembersListRoute,
-} from "./routes/workspace-members.ts";
+import { createWorkspaceMembersListRoute } from "./routes/workspace-members.ts";
 import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
@@ -93,14 +78,7 @@ import {
   createAccountEmailChangeResendRoute,
   createAccountEmailChangeStartRoute,
 } from "./routes/account-email-change.ts";
-import {
-  createVaultKeyGetRoute,
-  createVaultKeyRotateRoute,
-  createVaultMemberRoleUpdateRoute,
-  createVaultShareRevokeRoute,
-  createVaultSharesListRoute,
-  createVaultShareUpsertRoute,
-} from "./routes/vault-sharing.ts";
+import { createVaultKeyGetRoute } from "./routes/vault-sharing.ts";
 import type { SessionService } from "./session/service.ts";
 import type { SyncService } from "./sync/service.ts";
 import type { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
@@ -129,8 +107,11 @@ export interface CreateApiAppOptions {
   };
   workspacesRepository?: Pick<
     WorkspacesRepository,
-    "findById" | "hasAccess" | "create" | "countOwnedByUser" | "listByOwner"
+    "findById" | "hasAccess" | "create" | "countOwnedByUser" | "listByOwner" | "listAccessibleByUser"
   >;
+  vaultsRepository?: ApiEnterprisePluginContext["repositories"]["vaults"];
+  emailTemplates?: ApiEnterprisePluginContext["emailTemplates"];
+  publicAppBaseUrl?: string;
 }
 
 export interface AppDeps {
@@ -271,6 +252,8 @@ export function createApiApp(
       createAccountEmailChangeConfirmRoute(deps.emailChangeService, resolveUserId),
     );
   }
+  const enterprisePlugins = options.enterprisePlugins ?? [];
+
   if (deps.vaultService) {
     app.route(
       "GET",
@@ -282,62 +265,14 @@ export function createApiApp(
       "/workspaces/:workspaceId/vaults",
       createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId),
     );
-    app.route(
-      "POST",
-      "/workspaces/:workspaceId/vaults",
-      createWorkspaceVaultCreateRoute(deps.vaultService, resolveUserId),
-    );
+    // Shared vault create is registered by enterprise `workspace-shared-vaults` plugin only.
     if (deps.workspaceMembersService) {
       app.route(
         "GET",
         "/workspaces/:workspaceId/members",
         createWorkspaceMembersListRoute(deps.workspaceMembersService, resolveUserId),
       );
-      app.route(
-        "POST",
-        "/workspaces/:workspaceId/invitations",
-        createWorkspaceInvitationsCreateRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "DELETE",
-        "/workspaces/:workspaceId/invitations/:invitationId",
-        createWorkspaceInvitationDeleteRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "PATCH",
-        "/workspaces/:workspaceId/invitations/:invitationId",
-        createWorkspaceInvitationPatchRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "GET",
-        "/workspaces/:workspaceId/invitations/:invitationId/vault-access",
-        createInvitationVaultAccessGetRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "PUT",
-        "/workspaces/:workspaceId/invitations/:invitationId/vault-access",
-        createInvitationVaultAccessPutRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "PATCH",
-        "/workspaces/:workspaceId/members/:userId",
-        createWorkspaceMemberPatchRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "DELETE",
-        "/workspaces/:workspaceId/members/:userId",
-        createWorkspaceMemberDeleteRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "GET",
-        "/workspaces/:workspaceId/members/:userId/vault-access",
-        createMemberVaultAccessGetRoute(deps.workspaceMembersService, resolveUserId),
-      );
-      app.route(
-        "PUT",
-        "/workspaces/:workspaceId/members/:userId/vault-access",
-        createMemberVaultAccessPutRoute(deps.workspaceMembersService, resolveUserId),
-      );
+      // Invite / member mutation / vault-access routes: enterprise `workspace-members` plugin only.
     }
     if (deps.itemCategoryPreferencesService) {
       app.route(
@@ -390,7 +325,7 @@ export function createApiApp(
         createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
       );
     }
-    const hasEnterpriseWorkspaceRoles = (options.enterprisePlugins ?? []).some(
+    const hasEnterpriseWorkspaceRoles = enterprisePlugins.some(
       (plugin) => plugin.id === "workspace-roles",
     );
     if (!hasEnterpriseWorkspaceRoles && deps.workspaceBuiltInRolesService) {
@@ -400,7 +335,7 @@ export function createApiApp(
         createWorkspaceBuiltInRolesListRoute(deps.workspaceBuiltInRolesService, resolveUserId),
       );
     }
-    const hasEnterpriseWorkspaceProfiles = (options.enterprisePlugins ?? []).some(
+    const hasEnterpriseWorkspaceProfiles = enterprisePlugins.some(
       (plugin) => plugin.id === "workspace-profiles",
     );
     if (!hasEnterpriseWorkspaceProfiles && deps.workspaceBuiltInProfilesService) {
@@ -432,21 +367,7 @@ export function createApiApp(
       "/vaults/:vaultId",
       createVaultUpdateRoute(deps.vaultService, resolveUserId),
     );
-    app.route(
-      "DELETE",
-      "/vaults/:vaultId",
-      createVaultDeleteRoute(deps.vaultService, resolveUserId),
-    );
-    app.route(
-      "GET",
-      "/vaults/:vaultId/access",
-      createVaultAccessGetRoute(deps.vaultService, resolveUserId),
-    );
-    app.route(
-      "PUT",
-      "/vaults/:vaultId/access",
-      createVaultAccessUpdateRoute(deps.vaultService, resolveUserId),
-    );
+    // Shared vault delete / access routes: enterprise `workspace-shared-vaults` plugin only.
   }
   if (deps.vaultSharingService) {
     app.route(
@@ -454,31 +375,7 @@ export function createApiApp(
       "/vaults/:vaultId/key",
       createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId),
     );
-    app.route(
-      "GET",
-      "/vaults/:vaultId/shares",
-      createVaultSharesListRoute(deps.vaultSharingService, resolveUserId),
-    );
-    app.route(
-      "POST",
-      "/vaults/:vaultId/shares",
-      createVaultShareUpsertRoute(deps.vaultSharingService, resolveUserId),
-    );
-    app.route(
-      "POST",
-      "/vaults/:vaultId/shares/revoke",
-      createVaultShareRevokeRoute(deps.vaultSharingService, resolveUserId),
-    );
-    app.route(
-      "POST",
-      "/vaults/:vaultId/key/rotate",
-      createVaultKeyRotateRoute(deps.vaultSharingService, resolveUserId),
-    );
-    app.route(
-      "PATCH",
-      "/vaults/:vaultId/shares/:userId",
-      createVaultMemberRoleUpdateRoute(deps.vaultSharingService, resolveUserId),
-    );
+    // Shares / rotate / member-role routes: enterprise `workspace-shared-vaults` plugin only.
   }
   if (deps.syncService) {
     app.route(
@@ -550,14 +447,20 @@ export function createApiApp(
   }
 
   if (options.postgres && options.workspacesRepository) {
-    for (const plugin of options.enterprisePlugins ?? []) {
+    for (const plugin of enterprisePlugins) {
       plugin.register({
         app,
         config,
         resolveUserId,
         postgres: options.postgres,
+        publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,
+        emailTemplates: options.emailTemplates,
         repositories: {
           workspaces: options.workspacesRepository,
+          vaults: options.vaultsRepository,
+        },
+        services: {
+          vaultSharingService: deps.vaultSharingService,
         },
       });
     }

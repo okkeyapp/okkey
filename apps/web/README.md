@@ -96,7 +96,7 @@ Client-visible variables must use the `VITE_` prefix. See `.env.example`.
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads `@okkey-enterprise/workspace-roles` and `@okkey-enterprise/workspace-tenancy` from sibling `okkey-enterprise/` |
+| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads enterprise web modules (`workspace-roles`, `workspace-profiles`, `workspace-tenancy`, `workspace-members`, `workspace-shared-vaults`) from sibling `okkey-enterprise/` |
 | `VITE_DEPLOYMENT_MODE` | `self_hosted` | `saas` enables multi-workspace create UI (requires enterprise modules) |
 
 **FREE (open-source only)**
@@ -130,9 +130,11 @@ With `ENTERPRISE_MODULES=true`, new workspaces get `plan_tier=ENTERPRISE`. Upgra
 UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE plan_tier IN ('FREE','TEAM','PREMIUM','FAMILY');
 ```
 
-Start the API with `ENTERPRISE_MODULES=true` so custom role CRUD and (when SaaS) `POST /workspaces` register from `okkey-enterprise/backend/`.
+Start the API with `ENTERPRISE_MODULES=true` so custom role/profile CRUD, member invites, shared-vault create/share, and (when SaaS) `POST /workspaces` register from `okkey-enterprise/backend/`.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
+Additional members UI: `okkey-enterprise/web/workspace-members/`.  
+Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.  
 SaaS create UI gates via `okkey-enterprise/web/workspace-tenancy/` (`canCreateWorkspace` when `VITE_DEPLOYMENT_MODE=saas`).
 
-Plan entitlements use `hasPlanFeature` (`FREE` | `ENTERPRISE`). Module presence alone does not unlock paid features on a FREE workspace.
+Plan entitlements use `hasPlanFeature` (`FREE` | `ENTERPRISE`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { VaultService, VaultServiceError } from "../src/vault/service.ts";
 
-function vaultsStub(overrides?: Partial<VaultService["vaults"] extends never ? never : object>) {
+function vaultsStub(overrides?: Record<string, unknown>) {
   return {
     listAccessibleByWorkspace: async () => [
       {
@@ -35,11 +35,7 @@ function vaultsStub(overrides?: Partial<VaultService["vaults"] extends never ? n
     findById: async () => null,
     canReadVault: async () => false,
     canManageVaultSettings: async () => false,
-    create: async () => {
-      throw new Error("not implemented");
-    },
     updateMetadata: async () => null,
-    deleteById: async () => false,
     ...overrides,
   };
 }
@@ -135,42 +131,4 @@ test("listAccessibleWorkspaces delegates to workspaces repository", async () => 
   const result = await service.listAccessibleWorkspaces("u1");
   assert.equal(result.length, 1);
   assert.equal(result[0].id, "w1");
-});
-
-test("deleteVault rejects personal vaults", async () => {
-  const service = new VaultService({
-    workspaces: {
-      findById: async () => ({
-        id: "w1",
-        name: "Workspace",
-        ownerId: "u1",
-        planTier: "ENTERPRISE",
-        createdAt: "",
-        updatedAt: "",
-      }),
-      hasAccess: async () => true,
-      listAccessibleByUser: async () => [],
-    },
-    vaults: vaultsStub({
-      findById: async () => ({
-        id: "v1",
-        workspaceId: "w1",
-        name: "Personal",
-        description: "",
-        icon: "🏠",
-        isPersonal: true,
-        ownerId: "u1",
-        cryptoVersion: 2,
-        createdAt: "",
-        updatedAt: "",
-      }),
-      canManageVaultSettings: async () => true,
-    }),
-  });
-
-  await assert.rejects(
-    () => service.deleteVault("v1", "u1"),
-    (error: unknown) =>
-      error instanceof VaultServiceError && error.code === "VAULT_DELETE_FORBIDDEN",
-  );
 });

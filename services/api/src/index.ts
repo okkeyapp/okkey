@@ -88,7 +88,6 @@ async function main(): Promise<void> {
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
     db: storage.postgres,
-    vaultSharing: vaultSharingService,
   });
   const itemCategoryPreferencesService = new ItemCategoryPreferencesService({
     preferences: storage.repositories.workspaceMemberItemCategoryPreferences,
@@ -111,9 +110,6 @@ async function main(): Promise<void> {
   const workspaceMembersService = new WorkspaceMembersService({
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
-    vaultService,
-    emailTemplates,
-    publicAppBaseUrl: config.publicAppBaseUrl,
   });
   const enterprisePlugins = await loadEnterprisePlugins(config);
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
@@ -212,6 +208,9 @@ async function main(): Promise<void> {
     enterprisePlugins,
     postgres: storage.postgres,
     workspacesRepository: storage.repositories.workspaces,
+    vaultsRepository: storage.repositories.vaults,
+    emailTemplates,
+    publicAppBaseUrl: config.publicAppBaseUrl,
   });
 
   const server = createServer(app.handler());

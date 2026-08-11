@@ -9,6 +9,13 @@ vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthVault: () => ({ userId: "u1", vaultKey: null }),
 }));
 
+vi.mock("@okkey-enterprise/workspace-shared-vaults", () => ({
+  default: {
+    SharedVaultsSection: null,
+    PersonalVaultCardPopup: null,
+  },
+}));
+
 const t = (key: string) => {
   const map: Record<string, string> = {
     "web.workspaceSettings.sections.vaults": "Сейфы",
