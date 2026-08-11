@@ -36,6 +36,7 @@ Current matrix:
 | `customWorkspaceRoles` | no | yes |
 | `customWorkspaceProfiles` | no | yes |
 | `sharedVaults` | no | yes |
+| `additionalWorkspaceMembers` | no | yes |
 | `paidPlanBadge` | no | yes |
 
 Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
@@ -72,7 +73,7 @@ The open-source Core provides the FREE plan baseline:
 - Workspace settings: main settings available.
 - Workspace settings: roles view-only for default roles (custom roles require ENTERPRISE plan + enterprise module).
 - Workspace settings: profiles view-only for default profiles.
-- Workspace settings: members view-only, owner only.
+- Workspace settings: members — owner only; inviting additional members requires ENTERPRISE (`additionalWorkspaceMembers`).
 - Workspace settings: vaults — personal vault metadata editable; shared vaults require ENTERPRISE (`sharedVaults`).
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.

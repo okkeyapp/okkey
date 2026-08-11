@@ -1,5 +1,5 @@
 import type { Vault, Workspace, WorkspaceMemberDto, WorkspaceProfileSummary } from "@okkey/types";
-import { hasPlanFeature } from "@okkey/types";
+import { hasPlanFeature, normalizePlanTier } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Button, cn } from "@okkey/ui";
 import { useEffect, useMemo, useState } from "react";
@@ -70,6 +70,8 @@ export default function WorkspaceSettingsVaultsSection({
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const canManageShared = hasPlanFeature(workspace?.planTier, "sharedVaults");
+  /** FREE: view-only row (same as built-in roles). Paid plan: open edit popup. */
+  const canOpenPersonalVault = normalizePlanTier(workspace?.planTier) === "ENTERPRISE";
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
   const sharedVaults = useMemo(() => vaults.filter((vault) => !vault.isPersonal), [vaults]);
@@ -205,7 +207,9 @@ export default function WorkspaceSettingsVaultsSection({
 
   const popupOpen =
     (isNewVault && canManageShared) ||
-    (isEditVault && editingVault != null);
+    (isEditVault &&
+      editingVault != null &&
+      (editingVault.isPersonal ? canOpenPersonalVault : canManageShared));
 
   const resolvedPopupMode: "personal" | "shared" = editingVault
     ? editingVault.isPersonal
@@ -238,7 +242,11 @@ export default function WorkspaceSettingsVaultsSection({
               personalVault.description || t("web.workspaceSettings.vaults.personal.description")
             }
             trailing={t("web.workspaceSettings.vaults.personal.onlyYou")}
-            onClick={() => openPopup(buildPopupQueryValue(EDIT_VAULT_POPUP_ID, personalVault.id))}
+            onClick={
+              canOpenPersonalVault
+                ? () => openPopup(buildPopupQueryValue(EDIT_VAULT_POPUP_ID, personalVault.id))
+                : undefined
+            }
           />
         </div>
       ) : null}

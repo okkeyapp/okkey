@@ -21,10 +21,12 @@ import {
   POPUP_QUERY_PARAM,
 } from "../../../../routes/popupQuery";
 import SettingsListCardSkeleton from "../SettingsListCardSkeleton";
+import AdditionalMembersUpsell from "./AdditionalMembersUpsell";
 import InviteMembersPopup from "./InviteMembersPopup";
 import MemberCardPopup from "./MemberCardPopup";
 import MembersListCard from "./MembersListCard";
 import MembersSectionHeader from "./MembersSectionHeader";
+import { canInviteAdditionalWorkspaceMembers } from "./membersPlanAccess";
 
 type WorkspaceSettingsMembersSectionProps = {
   workspaceId: string;
@@ -221,6 +223,8 @@ export default function WorkspaceSettingsMembersSection({
   const canPost = permissions.post >= 1;
   const canPut = permissions.put >= 1;
   const canDelete = permissions.delete >= 1;
+  const canManageAdditional = canInviteAdditionalWorkspaceMembers(workspace?.planTier);
+  const canInvite = canManageAdditional && canPost;
 
   function openMemberCard(member: WorkspaceMemberDto) {
     const id = member.userId ?? member.invitationId;
@@ -252,38 +256,46 @@ export default function WorkspaceSettingsMembersSection({
       {!loading && !error ? (
         <>
           {ownerMember ? (
-            <MembersListCard members={[ownerMember]} t={t} onMemberClick={openMemberCard} />
+            <MembersListCard
+              members={[ownerMember]}
+              t={t}
+              onMemberClick={canManageAdditional ? openMemberCard : undefined}
+            />
           ) : null}
 
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative w-full min-w-0 max-w-[380px]">
-                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={t("web.workspaceSettings.members.searchPlaceholder")}
-                  className="h-9 w-full pl-9"
-                />
+          {canManageAdditional ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative w-full min-w-0 max-w-[380px]">
+                  <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder={t("web.workspaceSettings.members.searchPlaceholder")}
+                    className="h-9 w-full pl-9"
+                  />
+                </div>
+                {canInvite ? (
+                  <Button
+                    type="button"
+                    className="h-9 shrink-0 gap-1 px-3 sm:ms-auto"
+                    onClick={() => openPopup(INVITE_MEMBERS_POPUP_ID)}
+                  >
+                    <PlusIcon className="size-4" />
+                    {t("web.workspaceSettings.members.invite.action")}
+                  </Button>
+                ) : null}
               </div>
-              {canPost ? (
-                <Button
-                  type="button"
-                  className="h-9 shrink-0 gap-1 px-3 sm:ms-auto"
-                  onClick={() => openPopup(INVITE_MEMBERS_POPUP_ID)}
-                >
-                  <PlusIcon className="size-4" />
-                  {t("web.workspaceSettings.members.invite.action")}
-                </Button>
-              ) : null}
-            </div>
 
-            <MembersListCard members={otherMembers} t={t} onMemberClick={openMemberCard} />
-          </div>
+              <MembersListCard members={otherMembers} t={t} onMemberClick={openMemberCard} />
+            </div>
+          ) : (
+            <AdditionalMembersUpsell t={t} />
+          )}
         </>
       ) : null}
 
-      {inviteOpen && core ? (
+      {inviteOpen && canInvite && core ? (
         <InviteMembersPopup
           popupId={INVITE_MEMBERS_POPUP_ID}
           workspaceId={workspaceId}
@@ -295,7 +307,7 @@ export default function WorkspaceSettingsMembersSection({
         />
       ) : null}
 
-      {editingMember && core && userId ? (
+      {editingMember && canManageAdditional && core && userId ? (
         <MemberCardPopup
           popupId={buildPopupQueryValue(
             EDIT_MEMBER_POPUP_ID,

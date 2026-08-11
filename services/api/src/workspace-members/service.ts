@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { hasPlanFeature } from "@okkey/types";
+
 import { generateEntityId, isEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { WorkspacesRepository } from "../storage/repositories.ts";
@@ -163,6 +165,13 @@ export class WorkspaceMembersService {
     }
 
     const workspace = await this.requireAccessibleWorkspace(workspaceId, actorId);
+    if (!hasPlanFeature(workspace.planTier, "additionalWorkspaceMembers")) {
+      throw new WorkspaceMembersServiceError(
+        "PLAN_FEATURE_REQUIRED",
+        403,
+        "additional workspace members require a paid plan",
+      );
+    }
     await this.assertMembers(workspaceId, actorId, "post");
     await ensureDefaultWorkspaceRoles(this.db, workspaceId, workspace.ownerId);
 

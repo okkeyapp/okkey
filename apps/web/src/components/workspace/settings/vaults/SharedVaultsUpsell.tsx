@@ -35,7 +35,10 @@ export default function SharedVaultsUpsell({ t }: SharedVaultsUpsellProps) {
       <AlertTitle>{t("web.workspaceSettings.vaults.upsellNoteTitle")}</AlertTitle>
       <AlertDescription>
         {t("web.workspaceSettings.vaults.upsellPrefix")}
-        <Link to={settingsPath("plan")} className="font-medium text-foreground underline underline-offset-4">
+        <Link
+          to={settingsPath("plan")}
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
+        >
           {t("web.workspaceSettings.vaults.upsellPlanLink")}
         </Link>
         {t("web.workspaceSettings.vaults.upsellSuffix")}

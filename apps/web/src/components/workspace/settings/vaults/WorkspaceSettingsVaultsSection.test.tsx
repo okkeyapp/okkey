@@ -42,6 +42,10 @@ describe("WorkspaceSettingsVaultsSection", () => {
             name: "WS",
             ownerId: "u1",
             planTier: "FREE",
+            deletedItemsRetentionDays: 30,
+            allowedFileExtensions: [],
+            maxFileSizeMb: 2,
+            filesInItemsEnabled: true,
             createdAt: "",
             updatedAt: "",
           }}
@@ -67,7 +71,9 @@ describe("WorkspaceSettingsVaultsSection", () => {
     expect(screen.getByText("Сейфы")).toBeInTheDocument();
     expect(screen.getByText("Personal")).toBeInTheDocument();
     expect(screen.getByText("Доступен только Вам")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Personal/i })).not.toBeInTheDocument();
     expect(screen.getByText("Общие сейфы")).toBeInTheDocument();
+    expect(screen.getByText("Note")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Создать/i })).not.toBeInTheDocument();
   });
 });
