@@ -58,9 +58,10 @@ export async function insertRegistrationBundle(
         password_kdf_salt,
         password_kdf_params_version,
         first_name,
-        last_name
+        last_name,
+        last_vault_unlocked_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz)
       RETURNING id
     `,
     [
@@ -74,6 +75,7 @@ export async function insertRegistrationBundle(
       input.passwordKdfParamsVersion,
       input.firstName ?? null,
       input.lastName ?? null,
+      input.nowIso,
     ],
   );
   const insertedUserId = userRows[0]?.id;

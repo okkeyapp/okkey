@@ -172,6 +172,20 @@ export class UsersRepository {
     };
   }
 
+  /** Records a successful client-side vault unlock (master password). No secrets are stored. */
+  async recordVaultUnlock(userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE users
+        SET last_vault_unlocked_at = now(), updated_at = now()
+        WHERE id = $1::bigint
+        RETURNING id
+      `,
+      [userId],
+    );
+    return Boolean(rows[0]);
+  }
+
   async updateAccountProfile(userId: string, patch: {
     firstName?: string | null;
     lastName?: string | null;
@@ -1763,6 +1777,14 @@ export class SessionsRepository {
     if (!row) {
       throw new Error("session insert failed");
     }
+    await this.db.query(
+      `
+        UPDATE devices
+        SET last_seen_at = now()
+        WHERE user_id = $1 AND status = 'trusted'
+      `,
+      [input.userId],
+    );
     return { id: row.id };
   }
 

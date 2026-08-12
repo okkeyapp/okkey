@@ -103,6 +103,23 @@ export default function WorkspaceSettingsMembersSection({
     }
   }, [showEnterpriseMembers, searchParams, navigate, location.pathname, location.search]);
 
+  const openOwnerMemberCard = useCallback(
+    (member: WorkspaceMemberDto) => {
+      if (!showEnterpriseMembers) {
+        return;
+      }
+      const id = member.userId ?? member.invitationId;
+      if (!id) {
+        return;
+      }
+      navigate({
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, id)),
+      });
+    },
+    [showEnterpriseMembers, navigate, location.pathname, location.search],
+  );
+
   return (
     <div className="flex flex-col gap-9">
       <MembersSectionHeader t={t} />
@@ -125,7 +142,13 @@ export default function WorkspaceSettingsMembersSection({
 
       {!loading && !error ? (
         <>
-          {ownerMember ? <MembersListCard members={[ownerMember]} t={t} /> : null}
+          {ownerMember ? (
+            <MembersListCard
+              members={[ownerMember]}
+              t={t}
+              onMemberClick={showEnterpriseMembers ? openOwnerMemberCard : undefined}
+            />
+          ) : null}
 
           {showEnterpriseMembers && AdditionalMembersSection ? (
             <AdditionalMembersSection workspaceId={workspaceId} workspace={workspace} t={t} />

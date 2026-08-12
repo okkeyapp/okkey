@@ -10,10 +10,12 @@ const coreMock = vi.hoisted(() => ({
   listWorkspaceProfiles: vi.fn(),
 }));
 
+const enterpriseMembersMock = vi.hoisted(() => ({
+  AdditionalMembersSection: null as (() => JSX.Element) | null,
+}));
+
 vi.mock("@okkey-enterprise/workspace-members", () => ({
-  default: {
-    AdditionalMembersSection: null,
-  },
+  default: enterpriseMembersMock,
 }));
 
 vi.mock("../../../../auth/AuthVaultContext", () => ({
@@ -45,11 +47,32 @@ const t = (key: string) => {
   return map[key] ?? key;
 };
 
+const ownerMember = {
+  userId: "u1",
+  email: "owner@example.com",
+  firstName: "Owner",
+  lastName: "User",
+  publicKey: "pk",
+  publicPqKey: null,
+  roleId: "r1",
+  roleBuiltinKey: "owner" as const,
+  roleName: "Owner",
+  status: "active" as const,
+  invitationId: null,
+  invitedAt: null,
+  invitedBy: null,
+  roleChangedAt: null,
+  roleChangedBy: null,
+  joinedAt: null,
+  lastLoginAt: null,
+};
+
 describe("WorkspaceSettingsMembersSection", () => {
   beforeEach(() => {
     coreMock.listWorkspaceMembers.mockReset();
     coreMock.listWorkspaceRoles.mockReset();
     coreMock.listWorkspaceProfiles.mockReset();
+    enterpriseMembersMock.AdditionalMembersSection = null;
   });
 
   it("renders header while loading", () => {
@@ -65,27 +88,7 @@ describe("WorkspaceSettingsMembersSection", () => {
 
   it("shows additional members upsell on FREE without enterprise module", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
-      members: [
-        {
-          userId: "u1",
-          email: "owner@example.com",
-          firstName: "Owner",
-          lastName: "User",
-          publicKey: "pk",
-          publicPqKey: null,
-          roleId: "r1",
-          roleBuiltinKey: "owner",
-          roleName: "Owner",
-          status: "active",
-          invitationId: null,
-          invitedAt: null,
-          invitedBy: null,
-          roleChangedAt: null,
-          roleChangedBy: null,
-          joinedAt: null,
-          lastLoginAt: null,
-        },
-      ],
+      members: [ownerMember],
       actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
     });
 
@@ -118,5 +121,42 @@ describe("WorkspaceSettingsMembersSection", () => {
     expect(screen.queryByRole("button", { name: /Invite/i })).not.toBeInTheDocument();
     expect(screen.getByText("owner@example.com")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /owner@example.com/i })).not.toBeInTheDocument();
+  });
+
+  it("makes owner card clickable when enterprise members module is available", async () => {
+    enterpriseMembersMock.AdditionalMembersSection = () => (
+      <div data-testid="enterprise-members">Enterprise</div>
+    );
+
+    coreMock.listWorkspaceMembers.mockResolvedValue({
+      members: [ownerMember],
+      actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsMembersSection
+          workspaceId="w1"
+          workspace={{
+            id: "w1",
+            name: "WS",
+            ownerId: "u1",
+            planTier: "ENTERPRISE",
+            deletedItemsRetentionDays: 30,
+            allowedFileExtensions: [],
+            maxFileSizeMb: 2,
+            filesInItemsEnabled: true,
+            createdAt: "",
+            updatedAt: "",
+          }}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("enterprise-members")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /owner@example.com/i })).toBeInTheDocument();
   });
 });

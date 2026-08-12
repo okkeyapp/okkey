@@ -184,11 +184,7 @@ export class WorkspaceMembersService {
           rb.email AS role_changed_by_email,
           rb.first_name AS role_changed_by_first_name,
           rb.last_name AS role_changed_by_last_name,
-          (
-            SELECT MAX(d.last_seen_at)
-            FROM devices d
-            WHERE d.user_id = u.id
-          ) AS last_login_at
+          u.last_vault_unlocked_at AS last_login_at
         FROM (
           SELECT
             wm.workspace_id,
@@ -285,6 +281,11 @@ export class WorkspaceMembersService {
       invited_by_email: string;
       invited_by_first_name: string | null;
       invited_by_last_name: string | null;
+      role_changed_at: string | Date | null;
+      role_changed_by_user_id: string | null;
+      role_changed_by_email: string | null;
+      role_changed_by_first_name: string | null;
+      role_changed_by_last_name: string | null;
     }>(
       `
         SELECT
@@ -297,10 +298,16 @@ export class WorkspaceMembersService {
           wi.invited_by_user_id,
           u.email AS invited_by_email,
           u.first_name AS invited_by_first_name,
-          u.last_name AS invited_by_last_name
+          u.last_name AS invited_by_last_name,
+          wi.role_changed_at,
+          wi.role_changed_by_user_id,
+          rb.email AS role_changed_by_email,
+          rb.first_name AS role_changed_by_first_name,
+          rb.last_name AS role_changed_by_last_name
         FROM workspace_invitations wi
         JOIN roles r ON r.id = wi.role_id
         JOIN users u ON u.id = wi.invited_by_user_id
+        LEFT JOIN users rb ON rb.id = wi.role_changed_by_user_id
         WHERE wi.workspace_id = $1
           AND wi.status = 'pending'
           AND wi.expires_at > now()
@@ -328,8 +335,13 @@ export class WorkspaceMembersService {
         firstName: row.invited_by_first_name,
         lastName: row.invited_by_last_name,
       },
-      roleChangedAt: null,
-      roleChangedBy: null,
+      roleChangedAt: toIso(row.role_changed_at),
+      roleChangedBy: actorFromRow({
+        user_id: row.role_changed_by_user_id,
+        email: row.role_changed_by_email,
+        first_name: row.role_changed_by_first_name,
+        last_name: row.role_changed_by_last_name,
+      }),
       joinedAt: null,
       lastLoginAt: null,
     }));

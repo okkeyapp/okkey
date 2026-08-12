@@ -530,6 +530,8 @@
   "web.workspaceSettings.members.invite.revoked": "Приглашение отозвано",
   "web.workspaceSettings.members.additional.title": "Дополнительные участники",
   "web.workspaceSettings.members.additional.subtitle": "Приглашайте участников и управляйте их доступом",
+  "web.workspaceSettings.members.additional.emptyNoteTitle": "Приглашённых участников пока что нет",
+  "web.workspaceSettings.members.additional.emptyNote": "Вы можете пригласить дополнительных участников в это пространство и управлять их ролями и доступом к сейфам.",
   "web.workspaceSettings.members.upsellNoteTitle": "Примечание",
   "web.workspaceSettings.members.upsellPrefix": "В вашем тарифном плане эта функция недоступна. ",
   "web.workspaceSettings.members.upsellPlanLink": "Смените тарифный план",

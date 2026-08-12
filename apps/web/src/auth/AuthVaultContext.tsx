@@ -492,12 +492,20 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(serverA);
       wipeBytes(deviceB);
       wipeBytes(salt);
+      const token = accessToken;
+      if (token) {
+        void createAuthenticatedCoreClient(token)
+          .recordVaultUnlock()
+          .catch(() => {
+            /* best-effort: unlock UI must not fail if telemetry POST fails */
+          });
+      }
       return true;
     } catch {
       wipeBytes(pwd);
       return false;
     }
-  }, [userId]);
+  }, [userId, accessToken]);
 
   const hasVaultBundle = readVaultBundle(userId) !== null;
 

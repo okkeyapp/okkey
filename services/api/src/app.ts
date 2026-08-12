@@ -72,6 +72,7 @@ import {
 import { createWorkspaceMembersListRoute } from "./routes/workspace-members.ts";
 import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
+import { createAccountVaultUnlockRoute } from "./routes/account-vault-unlock.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
   createAccountEmailChangeConfirmRoute,
@@ -233,6 +234,11 @@ export function createApiApp(
       "PATCH",
       "/account/profile",
       createAccountProfileRoute(deps.usersRepository, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/vault-unlock",
+      createAccountVaultUnlockRoute(deps.usersRepository, resolveUserId),
     );
   }
   if (deps.sessionService !== undefined && deps.emailChangeService) {

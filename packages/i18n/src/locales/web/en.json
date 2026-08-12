@@ -530,6 +530,8 @@
   "web.workspaceSettings.members.invite.revoked": "Invitation revoked",
   "web.workspaceSettings.members.additional.title": "Additional members",
   "web.workspaceSettings.members.additional.subtitle": "Invite teammates and manage their access",
+  "web.workspaceSettings.members.additional.emptyNoteTitle": "No invited members yet",
+  "web.workspaceSettings.members.additional.emptyNote": "You can invite additional members to this workspace and manage their roles and vault access.",
   "web.workspaceSettings.members.upsellNoteTitle": "Note",
   "web.workspaceSettings.members.upsellPrefix": "This feature is not available on your plan. ",
   "web.workspaceSettings.members.upsellPlanLink": "Change your plan",

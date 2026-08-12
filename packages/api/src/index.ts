@@ -233,6 +233,11 @@ export class CoreApiClient {
     return this.api.patch<AccountProfileResponseDto>("/account/profile", body);
   }
 
+  /** Reports a successful master-password vault unlock (no secrets in the body). */
+  recordVaultUnlock(): Promise<{ recorded: true }> {
+    return this.api.post<{ recorded: true }>("/account/vault-unlock", {});
+  }
+
   startAccountEmailChange(
     body: AccountEmailChangeStartRequestDto,
   ): Promise<AccountEmailChangeStartResponseDto> {
