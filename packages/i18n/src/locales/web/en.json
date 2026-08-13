@@ -864,5 +864,23 @@
   "workspaces.backToList": "All workspaces",
   "workspaces.shellTitle": "Workspace",
   "workspaces.shellId": "ID: {id}",
-  "workspaces.shellPlaceholder": "Vault and records UI will appear here."
+  "workspaces.shellPlaceholder": "Vault and records UI will appear here.",
+
+  "web.invite.title": "Workspace invitation",
+  "web.invite.description": "Join a shared workspace",
+  "web.invite.intro": "{inviter} invited you to {workspace}.",
+  "web.invite.continue": "Continue",
+  "web.invite.unlock": "Unlock vault",
+  "web.invite.unlockToJoin": "Unlock your vault to join this workspace.",
+  "web.invite.openWorkspace": "Open workspace",
+  "web.invite.switchAccount": "Use a different account",
+  "web.invite.unavailableTitle": "Invitations unavailable",
+  "web.invite.unavailable": "Workspace invitations are not available in this build.",
+  "web.invite.invalid": "This invitation link is invalid.",
+  "web.invite.expired": "This invitation has expired.",
+  "web.invite.revoked": "This invitation was revoked.",
+  "web.invite.alreadyAccepted": "This invitation was already accepted.",
+  "web.invite.alreadyMember": "You are already a member of this workspace.",
+  "web.invite.emailMismatch": "This invitation was sent to a different email address.",
+  "web.invite.errorGeneric": "Could not process this invitation. Try again."
 }

@@ -173,6 +173,36 @@ export interface WorkspaceMembersListResponseDto {
   };
 }
 
+/** `GET /invitations/:token` success body (public). */
+export interface InvitationPreviewDto {
+  status: "pending" | "expired" | "revoked" | "accepted";
+  email: string;
+  workspaceName: string;
+  inviterDisplayName: string;
+  expiresAt: string;
+}
+
+/** `POST /invitations/:token/accept` success body. */
+export interface InvitationAcceptResponseDto {
+  workspaceId: EntityId;
+  vaultId: EntityId;
+}
+
+/** One staged shared-vault grant waiting for a hybrid VaultKey wrap. */
+export interface PendingVaultWrapDto {
+  userId: EntityId;
+  vaultId: EntityId;
+  profileId: EntityId;
+  publicKey: string;
+  publicPqKey: string | null;
+}
+
+/** `GET /workspaces/:workspaceId/pending-vault-wraps` success body. */
+export interface PendingVaultWrapsResponseDto {
+  workspaceId: EntityId;
+  wraps: PendingVaultWrapDto[];
+}
+
 /** `POST /workspaces/:workspaceId/invitations` body. */
 export interface WorkspaceInvitationsCreateRequestDto {
   invitations: Array<{

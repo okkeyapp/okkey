@@ -20,6 +20,25 @@ declare module "@okkey-enterprise/workspace-profiles" {
   export default enterpriseProfilesModule;
 }
 
+declare module "@okkey-enterprise/workspace-members" {
+  import type { CoreApiClient } from "@okkey/api";
+  import type { WorkspaceSettingsMembersModule } from "./workspace-features/registry";
+  const workspaceMembersModule: WorkspaceSettingsMembersModule;
+  export default workspaceMembersModule;
+  export function tryCompletePendingVaultWraps(input: {
+    core: CoreApiClient;
+    workspaceId: string;
+    userId: string;
+    accountVaultKey: Uint8Array;
+  }): Promise<void>;
+}
+
+declare module "@okkey-enterprise/workspace-shared-vaults" {
+  import type { WorkspaceSettingsSharedVaultsModule } from "./workspace-features/registry";
+  const enterpriseSharedVaultsModule: WorkspaceSettingsSharedVaultsModule;
+  export default enterpriseSharedVaultsModule;
+}
+
 interface ImportMetaEnv {
   /** Core API origin, e.g. http://localhost:4000 (must not be the Vite dev URL). */
   readonly VITE_API_BASE_URL?: string;

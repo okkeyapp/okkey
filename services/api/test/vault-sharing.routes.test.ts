@@ -112,6 +112,9 @@ test("paid member invite routes are 404 without enterprise plugin", async () => 
     ["DELETE", "/workspaces/w1/members/u2"],
     ["GET", "/workspaces/w1/members/u2/vault-access"],
     ["PUT", "/workspaces/w1/members/u2/vault-access"],
+    ["GET", "/invitations/token-abc"],
+    ["POST", "/invitations/token-abc/accept"],
+    ["GET", "/workspaces/w1/pending-vault-wraps"],
   ] as const) {
     const res = await dispatch({
       method,

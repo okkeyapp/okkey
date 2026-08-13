@@ -101,7 +101,7 @@ Private SaaS / paid surfaces (examples):
 
 - `workspace-roles` — custom roles CRUD
 - `workspace-profiles` — custom profiles CRUD
-- `workspace-members` — invite / manage additional members + vault-access orchestration (Core keeps `GET …/members` + list loaders)
+- `workspace-members` — invite / manage additional members + vault-access orchestration, including public invite preview (`GET /invitations/:token`), accept (`POST /invitations/:token/accept`), and pending VaultKey wraps (Core keeps `GET …/members` + list loaders)
 - `workspace-shared-vaults` — shared vault create/delete/access/shares orchestration + UI popups (Core keeps list/get/patch personal + `GET …/key`; wrap/rotate crypto in Core `VaultSharingService`)
 - `workspace-tenancy` — `POST /workspaces` when `OKKEY_DEPLOYMENT_MODE=saas`
 

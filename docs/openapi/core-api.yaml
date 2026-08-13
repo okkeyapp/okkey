@@ -4,6 +4,7 @@ info:
   description: |
     Machine-readable contract for the Core HTTP API (`services/api`).
     Human-readable narrative and policies: `docs/api_contracts.md`.
+    Enterprise-only invite routes (`GET/POST /invitations/:token`, pending vault wraps) are documented there, not in this Core spec.
   version: 0.1.0
 
 servers:

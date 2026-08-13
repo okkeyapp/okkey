@@ -7,6 +7,7 @@ import {
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
   isDevUiPathname,
+  isInvitePathname,
   UNLOCK_PASSWORD_LEGACY_PATH,
 } from "./paths";
 
@@ -40,6 +41,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (pathname === ACCOUNT_RESTORE_PATH) {
+    return true;
+  }
+  if (isInvitePathname(pathname)) {
     return true;
   }
   return false;

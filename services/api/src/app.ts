@@ -113,6 +113,7 @@ export interface CreateApiAppOptions {
   vaultsRepository?: ApiEnterprisePluginContext["repositories"]["vaults"];
   emailTemplates?: ApiEnterprisePluginContext["emailTemplates"];
   publicAppBaseUrl?: string;
+  redis?: ApiEnterprisePluginContext["redis"];
 }
 
 export interface AppDeps {
@@ -459,6 +460,7 @@ export function createApiApp(
         config,
         resolveUserId,
         postgres: options.postgres,
+        redis: options.redis,
         publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,
         emailTemplates: options.emailTemplates,
         repositories: {

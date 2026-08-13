@@ -923,6 +923,55 @@ Registers or updates a device for the authenticated user. May return `pending_ap
 
 ---
 
+## Workspace invitations (enterprise plugin)
+
+These routes exist only when `ENTERPRISE_MODULES=true` and the `workspace-members` plugin is loaded. Without the plugin they return `404 NOT_FOUND`.
+
+Invite create (`POST /workspaces/:workspaceId/invitations`) requires `PUBLIC_APP_URL` and a working email transport; otherwise `EMAIL_NOT_CONFIGURED` (503). Send failure deletes the pending row and returns `EMAIL_SEND_FAILED` (503).
+
+### `GET /invitations/:token`
+
+**Auth:** none (rate-limited by IP using the same window as email start).
+
+**Response `200`:**
+
+| Field | Type |
+|-------|------|
+| `status` | `pending` \| `expired` \| `revoked` \| `accepted` |
+| `email` | string |
+| `workspaceName` | string |
+| `inviterDisplayName` | string |
+| `expiresAt` | ISO-8601 |
+
+**Errors:** `NOT_FOUND` 404, `AUTH_RATE_LIMITED` 429.
+
+### `POST /invitations/:token/accept`
+
+**Auth:** Bearer required. Signed-in user email must match the invitation email.
+
+**Response `200`:** `{ "workspaceId": "<id>", "vaultId": "<personal vault id>" }`
+
+Creates `workspace_members` (role from the invite), a personal vault in that workspace if missing, and sets invitation `status=accepted`. Staged shared-vault profiles stay on the invitation until an admin client wraps VaultKeys (`GET /workspaces/:workspaceId/pending-vault-wraps`).
+
+**Errors:**
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | No Bearer session |
+| `INVITE_EMAIL_MISMATCH` | 403 | Session email ≠ invitation email |
+| `INVITE_EXPIRED` | 410 | TTL elapsed |
+| `INVITE_REVOKED` | 410 | Admin revoked |
+| `CONFLICT` | 409 | Already a member, or accepted by another user |
+| `NOT_FOUND` | 404 | Unknown token |
+
+### `GET /workspaces/:workspaceId/pending-vault-wraps`
+
+**Auth:** Bearer + `members:get`.
+
+**Response `200`:** `{ "workspaceId": "<id>", "wraps": [ { "userId", "vaultId", "profileId", "publicKey", "publicPqKey" } ] }`
+
+---
+
 ## Not yet exposed over HTTP (Core)
 
 The following are **not** implemented as public routes in the current `services/api` router; they may appear in SDK/domain types for future use:

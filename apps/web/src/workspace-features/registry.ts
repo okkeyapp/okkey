@@ -62,6 +62,7 @@ export type EnterpriseAdditionalMembersSectionProps = {
 
 export type WorkspaceSettingsMembersModule = {
   AdditionalMembersSection: ComponentType<EnterpriseAdditionalMembersSectionProps> | null;
+  InviteLandingPage: ComponentType;
 };
 
 export type EnterpriseSharedVaultsSectionProps = {

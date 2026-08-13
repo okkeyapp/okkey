@@ -211,6 +211,7 @@ async function main(): Promise<void> {
     vaultsRepository: storage.repositories.vaults,
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    redis: storage.redis,
   });
 
   const server = createServer(app.handler());

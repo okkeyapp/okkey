@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -12,10 +12,18 @@ import { emailStartErrorI18nKey } from "./emailStartErrors";
 export default function AuthEmailPage() {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const invitedEmail = searchParams.get("email")?.trim() ?? "";
   const { authClient, setEmailChallenge, updateLocalProfile } = useAuthVault();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(invitedEmail);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (invitedEmail) {
+      setEmail(invitedEmail);
+    }
+  }, [invitedEmail]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,7 +77,14 @@ export default function AuthEmailPage() {
             inputMode="email"
             placeholder={t("auth.email.placeholderEmail")}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              if (invitedEmail) {
+                return;
+              }
+              setEmail(e.target.value);
+            }}
+            readOnly={Boolean(invitedEmail)}
+            aria-readonly={invitedEmail ? true : undefined}
           />
         </div>
         <Button type="submit" variant="default" className="w-full" disabled={submitting}>

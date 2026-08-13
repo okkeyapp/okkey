@@ -864,5 +864,23 @@
   "workspaces.backToList": "Все пространства",
   "workspaces.shellTitle": "Пространство",
   "workspaces.shellId": "ID: {id}",
-  "workspaces.shellPlaceholder": "Здесь появится интерфейс сейфов и записей."
+  "workspaces.shellPlaceholder": "Здесь появится интерфейс сейфов и записей.",
+
+  "web.invite.title": "Приглашение в пространство",
+  "web.invite.description": "Вступите в общее рабочее пространство",
+  "web.invite.intro": "{inviter} приглашает вас в {workspace}.",
+  "web.invite.continue": "Продолжить",
+  "web.invite.unlock": "Разблокировать сейф",
+  "web.invite.unlockToJoin": "Разблокируйте сейф, чтобы вступить в пространство.",
+  "web.invite.openWorkspace": "Открыть пространство",
+  "web.invite.switchAccount": "Войти в другой аккаунт",
+  "web.invite.unavailableTitle": "Приглашения недоступны",
+  "web.invite.unavailable": "Приглашения в пространство недоступны в этой сборке.",
+  "web.invite.invalid": "Ссылка приглашения недействительна.",
+  "web.invite.expired": "Срок приглашения истёк.",
+  "web.invite.revoked": "Приглашение отозвано.",
+  "web.invite.alreadyAccepted": "Это приглашение уже принято.",
+  "web.invite.alreadyMember": "Вы уже участник этого пространства.",
+  "web.invite.emailMismatch": "Приглашение отправлено на другой адрес электронной почты.",
+  "web.invite.errorGeneric": "Не удалось обработать приглашение. Попробуйте ещё раз."
 }

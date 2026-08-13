@@ -7,6 +7,11 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { VaultSharingService } from "../vault-sharing/service.ts";
 
+export type ApiEnterprisePluginRedis = {
+  incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<boolean>;
+};
+
 export type ApiEnterprisePluginContext = {
   app: HttpApp;
   config: ApiConfig;
@@ -14,6 +19,7 @@ export type ApiEnterprisePluginContext = {
   postgres: QueryExecutor & {
     transaction<T>(fn: (tx: QueryExecutor) => Promise<T>): Promise<T>;
   };
+  redis?: ApiEnterprisePluginRedis;
   publicAppBaseUrl?: string;
   emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
   repositories: {

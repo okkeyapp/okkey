@@ -285,6 +285,17 @@ export const LEGACY_WORKSPACE_DETAIL_ROUTE_PARAM = "workspaceId";
 export const LEGACY_WORKSPACE_DETAIL_PATH_PATTERN =
   `${WORKSPACES_PATH}/:${LEGACY_WORKSPACE_DETAIL_ROUTE_PARAM}` as const;
 
+/** Guest invite landing (enterprise); token is opaque base64url. */
+export const INVITE_PATH_PATTERN = "/invite/:token" as const;
+
+export function invitePath(token: string): string {
+  return `/invite/${encodeURIComponent(token)}`;
+}
+
+export function isInvitePathname(pathname: string): boolean {
+  return pathname === "/invite" || pathname.startsWith("/invite/");
+}
+
 /** Default post-login / post-unlock target when no explicit ?redirect= */
 export const DEFAULT_AUTHENTICATED_PATH = WORKSPACES_PATH;
 

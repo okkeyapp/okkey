@@ -2,7 +2,8 @@ import type { CoreApiClient } from "@okkey/api";
 import type { NavigateFunction } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
-import { DEFAULT_AUTHENTICATED_PATH, ITEMS_PATH, WORKSPACES_PATH } from "../routes/paths";
+import { DEFAULT_AUTHENTICATED_PATH, invitePath, ITEMS_PATH, WORKSPACES_PATH } from "../routes/paths";
+import { readPendingInviteToken } from "./pendingInviteStorage";
 import { readStoredSession } from "./sessionAuthStorage";
 import { writeStoredCurrentWorkspaceId } from "./workspaceStorage";
 
@@ -11,6 +12,11 @@ export async function navigateAfterSession(
   navigate: NavigateFunction,
   fallback = DEFAULT_AUTHENTICATED_PATH,
 ): Promise<void> {
+  const pendingInvite = readPendingInviteToken();
+  if (pendingInvite) {
+    navigate(invitePath(pendingInvite), { replace: true });
+    return;
+  }
   try {
     const workspaces = await core.listWorkspaces();
     const session = readStoredSession();

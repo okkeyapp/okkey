@@ -26,6 +26,7 @@ This folder defines **browser URL paths**, **route tree**, and **guest entry rul
 
 3. **Choose access control**  
    - **Guest only** (no Bearer): wrap with `GuestAuthOnly` (same pattern as email / OTP / 2FA).  
+   - **Guest or session** (e.g. `/invite/:token`): no `GuestAuthOnly`; allow both in `guestEntryPaths.ts`.  
    - **Session but no vault unlock** (e.g. lock / restore): no `GuestAuthOnly`; handle missing token inside the page if needed (`Navigate` to `AUTH_EMAIL_PATH`).  
    - **Session + unlocked vault**: nest under `<Route element={<ProtectedVaultLayout />}>`.
 

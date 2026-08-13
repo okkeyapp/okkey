@@ -17,7 +17,8 @@ import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { bytesToBase64 } from "../../auth/base64";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { useLocale } from "../../locale/LocaleContext";
-import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH } from "../../routes/paths";
+import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
+import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
 import { registrationErrorI18nKey } from "./registrationErrors";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
@@ -158,7 +159,14 @@ export default function AuthRegistrationPage() {
       wipeBytes(material.serverKeyShare);
       wipeBytes(material.deviceShare);
 
-      navigate(ACCOUNT_LOCK_PATH, { replace: true });
+      const pendingInvite = readPendingInviteToken();
+      if (pendingInvite) {
+        navigate(accountLockWithRedirectQuery(encodeURIComponent(invitePath(pendingInvite))), {
+          replace: true,
+        });
+      } else {
+        navigate(ACCOUNT_LOCK_PATH, { replace: true });
+      }
     } catch (err) {
       wipeBytes(pwd);
       if (import.meta.env.DEV) {

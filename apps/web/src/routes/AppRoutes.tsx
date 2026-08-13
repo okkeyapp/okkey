@@ -1,4 +1,5 @@
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
+import workspaceMembersModule from "@okkey-enterprise/workspace-members";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
@@ -41,6 +42,7 @@ import {
   CAPSULES_PATH,
   DEFAULT_AUTHENTICATED_PATH,
   DEV_UI_BASE_PATH,
+  INVITE_PATH_PATTERN,
   ITEMS_PATH,
   LEGACY_WORKSPACE_DETAIL_PATH_PATTERN,
   MONITORING_PATH,
@@ -124,6 +126,7 @@ export default function AppRoutes() {
       <Route path={ACCOUNT_LOCK_PATH} element={<UnlockPasswordPage />} />
       <Route path={UNLOCK_PASSWORD_LEGACY_PATH} element={<LegacyNavigate to={ACCOUNT_LOCK_PATH} />} />
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
+      <Route path={INVITE_PATH_PATTERN} element={<workspaceMembersModule.InviteLandingPage />} />
       <Route element={<ProtectedVaultLayout />}>
         <Route
           path={WORKSPACES_PATH}

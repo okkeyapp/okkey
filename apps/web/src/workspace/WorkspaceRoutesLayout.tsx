@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
+import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
@@ -183,6 +184,18 @@ export default function WorkspaceRoutesLayout() {
     const list = await core.listWorkspaces();
     setWorkspaceList(list);
   }, [core]);
+
+  useEffect(() => {
+    if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
+      return;
+    }
+    void tryCompletePendingVaultWraps({
+      core,
+      workspaceId: resolvedWorkspaceId,
+      userId,
+      accountVaultKey: vaultKey,
+    }).catch(() => undefined);
+  }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
 
   const patchWorkspace = useCallback((workspaceId: string, patch: Partial<Workspace>) => {
     setWorkspaceList((previous) =>

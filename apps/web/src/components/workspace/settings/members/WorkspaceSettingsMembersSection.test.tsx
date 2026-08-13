@@ -16,6 +16,7 @@ const enterpriseMembersMock = vi.hoisted(() => ({
 
 vi.mock("@okkey-enterprise/workspace-members", () => ({
   default: enterpriseMembersMock,
+  tryCompletePendingVaultWraps: vi.fn(),
 }));
 
 vi.mock("../../../../auth/AuthVaultContext", () => ({

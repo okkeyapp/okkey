@@ -51,6 +51,9 @@ import type {
   MemberVaultAccessUpdateRequestDto,
   InvitationVaultAccessResponseDto,
   InvitationVaultAccessUpdateRequestDto,
+  InvitationPreviewDto,
+  InvitationAcceptResponseDto,
+  PendingVaultWrapsResponseDto,
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
 } from "../../types/src/index.js";
@@ -267,6 +270,25 @@ export class CoreApiClient {
   listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMembersListResponseDto> {
     return this.api.get<WorkspaceMembersListResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    );
+  }
+
+  getInvitationByToken(token: string): Promise<InvitationPreviewDto> {
+    return this.api.get<InvitationPreviewDto>(
+      `/invitations/${encodeURIComponent(token)}`,
+    );
+  }
+
+  acceptInvitation(token: string): Promise<InvitationAcceptResponseDto> {
+    return this.api.post<InvitationAcceptResponseDto>(
+      `/invitations/${encodeURIComponent(token)}/accept`,
+      {},
+    );
+  }
+
+  listPendingVaultWraps(workspaceId: string): Promise<PendingVaultWrapsResponseDto> {
+    return this.api.get<PendingVaultWrapsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/pending-vault-wraps`,
     );
   }
 
