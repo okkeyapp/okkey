@@ -67,8 +67,7 @@ export async function renderAuthEmailCode(
   });
   const element = <AuthSignInCodeEmail {...props} />;
   const html = await render(element);
-  const text = await render(element, { plainText: true });
-  return { subject, html, text: text.trim().length > 0 ? text : plainText };
+  return { subject, html, text: plainText };
 }
 
 export async function renderDeviceApprovalRequest(

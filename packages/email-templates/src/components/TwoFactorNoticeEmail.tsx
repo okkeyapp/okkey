@@ -1,13 +1,8 @@
-import {
-  Body,
-  Container,
-  Head,
-  Html,
-  Link,
-  Section,
-  Text,
-} from "@react-email/components";
+import { Section, Text } from "@react-email/components";
 import * as React from "react";
+
+import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
+import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
 
 export interface TwoFactorNoticeEmailProps {
   line1: string;
@@ -24,44 +19,32 @@ export function TwoFactorNoticeEmail({
 }: TwoFactorNoticeEmailProps) {
   const hasUrl = securityUrl.trim().length > 0;
   return (
-    <Html>
-      <Head />
-      <Body style={bodyStyle}>
-        <Container style={containerStyle}>
-          <Text style={textStyle}>{line1}</Text>
-          <Text style={textStyle}>{line2}</Text>
-          {hasUrl ? (
-            <Section style={{ marginTop: "8px" }}>
-              <Text style={textStyle}>
-                <Link href={securityUrl}>{ctaLabel}</Link>
-              </Text>
-            </Section>
-          ) : null}
-        </Container>
-      </Body>
-    </Html>
+    <EmailShell preview={line1}>
+      <Text style={leadStyle}>{line1}</Text>
+      <Text style={noteStyle}>{line2}</Text>
+      {hasUrl ? (
+        <Section style={ctaWrapStyle}>
+          <EmailPrimaryButton href={securityUrl}>{ctaLabel}</EmailPrimaryButton>
+        </Section>
+      ) : null}
+    </EmailShell>
   );
 }
 
-const bodyStyle: React.CSSProperties = {
-  fontFamily:
-    'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  backgroundColor: "#f6f6f6",
-  margin: 0,
-  padding: "24px 0",
-};
-
-const containerStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "0 auto",
-  backgroundColor: "#ffffff",
-  padding: "24px",
-  borderRadius: "8px",
-};
-
-const textStyle: React.CSSProperties = {
+const leadStyle: React.CSSProperties = {
   fontSize: "16px",
   lineHeight: "24px",
-  color: "#111827",
+  color: EMAIL_PRIMARY_TEXT,
   margin: "0 0 12px",
+};
+
+const noteStyle: React.CSSProperties = {
+  fontSize: "14px",
+  lineHeight: "22px",
+  color: EMAIL_SECONDARY_TEXT,
+  margin: 0,
+};
+
+const ctaWrapStyle: React.CSSProperties = {
+  marginTop: "20px",
 };

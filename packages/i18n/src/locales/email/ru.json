@@ -1,8 +1,9 @@
 {
   "email.auth.signInCode.subject": "Код входа в Okkey",
-  "email.auth.signInCode.beforeCode": "Ваш код входа:",
-  "email.auth.signInCode.line2": "Код действует {minutes, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}}.",
-  "email.auth.signInCode.plain": "Ваш код входа: {code}. Код действует {minutes, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}}.",
+  "email.auth.signInCode.beforeCode": "Ваш код подтверждения Okkey:",
+  "email.auth.signInCode.line2": "Код действует {minutes, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}} и может быть использован только один раз. Никому не сообщайте этот код.",
+  "email.auth.signInCode.ignore": "Если вы не запрашивали этот код, просто проигнорируйте письмо.",
+  "email.auth.signInCode.plain": "Ваш код подтверждения Okkey: {code}. Код действует {minutes, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}} и может быть использован только один раз. Никому не сообщайте этот код.",
 
   "email.device.approval.subject": "Новый вход с устройства — требуется подтверждение",
   "email.device.approval.lead": "Запрошен вход с нового устройства.",

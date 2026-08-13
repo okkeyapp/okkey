@@ -1,13 +1,8 @@
-import {
-  Body,
-  Container,
-  Head,
-  Html,
-  Link,
-  Section,
-  Text,
-} from "@react-email/components";
+import { Section, Text } from "@react-email/components";
 import * as React from "react";
+
+import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
+import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
 
 export interface DeviceApprovalEmailProps {
   lead: string;
@@ -30,55 +25,49 @@ export function DeviceApprovalEmail({
 }: DeviceApprovalEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
   return (
-    <Html>
-      <Head />
-      <Body style={bodyStyle}>
-        <Container style={containerStyle}>
-          <Text style={textStyle}>{lead}</Text>
-          <Section style={listStyle}>
-            <Text style={listItemStyle}>{deviceLine}</Text>
-            <Text style={listItemStyle}>{platformLine}</Text>
-            <Text style={listItemStyle}>{ipLine}</Text>
-          </Section>
-          {hasUrl ? (
-            <Text style={textStyle}>
-              <Link href={helpUrl}>{ctaLabel}</Link>
-            </Text>
-          ) : (
-            <Text style={textStyle}>{noteNoUrl}</Text>
-          )}
-        </Container>
-      </Body>
-    </Html>
+    <EmailShell preview={lead}>
+      <Text style={leadStyle}>{lead}</Text>
+      <Section style={listStyle}>
+        <Text style={metaStyle}>{deviceLine}</Text>
+        <Text style={metaStyle}>{platformLine}</Text>
+        <Text style={metaStyle}>{ipLine}</Text>
+      </Section>
+      {hasUrl ? (
+        <Section style={ctaWrapStyle}>
+          <EmailPrimaryButton href={helpUrl}>{ctaLabel}</EmailPrimaryButton>
+        </Section>
+      ) : (
+        <Text style={noteStyle}>{noteNoUrl}</Text>
+      )}
+    </EmailShell>
   );
 }
 
-const bodyStyle: React.CSSProperties = {
-  fontFamily:
-    'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  backgroundColor: "#f6f6f6",
-  margin: 0,
-  padding: "24px 0",
-};
-
-const containerStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "0 auto",
-  backgroundColor: "#ffffff",
-  padding: "24px",
-  borderRadius: "8px",
-};
-
-const textStyle: React.CSSProperties = {
+const leadStyle: React.CSSProperties = {
   fontSize: "16px",
   lineHeight: "24px",
-  color: "#111827",
-  margin: "0 0 12px",
+  color: EMAIL_PRIMARY_TEXT,
+  margin: "0 0 16px",
 };
 
-const listStyle: React.CSSProperties = { margin: "0 0 16px" };
+const listStyle: React.CSSProperties = {
+  margin: "0 0 20px",
+};
 
-const listItemStyle: React.CSSProperties = {
-  ...textStyle,
+const metaStyle: React.CSSProperties = {
+  fontSize: "14px",
+  lineHeight: "22px",
+  color: EMAIL_SECONDARY_TEXT,
   margin: "0 0 4px",
+};
+
+const noteStyle: React.CSSProperties = {
+  fontSize: "14px",
+  lineHeight: "22px",
+  color: EMAIL_SECONDARY_TEXT,
+  margin: 0,
+};
+
+const ctaWrapStyle: React.CSSProperties = {
+  marginTop: "4px",
 };

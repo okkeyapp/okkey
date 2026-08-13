@@ -20,6 +20,7 @@ export function buildAuthSignInCodeEmailProps(
     beforeCode: formatEmailMessage(locale, "email.auth.signInCode.beforeCode", {}),
     code: variables.code,
     line2: formatEmailMessage(locale, "email.auth.signInCode.line2", { minutes }),
+    ignore: formatEmailMessage(locale, "email.auth.signInCode.ignore", {}),
   };
 }
 

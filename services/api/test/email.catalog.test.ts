@@ -41,7 +41,9 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   });
   assert.match(en.subject, /sign-in code/i);
   assert.match(en.text, /123456/);
-  assert.match(en.html, /123456/);
+  assert.match(en.html, /123[\s\u00a0]*456/);
+  assert.match(en.html, /Okkey/);
+  assert.match(en.html, /#f1f5f9/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("auth_email_code", "ru", {
@@ -58,6 +60,8 @@ test("renderEmailTemplate device_approval_request en and ru", async () => {
   assert.match(en.subject, /device|approval/i);
   assert.match(en.text, /Pixel/);
   assert.match(en.html, /Pixel/);
+  assert.match(en.html, /Okkey/);
+  assert.match(en.html, /#3B82F6/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
@@ -71,6 +75,7 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
   assert.match(en.subject, /Invitation|workspace/i);
   assert.match(en.html, /token-abc/);
   assert.match(en.html, /Sam/);
+  assert.match(en.html, /#3B82F6/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("workspace_invite", "ru", workspaceVars);
