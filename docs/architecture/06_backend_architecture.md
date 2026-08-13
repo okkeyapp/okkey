@@ -82,7 +82,7 @@ Manages user devices.
 
 ### Transactional email
 
-Auth codes, device approval, workspace invites (planned), and 2FA notices are sent only through the **central email layer** (`services/api/src/email/`): registry, `en`/`ru` templates, locale rules, and a single transport abstraction. See [`docs/backend-email.md`](../backend-email.md).
+Auth codes, device approval, workspace invites, and 2FA notices are sent only through the **central email layer** (`services/api/src/email/`): registry, `en`/`ru` templates, locale rules, and transports `logger` / `smtp` / `ses` / `http-api`. See [`docs/backend-email.md`](../backend-email.md).
 
 ---
 

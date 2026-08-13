@@ -11,7 +11,7 @@ import {
 } from "./crypto/policy-matrix.ts";
 
 type NodeEnv = "development" | "test" | "production";
-type EmailProvider = "logger" | "smtp" | "http-api";
+type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
 type CryptoRolloutState = "resume" | "stop";
 
 export type DeploymentMode = "self_hosted" | "saas";
@@ -67,6 +67,13 @@ export interface ApiConfig {
   emailApiEndpoint: string;
   emailApiKey: string;
   emailApiTimeoutMs: number;
+  /** AWS SES / SES-compatible (Yandex Postbox) region for SigV4. */
+  sesRegion: string;
+  sesAccessKeyId: string;
+  sesSecretAccessKey: string;
+  /** Optional origin or full URL; empty = `https://email.{region}.amazonaws.com`. */
+  sesEndpoint: string;
+  sesTimeoutMs: number;
   capsuleOpenRateLimitPerIp: number;
   capsuleRateLimitWindowSeconds: number;
   allowedCryptoProfileVersions: number[];
@@ -348,6 +355,11 @@ export function loadConfig(): ApiConfig {
     emailApiEndpoint: process.env.EMAIL_API_ENDPOINT ?? "",
     emailApiKey: process.env.EMAIL_API_KEY ?? "",
     emailApiTimeoutMs: parsePositiveInt(process.env.EMAIL_API_TIMEOUT_MS, 10000),
+    sesRegion: process.env.EMAIL_SES_REGION ?? "",
+    sesAccessKeyId: process.env.EMAIL_SES_ACCESS_KEY_ID ?? "",
+    sesSecretAccessKey: process.env.EMAIL_SES_SECRET_ACCESS_KEY ?? "",
+    sesEndpoint: (process.env.EMAIL_SES_ENDPOINT ?? "").trim(),
+    sesTimeoutMs: parsePositiveInt(process.env.EMAIL_SES_TIMEOUT_MS, 10000),
     capsuleOpenRateLimitPerIp: parsePositiveInt(process.env.CAPSULE_OPEN_RATE_LIMIT_PER_IP, 60),
     capsuleRateLimitWindowSeconds: parsePositiveInt(
       process.env.CAPSULE_RATE_LIMIT_WINDOW_SECONDS,

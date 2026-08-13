@@ -55,25 +55,14 @@ Note: the storage layer needs `pg` and `redis` dependencies to run.
 
 ## Email providers
 
-Three modes are supported:
+Transports (`EMAIL_PROVIDER`) are protocols, not named vendors. See [`docs/backend-email.md`](../../docs/backend-email.md) and `services/api/.env.example` for presets.
 
-- `EMAIL_PROVIDER=logger` — log sends only (default in dev)
-- `EMAIL_PROVIDER=smtp` — send via SMTP
-- `EMAIL_PROVIDER=http-api` — send via an external provider HTTP API
+- `EMAIL_PROVIDER=logger` — log sends only (default; used in CI)
+- `EMAIL_PROVIDER=smtp` — any SMTP host (personal mailbox or Unisender Go / Postmark / Resend / OVH / …)
+- `EMAIL_PROVIDER=ses` — AWS SES API (SigV4) with optional `EMAIL_SES_ENDPOINT` for SES-compatible APIs (Yandex Cloud Postbox)
+- `EMAIL_PROVIDER=http-api` — generic JSON POST + Bearer webhook
 
-SMTP variables:
-
-- `EMAIL_SMTP_HOST`
-- `EMAIL_SMTP_PORT`
-- `EMAIL_SMTP_SECURE`
-- `EMAIL_SMTP_USER`
-- `EMAIL_SMTP_PASSWORD`
-
-HTTP API variables:
-
-- `EMAIL_API_ENDPOINT`
-- `EMAIL_API_KEY`
-- `EMAIL_API_TIMEOUT_MS`
+Set `PUBLIC_APP_URL` (e.g. `http://localhost:5173`) so invite emails contain a working link.
 
 ## Scaffold tests
 

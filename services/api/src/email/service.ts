@@ -9,6 +9,7 @@ import {
 } from "./catalog.ts";
 import { EmailTemplateError } from "./errors.ts";
 import { resolveEmailLocaleForRecipient, type EmailLocaleHintsInput } from "./locale.ts";
+import { SesEmailSender } from "./ses-sender.ts";
 
 export interface EmailMessage {
   to: string;
@@ -239,6 +240,23 @@ export async function createEmailSender(
         config.emailApiKey,
         config.emailApiTimeoutMs,
       );
+    case "ses":
+      if (!config.sesRegion) {
+        throw new Error("EMAIL_SES_REGION is required for EMAIL_PROVIDER=ses");
+      }
+      if (!config.sesAccessKeyId) {
+        throw new Error("EMAIL_SES_ACCESS_KEY_ID is required for EMAIL_PROVIDER=ses");
+      }
+      if (!config.sesSecretAccessKey) {
+        throw new Error("EMAIL_SES_SECRET_ACCESS_KEY is required for EMAIL_PROVIDER=ses");
+      }
+      return new SesEmailSender({
+        region: config.sesRegion,
+        accessKeyId: config.sesAccessKeyId,
+        secretAccessKey: config.sesSecretAccessKey,
+        endpoint: config.sesEndpoint || undefined,
+        timeoutMs: config.sesTimeoutMs,
+      });
     default:
       throw new Error(`unsupported email provider: ${config.emailProvider}`);
   }

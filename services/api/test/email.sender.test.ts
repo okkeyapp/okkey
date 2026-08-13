@@ -171,6 +171,23 @@ test("EMAIL_LOG_PLAINTEXT=true enables plainText when nodeEnv is production", as
   }
 });
 
+test("createEmailSender validates ses config", async () => {
+  await assert.rejects(
+    () =>
+      createEmailSender(
+        {
+          ...baseConfig,
+          emailProvider: "ses",
+          sesRegion: "",
+          sesAccessKeyId: "id",
+          sesSecretAccessKey: "secret",
+        },
+        { info() {}, warn() {}, error() {} },
+      ),
+    /EMAIL_SES_REGION is required/,
+  );
+});
+
 test("createEmailSender validates http-api config", async () => {
   await assert.rejects(
     () =>
@@ -219,4 +236,37 @@ test("HttpApiEmailSender posts payload to configured endpoint", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("SesEmailSender posts SigV4-signed SES v2 payload", async () => {
+  const { SesEmailSender } = await import("../src/email/ses-sender.ts");
+  const calls: Array<{ url: string; authorization: string | null; body: string | null }> = [];
+  const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      url: String(url),
+      authorization: headers.get("authorization"),
+      body: typeof init?.body === "string" ? init.body : null,
+    });
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+
+  const sender = new SesEmailSender({
+    region: "eu-west-1",
+    accessKeyId: "AKIAEXAMPLE",
+    secretAccessKey: "secret",
+    fetchImpl,
+  });
+  await sender.send({
+    to: "user@example.com",
+    from: "no-reply@okkey.local",
+    subject: "Code",
+    text: "123456",
+    html: "<p>123456</p>",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails");
+  assert.match(calls[0].authorization ?? "", /^AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE\//);
+  assert.match(calls[0].body ?? "", /"FromEmailAddress":"no-reply@okkey.local"/);
 });
