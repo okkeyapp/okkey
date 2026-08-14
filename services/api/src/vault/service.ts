@@ -61,7 +61,9 @@ export class VaultService {
     const workspace = await this.requireWorkspaceAccess(workspaceId, userId);
     const canManageSettings = await this.canManageWorkspaceVaultSettings(workspace, userId);
     if (canManageSettings) {
-      return this.vaults.listByWorkspace(workspaceId);
+      // Admins see every shared vault, but only their own personal vault.
+      const all = await this.vaults.listByWorkspace(workspaceId);
+      return all.filter((vault) => !vault.isPersonal || vault.ownerId === userId);
     }
     return this.vaults.listAccessibleByWorkspace(workspaceId, userId);
   }

@@ -62,6 +62,69 @@ test("listWorkspaceVaults returns vaults for accessible workspace", async () => 
   assert.equal(result[0].id, "v1");
 });
 
+test("listWorkspaceVaults hides other members personal vaults for workspace owner", async () => {
+  const service = new VaultService({
+    workspaces: {
+      findById: async () => ({
+        id: "w1",
+        name: "Workspace",
+        ownerId: "u1",
+        planTier: "ENTERPRISE",
+        createdAt: "",
+        updatedAt: "",
+      }),
+      hasAccess: async () => true,
+      listAccessibleByUser: async () => [],
+    },
+    vaults: vaultsStub({
+      listByWorkspace: async () => [
+        {
+          id: "v-own",
+          workspaceId: "w1",
+          name: "Личный сейф",
+          description: "",
+          icon: "🌟",
+          isPersonal: true,
+          ownerId: "u1",
+          cryptoVersion: 2,
+          createdAt: "",
+          updatedAt: "",
+        },
+        {
+          id: "v-other",
+          workspaceId: "w1",
+          name: "Personal",
+          description: "",
+          icon: "🏠",
+          isPersonal: true,
+          ownerId: "u2",
+          cryptoVersion: 2,
+          createdAt: "",
+          updatedAt: "",
+        },
+        {
+          id: "v-shared",
+          workspaceId: "w1",
+          name: "Новый сейф",
+          description: "",
+          icon: "💜",
+          isPersonal: false,
+          ownerId: null,
+          cryptoVersion: 2,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+    }),
+  });
+
+  const result = await service.listWorkspaceVaults("w1", "u1");
+  assert.deepEqual(
+    result.map((vault) => vault.id),
+    ["v-own", "v-shared"],
+  );
+});
+
 test("getVault returns 404 when vault missing", async () => {
   const service = new VaultService({
     workspaces: {
