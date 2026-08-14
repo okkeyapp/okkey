@@ -9,12 +9,14 @@ type WorkspaceSettingsSidebarProps = {
   activeSection: WorkspaceSettingsSectionId;
   t: (messageKey: string, values?: WebMessageValues) => string;
   sectionHref: (section: WorkspaceSettingsSectionId) => string;
+  allowedSections?: readonly WorkspaceSettingsSectionId[];
 };
 
 export default function WorkspaceSettingsSidebar({
   activeSection,
   t,
   sectionHref,
+  allowedSections = WORKSPACE_SETTINGS_SECTIONS,
 }: WorkspaceSettingsSidebarProps) {
   return (
     <nav
@@ -22,7 +24,7 @@ export default function WorkspaceSettingsSidebar({
       aria-label={t("web.workspaceSettings.sidebarAria")}
     >
       <ul className="flex flex-col gap-1">
-        {WORKSPACE_SETTINGS_SECTIONS.map((section) => {
+        {allowedSections.map((section) => {
           const Icon = workspaceSettingsSectionIcon(section);
           const active = section === activeSection;
           return (

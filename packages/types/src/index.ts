@@ -173,6 +173,75 @@ export interface WorkspaceMembersListResponseDto {
   };
 }
 
+/** Permission cell shared by role matrix and actor permissions APIs. */
+export type WorkspacePermissionScopeLevel = 0 | 1 | 2;
+export type WorkspacePermissionPostLevel = 0 | 1;
+
+export type WorkspacePermissionResourceId =
+  | "settings"
+  | "roles"
+  | "profiles"
+  | "members"
+  | "vaults"
+  | "billing";
+
+export type WorkspaceResourcePermissionDto = {
+  get: WorkspacePermissionScopeLevel;
+  post: WorkspacePermissionPostLevel;
+  put: WorkspacePermissionScopeLevel;
+  delete: WorkspacePermissionScopeLevel;
+};
+
+export type WorkspacePermissionsMatrixDto = Record<
+  WorkspacePermissionResourceId,
+  WorkspaceResourcePermissionDto
+>;
+
+/** `GET /workspaces/:workspaceId/me/permissions` success body. */
+export interface WorkspaceMePermissionsResponseDto {
+  workspaceId: EntityId;
+  permissions: WorkspacePermissionsMatrixDto;
+}
+
+export function permissionAllowsGet(level: WorkspacePermissionScopeLevel): boolean {
+  return level >= 1;
+}
+
+export function permissionAllowsPost(level: WorkspacePermissionPostLevel): boolean {
+  return level >= 1;
+}
+
+export function permissionAllowsAll(level: WorkspacePermissionScopeLevel): boolean {
+  return level === 1;
+}
+
+export function permissionAllowsMutate(level: WorkspacePermissionScopeLevel): boolean {
+  return level >= 1;
+}
+
+export function permissionAllowsObject(
+  level: WorkspacePermissionScopeLevel,
+  isOwn: boolean,
+): boolean {
+  if (level === 1) {
+    return true;
+  }
+  if (level === 2) {
+    return isOwn;
+  }
+  return false;
+}
+
+export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionResourceId[] = [
+  "settings",
+  "roles",
+  "profiles",
+  "members",
+  "vaults",
+  "billing",
+] as const;
+
+
 /** `GET /invitations/:token` success body (public). */
 export interface InvitationPreviewDto {
   status: "pending" | "expired" | "revoked" | "accepted";

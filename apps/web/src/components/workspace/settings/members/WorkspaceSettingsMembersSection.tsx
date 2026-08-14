@@ -1,7 +1,7 @@
 import type {
   Workspace,
   WorkspaceMemberDto,
-  WorkspaceMembersPermissionCellDto,
+  WorkspaceResourcePermissionDto,
 } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Button } from "@okkey/ui";
@@ -28,19 +28,14 @@ type WorkspaceSettingsMembersSectionProps = {
   workspaceId: string;
   workspace?: Workspace;
   t: (messageKey: string, values?: WebMessageValues) => string;
-};
-
-const EMPTY_PERMISSIONS: WorkspaceMembersPermissionCellDto = {
-  get: 0,
-  post: 0,
-  put: 0,
-  delete: 0,
+  resourcePermissions?: WorkspaceResourcePermissionDto | null;
 };
 
 export default function WorkspaceSettingsMembersSection({
   workspaceId,
   workspace,
   t,
+  resourcePermissions = null,
 }: WorkspaceSettingsMembersSectionProps) {
   const core = useAuthenticatedCoreClient();
   const navigate = useNavigate();
@@ -151,7 +146,12 @@ export default function WorkspaceSettingsMembersSection({
           ) : null}
 
           {showEnterpriseMembers && AdditionalMembersSection ? (
-            <AdditionalMembersSection workspaceId={workspaceId} workspace={workspace} t={t} />
+            <AdditionalMembersSection
+              workspaceId={workspaceId}
+              workspace={workspace}
+              t={t}
+              resourcePermissions={resourcePermissions}
+            />
           ) : (
             <AdditionalMembersUpsell t={t} />
           )}

@@ -48,6 +48,8 @@ type BuildWorkspaceSettingsMenuOptions = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   withMenuLabel?: boolean;
   onSectionSelect: (section: WorkspaceSettingsSectionId) => void;
+  /** When set, only these sections appear in the menu. */
+  allowedSections?: readonly WorkspaceSettingsSectionId[];
 };
 
 export function buildWorkspaceSettingsMenu({
@@ -55,11 +57,12 @@ export function buildWorkspaceSettingsMenu({
   t,
   withMenuLabel = false,
   onSectionSelect,
+  allowedSections = WORKSPACE_SETTINGS_SECTIONS,
 }: BuildWorkspaceSettingsMenuOptions): PopupMenu {
   return {
     label: withMenuLabel ? t("web.workspaceSettings.breadcrumbsRoot") : undefined,
     activeItemId: activeSection,
-    items: WORKSPACE_SETTINGS_SECTIONS.map((section) => {
+    items: allowedSections.map((section) => {
       const Icon = workspaceSettingsSectionIcon(section);
       return {
         id: section,

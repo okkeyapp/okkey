@@ -1,4 +1,9 @@
 import type { WorkspacesRepository } from "../storage/repositories.ts";
+import type { QueryExecutor } from "../storage/postgres.ts";
+import {
+  assertWorkspacePermission,
+  WorkspacePermissionError,
+} from "../workspace-roles/permissions.ts";
 import {
   MAX_MAX_FILE_SIZE_MB,
   MIN_MAX_FILE_SIZE_MB,
@@ -49,17 +54,21 @@ export interface WorkspaceSettingsServiceDeps {
     WorkspacesRepository,
     "findById" | "hasAccess" | "updateGeneralSettings" | "deleteOwnedWorkspace"
   >;
+  db: QueryExecutor;
 }
 
 export class WorkspaceSettingsService {
   private readonly workspaces: WorkspaceSettingsServiceDeps["workspaces"];
+  private readonly db: QueryExecutor;
 
   constructor(deps: WorkspaceSettingsServiceDeps) {
     this.workspaces = deps.workspaces;
+    this.db = deps.db;
   }
 
   async getSettings(workspaceId: string, userId: string): Promise<WorkspaceSettingsSnapshot> {
     const workspace = await this.requireAccessibleWorkspace(workspaceId, userId);
+    await this.assertSettings(workspaceId, userId, "get");
     return toSettingsSnapshot(workspace);
   }
 
@@ -68,7 +77,8 @@ export class WorkspaceSettingsService {
     userId: string,
     patch: WorkspaceSettingsPatch,
   ): Promise<WorkspaceSettingsSnapshot> {
-    const workspace = await this.requireOwnerWorkspace(workspaceId, userId);
+    const workspace = await this.requireAccessibleWorkspace(workspaceId, userId);
+    await this.assertSettings(workspaceId, userId, "put");
 
     const update: Parameters<WorkspacesRepository["updateGeneralSettings"]>[1] = {};
     if (patch.name !== undefined) {
@@ -119,6 +129,21 @@ export class WorkspaceSettingsService {
     }
   }
 
+  private async assertSettings(
+    workspaceId: string,
+    userId: string,
+    action: "get" | "put",
+  ): Promise<void> {
+    try {
+      await assertWorkspacePermission(this.db, workspaceId, userId, "settings", action);
+    } catch (error) {
+      if (error instanceof WorkspacePermissionError) {
+        throw new WorkspaceSettingsServiceError(error.code, error.statusCode, error.message);
+      }
+      throw error;
+    }
+  }
+
   private async requireAccessibleWorkspace(workspaceId: string, userId: string) {
     const workspace = await this.workspaces.findById(workspaceId);
     if (!workspace) {
@@ -137,7 +162,7 @@ export class WorkspaceSettingsService {
       throw new WorkspaceSettingsServiceError(
         "ACCESS_DENIED",
         403,
-        "only workspace owner can update settings",
+        "only workspace owner can delete workspace",
       );
     }
     return workspace;

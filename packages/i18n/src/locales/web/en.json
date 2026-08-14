@@ -6,6 +6,8 @@
   "web.nav.allItems": "All items",
   "web.notFound.title": "404",
   "web.notFound.description": "This page does not exist",
+  "web.forbidden.title": "403",
+  "web.forbidden.description": "You do not have access to this page",
   "web.nav.capsules": "Capsules",
   "web.nav.monitoring": "Monitoring",
   "web.nav.tools": "Tools",

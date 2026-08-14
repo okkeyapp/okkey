@@ -1,5 +1,5 @@
-import type { Vault, Workspace } from "@okkey/types";
-import { hasPlanFeature, normalizePlanTier } from "@okkey/types";
+import type { Vault, Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
+import { hasPlanFeature, normalizePlanTier, permissionAllowsMutate } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -28,6 +28,7 @@ type WorkspaceSettingsVaultsSectionProps = {
   vaultsListReady?: boolean;
   t: (messageKey: string, values?: WebMessageValues) => string;
   onVaultsChanged?: () => void | Promise<void>;
+  resourcePermissions?: WorkspaceResourcePermissionDto | null;
 };
 
 export default function WorkspaceSettingsVaultsSection({
@@ -37,6 +38,7 @@ export default function WorkspaceSettingsVaultsSection({
   vaultsListReady = true,
   t,
   onVaultsChanged,
+  resourcePermissions = null,
 }: WorkspaceSettingsVaultsSectionProps) {
   const core = useAuthenticatedCoreClient();
   const { userId, vaultKey } = useAuthVault();
@@ -53,6 +55,7 @@ export default function WorkspaceSettingsVaultsSection({
     normalizePlanTier(workspace?.planTier) === "ENTERPRISE" && Boolean(PersonalVaultCardPopup);
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
+  const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);
 
   const popupRaw = searchParams.get(POPUP_QUERY_PARAM);
   const parsedPopup = parsePopupQueryValue(popupRaw);
@@ -119,6 +122,7 @@ export default function WorkspaceSettingsVaultsSection({
           t={t}
           onVaultsChanged={onVaultsChanged}
           personalVaultId={personalVault?.id ?? null}
+          resourcePermissions={resourcePermissions}
         />
       ) : (
         <section className="flex flex-col gap-4">
@@ -147,6 +151,8 @@ export default function WorkspaceSettingsVaultsSection({
           profiles={[]}
           initialAccessByUserId={{}}
           t={t}
+          readOnly={!canPutPersonal}
+          canDelete={false}
           onClose={closePopup}
           onSaved={async () => {
             await onVaultsChanged?.();

@@ -96,6 +96,7 @@ async function main(): Promise<void> {
   });
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
+    db: storage.postgres,
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,

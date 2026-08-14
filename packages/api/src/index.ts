@@ -43,6 +43,7 @@ import type {
   VaultCreateRequestDto,
   VaultUpdateRequestDto,
   WorkspaceMembersListResponseDto,
+  WorkspaceMePermissionsResponseDto,
   WorkspaceInvitationsCreateRequestDto,
   WorkspaceInvitationsCreateResponseDto,
   WorkspaceInvitationUpdateRequestDto,
@@ -270,6 +271,12 @@ export class CoreApiClient {
   listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMembersListResponseDto> {
     return this.api.get<WorkspaceMembersListResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    );
+  }
+
+  getWorkspaceMePermissions(workspaceId: string): Promise<WorkspaceMePermissionsResponseDto> {
+    return this.api.get<WorkspaceMePermissionsResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/me/permissions`,
     );
   }
 

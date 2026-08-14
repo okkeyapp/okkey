@@ -50,6 +50,8 @@ type WorkspaceSettingsGeneralSectionProps = {
   vaults: readonly Vault[];
   t: (messageKey: string, values?: WebMessageValues) => string;
   onSettingsChanged?: (patch: ReturnType<typeof workspacePatchFromSettingsResponse>) => void;
+  /** When omitted, falls back to workspace owner (tests / legacy). */
+  canPut?: boolean;
 };
 
 const SAVE_TOAST = {
@@ -64,6 +66,7 @@ export default function WorkspaceSettingsGeneralSection({
   vaults,
   t,
   onSettingsChanged,
+  canPut,
 }: WorkspaceSettingsGeneralSectionProps) {
   const core = useAuthenticatedCoreClient();
   const navigate = useNavigate();
@@ -86,6 +89,7 @@ export default function WorkspaceSettingsGeneralSection({
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
 
   const isOwner = Boolean(workspace && userId && workspace.ownerId === userId);
+  const canEdit = canPut ?? isOwner;
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal), [vaults]);
   const hasCustomLogo = Boolean(logoVaultId && logoAttachmentId);
   const logoUrl = useWorkspaceLogoUrl({
@@ -170,7 +174,7 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   async function persistSettings(patch: Parameters<NonNullable<typeof core>["updateWorkspaceSettings"]>[1]) {
-    if (!core || !isOwner) {
+    if (!core || !canEdit) {
       return;
     }
     try {
@@ -310,7 +314,7 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   async function handleDeleteWorkspace() {
-    if (!core) {
+    if (!core || !isOwner) {
       return;
     }
     setDeletingWorkspace(true);
@@ -354,7 +358,7 @@ export default function WorkspaceSettingsGeneralSection({
               loading={logoUrl.loading}
             />
 
-            {isOwner ? (
+            {canEdit ? (
               <div className="flex flex-wrap items-center gap-3">
                 <input
                   ref={fileInputRef}
@@ -407,7 +411,7 @@ export default function WorkspaceSettingsGeneralSection({
             <Input
               id="workspace-name"
               value={workspaceName}
-              disabled={!isOwner}
+              disabled={!canEdit}
               onChange={(event) => setWorkspaceName(event.target.value)}
               onBlur={() => void handleNameBlur()}
             />
@@ -426,7 +430,7 @@ export default function WorkspaceSettingsGeneralSection({
               </div>
               <Select
                 value={String(deletedItemsRetentionDays)}
-                disabled={!isOwner}
+                disabled={!canEdit}
                 onValueChange={(value) => void handleRetentionChange(Number(value))}
               >
                 <SelectTrigger id="deleted-items-retention" className="h-9 w-full shrink-0 sm:w-[150px]">
@@ -455,7 +459,7 @@ export default function WorkspaceSettingsGeneralSection({
               <Switch
                 size="lg"
                 checked={filesInItemsEnabled}
-                disabled={!isOwner}
+                disabled={!canEdit}
                 onCheckedChange={(checked) => void handleFilesInItemsEnabledChange(checked)}
                 aria-label={t("web.workspaceSettings.filesInItems.label")}
               />
@@ -474,7 +478,7 @@ export default function WorkspaceSettingsGeneralSection({
                   </div>
                   <FileExtensionTagsInput
                     value={allowedFileExtensions}
-                    disabled={!isOwner}
+                    disabled={!canEdit}
                     placeholder={t("web.workspaceSettings.allowedFileExtensions.placeholder")}
                     removeTagAriaLabel={(tag) => t("web.workspaceSettings.allowedFileExtensions.removeTagAria", { tag })}
                     inputAriaLabel={t("web.workspaceSettings.allowedFileExtensions.inputAria")}
@@ -498,7 +502,7 @@ export default function WorkspaceSettingsGeneralSection({
                     pattern="[0-9]*"
                     className="w-full shrink-0 sm:w-[150px]"
                     value={maxFileSizeMbInput}
-                    disabled={!isOwner}
+                    disabled={!canEdit}
                     onChange={(event) => setMaxFileSizeMbInput(normalizeMaxFileSizeMbInput(event.target.value))}
                     onBlur={() => void handleMaxFileSizeMbBlur()}
                   />

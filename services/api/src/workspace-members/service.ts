@@ -100,8 +100,14 @@ export class WorkspaceMembersService {
 
     const active = await this.loadActiveMembers(workspaceId);
     const pending = await this.loadPendingInvitations(workspaceId);
+    let members = [...active, ...pending];
+    if (matrix.members.get === 2) {
+      members = members.filter(
+        (member) => member.invitedBy?.userId === actorId || member.userId === actorId,
+      );
+    }
     return {
-      members: [...active, ...pending],
+      members,
       actorPermissions: { members: matrix.members },
     };
   }

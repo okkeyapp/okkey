@@ -1,11 +1,17 @@
-import type { Vault, Workspace } from "@okkey/types";
+import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
 import { useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 
 import ItemDetailCard from "../../components/items/ItemDetailCard";
 import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
 import { useLocale } from "../../locale/LocaleContext";
-import { FOLDER_QUERY_PARAM, ITEM_QUERY_PARAM, ITEMS_PATH, isSettingsPathname, VAULT_QUERY_PARAM } from "../../routes/paths";
+import {
+  FOLDER_QUERY_PARAM,
+  ITEM_QUERY_PARAM,
+  ITEMS_PATH,
+  isSettingsPathname,
+  VAULT_QUERY_PARAM,
+} from "../../routes/paths";
 
 export type WorkspaceShellOutletContext = {
   workspaceId: string;
@@ -14,12 +20,22 @@ export type WorkspaceShellOutletContext = {
   workspace?: Workspace;
   refreshWorkspaces?: () => Promise<void>;
   patchWorkspace?: (workspaceId: string, patch: Partial<Workspace>) => void;
-  refreshVaults?: () => Promise<void>;
+  refreshVaults?: () => void | Promise<void>;
+  workspacePermissions?: WorkspacePermissionsMatrixDto | null;
+  workspacePermissionsReady?: boolean;
 };
 
 export default function WorkspaceSectionPage() {
-  const { workspaceId, vaults, vaultsListReady, workspace, patchWorkspace, refreshVaults } =
-    useOutletContext<WorkspaceShellOutletContext>();
+  const {
+    workspaceId,
+    vaults,
+    vaultsListReady,
+    workspace,
+    patchWorkspace,
+    refreshVaults,
+    workspacePermissions,
+    workspacePermissionsReady,
+  } = useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -36,6 +52,8 @@ export default function WorkspaceSectionPage() {
         workspace={workspace}
         vaults={vaults}
         vaultsListReady={vaultsListReady}
+        workspacePermissions={workspacePermissions ?? null}
+        workspacePermissionsReady={workspacePermissionsReady ?? false}
         onSettingsChanged={(patch) => patchWorkspace?.(workspaceId, patch)}
         onVaultsChanged={refreshVaults}
       />

@@ -18,6 +18,7 @@ type WorkspaceSettingsMobileHeaderProps = {
   headerScrolled?: boolean;
   t: (messageKey: string, values?: WebMessageValues) => string;
   sectionHref: (section: WorkspaceSettingsSectionId) => string;
+  allowedSections?: readonly WorkspaceSettingsSectionId[];
 };
 
 export default function WorkspaceSettingsMobileHeader({
@@ -26,6 +27,7 @@ export default function WorkspaceSettingsMobileHeader({
   headerScrolled = false,
   t,
   sectionHref,
+  allowedSections,
 }: WorkspaceSettingsMobileHeaderProps) {
   const navigate = useNavigate();
 
@@ -34,6 +36,7 @@ export default function WorkspaceSettingsMobileHeader({
     t,
     withMenuLabel: true,
     onSectionSelect: (section) => navigate(sectionHref(section)),
+    allowedSections,
   });
 
   return (

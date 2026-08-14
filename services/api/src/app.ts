@@ -70,6 +70,7 @@ import {
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
 import { createWorkspaceMembersListRoute } from "./routes/workspace-members.ts";
+import { createWorkspaceMePermissionsRoute } from "./routes/workspace-me-permissions.ts";
 import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
 import { createAccountVaultUnlockRoute } from "./routes/account-vault-unlock.ts";
@@ -272,6 +273,13 @@ export function createApiApp(
       "/workspaces/:workspaceId/vaults",
       createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId),
     );
+    if (options.postgres) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/me/permissions",
+        createWorkspaceMePermissionsRoute(options.postgres, resolveUserId),
+      );
+    }
     // Shared vault create is registered by enterprise `workspace-shared-vaults` plugin only.
     if (deps.workspaceMembersService) {
       app.route(

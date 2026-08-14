@@ -347,6 +347,23 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0021);
   }
+
+  const rolesCreatedByColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'roles'
+        AND column_name = 'created_by'
+    ) AS exists`,
+  );
+  if (!rolesCreatedByColumn[0]?.exists) {
+    const migration0022 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0022_roles_profiles_created_by.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0022);
+  }
 }
 
 export async function cleanupUserData(

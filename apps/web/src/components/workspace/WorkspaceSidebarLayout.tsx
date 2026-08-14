@@ -249,7 +249,7 @@ export default function WorkspaceSidebarLayout({
                     <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">{children}</div>
                   ) : (
                     <div className="relative min-h-0 flex-1">
-                      <ScrollArea className="absolute inset-0 size-full [&_[data-radix-scroll-area-viewport]]:!size-full [&_[data-radix-scroll-area-viewport]>div]:!flex [&_[data-radix-scroll-area-viewport]>div]:!h-full [&_[data-radix-scroll-area-viewport]>div]:!min-h-full">
+                      <ScrollArea className="absolute inset-0 size-full [&>[data-radix-scroll-area-viewport]]:!size-full [&>[data-radix-scroll-area-viewport]>div]:!flex [&>[data-radix-scroll-area-viewport]>div]:!h-full [&>[data-radix-scroll-area-viewport]>div]:!min-h-full">
                         <div className="relative flex min-h-full w-full flex-col">{children}</div>
                       </ScrollArea>
                     </div>
@@ -258,8 +258,8 @@ export default function WorkspaceSidebarLayout({
               </>
             ) : (
               <div className={cn(mainPanelClassName, itemsMobilePanelChromeClassName, "flex min-h-0 flex-1 flex-col")}>
-                <ScrollArea className="min-h-0 flex-1">
-                  <div className="flex min-h-full flex-col">
+                <ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:!size-full [&>[data-radix-scroll-area-viewport]>div]:!flex [&>[data-radix-scroll-area-viewport]>div]:!h-full [&>[data-radix-scroll-area-viewport]>div]:!min-h-full">
+                  <div className="flex h-full min-h-full w-full flex-col">
                     {!hideShellMainHeader ? (
                       <ShellMainHeader locale={locale} setLocale={setLocale} t={t} title={title} description={description} />
                     ) : null}

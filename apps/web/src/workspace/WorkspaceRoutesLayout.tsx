@@ -1,5 +1,5 @@
 import { ApiRequestError } from "@okkey/api";
-import type { Vault, Workspace } from "@okkey/types";
+import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
 import {
   DEFAULT_ALLOWED_FILE_EXTENSIONS,
   DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
@@ -47,6 +47,7 @@ import {
 import WorkspaceSidebarLayout from "../components/workspace/WorkspaceSidebarLayout";
 import WorkspaceTileAvatar from "../components/workspace/WorkspaceTileAvatar";
 import { vaultDisplayIcon } from "../components/workspace/settings/vaults/vaultIcons";
+import { firstAllowedSettingsSection } from "../components/workspace/settings/settingsPermissions";
 import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
@@ -174,6 +175,10 @@ export default function WorkspaceRoutesLayout() {
   const [workspaceList, setWorkspaceList] = useState<Workspace[]>([]);
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [vaultsListReady, setVaultsListReady] = useState(false);
+  const [workspacePermissions, setWorkspacePermissions] = useState<WorkspacePermissionsMatrixDto | null>(
+    null,
+  );
+  const [workspacePermissionsReady, setWorkspacePermissionsReady] = useState(false);
   const navigateRef = useRef(navigate);
   const setSearchParamsRef = useRef(setSearchParams);
 
@@ -208,16 +213,16 @@ export default function WorkspaceRoutesLayout() {
     setSearchParamsRef.current = setSearchParams;
   }, [navigate, setSearchParams]);
 
-  const navPaths = useMemo(
-    () => ({
+  const navPaths = useMemo(() => {
+    const firstSettings = firstAllowedSettingsSection(workspacePermissions);
+    return {
       items: ITEMS_PATH,
       capsules: CAPSULES_PATH,
       monitoring: MONITORING_PATH,
       tools: TOOLS_PATH,
-      settings: settingsPath("general"),
-    }),
-    [],
-  );
+      settings: firstSettings ? settingsPath(firstSettings) : settingsPath("general"),
+    };
+  }, [workspacePermissions]);
 
   const openNewItemPopup = useCallback(() => {
     navigate(
@@ -241,25 +246,44 @@ export default function WorkspaceRoutesLayout() {
       addCapsule: t("web.nav.addCapsule"),
     };
     const base = okkeyWorkspaceShellNavItems(navPaths, labels);
-    return base.map((item) => {
-      const isItemsEntry = item.to === ITEMS_PATH;
-      if (isItemsEntry) {
+    const firstSettings = firstAllowedSettingsSection(workspacePermissions);
+    const hideSettings = workspacePermissionsReady && !firstSettings;
+    return base
+      .filter((item) => !(hideSettings && item.id === "set"))
+      .map((item) => {
+        const isItemsEntry = item.to === ITEMS_PATH;
+        if (isItemsEntry) {
+          return {
+            ...item,
+            to: itemsPathAllWorkspaceMerged(searchParams, itemsPathMergeOptions),
+            isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !categoryQ && !searchQ,
+            onAddPointerDown: (e) => {
+              e.preventDefault();
+              openNewItemPopup();
+            },
+          };
+        }
         return {
           ...item,
-          to: itemsPathAllWorkspaceMerged(searchParams, itemsPathMergeOptions),
-          isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !categoryQ && !searchQ,
-          onAddPointerDown: (e) => {
-            e.preventDefault();
-            openNewItemPopup();
-          },
+          isActive: item.to?.startsWith(SETTINGS_PATH)
+            ? isSettingsPathname(pathname)
+            : item.to === pathname,
         };
-      }
-      return {
-        ...item,
-        isActive: item.to.startsWith(SETTINGS_PATH) ? isSettingsPathname(pathname) : item.to === pathname,
-      };
-    });
-  }, [navPaths, pathname, t, vaultQ, folderQ, categoryQ, searchQ, searchParams, openNewItemPopup, itemsPathMergeOptions]);
+      });
+  }, [
+    navPaths,
+    pathname,
+    t,
+    vaultQ,
+    folderQ,
+    categoryQ,
+    searchQ,
+    searchParams,
+    openNewItemPopup,
+    itemsPathMergeOptions,
+    workspacePermissions,
+    workspacePermissionsReady,
+  ]);
 
   // Vault rows: each link is `/items?vault=…`. Active when that vault id matches the query and we are not in folder-only mode (`folder` is cleared if both were set).
   const vaultSidebarItems: OkkeySidebarVaultItem[] = useMemo(() => {
@@ -502,6 +526,35 @@ export default function WorkspaceRoutesLayout() {
     };
   }, [core, resolvedWorkspaceId]);
 
+  useEffect(() => {
+    if (!core || !resolvedWorkspaceId) {
+      setWorkspacePermissions(null);
+      setWorkspacePermissionsReady(false);
+      return;
+    }
+    let cancelled = false;
+    setWorkspacePermissionsReady(false);
+    void (async () => {
+      try {
+        const result = await core.getWorkspaceMePermissions(resolvedWorkspaceId);
+        if (!cancelled) {
+          setWorkspacePermissions(result.permissions);
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkspacePermissions(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setWorkspacePermissionsReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, resolvedWorkspaceId]);
+
   const refreshVaults = useCallback(async () => {
     if (!core || !resolvedWorkspaceId) {
       return;
@@ -705,6 +758,8 @@ export default function WorkspaceRoutesLayout() {
               refreshWorkspaces={refreshWorkspaces}
               patchWorkspace={patchWorkspace}
               refreshVaults={refreshVaults}
+              workspacePermissions={workspacePermissions}
+              workspacePermissionsReady={workspacePermissionsReady}
             />
           </WorkspaceFoldersProvider>
         );
@@ -746,6 +801,8 @@ type WorkspaceShellWithItemsProps = {
   refreshWorkspaces: () => Promise<void>;
   patchWorkspace: (workspaceId: string, patch: Partial<Workspace>) => void;
   refreshVaults: () => Promise<void>;
+  workspacePermissions: WorkspacePermissionsMatrixDto | null;
+  workspacePermissionsReady: boolean;
 };
 
 function WorkspaceShellWithItems({
@@ -781,6 +838,8 @@ function WorkspaceShellWithItems({
   refreshWorkspaces,
   patchWorkspace,
   refreshVaults,
+  workspacePermissions,
+  workspacePermissionsReady,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const workspaceItemsState = useWorkspaceItemsState({
@@ -859,6 +918,8 @@ function WorkspaceShellWithItems({
                 refreshWorkspaces,
                 patchWorkspace,
                 refreshVaults,
+                workspacePermissions,
+                workspacePermissionsReady,
               }}
             />
           </WorkspaceSidebarLayout>

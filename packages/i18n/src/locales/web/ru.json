@@ -6,6 +6,8 @@
   "web.nav.allItems": "Все записи",
   "web.notFound.title": "404",
   "web.notFound.description": "Такой страницы не существует",
+  "web.forbidden.title": "403",
+  "web.forbidden.description": "У вас нет доступа к этой странице",
   "web.nav.capsules": "Капсулы",
   "web.nav.monitoring": "Мониторинг",
   "web.nav.tools": "Инструменты",

@@ -14,6 +14,7 @@ export type WorkspaceSettingsRolesSectionProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   core: CoreApiClient;
   profilesLink: ReactNode;
+  resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
 };
 
 export type BuiltInRoleCardPopupProps = {
@@ -37,6 +38,7 @@ export type WorkspaceSettingsProfilesSectionProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   core: CoreApiClient;
   rolesLink: ReactNode;
+  resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
 };
 
 export type BuiltInProfileCardPopupProps = {
@@ -58,6 +60,7 @@ export type EnterpriseAdditionalMembersSectionProps = {
   workspaceId: string;
   workspace?: Workspace;
   t: (messageKey: string, values?: WebMessageValues) => string;
+  resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
 };
 
 export type WorkspaceSettingsMembersModule = {
@@ -73,6 +76,7 @@ export type EnterpriseSharedVaultsSectionProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   onVaultsChanged?: () => void | Promise<void>;
   personalVaultId?: string | null;
+  resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
 };
 
 export type PersonalVaultCardPopupProps = {

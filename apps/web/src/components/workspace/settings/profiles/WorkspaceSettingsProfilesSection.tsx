@@ -1,4 +1,4 @@
-import type { Workspace } from "@okkey/types";
+import type { Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
 import { normalizePlanTier } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Link } from "react-router-dom";
@@ -16,12 +16,14 @@ type WorkspaceSettingsProfilesSectionProps = {
   workspaceId: string;
   workspace?: Workspace;
   t: (messageKey: string, values?: WebMessageValues) => string;
+  resourcePermissions?: WorkspaceResourcePermissionDto | null;
 };
 
 export default function WorkspaceSettingsProfilesSection({
   workspaceId,
   workspace,
   t,
+  resourcePermissions = null,
 }: WorkspaceSettingsProfilesSectionProps) {
   const core = useAuthenticatedCoreClient();
   const canManageCustom = canManageCustomWorkspaceProfiles(workspace?.planTier);
@@ -54,6 +56,7 @@ export default function WorkspaceSettingsProfilesSection({
           core={core}
           rolesLink={rolesLink}
           t={t}
+          resourcePermissions={resourcePermissions}
         />
       ) : (
         <CustomProfilesUpsell t={t} />

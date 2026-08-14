@@ -97,6 +97,40 @@ export function parsePermissionsMatrix(raw: unknown): WorkspacePermissionsMatrix
   return base;
 }
 
+/** True when the actor may read the resource (all or own). */
+export function permissionAllowsGet(level: 0 | 1 | 2): boolean {
+  return level >= 1;
+}
+
+/** True when the actor may create. */
+export function permissionAllowsPost(level: 0 | 1): boolean {
+  return level >= 1;
+}
+
+/** True when scope is full access (not own-only). */
+export function permissionAllowsAll(level: 0 | 1 | 2): boolean {
+  return level === 1;
+}
+
+/** True when the actor may mutate at least own objects (all or own). */
+export function permissionAllowsMutate(level: 0 | 1 | 2): boolean {
+  return level >= 1;
+}
+
+/**
+ * Whether a specific object may be accessed under a get/put/delete level.
+ * `level === 1` → any object; `level === 2` → only when `isOwn`; `0` → never.
+ */
+export function permissionAllowsObject(level: 0 | 1 | 2, isOwn: boolean): boolean {
+  if (level === 1) {
+    return true;
+  }
+  if (level === 2) {
+    return isOwn;
+  }
+  return false;
+}
+
 /**
  * Resolve the actor's workspace role permissions matrix.
  * Workspace owner always gets full access (even without a members row).
@@ -136,6 +170,10 @@ export async function resolveWorkspacePermissions(
   return parsePermissionsMatrix(raw);
 }
 
+/**
+ * Assert the actor has at least level 1 for the action (create or any scope including own).
+ * Does not check object ownership — use {@link assertWorkspacePermissionOnObject} for that.
+ */
 export async function assertWorkspacePermission(
   db: QueryExecutor,
   workspaceId: string,
@@ -146,6 +184,25 @@ export async function assertWorkspacePermission(
   const matrix = await resolveWorkspacePermissions(db, workspaceId, userId);
   const level = matrix[resource][action];
   if (level < 1) {
+    throw new WorkspacePermissionError("ACCESS_DENIED", 403, "access denied");
+  }
+  return matrix;
+}
+
+/**
+ * Assert get/put/delete on a concrete object, honoring own-only (`level === 2`).
+ */
+export async function assertWorkspacePermissionOnObject(
+  db: QueryExecutor,
+  workspaceId: string,
+  userId: string,
+  resource: WorkspacePermissionResource,
+  action: Exclude<WorkspacePermissionAction, "post">,
+  isOwn: boolean,
+): Promise<WorkspacePermissionsMatrix> {
+  const matrix = await resolveWorkspacePermissions(db, workspaceId, userId);
+  const level = matrix[resource][action];
+  if (!permissionAllowsObject(level, isOwn)) {
     throw new WorkspacePermissionError("ACCESS_DENIED", 403, "access denied");
   }
   return matrix;
