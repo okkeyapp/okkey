@@ -313,6 +313,40 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0019);
   }
+
+  const invitationRoleChangedColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_invitations'
+        AND column_name = 'role_changed_at'
+    ) AS exists`,
+  );
+  if (!invitationRoleChangedColumn[0]?.exists) {
+    const migration0020 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0020_invitation_role_changed.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0020);
+  }
+
+  const lastVaultUnlockedAtColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'last_vault_unlocked_at'
+    ) AS exists`,
+  );
+  if (!lastVaultUnlockedAtColumn[0]?.exists) {
+    const migration0021 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0021_user_last_vault_unlocked_at.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0021);
+  }
 }
 
 export async function cleanupUserData(
