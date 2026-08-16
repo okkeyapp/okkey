@@ -208,6 +208,7 @@ export function itemsPathAllWorkspaceMerged(current: URLSearchParams, options?: 
 }
 
 export const CAPSULES_PATH = "/capsules";
+export const CAPSULE_PUBLIC_PATH_PATTERN = "/capsule/:capsuleId";
 export const MONITORING_PATH = "/monitoring";
 export const TOOLS_PATH = "/tools";
 export const SETTINGS_PATH = "/settings";

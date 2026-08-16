@@ -1,5 +1,9 @@
 import type {
   CapsuleCreateRequestDto,
+  CapsuleApprovalListResponseDto,
+  CapsuleApprovalResolveResponseDto,
+  CapsuleApprovalStatusDto,
+  CapsuleListResponseDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
   ClientCryptoCapabilities,
@@ -571,6 +575,8 @@ export class CoreApiClient {
     body: CapsuleCreateRequestDto,
   ): Promise<CapsuleMetadataDto> {
     this.assertStrictWritePathCapability(body.encryptedPayload, "capsule.create");
+    this.assertStrictWritePathCapability(body.encryptedMetadata, "capsule.create");
+    this.assertStrictWritePathCapability(body.ownerKeyWrap, "capsule.create");
     if (body.filePayload) {
       this.assertStrictWritePathCapability(body.filePayload, "capsule.create");
     }
@@ -586,18 +592,65 @@ export class CoreApiClient {
 
   openCapsule(
     capsuleId: string,
-    options?: { password?: string; recipientEmail?: string },
+    options?: { password?: string; approvalToken?: string },
   ): Promise<CapsuleOpenResponseDto> {
     return this.api.post<CapsuleOpenResponseDto>(
       `/capsules/${encodeURIComponent(capsuleId)}/open`,
-      options?.password || options?.recipientEmail
-        ? { ...(options.password ? { password: options.password } : {}), ...(options.recipientEmail ? { recipientEmail: options.recipientEmail } : {}) }
+      options?.password || options?.approvalToken
+        ? { ...(options.password ? { password: options.password } : {}), ...(options.approvalToken ? { approvalToken: options.approvalToken } : {}) }
         : {},
     );
   }
 
   revokeCapsule(capsuleId: string): Promise<{ revoked: true }> {
     return this.api.post<{ revoked: true }>(`/capsules/${encodeURIComponent(capsuleId)}/revoke`, {});
+  }
+
+  listCapsules(workspaceId: string, page = 1): Promise<CapsuleListResponseDto> {
+    return this.api.get<CapsuleListResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/capsules?page=${page}`,
+    );
+  }
+
+  setCapsuleState(capsuleId: string, state: "active" | "inactive"): Promise<CapsuleMetadataDto> {
+    return this.api.patch<CapsuleMetadataDto>(
+      `/capsules/${encodeURIComponent(capsuleId)}/state`,
+      { state },
+    );
+  }
+
+  deleteCapsule(capsuleId: string): Promise<{ deleted: true }> {
+    return this.api.delete<{ deleted: true }>(`/capsules/${encodeURIComponent(capsuleId)}`);
+  }
+
+  requestCapsuleApproval(
+    capsuleId: string,
+    input: { deviceLabel?: string; platform?: string },
+  ): Promise<CapsuleApprovalStatusDto> {
+    return this.api.post<CapsuleApprovalStatusDto>(
+      `/capsules/${encodeURIComponent(capsuleId)}/approval-requests`,
+      input,
+    );
+  }
+
+  getCapsuleApprovalStatus(requestId: string): Promise<CapsuleApprovalStatusDto> {
+    return this.api.get<CapsuleApprovalStatusDto>(
+      `/capsule-approval-requests/${encodeURIComponent(requestId)}`,
+    );
+  }
+
+  listPendingCapsuleApprovals(): Promise<CapsuleApprovalListResponseDto> {
+    return this.api.get<CapsuleApprovalListResponseDto>("/capsule-approval-requests");
+  }
+
+  resolveCapsuleApproval(
+    requestId: string,
+    decision: "approve" | "deny",
+  ): Promise<CapsuleApprovalResolveResponseDto> {
+    return this.api.post<CapsuleApprovalResolveResponseDto>(
+      `/capsule-approval-requests/${encodeURIComponent(requestId)}/resolve`,
+      { decision },
+    );
   }
 
   registerDevice(body: DeviceRegisterRequestDto): Promise<DeviceRegisterResponseDto> {

@@ -364,6 +364,23 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0022);
   }
+
+  const capsuleStateColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'capsules'
+        AND column_name = 'state'
+    ) AS exists`,
+  );
+  if (!capsuleStateColumn[0]?.exists) {
+    const migration0023 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0023_capsules_v2.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0023);
+  }
 }
 
 export async function cleanupUserData(

@@ -351,6 +351,9 @@ test("integration: capsule create works on FREE without access settings", async 
   );
   const workspaceId = workspaceRows[0]?.id;
   assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'FREE' WHERE id = $1", [
+    workspaceId,
+  ]);
 
   const capsules = new CapsuleService({
     db: storage.postgres,

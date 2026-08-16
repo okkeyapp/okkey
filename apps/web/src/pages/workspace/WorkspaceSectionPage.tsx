@@ -4,11 +4,14 @@ import { useLocation, useOutletContext, useSearchParams } from "react-router-dom
 import ItemDetailCard from "../../components/items/ItemDetailCard";
 import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
+import CapsulesPage from "../capsules/CapsulesPage";
 import { useLocale } from "../../locale/LocaleContext";
+import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import {
   FOLDER_QUERY_PARAM,
   ITEM_QUERY_PARAM,
   ITEMS_PATH,
+  CAPSULES_PATH,
   isSettingsPathname,
   VAULT_QUERY_PARAM,
 } from "../../routes/paths";
@@ -37,12 +40,14 @@ export default function WorkspaceSectionPage() {
     workspacePermissionsReady,
   } = useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
+  const { canUseFunction } = useWorkspaceVaultProfiles();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const vaultId = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderId = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const itemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsRoute = location.pathname === ITEMS_PATH;
+  const isCapsulesRoute = location.pathname === CAPSULES_PATH;
   const isSettingsRoute = isSettingsPathname(location.pathname);
 
   if (isSettingsRoute) {
@@ -69,6 +74,16 @@ export default function WorkspaceSectionPage() {
       <ItemsDetailPanelEmptyState
         title={t("web.items.detail.selectItemTitle")}
         description={t("web.items.detail.selectItemDescription")}
+      />
+    );
+  }
+
+  if (isCapsulesRoute) {
+    return (
+      <CapsulesPage
+        workspaceId={workspaceId}
+        workspaceName={workspace?.name ?? t("web.nav.capsules")}
+        canCreate={vaults.some((vault) => canUseFunction(vault.id, "create_capsules"))}
       />
     );
   }

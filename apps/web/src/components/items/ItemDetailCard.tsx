@@ -22,6 +22,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import type { WorkspaceShellOutletContext } from "../../pages/workspace/WorkspaceSectionPage";
 import {
   EDIT_ITEM_POPUP_ID,
+  NEW_CAPSULE_POPUP_ID,
   NEW_ITEM_POPUP_ID,
   buildPopupQueryValue,
   popupQuerySearch,
@@ -132,6 +133,15 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const canFavorite = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "favorite") : false;
   const canCreateCapsule = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "create_capsules") : false;
   const canCopy = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "save_to_personal") : false;
+  const openCapsuleFromItem = useCallback(() => {
+    navigate({
+      pathname: location.pathname,
+      search: popupQuerySearch(location.search, NEW_CAPSULE_POPUP_ID, {
+        capsuleFromItemId: itemId,
+      }),
+      hash: location.hash,
+    });
+  }, [itemId, location, navigate]);
   const keyFormFieldTypes = useMemo(
     () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), filesInItemsEnabled),
     [locale, filesInItemsEnabled],
@@ -329,6 +339,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
         canArchive={canArchive}
         canDelete={canDelete}
         canCreateCapsule={canCreateCapsule}
+        onCreateCapsule={openCapsuleFromItem}
         onToggleFavorite={() => {
           if (!canFavorite) {
             return;

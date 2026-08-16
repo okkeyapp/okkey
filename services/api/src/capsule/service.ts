@@ -1,5 +1,15 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { hasPlanFeature } from "@okkey/types";
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import {
+  hasPlanFeature,
+  type CapsuleApprovalRequestDto,
+  type CapsuleApprovalStatusDto,
+  type CapsuleListResponseDto,
+  type CapsuleMetadataDto,
+  type CapsuleOwnerListEntryDto,
+  type CapsuleState,
+  type CapsuleType,
+  type CapsuleViewLimitAction,
+} from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import {
@@ -35,8 +45,13 @@ import {
   normalizeCapsuleKeyTransportMode,
   type CapsuleKeyTransportMode,
 } from "./key-transport-policy.ts";
+import {
+  clientIpFromTrustedProxy,
+  type GeoIpLookup,
+  type GeoIpLocation,
+} from "./geoip.ts";
 
-const CAPSULE_TYPES = new Set(["item", "field", "file"]);
+const CAPSULE_TYPES = new Set(["text", "item", "file", "field"]);
 const MAX_ENCRYPTED_PAYLOAD_BYTES = 1024 * 1024;
 
 export class CapsuleServiceError extends Error {
@@ -71,9 +86,11 @@ export interface CapsuleServiceDeps {
     | "cryptoRolloutEnabled"
     | "cryptoRolloutState"
     | "cryptoRolloutStopWritePaths"
+    | "trustedProxyHops"
   >;
   users?: Pick<UsersRepository, "findById">;
-  objectStorage: Pick<ObjectStorage, "putObject" | "getObject">;
+  objectStorage: Pick<ObjectStorage, "putObject" | "getObject" | "deleteObject">;
+  geoIp?: GeoIpLookup;
   log?: Logger;
 }
 
@@ -83,11 +100,21 @@ interface CapsuleRow {
   creator_id: string | null;
   type: string;
   encrypted_payload: Buffer;
+  encrypted_metadata: Buffer | null;
+  owner_key_wrap: Buffer | null;
   access_policy: unknown;
   expires_at: string | null;
+  state: string;
+  activate_at: string | null;
+  deactivate_at: string | null;
+  delete_at: string | null;
   view_limit: number | null;
   view_count: number;
+  view_limit_action: string;
+  password_attempt_limit: number | null;
+  approval_required: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 interface PasswordPolicy {
@@ -109,23 +136,23 @@ interface CapsuleAccessPolicy {
 export interface CreateCapsuleInput {
   type: string;
   encryptedPayload: unknown;
+  encryptedMetadata?: unknown;
+  ownerKeyWrap?: unknown;
   filePayload?: unknown;
   keyTransportMode?: string;
   expiresAt?: string;
+  activateAt?: string;
+  deactivateAt?: string;
+  deleteAt?: string;
   maxViews?: number;
+  viewLimitAction?: CapsuleViewLimitAction;
   password?: string;
+  passwordAttemptLimit?: number;
   allowedRecipientEmails?: string[];
+  approvalRequired?: boolean;
 }
 
-export interface CapsuleMetadataResponse {
-  capsuleId: string;
-  type: string;
-  expiresAt: string | null;
-  maxViews: number | null;
-  viewCount: number;
-  passwordRequired: boolean;
-  createdAt: string;
-}
+export type CapsuleMetadataResponse = CapsuleMetadataDto;
 
 export interface OpenCapsuleResponse extends CapsuleMetadataResponse {
   encryptedPayload: EncryptedBlob;
@@ -138,6 +165,7 @@ export class CapsuleService {
   private readonly config: CapsuleServiceDeps["config"];
   private readonly users: CapsuleServiceDeps["users"];
   private readonly objectStorage: CapsuleServiceDeps["objectStorage"];
+  private readonly geoIp?: GeoIpLookup;
   private readonly log: Logger | undefined;
 
   constructor(deps: CapsuleServiceDeps) {
@@ -152,7 +180,32 @@ export class CapsuleService {
     };
     this.users = deps.users;
     this.objectStorage = deps.objectStorage;
+    this.geoIp = deps.geoIp;
     this.log = deps.log;
+  }
+
+  async resolveRequesterContext(input: {
+    remoteAddress?: string;
+    forwardedFor?: string;
+    userAgent?: string;
+  }): Promise<{
+    ipAddress: string;
+    deviceLabel: string;
+    platform: string;
+    location: GeoIpLocation;
+  }> {
+    const ipAddress = clientIpFromTrustedProxy(
+      input.remoteAddress,
+      input.forwardedFor,
+      this.config.trustedProxyHops,
+    );
+    const { deviceLabel, platform } = parseUserAgent(input.userAgent);
+    return {
+      ipAddress,
+      deviceLabel,
+      platform,
+      location: this.geoIp ? await this.geoIp.lookup(ipAddress) : { country: null, city: null },
+    };
   }
 
   async createCapsule(
@@ -216,6 +269,20 @@ export class CapsuleService {
       payloadSchemaVersion,
     );
     const payload = serializeEncryptedBlobToStorage(normalizedPayloadBlob);
+    const encryptedMetadata = input.encryptedMetadata
+      ? serializeEncryptedBlobToStorage(
+          mergeEncryptedBlobMeta(parseBlobOrThrow(input.encryptedMetadata, "encryptedMetadata"), {
+            entity: "capsule_owner_metadata",
+          }),
+        )
+      : payload;
+    const ownerKeyWrap = input.ownerKeyWrap
+      ? serializeEncryptedBlobToStorage(
+          mergeEncryptedBlobMeta(parseBlobOrThrow(input.ownerKeyWrap, "ownerKeyWrap"), {
+            entity: "capsule_owner_key_wrap",
+          }),
+        )
+      : payload;
     const keyTransportMode = assertSafeCapsuleKeyTransportMode(input.keyTransportMode);
     const workspace = await this.readWorkspaceAccess(workspaceId, creatorId);
     if (!workspace.exists) {
@@ -238,8 +305,13 @@ export class CapsuleService {
       );
     }
 
-    const expiresAt = normalizeFutureIsoDate(input.expiresAt);
+    const activateAt = normalizeOptionalIsoDate(input.activateAt);
+    const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
+    const deleteAt = normalizeOptionalIsoDate(input.deleteAt);
+    assertLifecycleOrder(activateAt, deactivateAt, deleteAt);
     const maxViews = normalizeMaxViews(input.maxViews);
+    const viewLimitAction = normalizeViewLimitAction(input.viewLimitAction);
+    const passwordAttemptLimit = normalizePasswordAttemptLimit(input.passwordAttemptLimit, input.password);
     const filePayload =
       input.type === "file"
         ? serializeEncryptedBlobToStorage(
@@ -273,15 +345,30 @@ export class CapsuleService {
             creator_id,
             type,
             encrypted_payload,
+            encrypted_metadata,
+            owner_key_wrap,
             access_policy,
             expires_at,
+            state,
+            activate_at,
+            deactivate_at,
+            delete_at,
             view_limit,
-            view_count
+            view_count,
+            view_limit_action,
+            password_attempt_limit,
+            approval_required
           )
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::timestamptz, $8, 0)
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::timestamptz,
+            'active', $10::timestamptz, $11::timestamptz, $12::timestamptz,
+            $13, 0, $14, $15, $16
+          )
           RETURNING
-            id, workspace_id, creator_id, type, encrypted_payload, access_policy,
-            expires_at, view_limit, view_count, created_at
+            id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+            owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+            delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+            approval_required, created_at, updated_at
         `,
         [
           capsuleId,
@@ -289,9 +376,17 @@ export class CapsuleService {
           creatorId,
           input.type,
           Buffer.from(payload),
+          Buffer.from(encryptedMetadata),
+          Buffer.from(ownerKeyWrap),
           JSON.stringify(accessPolicy),
-          expiresAt,
+          deactivateAt,
+          activateAt,
+          deactivateAt,
+          deleteAt,
           maxViews,
+          viewLimitAction,
+          passwordAttemptLimit,
+          Boolean(input.approvalRequired),
         ],
       );
       const created = inserted[0];
@@ -301,8 +396,8 @@ export class CapsuleService {
         await this.objectStorage.putObject(storageKey, filePayload);
         await tx.query(
           `
-            INSERT INTO capsule_files (id, capsule_id, storage_key, size_bytes)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO capsule_files (id, capsule_id, asset_id, storage_key, size_bytes)
+            VALUES ($1::bigint, $2, ($1::bigint)::text, $3, $4)
           `,
           [generateEntityId(), created.id, storageKey, filePayload.length],
         );
@@ -322,8 +417,10 @@ export class CapsuleService {
         const withPolicy = await tx.query<CapsuleRow>(
           `
             SELECT
-              id, workspace_id, creator_id, type, encrypted_payload, access_policy,
-              expires_at, view_limit, view_count, created_at
+              id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+              owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+              delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+              approval_required, created_at, updated_at
             FROM capsules
             WHERE id = $1
           `,
@@ -355,6 +452,306 @@ export class CapsuleService {
     }
   }
 
+  async listOwnerCapsules(
+    workspaceId: string,
+    creatorId: string,
+    page = 1,
+    pageSize = 30,
+  ): Promise<CapsuleListResponseDto> {
+    const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
+    const normalizedPageSize = Math.min(100, Math.max(1, Number.isInteger(pageSize) ? pageSize : 30));
+    const offset = (normalizedPage - 1) * normalizedPageSize;
+    const countRows = await this.db.query<{ total: string }>(
+      "SELECT COUNT(*)::text AS total FROM capsules WHERE workspace_id = $1 AND creator_id = $2",
+      [workspaceId, creatorId],
+    );
+    const rows = await this.db.query<CapsuleRow>(
+      `
+        SELECT
+          id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+          owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+          delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+          approval_required, created_at, updated_at
+        FROM capsules
+        WHERE workspace_id = $1 AND creator_id = $2
+        ORDER BY created_at DESC, id DESC
+        LIMIT $3 OFFSET $4
+      `,
+      [workspaceId, creatorId, normalizedPageSize, offset],
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    return {
+      capsules: rows.map(mapOwnerMetadata),
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total,
+      hasMore: offset + rows.length < total,
+    };
+  }
+
+  async setCapsuleState(capsuleId: string, creatorId: string, state: CapsuleState): Promise<CapsuleMetadataResponse> {
+    if (state !== "active" && state !== "inactive") {
+      throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid capsule state");
+    }
+    const rows = await this.db.transaction(async (tx) => {
+      const updated = await tx.query<CapsuleRow>(
+        `
+          UPDATE capsules
+          SET
+            state = $3,
+            deactivate_at = CASE
+              WHEN $3 = 'active' AND deactivate_at IS NOT NULL AND deactivate_at <= now() THEN NULL
+              ELSE deactivate_at
+            END,
+            updated_at = now(),
+            version = version + 1
+          WHERE id = $1 AND creator_id = $2
+          RETURNING
+            id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+            owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+            delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+            approval_required, created_at, updated_at
+        `,
+        [capsuleId, creatorId, state],
+      );
+      if (!updated[0]) {
+        throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+      }
+      if (state === "active") {
+        await tx.query("DELETE FROM capsule_view_requests WHERE capsule_id = $1", [capsuleId]);
+      }
+      return updated;
+    });
+    return mapMetadata(rows[0]);
+  }
+
+  async deleteCapsule(capsuleId: string, creatorId: string): Promise<void> {
+    const fileRows = await this.db.query<{ storage_key: string }>(
+      `SELECT cf.storage_key
+       FROM capsule_files cf
+       JOIN capsules c ON c.id = cf.capsule_id
+       WHERE c.id = $1 AND c.creator_id = $2`,
+      [capsuleId, creatorId],
+    );
+    const deleted = await this.db.query<{ id: string }>(
+      "DELETE FROM capsules WHERE id = $1 AND creator_id = $2 RETURNING id",
+      [capsuleId, creatorId],
+    );
+    if (!deleted[0]) {
+      throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+    }
+    await Promise.all(fileRows.map((file) => this.objectStorage.deleteObject(file.storage_key)));
+  }
+
+  async purgeDueCapsules(now = new Date()): Promise<number> {
+    const { ids, storageKeys } = await this.db.transaction(async (tx) => {
+      const due = await tx.query<{ id: string }>(
+        `
+          SELECT id
+          FROM capsules
+          WHERE delete_at IS NOT NULL AND delete_at <= $1::timestamptz
+          ORDER BY delete_at
+          LIMIT 500
+          FOR UPDATE SKIP LOCKED
+        `,
+        [now.toISOString()],
+      );
+      const ids = due.map((row) => row.id);
+      if (ids.length === 0) {
+        return { ids, storageKeys: [] as string[] };
+      }
+      const files = await tx.query<{ storage_key: string }>(
+        "SELECT storage_key FROM capsule_files WHERE capsule_id = ANY($1::bigint[])",
+        [ids],
+      );
+      await tx.query("DELETE FROM capsules WHERE id = ANY($1::bigint[])", [ids]);
+      return { ids, storageKeys: files.map((row) => row.storage_key) };
+    });
+    await Promise.all(storageKeys.map((storageKey) => this.objectStorage.deleteObject(storageKey)));
+    return ids.length;
+  }
+
+  async requestCapsuleApproval(input: {
+    capsuleId: string;
+    requesterUserId: string;
+    requesterEmail?: string;
+    requestIp: string;
+    deviceLabel?: string;
+    platform?: string;
+    country?: string | null;
+    city?: string | null;
+  }): Promise<CapsuleApprovalStatusDto> {
+    let requesterEmail = input.requesterEmail;
+    if (this.users) {
+      requesterEmail = (await this.users.findById(input.requesterUserId))?.email;
+    }
+    if (!requesterEmail) {
+      throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
+    }
+    const capsule = await this.loadCapsule(input.capsuleId);
+    ensureCapsuleAccessible(capsule);
+    validateRecipient(capsule, requesterEmail, this.config.sessionSecret);
+    if (!capsule.approval_required) {
+      throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_REQUIRED", 400, "approval is not required");
+    }
+    const denied = await this.db.query<{ id: string }>(
+      `SELECT id FROM capsule_view_requests
+       WHERE capsule_id = $1 AND requester_user_id = $2 AND status = 'denied'
+       LIMIT 1`,
+      [input.capsuleId, input.requesterUserId],
+    );
+    if (denied[0]) {
+      throw new CapsuleServiceError("CAPSULE_APPROVAL_DENIED", 403, "capsule approval denied");
+    }
+    const existing = await this.db.query<{ id: string; status: string }>(
+      `SELECT id, status FROM capsule_view_requests
+       WHERE capsule_id = $1 AND requester_user_id = $2 AND status IN ('pending', 'approved')
+       ORDER BY requested_at DESC LIMIT 1`,
+      [input.capsuleId, input.requesterUserId],
+    );
+    if (existing[0]) {
+      return {
+        requestId: existing[0].id,
+        status: existing[0].status === "approved" ? "approved" : "pending",
+      };
+    }
+    const requestId = generateEntityId();
+    await this.db.query(
+      `
+        INSERT INTO capsule_view_requests (
+          id, capsule_id, requester_user_id, requester_email_hash, requester_email,
+          device_label, platform, ip_address, country, city, status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, 'unknown')::inet, $9, $10, 'pending')
+      `,
+      [
+        requestId,
+        input.capsuleId,
+        input.requesterUserId,
+        hashRecipient(normalizeEmail(requesterEmail), this.config.sessionSecret),
+        normalizeEmail(requesterEmail),
+        input.deviceLabel?.trim() || "Unknown device",
+        input.platform?.trim() || "Unknown",
+        input.requestIp,
+        input.country ?? null,
+        input.city ?? null,
+      ],
+    );
+    return { requestId, status: "pending" };
+  }
+
+  async getApprovalStatus(requestId: string, requesterUserId: string): Promise<CapsuleApprovalStatusDto> {
+    const rows = await this.db.query<{ id: string; status: string; approval_token_hash: string | null }>(
+      `SELECT id, status, approval_token_hash
+       FROM capsule_view_requests
+       WHERE id = $1 AND requester_user_id = $2`,
+      [requestId, requesterUserId],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_FOUND", 404, "approval request not found");
+    }
+    return {
+      requestId: row.id,
+      status: normalizeApprovalStatus(row.status),
+      ...(row.status === "approved"
+        ? { approvalToken: approvalTokenForRequest(row.id, this.config.sessionSecret) }
+        : {}),
+    };
+  }
+
+  async listPendingApprovals(ownerId: string): Promise<CapsuleApprovalRequestDto[]> {
+    const rows = await this.db.query<{
+      id: string;
+      capsule_id: string;
+      type: string;
+      encrypted_metadata: Buffer | null;
+      owner_key_wrap: Buffer | null;
+      requester_user_id: string;
+      requester_email: string;
+      requester_name: string | null;
+      device_label: string;
+      platform: string;
+      ip_address: string | null;
+      country: string | null;
+      city: string | null;
+      requested_at: string;
+      status: string;
+    }>(
+      `
+        SELECT
+          r.id, r.capsule_id, c.type, c.encrypted_metadata, c.owner_key_wrap, r.requester_user_id,
+          r.requester_email, r.requester_name, r.device_label, r.platform,
+          host(r.ip_address) AS ip_address, r.country, r.city, r.requested_at, r.status
+        FROM capsule_view_requests r
+        JOIN capsules c ON c.id = r.capsule_id
+        WHERE c.creator_id = $1 AND r.status = 'pending'
+        ORDER BY r.requested_at ASC
+      `,
+      [ownerId],
+    );
+    return rows.map((row) => ({
+      requestId: row.id,
+      capsuleId: row.capsule_id,
+      capsuleType: normalizeCapsuleType(row.type),
+      ...(row.encrypted_metadata
+        ? { encryptedCapsuleMetadata: decodeEncryptedBlobFromStorage(Uint8Array.from(row.encrypted_metadata)) }
+        : {}),
+      ...(row.owner_key_wrap
+        ? { ownerKeyWrap: decodeEncryptedBlobFromStorage(Uint8Array.from(row.owner_key_wrap)) }
+        : {}),
+      requesterUserId: row.requester_user_id,
+      requesterEmail: row.requester_email,
+      requesterName: row.requester_name,
+      deviceLabel: row.device_label,
+      platform: row.platform,
+      ipAddress: row.ip_address ?? "unknown",
+      country: row.country,
+      city: row.city,
+      requestedAt: row.requested_at,
+      status: "pending",
+    }));
+  }
+
+  async resolveApproval(
+    requestId: string,
+    ownerId: string,
+    decision: "approve" | "deny",
+  ): Promise<"approved" | "denied"> {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.query<{ capsule_id: string }>(
+        `SELECT r.capsule_id
+         FROM capsule_view_requests r
+         JOIN capsules c ON c.id = r.capsule_id
+         WHERE r.id = $1 AND c.creator_id = $2 AND r.status = 'pending'
+         FOR UPDATE`,
+        [requestId, ownerId],
+      );
+      const row = rows[0];
+      if (!row) {
+        throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_FOUND", 404, "approval request not found");
+      }
+      if (decision === "approve") {
+        const token = approvalTokenForRequest(requestId, this.config.sessionSecret);
+        await tx.query(
+          `UPDATE capsule_view_requests
+           SET status = 'approved', approval_token_hash = $2, resolved_at = now()
+           WHERE id = $1`,
+          [requestId, hashApprovalToken(token, this.config.sessionSecret)],
+        );
+        return "approved";
+      }
+      await tx.query(
+        `UPDATE capsule_view_requests
+         SET status = 'denied', resolved_at = now(), approval_token_hash = NULL
+         WHERE id = $1`,
+        [requestId],
+      );
+      await this.deactivateIfAllRecipientsDenied(tx, row.capsule_id);
+      return "denied";
+    });
+  }
+
   async getCapsuleMetadata(capsuleId: string): Promise<CapsuleMetadataResponse> {
     const capsule = await this.loadCapsule(capsuleId);
     ensureCapsuleAccessible(capsule);
@@ -367,15 +764,24 @@ export class CapsuleService {
     password?: string,
     recipientEmail?: string,
     keyTransportMode?: string,
+    approvalToken?: string,
+    requesterUserId?: string,
   ): Promise<OpenCapsuleResponse> {
     await this.consumeOpenRateLimit(requestIp);
     assertSafeCapsuleKeyTransportMode(keyTransportMode);
+    let sessionRecipientEmail = recipientEmail;
+    if (requesterUserId && this.users) {
+      const requester = await this.users.findById(requesterUserId);
+      sessionRecipientEmail = requester?.email;
+    }
     return this.db.transaction(async (tx) => {
       const rows = await tx.query<CapsuleRow>(
         `
           SELECT
-            id, workspace_id, creator_id, type, encrypted_payload, access_policy,
-            expires_at, view_limit, view_count, created_at
+            id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+            owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+            delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+            approval_required, created_at, updated_at
           FROM capsules
           WHERE id = $1
           FOR UPDATE
@@ -387,20 +793,58 @@ export class CapsuleService {
         throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
       }
       ensureCapsuleAccessible(capsule);
-      validatePassword(capsule, password, this.config.sessionSecret);
-      validateRecipient(capsule, recipientEmail, this.config.sessionSecret);
+      try {
+        validatePassword(capsule, password, this.config.sessionSecret);
+      } catch (error) {
+        if (
+          error instanceof CapsuleServiceError &&
+          error.code === "CAPSULE_PASSWORD_INVALID" &&
+          capsule.password_attempt_limit
+        ) {
+          const attempts = await this.redis.incr(`capsule:password:${capsule.id}:${requestIp}`);
+          if (attempts === 1) {
+            await this.redis.expire(
+              `capsule:password:${capsule.id}:${requestIp}`,
+              this.config.capsuleRateLimitWindowSeconds,
+            );
+          }
+          if (attempts >= capsule.password_attempt_limit) {
+            throw new CapsuleServiceError(
+              "CAPSULE_PASSWORD_ATTEMPTS_EXCEEDED",
+              429,
+              "password attempts exceeded",
+            );
+          }
+        }
+        throw error;
+      }
+      validateRecipient(capsule, sessionRecipientEmail, this.config.sessionSecret);
+      let approvalRequestId: string | null = null;
+      if (capsule.approval_required) {
+        if (!approvalToken || !requesterUserId) {
+          throw new CapsuleServiceError("CAPSULE_APPROVAL_REQUIRED", 403, "owner approval required");
+        }
+        const approvalRows = await tx.query<{ id: string; approval_token_hash: string | null }>(
+          `SELECT id, approval_token_hash
+           FROM capsule_view_requests
+           WHERE capsule_id = $1 AND requester_user_id = $2 AND status = 'approved'
+           FOR UPDATE`,
+          [capsule.id, requesterUserId],
+        );
+        const approval = approvalRows[0];
+        if (
+          !approval?.approval_token_hash ||
+          approval.approval_token_hash !== hashApprovalToken(approvalToken, this.config.sessionSecret)
+        ) {
+          throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
+        }
+        approvalRequestId = approval.id;
+      }
 
-      await tx.query(
-        `
-          UPDATE capsules
-          SET view_count = view_count + 1, updated_at = now()
-          WHERE id = $1
-        `,
-        [capsule.id],
-      );
-
+      const nextViewCount = capsule.view_count + 1;
+      const reachesLimit = capsule.view_limit !== null && nextViewCount >= capsule.view_limit;
       const response: OpenCapsuleResponse = {
-        ...mapMetadata({ ...capsule, view_count: capsule.view_count + 1 }),
+        ...mapMetadata({ ...capsule, view_count: nextViewCount }),
         encryptedPayload: decodeEncryptedBlobFromStorage(Uint8Array.from(capsule.encrypted_payload)),
       };
       const policy = parsePolicy(capsule.access_policy);
@@ -409,6 +853,32 @@ export class CapsuleService {
         if (filePayload) {
           response.filePayload = decodeEncryptedBlobFromStorage(Uint8Array.from(filePayload));
         }
+      }
+      if (reachesLimit && capsule.view_limit_action === "delete") {
+        if (policy.fileStorageKey) {
+          await this.objectStorage.deleteObject(policy.fileStorageKey);
+        }
+        await tx.query("DELETE FROM capsules WHERE id = $1", [capsule.id]);
+      } else {
+        await tx.query(
+          `
+            UPDATE capsules
+            SET
+              view_count = view_count + 1,
+              state = CASE WHEN $2::boolean THEN 'inactive' ELSE state END,
+              updated_at = now()
+            WHERE id = $1
+          `,
+          [capsule.id, reachesLimit],
+        );
+      }
+      if (approvalRequestId) {
+        await tx.query(
+          `UPDATE capsule_view_requests
+           SET status = 'consumed', consumed_at = now(), approval_token_hash = NULL
+           WHERE id = $1`,
+          [approvalRequestId],
+        );
       }
       return response;
     });
@@ -441,8 +911,10 @@ export class CapsuleService {
     const rows = await this.db.query<CapsuleRow>(
       `
         SELECT
-          id, workspace_id, creator_id, type, encrypted_payload, access_policy,
-          expires_at, view_limit, view_count, created_at
+          id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+          owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+          delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+          approval_required, created_at, updated_at
         FROM capsules
         WHERE id = $1
       `,
@@ -453,6 +925,30 @@ export class CapsuleService {
       throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
     }
     return capsule;
+  }
+
+  private async deactivateIfAllRecipientsDenied(tx: QueryExecutor, capsuleId: string): Promise<void> {
+    const capsules = await tx.query<{ access_policy: unknown }>(
+      "SELECT access_policy FROM capsules WHERE id = $1 FOR UPDATE",
+      [capsuleId],
+    );
+    const allowed = parsePolicy(capsules[0]?.access_policy).allowedRecipientHashes ?? [];
+    if (allowed.length === 0) {
+      return;
+    }
+    const denied = await tx.query<{ requester_email_hash: string }>(
+      `SELECT DISTINCT requester_email_hash
+       FROM capsule_view_requests
+       WHERE capsule_id = $1 AND status = 'denied'`,
+      [capsuleId],
+    );
+    const deniedHashes = new Set(denied.map((row) => row.requester_email_hash));
+    if (allowed.every((hash) => deniedHashes.has(hash))) {
+      await tx.query(
+        "UPDATE capsules SET state = 'inactive', updated_at = now(), version = version + 1 WHERE id = $1",
+        [capsuleId],
+      );
+    }
   }
 
   private async readWorkspaceAccess(
@@ -542,15 +1038,25 @@ export class CapsuleService {
 
 function requestsCapsuleAccessSettings(input: {
   expiresAt?: string;
+  activateAt?: string;
+  deactivateAt?: string;
+  deleteAt?: string;
   maxViews?: number;
+  passwordAttemptLimit?: number;
   password?: string;
   allowedRecipientEmails?: string[];
+  approvalRequired?: boolean;
 }): boolean {
   return Boolean(
     input.expiresAt ||
+      input.activateAt ||
+      input.deactivateAt ||
+      input.deleteAt ||
       input.maxViews !== undefined ||
+      input.passwordAttemptLimit !== undefined ||
       (input.password && input.password.length > 0) ||
-      (input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0),
+      (input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) ||
+      input.approvalRequired,
   );
 }
 
@@ -570,18 +1076,52 @@ function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {
   }
 }
 
-function normalizeFutureIsoDate(iso?: string): string | null {
+function normalizeOptionalIsoDate(iso?: string): string | null {
   if (!iso) {
     return null;
   }
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) {
-    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "expiresAt must be valid ISO date");
-  }
-  if (parsed <= Date.now()) {
-    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "expiresAt must be in the future");
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "lifecycle timestamp must be valid ISO date");
   }
   return new Date(parsed).toISOString();
+}
+
+function assertLifecycleOrder(
+  activateAt: string | null,
+  deactivateAt: string | null,
+  deleteAt: string | null,
+): void {
+  if (activateAt && deactivateAt && Date.parse(deactivateAt) <= Date.parse(activateAt)) {
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "deactivateAt must be after activateAt");
+  }
+  if (deactivateAt && deleteAt && Date.parse(deleteAt) <= Date.parse(deactivateAt)) {
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "deleteAt must be after deactivateAt");
+  }
+  if (deleteAt && activateAt && Date.parse(deleteAt) <= Date.parse(activateAt)) {
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "deleteAt must be after activateAt");
+  }
+}
+
+function normalizeViewLimitAction(value?: string): CapsuleViewLimitAction {
+  if (!value || value === "deactivate") {
+    return "deactivate";
+  }
+  if (value === "delete") {
+    return "delete";
+  }
+  throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid view limit action");
+}
+
+function normalizePasswordAttemptLimit(value: number | undefined, password: string | undefined): number | null {
+  if (!password) {
+    return null;
+  }
+  const normalized = value ?? 3;
+  if (!Number.isInteger(normalized) || normalized < 1 || normalized > 100) {
+    throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "passwordAttemptLimit must be 1..100");
+  }
+  return normalized;
 }
 
 function normalizeMaxViews(maxViews?: number): number | null {
@@ -654,15 +1194,56 @@ function assertSafeCapsuleKeyTransportMode(value: string | undefined): CapsuleKe
 
 function mapMetadata(capsule: CapsuleRow): CapsuleMetadataResponse {
   const policy = parsePolicy(capsule.access_policy);
+  const effectiveState = capsuleEffectiveState(capsule);
   return {
     capsuleId: capsule.id,
-    type: capsule.type,
-    expiresAt: capsule.expires_at,
+    workspaceId: capsule.workspace_id,
+    type: normalizeCapsuleType(capsule.type),
+    state: effectiveState,
+    activateAt: capsule.activate_at,
+    deactivateAt: capsule.deactivate_at ?? capsule.expires_at,
+    deleteAt: capsule.delete_at,
     maxViews: capsule.view_limit,
     viewCount: capsule.view_count,
+    viewLimitAction: capsule.view_limit_action === "delete" ? "delete" : "deactivate",
     passwordRequired: Boolean(policy.password?.hash),
+    passwordAttemptLimit: capsule.password_attempt_limit,
+    recipientRestricted: Boolean(policy.allowedRecipientHashes?.length),
+    approvalRequired: capsule.approval_required,
     createdAt: capsule.created_at,
+    updatedAt: capsule.updated_at,
   };
+}
+
+function mapOwnerMetadata(capsule: CapsuleRow): CapsuleOwnerListEntryDto {
+  const encryptedMetadata = capsule.encrypted_metadata ?? capsule.encrypted_payload;
+  const ownerKeyWrap = capsule.owner_key_wrap ?? capsule.encrypted_payload;
+  return {
+    ...mapMetadata(capsule),
+    encryptedMetadata: decodeEncryptedBlobFromStorage(Uint8Array.from(encryptedMetadata)),
+    ownerKeyWrap: decodeEncryptedBlobFromStorage(Uint8Array.from(ownerKeyWrap)),
+  };
+}
+
+function normalizeCapsuleType(type: string): CapsuleType {
+  if (type === "file" || type === "item") {
+    return type;
+  }
+  return "text";
+}
+
+function capsuleEffectiveState(capsule: CapsuleRow, nowMs = Date.now()): CapsuleState {
+  if (capsule.state !== "active") {
+    return "inactive";
+  }
+  if (capsule.activate_at && nowMs < Date.parse(capsule.activate_at)) {
+    return "inactive";
+  }
+  const deactivateAt = capsule.deactivate_at ?? capsule.expires_at;
+  if (deactivateAt && nowMs >= Date.parse(deactivateAt)) {
+    return "inactive";
+  }
+  return "active";
 }
 
 function parsePolicy(raw: unknown): CapsuleAccessPolicy {
@@ -677,8 +1258,8 @@ function ensureCapsuleAccessible(capsule: CapsuleRow): void {
   if (policy.revoked) {
     throw new CapsuleServiceError("CAPSULE_REVOKED", 410, "capsule revoked");
   }
-  if (capsule.expires_at && Date.now() > Date.parse(capsule.expires_at)) {
-    throw new CapsuleServiceError("CAPSULE_EXPIRED", 410, "capsule expired");
+  if (capsule.delete_at && Date.now() >= Date.parse(capsule.delete_at)) {
+    throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
   }
   if (capsule.view_limit !== null && capsule.view_count >= capsule.view_limit) {
     throw new CapsuleServiceError(
@@ -686,6 +1267,15 @@ function ensureCapsuleAccessible(capsule: CapsuleRow): void {
       410,
       "capsule view limit exceeded",
     );
+  }
+  if (capsule.expires_at && Date.now() >= Date.parse(capsule.expires_at)) {
+    throw new CapsuleServiceError("CAPSULE_EXPIRED", 410, "capsule expired");
+  }
+  if (capsule.activate_at && Date.now() < Date.parse(capsule.activate_at)) {
+    throw new CapsuleServiceError("CAPSULE_NOT_ACTIVE", 403, "capsule is not active yet");
+  }
+  if (capsuleEffectiveState(capsule) !== "active") {
+    throw new CapsuleServiceError("CAPSULE_INACTIVE", 410, "capsule inactive");
   }
 }
 
@@ -747,4 +1337,53 @@ function normalizeEmail(value: string): string {
 
 function hashRecipient(email: string, secret: string): string {
   return createHash("sha256").update(`capsule-recipient:${email}:${secret}`).digest("base64");
+}
+
+function approvalTokenForRequest(requestId: string, secret: string): string {
+  return createHmac("sha256", secret).update(`capsule-approval:${requestId}`).digest("base64url");
+}
+
+function hashApprovalToken(token: string, secret: string): string {
+  return createHmac("sha256", secret).update(`capsule-approval-token:${token}`).digest("base64url");
+}
+
+function normalizeApprovalStatus(value: string): CapsuleApprovalStatusDto["status"] {
+  if (
+    value === "pending" ||
+    value === "approved" ||
+    value === "denied" ||
+    value === "consumed" ||
+    value === "expired"
+  ) {
+    return value;
+  }
+  return "expired";
+}
+
+function parseUserAgent(userAgent: string | undefined): { deviceLabel: string; platform: string } {
+  const value = userAgent ?? "";
+  const platform = /Windows/iu.test(value)
+    ? "Windows"
+    : /Android/iu.test(value)
+      ? "Android"
+      : /iPhone|iPad/iu.test(value)
+        ? "iOS"
+        : /Macintosh|Mac OS/iu.test(value)
+          ? "macOS"
+          : /Linux/iu.test(value)
+            ? "Linux"
+            : "Unknown";
+  const browser = /Edg\//u.test(value)
+    ? "Edge"
+    : /Firefox\//u.test(value)
+      ? "Firefox"
+      : /Chrome\//u.test(value)
+        ? "Chrome"
+        : /Safari\//u.test(value)
+          ? "Safari"
+          : "Unknown browser";
+  return {
+    deviceLabel: `${browser}${platform === "Unknown" ? "" : ` on ${platform}`}`,
+    platform,
+  };
 }

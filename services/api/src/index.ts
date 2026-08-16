@@ -1,6 +1,7 @@
 import { AuthService } from "./auth/service.ts";
 import { EmailChangeService } from "./account/email-change.ts";
 import { CapsuleService } from "./capsule/service.ts";
+import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
@@ -138,11 +139,13 @@ async function main(): Promise<void> {
     config,
     log: logger,
   });
+  const geoIp = new MmdbGeoIpLookup(config.geoIpEnabled, config.geoIpDbPath, logger);
   const capsuleService = new CapsuleService({
     db: storage.postgres,
     redis: storage.redis,
     users: storage.repositories.users,
     objectStorage: storage.objectStorage,
+    geoIp,
     config,
     log: logger,
   });
@@ -241,9 +244,19 @@ async function main(): Promise<void> {
   }, purgeIntervalMs);
   purgeTimer.unref();
 
+  const capsuleCleanupTimer = setInterval(() => {
+    void capsuleService.purgeDueCapsules().catch((error: unknown) => {
+      logger.error("capsule cleanup failed", {
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+    });
+  }, 60_000);
+  capsuleCleanupTimer.unref();
+
   const shutdown = async () => {
     logger.info("api server stopping");
     clearInterval(purgeTimer);
+    clearInterval(capsuleCleanupTimer);
     server.close();
     await storage.close();
   };

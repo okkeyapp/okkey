@@ -235,6 +235,7 @@ type ItemDetailTopBarProps = {
   canArchive?: boolean;
   canDelete?: boolean;
   canCreateCapsule?: boolean;
+  onCreateCapsule?: () => void;
 };
 
 const controlGroupLayoutClassName = "w-auto shrink-0";
@@ -261,6 +262,7 @@ export default function ItemDetailTopBar({
   canArchive = true,
   canDelete = true,
   canCreateCapsule = true,
+  onCreateCapsule,
 }: ItemDetailTopBarProps) {
   const favoriteTooltip = favorite
     ? t("web.items.detail.favoriteRemoveTooltip")
@@ -312,7 +314,7 @@ export default function ItemDetailTopBar({
                     size="icon"
                     className={iconGroupButtonClassName}
                     aria-label={t("web.nav.addCapsule")}
-                    onClick={() => undefined}
+                    onClick={onCreateCapsule}
                   >
                     <IconCapsule16 />
                   </Button>
@@ -388,7 +390,7 @@ export default function ItemDetailTopBar({
                   </DropdownMenuItem>
                   ) : null}
                   {canCreateCapsule ? (
-                  <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                  <DropdownMenuItem className="gap-2" onSelect={onCreateCapsule}>
                     <IconCapsule16 />
                     <span>{t("web.nav.addCapsule")}</span>
                   </DropdownMenuItem>

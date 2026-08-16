@@ -13,10 +13,13 @@ export const NEW_VAULT_POPUP_ID = "newVault";
 export const EDIT_VAULT_POPUP_ID = "editVault";
 export const INVITE_MEMBERS_POPUP_ID = "inviteMembers";
 export const EDIT_MEMBER_POPUP_ID = "editMember";
+export const NEW_CAPSULE_POPUP_ID = "newCapsule";
+export const CAPSULE_FROM_ITEM_QUERY_PARAM = "capsuleFromItem";
 
 export type PopupQuerySearchOptions = {
   copyFromItemId?: string;
   templateId?: string;
+  capsuleFromItemId?: string;
 };
 
 export function parsePopupQueryValue(value: string | null): { popupId: string; menuItemId?: string } | null {
@@ -45,6 +48,7 @@ export function popupQuerySearch(
   params.delete(POPUP_QUERY_PARAM);
   params.delete(COPY_ITEM_QUERY_PARAM);
   params.delete(ITEM_TEMPLATE_QUERY_PARAM);
+  params.delete(CAPSULE_FROM_ITEM_QUERY_PARAM);
   const baseSearch = params.toString();
 
   const queryParts: string[] = [];
@@ -59,6 +63,11 @@ export function popupQuerySearch(
   }
   if (options?.templateId) {
     queryParts.push(`${ITEM_TEMPLATE_QUERY_PARAM}=${encodeURIComponent(options.templateId)}`);
+  }
+  if (options?.capsuleFromItemId) {
+    queryParts.push(
+      `${CAPSULE_FROM_ITEM_QUERY_PARAM}=${encodeURIComponent(options.capsuleFromItemId)}`,
+    );
   }
 
   if (queryParts.length === 0) {

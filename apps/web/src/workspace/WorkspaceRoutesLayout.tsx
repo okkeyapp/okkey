@@ -36,10 +36,13 @@ import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
+import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
+import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
   NEW_ITEM_POPUP_ID,
+  NEW_CAPSULE_POPUP_ID,
   NEW_VAULT_POPUP_ID,
   popupQuerySearch,
 } from "../routes/popupQuery";
@@ -239,6 +242,17 @@ export default function WorkspaceRoutesLayout() {
     );
   }, [navigate, location]);
 
+  const openNewCapsulePopup = useCallback(() => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, NEW_CAPSULE_POPUP_ID),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }, [navigate, location]);
+
   const workspaceNavItems = useMemo(() => {
     const labels = {
       allItems: t("web.nav.allItems"),
@@ -261,9 +275,19 @@ export default function WorkspaceRoutesLayout() {
             ...item,
             to: itemsPathAllWorkspaceMerged(searchParams, itemsPathMergeOptions),
             isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !categoryQ && !searchQ,
-            onAddPointerDown: (e) => {
+            onAddPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
               e.preventDefault();
               openNewItemPopup();
+            },
+          };
+        }
+        if (item.to === CAPSULES_PATH) {
+          return {
+            ...item,
+            isActive: pathname === CAPSULES_PATH,
+            onAddPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+              event.preventDefault();
+              openNewCapsulePopup();
             },
           };
         }
@@ -284,6 +308,7 @@ export default function WorkspaceRoutesLayout() {
     searchQ,
     searchParams,
     openNewItemPopup,
+    openNewCapsulePopup,
     itemsPathMergeOptions,
     workspacePermissions,
     workspacePermissionsReady,
@@ -868,6 +893,14 @@ function WorkspaceShellWithItems({
     userId,
     vaults,
   });
+  const canCreateCapsules = vaults.some((vault) =>
+    workspaceVaultProfilesState.canUseFunction(vault.id, "create_capsules"),
+  );
+  const permittedWorkspaceNavItems = workspaceNavItems.map((item) =>
+    item.to === CAPSULES_PATH && !canCreateCapsules
+      ? { ...item, onAddPointerDown: undefined }
+      : item,
+  );
 
   return (
     <WorkspaceItemTemplatesProvider workspaceId={resolvedWorkspaceId}>
@@ -881,6 +914,11 @@ function WorkspaceShellWithItems({
             vaults={vaults}
             vaultsListReady={vaultsListReady}
           />
+          <NewCapsulePopup
+            workspaceId={resolvedWorkspaceId}
+            workspace={currentWorkspace}
+          />
+          <CapsuleApprovalController />
           <EditItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}
@@ -894,7 +932,7 @@ function WorkspaceShellWithItems({
             description={description}
             hideShellMainHeader={isShellNotFound || isSettingsPathname(pathname)}
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
-            workspaceNavItems={workspaceNavItems}
+            workspaceNavItems={permittedWorkspaceNavItems}
             workspaceNavLink={AppShellNavLink}
             workspaceNavGroupLabel={t("workspaces.shellTitle")}
             workspaceSwitcherTrigger={workspaceSwitcherTrigger}

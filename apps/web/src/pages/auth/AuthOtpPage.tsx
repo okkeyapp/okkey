@@ -17,6 +17,7 @@ import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
+import { consumeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_NEW_PATH, AUTH_EMAIL_PATH, AUTH_TWO_FACTOR_PATH } from "../../routes/paths";
@@ -171,6 +172,11 @@ export default function AuthOtpPage() {
       const dto = await authClient.completeLoginAfterEmailConfirm(res.authStateId, res.nextStep);
       applyAccessTokenResponse(dto);
       clearPendingVaultBundle();
+      const capsuleReturnUrl = consumeCapsuleReturnUrl();
+      if (capsuleReturnUrl) {
+        navigate(capsuleReturnUrl, { replace: true });
+        return;
+      }
       const core = createAuthenticatedCoreClient(dto.access_token);
       await navigateAfterSession(core, navigate);
     } catch (err) {

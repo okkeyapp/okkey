@@ -681,7 +681,7 @@ components:
     CapsuleMetadata:
       type: object
       required:
-        [capsuleId, type, expiresAt, maxViews, viewCount, passwordRequired, createdAt]
+        [capsuleId, type, state, maxViews, viewCount, viewLimitAction, passwordRequired, recipientRestricted, approvalRequired, createdAt, updatedAt]
       properties:
         capsuleId:
           type: string
@@ -689,8 +689,19 @@ components:
 
         type:
           type: string
-          enum: [item, field, file]
-        expiresAt:
+          enum: [text, file, item]
+        state:
+          type: string
+          enum: [active, inactive]
+        activateAt:
+          type: string
+          format: date-time
+          nullable: true
+        deactivateAt:
+          type: string
+          format: date-time
+          nullable: true
+        deleteAt:
           type: string
           format: date-time
           nullable: true
@@ -700,9 +711,22 @@ components:
         viewCount:
           type: integer
           minimum: 0
+        viewLimitAction:
+          type: string
+          enum: [deactivate, delete]
         passwordRequired:
           type: boolean
+        passwordAttemptLimit:
+          type: integer
+          nullable: true
+        recipientRestricted:
+          type: boolean
+        approvalRequired:
+          type: boolean
         createdAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
 
@@ -719,12 +743,16 @@ components:
 
     CapsuleCreateRequest:
       type: object
-      required: [type, encryptedPayload]
+      required: [type, encryptedPayload, encryptedMetadata, ownerKeyWrap]
       properties:
         type:
           type: string
-          enum: [item, field, file]
+          enum: [text, file, item]
         encryptedPayload:
+          $ref: "#/components/schemas/EncryptedBlob"
+        encryptedMetadata:
+          $ref: "#/components/schemas/EncryptedBlob"
+        ownerKeyWrap:
           $ref: "#/components/schemas/EncryptedBlob"
         filePayload:
           $ref: "#/components/schemas/EncryptedBlob"
@@ -732,20 +760,34 @@ components:
           type: string
           enum: [fragment, out_of_band]
           default: out_of_band
-        expiresAt:
+        activateAt:
+          type: string
+          format: date-time
+        deactivateAt:
+          type: string
+          format: date-time
+        deleteAt:
           type: string
           format: date-time
         maxViews:
           type: integer
           minimum: 1
           maximum: 10000
+        viewLimitAction:
+          type: string
+          enum: [deactivate, delete]
         password:
           type: string
+        passwordAttemptLimit:
+          type: integer
+          minimum: 1
         allowedRecipientEmails:
           type: array
           items:
             type: string
             format: email
+        approvalRequired:
+          type: boolean
 
     EncryptedBlob:
       type: object
@@ -1737,6 +1779,29 @@ paths:
                 $ref: "#/components/schemas/ErrorBody"
 
   /workspaces/{workspaceId}/capsules:
+    get:
+      tags: [Capsules]
+      description: List the authenticated creator's non-deleted capsules, 30 per page.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+      responses:
+        "200":
+          description: Owner capsule page with encrypted metadata and key wraps
+        "401":
+          description: Authentication required
     post:
       tags: [Capsules]
       description: >
@@ -1819,6 +1884,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+    delete:
+      tags: [Capsules]
+      description: Hard-delete an owner capsule and its encrypted objects.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: capsuleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Capsule deleted
+
+  /capsules/{capsuleId}/state:
+    patch:
+      tags: [Capsules]
+      description: Activate or deactivate an owner capsule. Reactivation clears approval denies.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+        - name: capsuleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        "200":
+          description: Updated capsule metadata
 
   /capsules/{capsuleId}/open:
     post:
@@ -1841,9 +1949,8 @@ paths:
               properties:
                 password:
                   type: string
-                recipientEmail:
+                approvalToken:
                   type: string
-                  format: email
                 keyTransportMode:
                   type: string
                   enum: [fragment, out_of_band]
@@ -1884,6 +1991,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+
+  /capsules/{capsuleId}/approval-requests:
+    post:
+      tags: [Capsules]
+      description: Create an approval request for the authenticated viewer.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: capsuleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Approval request status
+
+  /capsule-approval-requests:
+    get:
+      tags: [Capsules]
+      description: List pending approval requests owned by the authenticated user.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pending approval request list
+
+  /capsule-approval-requests/{requestId}:
+    get:
+      tags: [Capsules]
+      description: Poll viewer approval status and receive an approved one-time token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approval request status
+
+  /capsule-approval-requests/{requestId}/resolve:
+    post:
+      tags: [Capsules]
+      description: Approve or permanently deny a pending request as capsule owner.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [approve, deny]
+      responses:
+        "200":
+          description: Resolved approval request
 
   /capsules/{capsuleId}/revoke:
     post:

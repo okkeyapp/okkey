@@ -9,18 +9,26 @@ import {
 interface CreateCapsuleBody {
   type?: string;
   encryptedPayload?: unknown;
+  encryptedMetadata?: unknown;
+  ownerKeyWrap?: unknown;
   filePayload?: unknown;
   keyTransportMode?: string;
   expiresAt?: string;
+  activateAt?: string;
+  deactivateAt?: string;
+  deleteAt?: string;
   maxViews?: number;
+  viewLimitAction?: "deactivate" | "delete";
   password?: string;
+  passwordAttemptLimit?: number;
   allowedRecipientEmails?: string[];
+  approvalRequired?: boolean;
 }
 
 interface OpenCapsuleBody {
   password?: string;
-  recipientEmail?: string;
   keyTransportMode?: string;
+  approvalToken?: string;
 }
 
 import { isEntityId } from "../entity-id.ts";
@@ -77,12 +85,20 @@ export function createCapsuleCreateRoute(
       const created = await capsuleService.createCapsule(workspaceId, userId, {
         type: body.type,
         encryptedPayload: body.encryptedPayload,
+        encryptedMetadata: body.encryptedMetadata,
+        ownerKeyWrap: body.ownerKeyWrap,
         filePayload: body.filePayload,
         keyTransportMode: body.keyTransportMode,
         expiresAt: body.expiresAt,
+        activateAt: body.activateAt,
+        deactivateAt: body.deactivateAt,
+        deleteAt: body.deleteAt,
         maxViews: body.maxViews,
+        viewLimitAction: body.viewLimitAction,
         password: body.password,
+        passwordAttemptLimit: body.passwordAttemptLimit,
         allowedRecipientEmails: body.allowedRecipientEmails,
+        approvalRequired: body.approvalRequired,
       });
       json(ctx.res, 201, created);
     } catch (error) {
@@ -119,7 +135,10 @@ export function createCapsuleMetadataRoute(capsuleService: CapsuleService): Rout
   };
 }
 
-export function createCapsuleOpenRoute(capsuleService: CapsuleService): RouteHandler {
+export function createCapsuleOpenRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null> = async () => null,
+): RouteHandler {
   return async (ctx) => {
     if (hasUnsafeKeyTransportInUrl(ctx.req.url)) {
       json(
@@ -145,14 +164,17 @@ export function createCapsuleOpenRoute(capsuleService: CapsuleService): RouteHan
       json(ctx.res, 400, errorPayload("CAPSULE_BAD_REQUEST", "invalid json", ctx.requestId));
       return;
     }
-    const requestIp = requestIpFromHeaders(getHeader(ctx.req, "x-forwarded-for"));
     try {
+      const requesterContext = await resolveRequesterContext(capsuleService, ctx.req);
+      const userId = await resolveUserId(ctx.req);
       const capsule = await capsuleService.openCapsule(
         capsuleId,
-        requestIp,
+        requesterContext.ipAddress,
         body.password,
-        body.recipientEmail,
+        undefined,
         body.keyTransportMode,
+        body.approvalToken,
+        userId ?? undefined,
       );
       json(ctx.res, 200, capsule);
     } catch (error) {
@@ -197,6 +219,167 @@ export function createCapsuleRevokeRoute(
   };
 }
 
+export function createCapsuleOwnerListRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      const requestUrl = new URL(ctx.req.url ?? "/", "http://localhost");
+      const page = Number(requestUrl.searchParams.get("page") ?? 1);
+      const result = await capsuleService.listOwnerCapsules(
+        ctx.params.workspaceId ?? "",
+        userId,
+        page,
+        30,
+      );
+      json(ctx.res, 200, result);
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createCapsuleStateRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      const body = await readJsonBody<{ state?: "active" | "inactive" }>(ctx.req);
+      if (!body.state) {
+        json(ctx.res, 400, errorPayload("CAPSULE_BAD_REQUEST", "state is required", ctx.requestId));
+        return;
+      }
+      json(ctx.res, 200, await capsuleService.setCapsuleState(ctx.params.capsuleId ?? "", userId, body.state));
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createCapsuleDeleteRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      await capsuleService.deleteCapsule(ctx.params.capsuleId ?? "", userId);
+      json(ctx.res, 200, { deleted: true });
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createCapsuleApprovalRequestRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      await readJsonBody<Record<string, unknown>>(ctx.req);
+      const requesterContext = await resolveRequesterContext(capsuleService, ctx.req);
+      const result = await capsuleService.requestCapsuleApproval({
+        capsuleId: ctx.params.capsuleId ?? "",
+        requesterUserId: userId,
+        requestIp: requesterContext.ipAddress,
+        deviceLabel: requesterContext.deviceLabel,
+        platform: requesterContext.platform,
+        country: requesterContext.location.country,
+        city: requesterContext.location.city,
+      });
+      json(ctx.res, 201, result);
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createCapsuleApprovalStatusRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      json(
+        ctx.res,
+        200,
+        await capsuleService.getApprovalStatus(ctx.params.requestId ?? "", userId),
+      );
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createCapsulePendingApprovalsRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      json(ctx.res, 200, { requests: await capsuleService.listPendingApprovals(userId) });
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createCapsuleApprovalResolveRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+    try {
+      const body = await readJsonBody<{ decision?: "approve" | "deny" }>(ctx.req);
+      if (body.decision !== "approve" && body.decision !== "deny") {
+        json(ctx.res, 400, errorPayload("CAPSULE_BAD_REQUEST", "decision is required", ctx.requestId));
+        return;
+      }
+      const status = await capsuleService.resolveApproval(ctx.params.requestId ?? "", userId, body.decision);
+      json(ctx.res, 200, { requestId: ctx.params.requestId, status });
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 function handleCapsuleError(
   requestId: string,
   res: Parameters<typeof json>[0],
@@ -220,10 +403,18 @@ function errorPayload(code: string, message: string, requestId: string) {
   };
 }
 
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
+async function resolveRequesterContext(capsuleService: CapsuleService, req: IncomingMessage) {
+  if (typeof capsuleService.resolveRequesterContext === "function") {
+    return capsuleService.resolveRequesterContext({
+      remoteAddress: req.socket.remoteAddress,
+      forwardedFor: getHeader(req, "x-forwarded-for"),
+      userAgent: getHeader(req, "user-agent"),
+    });
   }
-  return forwardedFor.split(",")[0]?.trim() || "unknown";
+  return {
+    ipAddress: getHeader(req, "x-forwarded-for")?.split(",")[0]?.trim() || "unknown",
+    deviceLabel: "Unknown device",
+    platform: "Unknown",
+    location: { country: null, city: null },
+  };
 }
-

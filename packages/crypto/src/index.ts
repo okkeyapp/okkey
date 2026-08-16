@@ -215,6 +215,12 @@ export {
   generateCapsuleKey,
   encryptCapsulePayload,
   decryptCapsulePayload,
+  encryptCapsuleMetadata,
+  decryptCapsuleMetadata,
+  wrapCapsuleKeyForOwner,
+  unwrapCapsuleKeyForOwner,
+  encodeCapsuleKeyFragment,
+  decodeCapsuleKeyFragment,
 } from "./capsule.js";
 
 export {

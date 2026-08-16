@@ -36,10 +36,17 @@ import {
   createTwoFactorVerifyRoute,
 } from "./routes/two-factor.ts";
 import {
+  createCapsuleApprovalRequestRoute,
+  createCapsuleApprovalResolveRoute,
+  createCapsuleApprovalStatusRoute,
   createCapsuleCreateRoute,
+  createCapsuleDeleteRoute,
   createCapsuleMetadataRoute,
   createCapsuleOpenRoute,
+  createCapsuleOwnerListRoute,
+  createCapsulePendingApprovalsRoute,
   createCapsuleRevokeRoute,
+  createCapsuleStateRoute,
 } from "./routes/capsules.ts";
 import {
   createWorkspaceItemCategoryPreferencesRoute,
@@ -440,16 +447,55 @@ export function createApiApp(
   }
   if (deps.capsuleService) {
     app.route(
+      "GET",
+      "/workspaces/:workspaceId/capsules",
+      createCapsuleOwnerListRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
       "POST",
       "/workspaces/:workspaceId/capsules",
       createCapsuleCreateRoute(deps.capsuleService, resolveUserId),
     );
     app.route("GET", "/capsules/:capsuleId", createCapsuleMetadataRoute(deps.capsuleService));
-    app.route("POST", "/capsules/:capsuleId/open", createCapsuleOpenRoute(deps.capsuleService));
+    app.route(
+      "POST",
+      "/capsules/:capsuleId/open",
+      createCapsuleOpenRoute(deps.capsuleService, resolveUserId),
+    );
     app.route(
       "POST",
       "/capsules/:capsuleId/revoke",
       createCapsuleRevokeRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/capsules/:capsuleId/state",
+      createCapsuleStateRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/capsules/:capsuleId",
+      createCapsuleDeleteRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/capsules/:capsuleId/approval-requests",
+      createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/capsule-approval-requests/:requestId",
+      createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/capsule-approval-requests",
+      createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/capsule-approval-requests/:requestId/resolve",
+      createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId),
     );
   }
   if (deps.attachmentService) {

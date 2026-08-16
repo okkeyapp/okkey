@@ -1147,7 +1147,7 @@
 "@okkey/api@file:packages/api":
   version "0.0.1"
   dependencies:
-    "@okkey/types" "file:../../../../../../var/folders/nm/hvtvjrk138g_6tnjgsk2ngnh0000gn/T/cursor-sandbox-cache/a0c601372a7a9ef1e2ce2b02a6149ee8/yarn/v6/npm-@okkey-api-0.0.1-3a906697-b3a5-44a9-8f91-b5e3f93a3e06-1782724267496/node_modules/@okkey/types"
+    "@okkey/types" "file:../../../../Library/Caches/Yarn/v6/npm-@okkey-api-0.0.1-73741a79-9238-47a2-bf2c-e88f12c23723-1786909630030/node_modules/@okkey/types"
 
 "@okkey/crypto-wasm@link:./packages/crypto/dist":
   version "0.0.0"
@@ -3230,6 +3230,11 @@ lru-cache@^5.1.1:
   dependencies:
     yallist "^3.0.2"
 
+lucide-react@^1.31.0:
+  version "1.31.0"
+  resolved "https://registry.yarnpkg.com/lucide-react/-/lucide-react-1.31.0.tgz#1e758f3f86bc0456957d447e6e550b645d96e255"
+  integrity sha512-G8u2eEtoHUnUa9f8lbvqDhCiORMnYLdUEo06EEG9MQvHQrInKcX3Pa2TH39MM5qyzRcWETxB0+aOwAPI1g1kEg==
+
 lz-string@^1.5.0:
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/lz-string/-/lz-string-1.5.0.tgz#c1ab50f77887b712621201ba9fd4e3a6ed099941"
@@ -3246,6 +3251,14 @@ marked@^15.0.12:
   version "15.0.12"
   resolved "https://registry.yarnpkg.com/marked/-/marked-15.0.12.tgz#30722c7346e12d0a2d0207ab9b0c4f0102d86c4e"
   integrity sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA==
+
+maxmind@^5.0.7:
+  version "5.0.7"
+  resolved "https://registry.yarnpkg.com/maxmind/-/maxmind-5.0.7.tgz#c7e24e7a15f9af5e66b07aa8a0c188fa2992d68d"
+  integrity sha512-+w637dwfv01MKjkrp4sKDBTEKHLPvWLYb647QTjiz3wG/teSemqudIKNShaS6eqZ7ffxC9oZlQQgIqY0rGojog==
+  dependencies:
+    mmdb-lib "3.0.3"
+    tiny-lru "13.0.0"
 
 merge2@^1.3.0:
   version "1.4.1"
@@ -3293,6 +3306,11 @@ minimatch@^9.0.1:
   version "7.1.3"
   resolved "https://registry.yarnpkg.com/minipass/-/minipass-7.1.3.tgz#79389b4eb1bb2d003a9bba87d492f2bd37bdc65b"
   integrity sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==
+
+mmdb-lib@3.0.3:
+  version "3.0.3"
+  resolved "https://registry.yarnpkg.com/mmdb-lib/-/mmdb-lib-3.0.3.tgz#3f19c7bc7733b6da01c9e08f5eeb5163929944e1"
+  integrity sha512-xQPoBXcNjjHiOvOraFBKtA++uNWF6aCVHL9dRKFXEov8eI3QJwtgiw3qApsonFT5SpoqsEVISUTg3HIDs2DiXw==
 
 ms@^2.1.3:
   version "2.1.3"
@@ -4209,6 +4227,11 @@ thenify-all@^1.0.0:
   integrity sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==
   dependencies:
     any-promise "^1.0.0"
+
+tiny-lru@13.0.0:
+  version "13.0.0"
+  resolved "https://registry.yarnpkg.com/tiny-lru/-/tiny-lru-13.0.0.tgz#6f68dc7e9b86c162f8ecae712895e6fa9f3ac2d9"
+  integrity sha512-xDHxKKS1FdF0Tv2P+QT7IeSEg74K/8cEDzbv3Tv6UyHHUgBOjOiQiBp818MGj66dhurQus/IBcoAbwIKtSGc6Q==
 
 tinybench@^2.9.0:
   version "2.9.0"

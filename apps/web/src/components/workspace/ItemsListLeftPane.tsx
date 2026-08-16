@@ -35,7 +35,7 @@ import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesCon
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
-import { EDIT_ITEM_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
+import { EDIT_ITEM_POPUP_ID, NEW_CAPSULE_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName, stickyFooterShadowClassName, stickyFooterSurfaceClassName } from "./stickyHeaderShadow";
 import {
   getActiveCategoryLabel,
@@ -1206,6 +1206,19 @@ export default function ItemsListLeftPane({
     );
   };
 
+  const openCapsulePopup = (itemId: string) => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, NEW_CAPSULE_POPUP_ID, {
+          capsuleFromItemId: itemId,
+        }),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  };
+
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listHeaderScrolled = useRadixScrollAreaScrolled(listScrollRef);
   const listScrollEdges = useRadixScrollAreaScrollEdges(listScrollRef);
@@ -1646,7 +1659,7 @@ export default function ItemsListLeftPane({
                                               </DropdownMenuItem>
                                             ) : null}
                                             {showCapsule ? (
-                                              <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                              <DropdownMenuItem className="gap-2" onSelect={() => openCapsulePopup(row.id)}>
                                                 <IconCapsule16 />
                                                 <span>{t("web.nav.addCapsule")}</span>
                                               </DropdownMenuItem>

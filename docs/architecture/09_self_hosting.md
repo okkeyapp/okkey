@@ -52,6 +52,30 @@ JWT_SECRET
 
 ---
 
+## Capsule GeoIP
+
+Capsule approval can resolve requester country/city locally from any City-compatible MMDB file.
+No requester IP is sent to a third party.
+
+```text
+GEOIP_ENABLED=true
+GEOIP_PROVIDER=dbip
+GEOIP_DB_PATH=/geoip/city.mmdb
+GEOIP_AUTO_UPDATE=true
+TRUSTED_PROXY_HOPS=1
+```
+
+The optional `geoip-updater` service downloads DB-IP City Lite into a shared persistent volume,
+validates it, then atomically replaces the current file. Start the Compose profile with
+`docker compose --profile geoip up -d`. The API must mount the same volume read-only.
+Administrators may disable auto-update and provide any compatible MMDB at `GEOIP_DB_PATH`.
+When disabled or unavailable, approval continues with country/city shown as Unknown.
+
+DB-IP City Lite data is licensed under CC BY 4.0; interfaces displaying its location data must
+link to https://db-ip.com.
+
+---
+
 ## Storage
 
 PostgreSQL:

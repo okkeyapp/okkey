@@ -784,11 +784,14 @@ Appends one personal metadata event if `baseVersion` matches the current stream 
 
 ## Capsules (secure share links)
 
-Capsules store encrypted payloads only; decryption happens client-side.
+Capsules store encrypted payloads, owner metadata and owner key wraps only; decryption happens
+client-side. Share links use `/capsule/:capsuleId#key=...`; the fragment must never be sent to
+the API in a path or query parameter.
 
 ### `POST /workspaces/:workspaceId/capsules`
 
-Creates a capsule for authenticated creator. On **FREE** plan, capsules are allowed but **access settings** are rejected: `expiresAt`, `maxViews`, `password`, and `allowedRecipientEmails` must be omitted (or the server returns `FEATURE_NOT_AVAILABLE` / `403`). **ENTERPRISE** plan may use the full policy surface.
+Creates a capsule for the authenticated creator. On **FREE**, advanced access settings are
+rejected. **ENTERPRISE** may use lifecycle, view, password, allowlist and approval policies.
 
 **Auth:** Bearer preferred; optional `X-User-Id` when allowed by config.
 
@@ -796,18 +799,24 @@ Creates a capsule for authenticated creator. On **FREE** plan, capsules are allo
 
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
-| `type` | string | Yes | `item` \| `field` \| `file` |
+| `type` | string | Yes | `text` \| `file` \| `item` |
 | `encryptedPayload` | object (`EncryptedBlob`) | Yes | Canonical encrypted blob envelope |
+| `encryptedMetadata` | object (`EncryptedBlob`) | Yes | Client-encrypted title and item field scope |
+| `ownerKeyWrap` | object (`EncryptedBlob`) | Yes | Capsule key wrapped under the owner's VaultKey |
 | `filePayload` | object (`EncryptedBlob`) | No | Encrypted file blob envelope (for `type=file`) stored in object storage |
-| `keyTransportMode` | string | No | Key delivery transport policy: `fragment` \| `out_of_band`; default `out_of_band` |
-| `expiresAt` | string | No | ISO-8601 future timestamp |
+| `keyTransportMode` | string | No | `fragment` \| `out_of_band` |
+| `activateAt` / `deactivateAt` / `deleteAt` | string | No | Ordered ISO-8601 lifecycle timestamps |
 | `maxViews` | integer | No | 1..10000 |
+| `viewLimitAction` | string | No | `deactivate` (default) or `delete` |
 | `password` | string | No | Optional open password (server stores KDF hash only) |
+| `passwordAttemptLimit` | integer | No | Incorrect-attempt limit |
 | `allowedRecipientEmails` | string[] | No | Optional recipient allowlist (stored as hashed values) |
+| `approvalRequired` | boolean | No | Require an owner-approved one-time open token |
 
 **Response `201`:** capsule metadata:
 
-`capsuleId`, `type`, `expiresAt`, `maxViews`, `viewCount`, `passwordRequired`, `createdAt`
+`capsuleId`, `type`, `state`, lifecycle timestamps, `maxViews`, `viewCount`,
+`viewLimitAction`, policy flags, `createdAt`, `updatedAt`
 
 **Errors (non-exhaustive):** `AUTH_REQUIRED`, `WORKSPACE_NOT_FOUND`, `ACCESS_DENIED`, `CAPSULE_ACCESS_SETTINGS_NOT_AVAILABLE`, `CAPSULE_BAD_REQUEST`, `CRYPTO_PROFILE_NOT_ALLOWED`, `CRYPTO_CAPABILITY_REQUIRED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `PAYLOAD_TOO_LARGE`.
 
@@ -829,13 +838,32 @@ Consumes/open capsule by link with optional password.
 
 **Auth:** none.
 
-**Request body:** optional `{ "password": "...", "recipientEmail": "user@example.com", "keyTransportMode": "fragment|out_of_band" }`
+**Request body:** optional `{ "password": "...", "approvalToken": "...", "keyTransportMode": "fragment|out_of_band" }`.
+Recipient identity is always taken from the authenticated session; caller-supplied email is ignored.
 
 Unsafe key placement in URL query/path is rejected (`CAPSULE_UNSAFE_KEY_TRANSPORT`). Use fragment or out-of-band key delivery only.
 
 **Response `200`:** metadata + `encryptedPayload` (`EncryptedBlob`), and optional `filePayload` (`EncryptedBlob`) for file capsules.
 
 **Errors:** `RATE_LIMITED`, `CAPSULE_UNSAFE_KEY_TRANSPORT`, `CAPSULE_NOT_FOUND`, `CAPSULE_EXPIRED`, `CAPSULE_VIEW_LIMIT_EXCEEDED`, `CAPSULE_REVOKED`, `CAPSULE_PASSWORD_REQUIRED`, `CAPSULE_PASSWORD_INVALID`, `CAPSULE_RECIPIENT_REQUIRED`, `CAPSULE_RECIPIENT_FORBIDDEN`.
+
+### Owner management
+
+- `GET /workspaces/:workspaceId/capsules?page=N` returns only the authenticated creator's
+  non-deleted capsules, 30 per page, including encrypted metadata and owner key wrap.
+- `PATCH /capsules/:capsuleId/state` accepts `{ "state": "active|inactive" }`. Reactivation
+  clears prior pending/denied approval requests.
+- `DELETE /capsules/:capsuleId` hard-deletes the owner capsule and encrypted objects.
+
+### Approval flow
+
+- `POST /capsules/:capsuleId/approval-requests` creates a persisted request for the
+  authenticated viewer. IP, device and local MMDB location are derived server-side.
+- `GET /capsule-approval-requests/:requestId` returns polling status and, after approval,
+  a one-time `approvalToken`.
+- `GET /capsule-approval-requests` returns pending requests owned by the authenticated user.
+- `POST /capsule-approval-requests/:requestId/resolve` accepts
+  `{ "decision": "approve|deny" }`; only the capsule owner can resolve it.
 
 ### `POST /capsules/:capsuleId/revoke`
 

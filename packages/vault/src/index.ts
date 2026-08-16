@@ -15,13 +15,21 @@ export interface VaultStore {
 }
 
 export interface BuildCapsuleCreateInput {
-  type: "item" | "field" | "file";
+  type: "text" | "item" | "file";
   plaintext: Uint8Array;
   encrypt: (plaintext: Uint8Array) => Promise<Uint8Array>;
-  expiresAt?: string;
+  encryptedMetadata: EncryptedBlobDto;
+  ownerKeyWrap: EncryptedBlobDto;
+  activateAt?: string;
+  deactivateAt?: string;
+  deleteAt?: string;
   maxViews?: number;
+  viewLimitAction?: "deactivate" | "delete";
   password?: string;
+  passwordAttemptLimit?: number;
   allowedRecipientEmails?: string[];
+  approvalRequired?: boolean;
+  keyTransportMode?: "fragment" | "out_of_band";
   filePlaintext?: Uint8Array;
 }
 
@@ -41,11 +49,21 @@ export async function buildCapsuleCreateRequest(
     request: {
       type: input.type,
       encryptedPayload,
+      encryptedMetadata: input.encryptedMetadata,
+      ownerKeyWrap: input.ownerKeyWrap,
       ...(filePayload ? { filePayload } : {}),
-      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+      ...(input.activateAt ? { activateAt: input.activateAt } : {}),
+      ...(input.deactivateAt ? { deactivateAt: input.deactivateAt } : {}),
+      ...(input.deleteAt ? { deleteAt: input.deleteAt } : {}),
       ...(input.maxViews !== undefined ? { maxViews: input.maxViews } : {}),
+      ...(input.viewLimitAction ? { viewLimitAction: input.viewLimitAction } : {}),
       ...(input.password ? { password: input.password } : {}),
+      ...(input.passwordAttemptLimit !== undefined
+        ? { passwordAttemptLimit: input.passwordAttemptLimit }
+        : {}),
       ...(input.allowedRecipientEmails ? { allowedRecipientEmails: input.allowedRecipientEmails } : {}),
+      ...(input.approvalRequired ? { approvalRequired: true } : {}),
+      ...(input.keyTransportMode ? { keyTransportMode: input.keyTransportMode } : {}),
     },
   };
 }
@@ -67,11 +85,19 @@ export async function openCapsulePayload(input: OpenCapsuleInput): Promise<OpenC
   const metadata: CapsuleMetadataDto = {
     capsuleId: input.response.capsuleId,
     type: input.response.type,
-    expiresAt: input.response.expiresAt,
+    state: input.response.state,
+    activateAt: input.response.activateAt,
+    deactivateAt: input.response.deactivateAt,
+    deleteAt: input.response.deleteAt,
     maxViews: input.response.maxViews,
     viewCount: input.response.viewCount,
+    viewLimitAction: input.response.viewLimitAction,
     passwordRequired: input.response.passwordRequired,
+    passwordAttemptLimit: input.response.passwordAttemptLimit,
+    recipientRestricted: input.response.recipientRestricted,
+    approvalRequired: input.response.approvalRequired,
     createdAt: input.response.createdAt,
+    updatedAt: input.response.updatedAt,
   };
   let filePlaintext: Uint8Array | undefined;
   if (input.response.filePayload) {

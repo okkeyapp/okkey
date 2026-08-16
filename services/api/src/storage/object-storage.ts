@@ -1,10 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface ObjectStorage {
   putObject(key: string, body: Uint8Array): Promise<void>;
   getObject(key: string): Promise<Uint8Array | null>;
+  deleteObject(key: string): Promise<void>;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,17 @@ export class LocalObjectStorage implements ObjectStorage {
       return Uint8Array.from(bytes);
     } catch {
       return null;
+    }
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const fullPath = path.join(localRoot, sanitizeKey(key));
+    try {
+      await unlink(fullPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
     }
   }
 }

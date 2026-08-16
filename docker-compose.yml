@@ -52,3 +52,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  geoip-updater:
+    profiles: ["geoip"]
+    build:
+      context: ./services/geoip-updater
+    container_name: okkey-geoip-updater
+    restart: unless-stopped
+    environment:
+      GEOIP_DB_PATH: /geoip/city.mmdb
+      GEOIP_UPDATE_INTERVAL_MS: ${GEOIP_UPDATE_INTERVAL_MS:-86400000}
+    volumes:
+      - geoip-data:/geoip
+
+volumes:
+  geoip-data:

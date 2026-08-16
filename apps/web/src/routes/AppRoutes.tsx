@@ -32,6 +32,7 @@ import SettingsIndexRedirect from "../pages/workspace/SettingsIndexRedirect";
 import WorkspacesPage from "../pages/workspaces/WorkspacesPage";
 import ProtectedVaultLayout from "../auth/ProtectedVaultLayout";
 import WorkspaceRoutesLayout from "../workspace/WorkspaceRoutesLayout";
+import PublicCapsulePage from "../pages/capsules/PublicCapsulePage";
 import {
   ACCOUNT_LOCK_PATH,
   ACCOUNT_NEW_PATH,
@@ -41,6 +42,7 @@ import {
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
   CAPSULES_PATH,
+  CAPSULE_PUBLIC_PATH_PATTERN,
   DEFAULT_AUTHENTICATED_PATH,
   DEV_UI_BASE_PATH,
   INVITE_PATH_PATTERN,
@@ -127,6 +129,7 @@ export default function AppRoutes() {
       <Route path={UNLOCK_PASSWORD_LEGACY_PATH} element={<LegacyNavigate to={ACCOUNT_LOCK_PATH} />} />
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
       <Route path={INVITE_PATH_PATTERN} element={<workspaceMembersModule.InviteLandingPage />} />
+      <Route path={CAPSULE_PUBLIC_PATH_PATTERN} element={<PublicCapsulePage />} />
       <Route element={<ProtectedVaultLayout />}>
         <Route
           path={WORKSPACES_PATH}

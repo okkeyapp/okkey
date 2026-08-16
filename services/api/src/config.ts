@@ -76,6 +76,11 @@ export interface ApiConfig {
   sesTimeoutMs: number;
   capsuleOpenRateLimitPerIp: number;
   capsuleRateLimitWindowSeconds: number;
+  geoIpEnabled: boolean;
+  geoIpProvider: string;
+  geoIpDbPath: string;
+  geoIpAutoUpdate: boolean;
+  trustedProxyHops: number;
   allowedCryptoProfileVersions: number[];
   cryptoRolloutMode: CryptoRolloutMode;
   cryptoRolloutEnabled: boolean;
@@ -144,6 +149,11 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     return fallback;
   }
   return parsed;
+}
+
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -365,6 +375,11 @@ export function loadConfig(): ApiConfig {
       process.env.CAPSULE_RATE_LIMIT_WINDOW_SECONDS,
       60,
     ),
+    geoIpEnabled: parseBoolean(process.env.GEOIP_ENABLED, false),
+    geoIpProvider: process.env.GEOIP_PROVIDER ?? "db-ip",
+    geoIpDbPath: process.env.GEOIP_DB_PATH ?? "/var/lib/okkey/geoip/city.mmdb",
+    geoIpAutoUpdate: parseBoolean(process.env.GEOIP_AUTO_UPDATE, false),
+    trustedProxyHops: parseNonNegativeInt(process.env.TRUSTED_PROXY_HOPS, 0),
     allowedCryptoProfileVersions,
     cryptoRolloutMode,
     cryptoRolloutEnabled,

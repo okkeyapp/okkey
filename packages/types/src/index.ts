@@ -10,7 +10,6 @@ import type { EntityId } from "./entity-id.js";
 import type { PlanTier } from "./plan-features.js";
 import type {
   WorkspaceBuiltInRoleDto,
-  WorkspaceBuiltInRoleId,
   WorkspaceBuiltInRolesListResponseDto,
 } from "./workspace-roles.js";
 
@@ -445,6 +444,7 @@ export {
 } from "./item-plaintext-v1.js";
 
 import type { ItemFaviconSource, ItemPlaintextV2 } from "./item-schema/types.js";
+export type { FieldValueV2, ItemFieldV2, ItemSectionV2 } from "./item-schema/types.js";
 export type { ItemPlaintextV2, ItemFaviconSource };
 export {
   ITEM_PLAINTEXT_SCHEMA_VERSION_V1,
@@ -948,30 +948,7 @@ export interface VaultMemberRoleUpdateRequestDto {
   clientCreatedAt?: string;
 }
 
-export interface CapsuleMetadataDto {
-  capsuleId: EntityId;
-  type: "item" | "field" | "file";
-  expiresAt: string | null;
-  maxViews: number | null;
-  viewCount: number;
-  passwordRequired: boolean;
-  createdAt: string;
-}
-
-export interface CapsuleOpenResponseDto extends CapsuleMetadataDto {
-  encryptedPayload: EncryptedBlobDto;
-  filePayload?: EncryptedBlobDto;
-}
-
-export interface CapsuleCreateRequestDto {
-  type: "item" | "field" | "file";
-  encryptedPayload: EncryptedBlobDto;
-  filePayload?: EncryptedBlobDto;
-  expiresAt?: string;
-  maxViews?: number;
-  password?: string;
-  allowedRecipientEmails?: string[];
-}
+export * from "./capsules.js";
 
 /** Optional nested metadata (same semantics as `POST /devices/register`). */
 export interface RegisterCompleteMetadataDto {
