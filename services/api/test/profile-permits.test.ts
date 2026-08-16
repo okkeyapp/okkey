@@ -57,10 +57,58 @@ test("own scope requires matching creator", () => {
     userId: "u1",
     itemCreatedByUserId: "u2",
   };
+  const unknownCreator = {
+    permissions,
+    userId: "u1",
+    itemCreatedByUserId: null,
+  };
   assert.equal(profileAllowsEntriesGet(own), true);
   assert.equal(profileAllowsEntriesPut(own), true);
   assert.equal(profileAllowsEntriesGet(other), false);
   assert.equal(profileAllowsEntriesDelete(other), false);
+  assert.equal(profileAllowsEntriesGet(unknownCreator), true);
+});
+
+test("category selected with empty values denies all", () => {
+  const permissions: ProfilePermissions = {
+    ...createFullAccessProfilePermissions(),
+    rules: [
+      { id: "c", kind: "categories", scope: "selected", values: [] },
+      { id: "f", kind: "fields", scope: "all", values: [] },
+      { id: "fn", kind: "functions", scope: "all", values: [] },
+      {
+        id: "d",
+        kind: "datetime",
+        mode: "all_time",
+        timeStart: "00:00",
+        timeEnd: "23:59",
+      },
+    ],
+  };
+  assert.equal(profileAllowsCategory({ permissions }, "login"), false);
+  assert.equal(profileAllowsItemView({ permissions }, "credit_card"), false);
+});
+
+test("functions selected with empty values denies all functions", () => {
+  const permissions: ProfilePermissions = {
+    ...createFullAccessProfilePermissions(),
+    rules: [
+      { id: "c", kind: "categories", scope: "all", values: [] },
+      { id: "f", kind: "fields", scope: "all", values: [] },
+      { id: "fn", kind: "functions", scope: "selected", values: [] },
+      {
+        id: "d",
+        kind: "datetime",
+        mode: "all_time",
+        timeStart: "00:00",
+        timeEnd: "23:59",
+      },
+    ],
+  };
+  assert.equal(profileAllowsFunction({ permissions }, "favorite"), false);
+  assert.equal(profileAllowsFunction({ permissions }, "create_capsules"), false);
+  assert.equal(profileAllowsFunction({ permissions }, "save_to_personal"), false);
+  assert.equal(profileAllowsFunction({ permissions }, "archive"), false);
 });
 
 test("category selected / all_except", () => {

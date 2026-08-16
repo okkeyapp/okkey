@@ -424,6 +424,10 @@ function scopeAllows(scope: ProfilePermissionScope, values: readonly string[], c
   if (scope === "all") {
     return true;
   }
+  // selected + [] → deny all; all_except + [] → allow all (nothing excluded).
+  if (values.length === 0) {
+    return scope === "all_except";
+  }
   const selected = new Set(values);
   if (scope === "selected") {
     return selected.has(candidate);
@@ -470,7 +474,18 @@ function isOwnItem(ctx: ProfilePermitsContext): boolean {
 
 export function profileAllowsEntriesGet(ctx: ProfilePermitsContext): boolean {
   const permissions = ensureProfilePermissions(ctx.permissions);
-  return allowsResourceScope(permissions.entries.get, isOwnItem(ctx));
+  const level = permissions.entries.get;
+  if (level === PROFILE_RESOURCE_PERMISSION_NONE) {
+    return false;
+  }
+  if (level === PROFILE_RESOURCE_PERMISSION_ALL) {
+    return true;
+  }
+  // Own-scope: if creator is unknown, do not hide the item (client metadata may lag).
+  if (ctx.itemCreatedByUserId == null || ctx.itemCreatedByUserId === "") {
+    return true;
+  }
+  return isOwnItem(ctx);
 }
 
 export function profileAllowsEntriesPost(ctx: ProfilePermitsContext): boolean {
@@ -593,16 +608,25 @@ export function profileAllowsDatetime(ctx: ProfilePermitsContext, nowMs = ctx.no
     return true;
   }
   if (rule.mode === "dates") {
-    const allowed = new Set(rule.dates ?? []);
-    return allowed.has(isoDateLocal(now));
+    const allowed = rule.dates ?? [];
+    if (allowed.length === 0) {
+      return true;
+    }
+    return allowed.includes(isoDateLocal(now));
   }
   if (rule.mode === "repeat_month") {
-    const days = new Set(rule.monthDays ?? []);
-    return days.has(now.getDate());
+    const days = rule.monthDays ?? [];
+    if (days.length === 0) {
+      return true;
+    }
+    return days.includes(now.getDate());
   }
   if (rule.mode === "repeat_week") {
-    const days = new Set(rule.weekdays ?? []);
-    return days.has(isoWeekday(now));
+    const days = rule.weekdays ?? [];
+    if (days.length === 0) {
+      return true;
+    }
+    return days.includes(isoWeekday(now));
   }
   return true;
 }

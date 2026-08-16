@@ -71,7 +71,6 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
     useWorkspaceItems();
   const {
     canPutItem,
-    canArchiveItem,
     canDeleteItem,
     canUseFunction,
     canViewFieldType,
@@ -125,11 +124,14 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   }, [canViewFieldType, item, keyFormMessages]);
   const itemAccessAllowed =
     !item || canViewItem(item.vaultId, item.categoryId, createdByUserId);
-  const canEdit = item ? canPutItem(item.vaultId, createdByUserId) : false;
-  const canArchive = item ? canArchiveItem(item.vaultId, createdByUserId) : false;
-  const canDelete = item ? canDeleteItem(item.vaultId, createdByUserId) : false;
-  const canFavorite = item ? canUseFunction(item.vaultId, "favorite") : false;
-  const canCreateCapsule = item ? canUseFunction(item.vaultId, "create_capsules") : false;
+  const vaultIdForPermits = item?.vaultId ?? listRecord?.vaultId ?? "";
+  const canEdit = vaultIdForPermits ? canPutItem(vaultIdForPermits, createdByUserId) : false;
+  // Archive is a profile function ("Помещать в архив"), not entries.archive (no UI column).
+  const canArchive = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "archive") : false;
+  const canDelete = vaultIdForPermits ? canDeleteItem(vaultIdForPermits, createdByUserId) : false;
+  const canFavorite = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "favorite") : false;
+  const canCreateCapsule = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "create_capsules") : false;
+  const canCopy = vaultIdForPermits ? canUseFunction(vaultIdForPermits, "save_to_personal") : false;
   const keyFormFieldTypes = useMemo(
     () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), filesInItemsEnabled),
     [locale, filesInItemsEnabled],
@@ -321,7 +323,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
         showBack={isItemsMobileListView}
         onBack={handleBack}
         onEdit={openEditPopup}
-        onCopy={openCopyPopup}
+        onCopy={canCopy ? openCopyPopup : undefined}
         canEdit={canEdit}
         canFavorite={canFavorite}
         canArchive={canArchive}

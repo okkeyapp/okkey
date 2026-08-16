@@ -723,10 +723,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
       if (onCopyAction) {
         await onCopyAction(copyText);
-        return;
+      } else {
+        await navigator.clipboard.writeText(copyText);
       }
-
-      await navigator.clipboard.writeText(copyText);
       if (copySuccessLabel != null) {
         setIsCopied(true);
       }

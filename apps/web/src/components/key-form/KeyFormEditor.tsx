@@ -2663,7 +2663,7 @@ export function KeyFormEditor({
       const viewMeta = secretFieldShowsStrength(field)
         ? fieldMeta
         : showRecoveryCodesMeta
-          ? fieldMeta
+          ? metaForField("recovery-codes", section.variant, messages, fieldValue, mode)
           : fieldActionMeta;
       return viewMeta ? <span className="flex items-center">{viewMeta}</span> : null;
     }

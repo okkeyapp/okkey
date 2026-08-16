@@ -408,7 +408,7 @@ export default function ItemDetailTopBar({
                   <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
                 </DropdownMenuItem>
               ) : null}
-              {canDelete || deleted ? (
+              {canDelete ? (
               <DropdownMenuItem
                 className={cn(
                   "gap-2",

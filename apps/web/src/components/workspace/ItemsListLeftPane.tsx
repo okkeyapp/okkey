@@ -31,6 +31,7 @@ import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
 import { vaultDisplayIcon } from "./settings/vaults/vaultIcons";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
@@ -850,7 +851,15 @@ export default function ItemsListLeftPane({
   const location = useLocation();
   const navigate = useNavigate();
   const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
-  const { setItemArchived, setItemsArchived, setItemDeleted, setItemsDeleted, deletedItemsRetentionDays } = useWorkspaceItems();
+  const {
+    setItemArchived,
+    setItemsArchived,
+    setItemDeleted,
+    setItemsDeleted,
+    deletedItemsRetentionDays,
+    getItemCreatedByUserId,
+  } = useWorkspaceItems();
+  const { canPutItem, canDeleteItem, canUseFunction } = useWorkspaceVaultProfiles();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -973,17 +982,38 @@ export default function ItemsListLeftPane({
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
-  const selectedActions = useMemo(
-    () => ({
-      canFavorite: selectedRows.some((row) => !row.favorite && !row.archived && !row.deleted),
-      canUnfavorite: selectedRows.some((row) => row.favorite && !row.archived && !row.deleted),
-      canArchive: selectedRows.some((row) => !row.archived && !row.deleted),
-      canUnarchive: selectedRows.some((row) => row.archived && !row.deleted),
-      canDelete: selectedRows.some((row) => !row.deleted),
-      canRestore: selectedRows.some((row) => row.deleted),
-    }),
-    [selectedRows],
-  );
+
+  const rowActionPermits = (row: ItemsListRecord) => {
+    const createdBy = getItemCreatedByUserId(row.id);
+    return {
+      canEdit: canPutItem(row.vaultId, createdBy),
+      canCopy: canUseFunction(row.vaultId, "save_to_personal"),
+      canFavorite: canUseFunction(row.vaultId, "favorite"),
+      canCreateCapsule: canUseFunction(row.vaultId, "create_capsules"),
+      canArchive: canUseFunction(row.vaultId, "archive"),
+      canDelete: canDeleteItem(row.vaultId, createdBy),
+    };
+  };
+
+  const selectedActions = useMemo(() => {
+    const rowsWithPermits = selectedRows.map((row) => ({ row, ...rowActionPermits(row) }));
+    return {
+      canFavorite: rowsWithPermits.some(
+        ({ row, canFavorite }) => canFavorite && !row.favorite && !row.archived && !row.deleted,
+      ),
+      canUnfavorite: rowsWithPermits.some(
+        ({ row, canFavorite }) => canFavorite && row.favorite && !row.archived && !row.deleted,
+      ),
+      canArchive: rowsWithPermits.some(
+        ({ row, canArchive }) => canArchive && !row.archived && !row.deleted,
+      ),
+      canUnarchive: rowsWithPermits.some(
+        ({ row, canArchive }) => canArchive && row.archived && !row.deleted,
+      ),
+      canDelete: rowsWithPermits.some(({ row, canDelete }) => canDelete && !row.deleted),
+      canRestore: rowsWithPermits.some(({ row, canDelete }) => canDelete && row.deleted),
+    };
+  }, [selectedRows, canPutItem, canDeleteItem, canUseFunction, getItemCreatedByUserId]);
 
   useEffect(() => {
     if (selectionMode && selectedIds.size === 0) {
@@ -1024,7 +1054,10 @@ export default function ItemsListLeftPane({
 
   const favoriteSelectedItems = (favorite: boolean) => {
     const itemIds = selectedRows
-      .filter((row) => !row.archived && !row.deleted && row.favorite !== favorite)
+      .filter((row) => {
+        const permits = rowActionPermits(row);
+        return permits.canFavorite && !row.archived && !row.deleted && row.favorite !== favorite;
+      })
       .map((row) => row.id);
     if (!itemIds.length) {
       return;
@@ -1033,7 +1066,7 @@ export default function ItemsListLeftPane({
   };
 
   const archiveRow = (row: ItemsListRecord, archived: boolean) => {
-    if (row.deleted) {
+    if (row.deleted || !rowActionPermits(row).canArchive) {
       return;
     }
     void (async () => {
@@ -1060,6 +1093,9 @@ export default function ItemsListLeftPane({
   };
 
   const requestDeleteRow = (row: ItemsListRecord) => {
+    if (!rowActionPermits(row).canDelete) {
+      return;
+    }
     if (row.deleted) {
       deleteRow(row, false);
       return;
@@ -1068,7 +1104,7 @@ export default function ItemsListLeftPane({
   };
 
   const requestDeleteSelectedItems = () => {
-    const rows = selectedRows.filter((row) => !row.deleted);
+    const rows = selectedRows.filter((row) => rowActionPermits(row).canDelete && !row.deleted);
     if (!rows.length) {
       return;
     }
@@ -1088,7 +1124,10 @@ export default function ItemsListLeftPane({
   };
 
   const archiveSelectedItems = (archived: boolean) => {
-    const rows = selectedRows.filter((row) => row.archived !== archived);
+    const rows = selectedRows.filter((row) => {
+      const permits = rowActionPermits(row);
+      return permits.canArchive && row.archived !== archived;
+    });
     const itemIds = rows.map((row) => row.id);
     if (!itemIds.length) {
       return;
@@ -1105,7 +1144,10 @@ export default function ItemsListLeftPane({
   };
 
   const deleteSelectedItems = (deleted: boolean) => {
-    const rows = selectedRows.filter((row) => row.deleted !== deleted);
+    const rows = selectedRows.filter((row) => {
+      const permits = rowActionPermits(row);
+      return permits.canDelete && row.deleted !== deleted;
+    });
     const itemIds = rows.map((row) => row.id);
     if (!itemIds.length) {
       return;
@@ -1558,70 +1600,101 @@ export default function ItemsListLeftPane({
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-52 p-1">
-                                  {!row.archived && !row.deleted ? (
-                                    <>
-                                      <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
-                                        <IconEdit16 />
-                                        <span>{t("web.items.menu.edit")}</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="gap-2" onSelect={() => openCopyPopup(row)}>
-                                        <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
-                                        <span>{t("web.items.menu.copy")}</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        className="gap-2"
-                                        onSelect={() => {
-                                          void setItemFavorite(row.id, !row.favorite);
-                                        }}
-                                      >
-                                        {row.favorite ? (
-                                          <IconUnfavorite16 className="text-foreground" />
-                                        ) : (
-                                          <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
-                                        )}
-                                        <span>
-                                          {row.favorite
-                                            ? t("web.items.menu.removeFromFavorites")
-                                            : t("web.items.menu.addToFavorites")}
-                                        </span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
-                                        <IconCapsule16 />
-                                        <span>{t("web.nav.addCapsule")}</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator className="mx-1 my-1" />
-                                    </>
-                                  ) : null}
-                                  <DropdownMenuItem className="gap-2" onSelect={() => enterSelectionModeWith(row.id)}>
-                                    <IconSelect16 />
-                                    <span>{t("web.items.menu.select")}</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator className="mx-1 my-1" />
-                                  {!row.deleted ? (
-                                    <DropdownMenuItem className="gap-2" onSelect={() => archiveRow(row, !row.archived)}>
-                                      {row.archived ? (
-                                        <IconUnarchive16 className="text-foreground" />
-                                      ) : (
-                                        <FilterIconArchived className="size-4 shrink-0 text-foreground" />
-                                      )}
-                                      <span>{row.archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
-                                    </DropdownMenuItem>
-                                  ) : null}
-                                  <DropdownMenuItem
-                                    className={cn(
-                                      "gap-2",
-                                      !row.deleted &&
-                                        "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
-                                    )}
-                                    onSelect={() => requestDeleteRow(row)}
-                                  >
-                                    {row.deleted ? (
-                                      <IconRestore16 className="text-foreground" />
-                                    ) : (
-                                      <IconDelete16 />
-                                    )}
-                                    <span>{row.deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
-                                  </DropdownMenuItem>
+                                  {(() => {
+                                    const permits = rowActionPermits(row);
+                                    const showPrimaryActions = !row.archived && !row.deleted;
+                                    const showEdit = showPrimaryActions && permits.canEdit;
+                                    const showCopy = showPrimaryActions && permits.canCopy;
+                                    const showFavorite = showPrimaryActions && permits.canFavorite;
+                                    const showCapsule = showPrimaryActions && permits.canCreateCapsule;
+                                    const showPrimaryGroup = showEdit || showCopy || showFavorite || showCapsule;
+                                    const showArchive = !row.deleted && permits.canArchive;
+                                    const showDelete = permits.canDelete;
+                                    return (
+                                      <>
+                                        {showPrimaryGroup ? (
+                                          <>
+                                            {showEdit ? (
+                                              <DropdownMenuItem className="gap-2" onSelect={() => openEditPopup(row.id)}>
+                                                <IconEdit16 />
+                                                <span>{t("web.items.menu.edit")}</span>
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showCopy ? (
+                                              <DropdownMenuItem className="gap-2" onSelect={() => openCopyPopup(row)}>
+                                                <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
+                                                <span>{t("web.items.menu.copy")}</span>
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showFavorite ? (
+                                              <DropdownMenuItem
+                                                className="gap-2"
+                                                onSelect={() => {
+                                                  void setItemFavorite(row.id, !row.favorite);
+                                                }}
+                                              >
+                                                {row.favorite ? (
+                                                  <IconUnfavorite16 className="text-foreground" />
+                                                ) : (
+                                                  <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                                                )}
+                                                <span>
+                                                  {row.favorite
+                                                    ? t("web.items.menu.removeFromFavorites")
+                                                    : t("web.items.menu.addToFavorites")}
+                                                </span>
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showCapsule ? (
+                                              <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
+                                                <IconCapsule16 />
+                                                <span>{t("web.nav.addCapsule")}</span>
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            <DropdownMenuSeparator className="mx-1 my-1" />
+                                          </>
+                                        ) : null}
+                                        <DropdownMenuItem className="gap-2" onSelect={() => enterSelectionModeWith(row.id)}>
+                                          <IconSelect16 />
+                                          <span>{t("web.items.menu.select")}</span>
+                                        </DropdownMenuItem>
+                                        {showArchive || showDelete ? (
+                                          <DropdownMenuSeparator className="mx-1 my-1" />
+                                        ) : null}
+                                        {showArchive ? (
+                                          <DropdownMenuItem className="gap-2" onSelect={() => archiveRow(row, !row.archived)}>
+                                            {row.archived ? (
+                                              <IconUnarchive16 className="text-foreground" />
+                                            ) : (
+                                              <FilterIconArchived className="size-4 shrink-0 text-foreground" />
+                                            )}
+                                            <span>
+                                              {row.archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}
+                                            </span>
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                        {showDelete ? (
+                                          <DropdownMenuItem
+                                            className={cn(
+                                              "gap-2",
+                                              !row.deleted &&
+                                                "text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive",
+                                            )}
+                                            onSelect={() => requestDeleteRow(row)}
+                                          >
+                                            {row.deleted ? (
+                                              <IconRestore16 className="text-foreground" />
+                                            ) : (
+                                              <IconDelete16 />
+                                            )}
+                                            <span>
+                                              {row.deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}
+                                            </span>
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                      </>
+                                    );
+                                  })()}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             )}

@@ -10,7 +10,9 @@ import {
 
 import type { CoreClient } from "@okkey/api";
 import {
+  createEmptyProfilePermissions,
   createFullAccessProfilePermissions,
+  ensureProfilePermissions,
   profileAllowsDatetime,
   profileAllowsEntriesArchive,
   profileAllowsEntriesDelete,
@@ -50,6 +52,8 @@ export type WorkspaceVaultProfilesContextValue = {
 const WorkspaceVaultProfilesContext = createContext<WorkspaceVaultProfilesContextValue | null>(null);
 
 const FALLBACK_EXTENDED = createFullAccessProfilePermissions();
+/** Read-only default when a shared vault is accessible but profile row is missing/stale. */
+const FALLBACK_SHARED_READ = createEmptyProfilePermissions();
 
 export function useWorkspaceVaultProfilesState(input: {
   workspaceId: string;
@@ -75,10 +79,14 @@ export function useWorkspaceVaultProfilesState(input: {
     return ids;
   }, [vaults]);
 
+  const accessibleVaultIds = useMemo(() => new Set(vaults.map((vault) => vault.id)), [vaults]);
+  const vaultIdsKey = useMemo(() => [...accessibleVaultIds].sort().join(","), [accessibleVaultIds]);
+
   const refreshVaultProfiles = useCallback(async () => {
     if (!core || !workspaceId || !vaultUnlocked) {
       setProfilesByVaultId(new Map());
       setReady(false);
+      setError(null);
       return;
     }
     try {
@@ -88,26 +96,32 @@ export function useWorkspaceVaultProfilesState(input: {
       setReady(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "vault profiles load failed");
-      setReady(true);
+      // Keep fail-open (!ready) so a transient API error does not blank shared vault items.
+      setReady(false);
     }
   }, [core, vaultUnlocked, workspaceId]);
 
   useEffect(() => {
     void refreshVaultProfiles();
-  }, [refreshVaultProfiles]);
+  }, [refreshVaultProfiles, vaultIdsKey]);
 
   const getVaultPermissions = useCallback(
     (vaultId: string): ProfilePermissions | null => {
       const entry = profilesByVaultId.get(vaultId);
       if (entry) {
-        return entry.permissions;
+        return ensureProfilePermissions(entry.permissions);
       }
       if (personalVaultIds.has(vaultId)) {
         return FALLBACK_EXTENDED;
       }
+      // Vault is listed for this member (membership + key) but me/vault-profiles has no row yet.
+      // Client ACL is not a crypto boundary — avoid empty item lists from stale profile cache.
+      if (accessibleVaultIds.has(vaultId)) {
+        return FALLBACK_SHARED_READ;
+      }
       return null;
     },
-    [personalVaultIds, profilesByVaultId],
+    [accessibleVaultIds, personalVaultIds, profilesByVaultId],
   );
 
   const buildPermitsContext = useCallback(

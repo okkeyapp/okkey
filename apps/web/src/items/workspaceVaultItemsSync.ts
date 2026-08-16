@@ -200,7 +200,14 @@ async function applyVaultItemEvents(
       continue;
     }
 
-    const plaintextBytes = await decryptWirePayload(blob.payload);
+    let plaintextBytes: Uint8Array;
+    try {
+      plaintextBytes = await decryptWirePayload(blob.payload);
+    } catch {
+      // Wrong vault key or corrupt ciphertext — skip this event, keep replaying.
+      lastAppliedVersion = event.version;
+      continue;
+    }
     const parsed = parseAndNormalizeItemPlaintextUtf8(plaintextBytes);
     if (!parsed) {
       lastAppliedVersion = event.version;
@@ -317,10 +324,18 @@ export function createWorkspaceVaultItemsSyncController(input: {
     if (cached) {
       vaultStates = cached;
     }
+    const failures: string[] = [];
     for (const vault of input.vaults) {
-      await replayVaultIncremental(vault.id);
+      try {
+        await replayVaultIncremental(vault.id);
+      } catch {
+        failures.push(vault.id);
+      }
     }
     await writeCachedState(input.userId, input.workspaceId, vaultStates);
+    if (failures.length > 0 && failures.length === input.vaults.length) {
+      throw new Error("VAULT_ITEMS_SYNC_FAILED");
+    }
   }
 
   async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
