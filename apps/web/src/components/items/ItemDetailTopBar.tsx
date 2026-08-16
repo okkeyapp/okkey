@@ -393,8 +393,8 @@ export default function ItemDetailTopBar({
                     <span>{t("web.nav.addCapsule")}</span>
                   </DropdownMenuItem>
                   ) : null}
-                  {canFavorite || canCreateCapsule || onCopy ? (
-                  <DropdownMenuSeparator className="mx-1 my-1" />
+                  {(canFavorite || canCreateCapsule || onCopy) && (canArchive || canDelete) ? (
+                    <DropdownMenuSeparator className="mx-1 my-1" />
                   ) : null}
                 </>
               ) : null}

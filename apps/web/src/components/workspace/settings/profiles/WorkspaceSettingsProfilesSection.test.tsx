@@ -84,7 +84,7 @@ function renderProfilesSection(planTier: "FREE" | "ENTERPRISE" = "FREE") {
               "web.workspaceSettings.profiles.builtIn.extendedDescription":
                 "Automatically applied to owners and admins",
               "web.workspaceSettings.profiles.builtIn.simpleDescription":
-                "Permission to read records and save to personal vault",
+                "Permission to read records, favorites, capsules, and copy records",
               "web.workspaceSettings.profiles.custom.title": "Custom profiles",
               "web.workspaceSettings.profiles.custom.subtitle": "Fully customizable profiles",
               "web.workspaceSettings.profiles.custom.create": "Create",
