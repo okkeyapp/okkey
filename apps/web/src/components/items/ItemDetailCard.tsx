@@ -311,6 +311,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
       <ItemDetailTopBar
         t={t}
         vault={vault}
+        itemId={itemId}
         folderId={folderId}
         folderLabel={folderLabel}
         favorite={listRecord?.favorite ?? false}
@@ -388,9 +389,12 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
           ) : null}
 
           <ItemDetailBreadcrumbs
+            t={t}
             vault={vault}
+            itemId={itemId}
             folderId={folderId}
             folderLabel={folderLabel}
+            canChangeFolder={!(listRecord?.deleted ?? false)}
             className="-mr-1 pt-4 md:hidden"
           />
 

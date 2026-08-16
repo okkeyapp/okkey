@@ -96,8 +96,11 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       return undefined;
     }
     const folderId = itemFolderByItemId.get(copySourceItem.itemId) ?? NO_FOLDER_VALUE;
-    return buildItemCopyPrefillValues(copySourceItem, folderId, keyFormMessages);
-  }, [copySourceItem, selectedCategoryId, itemFolderByItemId, keyFormMessages]);
+    const personalVaultId = vaults.find((vault) => vault.isPersonal)?.id;
+    return buildItemCopyPrefillValues(copySourceItem, folderId, keyFormMessages, {
+      vaultId: personalVaultId,
+    });
+  }, [copySourceItem, selectedCategoryId, itemFolderByItemId, keyFormMessages, vaults]);
 
   const templatePrefillValues = useMemo((): NewItemFormPrefillValues | undefined => {
     if (!templateId || !selectedCategoryId) {

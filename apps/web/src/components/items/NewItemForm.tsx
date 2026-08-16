@@ -93,6 +93,8 @@ export type NewItemFormHandle = {
   getFaviconSyncInput: () => ItemFormFaviconSyncInput;
   getTemplateSnapshot: () => ItemTemplateFormSnapshot | null;
   hasUnsavedChanges: () => boolean;
+  /** Item payload changes only (excludes personal folder assignment). */
+  hasItemContentChanges: () => boolean;
 };
 
 type NewItemFormProps = {
@@ -237,20 +239,6 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const currentSections = formSections ?? initialSections;
-  const canSave = useMemo(
-    () =>
-      validateNewItemForm({
-        recordName,
-        vaultId,
-        sections: currentSections,
-        categoryId: category?.id,
-      }).ok,
-    [recordName, vaultId, currentSections, category?.id],
-  );
-
-  useEffect(() => {
-    onCanSaveChange?.(canSave);
-  }, [canSave, onCanSaveChange]);
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
@@ -324,6 +312,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     tagsJson: string;
   } | null>(null);
   const formBaselineCapturedRef = useRef(false);
+  const [formBaselineReady, setFormBaselineReady] = useState(false);
   useEffect(() => {
     fileBaselineSectionsRef.current = structuredClone(
       initialValues?.sections ?? prefillValues?.sections ?? initialSections,
@@ -333,6 +322,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   useEffect(() => {
     formBaselineCapturedRef.current = false;
     formBaselineRef.current = null;
+    setFormBaselineReady(false);
   }, [categoryId, prefillValues, templateName, initialValues?.itemId]);
 
   useEffect(() => {
@@ -358,6 +348,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         tagsJson: JSON.stringify(tags),
       };
       formBaselineCapturedRef.current = true;
+      setFormBaselineReady(true);
     });
 
     return () => window.cancelAnimationFrame(frameId);
@@ -372,6 +363,76 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     vaultId,
     vaultsListReady,
   ]);
+
+  const hasItemContentChanges = useCallback(() => {
+    if (pendingFileByIdRef.current.size > 0) {
+      return true;
+    }
+    const faviconSyncInput = getSyncInput();
+    if (faviconSyncInput.manualFaviconPng && faviconSyncInput.manualFaviconPng.byteLength > 0) {
+      return true;
+    }
+
+    const baseline = formBaselineRef.current;
+    if (!baseline) {
+      return false;
+    }
+
+    const sections = formSections ?? initialSections;
+    if (JSON.stringify(sections) !== baseline.sectionsJson) {
+      return true;
+    }
+    if (JSON.stringify(tags) !== baseline.tagsJson) {
+      return true;
+    }
+    if (vaultId !== baseline.vaultId) {
+      return true;
+    }
+    if (recordNameEditedRef.current && trimmedRecordName !== baseline.recordName) {
+      return true;
+    }
+
+    return false;
+  }, [formBaselineReady, formSections, getSyncInput, initialSections, tags, trimmedRecordName, vaultId]);
+
+  const hasUnsavedChanges = useCallback(() => {
+    if (hasItemContentChanges()) {
+      return true;
+    }
+    const baseline = formBaselineRef.current;
+    if (!baseline) {
+      return false;
+    }
+    return folderId !== baseline.folderId;
+  }, [folderId, formBaselineReady, hasItemContentChanges]);
+
+  const formIsValid = useMemo(
+    () =>
+      validateNewItemForm({
+        recordName,
+        vaultId,
+        sections: currentSections,
+        categoryId: category?.id,
+      }).ok,
+    [recordName, vaultId, currentSections, category?.id],
+  );
+
+  const canSave = useMemo(() => {
+    if (!formIsValid) {
+      return false;
+    }
+    if (!isEditMode) {
+      return true;
+    }
+    if (!formBaselineReady) {
+      return false;
+    }
+    return hasUnsavedChanges();
+  }, [formBaselineReady, formIsValid, hasUnsavedChanges, isEditMode]);
+
+  useEffect(() => {
+    onCanSaveChange?.(canSave);
+  }, [canSave, onCanSaveChange]);
 
   useImperativeHandle(
     ref,
@@ -526,41 +587,10 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
           attachmentItemId: sourceAttachmentItemId,
         };
       },
-      hasUnsavedChanges: () => {
-        if (pendingFileByIdRef.current.size > 0) {
-          return true;
-        }
-        const faviconSyncInput = getSyncInput();
-        if (faviconSyncInput.manualFaviconPng && faviconSyncInput.manualFaviconPng.byteLength > 0) {
-          return true;
-        }
-
-        const baseline = formBaselineRef.current;
-        if (!baseline) {
-          return false;
-        }
-
-        const sections = formSections ?? initialSections;
-        if (JSON.stringify(sections) !== baseline.sectionsJson) {
-          return true;
-        }
-        if (JSON.stringify(tags) !== baseline.tagsJson) {
-          return true;
-        }
-        if (folderId !== baseline.folderId) {
-          return true;
-        }
-        if (vaultId !== baseline.vaultId) {
-          return true;
-        }
-        if (recordNameEditedRef.current && trimmedRecordName !== baseline.recordName) {
-          return true;
-        }
-
-        return false;
-      },
+      hasUnsavedChanges: () => hasUnsavedChanges(),
+      hasItemContentChanges: () => hasItemContentChanges(),
     }),
-    [folderId, formSections, getSyncInput, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
+    [folderId, formSections, getSyncInput, hasItemContentChanges, hasUnsavedChanges, initialSections, category, trimmedRecordName, initialValues, prefillValues, tags, resolveAttachmentContext, vaultId],
   );
 
   if (!category) {

@@ -1,11 +1,13 @@
 import type { Vault } from "@okkey/types";
+import type { WebMessageValues } from "@okkey/i18n";
 import { Button, buttonVariants, cn } from "@okkey/ui";
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import { itemsPathWithFolderMerged, itemsPathWithVaultMerged } from "../../routes/paths";
 import { vaultDisplayIcon } from "../workspace/settings/vaults/vaultIcons";
+import ItemFolderAssignControl from "./ItemFolderAssignControl";
 
 function FolderClosedIcon({ className }: { className?: string }) {
   return (
@@ -40,6 +42,7 @@ type BreadcrumbTrailProps = {
   folderLabel: string;
   showVaultLabel: boolean;
   showFolderLabel: boolean;
+  folderAssign?: ReactNode;
 };
 
 function BreadcrumbTrail({
@@ -50,11 +53,13 @@ function BreadcrumbTrail({
   folderLabel,
   showVaultLabel,
   showFolderLabel,
+  folderAssign,
 }: BreadcrumbTrailProps) {
   const vaultName = vault?.name ?? "…";
   const vaultEmoji = vault ? vaultDisplayIcon(vault) : "💼";
   const vaultButtonClassName = showVaultLabel ? breadcrumbGhostButtonClassName : breadcrumbIconOnlyButtonClassName;
   const folderButtonClassName = showFolderLabel ? breadcrumbGhostButtonClassName : breadcrumbIconOnlyButtonClassName;
+  const folderIsLink = Boolean(folderId && folderTo);
 
   return (
     <>
@@ -76,26 +81,23 @@ function BreadcrumbTrail({
         </span>
       )}
 
-      {folderId ? (
-        <>
-          <span className="shrink-0 text-muted-foreground" aria-hidden>
-            •
-          </span>
-          {folderTo ? (
-            <Button asChild variant="ghost" className={folderButtonClassName}>
-              <Link to={folderTo} title={folderLabel} aria-label={folderLabel}>
-                <FolderClosedIcon />
-                {showFolderLabel ? <span className="truncate">{folderLabel}</span> : null}
-              </Link>
-            </Button>
-          ) : (
-            <span className={breadcrumbStaticClassName} title={folderLabel}>
-              <FolderClosedIcon />
-              {showFolderLabel ? <span className="truncate">{folderLabel}</span> : null}
-            </span>
-          )}
-        </>
-      ) : null}
+      <span className="shrink-0 text-muted-foreground" aria-hidden>
+        •
+      </span>
+      {folderIsLink ? (
+        <Button asChild variant="ghost" className={folderButtonClassName}>
+          <Link to={folderTo!} title={folderLabel} aria-label={folderLabel}>
+            <FolderClosedIcon />
+            {showFolderLabel ? <span className="truncate">{folderLabel}</span> : null}
+          </Link>
+        </Button>
+      ) : (
+        <span className={breadcrumbStaticClassName} title={folderLabel}>
+          <FolderClosedIcon />
+          {showFolderLabel ? <span className="truncate">{folderLabel}</span> : null}
+        </span>
+      )}
+      {folderAssign}
     </>
   );
 }
@@ -105,7 +107,6 @@ function useBreadcrumbCompressMode(input: {
   measureFullRef: RefObject<HTMLDivElement | null>;
   measureFolderIconRef: RefObject<HTMLDivElement | null>;
   measureVaultIconRef: RefObject<HTMLDivElement | null>;
-  hasFolder: boolean;
   rebindKey: string;
 }): BreadcrumbCompressMode {
   const [compressMode, setCompressMode] = useState<BreadcrumbCompressMode>("full");
@@ -129,7 +130,7 @@ function useBreadcrumbCompressMode(input: {
         return;
       }
 
-      if (input.hasFolder && folderIconWidth <= available) {
+      if (folderIconWidth <= available) {
         setCompressMode("hide-folder-label");
         return;
       }
@@ -156,7 +157,6 @@ function useBreadcrumbCompressMode(input: {
     input.measureFullRef,
     input.measureFolderIconRef,
     input.measureVaultIconRef,
-    input.hasFolder,
     input.rebindKey,
   ]);
 
@@ -164,13 +164,24 @@ function useBreadcrumbCompressMode(input: {
 }
 
 type ItemDetailBreadcrumbsProps = {
+  t: (messageKey: string, values?: WebMessageValues) => string;
   vault: Vault | undefined;
+  itemId: string;
   folderId: string | null;
   folderLabel: string;
+  canChangeFolder?: boolean;
   className?: string;
 };
 
-export default function ItemDetailBreadcrumbs({ vault, folderId, folderLabel, className }: ItemDetailBreadcrumbsProps) {
+export default function ItemDetailBreadcrumbs({
+  t,
+  vault,
+  itemId,
+  folderId,
+  folderLabel,
+  canChangeFolder = true,
+  className,
+}: ItemDetailBreadcrumbsProps) {
   const [searchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const itemsPathMergeOptions = isItemsMobileListView ? { clearItem: true as const } : undefined;
@@ -182,13 +193,16 @@ export default function ItemDetailBreadcrumbs({ vault, folderId, folderLabel, cl
   const measureFolderIconRef = useRef<HTMLDivElement>(null);
   const measureVaultIconRef = useRef<HTMLDivElement>(null);
 
+  const folderAssign = canChangeFolder ? (
+    <ItemFolderAssignControl t={t} itemId={itemId} folderId={folderId} />
+  ) : null;
+
   const compressMode = useBreadcrumbCompressMode({
     breadcrumbsRef,
     measureFullRef,
     measureFolderIconRef,
     measureVaultIconRef,
-    hasFolder: Boolean(folderId),
-    rebindKey: `${vault?.id ?? ""}:${folderId ?? ""}:${folderLabel}:${vault?.name ?? ""}`,
+    rebindKey: `${vault?.id ?? ""}:${folderId ?? ""}:${folderLabel}:${vault?.name ?? ""}:${canChangeFolder ? "1" : "0"}`,
   });
 
   const breadcrumbBaseProps = {
@@ -197,6 +211,7 @@ export default function ItemDetailBreadcrumbs({ vault, folderId, folderLabel, cl
     folderId,
     folderTo,
     folderLabel,
+    folderAssign,
   };
 
   return (

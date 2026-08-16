@@ -476,6 +476,7 @@
   "web.items.detail.notFound": "Такой записи не существует",
   "web.items.detail.selectItemTitle": "Выберите запись",
   "web.items.detail.selectItemDescription": "Здесь будет отображаться карточка записи",
+  "web.items.detail.changeFolderAria": "Изменить папку",
   "web.items.detail.moreActionsAria": "Дополнительные действия",
   "web.items.detail.capsuleFavoriteGroupAria": "Капсула и избранное",
   "web.items.detail.favoriteAddTooltip": "Добавить в избранное",

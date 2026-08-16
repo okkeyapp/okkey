@@ -8,10 +8,11 @@ export function buildItemCopyPrefillValues(
   item: ItemPlaintextV2,
   folderId: string,
   messages: KeyFormEditorMessages,
+  options?: { vaultId?: string },
 ): NewItemFormPrefillValues {
   return {
     recordName: item.title,
-    vaultId: item.vaultId,
+    vaultId: options?.vaultId ?? item.vaultId,
     folderId,
     sections: structuredClone(itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true })),
     tags: [...(item.tags ?? [])],

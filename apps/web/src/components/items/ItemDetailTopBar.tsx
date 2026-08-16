@@ -216,6 +216,7 @@ const mobileBackButtonClassName = cn(
 type ItemDetailTopBarProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   vault: Vault | undefined;
+  itemId: string;
   folderId: string | null;
   folderLabel: string;
   favorite: boolean;
@@ -241,6 +242,7 @@ const controlGroupLayoutClassName = "w-auto shrink-0";
 export default function ItemDetailTopBar({
   t,
   vault,
+  itemId,
   folderId,
   folderLabel,
   favorite,
@@ -287,9 +289,12 @@ export default function ItemDetailTopBar({
         ) : null}
 
         <ItemDetailBreadcrumbs
+          t={t}
           vault={vault}
+          itemId={itemId}
           folderId={folderId}
           folderLabel={folderLabel}
+          canChangeFolder={!deleted}
           className="hidden min-w-0 flex-1 md:flex"
         />
       </div>

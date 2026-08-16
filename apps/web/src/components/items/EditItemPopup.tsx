@@ -207,8 +207,16 @@ export default function EditItemPopup({
       return;
     }
     const faviconSyncInput = formRef.current.getFaviconSyncInput();
+    const folderChanged = payload.folderId !== folderId;
+    const itemContentChanged = formRef.current.hasItemContentChanges();
 
-    if (!canPutItem(payload.vaultId, getItemCreatedByUserId(item.itemId))) {
+    if (!folderChanged && !itemContentChanged) {
+      closePopup();
+      setShowValidation(false);
+      return;
+    }
+
+    if (itemContentChanged && !canPutItem(payload.vaultId, getItemCreatedByUserId(item.itemId))) {
       setSaveError(t("web.editItemPopup.saveErrorGeneric"));
       return;
     }
@@ -223,48 +231,53 @@ export default function EditItemPopup({
           error: t("web.editItemPopup.saveErrorGeneric"),
         },
         async () => {
-          if (!accessToken || !vaultKey) {
-            throw new Error("AUTH_REQUIRED");
-          }
-          const itemVaultKey = await resolveVaultEncryptionKey(payload.vaultId);
-          const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
-          let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
-          let uploadedFavicon: KeyFieldFileValue | undefined;
-          try {
-            const faviconSync = await syncItemFaviconForPlaintext(
-              accessToken,
-              itemVaultKey,
-              updatedItem,
-              item,
-              faviconSyncInput,
+          if (itemContentChanged) {
+            if (!accessToken || !vaultKey) {
+              throw new Error("AUTH_REQUIRED");
+            }
+            const itemVaultKey = await resolveVaultEncryptionKey(payload.vaultId);
+            const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
+            let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
+            let uploadedFavicon: KeyFieldFileValue | undefined;
+            try {
+              const faviconSync = await syncItemFaviconForPlaintext(
+                accessToken,
+                itemVaultKey,
+                updatedItem,
+                item,
+                faviconSyncInput,
+              );
+              updatedItem = faviconSync.item;
+              uploadedFavicon = faviconSync.uploadedFavicon;
+              await updateItem(updatedItem);
+            } catch (error) {
+              const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;
+              await Promise.allSettled(
+                filesToDelete.map((file) =>
+                  deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
+                ),
+              );
+              throw error;
+            }
+            await deleteRemovedKeyFieldFiles(
+              formRef.current?.getFileBaselineSections() ?? initialValues.sections,
+              uploadedPayload.sections,
+              (file) => deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
             );
-            updatedItem = faviconSync.item;
-            uploadedFavicon = faviconSync.uploadedFavicon;
-            await updateItem(updatedItem);
-          } catch (error) {
-            const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;
-            await Promise.allSettled(
-              filesToDelete.map((file) =>
-                deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
-              ),
+            if (item.faviconId && item.faviconId !== updatedItem.faviconId) {
+              await deleteKeyFieldFileAttachment({
+                accessToken,
+                vaultId: item.vaultId,
+                itemId: item.itemId,
+                file: keyFieldFileValueFromFaviconId(item.faviconId),
+              });
+            }
+          }
+          if (folderChanged) {
+            await assignItemToFolder(
+              payload.itemId,
+              payload.folderId === NO_FOLDER_VALUE ? null : payload.folderId,
             );
-            throw error;
-          }
-          await deleteRemovedKeyFieldFiles(
-            formRef.current?.getFileBaselineSections() ?? initialValues.sections,
-            uploadedPayload.sections,
-            (file) => deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
-          );
-          if (item.faviconId && item.faviconId !== updatedItem.faviconId) {
-            await deleteKeyFieldFileAttachment({
-              accessToken,
-              vaultId: item.vaultId,
-              itemId: item.itemId,
-              file: keyFieldFileValueFromFaviconId(item.faviconId),
-            });
-          }
-          if (uploadedPayload.folderId !== folderId && uploadedPayload.folderId !== NO_FOLDER_VALUE) {
-            await assignItemToFolder(uploadedPayload.itemId, uploadedPayload.folderId);
           }
         },
       );

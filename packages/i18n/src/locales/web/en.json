@@ -476,6 +476,7 @@
   "web.items.detail.notFound": "This item does not exist",
   "web.items.detail.selectItemTitle": "Select an item",
   "web.items.detail.selectItemDescription": "The item card will appear here",
+  "web.items.detail.changeFolderAria": "Change folder",
   "web.items.detail.moreActionsAria": "More actions",
   "web.items.detail.capsuleFavoriteGroupAria": "Capsule and favorites",
   "web.items.detail.favoriteAddTooltip": "Add to favorites",
