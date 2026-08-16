@@ -229,6 +229,11 @@ type ItemDetailTopBarProps = {
   onToggleFavorite: () => void;
   onToggleArchive: () => void;
   onToggleDelete: () => void;
+  canEdit?: boolean;
+  canFavorite?: boolean;
+  canArchive?: boolean;
+  canDelete?: boolean;
+  canCreateCapsule?: boolean;
 };
 
 const controlGroupLayoutClassName = "w-auto shrink-0";
@@ -249,6 +254,11 @@ export default function ItemDetailTopBar({
   onToggleFavorite,
   onToggleArchive,
   onToggleDelete,
+  canEdit = true,
+  canFavorite = true,
+  canArchive = true,
+  canDelete = true,
+  canCreateCapsule = true,
 }: ItemDetailTopBarProps) {
   const favoriteTooltip = favorite
     ? t("web.items.detail.favoriteRemoveTooltip")
@@ -288,6 +298,7 @@ export default function ItemDetailTopBar({
         {!archived && !deleted ? (
           <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
             <TooltipProvider delayDuration={300}>
+              {canCreateCapsule ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -303,6 +314,8 @@ export default function ItemDetailTopBar({
                 </TooltipTrigger>
                 <TooltipContent>{t("web.nav.addCapsule")}</TooltipContent>
               </Tooltip>
+              ) : null}
+              {canFavorite ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -319,11 +332,13 @@ export default function ItemDetailTopBar({
                 </TooltipTrigger>
                 <TooltipContent>{favoriteTooltip}</TooltipContent>
               </Tooltip>
+              ) : null}
             </TooltipProvider>
           </ControlGroup>
         ) : null}
 
         <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
+          {canEdit ? (
           <Button
             type="button"
             variant="outline"
@@ -335,6 +350,7 @@ export default function ItemDetailTopBar({
             <IconEdit16 />
             <span>{t("web.items.menu.edit")}</span>
           </Button>
+          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -354,6 +370,7 @@ export default function ItemDetailTopBar({
                       <span>{t("web.items.menu.copy")}</span>
                     </DropdownMenuItem>
                   ) : null}
+                  {canFavorite ? (
                   <DropdownMenuItem className="gap-2" onSelect={onToggleFavorite}>
                     {favorite ? (
                       <IconUnfavorite16 className="text-foreground" />
@@ -364,14 +381,19 @@ export default function ItemDetailTopBar({
                       {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
                     </span>
                   </DropdownMenuItem>
+                  ) : null}
+                  {canCreateCapsule ? (
                   <DropdownMenuItem className="gap-2" onSelect={() => undefined}>
                     <IconCapsule16 />
                     <span>{t("web.nav.addCapsule")}</span>
                   </DropdownMenuItem>
+                  ) : null}
+                  {canFavorite || canCreateCapsule || onCopy ? (
                   <DropdownMenuSeparator className="mx-1 my-1" />
+                  ) : null}
                 </>
               ) : null}
-              {!deleted ? (
+              {!deleted && canArchive ? (
                 <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
                   {archived ? (
                     <IconUnarchive16 className="text-foreground" />
@@ -381,6 +403,7 @@ export default function ItemDetailTopBar({
                   <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
                 </DropdownMenuItem>
               ) : null}
+              {canDelete || deleted ? (
               <DropdownMenuItem
                 className={cn(
                   "gap-2",
@@ -395,6 +418,7 @@ export default function ItemDetailTopBar({
                 )}
                 <span>{deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
               </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </ControlGroup>

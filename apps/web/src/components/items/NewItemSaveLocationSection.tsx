@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
+import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { NO_FOLDER_VALUE, folderPathExists, type FlatWorkspaceFolder } from "../../folders/workspaceFolderTree";
 import {
   DEFAULT_SHARED_VAULT_ICON,
@@ -134,7 +135,12 @@ export default function NewItemSaveLocationSection({
   onFolderIdChange,
 }: NewItemSaveLocationSectionProps) {
   const { flatFolders, createFolder } = useWorkspaceFolders();
-  const selectedVault = vaults.find((vault) => vault.id === vaultId);
+  const { canPostToVault } = useWorkspaceVaultProfiles();
+  const writableVaults = useMemo(
+    () => vaults.filter((vault) => canPostToVault(vault.id)),
+    [canPostToVault, vaults],
+  );
+  const selectedVault = writableVaults.find((vault) => vault.id === vaultId) ?? vaults.find((vault) => vault.id === vaultId);
   const selectedFolder =
     folderId === NO_FOLDER_VALUE ? null : flatFolders.find((folder) => folder.id === folderId);
 
@@ -165,7 +171,7 @@ export default function NewItemSaveLocationSection({
           variant="inline"
           value={vaultId}
           onValueChange={onVaultIdChange}
-          disabled={!vaultsListReady || vaults.length === 0}
+          disabled={!vaultsListReady || writableVaults.length === 0}
           selectedLabel={<VaultSelectLabel vault={selectedVault} />}
           placeholder={vaultsListReady ? t("web.newItemPopup.vaultPlaceholder") : "…"}
           searchPlaceholder={t("web.newItemPopup.vaultSearch")}
@@ -173,7 +179,7 @@ export default function NewItemSaveLocationSection({
         >
           <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[11rem] max-md:max-w-none")} />
           <SearchableSelectContent align="start" className="min-w-[14rem]">
-            {vaults.map((vault) => (
+            {writableVaults.map((vault) => (
               <SearchableSelectItem
                 key={vault.id}
                 value={vault.id}
@@ -233,8 +239,13 @@ export default function NewItemSaveLocationSection({
 }
 
 export function useDefaultNewItemVaultId(vaults: readonly Vault[], vaultsListReady: boolean): string {
-  const personalVaultId = vaults.find((vault) => vault.isPersonal)?.id ?? "";
-  const fallbackVaultId = vaults[0]?.id ?? "";
+  const { canPostToVault } = useWorkspaceVaultProfiles();
+  const writableVaults = useMemo(
+    () => vaults.filter((vault) => canPostToVault(vault.id)),
+    [canPostToVault, vaults],
+  );
+  const personalVaultId = writableVaults.find((vault) => vault.isPersonal)?.id ?? "";
+  const fallbackVaultId = writableVaults[0]?.id ?? "";
 
   return useMemo(() => {
     if (!vaultsListReady) {
@@ -248,6 +259,11 @@ export function useSyncedNewItemVaultId(
   vaults: readonly Vault[],
   vaultsListReady: boolean,
 ): [string, (vaultId: string) => void] {
+  const { canPostToVault } = useWorkspaceVaultProfiles();
+  const writableVaults = useMemo(
+    () => vaults.filter((vault) => canPostToVault(vault.id)),
+    [canPostToVault, vaults],
+  );
   const defaultVaultId = useDefaultNewItemVaultId(vaults, vaultsListReady);
   const [vaultId, setVaultId] = useState("");
 
@@ -256,12 +272,12 @@ export function useSyncedNewItemVaultId(
       return;
     }
     setVaultId((current) => {
-      if (!current || !vaults.some((vault) => vault.id === current)) {
+      if (!current || !writableVaults.some((vault) => vault.id === current)) {
         return defaultVaultId;
       }
       return current;
     });
-  }, [defaultVaultId, vaults]);
+  }, [defaultVaultId, writableVaults]);
 
   return [vaultId, setVaultId];
 }

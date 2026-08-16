@@ -112,6 +112,31 @@ export class WorkspaceMembersService {
     };
   }
 
+  /**
+   * Lightweight directory for activity / audit labels.
+   * Available to any workspace member (not gated by members.get).
+   */
+  async listMemberDirectory(
+    workspaceId: string,
+    actorId: string,
+  ): Promise<Array<{ userId: string; email: string; firstName: string | null; lastName: string | null }>> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    const active = await this.loadActiveMembers(workspaceId);
+    return active.flatMap((member) => {
+      if (!member.userId) {
+        return [];
+      }
+      return [
+        {
+          userId: member.userId,
+          email: member.email,
+          firstName: member.firstName,
+          lastName: member.lastName,
+        },
+      ];
+    });
+  }
+
   private async assertMembers(
     workspaceId: string,
     actorId: string,

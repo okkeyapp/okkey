@@ -22,6 +22,7 @@ import { ItemPurgeService } from "./item-purge/service.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
 import { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
+import { WorkspaceMeVaultProfilesService } from "./routes/workspace-me-vault-profiles.ts";
 import { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { loadEnterprisePlugins } from "./plugins/load-enterprise-plugins.ts";
 import {
@@ -108,6 +109,11 @@ async function main(): Promise<void> {
     workspaces: storage.repositories.workspaces,
     db: storage.postgres,
   });
+  const workspaceMeVaultProfilesService = new WorkspaceMeVaultProfilesService(
+    storage.repositories.workspaceProfiles,
+    storage.repositories.workspaces,
+    storage.postgres,
+  );
   const workspaceMembersService = new WorkspaceMembersService({
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
@@ -194,6 +200,7 @@ async function main(): Promise<void> {
     workspaceSettingsService,
     workspaceBuiltInRolesService,
     workspaceBuiltInProfilesService,
+    workspaceMeVaultProfilesService,
     workspaceMembersService,
     vaultUnlockBootstrapService,
     vaultSharingService,

@@ -18,6 +18,7 @@ import {
 import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import { useWorkspaceItemTemplates } from "../../items/useWorkspaceItemTemplates";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
 import { runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
@@ -68,7 +69,8 @@ export default function EditItemPopup({
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
-  const { getItemById, updateItem } = useWorkspaceItems();
+  const { getItemById, updateItem, resolveVaultEncryptionKey, getItemCreatedByUserId } = useWorkspaceItems();
+  const { canPutItem } = useWorkspaceVaultProfiles();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
   const { accessToken, vaultKey } = useAuthVault();
   const core = useAuthenticatedCoreClient();
@@ -206,9 +208,8 @@ export default function EditItemPopup({
     }
     const faviconSyncInput = formRef.current.getFaviconSyncInput();
 
-    const selectedVault = vaults.find((vault) => vault.id === payload.vaultId);
-    if (selectedVault && !selectedVault.isPersonal) {
-      setSaveError(t("web.newItemPopup.saveErrorSharedVaultUnsupported"));
+    if (!canPutItem(payload.vaultId, getItemCreatedByUserId(item.itemId))) {
+      setSaveError(t("web.editItemPopup.saveErrorGeneric"));
       return;
     }
 
@@ -225,13 +226,14 @@ export default function EditItemPopup({
           if (!accessToken || !vaultKey) {
             throw new Error("AUTH_REQUIRED");
           }
+          const itemVaultKey = await resolveVaultEncryptionKey(payload.vaultId);
           const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
           let updatedItem = buildItemFromEditSavePayload(uploadedPayload, uploadedPayload.createdAtMs!, item);
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
             const faviconSync = await syncItemFaviconForPlaintext(
               accessToken,
-              vaultKey,
+              itemVaultKey,
               updatedItem,
               item,
               faviconSyncInput,

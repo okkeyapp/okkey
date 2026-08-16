@@ -62,29 +62,25 @@ The **New item** popup can create encrypted vault items and show them in the ite
 | Plaintext mapping | `src/items/keyFormToItemPlaintext.ts` |
 | Sync + outbox | `src/items/workspaceVaultItemsSync.ts`, `src/items/WorkspaceItemsContext.tsx` |
 | Vault key resolution | `src/items/resolveVaultItemEncryptionKey.ts` |
+| Vault profile ACL (client) | `src/items/WorkspaceVaultProfilesContext.tsx`, `@okkey/types` `profile-permits` |
 | List (no demo data) | `src/components/workspace/ItemsListLeftPane.tsx` |
 
-Flow: validate form → build `ItemPlaintextV2` → `buildItemCreateAppendRequest` (`@okkey/sync/item-sync`) → vault event outbox → optional `ITEM_FOLDER_ASSIGN` via workspace personal sync.
+Flow: validate form → resolve per-vault encryption key → build `ItemPlaintextV2` → `buildItemCreateAppendRequest` (`@okkey/sync/item-sync`) → vault event outbox → optional `ITEM_FOLDER_ASSIGN` via workspace personal sync.
 
 ### Current limitations
 
-1. **Personal vault only for save** — encryption uses the account split-key (`vaultKey` from unlock). Choosing a **shared** vault shows an error (`web.newItemPopup.saveErrorSharedVaultUnsupported`). `resolveVaultItemEncryptionKey` does not unwrap `GET /vaults/:vaultId/key` yet.
-2. **Category required fields** — only **Login / Password** defines required fields (`itemCategoryDefaultSections.ts`: name, login, password, website URL). Other categories have no default sections and no category-specific validation rules.
-3. **Tags** — UI exists (`NewItemTagsSection`) but tags are **not** written into the item plaintext payload.
-4. **List metadata** — favorites, archive, and trash flags are always `false` in the list mapper; there is no client metadata layer for them yet.
-5. **Shared vault items in the list** — sync fetches events for all workspace vaults, but decryption uses the personal-vault key path today, so items in shared vaults may not appear until per-vault key unwrap is implemented.
-6. **Incremental replay** — vault event fetch replays one API page per refresh; large vaults may need paginated replay (same pattern as `SyncOutboxClient.fetchAllAfterVersion`).
+1. **Category required fields** — only **Login / Password** defines required fields (`itemCategoryDefaultSections.ts`: name, login, password, website URL). Other categories have no default sections and no category-specific validation rules.
+2. **Tags** — UI exists (`NewItemTagsSection`) but tags are **not** written into the item plaintext payload.
+3. **Incremental replay** — vault event fetch replays one API page per refresh; large vaults may need paginated replay (same pattern as `SyncOutboxClient.fetchAllAfterVersion`).
+4. **Profile content ACL** — enforced on the Web client after decrypt (`GET /workspaces/:id/me/vault-profiles` + `profilePermits`). Server sync ACL remains membership-based (zero-knowledge).
 
 Demo records (`itemsListLeftPane.demo.json`) are **removed** from the left pane; the list reflects synced workspace items only.
 
 ### TODO (to complete the feature)
 
-1. **Shared vault key unwrap** — on unlock, keep decrypted identity keys in memory (see `decryptUserIdentityFromEncryptedBlob`); implement hybrid unwrap of `encryptedVaultKey` (`meta.key_wrap_scheme = hybrid_ecc_pq_v1`, `entity = vault_key_wrap`) via `decryptHybrid` in `@okkey/crypto`; use result as `encryptVaultItemPayload` / `decryptVaultItemPayload` key in `resolveVaultItemEncryptionKey`.
-2. **Enable save to any accessible vault** — remove the personal-only guard in `NewItemPopup` after (1); use the same resolver for list sync decryption.
-3. **Category registry** — per-category default sections, required-field rules, and validation (mirror `getDefaultSectionsForCategory` + `validateNewItemForm` for secure note, card, etc.).
-4. **Tags and list flags** — extend plaintext schema or workspace-personal metadata; wire list filters (favorites / archive / deleted).
-5. **Item detail & edit** — right pane for `?item=`; `ITEM_UPDATE` outbox path and form prefill.
-6. **Tests** — integration tests for create → list → folder assign; crypto round-trip with real WASM payloads.
+1. **Category registry** — per-category default sections, required-field rules, and validation (mirror `getDefaultSectionsForCategory` + `validateNewItemForm` for secure note, card, etc.).
+2. **Tags and list flags** — extend plaintext schema or workspace-personal metadata; wire list filters (favorites / archive / deleted).
+3. **Tests** — integration tests for create → list → folder assign; crypto round-trip with real WASM payloads; shared-vault create with unwrap.
 
 See also: [`docs/architecture/04_vault_architecture.md`](../../docs/architecture/04_vault_architecture.md) (item schema, vault keys), [`docs/architecture/05_sync_architecture.md`](../../docs/architecture/05_sync_architecture.md) (`ITEM_CREATE`, folder assign).
 

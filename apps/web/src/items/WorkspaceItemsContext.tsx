@@ -40,6 +40,8 @@ export type WorkspaceItemsContextValue = {
   createItem: (item: ItemPlaintextV2) => Promise<string>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
   updateItemQuiet: (item: ItemPlaintextV2) => Promise<string>;
+  resolveVaultEncryptionKey: (vaultId: string) => Promise<Uint8Array>;
+  getItemCreatedByUserId: (itemId: string) => string | null | undefined;
   setItemArchived: (itemId: string, archived: boolean) => Promise<void>;
   setItemsArchived: (itemIds: readonly string[], archived: boolean) => Promise<void>;
   setItemDeleted: (itemId: string, deleted: boolean) => Promise<void>;
@@ -257,6 +259,14 @@ export function useWorkspaceItemsState(input: {
     [syncFromController],
   );
 
+  const resolveVaultEncryptionKey = useCallback(async (vaultId: string) => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      throw new Error("ITEMS_SYNC_NOT_READY");
+    }
+    return controller.resolveVaultEncryptionKey(vaultId);
+  }, []);
+
   const setItemArchived = useCallback(
     async (itemId: string, archived: boolean) => {
       await runMutation(async (controller) => {
@@ -351,6 +361,17 @@ export function useWorkspaceItemsState(input: {
     return controller.getItemActivityById(itemId);
   }, [syncVersion]);
 
+  const getItemCreatedByUserId = useCallback(
+    (itemId: string) => {
+      const controller = controllerRef.current;
+      if (!controller) {
+        return undefined;
+      }
+      return controller.getItemCreatedByUserId(itemId);
+    },
+    [syncVersion],
+  );
+
   return useMemo(
     () => ({
       records,
@@ -361,9 +382,11 @@ export function useWorkspaceItemsState(input: {
       syncVersion,
       getItemById,
       getItemActivityById,
+      getItemCreatedByUserId,
       createItem,
       updateItem,
       updateItemQuiet,
+      resolveVaultEncryptionKey,
       setItemArchived,
       setItemsArchived,
       setItemDeleted,
@@ -384,9 +407,11 @@ export function useWorkspaceItemsState(input: {
       syncVersion,
       getItemById,
       getItemActivityById,
+      getItemCreatedByUserId,
       createItem,
       updateItem,
       updateItemQuiet,
+      resolveVaultEncryptionKey,
       setItemArchived,
       setItemsArchived,
       setItemDeleted,

@@ -1,7 +1,7 @@
 import type { Vault } from "@okkey/types";
 import { Button, Spinner, type KeyFieldFileValue } from "@okkey/ui";
 import { useMemo, useRef, useCallback, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
@@ -17,7 +17,9 @@ import { patchItemRecoveryCodesField } from "../../items/patchItemRecoveryCodesF
 import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { formatTagSearchQuery } from "../../items/workspaceItemSearch";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
+import type { WorkspaceShellOutletContext } from "../../pages/workspace/WorkspaceSectionPage";
 import {
   EDIT_ITEM_POPUP_ID,
   NEW_ITEM_POPUP_ID,
@@ -38,10 +40,13 @@ import { ItemsDetailPanelEmptyStateFill } from "./ItemsDetailPanelEmptyState";
 import ItemTagsReadonly from "./ItemTagsReadonly";
 import { downloadKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
+import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
+import { useWorkspaceMemberDisplayNames } from "../../workspace/useWorkspaceMemberDisplayNames";
 
 type ItemDetailCardProps = {
   itemId: string;
   vaults: readonly Vault[];
+  workspaceId?: string;
 };
 
 function actorLabelFromProfile(profile: { firstName?: string | null; lastName?: string | null; email?: string } | null): string {
@@ -52,15 +57,26 @@ function actorLabelFromProfile(profile: { firstName?: string | null; lastName?: 
   return profile?.email?.trim() || "—";
 }
 
-export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) {
+export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceIdProp }: ItemDetailCardProps) {
   const { t, locale } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
-  const { accessToken, profile, userId, vaultKey } = useAuthVault();
-  const { getItemById, getItemActivityById, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet, deletedItemsRetentionDays, fileUploadConstraints, filesInItemsEnabled } =
+  const { accessToken, profile, userId } = useAuthVault();
+  const outletContext = useOutletContext<WorkspaceShellOutletContext | undefined>();
+  const workspaceId = workspaceIdProp ?? outletContext?.workspaceId;
+  const { resolveMemberDisplayName } = useWorkspaceMemberDisplayNames(workspaceId);
+  const { getItemById, getItemActivityById, getItemCreatedByUserId, bootstrapped, loading, records, syncVersion, setItemArchived, setItemDeleted, updateItemQuiet, deletedItemsRetentionDays, fileUploadConstraints, filesInItemsEnabled, resolveVaultEncryptionKey } =
     useWorkspaceItems();
+  const {
+    canPutItem,
+    canArchiveItem,
+    canDeleteItem,
+    canUseFunction,
+    canViewFieldType,
+    canViewItem,
+  } = useWorkspaceVaultProfiles();
   const { folderTree, setItemFavorite } = useWorkspaceFolders();
   const cardRootRef = useRef<HTMLDivElement>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -75,15 +91,17 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     () => records.find((record: ItemsListRecord) => record.id === itemId),
     [records, itemId],
   );
+  const createdByUserId = getItemCreatedByUserId(itemId);
   const vault = vaults.find((candidate) => candidate.id === (item?.vaultId ?? listRecord?.vaultId));
+  const itemEncryptionKey = useResolvedVaultEncryptionKey(item?.vaultId ?? listRecord?.vaultId);
   const faviconId = item?.faviconId ?? listRecord?.faviconId;
   const faviconUrl = useItemFaviconAttachmentUrl({
     accessToken,
-    vaultKey,
+    vaultKey: itemEncryptionKey,
     vaultId: item?.vaultId ?? listRecord?.vaultId,
     itemId: item?.itemId ?? listRecord?.id,
     faviconId,
-    enabled: vault?.isPersonal,
+    enabled: Boolean(itemEncryptionKey),
   });
   const folderId = listRecord?.folderId ?? null;
   const folderLabel = folderId
@@ -93,10 +111,25 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
   const category = item && isItemCategoryId(item.categoryId) ? getItemCategoryDefinition(item.categoryId) : undefined;
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
-  const formSections = useMemo(
-    () => (item ? itemPlaintextToKeyFormSections(item, keyFormMessages) : []),
-    [item, keyFormMessages],
-  );
+  const formSections = useMemo(() => {
+    if (!item) {
+      return [];
+    }
+    const sections = itemPlaintextToKeyFormSections(item, keyFormMessages);
+    return sections
+      .map((section) => ({
+        ...section,
+        fields: section.fields.filter((field) => canViewFieldType(item.vaultId, field.type)),
+      }))
+      .filter((section) => section.fields.length > 0);
+  }, [canViewFieldType, item, keyFormMessages]);
+  const itemAccessAllowed =
+    !item || canViewItem(item.vaultId, item.categoryId, createdByUserId);
+  const canEdit = item ? canPutItem(item.vaultId, createdByUserId) : false;
+  const canArchive = item ? canArchiveItem(item.vaultId, createdByUserId) : false;
+  const canDelete = item ? canDeleteItem(item.vaultId, createdByUserId) : false;
+  const canFavorite = item ? canUseFunction(item.vaultId, "favorite") : false;
+  const canCreateCapsule = item ? canUseFunction(item.vaultId, "create_capsules") : false;
   const keyFormFieldTypes = useMemo(
     () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), filesInItemsEnabled),
     [locale, filesInItemsEnabled],
@@ -113,10 +146,12 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     [getItemById, itemId, updateItemQuiet],
   );
   const handleFileOpen = useCallback(
-    (file: KeyFieldFileValue) => {
-      if (!accessToken || !vaultKey || !item || !vault?.isPersonal) {
-        throw new Error("SHARED_VAULT_KEY_UNWRAP_UNSUPPORTED");
+    async (file: KeyFieldFileValue) => {
+      if (!accessToken || !item) {
+        throw new Error("AUTH_REQUIRED");
       }
+      const vaultKey =
+        itemEncryptionKey ?? (await resolveVaultEncryptionKey(item.vaultId));
       return downloadKeyFieldFileAttachment({
         accessToken,
         vaultId: item.vaultId,
@@ -125,13 +160,17 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
         file,
       });
     },
-    [accessToken, item, vault?.isPersonal, vaultKey],
+    [accessToken, item, itemEncryptionKey, resolveVaultEncryptionKey],
   );
   const activityEntries = useMemo(() => {
     if (!item) {
       return [];
     }
     const resolveActorLabel = (actorId: string | null) => {
+      const fromMembers = resolveMemberDisplayName(actorId);
+      if (fromMembers) {
+        return fromMembers;
+      }
       if (actorId && userId && actorId === userId) {
         return actorLabelFromProfile(profile);
       }
@@ -148,11 +187,14 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
       itemId: item.itemId,
       createdAtMs: item.createdAtMs,
       updatedAtMs: item.updatedAtMs,
-      actorLabel: actorLabelFromProfile(profile),
+      actorLabel: resolveActorLabel(userId ?? null),
     });
-  }, [item, profile, userId, getItemActivityById, syncVersion]);
+  }, [item, profile, userId, getItemActivityById, resolveMemberDisplayName, syncVersion]);
 
   const handleToggleDelete = useCallback(() => {
+    if (!canDelete && !(listRecord?.deleted ?? false)) {
+      return;
+    }
     const nextDeleted = !(listRecord?.deleted ?? false);
     if (!nextDeleted) {
       void (async () => {
@@ -161,7 +203,7 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
       return;
     }
     setDeleteConfirmOpen(true);
-  }, [itemId, listRecord?.deleted, setItemDeleted]);
+  }, [canDelete, itemId, listRecord?.deleted, setItemDeleted]);
 
   const confirmDeleteItem = useCallback(() => {
     void (async () => {
@@ -199,7 +241,24 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
     );
   }
 
+  if (!itemAccessAllowed) {
+    return (
+      <ItemsDetailPanelEmptyStateFill
+        title={t("web.items.detail.notFoundTitle")}
+        description={t("web.items.detail.notFound")}
+        action={
+          <Button asChild variant="secondary">
+            <Link to={itemsPathAllWorkspaceMerged(searchParams, { clearItem: true })}>{t("web.nav.allItems")}</Link>
+          </Button>
+        }
+      />
+    );
+  }
+
   function openEditPopup() {
+    if (!canEdit) {
+      return;
+    }
     navigate(
       {
         pathname: location.pathname,
@@ -262,11 +321,19 @@ export default function ItemDetailCard({ itemId, vaults }: ItemDetailCardProps) 
         onBack={handleBack}
         onEdit={openEditPopup}
         onCopy={openCopyPopup}
+        canEdit={canEdit}
+        canFavorite={canFavorite}
+        canArchive={canArchive}
+        canDelete={canDelete}
+        canCreateCapsule={canCreateCapsule}
         onToggleFavorite={() => {
+          if (!canFavorite) {
+            return;
+          }
           void setItemFavorite(itemId, !(listRecord?.favorite ?? false));
         }}
         onToggleArchive={() => {
-          if (listRecord?.deleted) {
+          if (!canArchive || listRecord?.deleted) {
             return;
           }
           const nextArchived = !(listRecord?.archived ?? false);

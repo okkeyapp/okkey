@@ -35,6 +35,7 @@ import {
   uploadEncryptedAttachment,
 } from "../../api/key-field-files";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
+import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
 
 export type NewItemSavePayload = {
   itemId: string;
@@ -126,8 +127,8 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const isEditMode = Boolean(initialValues);
   const isTemplateMode = Boolean(templateName);
   const isCopyMode = Boolean(prefillValues) && !isTemplateMode;
-  const { accessToken, vaultKey } = useAuthVault();
-  const { fileUploadConstraints, filesInItemsEnabled } = useWorkspaceItems();
+  const { accessToken } = useAuthVault();
+  const { fileUploadConstraints, filesInItemsEnabled, resolveVaultEncryptionKey } = useWorkspaceItems();
   const itemIdRef = useRef(initialValues?.itemId ?? generateEntityId());
   const pendingFileByIdRef = useRef(new Map<string, File>());
   const formInstanceKeyRef = useRef(
@@ -147,6 +148,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const [tags, setTags] = useState<string[]>(initialValues?.tags ?? prefillValues?.tags ?? []);
   const [vaultId, setVaultId] = useState(initialValues?.vaultId ?? prefillValues?.vaultId ?? "");
   const selectedVault = useMemo(() => vaults.find((vault) => vault.id === vaultId), [vaultId, vaults]);
+  const itemEncryptionKey = useResolvedVaultEncryptionKey(vaultId || undefined);
   const [folderId, setFolderId] = useState(initialValues?.folderId ?? prefillValues?.folderId ?? NO_FOLDER_VALUE);
   const [syncedVaultId] = useSyncedNewItemVaultId(vaults, vaultsListReady);
   useEffect(() => {
@@ -160,26 +162,24 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), filesInItemsEnabled),
     [locale, filesInItemsEnabled],
   );
-  const resolveFileVaultContext = useCallback(() => {
-    if (!accessToken || !vaultKey) {
+  const resolveFileVaultContext = useCallback(async () => {
+    if (!accessToken) {
       throw new Error("AUTH_REQUIRED");
     }
     if (!selectedVault) {
       throw new Error("VAULT_REQUIRED");
     }
-    if (!selectedVault.isPersonal) {
-      throw new Error("SHARED_VAULT_KEY_UNWRAP_UNSUPPORTED");
-    }
+    const vaultKey = itemEncryptionKey ?? (await resolveVaultEncryptionKey(selectedVault.id));
     return {
       accessToken,
       vaultId: selectedVault.id,
       itemId: itemIdRef.current,
       vaultKey,
     };
-  }, [accessToken, selectedVault, vaultKey]);
+  }, [accessToken, itemEncryptionKey, resolveVaultEncryptionKey, selectedVault]);
   const resolveAttachmentContext = useCallback(
-    (itemId: string) => ({
-      ...resolveFileVaultContext(),
+    async (itemId: string) => ({
+      ...(await resolveFileVaultContext()),
       itemId,
     }),
     [resolveFileVaultContext],
@@ -201,13 +201,15 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
     initialValues?.itemId ??
     itemIdRef.current;
   const handleFileOpen = useCallback(
-    (file: KeyFieldFileValue) =>
-      downloadKeyFieldFileAttachment({
-        ...resolveAttachmentContext(
-          pendingFileByIdRef.current.has(file.attachmentId) ? itemIdRef.current : sourceAttachmentItemId,
-        ),
+    async (file: KeyFieldFileValue) => {
+      const context = await resolveAttachmentContext(
+        pendingFileByIdRef.current.has(file.attachmentId) ? itemIdRef.current : sourceAttachmentItemId,
+      );
+      return downloadKeyFieldFileAttachment({
+        ...context,
         file,
-      }),
+      });
+    },
     [resolveAttachmentContext, sourceAttachmentItemId],
   );
   const initialSections = useMemo(
@@ -267,11 +269,11 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const initialFaviconId = initialValues?.faviconId ?? prefillValues?.faviconId;
   const storedFaviconUrl = useItemFaviconAttachmentUrl({
     accessToken,
-    vaultKey,
+    vaultKey: itemEncryptionKey,
     vaultId,
     itemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId ?? itemIdRef.current,
     faviconId: initialFaviconId,
-    enabled: selectedVault?.isPersonal && !previewImageSrc,
+    enabled: Boolean(itemEncryptionKey) && !previewImageSrc,
   });
 
   const handleWebsiteUrlsBlur = useCallback((sections: KeyFormEditorSection[]) => {
@@ -450,8 +452,9 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
 
         const uploadedByPendingId = new Map<string, KeyFieldFileValue>();
         for (const [pendingId, file] of pendingEntries) {
+          const uploadContext = await resolveAttachmentContext(targetItemId);
           const uploaded = await uploadEncryptedAttachment({
-            ...resolveAttachmentContext(targetItemId),
+            ...uploadContext,
             plaintext: new Uint8Array(await file.arrayBuffer()),
             name: file.name,
             mimeType: file.type || "application/octet-stream",
@@ -461,12 +464,14 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         }
         const uploadedByCopiedId = new Map<string, KeyFieldFileValue>();
         for (const file of attachmentsToCopy.values()) {
+          const downloadContext = await resolveAttachmentContext(sourceItemId);
           const downloaded = await downloadKeyFieldFileAttachmentBytes({
-            ...resolveAttachmentContext(sourceItemId),
+            ...downloadContext,
             file,
           });
+          const uploadContext = await resolveAttachmentContext(targetItemId);
           const uploaded = await uploadEncryptedAttachment({
-            ...resolveAttachmentContext(targetItemId),
+            ...uploadContext,
             plaintext: downloaded.plaintext,
             name: file.name,
             mimeType: file.mimeType || downloaded.mimeType,

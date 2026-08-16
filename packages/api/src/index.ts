@@ -43,7 +43,9 @@ import type {
   VaultCreateRequestDto,
   VaultUpdateRequestDto,
   WorkspaceMembersListResponseDto,
+  WorkspaceMemberDirectoryResponseDto,
   WorkspaceMePermissionsResponseDto,
+  MeVaultProfilesResponseDto,
   WorkspaceInvitationsCreateRequestDto,
   WorkspaceInvitationsCreateResponseDto,
   WorkspaceInvitationUpdateRequestDto,
@@ -274,9 +276,21 @@ export class CoreApiClient {
     );
   }
 
+  listWorkspaceMemberDirectory(workspaceId: string): Promise<WorkspaceMemberDirectoryResponseDto> {
+    return this.api.get<WorkspaceMemberDirectoryResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/member-directory`,
+    );
+  }
+
   getWorkspaceMePermissions(workspaceId: string): Promise<WorkspaceMePermissionsResponseDto> {
     return this.api.get<WorkspaceMePermissionsResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/me/permissions`,
+    );
+  }
+
+  getWorkspaceMeVaultProfiles(workspaceId: string): Promise<MeVaultProfilesResponseDto> {
+    return this.api.get<MeVaultProfilesResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/me/vault-profiles`,
     );
   }
 

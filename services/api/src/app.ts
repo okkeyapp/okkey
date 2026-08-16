@@ -69,8 +69,12 @@ import {
   createVaultUpdateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
-import { createWorkspaceMembersListRoute } from "./routes/workspace-members.ts";
+import { createWorkspaceMembersListRoute, createWorkspaceMemberDirectoryRoute } from "./routes/workspace-members.ts";
 import { createWorkspaceMePermissionsRoute } from "./routes/workspace-me-permissions.ts";
+import {
+  createWorkspaceMeVaultProfilesRoute,
+  WorkspaceMeVaultProfilesService,
+} from "./routes/workspace-me-vault-profiles.ts";
 import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
 import { createAccountVaultUnlockRoute } from "./routes/account-vault-unlock.ts";
@@ -137,6 +141,7 @@ export interface AppDeps {
   workspaceSettingsService?: WorkspaceSettingsService;
   workspaceBuiltInRolesService?: WorkspaceBuiltInRolesService;
   workspaceBuiltInProfilesService?: WorkspaceBuiltInProfilesService;
+  workspaceMeVaultProfilesService?: WorkspaceMeVaultProfilesService;
   workspaceMembersService?: WorkspaceMembersService;
   workspacePersonalSyncService?: WorkspacePersonalSyncService;
   attachmentService?: AttachmentService;
@@ -279,6 +284,13 @@ export function createApiApp(
         "/workspaces/:workspaceId/me/permissions",
         createWorkspaceMePermissionsRoute(options.postgres, resolveUserId),
       );
+      if (deps.workspaceMeVaultProfilesService) {
+        app.route(
+          "GET",
+          "/workspaces/:workspaceId/me/vault-profiles",
+          createWorkspaceMeVaultProfilesRoute(deps.workspaceMeVaultProfilesService, resolveUserId),
+        );
+      }
     }
     // Shared vault create is registered by enterprise `workspace-shared-vaults` plugin only.
     if (deps.workspaceMembersService) {
@@ -286,6 +298,11 @@ export function createApiApp(
         "GET",
         "/workspaces/:workspaceId/members",
         createWorkspaceMembersListRoute(deps.workspaceMembersService, resolveUserId),
+      );
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/member-directory",
+        createWorkspaceMemberDirectoryRoute(deps.workspaceMembersService, resolveUserId),
       );
       // Invite / member mutation / vault-access routes: enterprise `workspace-members` plugin only.
     }

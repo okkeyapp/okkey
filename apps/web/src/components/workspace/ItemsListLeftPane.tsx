@@ -33,6 +33,7 @@ import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug 
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
+import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
 import { EDIT_ITEM_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName, stickyFooterShadowClassName, stickyFooterSurfaceClassName } from "./stickyHeaderShadow";
 import {
@@ -797,20 +798,19 @@ export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean
 
 function ItemsListRecordFavicon({
   row,
-  vaults,
 }: {
   row: ItemsListRecord;
   vaults: readonly ItemsListPaneVault[];
 }) {
-  const { accessToken, vaultKey } = useAuthVault();
-  const vault = vaults.find((entry) => entry.id === row.vaultId);
+  const { accessToken } = useAuthVault();
+  const itemEncryptionKey = useResolvedVaultEncryptionKey(row.vaultId);
   const faviconUrl = useItemFaviconAttachmentUrl({
     accessToken,
-    vaultKey,
+    vaultKey: itemEncryptionKey,
     vaultId: row.vaultId,
     itemId: row.id,
     faviconId: row.faviconId,
-    enabled: vault?.isPersonal,
+    enabled: Boolean(itemEncryptionKey),
   });
 
   return (

@@ -52,3 +52,27 @@ export function createWorkspaceMembersListRoute(
     }
   };
 }
+
+export function createWorkspaceMemberDirectoryRoute(
+  membersService: WorkspaceMembersService,
+  resolveUserId: ResolveUserId,
+): RouteHandler {
+  return async (ctx) => {
+    const workspaceId = ctx.params.workspaceId;
+    if (!workspaceId) {
+      json(ctx.res, 400, errorPayload("BAD_REQUEST", "workspaceId is required", ctx.requestId));
+      return;
+    }
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const members = await membersService.listMemberDirectory(workspaceId, userId);
+      json(ctx.res, 200, { workspaceId, members });
+    } catch (error) {
+      handleMembersError(ctx.requestId, ctx.res, error);
+    }
+  };
+}

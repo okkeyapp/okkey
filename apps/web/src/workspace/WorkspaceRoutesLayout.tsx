@@ -24,6 +24,10 @@ import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
 import { WorkspaceFoldersProvider, useWorkspaceFolders, useWorkspaceFoldersState } from "../folders/WorkspaceFoldersContext";
 import { WorkspaceItemsProvider, useWorkspaceItemsState } from "../items/WorkspaceItemsContext";
+import {
+  WorkspaceVaultProfilesProvider,
+  useWorkspaceVaultProfilesState,
+} from "../items/WorkspaceVaultProfilesContext";
 import { WorkspaceItemTemplatesProvider } from "../items/WorkspaceItemTemplatesContext";
 import { ItemCategoryPreferencesProvider } from "../components/items/ItemCategoryPreferencesContext";
 import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspaceFolderTree";
@@ -857,10 +861,18 @@ function WorkspaceShellWithItems({
     maxFileSizeMb,
     filesInItemsEnabled,
   });
+  const workspaceVaultProfilesState = useWorkspaceVaultProfilesState({
+    workspaceId: resolvedWorkspaceId,
+    core,
+    vaultUnlocked,
+    userId,
+    vaults,
+  });
 
   return (
     <WorkspaceItemTemplatesProvider workspaceId={resolvedWorkspaceId}>
       <ItemCategoryPreferencesProvider workspaceId={resolvedWorkspaceId}>
+        <WorkspaceVaultProfilesProvider value={workspaceVaultProfilesState}>
         <WorkspaceItemsProvider value={workspaceItemsState}>
           <NewItemPopup
             t={t}
@@ -906,7 +918,13 @@ function WorkspaceShellWithItems({
             itemsListVaultsLoaded={vaultsListReady}
             itemsListFolderTree={folderTreeForItems}
             itemsListFoldersLoaded={workspaceFoldersBootstrapped}
-            itemsListRecords={workspaceItemsState.records}
+            itemsListRecords={workspaceItemsState.records.filter((record) =>
+              workspaceVaultProfilesState.canViewItem(
+                record.vaultId,
+                record.categoryId,
+                workspaceItemsState.getItemCreatedByUserId(record.id),
+              ),
+            )}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
           >
             <Outlet
@@ -924,6 +942,7 @@ function WorkspaceShellWithItems({
             />
           </WorkspaceSidebarLayout>
         </WorkspaceItemsProvider>
+        </WorkspaceVaultProfilesProvider>
       </ItemCategoryPreferencesProvider>
     </WorkspaceItemTemplatesProvider>
   );

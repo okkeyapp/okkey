@@ -87,6 +87,59 @@ export class WorkspaceProfilesRepository {
     return rows.map(mapProfileRow);
   }
 
+  async listMeVaultProfiles(
+    workspaceId: string,
+    userId: string,
+  ): Promise<
+    Array<{
+      vaultId: string;
+      isPersonal: boolean;
+      profileId: string | null;
+      permissionsJson: Record<string, unknown> | null;
+      builtinKey: string | null;
+    }>
+  > {
+    const rows = await this.db.query<{
+      vault_id: string;
+      is_personal: boolean;
+      profile_id: string | null;
+      permissions_json: Record<string, unknown> | null;
+      builtin_key: string | null;
+    }>(
+      `
+        SELECT
+          v.id AS vault_id,
+          v.is_personal,
+          vp.profile_id,
+          p.permissions_json,
+          p.builtin_key
+        FROM vaults v
+        LEFT JOIN vault_profiles vp
+          ON vp.vault_id = v.id
+         AND vp.user_id = $2
+        LEFT JOIN profiles p
+          ON p.id = vp.profile_id
+        WHERE v.workspace_id = $1
+          AND (
+            (v.is_personal = true AND v.owner_id = $2)
+            OR (
+              v.is_personal = false
+              AND vp.profile_id IS NOT NULL
+            )
+          )
+        ORDER BY v.is_personal DESC, v.created_at ASC
+      `,
+      [workspaceId, userId],
+    );
+    return rows.map((row) => ({
+      vaultId: row.vault_id,
+      isPersonal: row.is_personal,
+      profileId: row.profile_id,
+      permissionsJson: row.permissions_json,
+      builtinKey: row.builtin_key,
+    }));
+  }
+
   async findByBuiltinKey(
     workspaceId: string,
     builtinKey: string,

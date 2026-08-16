@@ -62,7 +62,7 @@ export default function WorkspaceSectionPage() {
 
   if (isItemsRoute) {
     if (itemId) {
-      return <ItemDetailCard itemId={itemId} vaults={vaults} />;
+      return <ItemDetailCard itemId={itemId} vaults={vaults} workspaceId={workspaceId} />;
     }
 
     return (

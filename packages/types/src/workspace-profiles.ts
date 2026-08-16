@@ -406,3 +406,223 @@ export interface WorkspaceBuiltInProfileDto {
 export interface WorkspaceBuiltInProfilesListResponseDto {
   profiles: WorkspaceBuiltInProfileDto[];
 }
+
+/** One vault content-access profile for the current member. */
+export interface MeVaultProfileEntryDto {
+  vaultId: string;
+  profileId: string;
+  permissions: ProfilePermissions;
+}
+
+/** `GET /workspaces/:workspaceId/me/vault-profiles` success body. */
+export interface MeVaultProfilesResponseDto {
+  workspaceId: string;
+  vaults: MeVaultProfileEntryDto[];
+}
+
+function scopeAllows(scope: ProfilePermissionScope, values: readonly string[], candidate: string): boolean {
+  if (scope === "all") {
+    return true;
+  }
+  const selected = new Set(values);
+  if (scope === "selected") {
+    return selected.has(candidate);
+  }
+  return !selected.has(candidate);
+}
+
+function findRule<T extends ProfilePermissionRule["kind"]>(
+  permissions: ProfilePermissions,
+  kind: T,
+): Extract<ProfilePermissionRule, { kind: T }> | undefined {
+  return permissions.rules.find((rule): rule is Extract<ProfilePermissionRule, { kind: T }> => rule.kind === kind);
+}
+
+function allowsResourceScope(
+  level: ProfileResourceScopePermission,
+  isOwn: boolean | undefined,
+): boolean {
+  if (level === PROFILE_RESOURCE_PERMISSION_NONE) {
+    return false;
+  }
+  if (level === PROFILE_RESOURCE_PERMISSION_ALL) {
+    return true;
+  }
+  return Boolean(isOwn);
+}
+
+export type ProfilePermitsContext = {
+  permissions: ProfilePermissions;
+  /** Current user id; required for `own` scope checks. */
+  userId?: string | null;
+  /** Creator of the item from first ITEM_CREATE actorId. */
+  itemCreatedByUserId?: string | null;
+  /** Wall-clock for datetime window evaluation (defaults to Date.now()). */
+  nowMs?: number;
+};
+
+function isOwnItem(ctx: ProfilePermitsContext): boolean {
+  if (!ctx.userId || !ctx.itemCreatedByUserId) {
+    return false;
+  }
+  return ctx.userId === ctx.itemCreatedByUserId;
+}
+
+export function profileAllowsEntriesGet(ctx: ProfilePermitsContext): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  return allowsResourceScope(permissions.entries.get, isOwnItem(ctx));
+}
+
+export function profileAllowsEntriesPost(ctx: ProfilePermitsContext): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  return permissions.entries.post === PROFILE_RESOURCE_PERMISSION_ALL;
+}
+
+export function profileAllowsEntriesPut(ctx: ProfilePermitsContext): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  return allowsResourceScope(permissions.entries.put, isOwnItem(ctx));
+}
+
+export function profileAllowsEntriesArchive(ctx: ProfilePermitsContext): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  return allowsResourceScope(permissions.entries.archive, isOwnItem(ctx));
+}
+
+export function profileAllowsEntriesDelete(ctx: ProfilePermitsContext): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  return allowsResourceScope(permissions.entries.delete, isOwnItem(ctx));
+}
+
+/**
+ * Category visibility for viewing existing items.
+ * Creation (POST) intentionally ignores this rule — all categories are available when post is allowed.
+ */
+export function profileAllowsCategory(ctx: ProfilePermitsContext, categoryId: string): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  const rule = findRule(permissions, "categories");
+  if (!rule) {
+    return true;
+  }
+  return scopeAllows(rule.scope, rule.values, categoryId);
+}
+
+/**
+ * Field-type visibility for viewing existing items.
+ * Creation (POST) intentionally ignores this rule.
+ */
+export function profileAllowsFieldType(ctx: ProfilePermitsContext, fieldType: string): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  const rule = findRule(permissions, "fields");
+  if (!rule) {
+    return true;
+  }
+  return scopeAllows(rule.scope, rule.values, fieldType);
+}
+
+export function profileAllowsFunction(
+  ctx: ProfilePermitsContext,
+  action: ProfileFunctionActionId,
+): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  const rule = findRule(permissions, "functions");
+  if (!rule) {
+    return true;
+  }
+  return scopeAllows(rule.scope, rule.values, action);
+}
+
+function parseHm(value: string): { hours: number; minutes: number } | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 23 || minutes > 59) {
+    return null;
+  }
+  return { hours, minutes };
+}
+
+function minutesOfDay(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function inTimeRange(now: Date, timeStart: string, timeEnd: string): boolean {
+  const start = parseHm(timeStart);
+  const end = parseHm(timeEnd);
+  if (!start || !end) {
+    return true;
+  }
+  const nowMinutes = minutesOfDay(now);
+  const startMinutes = start.hours * 60 + start.minutes;
+  const endMinutes = end.hours * 60 + end.minutes;
+  if (startMinutes === endMinutes) {
+    return true;
+  }
+  if (startMinutes < endMinutes) {
+    return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+  }
+  return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+}
+
+function isoDateLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** 1=Mon .. 7=Sun (ISO). */
+function isoWeekday(date: Date): number {
+  const day = date.getDay();
+  return day === 0 ? 7 : day;
+}
+
+export function profileAllowsDatetime(ctx: ProfilePermitsContext, nowMs = ctx.nowMs ?? Date.now()): boolean {
+  const permissions = ensureProfilePermissions(ctx.permissions);
+  const rule = findRule(permissions, "datetime") as ProfileDatetimePermissionRule | undefined;
+  if (!rule || rule.mode === "all_time") {
+    return true;
+  }
+  const now = new Date(nowMs);
+  if (!inTimeRange(now, rule.timeStart, rule.timeEnd)) {
+    return false;
+  }
+  if (rule.mode === "time_only") {
+    return true;
+  }
+  if (rule.mode === "dates") {
+    const allowed = new Set(rule.dates ?? []);
+    return allowed.has(isoDateLocal(now));
+  }
+  if (rule.mode === "repeat_month") {
+    const days = new Set(rule.monthDays ?? []);
+    return days.has(now.getDate());
+  }
+  if (rule.mode === "repeat_week") {
+    const days = new Set(rule.weekdays ?? []);
+    return days.has(isoWeekday(now));
+  }
+  return true;
+}
+
+/**
+ * Combined view gate: entries.get + datetime + category.
+ * Field-level filtering is applied separately after decrypt.
+ */
+export function profileAllowsItemView(
+  ctx: ProfilePermitsContext,
+  categoryId: string,
+): boolean {
+  return (
+    profileAllowsEntriesGet(ctx) &&
+    profileAllowsDatetime(ctx) &&
+    profileAllowsCategory(ctx, categoryId)
+  );
+}
+
+export function getProfileEntries(ctx: ProfilePermitsContext): ProfileEntriesResourcePermissions {
+  return ensureProfilePermissions(ctx.permissions).entries;
+}
+

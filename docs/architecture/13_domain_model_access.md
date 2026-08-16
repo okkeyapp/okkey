@@ -101,6 +101,7 @@ Roles do not grant access to vault content by themselves. Profiles do not grant 
 - Item read/write permissions are controlled by the profile assigned for the vault.
 - Field-level visibility can be restricted by profile settings.
 - Item actions (copy, share, export) are controlled by profile settings.
+- Because vault item payloads are end-to-end encrypted, **profile content ACL (categories, fields, functions, datetime, entries) is enforced on the client** after decrypt. Clients load the actor’s assigned permissions via `GET /workspaces/:workspaceId/me/vault-profiles`. The server continues to gate sync append/list by vault membership only (zero-knowledge).
 
 ### Folders
 

@@ -173,6 +173,20 @@ export interface WorkspaceMembersListResponseDto {
   };
 }
 
+/** Public display row for activity labels (any workspace member may read). */
+export interface WorkspaceMemberDirectoryEntryDto {
+  userId: EntityId;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+/** `GET /workspaces/:workspaceId/member-directory` success body. */
+export interface WorkspaceMemberDirectoryResponseDto {
+  workspaceId: EntityId;
+  members: WorkspaceMemberDirectoryEntryDto[];
+}
+
 /** Permission cell shared by role matrix and actor permissions APIs. */
 export type WorkspacePermissionScopeLevel = 0 | 1 | 2;
 export type WorkspacePermissionPostLevel = 0 | 1;
@@ -620,9 +634,12 @@ export type {
   ProfilePermissionRule,
   ProfilePermissionScope,
   ProfilePermissions,
+  ProfilePermitsContext,
   ProfileResourcePostPermission,
   ProfileResourceScopePermission,
   ProfileScopeRuleKind,
+  MeVaultProfileEntryDto,
+  MeVaultProfilesResponseDto,
   WorkspaceBuiltInProfileDto,
   WorkspaceBuiltInProfileId,
   WorkspaceBuiltInProfilesListResponseDto,
@@ -642,6 +659,17 @@ export {
   createSimpleProfilePermissions,
   ensureProfilePermissions,
   getBuiltInProfilePermissions,
+  getProfileEntries,
+  profileAllowsCategory,
+  profileAllowsDatetime,
+  profileAllowsEntriesArchive,
+  profileAllowsEntriesDelete,
+  profileAllowsEntriesGet,
+  profileAllowsEntriesPost,
+  profileAllowsEntriesPut,
+  profileAllowsFieldType,
+  profileAllowsFunction,
+  profileAllowsItemView,
 } from "./workspace-profiles.js";
 
 /** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */

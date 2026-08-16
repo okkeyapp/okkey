@@ -23,6 +23,7 @@ import { runSaveWithToast } from "../../lib/saveWithToast";
 import PopupSaveButton from "../ui/PopupSaveButton";
 import { buildItemFromNewItemSavePayload } from "./NewItemForm";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
 import {
@@ -78,7 +79,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
   const [pendingExitAction, setPendingExitAction] = useState<PendingNewItemExitAction | null>(null);
-  const { createItem, getItemById, filesInItemsEnabled } = useWorkspaceItems();
+  const { createItem, getItemById, filesInItemsEnabled, resolveVaultEncryptionKey } = useWorkspaceItems();
+  const { canPostToVault } = useWorkspaceVaultProfiles();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
   const { accessToken, vaultKey } = useAuthVault();
   const core = useAuthenticatedCoreClient();
@@ -466,9 +468,8 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
     }
     const faviconSyncInput = formRef.current.getFaviconSyncInput();
 
-    const selectedVault = vaults.find((vault) => vault.id === payload.vaultId);
-    if (selectedVault && !selectedVault.isPersonal) {
-      setSaveError(t("web.newItemPopup.saveErrorSharedVaultUnsupported"));
+    if (!canPostToVault(payload.vaultId)) {
+      setSaveError(t("web.newItemPopup.saveErrorGeneric"));
       return;
     }
 
@@ -485,12 +486,19 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           if (!accessToken || !vaultKey) {
             throw new Error("AUTH_REQUIRED");
           }
+          const itemVaultKey = await resolveVaultEncryptionKey(payload.vaultId);
           const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
           let item = buildItemFromNewItemSavePayload(uploadedPayload);
           let createdItemId: string;
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
-            const faviconSync = await syncItemFaviconForPlaintext(accessToken, vaultKey, item, undefined, faviconSyncInput);
+            const faviconSync = await syncItemFaviconForPlaintext(
+              accessToken,
+              itemVaultKey,
+              item,
+              undefined,
+              faviconSyncInput,
+            );
             item = faviconSync.item;
             uploadedFavicon = faviconSync.uploadedFavicon;
             createdItemId = await createItem(item);

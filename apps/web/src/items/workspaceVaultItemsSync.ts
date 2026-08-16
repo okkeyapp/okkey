@@ -23,6 +23,8 @@ const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
 type VaultItemsMaterializedState = {
   items: Map<string, ItemPlaintextV2>;
   itemActivity: Map<string, ItemActivityWireEntry[]>;
+  /** First ITEM_CREATE actorId per item (for profile `own` scope). */
+  itemCreatedByUserId: Map<string, string | null>;
   lastAppliedVersion: number;
 };
 
@@ -34,6 +36,7 @@ type CachedWorkspaceVaultItemsState = {
       {
         items: Array<[string, ItemPlaintextV2]>;
         itemActivity?: Array<[string, ItemActivityWireEntry[]]>;
+        itemCreatedByUserId?: Array<[string, string | null]>;
         lastAppliedVersion: number;
       },
     ]
@@ -41,7 +44,7 @@ type CachedWorkspaceVaultItemsState = {
 };
 
 function cacheKey(userId: string, workspaceId: string): string {
-  return `okkey.workspace-vault-items.v3.u.${userId}.w.${workspaceId}`;
+  return `okkey.workspace-vault-items.v4.u.${userId}.w.${workspaceId}`;
 }
 
 function openCacheDb(): Promise<IDBDatabase> {
@@ -84,6 +87,7 @@ async function readCachedState(
       vaults.set(vaultId, {
         items: new Map(snapshot.items),
         itemActivity: new Map(snapshot.itemActivity ?? []),
+        itemCreatedByUserId: new Map(snapshot.itemCreatedByUserId ?? []),
         lastAppliedVersion: snapshot.lastAppliedVersion,
       });
     }
@@ -109,6 +113,7 @@ async function writeCachedState(
         {
           items: [...snapshot.items.entries()],
           itemActivity: [...snapshot.itemActivity.entries()],
+          itemCreatedByUserId: [...snapshot.itemCreatedByUserId.entries()],
           lastAppliedVersion: snapshot.lastAppliedVersion,
         },
       ]),
@@ -124,7 +129,12 @@ async function writeCachedState(
 }
 
 function emptyVaultState(): VaultItemsMaterializedState {
-  return { items: new Map(), itemActivity: new Map(), lastAppliedVersion: 0 };
+  return {
+    items: new Map(),
+    itemActivity: new Map(),
+    itemCreatedByUserId: new Map(),
+    lastAppliedVersion: 0,
+  };
 }
 
 function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
@@ -171,6 +181,7 @@ async function applyVaultItemEvents(
 ): Promise<VaultItemsMaterializedState> {
   const items = new Map(state.items);
   const itemActivity = new Map(state.itemActivity);
+  const itemCreatedByUserId = new Map(state.itemCreatedByUserId);
   let lastAppliedVersion = state.lastAppliedVersion;
 
   for (const event of events) {
@@ -198,6 +209,9 @@ async function applyVaultItemEvents(
 
     if (event.eventType === "ITEM_CREATE") {
       appendItemActivity(itemActivity, parsed.itemId, event, "created");
+      if (!itemCreatedByUserId.has(parsed.itemId)) {
+        itemCreatedByUserId.set(parsed.itemId, event.actorId);
+      }
     } else if (event.eventType === "ITEM_UPDATE") {
       const previous = items.get(parsed.itemId);
       if (!isRecoveryCodesUsageOnlyItemUpdate(previous, parsed)) {
@@ -217,7 +231,7 @@ async function applyVaultItemEvents(
     lastAppliedVersion = event.version;
   }
 
-  return { items, itemActivity, lastAppliedVersion };
+  return { items, itemActivity, itemCreatedByUserId, lastAppliedVersion };
 }
 
 export type WorkspaceVaultItemsSyncController = {
@@ -225,9 +239,11 @@ export type WorkspaceVaultItemsSyncController = {
   drainOutbox: () => Promise<void>;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
+  resolveVaultEncryptionKey: (vaultId: string) => Promise<Uint8Array>;
   getItemsByVault: (vaultId: string) => ItemPlaintextV2[];
   getAllItems: () => ItemPlaintextV2[];
   getItemActivityById: (itemId: string) => ItemActivityWireEntry[];
+  getItemCreatedByUserId: (itemId: string) => string | null | undefined;
   getState: () => Map<string, VaultItemsMaterializedState>;
   dispose: () => void;
 };
@@ -328,11 +344,24 @@ export function createWorkspaceVaultItemsSyncController(input: {
       }
       return [];
     },
+    getItemCreatedByUserId: (itemId) => {
+      for (const state of vaultStates.values()) {
+        if (state.itemCreatedByUserId.has(itemId)) {
+          return state.itemCreatedByUserId.get(itemId);
+        }
+        const created = state.itemActivity.get(itemId)?.find((entry) => entry.actionKey === "created");
+        if (created) {
+          return created.actorId;
+        }
+      }
+      return undefined;
+    },
     refresh,
     drainOutbox: async () => {
       await outbox.drain();
       await refresh();
     },
+    resolveVaultEncryptionKey: resolveVaultKey,
     createItem: async (item) => {
       const state = ensureVaultState(item.vaultId);
       const vaultKey = await resolveVaultKey(item.vaultId);
