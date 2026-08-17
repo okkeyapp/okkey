@@ -915,6 +915,7 @@ function WorkspaceShellWithItems({
             vaultsListReady={vaultsListReady}
           />
           <NewCapsulePopup
+            t={t}
             workspaceId={resolvedWorkspaceId}
             workspace={currentWorkspace}
           />

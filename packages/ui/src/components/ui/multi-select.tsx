@@ -43,7 +43,12 @@ type MultiSelectSharedProps = {
   filterable?: boolean;
   searchPlaceholder?: string;
   /** Shown when `filterable`, query is non-empty, and no options match (e.g. i18n). */
-  searchEmptyMessage?: string;
+  searchEmptyMessage?: React.ReactNode;
+  /** Optional custom empty state that can submit the active search query. */
+  renderSearchEmpty?: (query: string, submit: () => void) => React.ReactNode;
+  /** Return `false` to keep the current query after submit. */
+  onSearchSubmit?: (query: string) => boolean | void;
+  onSearchQueryChange?: (query: string) => void;
   children: React.ReactNode;
 };
 
@@ -74,7 +79,9 @@ type MultiSelectContextValue = {
   setSearchQuery: (q: string) => void;
   searchPlaceholder: string;
   searchInputId: string;
-  searchEmptyMessage: string;
+  searchEmptyMessage: React.ReactNode;
+  renderSearchEmpty?: (query: string, submit: () => void) => React.ReactNode;
+  submitSearch: () => void;
 };
 
 const MultiSelectContext = React.createContext<MultiSelectContextValue | null>(null);
@@ -98,19 +105,29 @@ function MultiSelect(props: MultiSelectProps) {
     filterable = false,
     searchPlaceholder = "Search…",
     searchEmptyMessage = "No items found",
+    renderSearchEmpty,
+    onSearchSubmit,
+    onSearchQueryChange,
     children,
   } = props;
   const displayMode: MultiSelectDisplayMode = props.displayMode ?? "chips";
   const selectionCountLabel =
     displayMode === "summary" && "selectionCountLabel" in props ? props.selectionCountLabel : "";
   const [open, setOpenState] = React.useState(false);
-  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchQuery, setSearchQueryState] = React.useState("");
   const searchInputId = React.useId();
+  const setSearchQuery = React.useCallback(
+    (query: string) => {
+      setSearchQueryState(query);
+      onSearchQueryChange?.(query);
+    },
+    [onSearchQueryChange],
+  );
 
   const setOpen = React.useCallback((next: boolean) => {
     setOpenState(next);
     if (!next) setSearchQuery("");
-  }, []);
+  }, [setSearchQuery]);
   const [valueUncontrolled, setValueUncontrolled] = React.useState<string[]>(defaultValue ?? []);
   const isControlled = valueProp !== undefined;
   const value = isControlled ? valueProp! : valueUncontrolled;
@@ -176,6 +193,13 @@ function MultiSelect(props: MultiSelectProps) {
   );
 
   const listId = React.useId();
+  const submitSearch = React.useCallback(() => {
+    const query = searchQuery.trim();
+    if (!query || !onSearchSubmit) return;
+    if (onSearchSubmit(query) !== false) {
+      setSearchQuery("");
+    }
+  }, [onSearchSubmit, searchQuery]);
 
   const ctx = React.useMemo(
     () => ({
@@ -200,6 +224,8 @@ function MultiSelect(props: MultiSelectProps) {
       searchPlaceholder,
       searchInputId,
       searchEmptyMessage,
+      renderSearchEmpty,
+      submitSearch,
     }),
     [
       value,
@@ -222,6 +248,8 @@ function MultiSelect(props: MultiSelectProps) {
       searchPlaceholder,
       searchInputId,
       searchEmptyMessage,
+      renderSearchEmpty,
+      submitSearch,
     ],
   );
 
@@ -402,7 +430,13 @@ const MultiSelectContent = React.forwardRef<
                   className="h-8 pl-9"
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      ctx.submitSearch();
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -424,7 +458,9 @@ const MultiSelectContent = React.forwardRef<
                   aria-live="polite"
                   className="shrink-0 px-3 py-2 text-center text-sm leading-5 text-muted-foreground"
                 >
-                  {ctx.searchEmptyMessage}
+                  {ctx.renderSearchEmpty
+                    ? ctx.renderSearchEmpty(ctx.searchQuery.trim(), ctx.submitSearch)
+                    : ctx.searchEmptyMessage}
                 </div>
               ) : null}
             </div>
