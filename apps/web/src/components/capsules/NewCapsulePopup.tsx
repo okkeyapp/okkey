@@ -11,6 +11,7 @@ import {
 import {
   Button,
   Calendar,
+  CalendarMonthYearCaption,
   Checkbox,
   ControlGroup,
   Input,
@@ -30,6 +31,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
   Switch,
@@ -41,8 +43,10 @@ import {
 } from "@okkey/ui";
 import { ChevronDownIcon, Trash2Icon } from "lucide-react";
 import {
+  Fragment,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type SVGProps,
@@ -94,6 +98,10 @@ const scheduleOptions: { value: SchedulePreset; label: string }[] = [
   { value: "12h", label: "Через 12 часов" },
   { value: "24h", label: "Через 24 часа" },
 ];
+const scheduleHours = Array.from({ length: 24 }, (_, index) => index);
+const scheduleMinutes = Array.from({ length: 60 }, (_, index) => index);
+const capsuleCalendarStartMonth = new Date(new Date().getFullYear() - 100, 0);
+const capsuleCalendarEndMonth = new Date(new Date().getFullYear() + 10, 11);
 
 export default function NewCapsulePopup({
   t,
@@ -157,6 +165,25 @@ export default function NewCapsulePopup({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const activationMinimumDate = useMemo(
+    () =>
+      resolveScheduleDate(activatePreset, activateCustom, new Date()) ??
+      new Date(),
+    [activateCustom, activatePreset],
+  );
+
+  useEffect(() => {
+    const minimumTime = activationMinimumDate.getTime();
+    if (
+      deactivateCustom &&
+      new Date(deactivateCustom).getTime() < minimumTime
+    ) {
+      setDeactivateCustom("");
+    }
+    if (deleteCustom && new Date(deleteCustom).getTime() < minimumTime) {
+      setDeleteCustom("");
+    }
+  }, [activationMinimumDate, deactivateCustom, deleteCustom]);
 
   const availableRecords = useMemo(
     () =>
@@ -321,6 +348,41 @@ export default function NewCapsulePopup({
           itemTitle: selectedItem?.title,
         },
       });
+      const scheduleBase = new Date();
+      const resolvedActivationDate =
+        resolveScheduleDate(activatePreset, activateCustom, scheduleBase) ??
+        scheduleBase;
+      const activateAt = toScheduleIso(
+        activatePreset,
+        activateCustom,
+        scheduleBase,
+      );
+      const deactivateAt = toScheduleIso(
+        deactivatePreset,
+        deactivateCustom,
+        resolvedActivationDate,
+      );
+      const deleteAt = toScheduleIso(
+        deletePreset,
+        deleteCustom,
+        resolvedActivationDate,
+      );
+      if (
+        deactivateAt &&
+        new Date(deactivateAt).getTime() < resolvedActivationDate.getTime()
+      ) {
+        throw new Error(
+          "Время деактивации не может быть раньше времени активации",
+        );
+      }
+      if (
+        deleteAt &&
+        new Date(deleteAt).getTime() < resolvedActivationDate.getTime()
+      ) {
+        throw new Error(
+          "Время удаления не может быть раньше времени активации",
+        );
+      }
       const body: CapsuleCreateRequestDto = {
         type,
         encryptedPayload: generated.encryptedPayload,
@@ -330,20 +392,9 @@ export default function NewCapsulePopup({
         ...(viewsEnabled ? { maxViews, viewLimitAction } : {}),
         ...(timeEnabled
           ? {
-              ...(toScheduleIso(activatePreset, activateCustom)
-                ? { activateAt: toScheduleIso(activatePreset, activateCustom)! }
-                : {}),
-              ...(toScheduleIso(deactivatePreset, deactivateCustom)
-                ? {
-                    deactivateAt: toScheduleIso(
-                      deactivatePreset,
-                      deactivateCustom,
-                    )!,
-                  }
-                : {}),
-              ...(toScheduleIso(deletePreset, deleteCustom)
-                ? { deleteAt: toScheduleIso(deletePreset, deleteCustom)! }
-                : {}),
+              ...(activateAt ? { activateAt } : {}),
+              ...(deactivateAt ? { deactivateAt } : {}),
+              ...(deleteAt ? { deleteAt } : {}),
             }
           : {}),
         ...(accessEnabled && recipients.length > 0
@@ -742,7 +793,7 @@ export default function NewCapsulePopup({
                   checked={timeEnabled}
                   onChange={setTimeEnabled}
                 >
-                  <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <ScheduleField
                       label="Активировать:"
                       allowNow
@@ -753,17 +804,21 @@ export default function NewCapsulePopup({
                       onCustom={setActivateCustom}
                     />
                     <ScheduleField
-                      label="Деактивировать:"
+                      label="Деактивация по времени:"
                       value={deactivatePreset}
                       custom={deactivateCustom}
+                      minimumDate={activationMinimumDate}
+                      relativeToActivation
                       datePickerLocale={datePickerLocale}
                       onChange={setDeactivatePreset}
                       onCustom={setDeactivateCustom}
                     />
                     <ScheduleField
-                      label="Удалить:"
+                      label="Удаление по времени:"
                       value={deletePreset}
                       custom={deleteCustom}
+                      minimumDate={activationMinimumDate}
+                      relativeToActivation
                       datePickerLocale={datePickerLocale}
                       onChange={setDeletePreset}
                       onCustom={setDeleteCustom}
@@ -831,7 +886,7 @@ export default function NewCapsulePopup({
                 >
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-3 text-sm font-medium">
-                      Задайте пароль
+                      Задайте пароль:
                       <Input
                         type="password"
                         value={password}
@@ -839,7 +894,7 @@ export default function NewCapsulePopup({
                       />
                     </label>
                     <label className="flex flex-col gap-3 text-sm font-medium">
-                      Колличество неудачных попыток
+                      Колличество неудачных попыток:
                       <Input
                         type="number"
                         min={1}
@@ -924,22 +979,31 @@ function CapsuleSelect({
   value,
   onChange,
   options,
+  triggerClassName,
+  sectionLabelAfterNever,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: readonly (readonly [string, string])[];
+  triggerClassName?: string;
+  sectionLabelAfterNever?: string;
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger>
+      <SelectTrigger className={cn("font-normal", triggerClassName)}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
           {options.map(([option, label]) => (
-            <SelectItem key={option} value={option}>
-              {label}
-            </SelectItem>
+            <Fragment key={option}>
+              <SelectItem value={option}>{label}</SelectItem>
+              {option === "never" && sectionLabelAfterNever ? (
+                <SelectLabel className="px-2 pb-1 pt-2 text-xs font-normal text-muted-foreground">
+                  {sectionLabelAfterNever}
+                </SelectLabel>
+              ) : null}
+            </Fragment>
           ))}
         </SelectGroup>
       </SelectContent>
@@ -952,7 +1016,9 @@ function ScheduleField({
   value,
   custom,
   datePickerLocale,
+  minimumDate,
   allowNow = false,
+  relativeToActivation = false,
   onChange,
   onCustom,
 }: {
@@ -960,106 +1026,239 @@ function ScheduleField({
   value: SchedulePreset;
   custom: string;
   datePickerLocale: Locale;
+  minimumDate?: Date;
   allowNow?: boolean;
+  relativeToActivation?: boolean;
   onChange: (value: SchedulePreset) => void;
   onCustom: (value: string) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const earliestDate = minimumDate ?? new Date();
   const selectedDate = custom ? new Date(custom) : undefined;
+  const [draftDate, setDraftDate] = useState<Date>(
+    () => selectedDate ?? nextAvailableDateTime(earliestDate),
+  );
+  const [calendarMonth, setCalendarMonth] = useState<Date>(draftDate);
   const options = scheduleOptions
     .filter((option) => allowNow || option.value !== "now")
     .map((option) => [option.value, option.label] as const);
+  const selectOptions = custom
+    ? ([["custom", formatCapsuleDateTime(selectedDate!)], ...options] as const)
+    : options;
+
+  function handlePickerOpenChange(open: boolean) {
+    if (open) {
+      const next =
+        selectedDate && selectedDate.getTime() >= earliestDate.getTime()
+          ? selectedDate
+          : nextAvailableDateTime(earliestDate);
+      setDraftDate(next);
+      setCalendarMonth(next);
+    }
+    setPickerOpen(open);
+  }
+
+  function updateDraftTime(part: "hours" | "minutes", nextValue: number) {
+    setDraftDate((current) => {
+      const next = new Date(current);
+      if (part === "hours") next.setHours(nextValue);
+      else next.setMinutes(nextValue);
+      return next;
+    });
+  }
 
   return (
     <div className="flex flex-col gap-3">
       <span className="text-sm font-medium">{label}</span>
-      <div className="grid grid-cols-2 gap-3">
+      <ControlGroup className="w-full">
         <CapsuleSelect
-          value={value}
+          value={custom ? "custom" : value}
           onChange={(next) => {
+            if (next === "custom") return;
             onChange(next as SchedulePreset);
             onCustom("");
           }}
-          options={options}
+          options={selectOptions}
+          sectionLabelAfterNever={
+            relativeToActivation ? "После активации" : undefined
+          }
+          triggerClassName={cn(
+            controlGroupItemFixedClassName,
+            "min-w-0 flex-1",
+          )}
         />
-        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+        <Popover open={pickerOpen} onOpenChange={handlePickerOpenChange}>
           <PopoverTrigger asChild>
             <Button
               type="button"
               variant="outline"
-              className="h-9 justify-start px-3 font-normal"
+              size="icon"
+              className={cn(
+                controlGroupItemFixedClassName,
+                "h-9 w-10 shrink-0 font-normal",
+              )}
+              aria-label="Выбрать дату и время"
             >
-              <CapsuleCalendarIcon data-icon="inline-start" />
-              <span className="truncate">
-                {selectedDate
-                  ? formatCapsuleDateTime(selectedDate)
-                  : "Дата и время"}
-              </span>
+              <CapsuleCalendarIcon />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-auto p-3">
-            <div className="flex flex-col gap-3">
+          <PopoverContent align="end" className="w-auto p-0">
+            <div className="flex h-[352px]">
               <Calendar
                 mode="single"
-                selected={selectedDate}
+                captionLayout="label"
+                selected={draftDate}
+                month={calendarMonth}
+                onMonthChange={setCalendarMonth}
                 locale={datePickerLocale}
-                disabled={{ before: startOfToday() }}
+                startMonth={capsuleCalendarStartMonth}
+                endMonth={capsuleCalendarEndMonth}
+                disabled={{ before: startOfDay(earliestDate) }}
                 onSelect={(date) => {
                   if (!date) return;
-                  const previous =
-                    selectedDate ?? new Date(Date.now() + 60 * 60_000);
-                  date.setHours(
-                    previous.getHours(),
-                    previous.getMinutes(),
+                  const next = new Date(date);
+                  next.setHours(
+                    draftDate.getHours(),
+                    draftDate.getMinutes(),
                     0,
                     0,
                   );
-                  if (date.getTime() <= Date.now()) {
-                    date.setTime(Date.now() + 5 * 60_000);
-                  }
-                  onCustom(toLocalDateTimeValue(date));
+                  setDraftDate(
+                    next.getTime() >= earliestDate.getTime()
+                      ? next
+                      : nextAvailableDateTime(earliestDate),
+                  );
                 }}
+                classNames={{ nav: "hidden" }}
+                components={{ MonthCaption: CalendarMonthYearCaption }}
               />
-              <label className="flex flex-col gap-2 text-sm font-medium">
-                Время
-                <Input
-                  type="time"
-                  value={selectedDate ? toTimeValue(selectedDate) : ""}
-                  min={
-                    selectedDate && isToday(selectedDate)
-                      ? toTimeValue(new Date(Date.now() + 60_000))
-                      : undefined
-                  }
-                  onChange={(event) => {
-                    const date = selectedDate ?? new Date();
-                    const [hours, minutes] = event.target.value
-                      .split(":")
-                      .map(Number);
-                    const next = new Date(date);
-                    next.setHours(hours, minutes, 0, 0);
-                    if (next.getTime() > Date.now())
-                      onCustom(toLocalDateTimeValue(next));
-                  }}
-                />
-              </label>
+              <div className="flex min-h-0 flex-col border-l">
+                <div className="border-b px-3 py-2 text-center text-sm font-medium">
+                  Время
+                </div>
+                <div className="grid grid-cols-2 border-b text-center text-xs text-muted-foreground">
+                  <span className="px-2 py-1.5">Час</span>
+                  <span className="border-l px-2 py-1.5">Мин</span>
+                </div>
+                <div className="flex min-h-0 flex-1">
+                  <TimeValueScroll
+                    values={scheduleHours}
+                    selected={draftDate.getHours()}
+                    date={draftDate}
+                    minimumDate={earliestDate}
+                    part="hours"
+                    onSelect={(hours) => updateDraftTime("hours", hours)}
+                  />
+                  <TimeValueScroll
+                    values={scheduleMinutes}
+                    selected={draftDate.getMinutes()}
+                    date={draftDate}
+                    minimumDate={earliestDate}
+                    part="minutes"
+                    onSelect={(minutes) => updateDraftTime("minutes", minutes)}
+                    className="border-l"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between border-t p-3">
               <Button
                 type="button"
-                onClick={() => setPickerOpen(false)}
-                disabled={!selectedDate}
+                variant="ghost"
+                disabled={
+                  startOfDay(earliestDate).getTime() > startOfToday().getTime()
+                }
+                onClick={() => {
+                  const next = nextAvailableDateTime(earliestDate);
+                  setDraftDate(next);
+                  setCalendarMonth(next);
+                }}
+              >
+                Сегодня
+              </Button>
+              <Button
+                type="button"
+                disabled={draftDate.getTime() < earliestDate.getTime()}
+                onClick={() => {
+                  onCustom(toLocalDateTimeValue(draftDate));
+                  setPickerOpen(false);
+                }}
               >
                 Готово
               </Button>
             </div>
           </PopoverContent>
         </Popover>
-      </div>
+      </ControlGroup>
     </div>
   );
 }
 
-function toScheduleIso(preset: SchedulePreset, custom: string): string | null {
-  if (custom) return new Date(custom).toISOString();
-  if (preset === "never" || preset === "now") return null;
+function TimeValueScroll({
+  values,
+  selected,
+  date,
+  minimumDate,
+  part,
+  onSelect,
+  className,
+}: {
+  values: readonly number[];
+  selected: number;
+  date: Date;
+  minimumDate: Date;
+  part: "hours" | "minutes";
+  onSelect: (value: number) => void;
+  className?: string;
+}) {
+  const selectedRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "center" });
+  }, [selected]);
+
+  return (
+    <ScrollArea className={cn("h-full min-h-0 w-14", className)}>
+      <div className="flex flex-col p-1">
+        {values.map((value) => {
+          const candidate = new Date(date);
+          if (part === "hours") candidate.setHours(value);
+          else candidate.setMinutes(value);
+          const disabled = candidate.getTime() < minimumDate.getTime();
+
+          return (
+            <button
+              key={value}
+              ref={selected === value ? selectedRef : undefined}
+              type="button"
+              disabled={disabled}
+              className={cn(
+                "flex h-10 w-full shrink-0 items-center justify-center rounded-md text-sm font-normal tabular-nums",
+                "hover:bg-muted disabled:pointer-events-none disabled:text-muted-foreground/40",
+                selected === value && "bg-muted text-foreground",
+              )}
+              onClick={() => onSelect(value)}
+            >
+              {String(value).padStart(2, "0")}
+            </button>
+          );
+        })}
+      </div>
+    </ScrollArea>
+  );
+}
+
+function resolveScheduleDate(
+  preset: SchedulePreset,
+  custom: string,
+  baseDate: Date,
+): Date | null {
+  if (custom) {
+    const customDate = new Date(custom);
+    return Number.isNaN(customDate.getTime()) ? null : customDate;
+  }
+  if (preset === "never") return null;
+  if (preset === "now") return new Date(baseDate);
   const offsets: Record<Exclude<SchedulePreset, "never" | "now">, number> = {
     "15m": 15,
     "1h": 60,
@@ -1067,7 +1266,16 @@ function toScheduleIso(preset: SchedulePreset, custom: string): string | null {
     "12h": 720,
     "24h": 1440,
   };
-  return new Date(Date.now() + offsets[preset] * 60_000).toISOString();
+  return new Date(baseDate.getTime() + offsets[preset] * 60_000);
+}
+
+function toScheduleIso(
+  preset: SchedulePreset,
+  custom: string,
+  baseDate: Date,
+): string | null {
+  if (!custom && (preset === "never" || preset === "now")) return null;
+  return resolveScheduleDate(preset, custom, baseDate)?.toISOString() ?? null;
 }
 
 function capsuleFieldRounding(fieldIndex: number, fieldsCount: number) {
@@ -1085,18 +1293,13 @@ function isValidEmail(value: string): boolean {
 }
 
 function startOfToday(): Date {
-  const value = new Date();
-  value.setHours(0, 0, 0, 0);
-  return value;
+  return startOfDay(new Date());
 }
 
-function isToday(value: Date): boolean {
-  const today = new Date();
-  return (
-    value.getFullYear() === today.getFullYear() &&
-    value.getMonth() === today.getMonth() &&
-    value.getDate() === today.getDate()
-  );
+function startOfDay(date: Date): Date {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
 }
 
 function toTimeValue(value: Date): string {
@@ -1105,6 +1308,14 @@ function toTimeValue(value: Date): string {
 
 function toLocalDateTimeValue(value: Date): string {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}T${toTimeValue(value)}`;
+}
+
+function nextAvailableDateTime(minimumDate: Date = new Date()): Date {
+  const value = new Date(
+    Math.max(Date.now(), minimumDate.getTime()) + 5 * 60_000,
+  );
+  value.setSeconds(0, 0);
+  return value;
 }
 
 function formatCapsuleDateTime(value: Date): string {
