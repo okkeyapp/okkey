@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
-import { readFirstNonSecretFilledFieldDescription, readPersonalDataListDescription } from "./itemListRecordDescription";
+import {
+  itemMatchesPrimaryFieldSearch,
+  readFirstNonSecretFilledFieldDescription,
+  readPersonalDataListDescription,
+} from "./itemListRecordDescription";
 import { keyFormSectionsToItemPlaintext } from "./keyFormToItemPlaintext";
 
 describe("readFirstNonSecretFilledFieldDescription", () => {
@@ -287,5 +291,62 @@ describe("itemPlaintextToListRecord", () => {
     const record = itemPlaintextToListRecord(item, { folderId: null, favorite: false });
 
     expect(record.description).toBe("octocat");
+  });
+});
+
+describe("itemMatchesPrimaryFieldSearch", () => {
+  it("matches login in primary sections and ignores passwords", () => {
+    const item = keyFormSectionsToItemPlaintext({
+      itemId: "item-7",
+      vaultId: "vault-1",
+      title: "GitHub",
+      categoryId: "login",
+      nowMs: 1,
+      sections: [
+        {
+          id: "credentials",
+          variant: "primary",
+          fields: [
+            {
+              id: "login",
+              type: "text",
+              label: "Login",
+              value: "octocat",
+              deletable: false,
+              editableLabel: false,
+              required: true,
+            },
+            {
+              id: "password",
+              type: "password",
+              label: "Password",
+              value: "hunter2",
+              deletable: false,
+              editableLabel: false,
+              required: true,
+            },
+          ],
+        },
+        {
+          id: "notes",
+          variant: "additional",
+          title: "Notes",
+          fields: [
+            {
+              id: "note",
+              type: "note",
+              label: "Note",
+              value: "private memo",
+              deletable: true,
+              editableLabel: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(itemMatchesPrimaryFieldSearch(item, "octo")).toBe(true);
+    expect(itemMatchesPrimaryFieldSearch(item, "hunter2")).toBe(false);
+    expect(itemMatchesPrimaryFieldSearch(item, "private")).toBe(false);
   });
 });

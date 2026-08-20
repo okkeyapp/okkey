@@ -1,15 +1,24 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
-import { formatKeyFieldAddressCopyValue, parseKeyFieldAddressValue } from "@okkey/ui";
+import {
+  formatKeyFieldAddressCopyValue,
+  parseKeyFieldAddressValue,
+} from "@okkey/ui";
 
 import { isItemFieldFilled } from "./keyFormFilledFields";
 import { parseSelectFieldValueFromItem } from "./keyFormSelectField";
 
 function isSecretItemField(field: ItemFieldV2): boolean {
-  if (field.type === "password" || field.type === "totp" || field.type === "recovery-codes") {
+  if (
+    field.type === "password" ||
+    field.type === "totp" ||
+    field.type === "recovery-codes"
+  ) {
     return true;
   }
 
-  return field.value.kind === "unknown" && field.value.declaredType === "secret";
+  return (
+    field.value.kind === "unknown" && field.value.declaredType === "secret"
+  );
 }
 
 function selectFieldDisplayValue(field: ItemFieldV2): string {
@@ -19,7 +28,9 @@ function selectFieldDisplayValue(field: ItemFieldV2): string {
     return "";
   }
 
-  const label = parsed.selectOptions?.find((option) => option.value === value)?.label?.trim();
+  const label = parsed.selectOptions
+    ?.find((option) => option.value === value)
+    ?.label?.trim();
   return label || value;
 }
 
@@ -39,8 +50,13 @@ function itemFieldDisplayValue(field: ItemFieldV2): string {
       if (field.value.declaredType === "select") {
         return selectFieldDisplayValue(field);
       }
-      if (field.value.declaredType === "address" && typeof field.value.raw === "string") {
-        return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value.raw));
+      if (
+        field.value.declaredType === "address" &&
+        typeof field.value.raw === "string"
+      ) {
+        return formatKeyFieldAddressCopyValue(
+          parseKeyFieldAddressValue(field.value.raw),
+        );
       }
       return "";
     default:
@@ -58,10 +74,14 @@ function orderedItemFields(item: ItemPlaintextV2): ItemFieldV2[] {
 
   const ordered: ItemFieldV2[] = [];
   const seenFieldIds = new Set<string>();
-  const sectionIds = [...item.sections].sort((left, right) => left.order - right.order).map((section) => section.id);
+  const sectionIds = [...item.sections]
+    .sort((left, right) => left.order - right.order)
+    .map((section) => section.id);
 
   for (const sectionId of sectionIds) {
-    const sectionFields = (fieldsBySection.get(sectionId) ?? []).sort((left, right) => left.order - right.order);
+    const sectionFields = (fieldsBySection.get(sectionId) ?? []).sort(
+      (left, right) => left.order - right.order,
+    );
     for (const field of sectionFields) {
       ordered.push(field);
       seenFieldIds.add(field.id);
@@ -75,7 +95,9 @@ function orderedItemFields(item: ItemPlaintextV2): ItemFieldV2[] {
   return [...ordered, ...orphanFields];
 }
 
-export function readFirstNonSecretFilledFieldDescription(item: ItemPlaintextV2): string {
+export function readFirstNonSecretFilledFieldDescription(
+  item: ItemPlaintextV2,
+): string {
   for (const field of orderedItemFields(item)) {
     if (!isItemFieldFilled(field) || isSecretItemField(field)) {
       continue;
@@ -90,7 +112,10 @@ export function readFirstNonSecretFilledFieldDescription(item: ItemPlaintextV2):
   return "";
 }
 
-function readTextFieldValueById(item: ItemPlaintextV2, fieldId: string): string {
+function readTextFieldValueById(
+  item: ItemPlaintextV2,
+  fieldId: string,
+): string {
   const field = item.fields.find((candidate) => candidate.id === fieldId);
   if (!field || !isItemFieldFilled(field) || isSecretItemField(field)) {
     return "";
@@ -130,4 +155,43 @@ export function readItemListRecordDescription(item: ItemPlaintextV2): string {
   }
 
   return readFirstNonSecretFilledFieldDescription(item);
+}
+
+/** Match needle against non-secret values in primary (white / preset) sections. */
+export function itemMatchesPrimaryFieldSearch(
+  item: ItemPlaintextV2,
+  needle: string,
+  canViewFieldType?: (fieldType: string) => boolean,
+): boolean {
+  const query = needle.trim().toLocaleLowerCase();
+  if (!query) {
+    return false;
+  }
+
+  const primarySectionIds = new Set(
+    item.sections
+      .filter((section) => section.isPreset)
+      .map((section) => section.id),
+  );
+  if (primarySectionIds.size === 0) {
+    return false;
+  }
+
+  for (const field of item.fields) {
+    if (!primarySectionIds.has(field.sectionId) || isSecretItemField(field)) {
+      continue;
+    }
+    if (canViewFieldType && !canViewFieldType(field.type)) {
+      continue;
+    }
+    if (!isItemFieldFilled(field)) {
+      continue;
+    }
+    const displayValue = itemFieldDisplayValue(field).toLocaleLowerCase();
+    if (displayValue.includes(query)) {
+      return true;
+    }
+  }
+
+  return false;
 }

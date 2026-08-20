@@ -64,6 +64,8 @@ import {
   releaseCapsuleKey,
 } from "../../capsules/crypto";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
+import { itemMatchesPrimaryFieldSearch } from "../../items/itemListRecordDescription";
+import { scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
@@ -185,18 +187,28 @@ export default function NewCapsulePopup({
     }
   }, [activationMinimumDate, deactivateCustom, deleteCustom]);
 
-  const availableRecords = useMemo(
-    () =>
-      records.filter(
-        (item) =>
-          !item.deleted &&
-          canViewItem(item.vaultId, item.categoryId) &&
-          `${item.title} ${item.description}`
-            .toLocaleLowerCase()
-            .includes(itemSearch.trim().toLocaleLowerCase()),
-      ),
-    [canViewItem, itemSearch, records],
-  );
+  const availableRecords = useMemo(() => {
+    const needle = itemSearch.trim();
+    const itemsById = new Map(items.map((item) => [item.itemId, item]));
+    return records.filter((record) => {
+      if (record.deleted || !canViewItem(record.vaultId, record.categoryId)) {
+        return false;
+      }
+      if (!needle) {
+        return true;
+      }
+      if (scoreItemsListRecordSearch(record, needle) > 0) {
+        return true;
+      }
+      const item = itemsById.get(record.id);
+      if (!item) {
+        return false;
+      }
+      return itemMatchesPrimaryFieldSearch(item, needle, (fieldType) =>
+        canViewFieldType(item.vaultId, fieldType),
+      );
+    });
+  }, [canViewFieldType, canViewItem, itemSearch, items, records]);
   const selectedItem = items.find((item) => item.itemId === selectedItemId);
   const selectedRecord = records.find((item) => item.id === selectedItemId);
   const visibleFields = useMemo(
@@ -487,7 +499,7 @@ export default function NewCapsulePopup({
         </div>
 
         {type === "item" ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {selectedItem && selectedRecord ? (
               <div className="overflow-hidden rounded-xl border bg-card">
                 <div className="flex min-w-0 items-center gap-3 px-4 py-3">
@@ -594,6 +606,7 @@ export default function NewCapsulePopup({
                           label="Поиск записи"
                           mode="edit"
                           editableValue
+                          leading={<CapsuleSearchIcon />}
                           value={itemSearch}
                           onValueChange={(value) => {
                             setItemSearch(value);
@@ -602,7 +615,7 @@ export default function NewCapsulePopup({
                           onValueFocus={() =>
                             setItemResultsOpen(Boolean(itemSearch))
                           }
-                          valuePlaceholder="Введите название или описание"
+                          valuePlaceholder="Введите текст для поиска"
                           surfaceRounding={capsuleFieldRounding(0, 1)}
                         />
                       </KeySection>
@@ -652,68 +665,79 @@ export default function NewCapsulePopup({
             )}
           </div>
         ) : (
-          <KeyForm mode="edit" className="gap-0">
-            <KeySection variant="primary" mode="edit">
-              <KeyField
-                label="Название"
-                mode="edit"
-                editableValue
+          <>
+            <div className="flex items-center gap-4">
+              <div className="relative size-10 shrink-0">
+                <ItemRecordFavicon
+                  categoryId={type === "file" ? "secure_files" : "secure_note"}
+                  title={name.trim() || undefined}
+                  size={40}
+                  alt=""
+                />
+              </div>
+              <Input
                 value={name}
-                onValueChange={setName}
-                valuePlaceholder="Введите короткое название"
-                surfaceRounding={capsuleFieldRounding(0, 2)}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Название"
+                className="h-10 min-w-0 flex-1 text-xl font-semibold leading-6"
+                aria-label="Название"
               />
-              {type === "text" ? (
-                <KeyField
-                  className="border-b-transparent"
-                  label="Секретный текст"
-                  mode="edit"
-                  editableValue
-                  multilineValue
-                  value={text}
-                  onValueChange={setText}
-                  valuePlaceholder="Введите текст, которым хотите поделиться"
-                  surfaceRounding={capsuleFieldRounding(1, 2)}
-                />
-              ) : (
-                <KeyField
-                  className="border-b-transparent"
-                  label="Файл"
-                  mode="edit"
-                  editableValue
-                  fileValue
-                  value={
-                    file
-                      ? serializeKeyFieldFileValue({
-                          attachmentId: `capsule-local-${file.name}-${file.lastModified}`,
-                          name: file.name,
-                          mimeType: file.type || "application/octet-stream",
-                          sizeBytes: file.size,
-                        })
-                      : ""
-                  }
-                  onValueChange={(value) => {
-                    if (!value) setFile(null);
-                  }}
-                  onFileUpload={async (
-                    nextFile,
-                  ): Promise<KeyFieldFileValue> => {
-                    setFile(nextFile);
-                    return {
-                      attachmentId: `capsule-local-${nextFile.name}-${nextFile.lastModified}`,
-                      name: nextFile.name,
-                      mimeType: nextFile.type || "application/octet-stream",
-                      sizeBytes: nextFile.size,
-                    };
-                  }}
-                  fileUploadConstraints={fileUploadConstraints}
-                  fileUploadLabel="Загрузить файл"
-                  fileClearLabel="Удалить файл"
-                  surfaceRounding={capsuleFieldRounding(1, 2)}
-                />
-              )}
-            </KeySection>
-          </KeyForm>
+            </div>
+
+            <KeyForm mode="edit" className="gap-0">
+              <KeySection variant="primary" mode="edit">
+                {type === "text" ? (
+                  <KeyField
+                    className="border-b-transparent"
+                    label="Секретный текст"
+                    mode="edit"
+                    editableValue
+                    multilineValue
+                    value={text}
+                    onValueChange={setText}
+                    valuePlaceholder="Введите текст, которым хотите поделиться"
+                    surfaceRounding={capsuleFieldRounding(0, 1)}
+                  />
+                ) : (
+                  <KeyField
+                    className="border-b-transparent"
+                    label="Файл"
+                    mode="edit"
+                    editableValue
+                    fileValue
+                    value={
+                      file
+                        ? serializeKeyFieldFileValue({
+                            attachmentId: `capsule-local-${file.name}-${file.lastModified}`,
+                            name: file.name,
+                            mimeType: file.type || "application/octet-stream",
+                            sizeBytes: file.size,
+                          })
+                        : ""
+                    }
+                    onValueChange={(value) => {
+                      if (!value) setFile(null);
+                    }}
+                    onFileUpload={async (
+                      nextFile,
+                    ): Promise<KeyFieldFileValue> => {
+                      setFile(nextFile);
+                      return {
+                        attachmentId: `capsule-local-${nextFile.name}-${nextFile.lastModified}`,
+                        name: nextFile.name,
+                        mimeType: nextFile.type || "application/octet-stream",
+                        sizeBytes: nextFile.size,
+                      };
+                    }}
+                    fileUploadConstraints={fileUploadConstraints}
+                    fileUploadLabel="Загрузить файл"
+                    fileClearLabel="Удалить файл"
+                    surfaceRounding={capsuleFieldRounding(0, 1)}
+                  />
+                )}
+              </KeySection>
+            </KeyForm>
+          </>
         )}
 
         <Button
@@ -1363,6 +1387,33 @@ function CapsuleRecordFavicon({
   );
 }
 
+function CapsuleSearchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+      className="size-4 shrink-0"
+      {...props}
+    >
+      <path
+        d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 14L11.1 11.1"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function CapsuleTextIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -1406,16 +1457,23 @@ function CapsuleFileIcon(props: SVGProps<SVGSVGElement>) {
 function CapsuleItemIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      width="16"
-      height="16"
       viewBox="0 0 16 16"
       fill="none"
       aria-hidden
+      className="size-4 shrink-0"
       {...props}
     >
       <path
-        d="M9.33333 2.66667H14M9.33333 6H14M9.33333 10H14M9.33333 13.3333H14M2.66667 2H6C6.36819 2 6.66667 2.29848 6.66667 2.66667V6C6.66667 6.36819 6.36819 6.66667 6 6.66667H2.66667C2.29848 6.66667 2 6.36819 2 6V2.66667C2 2.29848 2.29848 2 2.66667 2ZM2.66667 9.33333H6C6.36819 9.33333 6.66667 9.63181 6.66667 10V13.3333C6.66667 13.7015 6.36819 14 6 14H2.66667C2.29848 14 2 13.7015 2 13.3333V10C2 9.63181 2.29848 9.33333 2.66667 9.33333Z"
+        d="M2.50001 3.83334C2.50001 3.47972 2.64048 3.14058 2.89053 2.89054C3.14058 2.64049 3.47972 2.50001 3.83334 2.50001L12.1667 2.49999C12.5203 2.49999 12.8594 2.64047 13.1095 2.89052C13.3595 3.14056 13.5 3.4797 13.5 3.83333V5.16666C13.5 5.52028 13.3595 5.85942 13.1095 6.10947C12.8594 6.35952 12.5203 6.49999 12.1667 6.49999L3.83334 6.50001C3.47972 6.50001 3.14058 6.35954 2.89053 6.10949C2.64048 5.85944 2.50001 5.5203 2.50001 5.16668V3.83334Z"
         stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.37801 10.8333C2.37801 10.4797 2.51848 10.1406 2.76853 9.89052C3.01858 9.64048 3.35772 9.5 3.71134 9.5L12.1667 9.5C12.5203 9.5 12.8594 9.64048 13.1095 9.89052C13.3595 10.1406 13.5 10.4797 13.5 10.8333V12.1667C13.5 12.5203 13.3595 12.8594 13.1095 13.1095C12.8594 13.3595 12.5203 13.5 12.1667 13.5H3.71134C3.35772 13.5 3.01858 13.3595 2.76853 13.1095C2.51848 12.8594 2.37801 12.5203 2.37801 12.1667V10.8333Z"
+        stroke="currentColor"
+        strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

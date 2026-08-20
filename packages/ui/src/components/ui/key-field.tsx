@@ -13,7 +13,10 @@ import {
   type KeyFieldSurfaceRounding,
 } from "../../lib/key-field-surface-rounding.js";
 import { isKeyFieldDatePickerInteractionTarget } from "../../lib/key-field-date-picker.js";
-import { formatKeyFieldAddressCopyValue, parseKeyFieldAddressValue } from "../../lib/key-field-address.js";
+import {
+  formatKeyFieldAddressCopyValue,
+  parseKeyFieldAddressValue,
+} from "../../lib/key-field-address.js";
 import {
   defaultKeyFieldFileUploadConstraints,
   isKeyFieldFileImageMimeType,
@@ -22,15 +25,17 @@ import {
   type KeyFieldFileUploadHintLabels,
   type KeyFieldFileValue,
 } from "../../lib/key-field-file.js";
-import {
-  parseKeyFieldRecoveryCodesValue,
-} from "../../lib/key-field-recovery-codes.js";
+import { parseKeyFieldRecoveryCodesValue } from "../../lib/key-field-recovery-codes.js";
 import { Button } from "./button.js";
 import { KeyFieldAddressInput } from "./key-field-address-input.js";
 import { KeyFieldDateInput } from "./key-field-date-input.js";
 import { KeyFieldDatePickerPanel } from "./key-field-date-picker-panel.js";
 import { KeyFieldPortaledOverlay } from "./key-field-portaled-overlay.js";
-import { KeyFieldFileInput, KeyFieldFileView, type KeyFieldFileUploadHandler } from "./key-field-file-control.js";
+import {
+  KeyFieldFileInput,
+  KeyFieldFileView,
+  type KeyFieldFileUploadHandler,
+} from "./key-field-file-control.js";
 import { KeyFieldFileLightbox } from "./key-field-file-lightbox.js";
 import { KeyFieldRecoveryCodesInput } from "./key-field-recovery-codes-input.js";
 import {
@@ -66,9 +71,27 @@ export const keyFieldTypeOptions: readonly KeyFieldTypeOption[] = [
 
 function PencilIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M2.33337 11.6667H4.66671L10.7917 5.54168C10.9449 5.38847 11.0664 5.20659 11.1494 5.00641C11.2323 4.80623 11.275 4.59168 11.275 4.37501C11.275 4.15834 11.2323 3.9438 11.1494 3.74362C11.0664 3.54344 10.9449 3.36156 10.7917 3.20835C10.6385 3.05514 10.4566 2.93361 10.2564 2.85069C10.0563 2.76777 9.84171 2.7251 9.62504 2.7251C9.40837 2.7251 9.19382 2.76777 8.99365 2.85069C8.79347 2.93361 8.61158 3.05514 8.45837 3.20835L2.33337 9.33335V11.6667Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.875 3.79175L10.2083 6.12508" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...props}
+    >
+      <path
+        d="M2.33337 11.6667H4.66671L10.7917 5.54168C10.9449 5.38847 11.0664 5.20659 11.1494 5.00641C11.2323 4.80623 11.275 4.59168 11.275 4.37501C11.275 4.15834 11.2323 3.9438 11.1494 3.74362C11.0664 3.54344 10.9449 3.36156 10.7917 3.20835C10.6385 3.05514 10.4566 2.93361 10.2564 2.85069C10.0563 2.76777 9.84171 2.7251 9.62504 2.7251C9.40837 2.7251 9.19382 2.76777 8.99365 2.85069C8.79347 2.93361 8.61158 3.05514 8.45837 3.20835L2.33337 9.33335V11.6667Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.875 3.79175L10.2083 6.12508"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -88,26 +111,75 @@ function GripIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export function KeyFieldCopyIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2.67467 11.158C2.47023 11.0415 2.30018 10.873 2.18172 10.6697C2.06325 10.4663 2.00057 10.2353 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...props}
+    >
+      <path
+        d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.67467 11.158C2.47023 11.0415 2.30018 10.873 2.18172 10.6697C2.06325 10.4663 2.00057 10.2353 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function CopySuccessIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
-      <path d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2.67467 11.158C2.47 11.0417 2.29977 10.8733 2.18127 10.6699C2.06277 10.4665 2.00023 10.2354 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.33398 9.33333L8.66732 10.6667L11.334 8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...props}
+    >
+      <path
+        d="M4.66602 6.44499C4.66602 5.97344 4.85334 5.5212 5.18678 5.18776C5.52022 4.85432 5.97246 4.66699 6.44402 4.66699H12.2213C12.4548 4.66699 12.686 4.71298 12.9018 4.80233C13.1175 4.89169 13.3135 5.02265 13.4786 5.18776C13.6437 5.35286 13.7747 5.54886 13.864 5.76458C13.9534 5.9803 13.9993 6.2115 13.9993 6.44499V12.2223C13.9993 12.4558 13.9534 12.687 13.864 12.9027C13.7747 13.1185 13.6437 13.3145 13.4786 13.4796C13.3135 13.6447 13.1175 13.7756 12.9018 13.865C12.686 13.9543 12.4548 14.0003 12.2213 14.0003H6.44402C6.21053 14.0003 5.97932 13.9543 5.7636 13.865C5.54789 13.7756 5.35188 13.6447 5.18678 13.4796C5.02168 13.3145 4.89071 13.1185 4.80136 12.9027C4.71201 12.687 4.66602 12.4558 4.66602 12.2223V6.44499Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.67467 11.158C2.47 11.0417 2.29977 10.8733 2.18127 10.6699C2.06277 10.4665 2.00023 10.2354 2 10V3.33333C2 2.6 2.6 2 3.33333 2H10C10.5 2 10.772 2.25667 11 2.66667"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.33398 9.33333L8.66732 10.6667L11.334 8"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...props}
+    >
       <path
         d="M9.33341 1.33325V3.99992C9.33341 4.35354 9.47389 4.69268 9.72394 4.94273C9.97399 5.19278 10.3131 5.33325 10.6667 5.33325H13.3334M10.0001 1.33325H4.00008C3.64646 1.33325 3.30732 1.47373 3.05727 1.72378C2.80722 1.97382 2.66675 2.31296 2.66675 2.66659V13.3333C2.66675 13.6869 2.80722 14.026 3.05727 14.2761C3.30732 14.5261 3.64646 14.6666 4.00008 14.6666H12.0001C12.3537 14.6666 12.6928 14.5261 12.9429 14.2761C13.1929 14.026 13.3334 13.6869 13.3334 13.3333V4.66659L10.0001 1.33325Z"
         stroke="currentColor"
@@ -135,10 +207,15 @@ const keyFieldSingleLineControlClassName =
 /** Matches Tailwind `h-5` / `leading-5` for a single-line control. */
 const KEY_FIELD_SINGLE_LINE_HEIGHT_PX = 20;
 
-export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "children"> & {
+export type KeyFieldProps = Omit<
+  React.ComponentPropsWithoutRef<"div">,
+  "children"
+> & {
   label: string;
   value?: React.ReactNode;
   children?: React.ReactNode;
+  /** Optional leading control (e.g. search icon) before the value input. */
+  leading?: React.ReactNode;
   mode?: KeyFormMode;
   editableLabel?: boolean;
   editableValue?: boolean;
@@ -166,7 +243,10 @@ export type KeyFieldProps = Omit<React.ComponentPropsWithoutRef<"div">, "childre
   passwordGeneratorTrigger?: boolean;
   /** Multiline secret: concealed as a single line; revealed as a compact textarea. */
   secretMultilineValue?: boolean;
-  transformValueInput?: (value: string, context: KeyFieldValueTransformContext) => string;
+  transformValueInput?: (
+    value: string,
+    context: KeyFieldValueTransformContext,
+  ) => string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   copyValue?: string;
@@ -220,6 +300,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       label,
       value,
       children,
+      leading,
       mode = "view",
       editableLabel = false,
       editableValue = false,
@@ -304,33 +385,55 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const stringValue = typeof value === "string" ? value : undefined;
     const [draftValue, setDraftValue] = React.useState(stringValue ?? "");
     const canEditLabel = mode === "edit" && editableLabel;
-    const canEditValue = mode === "edit" && editableValue && children === undefined && stringValue !== undefined;
+    const canEditValue =
+      mode === "edit" &&
+      editableValue &&
+      children === undefined &&
+      stringValue !== undefined;
     const canReorder = mode === "edit" && reorderable;
     if (prevSecretMultilineValueRef.current !== secretMultilineValue) {
       prevSecretMultilineValueRef.current = secretMultilineValue;
       ignoreValueBlurRef.current = true;
     }
-    const shouldConcealValue = concealValue && !isValueFocused && draftValue.length > 0;
-    const useCompactMultilineEditor = secretMultilineValue && !shouldConcealValue;
-    const useConcealedSingleLineEditor = secretMultilineValue && shouldConcealValue;
-    const shouldAutoResizeTextarea = multilineValue || recoveryCodesValue || secretMultilineValue;
-    const displayedValue = shouldConcealValue ? concealedValue : children ?? value;
+    const shouldConcealValue =
+      concealValue && !isValueFocused && draftValue.length > 0;
+    const useCompactMultilineEditor =
+      secretMultilineValue && !shouldConcealValue;
+    const useConcealedSingleLineEditor =
+      secretMultilineValue && shouldConcealValue;
+    const shouldAutoResizeTextarea =
+      multilineValue || recoveryCodesValue || secretMultilineValue;
+    const displayedValue = shouldConcealValue
+      ? concealedValue
+      : (children ?? value);
     const formattedAddressValue =
       addressValue && typeof stringValue === "string"
         ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue))
         : "";
     const parsedRecoveryCodesValue =
-      recoveryCodesValue && typeof stringValue === "string" ? parseKeyFieldRecoveryCodesValue(stringValue) : [];
-    const parsedFileValue = fileValue ? parseKeyFieldFileValue(draftValue) : null;
+      recoveryCodesValue && typeof stringValue === "string"
+        ? parseKeyFieldRecoveryCodesValue(stringValue)
+        : [];
+    const parsedFileValue = fileValue
+      ? parseKeyFieldFileValue(draftValue)
+      : null;
     const [fileValidationError, setFileValidationError] = React.useState(false);
-    const [fileLightboxFile, setFileLightboxFile] = React.useState<(KeyFieldFileValue & { url: string }) | null>(null);
+    const [fileLightboxFile, setFileLightboxFile] = React.useState<
+      (KeyFieldFileValue & { url: string }) | null
+    >(null);
     const hasValidationError = isInvalid || (fileValue && fileValidationError);
-    const isSurfaceActiveByState = (dateValue && isDatePickerOpen) || forceActive;
-    const hasOpenOverlay = Boolean(fieldOverlay) || forceActive || (dateValue && isDatePickerOpen);
-    const showPortaledOverlay = Boolean(fieldOverlay) || (dateValue && canEditValue && isDatePickerOpen);
+    const isSurfaceActiveByState =
+      (dateValue && isDatePickerOpen) || forceActive;
+    const hasOpenOverlay =
+      Boolean(fieldOverlay) || forceActive || (dateValue && isDatePickerOpen);
+    const showPortaledOverlay =
+      Boolean(fieldOverlay) || (dateValue && canEditValue && isDatePickerOpen);
     const canShowStatusOverlay =
-      mode === "view" && Boolean(statusOverlayLabel) && !(recoveryCodesValue && recoveryCodesRevealed);
-    const canOpenFileValue = mode === "view" && fileValue && parsedFileValue !== null;
+      mode === "view" &&
+      Boolean(statusOverlayLabel) &&
+      !(recoveryCodesValue && recoveryCodesRevealed);
+    const canOpenFileValue =
+      mode === "view" && fileValue && parsedFileValue !== null;
     const copyText = copyValue ?? stringValue;
     const canCopyValue =
       mode === "view" &&
@@ -338,19 +441,24 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       copyText.length > 0 &&
       !fileValue &&
       !(recoveryCodesValue && recoveryCodesRevealed);
-    const hasValueOverlay = canCopyValue || canOpenFileValue || canShowStatusOverlay;
+    const hasValueOverlay =
+      canCopyValue || canOpenFileValue || canShowStatusOverlay;
     const actionsWrapperClassName = cn(
       "relative z-30 flex shrink-0 items-center gap-1",
       actionsHideOnFieldHover &&
         "transition-opacity group-hover/key-field:invisible group-hover/key-field:pointer-events-none group-hover/key-field:opacity-0",
-      actionsHideOnFieldHover && isHoverLocked && "invisible pointer-events-none opacity-0",
+      actionsHideOnFieldHover &&
+        isHoverLocked &&
+        "invisible pointer-events-none opacity-0",
     );
     const [isCopied, setIsCopied] = React.useState(false);
-    const copyResetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const copyResetTimeoutRef = React.useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
     const showCopySuccess = isCopied && copySuccessLabel != null;
     const currentCopyIcon = showCopySuccess
-      ? copySuccessIcon ?? <CopySuccessIcon className="size-4" />
-      : copyIcon ?? <KeyFieldCopyIcon className="size-4" />;
+      ? (copySuccessIcon ?? <CopySuccessIcon className="size-4" />)
+      : (copyIcon ?? <KeyFieldCopyIcon className="size-4" />);
 
     const resizeTextarea = React.useCallback(() => {
       if (!shouldAutoResizeTextarea) {
@@ -399,7 +507,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         return;
       }
 
-      if (secretMultilineValue && concealValue && draftValue.length > 0 && !isValueFocused) {
+      if (
+        secretMultilineValue &&
+        concealValue &&
+        draftValue.length > 0 &&
+        !isValueFocused
+      ) {
         revealSecretMultilineEditor();
         return;
       }
@@ -460,7 +573,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     }, [draftValue, shouldAutoResizeTextarea, resizeTextarea]);
 
     React.useLayoutEffect(() => {
-      if (!canEditValue || !secretMultilineValue || !isValueFocused || shouldConcealValue) {
+      if (
+        !canEditValue ||
+        !secretMultilineValue ||
+        !isValueFocused ||
+        shouldConcealValue
+      ) {
         return;
       }
 
@@ -476,7 +594,13 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         const end = textarea.value.length;
         textarea.setSelectionRange(end, end);
       }
-    }, [canEditValue, isValueFocused, resizeTextarea, secretMultilineValue, shouldConcealValue]);
+    }, [
+      canEditValue,
+      isValueFocused,
+      resizeTextarea,
+      secretMultilineValue,
+      shouldConcealValue,
+    ]);
 
     React.useEffect(() => {
       if (!ignoreValueBlurRef.current) {
@@ -519,7 +643,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         return undefined;
       }
 
-      if (hasAutoFocusedValueRef.current && lastAutoFocusRequestRef.current === autoFocusValueRequest) {
+      if (
+        hasAutoFocusedValueRef.current &&
+        lastAutoFocusRequestRef.current === autoFocusValueRequest
+      ) {
         return undefined;
       }
 
@@ -560,7 +687,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         }
 
         if (attempt < 12) {
-          retryTimeoutId = window.setTimeout(() => tryAutoFocus(attempt + 1), 50);
+          retryTimeoutId = window.setTimeout(
+            () => tryAutoFocus(attempt + 1),
+            50,
+          );
         }
       }
 
@@ -651,7 +781,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         if (isKeyFieldDatePickerInteractionTarget(target)) {
           return;
         }
-        if (valueInputRef.current && target && valueInputRef.current.contains(target)) {
+        if (
+          valueInputRef.current &&
+          target &&
+          valueInputRef.current.contains(target)
+        ) {
           return;
         }
         closeDatePicker();
@@ -701,8 +835,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       });
     }
 
-    function handleValueChange(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-      const nativeEvent = event.nativeEvent instanceof InputEvent ? event.nativeEvent : undefined;
+    function handleValueChange(
+      event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ) {
+      const nativeEvent =
+        event.nativeEvent instanceof InputEvent ? event.nativeEvent : undefined;
       const nextValue = transformValueInput
         ? transformValueInput(event.target.value, {
             previousValue: draftValue,
@@ -744,7 +881,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       handleOpenFile();
     }
 
-    async function resolveFileUrl(file: KeyFieldFileValue): Promise<string | null> {
+    async function resolveFileUrl(
+      file: KeyFieldFileValue,
+    ): Promise<string | null> {
       if (file.url) {
         return file.url;
       }
@@ -833,8 +972,16 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             "focus-within:border-x-accent focus-within:!border-y-accent",
             "focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
           ],
-          hasValidationError && ["relative z-[1]", keyFormFieldSurfaceErrorRingClassName, "focus-within:z-10"],
-          isSurfaceActiveByState && !hasValidationError && ["relative z-10", keyFormFieldSurfaceFocusRingClassName],
+          hasValidationError && [
+            "relative z-[1]",
+            keyFormFieldSurfaceErrorRingClassName,
+            "focus-within:z-10",
+          ],
+          isSurfaceActiveByState &&
+            !hasValidationError && [
+              "relative z-10",
+              keyFormFieldSurfaceFocusRingClassName,
+            ],
           isSurfaceActiveByState && hasValidationError && "relative z-10",
         )}
         draggable={canReorder ? draggable : false}
@@ -861,10 +1008,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {canCopyValue ? (
           <button
             type="button"
-            className={cn(keyFieldOverlayTriggerClassName, isHoverLocked && "visible pointer-events-auto")}
+            className={cn(
+              keyFieldOverlayTriggerClassName,
+              isHoverLocked && "visible pointer-events-auto",
+            )}
             onClick={handleCopyClick}
           >
-            <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
+            <span
+              className={cn(
+                keyFieldOverlayActionClassName,
+                copyTextClassName ?? "bg-secondary",
+              )}
+            >
               <span className={keyFieldOverlayActionRowClassName}>
                 {copyIconPosition === "start" ? currentCopyIcon : null}
                 {showCopySuccess ? copySuccessLabel : copyLabel}
@@ -877,10 +1032,18 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {canOpenFileValue ? (
           <button
             type="button"
-            className={cn(keyFieldOverlayTriggerClassName, isHoverLocked && "visible pointer-events-auto")}
+            className={cn(
+              keyFieldOverlayTriggerClassName,
+              isHoverLocked && "visible pointer-events-auto",
+            )}
             onClick={handleOpenFileClick}
           >
-            <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
+            <span
+              className={cn(
+                keyFieldOverlayActionClassName,
+                copyTextClassName ?? "bg-secondary",
+              )}
+            >
               <span className={keyFieldOverlayActionRowClassName}>
                 <OpenFileIcon />
                 Open
@@ -896,8 +1059,15 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               isHoverLocked && "visible",
             )}
           >
-            <span className={cn(keyFieldOverlayActionClassName, copyTextClassName ?? "bg-secondary")}>
-              <span className={keyFieldOverlayActionRowClassName}>{statusOverlayLabel}</span>
+            <span
+              className={cn(
+                keyFieldOverlayActionClassName,
+                copyTextClassName ?? "bg-secondary",
+              )}
+            >
+              <span className={keyFieldOverlayActionRowClassName}>
+                {statusOverlayLabel}
+              </span>
             </span>
           </div>
         ) : null}
@@ -944,7 +1114,12 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 )}
               />
             ) : (
-              <span className={cn("min-w-0 truncate text-xs leading-5 text-muted-foreground", labelClassName)}>
+              <span
+                className={cn(
+                  "min-w-0 truncate text-xs leading-5 text-muted-foreground",
+                  labelClassName,
+                )}
+              >
                 {label}
               </span>
             )}
@@ -953,7 +1128,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                 type="button"
                 variant="ghost"
                 size="iconSm"
-                className={cn("size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground", controlButtonClassName)}
+                className={cn(
+                  "size-5 min-h-5 min-w-5 rounded-sm text-muted-foreground hover:text-foreground",
+                  controlButtonClassName,
+                )}
                 onClick={(event) => {
                   event.stopPropagation();
                   focusLabelInputWithSelection();
@@ -965,13 +1143,23 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             ) : null}
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {leading ? (
+              <div className="flex shrink-0 items-center self-center text-muted-foreground">
+                {leading}
+              </div>
+            ) : null}
             <div
               ref={valueContainerRef}
               className={cn(
                 "relative min-w-0 flex-1 text-sm leading-5 text-foreground",
                 fileValue ? "min-h-20" : "min-h-5",
-                mode === "view" && !canEditValue && !addressValue && !recoveryCodesValue && !fileValue && "break-all",
+                mode === "view" &&
+                  !canEditValue &&
+                  !addressValue &&
+                  !recoveryCodesValue &&
+                  !fileValue &&
+                  "break-all",
                 mode === "view" && canCopyValue && "select-none",
                 valueClassName,
               )}
@@ -987,7 +1175,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       event.preventDefault();
                       revealSecretMultilineEditor();
                     }}
-                    className={cn(keyFieldSingleLineControlClassName, "h-5 cursor-text")}
+                    className={cn(
+                      keyFieldSingleLineControlClassName,
+                      "h-5 cursor-text",
+                    )}
                   />
                 ) : useCompactMultilineEditor ? (
                   <textarea
@@ -1063,7 +1254,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onFocus={() => setIsValueFocused(true)}
                     onBlur={() => setIsValueFocused(false)}
                     fieldPlaceholders={addressFieldPlaceholders}
-                    searchCountriesPlaceholder={addressSearchCountriesPlaceholder}
+                    searchCountriesPlaceholder={
+                      addressSearchCountriesPlaceholder
+                    }
                     noCountriesFoundMessage={addressNoCountriesFoundMessage}
                   />
                 ) : dateValue ? (
@@ -1082,24 +1275,39 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                   <input
                     ref={valueInputRef}
                     value={shouldConcealValue ? concealedValue : draftValue}
-                    placeholder={shouldConcealValue && draftValue.length > 0 ? undefined : valuePlaceholder}
+                    placeholder={
+                      shouldConcealValue && draftValue.length > 0
+                        ? undefined
+                        : valuePlaceholder
+                    }
                     onChange={handleValueChange}
                     onFocus={() => {
                       setIsValueFocused(true);
                       onValueFocus?.();
                     }}
                     onBlur={handleValueControlBlur}
-                    inputMode={cardValue || cardExpiryValue || pinValue ? "numeric" : undefined}
+                    inputMode={
+                      cardValue || cardExpiryValue || pinValue
+                        ? "numeric"
+                        : undefined
+                    }
                     maxLength={pinValue ? 3 : undefined}
-                    {...(passwordGeneratorTrigger ? { "data-password-generator-trigger": true } : {})}
+                    {...(passwordGeneratorTrigger
+                      ? { "data-password-generator-trigger": true }
+                      : {})}
                     className="h-5 w-full min-w-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 )
               ) : recoveryCodesValue ? (
                 recoveryCodesRevealed ? (
-                  <KeyFieldRecoveryCodesChecklistView codes={parsedRecoveryCodesValue} readOnly />
+                  <KeyFieldRecoveryCodesChecklistView
+                    codes={parsedRecoveryCodesValue}
+                    readOnly
+                  />
                 ) : (
-                  <KeyFieldRecoveryCodesConcealedView codes={parsedRecoveryCodesValue} />
+                  <KeyFieldRecoveryCodesConcealedView
+                    codes={parsedRecoveryCodesValue}
+                  />
                 )
               ) : fileValue ? (
                 <KeyFieldFileView
@@ -1110,12 +1318,17 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
               ) : addressValue ? (
                 formattedAddressValue
               ) : secretMultilineValue && !shouldConcealValue ? (
-                <span className="whitespace-pre-wrap break-words">{displayedValue}</span>
+                <span className="whitespace-pre-wrap break-words">
+                  {displayedValue}
+                </span>
               ) : (
                 displayedValue
               )}
             </div>
-            <KeyFieldPortaledOverlay open={showPortaledOverlay} anchorRef={valueContainerRef}>
+            <KeyFieldPortaledOverlay
+              open={showPortaledOverlay}
+              anchorRef={valueContainerRef}
+            >
               {dateValue && canEditValue && isDatePickerOpen ? (
                 <KeyFieldDatePickerPanel
                   value={draftValue}
@@ -1134,7 +1347,10 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           <div className={actionsWrapperClassName}>{actions}</div>
         ) : null}
         {fileLightboxFile ? (
-          <KeyFieldFileLightbox file={fileLightboxFile} onClose={closeFileLightbox} />
+          <KeyFieldFileLightbox
+            file={fileLightboxFile}
+            onClose={closeFileLightbox}
+          />
         ) : null}
       </div>
     );
