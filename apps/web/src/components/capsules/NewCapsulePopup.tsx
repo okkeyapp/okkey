@@ -478,24 +478,51 @@ export default function NewCapsulePopup({
           </div>
         }
       >
-        <div className="flex w-fit rounded-lg bg-secondary p-1">
+        <div className="relative flex w-fit rounded-lg bg-secondary p-1">
           {(
             [
               ["text", CapsuleTextIcon, "Текст"],
               ["file", CapsuleFileIcon, "Файл"],
               ["item", CapsuleItemIcon, "Запись"],
             ] as const
-          ).map(([value, Icon, label]) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={type === value ? "outline" : "ghost"}
-              onClick={() => setType(value)}
-            >
-              <Icon data-icon="inline-start" />
-              {label}
-            </Button>
-          ))}
+          ).map(([value, Icon, label]) => {
+            const active = type === value;
+            return (
+              <Button
+                key={value}
+                size="sm"
+                variant={active ? "outline" : "ghost"}
+                className={cn(
+                  "relative border",
+                  active
+                    ? cn(
+                        "z-10",
+                        "!bg-background hover:!bg-background active:!bg-background",
+                        "hover:!border-input focus:!border-input focus-visible:!border-input",
+                        "focus:hover:!border-input focus-visible:hover:!border-input",
+                        "!shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                        "focus:!shadow-[0_1px_2px_rgba(0,0,0,0.05)] focus-visible:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                        "focus:hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)] focus-visible:hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                        "dark:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                        "dark:focus:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:focus-visible:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                        "dark:focus:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:focus-visible:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                      )
+                    : cn(
+                        "z-0 border-transparent shadow-none",
+                        "hover:border-transparent hover:bg-foreground/5",
+                        "focus:shadow-none focus-visible:shadow-none",
+                        "dark:focus:shadow-none dark:focus-visible:shadow-none",
+                        "focus:bg-foreground/10 focus-visible:bg-foreground/10",
+                        "active:bg-foreground/10",
+                      ),
+                )}
+                onClick={() => setType(value)}
+              >
+                <Icon data-icon="inline-start" />
+                {label}
+              </Button>
+            );
+          })}
         </div>
 
         {type === "item" ? (
