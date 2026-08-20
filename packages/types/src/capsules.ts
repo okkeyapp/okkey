@@ -114,3 +114,45 @@ export interface CapsuleApprovalStatusDto {
   status: CapsuleApprovalStatus;
   approvalToken?: string;
 }
+
+export type CapsuleSchedulePreset =
+  | "never"
+  | "now"
+  | "15m"
+  | "1h"
+  | "6h"
+  | "12h"
+  | "24h";
+
+/** Non-secret access defaults for the create-capsule form (per member + type). */
+export interface CapsuleAccessDefaultsDto {
+  viewsEnabled: boolean;
+  maxViews: number;
+  viewLimitAction: CapsuleViewLimitAction;
+  timeEnabled: boolean;
+  activatePreset: CapsuleSchedulePreset;
+  deactivatePreset: CapsuleSchedulePreset;
+  deletePreset: CapsuleSchedulePreset;
+  accessEnabled: boolean;
+  passwordEnabled: boolean;
+  attemptLimit: number;
+  approvalRequired: boolean;
+}
+
+export interface CapsuleDefaultsEntryDto {
+  type: CapsuleType;
+  settings: CapsuleAccessDefaultsDto;
+}
+
+/** `GET /workspaces/:workspaceId/capsule-defaults` (Bearer). */
+export interface CapsuleDefaultsListResponseDto {
+  defaults: CapsuleDefaultsEntryDto[];
+}
+
+/** `PUT /workspaces/:workspaceId/capsule-defaults` (Bearer). */
+export interface CapsuleDefaultsUpsertRequestDto {
+  type: CapsuleType;
+  settings: CapsuleAccessDefaultsDto;
+}
+
+export type CapsuleDefaultsUpsertResponseDto = CapsuleDefaultsEntryDto;

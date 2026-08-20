@@ -3,6 +3,9 @@ import type {
   CapsuleApprovalListResponseDto,
   CapsuleApprovalResolveResponseDto,
   CapsuleApprovalStatusDto,
+  CapsuleDefaultsListResponseDto,
+  CapsuleDefaultsUpsertRequestDto,
+  CapsuleDefaultsUpsertResponseDto,
   CapsuleListResponseDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
@@ -412,6 +415,24 @@ export class CoreApiClient {
   ): Promise<WorkspaceItemCategoryPreferencesResponseDto> {
     return this.api.put<WorkspaceItemCategoryPreferencesResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/item-category-preferences`,
+      body,
+    );
+  }
+
+  getWorkspaceCapsuleDefaults(
+    workspaceId: string,
+  ): Promise<CapsuleDefaultsListResponseDto> {
+    return this.api.get<CapsuleDefaultsListResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/capsule-defaults`,
+    );
+  }
+
+  updateWorkspaceCapsuleDefaults(
+    workspaceId: string,
+    body: CapsuleDefaultsUpsertRequestDto,
+  ): Promise<CapsuleDefaultsUpsertResponseDto> {
+    return this.api.put<CapsuleDefaultsUpsertResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/capsule-defaults`,
       body,
     );
   }

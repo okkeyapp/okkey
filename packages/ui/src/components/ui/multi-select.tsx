@@ -382,7 +382,9 @@ const MultiSelectContent = React.forwardRef<
     const root = listboxRef.current;
     if (!root) return;
     const options = Array.from(root.querySelectorAll('[role="option"]'));
-    const n = options.filter((el) => (el as HTMLElement).offsetParent !== null).length;
+    const n = options.filter(
+      (el) => (el as HTMLElement).dataset.filteredOut !== "true",
+    ).length;
     setVisibleOptionCount(n);
   }, [searchActive, ctx.searchQuery, children, ctx.open]);
 
@@ -441,13 +443,18 @@ const MultiSelectContent = React.forwardRef<
               </div>
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <ScrollArea className="w-full min-h-0 max-h-[min(15rem,var(--radix-popover-content-available-height,100dvh))] shrink-0">
+              <ScrollArea
+                className={cn(
+                  "w-full min-h-0 max-h-[min(15rem,var(--radix-popover-content-available-height,100dvh))] shrink-0",
+                  showSearchEmpty && "hidden",
+                )}
+              >
                 <div
                   ref={listboxRef}
                   id={ctx.listId}
                   role="listbox"
                   aria-multiselectable="true"
-                  className={cn("w-full overflow-x-hidden", showSearchEmpty ? "px-1 pt-1 pb-0" : "p-1")}
+                  className="w-full overflow-x-hidden p-1"
                 >
                   {children}
                 </div>
@@ -456,11 +463,15 @@ const MultiSelectContent = React.forwardRef<
                 <div
                   role="status"
                   aria-live="polite"
-                  className="shrink-0 px-3 py-2 text-center text-sm leading-5 text-muted-foreground"
+                  className="shrink-0 p-2 text-center text-sm leading-5 text-muted-foreground"
                 >
                   {ctx.renderSearchEmpty
                     ? ctx.renderSearchEmpty(ctx.searchQuery.trim(), ctx.submitSearch)
-                    : ctx.searchEmptyMessage}
+                    : (
+                      <div className="flex h-8 w-full items-center justify-center">
+                        {ctx.searchEmptyMessage}
+                      </div>
+                    )}
                 </div>
               ) : null}
             </div>
@@ -509,6 +520,7 @@ const MultiSelectItem = React.forwardRef<HTMLDivElement, MultiSelectItemProps>(
         role="option"
         aria-selected={selected}
         data-disabled={disabled ? "" : undefined}
+        data-filtered-out={!matches ? "true" : undefined}
         className={cn(
           "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-foreground outline-none normal-case",
           "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",

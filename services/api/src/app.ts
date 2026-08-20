@@ -51,6 +51,7 @@ import {
 import {
   createWorkspaceItemCategoryPreferencesRoute,
 } from "./routes/workspace-item-category-preferences.ts";
+import { createWorkspaceCapsuleDefaultsRoute } from "./routes/workspace-capsule-defaults.ts";
 import {
   createWorkspaceItemTemplatesCreateRoute,
   createWorkspaceItemTemplatesDeleteRoute,
@@ -100,6 +101,7 @@ import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
 import type { CapsuleService } from "./capsule/service.ts";
 import type { ItemCategoryPreferencesService } from "./item-category-preferences/service.ts";
+import type { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import type { ItemTemplatesService } from "./item-templates/service.ts";
 import type { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
@@ -144,6 +146,7 @@ export interface AppDeps {
   twoFactorService?: TwoFactorService;
   capsuleService?: CapsuleService;
   itemCategoryPreferencesService?: ItemCategoryPreferencesService;
+  capsuleDefaultsService?: CapsuleDefaultsService;
   itemTemplatesService?: ItemTemplatesService;
   workspaceSettingsService?: WorkspaceSettingsService;
   workspaceBuiltInRolesService?: WorkspaceBuiltInRolesService;
@@ -323,6 +326,18 @@ export function createApiApp(
         "PUT",
         "/workspaces/:workspaceId/item-category-preferences",
         createWorkspaceItemCategoryPreferencesRoute(deps.itemCategoryPreferencesService, resolveUserId),
+      );
+    }
+    if (deps.capsuleDefaultsService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/capsule-defaults",
+        createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+      );
+      app.route(
+        "PUT",
+        "/workspaces/:workspaceId/capsule-defaults",
+        createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
       );
     }
     if (deps.itemTemplatesService) {

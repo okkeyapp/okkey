@@ -3,6 +3,7 @@ import type { WebMessageValues } from "@okkey/i18n";
 import type { Locale } from "date-fns";
 import {
   hasPlanFeature,
+  type CapsuleAccessDefaultsDto,
   type CapsuleCreateRequestDto,
   type CapsuleType,
   type Workspace,
@@ -164,6 +165,9 @@ export default function NewCapsulePopup({
   const [attemptLimit, setAttemptLimit] = useState(3);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [saveDefaults, setSaveDefaults] = useState(false);
+  const [defaultsByType, setDefaultsByType] = useState<
+    Partial<Record<CapsuleType, CapsuleAccessDefaultsDto>>
+  >({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
@@ -229,8 +233,42 @@ export default function NewCapsulePopup({
       void core
         .listWorkspaceMemberDirectory(workspaceId)
         .then((result) => setMembers(result.members));
+      void core
+        .getWorkspaceCapsuleDefaults(workspaceId)
+        .then((result) => {
+          const next: Partial<Record<CapsuleType, CapsuleAccessDefaultsDto>> =
+            {};
+          for (const entry of result.defaults) {
+            next[entry.type] = entry.settings;
+          }
+          setDefaultsByType(next);
+        })
+        .catch(() => {
+          setDefaultsByType({});
+        });
     }
   }, [advancedAvailable, core, open, sourceItemId, workspaceId]);
+
+  useEffect(() => {
+    if (!open || !advancedAvailable) return;
+    applyCapsuleAccessDefaults(
+      defaultsByType[type] ?? null,
+      {
+        setViewsEnabled,
+        setMaxViews,
+        setViewLimitAction,
+        setTimeEnabled,
+        setActivatePreset,
+        setDeactivatePreset,
+        setDeletePreset,
+        setAccessEnabled,
+        setPasswordEnabled,
+        setAttemptLimit,
+        setApprovalRequired,
+        setAdvancedOpen,
+      },
+    );
+  }, [advancedAvailable, defaultsByType, open, type]);
 
   useEffect(() => {
     if (open) return;
@@ -262,6 +300,7 @@ export default function NewCapsulePopup({
     setAttemptLimit(3);
     setApprovalRequired(false);
     setSaveDefaults(false);
+    setDefaultsByType({});
     setError(null);
     setExitConfirmOpen(false);
   }, [open]);
@@ -430,18 +469,28 @@ export default function NewCapsulePopup({
       const url = `${window.location.origin}/capsule/${created.capsuleId}#key=${generated.fragment}`;
       await navigator.clipboard.writeText(url);
       if (saveDefaults) {
-        localStorage.setItem(
-          `okkey:capsule-defaults:${type}`,
-          JSON.stringify({
-            viewsEnabled,
-            maxViews,
-            viewLimitAction,
-            timeEnabled,
-            accessEnabled,
-            passwordEnabled,
-            approvalRequired,
-          }),
-        );
+        const settings: CapsuleAccessDefaultsDto = {
+          viewsEnabled,
+          maxViews,
+          viewLimitAction,
+          timeEnabled,
+          activatePreset,
+          deactivatePreset,
+          deletePreset,
+          accessEnabled,
+          passwordEnabled,
+          attemptLimit,
+          approvalRequired,
+        };
+        try {
+          await core.updateWorkspaceCapsuleDefaults(workspaceId, {
+            type,
+            settings,
+          });
+          setDefaultsByType((current) => ({ ...current, [type]: settings }));
+        } catch {
+          /* Capsule is already created; defaults persist can retry next time. */
+        }
       }
       toast.success("Капсула создана, ссылка скопирована");
       onCreated?.();
@@ -892,15 +941,20 @@ export default function NewCapsulePopup({
                     onSearchSubmit={addRecipient}
                     renderSearchEmpty={(query, submit) =>
                       isValidEmail(query) ? (
-                        <button
+                        <Button
                           type="button"
-                          className="w-full text-left text-sm text-foreground"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full gap-1 font-medium"
                           onClick={submit}
                         >
+                          <CapsulePlusIcon className="size-4" />
                           Добавить {query}
-                        </button>
+                        </Button>
                       ) : (
-                        "Неверный емейл"
+                        <div className="flex h-8 w-full items-center justify-center text-sm leading-5 text-muted-foreground">
+                          Неверный емейл
+                        </div>
                       )
                     }
                   >
@@ -976,8 +1030,7 @@ export default function NewCapsulePopup({
               checked={saveDefaults}
               onCheckedChange={(checked) => setSaveDefaults(Boolean(checked))}
             />
-            Установить эти настройки по умолчанию для выбранного типа (только
-            для меня)
+            Установить эти настройки по умолчанию для меня
           </label>
         ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -990,6 +1043,59 @@ export default function NewCapsulePopup({
       />
     </>
   );
+}
+
+function applyCapsuleAccessDefaults(
+  defaults: CapsuleAccessDefaultsDto | null,
+  setters: {
+    setViewsEnabled: (value: boolean) => void;
+    setMaxViews: (value: number) => void;
+    setViewLimitAction: (value: "deactivate" | "delete") => void;
+    setTimeEnabled: (value: boolean) => void;
+    setActivatePreset: (value: SchedulePreset) => void;
+    setDeactivatePreset: (value: SchedulePreset) => void;
+    setDeletePreset: (value: SchedulePreset) => void;
+    setAccessEnabled: (value: boolean) => void;
+    setPasswordEnabled: (value: boolean) => void;
+    setAttemptLimit: (value: number) => void;
+    setApprovalRequired: (value: boolean) => void;
+    setAdvancedOpen: (value: boolean) => void;
+  },
+): void {
+  if (!defaults) {
+    setters.setViewsEnabled(false);
+    setters.setMaxViews(1);
+    setters.setViewLimitAction("deactivate");
+    setters.setTimeEnabled(false);
+    setters.setActivatePreset("now");
+    setters.setDeactivatePreset("never");
+    setters.setDeletePreset("never");
+    setters.setAccessEnabled(false);
+    setters.setPasswordEnabled(false);
+    setters.setAttemptLimit(3);
+    setters.setApprovalRequired(false);
+    return;
+  }
+  setters.setViewsEnabled(defaults.viewsEnabled);
+  setters.setMaxViews(defaults.maxViews);
+  setters.setViewLimitAction(defaults.viewLimitAction);
+  setters.setTimeEnabled(defaults.timeEnabled);
+  setters.setActivatePreset(defaults.activatePreset);
+  setters.setDeactivatePreset(defaults.deactivatePreset);
+  setters.setDeletePreset(defaults.deletePreset);
+  setters.setAccessEnabled(defaults.accessEnabled);
+  setters.setPasswordEnabled(defaults.passwordEnabled);
+  setters.setAttemptLimit(defaults.attemptLimit);
+  setters.setApprovalRequired(defaults.approvalRequired);
+  if (
+    defaults.viewsEnabled ||
+    defaults.timeEnabled ||
+    defaults.accessEnabled ||
+    defaults.passwordEnabled ||
+    defaults.approvalRequired
+  ) {
+    setters.setAdvancedOpen(true);
+  }
 }
 
 function AdvancedRow({
@@ -1411,6 +1517,27 @@ function CapsuleRecordFavicon({
       size={32}
       className="shrink-0"
     />
+  );
+}
+
+function CapsulePlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...props}
+    >
+      <path
+        d="M3.33337 8H12.6667M8.00004 3.33337V12.6667"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

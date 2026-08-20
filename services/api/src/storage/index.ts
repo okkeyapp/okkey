@@ -14,6 +14,7 @@ import {
   WorkspacesRepository,
 } from "./repositories.ts";
 import { WorkspaceMemberItemCategoryPreferencesRepository } from "./workspace-member-item-category-preferences.ts";
+import { WorkspaceMemberCapsuleDefaultsRepository } from "./workspace-member-capsule-defaults.ts";
 import { WorkspacePersonalEventsRepository } from "./workspace-personal-events.ts";
 import { VaultItemSoftDeletesRepository } from "./vault-item-soft-deletes.ts";
 import { WorkspaceItemTemplatesRepository } from "./workspace-item-templates.ts";
@@ -35,6 +36,7 @@ export interface StorageLayer {
     sessions: SessionsRepository;
     twoFactor: TwoFactorRepository;
     workspaceMemberItemCategoryPreferences: WorkspaceMemberItemCategoryPreferencesRepository;
+    workspaceMemberCapsuleDefaults: WorkspaceMemberCapsuleDefaultsRepository;
     workspacePersonalEvents: WorkspacePersonalEventsRepository;
     vaultItemSoftDeletes: VaultItemSoftDeletesRepository;
     workspaceItemTemplates: WorkspaceItemTemplatesRepository;
@@ -64,6 +66,7 @@ export async function createStorageLayer(
     sessions: new SessionsRepository(postgres),
     twoFactor: new TwoFactorRepository(postgres),
     workspaceMemberItemCategoryPreferences: new WorkspaceMemberItemCategoryPreferencesRepository(postgres),
+    workspaceMemberCapsuleDefaults: new WorkspaceMemberCapsuleDefaultsRepository(postgres),
     workspacePersonalEvents: new WorkspacePersonalEventsRepository(postgres),
     vaultItemSoftDeletes: new VaultItemSoftDeletesRepository(postgres),
     workspaceItemTemplates: new WorkspaceItemTemplatesRepository(postgres),
