@@ -17,6 +17,7 @@ const DEV_UI_NAV: readonly { to: string; label: string; end?: boolean }[] = [
   { to: devUiGalleryPath("popup"), label: "Popup" },
   { to: devUiGalleryPath("key-form"), label: "Key form" },
   { to: devUiGalleryPath("alert"), label: "Alert" },
+  { to: devUiGalleryPath("breadcrumb"), label: "Breadcrumb" },
   { to: devUiGalleryPath("tooltip"), label: "Tooltip" },
   { to: devUiGalleryPath("favicon"), label: "Favicon" },
 ];

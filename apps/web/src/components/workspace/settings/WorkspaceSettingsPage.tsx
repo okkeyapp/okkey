@@ -1,6 +1,14 @@
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
-import { Button, buttonVariants, cn } from "@okkey/ui";
+import {
+  Breadcrumb,
+  BreadcrumbBar,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@okkey/ui";
 import { useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -22,7 +30,6 @@ import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSect
 import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
-import { ChevronRightIcon } from "./workspaceSettingsIcons";
 import type { workspacePatchFromSettingsResponse } from "./workspaceSettingsCatalog";
 import {
   allowedSettingsSections,
@@ -55,14 +62,6 @@ function WorkspaceSettingsPlaceholderSection({
     </div>
   );
 }
-
-const breadcrumbGhostButtonClassName = cn(
-  buttonVariants({ variant: "ghost", size: "sm" }),
-  "h-6 min-h-6 max-h-6 min-w-0 max-w-full gap-1.5 px-1 text-sm font-normal text-copy-secondary hover:text-foreground",
-);
-
-const breadcrumbStaticClassName =
-  "inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 truncate px-1 text-sm text-foreground";
 
 export default function WorkspaceSettingsPage({
   workspaceId,
@@ -100,40 +99,33 @@ export default function WorkspaceSettingsPage({
 
   return (
     <div ref={pageRootRef} className="flex min-h-full min-w-0 flex-1 flex-col">
-      <header className="hidden h-[52px] shrink-0 items-center overflow-visible border-b border-border md:flex">
-        <nav
-          aria-label={t("web.workspaceSettings.breadcrumbsAria")}
-          className="flex min-w-0 flex-1 items-center overflow-visible ps-5 pe-5"
-        >
-          <ol className="flex min-w-0 flex-nowrap items-center gap-1.5">
-            <li className="min-w-0 shrink">
-              <Button asChild variant="ghost" className={breadcrumbGhostButtonClassName}>
+      <BreadcrumbBar>
+        <Breadcrumb aria-label={t("web.workspaceSettings.breadcrumbsAria")}>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
                 <Link to={itemsHref} title={workspaceName}>
                   <span className="truncate">{workspaceName}</span>
                 </Link>
-              </Button>
-            </li>
-            <li className="flex shrink-0 items-center text-muted-foreground" aria-hidden>
-              <ChevronRightIcon />
-            </li>
-            <li className="min-w-0 shrink">
-              <Button asChild variant="ghost" className={breadcrumbGhostButtonClassName}>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
                 <Link to={SETTINGS_MAIN_PATH} title={t("web.workspaceSettings.breadcrumbsRoot")}>
                   <span className="truncate">{t("web.workspaceSettings.breadcrumbsRoot")}</span>
                 </Link>
-              </Button>
-            </li>
-            <li className="flex shrink-0 items-center text-muted-foreground" aria-hidden>
-              <ChevronRightIcon />
-            </li>
-            <li className="min-w-0 shrink">
-              <span className={breadcrumbStaticClassName} title={t(`web.workspaceSettings.sections.${activeSection}`)}>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage title={t(`web.workspaceSettings.sections.${activeSection}`)}>
                 {t(`web.workspaceSettings.sections.${activeSection}`)}
-              </span>
-            </li>
-          </ol>
-        </nav>
-      </header>
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </BreadcrumbBar>
 
       <WorkspaceSettingsMobileHeader
         activeSection={activeSection}

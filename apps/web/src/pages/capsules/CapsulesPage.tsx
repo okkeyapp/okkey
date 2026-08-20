@@ -1,5 +1,12 @@
 import type { CapsuleOwnerListEntryDto } from "@okkey/types";
 import {
+  Breadcrumb,
+  BreadcrumbBar,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
   Button,
   Checkbox,
   DropdownMenu,
@@ -23,7 +30,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import {
@@ -31,6 +38,8 @@ import {
   recoverOwnerCapsuleFragment,
   type CapsuleOwnerMetadata,
 } from "../../capsules/crypto";
+import { useLocale } from "../../locale/LocaleContext";
+import { itemsPathAllWorkspaceMerged } from "../../routes/paths";
 import {
   NEW_CAPSULE_POPUP_ID,
   popupQuerySearch,
@@ -47,8 +56,11 @@ type DecryptedCapsule = CapsuleOwnerListEntryDto & { ownerMetadata: CapsuleOwner
 export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: CapsulesPageProps) {
   const core = useAuthenticatedCoreClient();
   const { vaultKey } = useAuthVault();
+  const { t } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [capsules, setCapsules] = useState<DecryptedCapsule[]>([]);
@@ -151,14 +163,28 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <header className="flex h-12 items-center gap-1 border-b px-5 text-sm">
-        <span className="text-muted-foreground">{workspaceName}</span>
-        <span className="text-muted-foreground">›</span>
-        <span>Капсулы</span>
-      </header>
+      <BreadcrumbBar className="flex">
+        <Breadcrumb aria-label={t("web.nav.capsules")}>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to={itemsHref} title={workspaceName}>
+                  <span className="truncate">{workspaceName}</span>
+                </Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage title={t("web.nav.capsules")}>
+                {t("web.nav.capsules")}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </BreadcrumbBar>
       <main className="mx-auto flex w-full max-w-[948px] flex-col gap-9 px-6 py-8">
         <section className="flex flex-col gap-4">
-          <h1 className="text-lg font-semibold">Капсулы</h1>
+          <h1 className="text-lg font-semibold">{t("web.nav.capsules")}</h1>
           <div className="flex items-center gap-6">
             <p className="flex-1 text-sm text-muted-foreground">
               Капсулы — это специальные зашифрованные записи для безопасной передачи по электронной почте или в чате.{" "}

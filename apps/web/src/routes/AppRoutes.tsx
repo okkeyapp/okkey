@@ -10,6 +10,7 @@ import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
 import DevUIAlertPage from "../pages/dev-ui/DevUIAlertPage";
+import DevUIBreadcrumbPage from "../pages/dev-ui/DevUIBreadcrumbPage";
 import DevUITooltipPage from "../pages/dev-ui/DevUITooltipPage";
 import DevUIButtonPage from "../pages/dev-ui/DevUIButtonPage";
 import DevUIControlGroupingPage from "../pages/dev-ui/DevUIControlGroupingPage";
@@ -96,6 +97,7 @@ export default function AppRoutes() {
         <Route path="popup" element={<DevUIPopupPage />} />
         <Route path="key-form" element={<DevUIKeyFormPage />} />
         <Route path="alert" element={<DevUIAlertPage />} />
+        <Route path="breadcrumb" element={<DevUIBreadcrumbPage />} />
         <Route path="tooltip" element={<DevUITooltipPage />} />
         <Route path="favicon" element={<DevUIFaviconPage />} />
       </Route>

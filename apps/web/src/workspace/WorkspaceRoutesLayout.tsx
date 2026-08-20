@@ -931,7 +931,9 @@ function WorkspaceShellWithItems({
           <WorkspaceSidebarLayout
             title={title}
             description={description}
-            hideShellMainHeader={isShellNotFound || isSettingsPathname(pathname)}
+            hideShellMainHeader={
+              isShellNotFound || isSettingsPathname(pathname) || pathname === CAPSULES_PATH
+            }
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
             workspaceNavItems={permittedWorkspaceNavItems}
             workspaceNavLink={AppShellNavLink}

@@ -316,6 +316,7 @@ export type DevUiGallerySegment =
   | "popup"
   | "key-form"
   | "alert"
+  | "breadcrumb"
   | "tooltip"
   | "favicon";
 

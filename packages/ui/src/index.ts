@@ -106,6 +106,17 @@ export {
 } from "./components/ui/dropdown-menu.js";
 export { Alert, AlertDescription, AlertTitle, alertVariants } from "./components/ui/alert.js";
 export {
+  Breadcrumb,
+  BreadcrumbBar,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  breadcrumbLinkClassName,
+  breadcrumbPageClassName,
+} from "./components/ui/breadcrumb.js";
+export {
   Tooltip,
   TooltipContent,
   TooltipProvider,
