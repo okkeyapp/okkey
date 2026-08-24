@@ -62,6 +62,7 @@ import {
   useAuthenticatedCoreClient,
 } from "../../auth/AuthVaultContext";
 import { notifyCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
+import { buildItemCapsuleAttachmentPayloads } from "../../capsules/itemAttachments";
 import {
   buildEncryptedCapsule,
   bytesToBlob,
@@ -138,9 +139,9 @@ export default function NewCapsulePopup({
   onCreated,
 }: NewCapsulePopupProps) {
   const core = useAuthenticatedCoreClient();
-  const { vaultKey } = useAuthVault();
+  const { vaultKey, accessToken } = useAuthVault();
   const { locale } = useLocale();
-  const { items, records, fileUploadConstraints } = useWorkspaceItems();
+  const { items, records, fileUploadConstraints, resolveVaultEncryptionKey } = useWorkspaceItems();
   const { canViewItem, canViewFieldType } = useWorkspaceVaultProfiles();
   const location = useLocation();
   const navigate = useNavigate();
@@ -764,6 +765,21 @@ export default function NewCapsulePopup({
           ),
           "capsule_file_payload",
         );
+      }
+      if (type === "item" && itemPayload) {
+        if (!accessToken) {
+          throw new Error("Не удалось сохранить вложения: требуется авторизация");
+        }
+        const itemVaultKey = await resolveVaultEncryptionKey(itemPayload.vaultId);
+        const attachmentFilePayloads = await buildItemCapsuleAttachmentPayloads({
+          accessToken,
+          vaultKey: itemVaultKey,
+          item: itemPayload,
+          capsuleKey: generated.capsuleKey,
+        });
+        if (Object.keys(attachmentFilePayloads).length > 0) {
+          body.attachmentFilePayloads = attachmentFilePayloads;
+        }
       }
       if (isEditing && editingCapsuleId) {
         await core.updateCapsule(editingCapsuleId, body);

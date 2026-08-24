@@ -45,6 +45,8 @@ export interface CapsuleCreateRequestDto {
   encryptedMetadata: EncryptedBlobDto;
   ownerKeyWrap: EncryptedBlobDto;
   filePayload?: EncryptedBlobDto;
+  /** Item field attachments keyed by vault attachment id. */
+  attachmentFilePayloads?: Record<string, EncryptedBlobDto>;
   keyTransportMode?: CapsuleKeyTransportMode;
   activateAt?: string;
   deactivateAt?: string;
@@ -73,6 +75,8 @@ export interface CapsuleUpdateRequestDto extends CapsuleCreateRequestDto {
 export interface CapsuleOpenResponseDto extends CapsuleMetadataDto {
   encryptedPayload: EncryptedBlobDto;
   filePayload?: EncryptedBlobDto;
+  /** Item field attachments keyed by vault attachment id. */
+  attachmentPayloads?: Record<string, EncryptedBlobDto>;
   approvalRequestId?: EntityId;
 }
 

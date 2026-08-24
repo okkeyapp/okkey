@@ -142,6 +142,7 @@ export interface CreateCapsuleInput {
   encryptedMetadata?: unknown;
   ownerKeyWrap?: unknown;
   filePayload?: unknown;
+  attachmentFilePayloads?: Record<string, unknown>;
   keyTransportMode?: string;
   expiresAt?: string;
   activateAt?: string;
@@ -166,6 +167,7 @@ export type CapsuleMetadataResponse = CapsuleMetadataDto;
 export interface OpenCapsuleResponse extends CapsuleMetadataResponse {
   encryptedPayload: EncryptedBlob;
   filePayload?: EncryptedBlob;
+  attachmentPayloads?: Record<string, EncryptedBlob>;
 }
 
 export class CapsuleService {
@@ -337,6 +339,10 @@ export class CapsuleService {
               }),
             )
           : null;
+    const attachmentFilePayloads = parseAttachmentFilePayloads(
+      input.attachmentFilePayloads,
+      input.type,
+    );
     const accessPolicy = buildAccessPolicy(
       input.password,
       input.allowedRecipientEmails,
@@ -400,6 +406,10 @@ export class CapsuleService {
       );
       const created = inserted[0];
 
+      if (attachmentFilePayloads) {
+        await this.storeAttachmentFilePayloads(tx, created.id, attachmentFilePayloads);
+      }
+
       if (filePayload) {
         const storageKey = `capsules/${created.id}/file.bin`;
         await this.objectStorage.putObject(storageKey, filePayload);
@@ -423,7 +433,10 @@ export class CapsuleService {
           `,
           [created.id, storageKey, filePayload.length],
         );
-        const withPolicy = await tx.query<CapsuleRow>(
+      }
+
+      if (filePayload || attachmentFilePayloads) {
+        const withFiles = await tx.query<CapsuleRow>(
           `
             SELECT
               id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
@@ -435,7 +448,7 @@ export class CapsuleService {
           `,
           [created.id],
         );
-        return withPolicy;
+        return withFiles;
       }
       return inserted;
     });
@@ -647,6 +660,10 @@ export class CapsuleService {
       if (input.type === "file" && !replacingFile && !keepFile) {
         throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "filePayload is required");
       }
+      const attachmentFilePayloads = parseAttachmentFilePayloads(
+        input.attachmentFilePayloads,
+        input.type,
+      );
 
       const rows = await this.db.transaction(async (tx) => {
         if (existingPolicy.fileStorageKey && (!keepFile || replacingFile)) {
@@ -670,6 +687,10 @@ export class CapsuleService {
         } else if (keepFile) {
           nextPolicy.fileStorageKey = existingPolicy.fileStorageKey;
           nextPolicy.fileSizeBytes = existingPolicy.fileSizeBytes;
+        }
+
+        if (attachmentFilePayloads) {
+          await this.storeAttachmentFilePayloads(tx, capsuleId, attachmentFilePayloads);
         }
 
         const updated = await tx.query<CapsuleRow>(
@@ -1200,9 +1221,35 @@ export class CapsuleService {
           response.filePayload = decodeEncryptedBlobFromStorage(Uint8Array.from(filePayload));
         }
       }
+      const attachmentRows = await tx.query<{ asset_id: string; storage_key: string }>(
+        `SELECT asset_id, storage_key FROM capsule_files WHERE capsule_id = $1`,
+        [capsule.id],
+      );
+      if (attachmentRows.length > 0) {
+        const attachmentPayloads: Record<string, EncryptedBlob> = {};
+        for (const row of attachmentRows) {
+          if (policy.fileStorageKey && row.storage_key === policy.fileStorageKey) {
+            continue;
+          }
+          const stored = await this.objectStorage.getObject(row.storage_key);
+          if (stored) {
+            attachmentPayloads[row.asset_id] = decodeEncryptedBlobFromStorage(
+              Uint8Array.from(stored),
+            );
+          }
+        }
+        if (Object.keys(attachmentPayloads).length > 0) {
+          response.attachmentPayloads = attachmentPayloads;
+        }
+      }
       if (reachesLimit && capsule.view_limit_action === "delete") {
         if (policy.fileStorageKey) {
           await this.objectStorage.deleteObject(policy.fileStorageKey);
+        }
+        for (const row of attachmentRows) {
+          if (row.storage_key !== policy.fileStorageKey) {
+            await this.objectStorage.deleteObject(row.storage_key);
+          }
         }
         await tx.query("DELETE FROM capsules WHERE id = $1", [capsule.id]);
       } else {
@@ -1250,6 +1297,27 @@ export class CapsuleService {
     );
     if (!rows[0]) {
       throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+    }
+  }
+
+  private async storeAttachmentFilePayloads(
+    tx: QueryExecutor,
+    capsuleId: string,
+    payloads: Record<string, Buffer>,
+  ): Promise<void> {
+    for (const [assetId, serialized] of Object.entries(payloads)) {
+      const storageKey = `capsules/${capsuleId}/attachments/${encodeURIComponent(assetId)}.bin`;
+      await this.objectStorage.putObject(storageKey, serialized);
+      await tx.query(
+        `
+          INSERT INTO capsule_files (id, capsule_id, asset_id, storage_key, size_bytes)
+          VALUES ($1::bigint, $2, $3, $4, $5)
+          ON CONFLICT (capsule_id, asset_id) DO UPDATE
+            SET storage_key = EXCLUDED.storage_key,
+                size_bytes = EXCLUDED.size_bytes
+        `,
+        [generateEntityId(), capsuleId, assetId, storageKey, serialized.length],
+      );
     }
   }
 
@@ -1674,6 +1742,29 @@ function validatePassword(capsule: CapsuleRow, password: string | undefined, sec
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
     throw new CapsuleServiceError("CAPSULE_PASSWORD_INVALID", 403, "password invalid");
   }
+}
+
+function parseAttachmentFilePayloads(
+  value: Record<string, unknown> | undefined,
+  capsuleType: string,
+): Record<string, Buffer> | null {
+  if (capsuleType !== "item" || !value || typeof value !== "object") {
+    return null;
+  }
+  const out: Record<string, Buffer> = {};
+  for (const [assetId, blob] of Object.entries(value)) {
+    const normalizedAssetId = assetId.trim();
+    if (!normalizedAssetId) {
+      continue;
+    }
+    out[normalizedAssetId] = serializeEncryptedBlobToStorage(
+      mergeEncryptedBlobMeta(parseBlobOrThrow(blob, "attachmentFilePayloads"), {
+        entity: "capsule_attachment_payload",
+        capsule_type: capsuleType,
+      }),
+    );
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 function validateRecipient(

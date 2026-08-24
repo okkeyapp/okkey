@@ -5,16 +5,26 @@ import type {
   CapsuleOpenResponseDto,
   ItemPlaintextV2,
 } from "@okkey/types";
-import { Button, Input, Spinner } from "@okkey/ui";
-import { DownloadIcon, LockKeyholeIcon, ShieldCheckIcon } from "lucide-react";
+import { Button, cn, Input, Spinner } from "@okkey/ui";
+import type { KeyFieldFileValue } from "@okkey/ui";
+import { LockKeyholeIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { createPublicApiClient } from "../../api/client";
+import AppShellLayout from "../../components/app-shell/AppShellLayout";
+import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { blobToBytes } from "../../capsules/crypto";
+import { decryptCapsuleAttachmentFiles, openCapsuleItemFileFromVault } from "../../capsules/itemAttachments";
 import { storeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { captureCapsuleFragmentKey } from "../../capsules/fragmentKey";
+import PublicCapsuleContent from "./PublicCapsuleContent";
+
+const capsulePanelClassName = cn(
+  "w-full rounded-xl bg-background text-foreground",
+  "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+);
 
 type ViewerState =
   | "loading"
@@ -32,6 +42,7 @@ type ViewerState =
 type OpenedCapsuleContent = {
   payload: unknown;
   fileBytes: Uint8Array | null;
+  attachmentFiles: Map<string, Uint8Array>;
 };
 
 /** Survives React Strict Mode remounts so a single view is not consumed twice. */
@@ -63,7 +74,7 @@ export default function PublicCapsulePage() {
   const { capsuleId = "" } = useParams();
   const publicApi = useRef(createPublicApiClient());
   const core = useAuthenticatedCoreClient();
-  const { accessToken } = useAuthVault();
+  const { accessToken, vaultKey: accountVaultKey, userId } = useAuthVault();
   const [metadata, setMetadata] = useState<CapsuleMetadataDto | null>(null);
   const [state, setState] = useState<ViewerState>("loading");
   const [password, setPassword] = useState("");
@@ -73,9 +84,29 @@ export default function PublicCapsulePage() {
   const [guestSessionId, setGuestSessionId] = useState("");
   const [payload, setPayload] = useState<unknown>(null);
   const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<Map<string, Uint8Array>>(
+    () => new Map(),
+  );
 
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const handleVaultFileOpen = useCallback(
+    async (file: KeyFieldFileValue, item: ItemPlaintextV2) => {
+      if (!accessToken || !accountVaultKey || !core) {
+        throw new Error("missing file");
+      }
+      return openCapsuleItemFileFromVault({
+        accessToken,
+        accountVaultKey,
+        core,
+        userId,
+        item,
+        file,
+      });
+    },
+    [accessToken, accountVaultKey, core, userId],
+  );
 
   const resolveViewerState = useCallback(
     (result: CapsuleMetadataDto): ViewerState => {
@@ -120,6 +151,7 @@ export default function PublicCapsulePage() {
       if (cached) {
         setPayload(cached.payload);
         setFileBytes(cached.fileBytes);
+        setAttachmentFiles(cached.attachmentFiles ?? new Map());
         setState("content");
         return;
       }
@@ -135,6 +167,7 @@ export default function PublicCapsulePage() {
             if (opened) {
               setPayload(opened.payload);
               setFileBytes(opened.fileBytes);
+              setAttachmentFiles(opened.attachmentFiles);
             }
           }
           setState(next);
@@ -167,6 +200,7 @@ export default function PublicCapsulePage() {
       if (cached) {
         setPayload(cached.payload);
         setFileBytes(cached.fileBytes);
+        setAttachmentFiles(cached.attachmentFiles ?? new Map());
         setState("content");
         return;
       }
@@ -205,9 +239,14 @@ export default function PublicCapsulePage() {
                 blobToBytes(response.filePayload),
               );
             }
+            const nextAttachmentFiles = await decryptCapsuleAttachmentFiles(
+              capsuleKey,
+              response.attachmentPayloads,
+            );
             const opened: OpenedCapsuleContent = {
               payload: nextPayload,
               fileBytes: nextFileBytes,
+              attachmentFiles: nextAttachmentFiles,
             };
             capsuleOpenCache.set(capsuleId, opened);
             return opened;
@@ -222,6 +261,7 @@ export default function PublicCapsulePage() {
       capsuleOpenInflight.delete(capsuleId);
       setPayload(opened.payload);
       setFileBytes(opened.fileBytes);
+      setAttachmentFiles(opened.attachmentFiles);
       setState("content");
     } catch (cause) {
       capsuleOpenInflight.delete(capsuleId);
@@ -313,16 +353,13 @@ export default function PublicCapsulePage() {
   const loginMessage = "Для просмотра этой капсулы войдите в Okkey.";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-secondary p-5">
-      <section className="w-full max-w-2xl rounded-xl border bg-background p-6 shadow-lg">
-        <div className="mb-6 flex items-center gap-3">
-          <ShieldCheckIcon className="size-7" />
-          <div>
-            <h1 className="text-lg font-semibold">Защищённая капсула Okkey</h1>
-            <p className="text-sm text-muted-foreground">Содержимое расшифровывается только в вашем браузере.</p>
-          </div>
-        </div>
-
+    <AppShellLayout
+      title="Защищённая капсула Okkey"
+      description="Содержимое расшифровывается только в вашем браузере."
+      logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      contentClassName="max-w-[600px]"
+    >
+      <div className={cn(capsulePanelClassName, state === "content" ? "px-4 py-6" : "p-6")}>
         {state === "loading" || state === "decrypting" ? (
           <Centered>
             <Spinner />
@@ -358,15 +395,17 @@ export default function PublicCapsulePage() {
         ) : null}
         {state === "password" ? (
           <form
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-4"
             onSubmit={(event) => {
               event.preventDefault();
               void open();
             }}
           >
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              <LockKeyholeIcon className="size-5" />
-              Пароль
+            <label className="flex flex-col gap-2 text-sm font-medium text-copy-primary">
+              <span className="inline-flex items-center gap-2">
+                <LockKeyholeIcon className="size-5" />
+                Пароль
+              </span>
               <Input
                 type="password"
                 value={password}
@@ -375,7 +414,7 @@ export default function PublicCapsulePage() {
               />
             </label>
             {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
-            <Button type="submit" disabled={!password}>
+            <Button type="submit" className="w-full" disabled={!password}>
               Разблокировать
             </Button>
           </form>
@@ -393,62 +432,23 @@ export default function PublicCapsulePage() {
           </Centered>
         ) : null}
         {state === "denied" ? <Centered>Владелец запретил показ этой капсулы.</Centered> : null}
-        {state === "content" ? <CapsuleContent payload={payload} fileBytes={fileBytes} /> : null}
-      </section>
-    </main>
+        {state === "content" ? (
+          <PublicCapsuleContent
+            payload={payload}
+            fileBytes={fileBytes}
+            attachmentFiles={attachmentFiles}
+            onVaultFileOpen={handleVaultFileOpen}
+          />
+        ) : null}
+      </div>
+    </AppShellLayout>
   );
 }
 
 function Centered({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-4 py-10 text-center text-sm text-muted-foreground">
+    <div className="flex flex-col items-center gap-4 py-6 text-center text-sm text-copy-secondary">
       {children}
     </div>
   );
-}
-
-function CapsuleContent({ payload, fileBytes }: { payload: unknown; fileBytes: Uint8Array | null }) {
-  if (!payload || typeof payload !== "object") return <p>Пустая капсула</p>;
-  const data = payload as { type?: string; text?: string; name?: string; item?: ItemPlaintextV2 };
-  if (data.type === "text") {
-    return <pre className="whitespace-pre-wrap break-words font-sans text-sm">{data.text}</pre>;
-  }
-  if (data.type === "file" && fileBytes) {
-    const download = () => {
-      const url = URL.createObjectURL(new Blob([fileBytes]));
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = data.name || "capsule-file";
-      anchor.click();
-      URL.revokeObjectURL(url);
-    };
-    return (
-      <Button onClick={download}>
-        <DownloadIcon data-icon="inline-start" />
-        Скачать {data.name || "файл"}
-      </Button>
-    );
-  }
-  if (data.type === "item" && data.item) {
-    return (
-      <article className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold">{data.item.title}</h2>
-        <dl className="flex flex-col gap-3">
-          {data.item.fields.map((field) => (
-            <div key={field.id} className="rounded-lg bg-secondary p-3">
-              <dt className="text-xs text-muted-foreground">{field.label || field.type}</dt>
-              <dd className="mt-1 break-words text-sm">{fieldValueToText(field.value)}</dd>
-            </div>
-          ))}
-        </dl>
-      </article>
-    );
-  }
-  return <p className="text-sm text-muted-foreground">Неизвестный тип капсулы</p>;
-}
-
-function fieldValueToText(value: unknown): string {
-  if (!value || typeof value !== "object") return String(value ?? "");
-  const candidate = value as Record<string, unknown>;
-  return String(candidate.value ?? candidate.text ?? candidate.name ?? "••••••");
 }

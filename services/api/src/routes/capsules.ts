@@ -12,6 +12,7 @@ interface CreateCapsuleBody {
   encryptedMetadata?: unknown;
   ownerKeyWrap?: unknown;
   filePayload?: unknown;
+  attachmentFilePayloads?: Record<string, unknown>;
   keyTransportMode?: string;
   expiresAt?: string;
   activateAt?: string;
@@ -92,6 +93,7 @@ export function createCapsuleCreateRoute(
         encryptedMetadata: body.encryptedMetadata,
         ownerKeyWrap: body.ownerKeyWrap,
         filePayload: body.filePayload,
+        attachmentFilePayloads: body.attachmentFilePayloads,
         keyTransportMode: body.keyTransportMode,
         expiresAt: body.expiresAt,
         activateAt: body.activateAt,
@@ -174,6 +176,7 @@ export function createCapsuleUpdateRoute(
           encryptedMetadata: body.encryptedMetadata,
           ownerKeyWrap: body.ownerKeyWrap,
           filePayload: body.filePayload,
+          attachmentFilePayloads: body.attachmentFilePayloads,
           keyTransportMode: body.keyTransportMode,
           expiresAt: body.expiresAt,
           activateAt: body.activateAt,
