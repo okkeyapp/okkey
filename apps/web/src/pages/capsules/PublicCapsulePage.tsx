@@ -23,7 +23,7 @@ import PublicCapsuleContent from "./PublicCapsuleContent";
 import { useLocale } from "../../locale/LocaleContext";
 
 const capsulePanelClassName = cn(
-  "w-full rounded-xl bg-background text-foreground",
+  "w-full rounded-3xl bg-background text-foreground",
   "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
 );
 

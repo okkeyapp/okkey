@@ -547,9 +547,9 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
             <div
               data-state={isClosing ? "closing" : "open"}
               className={cn(
-                "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-32px)] flex-col overflow-hidden rounded-xl bg-background",
+                "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-32px)] flex-col overflow-hidden rounded-2xl bg-background",
                 menu && "md:flex-row",
-                "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-xl",
+                "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
                 panelClassName,
               )}
               onClick={(event) => event.stopPropagation()}
