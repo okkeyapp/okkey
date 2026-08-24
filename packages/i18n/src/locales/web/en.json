@@ -475,7 +475,6 @@
   "web.capsules.list.exitSelectionAria": "Cancel selection",
   "web.capsules.list.empty": "No capsules yet",
   "web.capsules.list.searchEmpty": "No results found for \"{query}\"",
-  "web.capsules.list.create": "Create capsule",
   "web.items.detail.back": "Back",
   "web.items.detail.notFoundTitle": "404",
   "web.items.detail.notFound": "This item does not exist",

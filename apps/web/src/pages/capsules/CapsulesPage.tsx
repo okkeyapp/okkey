@@ -560,15 +560,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                           {t("web.capsules.list.searchEmpty", { query: search.trim() })}
                         </p>
                       ) : (
-                        <div className="flex flex-col items-center gap-4">
-                          <p className="text-sm text-muted-foreground">{t("web.capsules.list.empty")}</p>
-                          {canCreate ? (
-                            <Button type="button" variant="secondary" onClick={openCreate}>
-                              <PlusIcon data-icon="inline-start" />
-                              {t("web.capsules.list.create")}
-                            </Button>
-                          ) : null}
-                        </div>
+                        <p className="text-sm text-muted-foreground">{t("web.capsules.list.empty")}</p>
                       )}
                     </td>
                   </tr>

@@ -475,7 +475,6 @@
   "web.capsules.list.exitSelectionAria": "Отменить выделение",
   "web.capsules.list.empty": "Капсулы ещё не созданы",
   "web.capsules.list.searchEmpty": "По Вашему запросу \"{query}\" результаты не найдены",
-  "web.capsules.list.create": "Создать капсулу",
   "web.items.detail.back": "Назад",
   "web.items.detail.notFoundTitle": "404",
   "web.items.detail.notFound": "Такой записи не существует",
