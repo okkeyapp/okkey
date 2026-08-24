@@ -634,13 +634,15 @@ export class CoreApiClient {
 
   openCapsule(
     capsuleId: string,
-    options?: { password?: string; approvalToken?: string },
+    options?: { password?: string; approvalToken?: string; guestSessionId?: string },
   ): Promise<CapsuleOpenResponseDto> {
+    const body: Record<string, string> = {};
+    if (options?.password) body.password = options.password;
+    if (options?.approvalToken) body.approvalToken = options.approvalToken;
+    if (options?.guestSessionId) body.guestSessionId = options.guestSessionId;
     return this.api.post<CapsuleOpenResponseDto>(
       `/capsules/${encodeURIComponent(capsuleId)}/open`,
-      options?.password || options?.approvalToken
-        ? { ...(options.password ? { password: options.password } : {}), ...(options.approvalToken ? { approvalToken: options.approvalToken } : {}) }
-        : {},
+      Object.keys(body).length > 0 ? body : {},
     );
   }
 
@@ -667,7 +669,7 @@ export class CoreApiClient {
 
   requestCapsuleApproval(
     capsuleId: string,
-    input: { deviceLabel?: string; platform?: string },
+    input: { deviceLabel?: string; platform?: string; guestSessionId?: string },
   ): Promise<CapsuleApprovalStatusDto> {
     return this.api.post<CapsuleApprovalStatusDto>(
       `/capsules/${encodeURIComponent(capsuleId)}/approval-requests`,
@@ -675,9 +677,15 @@ export class CoreApiClient {
     );
   }
 
-  getCapsuleApprovalStatus(requestId: string): Promise<CapsuleApprovalStatusDto> {
+  getCapsuleApprovalStatus(
+    requestId: string,
+    options?: { guestSessionId?: string },
+  ): Promise<CapsuleApprovalStatusDto> {
+    const query = options?.guestSessionId
+      ? `?guestSessionId=${encodeURIComponent(options.guestSessionId)}`
+      : "";
     return this.api.get<CapsuleApprovalStatusDto>(
-      `/capsule-approval-requests/${encodeURIComponent(requestId)}`,
+      `/capsule-approval-requests/${encodeURIComponent(requestId)}${query}`,
     );
   }
 

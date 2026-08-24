@@ -44,10 +44,13 @@ export default function CapsuleApprovalController() {
     ).then((metadata) => setCapsuleName(metadata.name)).catch(() => setCapsuleName("Капсула"));
   }, [current, vaultKey]);
 
-  const requester = useMemo(
-    () => current?.requesterName?.trim() || current?.requesterEmail || "Неизвестный пользователь",
-    [current],
-  );
+  const requester = useMemo(() => {
+    if (!current) return "Неизвестный пользователь";
+    const named = current.requesterName?.trim();
+    if (named) return named;
+    if (current.requesterUserId) return current.requesterEmail;
+    return current.requesterEmail === "guest" ? "Гость" : current.requesterEmail || "Гость";
+  }, [current]);
 
   if (!current || !core) return null;
 

@@ -754,11 +754,11 @@ export class CapsuleService {
           SET
             state = $3,
             view_count = CASE
-              WHEN $3 = 'active' AND view_limit IS NOT NULL THEN 0
+              WHEN $3 = 'active' THEN 0
               ELSE view_count
             END,
             activate_at = CASE
-              WHEN $3 = 'active' AND activate_at IS NOT NULL AND activate_at <= now() THEN NULL
+              WHEN $3 = 'active' THEN NULL
               ELSE activate_at
             END,
             deactivate_at = CASE
@@ -766,8 +766,10 @@ export class CapsuleService {
               ELSE deactivate_at
             END,
             expires_at = CASE
-              WHEN $3 = 'active' AND COALESCE(deactivate_at, expires_at) IS NOT NULL
-                AND COALESCE(deactivate_at, expires_at) <= now() THEN NULL
+              WHEN $3 = 'active' AND (
+                (expires_at IS NOT NULL AND expires_at <= now())
+                OR (deactivate_at IS NOT NULL AND deactivate_at <= now())
+              ) THEN NULL
               ELSE expires_at
             END,
             delete_at = CASE
@@ -844,7 +846,8 @@ export class CapsuleService {
 
   async requestCapsuleApproval(input: {
     capsuleId: string;
-    requesterUserId: string;
+    requesterUserId?: string;
+    guestSessionId?: string;
     requesterEmail?: string;
     requestIp: string;
     deviceLabel?: string;
@@ -852,33 +855,66 @@ export class CapsuleService {
     country?: string | null;
     city?: string | null;
   }): Promise<CapsuleApprovalStatusDto> {
-    let requesterEmail = input.requesterEmail;
-    if (this.users) {
-      requesterEmail = (await this.users.findById(input.requesterUserId))?.email;
-    }
-    if (!requesterEmail) {
-      throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
-    }
     const capsule = await this.loadCapsule(input.capsuleId);
     ensureCapsuleAccessible(capsule);
-    validateRecipient(capsule, requesterEmail, this.config.sessionSecret);
     if (!capsule.approval_required) {
       throw new CapsuleServiceError("CAPSULE_APPROVAL_NOT_REQUIRED", 400, "approval is not required");
     }
+
+    const policy = parsePolicy(capsule.access_policy);
+    const recipientRestricted = Boolean(policy.allowedRecipientHashes?.length);
+    const guestSessionId = input.guestSessionId?.trim() || undefined;
+    let requesterUserId = input.requesterUserId;
+    let requesterEmail = input.requesterEmail;
+    let requesterName: string | null = null;
+
+    if (recipientRestricted) {
+      if (!requesterUserId) {
+        throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
+      }
+      if (this.users) {
+        requesterEmail = (await this.users.findById(requesterUserId))?.email;
+      }
+      if (!requesterEmail) {
+        throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
+      }
+      validateRecipient(capsule, requesterEmail, this.config.sessionSecret);
+      requesterEmail = normalizeEmail(requesterEmail);
+    } else if (requesterUserId) {
+      if (this.users) {
+        requesterEmail = (await this.users.findById(requesterUserId))?.email;
+      }
+      if (!requesterEmail) {
+        throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
+      }
+      requesterEmail = normalizeEmail(requesterEmail);
+    } else if (guestSessionId) {
+      requesterUserId = undefined;
+      requesterEmail = "guest";
+      requesterName = "Гость";
+    } else {
+      throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
+    }
+
+    const identityClause = requesterUserId
+      ? "requester_user_id = $2"
+      : "guest_session_id = $2";
+    const identityValue = requesterUserId ?? guestSessionId!;
+
     const denied = await this.db.query<{ id: string }>(
       `SELECT id FROM capsule_view_requests
-       WHERE capsule_id = $1 AND requester_user_id = $2 AND status = 'denied'
+       WHERE capsule_id = $1 AND ${identityClause} AND status = 'denied'
        LIMIT 1`,
-      [input.capsuleId, input.requesterUserId],
+      [input.capsuleId, identityValue],
     );
     if (denied[0]) {
       throw new CapsuleServiceError("CAPSULE_APPROVAL_DENIED", 403, "capsule approval denied");
     }
     const existing = await this.db.query<{ id: string; status: string }>(
       `SELECT id, status FROM capsule_view_requests
-       WHERE capsule_id = $1 AND requester_user_id = $2 AND status IN ('pending', 'approved')
+       WHERE capsule_id = $1 AND ${identityClause} AND status IN ('pending', 'approved')
        ORDER BY requested_at DESC LIMIT 1`,
-      [input.capsuleId, input.requesterUserId],
+      [input.capsuleId, identityValue],
     );
     if (existing[0]) {
       return {
@@ -887,20 +923,25 @@ export class CapsuleService {
       };
     }
     const requestId = generateEntityId();
+    const emailForHash = requesterUserId
+      ? requesterEmail!
+      : `guest:${guestSessionId}`;
     await this.db.query(
       `
         INSERT INTO capsule_view_requests (
-          id, capsule_id, requester_user_id, requester_email_hash, requester_email,
-          device_label, platform, ip_address, country, city, status
+          id, capsule_id, requester_user_id, guest_session_id, requester_email_hash, requester_email,
+          requester_name, device_label, platform, ip_address, country, city, status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, 'unknown')::inet, $9, $10, 'pending')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, 'unknown')::inet, $11, $12, 'pending')
       `,
       [
         requestId,
         input.capsuleId,
-        input.requesterUserId,
-        hashRecipient(normalizeEmail(requesterEmail), this.config.sessionSecret),
-        normalizeEmail(requesterEmail),
+        requesterUserId ?? null,
+        guestSessionId ?? null,
+        hashRecipient(emailForHash, this.config.sessionSecret),
+        requesterEmail!,
+        requesterName,
         input.deviceLabel?.trim() || "Unknown device",
         input.platform?.trim() || "Unknown",
         input.requestIp,
@@ -911,12 +952,23 @@ export class CapsuleService {
     return { requestId, status: "pending" };
   }
 
-  async getApprovalStatus(requestId: string, requesterUserId: string): Promise<CapsuleApprovalStatusDto> {
+  async getApprovalStatus(
+    requestId: string,
+    requesterUserId?: string,
+    guestSessionId?: string,
+  ): Promise<CapsuleApprovalStatusDto> {
+    const identityClause = requesterUserId
+      ? "requester_user_id = $2"
+      : "guest_session_id = $2";
+    const identityValue = requesterUserId ?? guestSessionId?.trim();
+    if (!identityValue) {
+      throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
+    }
     const rows = await this.db.query<{ id: string; status: string; approval_token_hash: string | null }>(
       `SELECT id, status, approval_token_hash
        FROM capsule_view_requests
-       WHERE id = $1 AND requester_user_id = $2`,
-      [requestId, requesterUserId],
+       WHERE id = $1 AND ${identityClause}`,
+      [requestId, identityValue],
     );
     const row = rows[0];
     if (!row) {
@@ -938,7 +990,7 @@ export class CapsuleService {
       type: string;
       encrypted_metadata: Buffer | null;
       owner_key_wrap: Buffer | null;
-      requester_user_id: string;
+      requester_user_id: string | null;
       requester_email: string;
       requester_name: string | null;
       device_label: string;
@@ -1025,7 +1077,15 @@ export class CapsuleService {
 
   async getCapsuleMetadata(capsuleId: string): Promise<CapsuleMetadataResponse> {
     const capsule = await this.loadCapsule(capsuleId);
-    ensureCapsuleAccessible(capsule);
+    const policy = parsePolicy(capsule.access_policy);
+    if (policy.revoked) {
+      throw new CapsuleServiceError("CAPSULE_REVOKED", 410, "capsule revoked");
+    }
+    if (capsule.delete_at && Date.now() >= Date.parse(String(capsule.delete_at))) {
+      throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+    }
+    // Return effective state instead of throwing for inactive / view-limit capsules so
+    // viewers can distinguish "not active yet" from hard failures after reactivation.
     return mapMetadata(capsule);
   }
 
@@ -1037,6 +1097,7 @@ export class CapsuleService {
     keyTransportMode?: string,
     approvalToken?: string,
     requesterUserId?: string,
+    guestSessionId?: string,
   ): Promise<OpenCapsuleResponse> {
     await this.consumeOpenRateLimit(requestIp);
     assertSafeCapsuleKeyTransportMode(keyTransportMode);
@@ -1092,21 +1153,35 @@ export class CapsuleService {
       validateRecipient(capsule, sessionRecipientEmail, this.config.sessionSecret);
       let approvalRequestId: string | null = null;
       if (capsule.approval_required) {
-        if (!approvalToken || !requesterUserId) {
+        if (!approvalToken) {
           throw new CapsuleServiceError("CAPSULE_APPROVAL_REQUIRED", 403, "owner approval required");
         }
-        const approvalRows = await tx.query<{ id: string; approval_token_hash: string | null }>(
-          `SELECT id, approval_token_hash
+        const tokenHash = hashApprovalToken(approvalToken, this.config.sessionSecret);
+        const approvalRows = await tx.query<{
+          id: string;
+          requester_user_id: string | null;
+          guest_session_id: string | null;
+          approval_token_hash: string | null;
+        }>(
+          `SELECT id, requester_user_id, guest_session_id, approval_token_hash
            FROM capsule_view_requests
-           WHERE capsule_id = $1 AND requester_user_id = $2 AND status = 'approved'
+           WHERE capsule_id = $1 AND status = 'approved' AND approval_token_hash = $2
            FOR UPDATE`,
-          [capsule.id, requesterUserId],
+          [capsule.id, tokenHash],
         );
         const approval = approvalRows[0];
-        if (
-          !approval?.approval_token_hash ||
-          approval.approval_token_hash !== hashApprovalToken(approvalToken, this.config.sessionSecret)
-        ) {
+        if (!approval) {
+          throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
+        }
+        if (approval.requester_user_id) {
+          if (!requesterUserId || approval.requester_user_id !== requesterUserId) {
+            throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
+          }
+        } else if (approval.guest_session_id) {
+          if (!guestSessionId || approval.guest_session_id !== guestSessionId) {
+            throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
+          }
+        } else {
           throw new CapsuleServiceError("CAPSULE_APPROVAL_INVALID", 403, "invalid approval token");
         }
         approvalRequestId = approval.id;
@@ -1542,11 +1617,14 @@ function capsuleEffectiveState(capsule: CapsuleRow, nowMs = Date.now()): Capsule
   if (capsule.state !== "active") {
     return "inactive";
   }
-  if (capsule.activate_at && nowMs < Date.parse(capsule.activate_at)) {
+  if (capsule.view_limit !== null && capsule.view_count >= capsule.view_limit) {
+    return "inactive";
+  }
+  if (capsule.activate_at && nowMs < Date.parse(String(capsule.activate_at))) {
     return "inactive";
   }
   const deactivateAt = capsule.deactivate_at ?? capsule.expires_at;
-  if (deactivateAt && nowMs >= Date.parse(deactivateAt)) {
+  if (deactivateAt && nowMs >= Date.parse(String(deactivateAt))) {
     return "inactive";
   }
   return "active";
@@ -1564,7 +1642,7 @@ function ensureCapsuleAccessible(capsule: CapsuleRow): void {
   if (policy.revoked) {
     throw new CapsuleServiceError("CAPSULE_REVOKED", 410, "capsule revoked");
   }
-  if (capsule.delete_at && Date.now() >= Date.parse(capsule.delete_at)) {
+  if (capsule.delete_at && Date.now() >= Date.parse(String(capsule.delete_at))) {
     throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
   }
   if (capsule.view_limit !== null && capsule.view_count >= capsule.view_limit) {
@@ -1573,12 +1651,6 @@ function ensureCapsuleAccessible(capsule: CapsuleRow): void {
       410,
       "capsule view limit exceeded",
     );
-  }
-  if (capsule.expires_at && Date.now() >= Date.parse(capsule.expires_at)) {
-    throw new CapsuleServiceError("CAPSULE_EXPIRED", 410, "capsule expired");
-  }
-  if (capsule.activate_at && Date.now() < Date.parse(capsule.activate_at)) {
-    throw new CapsuleServiceError("CAPSULE_NOT_ACTIVE", 403, "capsule is not active yet");
   }
   if (capsuleEffectiveState(capsule) !== "active") {
     throw new CapsuleServiceError("CAPSULE_INACTIVE", 410, "capsule inactive");

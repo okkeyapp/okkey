@@ -381,6 +381,34 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0023);
   }
+
+  const capsuleDefaultsTable = await storage.postgres.query<{ exists: boolean }>(
+    "SELECT to_regclass('public.workspace_member_capsule_defaults') IS NOT NULL AS exists",
+  );
+  if (!capsuleDefaultsTable[0]?.exists) {
+    const migration0024 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0024_workspace_member_capsule_defaults.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0024);
+  }
+
+  const guestSessionColumn = await storage.postgres.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'capsule_view_requests'
+        AND column_name = 'guest_session_id'
+    ) AS exists`,
+  );
+  if (!guestSessionColumn[0]?.exists) {
+    const migration0025 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0025_capsule_guest_approval.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0025);
+  }
 }
 
 export async function cleanupUserData(

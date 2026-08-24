@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { storeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { AUTH_OTP_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
@@ -14,6 +15,7 @@ export default function AuthEmailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const invitedEmail = searchParams.get("email")?.trim() ?? "";
+  const returnTo = searchParams.get("returnTo")?.trim() ?? "";
   const { authClient, setEmailChallenge, updateLocalProfile } = useAuthVault();
   const [email, setEmail] = useState(invitedEmail);
   const [submitting, setSubmitting] = useState(false);
@@ -24,6 +26,12 @@ export default function AuthEmailPage() {
       setEmail(invitedEmail);
     }
   }, [invitedEmail]);
+
+  useEffect(() => {
+    if (returnTo.startsWith("/capsule/")) {
+      storeCapsuleReturnUrl(returnTo);
+    }
+  }, [returnTo]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

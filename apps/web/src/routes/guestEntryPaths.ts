@@ -6,6 +6,7 @@ import {
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
+  isCapsulePublicPathname,
   isDevUiPathname,
   isInvitePathname,
   UNLOCK_PASSWORD_LEGACY_PATH,
@@ -23,6 +24,9 @@ export type GuestEntryPathContext = {
  */
 export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEntryPathContext): boolean {
   if (isDevUiPathname(pathname)) {
+    return true;
+  }
+  if (isCapsulePublicPathname(pathname)) {
     return true;
   }
   if (pathname === AUTH_EMAIL_PATH) {

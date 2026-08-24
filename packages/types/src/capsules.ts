@@ -97,7 +97,7 @@ export interface CapsuleApprovalRequestDto {
   capsuleType: CapsuleType;
   encryptedCapsuleMetadata?: EncryptedBlobDto;
   ownerKeyWrap?: EncryptedBlobDto;
-  requesterUserId: EntityId;
+  requesterUserId: EntityId | null;
   requesterEmail: string;
   requesterName: string | null;
   deviceLabel: string;

@@ -32,6 +32,7 @@ interface OpenCapsuleBody {
   password?: string;
   keyTransportMode?: string;
   approvalToken?: string;
+  guestSessionId?: string;
 }
 
 import { isEntityId } from "../entity-id.ts";
@@ -263,6 +264,7 @@ export function createCapsuleOpenRoute(
         body.keyTransportMode,
         body.approvalToken,
         userId ?? undefined,
+        body.guestSessionId,
       );
       json(ctx.res, 200, capsule);
     } catch (error) {
@@ -381,19 +383,26 @@ export function createCapsuleApprovalRequestRoute(
 ): RouteHandler {
   return async (ctx) => {
     const userId = await resolveUserId(ctx.req);
-    if (!userId) {
-      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
-      return;
-    }
     try {
-      await readJsonBody<Record<string, unknown>>(ctx.req);
+      const body = await readJsonBody<{
+        guestSessionId?: string;
+        deviceLabel?: string;
+        platform?: string;
+      }>(ctx.req);
+      const guestSessionId =
+        typeof body.guestSessionId === "string" ? body.guestSessionId.trim() : "";
+      if (!userId && !guestSessionId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       const requesterContext = await resolveRequesterContext(capsuleService, ctx.req);
       const result = await capsuleService.requestCapsuleApproval({
         capsuleId: ctx.params.capsuleId ?? "",
-        requesterUserId: userId,
+        ...(userId ? { requesterUserId: userId } : {}),
+        ...(guestSessionId && !userId ? { guestSessionId } : {}),
         requestIp: requesterContext.ipAddress,
-        deviceLabel: requesterContext.deviceLabel,
-        platform: requesterContext.platform,
+        deviceLabel: body.deviceLabel ?? requesterContext.deviceLabel,
+        platform: body.platform ?? requesterContext.platform,
         country: requesterContext.location.country,
         city: requesterContext.location.city,
       });
@@ -410,15 +419,21 @@ export function createCapsuleApprovalStatusRoute(
 ): RouteHandler {
   return async (ctx) => {
     const userId = await resolveUserId(ctx.req);
-    if (!userId) {
-      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
-      return;
-    }
     try {
+      const url = new URL(ctx.req.url ?? "/", "http://localhost");
+      const guestSessionId = url.searchParams.get("guestSessionId")?.trim() || undefined;
+      if (!userId && !guestSessionId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
       json(
         ctx.res,
         200,
-        await capsuleService.getApprovalStatus(ctx.params.requestId ?? "", userId),
+        await capsuleService.getApprovalStatus(
+          ctx.params.requestId ?? "",
+          userId ?? undefined,
+          guestSessionId,
+        ),
       );
     } catch (error) {
       handleCapsuleError(ctx.requestId, ctx.res, error);

@@ -139,4 +139,40 @@ test("capsules v2: owner pagination, isolation, approval and reactivation", asyn
     requestIp: "203.0.113.11",
   });
   assert.equal(afterReactivation.status, "pending");
+
+  const guestCapsule = await service.createCapsule(workspaceId, owner.userId, {
+    type: "text",
+    encryptedPayload: blob("guest-approval-payload"),
+    encryptedMetadata: blob("guest-approval-metadata"),
+    ownerKeyWrap: blob("guest-approval-wrap"),
+    approvalRequired: true,
+  });
+  const guestSessionId = `guest-session-${testEntityId()}`;
+  const guestPending = await service.requestCapsuleApproval({
+    capsuleId: guestCapsule.capsuleId,
+    guestSessionId,
+    requestIp: "203.0.113.20",
+    deviceLabel: "Guest Browser",
+    platform: "Test OS",
+  });
+  assert.equal(guestPending.status, "pending");
+  assert.equal(await service.resolveApproval(guestPending.requestId, owner.userId, "approve"), "approved");
+  const guestApproved = await service.getApprovalStatus(
+    guestPending.requestId,
+    undefined,
+    guestSessionId,
+  );
+  assert.equal(guestApproved.status, "approved");
+  assert.ok(guestApproved.approvalToken);
+  const guestOpened = await service.openCapsule(
+    guestCapsule.capsuleId,
+    "203.0.113.20",
+    undefined,
+    undefined,
+    "fragment",
+    guestApproved.approvalToken,
+    undefined,
+    guestSessionId,
+  );
+  assert.equal(guestOpened.viewCount, 1);
 });

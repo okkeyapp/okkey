@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Okkey</title>
+    <!-- Capture capsule key from the URL fragment before the SPA boots (module scripts are deferred). -->
+    <script>
+      (function () {
+        try {
+          var match = location.pathname.match(/^\/capsule\/([^/]+)\/?$/);
+          if (!match) return;
+          var key = new URLSearchParams(String(location.hash || "").replace(/^#/, "")).get("key");
+          if (!key) return;
+          sessionStorage.setItem("okkey:capsule-key:" + match[1], key);
+          history.replaceState(null, "", location.pathname + location.search);
+        } catch (_error) {
+          /* ignore quota / private-mode failures; React bootstrap still retries */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

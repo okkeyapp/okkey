@@ -16,8 +16,14 @@ describe("isAllowedPathWithoutBearerSession", () => {
     expect(INVITE_PATH_PATTERN).toBe("/invite/:token");
   });
 
+  it("allows public capsule viewer without a Bearer session", () => {
+    expect(isAllowedPathWithoutBearerSession("/capsule/123", guest)).toBe(true);
+    expect(isAllowedPathWithoutBearerSession("/capsule/abc-def", guest)).toBe(true);
+  });
+
   it("rejects protected shell paths without a session", () => {
     expect(isAllowedPathWithoutBearerSession("/items", guest)).toBe(false);
     expect(isAllowedPathWithoutBearerSession("/workspaces", guest)).toBe(false);
+    expect(isAllowedPathWithoutBearerSession("/capsules", guest)).toBe(false);
   });
 });
