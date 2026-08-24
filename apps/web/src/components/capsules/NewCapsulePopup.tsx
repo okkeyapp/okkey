@@ -81,6 +81,8 @@ import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmen
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
 import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { useLocale } from "../../locale/LocaleContext";
+import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
+import { resolveKeyFormFieldLabel } from "../key-form/keyFormFieldLabel";
 import ExitNewItemFormConfirmPopup from "../items/ExitNewItemFormConfirmPopup";
 import ItemRecordFavicon from "../items/ItemRecordFavicon";
 import CapsuleActionsMenu from "./CapsuleActionsMenu";
@@ -158,6 +160,7 @@ export default function NewCapsulePopup({
     "capsuleAccessSettings",
   );
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
+  const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const scheduleOptions = useMemo(() => getScheduleOptions(t), [t]);
   const capsuleTypeOptions = useMemo(
     () =>
@@ -1017,7 +1020,11 @@ export default function NewCapsulePopup({
                         <MultiSelectContent>
                           {visibleFields.map((field) => (
                             <MultiSelectItem key={field.id} value={field.id}>
-                              {field.label || field.type}
+                              {resolveKeyFormFieldLabel(
+                                { id: field.id, type: field.type, label: field.label },
+                                keyFormMessages,
+                                { sectionId: field.sectionId },
+                              )}
                             </MultiSelectItem>
                           ))}
                         </MultiSelectContent>

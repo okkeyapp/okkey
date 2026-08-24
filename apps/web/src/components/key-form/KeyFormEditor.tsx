@@ -88,6 +88,7 @@ import {
   type KeyFormUrlAutofillScope,
   type PasswordStrengthLabelKey,
 } from "./keyFormI18n";
+import { resolveKeyFormFieldLabel } from "./keyFormFieldLabel";
 import {
   getSecretKind,
   isConfigurableSecretField,
@@ -427,12 +428,12 @@ function KeyFormSelectOptionsInput({
   );
 }
 
-function fieldDisplayLabel(field: Pick<DemoField, "id" | "type" | "label">, messages: KeyFormEditorMessages): string {
-  const trimmed = field.label?.trim();
-  if (trimmed) {
-    return trimmed;
-  }
-  return messages.fieldLabels[fieldValuePlaceholderKey(field)] ?? field.id;
+function fieldDisplayLabel(
+  field: Pick<DemoField, "id" | "type" | "label" | "editableLabel">,
+  messages: KeyFormEditorMessages,
+  sectionId?: string,
+): string {
+  return resolveKeyFormFieldLabel(field, messages, { sectionId });
 }
 
 const FORM_ENTITY_ID_PATTERN = /^(?:section|field)-(\d+)$/;
@@ -1812,7 +1813,7 @@ function SortableField({
   return (
     <div ref={setNodeRef} style={style} className={cn("min-w-0", isDragging && "relative z-10 opacity-0")}>
       <KeyField
-      label={fieldDisplayLabel(field, messages)}
+      label={fieldDisplayLabel(field, messages, section.id)}
       surfaceRounding={surfaceRounding}
       value={value}
       children={selectFieldContent}
@@ -3475,7 +3476,7 @@ export function KeyFormEditor({
 
     return (
       <KeyField
-        label={field.label}
+        label={fieldDisplayLabel(field, messages, section.id)}
         surfaceRounding={
           isDraggedField
             ? undefined

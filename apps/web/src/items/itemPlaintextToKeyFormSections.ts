@@ -3,6 +3,7 @@ import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, formatCa
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
+import { resolveKeyFormFieldLabel } from "../components/key-form/keyFormFieldLabel";
 import {
   API_ACCESS_SECTION_ID,
   BANK_ACCOUNT_SECTION_ID,
@@ -1099,14 +1100,21 @@ function toFormField(
   const deletable = isFieldDeletable(sectionId, field, sectionFields, isPresetSection);
   const secretKind = type === "secret" ? getSecretKindFromRaw(field.value.kind === "unknown" ? field.value.raw : null) : undefined;
   const selectField = type === "select" ? parseSelectFieldValueFromItem(field) : undefined;
+  const editableLabel = isFieldLabelEditable(sectionId, field, isPresetSection);
   const formField: KeyFormEditorField = {
     id: field.id,
     type,
-    label: field.label ?? field.id,
+    label: messages
+      ? resolveKeyFormFieldLabel(
+          { id: field.id, type, label: field.label, editableLabel },
+          messages,
+          { sectionId },
+        )
+      : field.label ?? field.id,
     value: selectField?.value ?? value,
     copyValue: type === "password" || type === "secret" || type === "url" ? value : undefined,
     secret: type === "password" || type === "secret",
-    editableLabel: isFieldLabelEditable(sectionId, field, isPresetSection),
+    editableLabel,
     deletable,
     required: isFieldRequired(sectionId, field, sectionFields, isPresetSection),
     ...(secretKind ? { secretKind } : {}),
