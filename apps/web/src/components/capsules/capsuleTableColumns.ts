@@ -15,6 +15,12 @@ export const CAPSULE_TABLE_COLUMN_LABELS: Record<CapsuleTableColumnId, string> =
   password: "С паролем",
 };
 
+/** Page size for the capsules owner list. */
+export const CAPSULE_TABLE_PAGE_SIZE = 30;
+
+/** Skeleton rows before the first successful list response (total still unknown). */
+export const CAPSULE_TABLE_INITIAL_SKELETON_ROWS = 5;
+
 const DEFAULT_VISIBLE_COLUMNS: readonly CapsuleTableColumnId[] = CAPSULE_TABLE_COLUMN_IDS;
 
 function isColumnId(value: unknown): value is CapsuleTableColumnId {
@@ -57,36 +63,34 @@ export function saveVisibleCapsuleColumns(columns: readonly CapsuleTableColumnId
   }
 }
 
+export function capsulePageRowCount(page: number, total: number, pageSize = CAPSULE_TABLE_PAGE_SIZE): number {
+  if (total <= 0) {
+    return CAPSULE_TABLE_INITIAL_SKELETON_ROWS;
+  }
+  const safePage = Math.max(1, page);
+  const remaining = total - (safePage - 1) * pageSize;
+  return Math.max(1, Math.min(pageSize, remaining));
+}
+
+/**
+ * Compact pagination: all pages when ≤7, otherwise first/last + window with "…".
+ * Never renders one button per page when there are many pages.
+ */
 export function buildCapsulePageItems(page: number, pageCount: number): Array<number | "ellipsis"> {
-  if (pageCount <= 7) {
-    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  const safePageCount = Math.max(1, pageCount);
+  const safePage = Math.min(Math.max(1, page), safePageCount);
+
+  if (safePageCount <= 7) {
+    return Array.from({ length: safePageCount }, (_, index) => index + 1);
   }
 
-  const pages = new Set<number>([1, pageCount, page]);
-  if (page - 1 >= 1) pages.add(page - 1);
-  if (page + 1 <= pageCount) pages.add(page + 1);
-
-  if (page <= 3) {
-    pages.add(2);
-    pages.add(3);
-    pages.add(pageCount - 1);
-    pages.add(pageCount - 2);
-  }
-  if (page >= pageCount - 2) {
-    pages.add(pageCount - 1);
-    pages.add(pageCount - 2);
-    pages.add(2);
-    pages.add(3);
+  if (safePage <= 3) {
+    return [1, 2, 3, 4, "ellipsis", safePageCount];
   }
 
-  const sorted = [...pages].filter((value) => value >= 1 && value <= pageCount).sort((a, b) => a - b);
-  const items: Array<number | "ellipsis"> = [];
-  for (const value of sorted) {
-    const previous = items[items.length - 1];
-    if (typeof previous === "number" && value - previous > 1) {
-      items.push("ellipsis");
-    }
-    items.push(value);
+  if (safePage >= safePageCount - 2) {
+    return [1, "ellipsis", safePageCount - 3, safePageCount - 2, safePageCount - 1, safePageCount];
   }
-  return items;
+
+  return [1, "ellipsis", safePage - 1, safePage, safePage + 1, "ellipsis", safePageCount];
 }

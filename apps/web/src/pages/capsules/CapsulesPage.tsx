@@ -9,7 +9,6 @@ import {
   BreadcrumbSeparator,
   Button,
   Checkbox,
-  ControlGroup,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -19,7 +18,7 @@ import {
   Skeleton,
   cn,
 } from "@okkey/ui";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -42,12 +41,14 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import CapsuleActionsMenu from "../../components/capsules/CapsuleActionsMenu";
-import { CapsuleCheckIcon, CapsuleColumnsIcon } from "../../components/capsules/capsuleIcons";
+import { CapsuleCheckIcon, CapsuleCloseIcon, CapsuleColumnsIcon, CapsuleSearchIcon } from "../../components/capsules/capsuleIcons";
 import {
   CAPSULE_TABLE_COLUMN_IDS,
   CAPSULE_TABLE_COLUMN_LABELS,
   CAPSULE_TABLE_LOCKED_COLUMN,
+  CAPSULE_TABLE_PAGE_SIZE,
   buildCapsulePageItems,
+  capsulePageRowCount,
   loadVisibleCapsuleColumns,
   normalizeVisibleCapsuleColumns,
   saveVisibleCapsuleColumns,
@@ -140,7 +141,10 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
         const filtered = decrypted.filter((capsule) =>
           capsule.ownerMetadata.name.toLocaleLowerCase().includes(query),
         );
-        const pageCapsules = filtered.slice((page - 1) * 30, page * 30);
+        const pageCapsules = filtered.slice(
+          (page - 1) * CAPSULE_TABLE_PAGE_SIZE,
+          page * CAPSULE_TABLE_PAGE_SIZE,
+        );
         setCapsules(pageCapsules);
         setTotal(filtered.length);
         syncSelectedCapsules(filtered);
@@ -166,13 +170,15 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     void load({ silent: true });
   }), [load]);
 
-  const pageCount = Math.max(1, Math.ceil(total / 30));
+  const pageCount = Math.max(1, Math.ceil(total / CAPSULE_TABLE_PAGE_SIZE));
+  const skeletonRowCount = capsulePageRowCount(page, total, CAPSULE_TABLE_PAGE_SIZE);
   const selectedCapsules = useMemo(() => [...selectedById.values()], [selectedById]);
   const selectedCount = selectedCapsules.length;
   const allSelected = capsules.length > 0 && capsules.every((capsule) => selectedById.has(capsule.capsuleId));
   const pageItems = useMemo(() => buildCapsulePageItems(page, pageCount), [page, pageCount]);
   const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns]);
   const tableColSpan = 2 + visibleColumns.length;
+  const onlyNameColumn = visibleColumns.length === 1 && visibleColumns[0] === "name";
 
   const openCreate = () => {
     navigate({
@@ -336,7 +342,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="relative w-full max-w-sm">
-              <SearchIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+              <CapsuleSearchIcon className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
               <Input
                 className="pl-9"
                 value={search}
@@ -384,7 +390,12 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
           </div>
 
           <div className="overflow-x-auto rounded-xl border">
-            <table className="w-full min-w-[780px] border-collapse text-left text-sm">
+            <table
+              className={cn(
+                "w-full border-collapse text-left text-sm",
+                onlyNameColumn ? "table-fixed" : "min-w-[780px]",
+              )}
+            >
               <thead className="bg-secondary">
                 <tr className={ROW_CLASS_NAME}>
                   <th className={cn(CELL_CLASS_NAME, "w-10")}>
@@ -394,7 +405,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                     />
                   </th>
                   {visibleColumns.includes("name") ? (
-                    <th className={cn(CELL_CLASS_NAME, "w-52 font-medium")}>Название</th>
+                    <th
+                      className={cn(CELL_CLASS_NAME, "font-medium", !onlyNameColumn && "w-52")}
+                    >
+                      Название
+                    </th>
                   ) : null}
                   {visibleColumns.includes("type") ? (
                     <th className={cn(CELL_CLASS_NAME, "font-medium")}>Тип</th>
@@ -416,10 +431,43 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
               </thead>
               <tbody>
                 {loading ? (
-                  Array.from({ length: 3 }, (_, index) => (
+                  Array.from({ length: skeletonRowCount }, (_, index) => (
                     <tr key={index} className={cn(ROW_CLASS_NAME, "border-t")}>
-                      <td colSpan={tableColSpan} className={CELL_CLASS_NAME}>
-                        <Skeleton className="h-6 w-full" />
+                      <td className={cn(CELL_CLASS_NAME, "w-10")}>
+                        <Skeleton className="size-4 rounded" />
+                      </td>
+                      {visibleColumns.includes("name") ? (
+                        <td className={cn(CELL_CLASS_NAME, onlyNameColumn ? undefined : "max-w-52")}>
+                          <Skeleton className="h-4 w-40 max-w-full" />
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("type") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <Skeleton className="h-4 w-16" />
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("created") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <Skeleton className="h-4 w-24" />
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("active") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <Skeleton className="h-4 w-20" />
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("views") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <Skeleton className="h-4 w-12" />
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("password") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <Skeleton className="h-4 w-10" />
+                        </td>
+                      ) : null}
+                      <td className={cn(CELL_CLASS_NAME, "w-12")}>
+                        <Skeleton className="size-8 rounded-md" />
                       </td>
                     </tr>
                   ))
@@ -440,7 +488,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                         />
                       </td>
                       {visibleColumns.includes("name") ? (
-                        <td className={cn(CELL_CLASS_NAME, "max-w-52")}>
+                        <td className={cn(CELL_CLASS_NAME, onlyNameColumn ? "min-w-0" : "max-w-52")}>
                           <span className="block truncate">{capsule.ownerMetadata.name}</span>
                         </td>
                       ) : null}
@@ -503,9 +551,25 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                     </tr>
                   ))
                 ) : (
-                  <tr className={ROW_CLASS_NAME}>
-                    <td colSpan={tableColSpan} className="h-14 px-3 text-center text-muted-foreground">
-                      {error ?? "Капсул пока нет"}
+                  <tr className="border-t">
+                    <td colSpan={tableColSpan} className="px-3 py-10 text-center">
+                      {error ? (
+                        <p className="text-sm text-muted-foreground">{error}</p>
+                      ) : search.trim() ? (
+                        <p className="text-sm text-muted-foreground">
+                          {t("web.capsules.list.searchEmpty", { query: search.trim() })}
+                        </p>
+                      ) : (
+                        <div className="flex flex-col items-center gap-4">
+                          <p className="text-sm text-muted-foreground">{t("web.capsules.list.empty")}</p>
+                          {canCreate ? (
+                            <Button type="button" variant="secondary" onClick={openCreate}>
+                              <PlusIcon data-icon="inline-start" />
+                              {t("web.capsules.list.create")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -515,8 +579,18 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
 
           {selectedCount > 0 ? (
             <footer className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="iconSm"
+                className="shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={t("web.capsules.list.exitSelectionAria")}
+                onClick={() => setSelectedById(new Map())}
+              >
+                <CapsuleCloseIcon />
+              </Button>
               <p className="min-w-0 flex-1 truncate text-left text-sm text-foreground">
-                Выделено {selectedCount} из {total}
+                {t("web.capsules.list.selectionCount", { count: selectedCount })}
               </p>
               <CapsuleActionsMenu
                 t={t}
@@ -542,38 +616,49 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
             </footer>
           ) : pageCount > 1 ? (
             <footer className="flex items-center justify-end">
-              <ControlGroup className="w-auto" aria-label="Страницы">
+              <div className="relative flex w-fit rounded-lg bg-secondary p-1" aria-label="Страницы">
                 {pageItems.map((item, index) =>
                   item === "ellipsis" ? (
-                    <Button
+                    <span
                       key={`ellipsis-${index}`}
-                      type="button"
-                      variant="outline"
-                      tabIndex={-1}
-                      className="pointer-events-none"
+                      className="inline-flex h-8 min-w-8 items-center justify-center px-2 text-sm text-muted-foreground"
                       aria-hidden
                     >
                       …
-                    </Button>
+                    </span>
                   ) : (
                     <Button
                       key={item}
                       type="button"
-                      variant={item === page ? "default" : "outline"}
+                      size="sm"
+                      variant={item === page ? "outline" : "ghost"}
                       aria-current={item === page ? "page" : undefined}
                       tabIndex={item === page ? -1 : undefined}
-                      className={
+                      className={cn(
+                        "relative min-w-8 border",
                         item === page
-                          ? "pointer-events-none hover:bg-primary hover:text-primary-foreground"
-                          : undefined
-                      }
+                          ? cn(
+                              "z-10 pointer-events-none",
+                              "!bg-background hover:!bg-background active:!bg-background",
+                              "hover:!border-input focus:!border-input focus-visible:!border-input",
+                              "!shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                              "dark:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                            )
+                          : cn(
+                              "z-0 border-transparent shadow-none",
+                              "hover:border-transparent hover:bg-foreground/5",
+                              "focus:shadow-none focus-visible:shadow-none",
+                              "focus:bg-foreground/10 focus-visible:bg-foreground/10",
+                              "active:bg-foreground/10",
+                            ),
+                      )}
                       onClick={() => setPage(item)}
                     >
                       {item}
                     </Button>
                   ),
                 )}
-              </ControlGroup>
+              </div>
             </footer>
           ) : null}
         </section>

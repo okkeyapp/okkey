@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   buildCapsulePageItems,
+  capsulePageRowCount,
   loadVisibleCapsuleColumns,
   normalizeVisibleCapsuleColumns,
   saveVisibleCapsuleColumns,
@@ -57,16 +58,37 @@ describe("capsule column persistence", () => {
   });
 });
 
+describe("capsulePageRowCount", () => {
+  it("uses the initial skeleton size when total is unknown", () => {
+    expect(capsulePageRowCount(1, 0, 30)).toBe(5);
+  });
+
+  it("returns remaining rows on the last page", () => {
+    expect(capsulePageRowCount(3, 65, 30)).toBe(5);
+  });
+
+  it("never exceeds page size on a full page", () => {
+    expect(capsulePageRowCount(2, 65, 30)).toBe(30);
+  });
+});
+
 describe("buildCapsulePageItems", () => {
   it("returns all pages when there are at most 7", () => {
     expect(buildCapsulePageItems(1, 4)).toEqual([1, 2, 3, 4]);
+    expect(buildCapsulePageItems(1, 7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
-  it("shows first and last triplets on the first page", () => {
-    expect(buildCapsulePageItems(1, 9)).toEqual([1, 2, 3, "ellipsis", 7, 8, 9]);
+  it("shows a start window with ellipsis when many pages", () => {
+    expect(buildCapsulePageItems(1, 9)).toEqual([1, 2, 3, 4, "ellipsis", 9]);
+    expect(buildCapsulePageItems(1, 100)).toEqual([1, 2, 3, 4, "ellipsis", 100]);
   });
 
-  it("keeps a window around the current page", () => {
+  it("keeps a window around the current page with ellipsis gaps", () => {
     expect(buildCapsulePageItems(5, 9)).toEqual([1, "ellipsis", 4, 5, 6, "ellipsis", 9]);
+    expect(buildCapsulePageItems(50, 100)).toEqual([1, "ellipsis", 49, 50, 51, "ellipsis", 100]);
+  });
+
+  it("shows an end window with ellipsis when near the last page", () => {
+    expect(buildCapsulePageItems(9, 9)).toEqual([1, "ellipsis", 6, 7, 8, 9]);
   });
 });
