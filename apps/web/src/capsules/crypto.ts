@@ -1,5 +1,6 @@
 import {
   decryptCapsuleMetadata,
+  decryptCapsulePayload,
   encodeCapsuleKeyFragment,
   encryptCapsuleMetadata,
   encryptCapsulePayload,
@@ -61,6 +62,54 @@ export async function decryptOwnerCapsuleMetadata(
     return JSON.parse(decoder.decode(plaintext)) as CapsuleOwnerMetadata;
   } finally {
     wipeBytes(capsuleKey);
+  }
+}
+
+export async function decryptOwnerCapsulePayload(
+  accountVaultKey: Uint8Array,
+  encryptedPayload: EncryptedBlobDto,
+  ownerKeyWrap: EncryptedBlobDto,
+): Promise<unknown> {
+  const capsuleKey = await unwrapCapsuleKeyForOwner(accountVaultKey, blobToBytes(ownerKeyWrap));
+  try {
+    const plaintext = await decryptCapsulePayload(capsuleKey, blobToBytes(encryptedPayload));
+    return JSON.parse(decoder.decode(plaintext)) as unknown;
+  } finally {
+    wipeBytes(capsuleKey);
+  }
+}
+
+export async function reencryptCapsuleWithOwnerKey(input: {
+  accountVaultKey: Uint8Array;
+  ownerKeyWrap: EncryptedBlobDto;
+  payload: unknown;
+  metadata: CapsuleOwnerMetadata;
+}): Promise<{
+  capsuleKey: Uint8Array;
+  encryptedPayload: EncryptedBlobDto;
+  encryptedMetadata: EncryptedBlobDto;
+  ownerKeyWrap: EncryptedBlobDto;
+  fragment: string;
+}> {
+  const capsuleKey = await unwrapCapsuleKeyForOwner(
+    input.accountVaultKey,
+    blobToBytes(input.ownerKeyWrap),
+  );
+  try {
+    const [payload, metadata] = await Promise.all([
+      encryptCapsulePayload(capsuleKey, encoder.encode(JSON.stringify(input.payload))),
+      encryptCapsuleMetadata(capsuleKey, encoder.encode(JSON.stringify(input.metadata))),
+    ]);
+    return {
+      capsuleKey,
+      encryptedPayload: bytesToBlob(payload, "capsule_payload"),
+      encryptedMetadata: bytesToBlob(metadata, "capsule_owner_metadata"),
+      ownerKeyWrap: input.ownerKeyWrap,
+      fragment: encodeCapsuleKeyFragment(capsuleKey),
+    };
+  } catch (error) {
+    wipeBytes(capsuleKey);
+    throw error;
   }
 }
 

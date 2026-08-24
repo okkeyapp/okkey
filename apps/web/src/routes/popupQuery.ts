@@ -14,6 +14,7 @@ export const EDIT_VAULT_POPUP_ID = "editVault";
 export const INVITE_MEMBERS_POPUP_ID = "inviteMembers";
 export const EDIT_MEMBER_POPUP_ID = "editMember";
 export const NEW_CAPSULE_POPUP_ID = "newCapsule";
+export const EDIT_CAPSULE_POPUP_ID = "editCapsule";
 export const CAPSULE_FROM_ITEM_QUERY_PARAM = "capsuleFromItem";
 
 export type PopupQuerySearchOptions = {

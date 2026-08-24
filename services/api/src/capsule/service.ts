@@ -5,6 +5,7 @@ import {
   type CapsuleApprovalStatusDto,
   type CapsuleListResponseDto,
   type CapsuleMetadataDto,
+  type CapsuleOwnerDetailDto,
   type CapsuleOwnerListEntryDto,
   type CapsuleState,
   type CapsuleType,
@@ -126,6 +127,8 @@ interface PasswordPolicy {
 interface CapsuleAccessPolicy {
   password?: PasswordPolicy;
   allowedRecipientHashes?: string[];
+  /** Owner-facing emails kept alongside hashes for edit UX. */
+  allowedRecipientEmails?: string[];
   fileStorageKey?: string;
   fileSizeBytes?: number;
   keyTransportMode?: CapsuleKeyTransportMode;
@@ -150,6 +153,12 @@ export interface CreateCapsuleInput {
   passwordAttemptLimit?: number;
   allowedRecipientEmails?: string[];
   approvalRequired?: boolean;
+}
+
+export interface UpdateCapsuleInput extends CreateCapsuleInput {
+  keepExistingPassword?: boolean;
+  keepExistingRecipients?: boolean;
+  keepExistingFile?: boolean;
 }
 
 export type CapsuleMetadataResponse = CapsuleMetadataDto;
@@ -489,6 +498,251 @@ export class CapsuleService {
     };
   }
 
+  async getOwnerCapsule(capsuleId: string, creatorId: string): Promise<CapsuleOwnerDetailDto> {
+    const capsule = await this.loadCapsule(capsuleId);
+    if (capsule.creator_id !== creatorId) {
+      throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+    }
+    const policy = parsePolicy(capsule.access_policy);
+    const detail: CapsuleOwnerDetailDto = {
+      ...mapOwnerMetadata(capsule),
+      encryptedPayload: decodeEncryptedBlobFromStorage(Uint8Array.from(capsule.encrypted_payload)),
+    };
+    if (policy.fileStorageKey) {
+      const filePayload = await this.objectStorage.getObject(policy.fileStorageKey);
+      if (filePayload) {
+        detail.filePayload = decodeEncryptedBlobFromStorage(Uint8Array.from(filePayload));
+      }
+    }
+    const recipientEmails = await this.resolveOwnerRecipientEmails(capsule.workspace_id, policy);
+    if (recipientEmails.length > 0) {
+      detail.allowedRecipientEmails = recipientEmails;
+    }
+    return detail;
+  }
+
+  async updateCapsule(
+    capsuleId: string,
+    creatorId: string,
+    input: UpdateCapsuleInput,
+  ): Promise<CapsuleMetadataResponse> {
+    const operation = "capsule.create";
+    const stopTimer = startCryptoOperationTimer(this.log, {
+      operation,
+      deployEnv: this.config.deployEnv,
+      rolloutMode: this.config.cryptoRolloutMode,
+    });
+    const rolloutGateViolation = getCryptoRolloutGateViolation(this.config, operation);
+    if (rolloutGateViolation) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "blocked",
+        code: rolloutGateViolation.code,
+      });
+      stopTimer();
+      throw new CapsuleServiceError(
+        rolloutGateViolation.code,
+        rolloutGateViolation.statusCode,
+        rolloutGateViolation.message,
+        rolloutGateViolation.details,
+      );
+    }
+    try {
+      if (!CAPSULE_TYPES.has(input.type)) {
+        throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid capsule type");
+      }
+      const existing = await this.loadCapsule(capsuleId);
+      if (existing.creator_id !== creatorId) {
+        throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+      }
+      const payloadBlob = parseBlobOrThrow(input.encryptedPayload, "encryptedPayload");
+      const normalizedPayloadBlob = mergeEncryptedBlobMeta(payloadBlob, {
+        entity: "capsule_payload",
+        capsule_type: input.type,
+      });
+      const payloadSchemaVersion = normalizedPayloadBlob.crypto_version;
+      const policyViolation = getCryptoWritePolicyViolation(this.config, payloadSchemaVersion);
+      if (policyViolation) {
+        throw new CapsuleServiceError(
+          policyViolation.code,
+          policyViolation.statusCode,
+          policyViolation.message,
+        );
+      }
+      await this.assertActorCapabilityForWrite(creatorId, "capsule.create", payloadSchemaVersion);
+      const payload = serializeEncryptedBlobToStorage(normalizedPayloadBlob);
+      const encryptedMetadata = input.encryptedMetadata
+        ? serializeEncryptedBlobToStorage(
+            mergeEncryptedBlobMeta(parseBlobOrThrow(input.encryptedMetadata, "encryptedMetadata"), {
+              entity: "capsule_owner_metadata",
+            }),
+          )
+        : payload;
+      const ownerKeyWrap = input.ownerKeyWrap
+        ? serializeEncryptedBlobToStorage(
+            mergeEncryptedBlobMeta(parseBlobOrThrow(input.ownerKeyWrap, "ownerKeyWrap"), {
+              entity: "capsule_owner_key_wrap",
+            }),
+          )
+        : payload;
+      const keyTransportMode = assertSafeCapsuleKeyTransportMode(input.keyTransportMode);
+      const workspace = await this.readWorkspaceAccess(existing.workspace_id, creatorId);
+      if (!workspace.exists) {
+        throw new CapsuleServiceError("WORKSPACE_NOT_FOUND", 404, "workspace not found");
+      }
+      if (!workspace.canAccess) {
+        throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
+      }
+      if (
+        requestsCapsuleAccessSettings(input) &&
+        !hasPlanFeature(workspace.planTier, "capsuleAccessSettings")
+      ) {
+        throw new CapsuleServiceError(
+          "FEATURE_NOT_AVAILABLE",
+          403,
+          "capsule access settings are unavailable on this plan",
+        );
+      }
+
+      const activateAt = normalizeOptionalIsoDate(input.activateAt);
+      const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
+      const deleteAt = normalizeOptionalIsoDate(input.deleteAt);
+      assertLifecycleOrder(activateAt, deactivateAt, deleteAt);
+      const maxViews = normalizeMaxViews(input.maxViews);
+      const viewLimitAction = normalizeViewLimitAction(input.viewLimitAction);
+      const existingPolicy = parsePolicy(existing.access_policy);
+      const nextPolicy = buildAccessPolicy(
+        input.keepExistingPassword ? undefined : input.password,
+        input.keepExistingRecipients ? undefined : input.allowedRecipientEmails,
+        this.config.sessionSecret,
+        keyTransportMode,
+      );
+      if (input.keepExistingPassword && existingPolicy.password) {
+        nextPolicy.password = existingPolicy.password;
+      }
+      if (input.keepExistingRecipients && existingPolicy.allowedRecipientHashes?.length) {
+        nextPolicy.allowedRecipientHashes = existingPolicy.allowedRecipientHashes;
+        if (existingPolicy.allowedRecipientEmails?.length) {
+          nextPolicy.allowedRecipientEmails = existingPolicy.allowedRecipientEmails;
+        }
+      }
+      const passwordAttemptLimit = input.keepExistingPassword
+        ? normalizePasswordAttemptLimit(
+            input.passwordAttemptLimit ?? existing.password_attempt_limit ?? undefined,
+            nextPolicy.password ? "kept" : undefined,
+          )
+        : normalizePasswordAttemptLimit(input.passwordAttemptLimit, input.password);
+      const replacingFile = Boolean(input.filePayload) && !input.keepExistingFile;
+      const filePayload = replacingFile
+        ? serializeEncryptedBlobToStorage(
+            mergeEncryptedBlobMeta(parseBlobOrThrow(input.filePayload ?? null, "filePayload"), {
+              entity: "capsule_file_payload",
+              capsule_type: input.type,
+            }),
+          )
+        : null;
+      const keepFile = Boolean(input.keepExistingFile && existingPolicy.fileStorageKey);
+      if (input.type === "file" && !replacingFile && !keepFile) {
+        throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "filePayload is required");
+      }
+
+      const rows = await this.db.transaction(async (tx) => {
+        if (existingPolicy.fileStorageKey && (!keepFile || replacingFile)) {
+          await this.objectStorage.deleteObject(existingPolicy.fileStorageKey);
+          await tx.query("DELETE FROM capsule_files WHERE capsule_id = $1", [capsuleId]);
+          delete nextPolicy.fileStorageKey;
+          delete nextPolicy.fileSizeBytes;
+        }
+        if (filePayload) {
+          const storageKey = `capsules/${capsuleId}/file.bin`;
+          await this.objectStorage.putObject(storageKey, filePayload);
+          await tx.query(
+            `
+              INSERT INTO capsule_files (id, capsule_id, asset_id, storage_key, size_bytes)
+              VALUES ($1::bigint, $2, ($1::bigint)::text, $3, $4)
+            `,
+            [generateEntityId(), capsuleId, storageKey, filePayload.length],
+          );
+          nextPolicy.fileStorageKey = storageKey;
+          nextPolicy.fileSizeBytes = filePayload.length;
+        } else if (keepFile) {
+          nextPolicy.fileStorageKey = existingPolicy.fileStorageKey;
+          nextPolicy.fileSizeBytes = existingPolicy.fileSizeBytes;
+        }
+
+        const updated = await tx.query<CapsuleRow>(
+          `
+            UPDATE capsules
+            SET
+              type = $3,
+              encrypted_payload = $4,
+              encrypted_metadata = $5,
+              owner_key_wrap = $6,
+              access_policy = $7::jsonb,
+              expires_at = $8::timestamptz,
+              activate_at = $9::timestamptz,
+              deactivate_at = $10::timestamptz,
+              delete_at = $11::timestamptz,
+              view_limit = $12,
+              view_count = CASE WHEN $12::int IS NULL THEN view_count ELSE 0 END,
+              view_limit_action = $13,
+              password_attempt_limit = $14,
+              approval_required = $15,
+              updated_at = now(),
+              version = version + 1
+            WHERE id = $1 AND creator_id = $2
+            RETURNING
+              id, workspace_id, creator_id, type, encrypted_payload, encrypted_metadata,
+              owner_key_wrap, access_policy, expires_at, state, activate_at, deactivate_at,
+              delete_at, view_limit, view_count, view_limit_action, password_attempt_limit,
+              approval_required, created_at, updated_at
+          `,
+          [
+            capsuleId,
+            creatorId,
+            input.type,
+            Buffer.from(payload),
+            Buffer.from(encryptedMetadata),
+            Buffer.from(ownerKeyWrap),
+            JSON.stringify(nextPolicy),
+            deactivateAt,
+            activateAt,
+            deactivateAt,
+            deleteAt,
+            maxViews,
+            viewLimitAction,
+            passwordAttemptLimit,
+            Boolean(input.approvalRequired),
+          ],
+        );
+        if (!updated[0]) {
+          throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+        }
+        return updated;
+      });
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "success",
+      });
+      return mapMetadata(rows[0]);
+    } catch (error) {
+      recordCryptoOperationOutcome(this.log, {
+        operation,
+        deployEnv: this.config.deployEnv,
+        rolloutMode: this.config.cryptoRolloutMode,
+        outcome: "error",
+        code: error instanceof CapsuleServiceError ? error.code : "UNEXPECTED",
+      });
+      throw error;
+    } finally {
+      stopTimer();
+    }
+  }
+
   async setCapsuleState(capsuleId: string, creatorId: string, state: CapsuleState): Promise<CapsuleMetadataResponse> {
     if (state !== "active" && state !== "inactive") {
       throw new CapsuleServiceError("CAPSULE_BAD_REQUEST", 400, "invalid capsule state");
@@ -499,9 +753,26 @@ export class CapsuleService {
           UPDATE capsules
           SET
             state = $3,
+            view_count = CASE
+              WHEN $3 = 'active' AND view_limit IS NOT NULL THEN 0
+              ELSE view_count
+            END,
+            activate_at = CASE
+              WHEN $3 = 'active' AND activate_at IS NOT NULL AND activate_at <= now() THEN NULL
+              ELSE activate_at
+            END,
             deactivate_at = CASE
               WHEN $3 = 'active' AND deactivate_at IS NOT NULL AND deactivate_at <= now() THEN NULL
               ELSE deactivate_at
+            END,
+            expires_at = CASE
+              WHEN $3 = 'active' AND COALESCE(deactivate_at, expires_at) IS NOT NULL
+                AND COALESCE(deactivate_at, expires_at) <= now() THEN NULL
+              ELSE expires_at
+            END,
+            delete_at = CASE
+              WHEN $3 = 'active' AND delete_at IS NOT NULL AND delete_at <= now() THEN NULL
+              ELSE delete_at
             END,
             updated_at = now(),
             version = version + 1
@@ -951,6 +1222,44 @@ export class CapsuleService {
     }
   }
 
+  private async resolveOwnerRecipientEmails(
+    workspaceId: string,
+    policy: CapsuleAccessPolicy,
+  ): Promise<string[]> {
+    const stored = (policy.allowedRecipientEmails ?? [])
+      .map(normalizeEmail)
+      .filter(Boolean);
+    if (stored.length > 0) {
+      return Array.from(new Set(stored));
+    }
+    const hashes = policy.allowedRecipientHashes ?? [];
+    if (hashes.length === 0) {
+      return [];
+    }
+    const hashSet = new Set(hashes);
+    const members = await this.db.query<{ email: string }>(
+      `
+        SELECT DISTINCT lower(u.email) AS email
+        FROM users u
+        WHERE u.email IS NOT NULL
+          AND (
+            EXISTS (
+              SELECT 1 FROM workspaces w
+              WHERE w.id = $1 AND w.owner_id = u.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM workspace_members wm
+              WHERE wm.workspace_id = $1 AND wm.user_id = u.id
+            )
+          )
+      `,
+      [workspaceId],
+    );
+    return members
+      .map((row) => normalizeEmail(row.email))
+      .filter((email) => email && hashSet.has(hashRecipient(email, this.config.sessionSecret)));
+  }
+
   private async readWorkspaceAccess(
     workspaceId: string,
     userId: string,
@@ -1165,16 +1474,13 @@ function buildAccessPolicy(
   }
 
   if (allowedRecipientEmails && allowedRecipientEmails.length > 0) {
-    const hashes = Array.from(
-      new Set(
-        allowedRecipientEmails
-          .map(normalizeEmail)
-          .filter(Boolean)
-          .map((email) => hashRecipient(email, secret)),
-      ),
+    const emails = Array.from(
+      new Set(allowedRecipientEmails.map(normalizeEmail).filter(Boolean)),
     );
+    const hashes = emails.map((email) => hashRecipient(email, secret));
     if (hashes.length > 0) {
       policy.allowedRecipientHashes = hashes;
+      policy.allowedRecipientEmails = emails;
     }
   }
   return policy;

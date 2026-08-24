@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
   Button,
   Checkbox,
+  ControlGroup,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -16,18 +17,9 @@ import {
   DropdownMenuTrigger,
   Input,
   Skeleton,
+  cn,
 } from "@okkey/ui";
-import {
-  Columns3Icon,
-  CopyIcon,
-  EllipsisIcon,
-  ExternalLinkIcon,
-  PauseIcon,
-  PlayIcon,
-  PlusIcon,
-  SearchIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -42,9 +34,25 @@ import { subscribeCapsulesListRefresh } from "../../capsules/capsulesListRefresh
 import { useLocale } from "../../locale/LocaleContext";
 import { itemsPathAllWorkspaceMerged } from "../../routes/paths";
 import {
+  EDIT_CAPSULE_POPUP_ID,
   NEW_CAPSULE_POPUP_ID,
+  POPUP_QUERY_PARAM,
+  buildPopupQueryValue,
+  parsePopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
+import CapsuleActionsMenu from "../../components/capsules/CapsuleActionsMenu";
+import { CapsuleCheckIcon, CapsuleColumnsIcon } from "../../components/capsules/capsuleIcons";
+import {
+  CAPSULE_TABLE_COLUMN_IDS,
+  CAPSULE_TABLE_COLUMN_LABELS,
+  CAPSULE_TABLE_LOCKED_COLUMN,
+  buildCapsulePageItems,
+  loadVisibleCapsuleColumns,
+  normalizeVisibleCapsuleColumns,
+  saveVisibleCapsuleColumns,
+  type CapsuleTableColumnId,
+} from "../../components/capsules/capsuleTableColumns";
 
 interface CapsulesPageProps {
   workspaceId: string;
@@ -53,6 +61,10 @@ interface CapsulesPageProps {
 }
 
 type DecryptedCapsule = CapsuleOwnerListEntryDto & { ownerMetadata: CapsuleOwnerMetadata };
+
+const ROW_CLASS_NAME = "h-14";
+const CELL_CLASS_NAME = "h-14 px-3 py-0 align-middle";
+const ROW_CONTROL_CELL_CLASS_NAME = `${CELL_CLASS_NAME} relative z-20`;
 
 export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: CapsulesPageProps) {
   const core = useAuthenticatedCoreClient();
@@ -66,9 +78,14 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   const [total, setTotal] = useState(0);
   const [capsules, setCapsules] = useState<DecryptedCapsule[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedById, setSelectedById] = useState<Map<string, DecryptedCapsule>>(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<CapsuleTableColumnId[]>(() => loadVisibleCapsuleColumns());
+
+  const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
+  const editingCapsuleId =
+    activePopup?.popupId === EDIT_CAPSULE_POPUP_ID ? activePopup.menuItemId?.trim() ?? "" : "";
 
   const decryptPage = useCallback(
     async (entries: CapsuleOwnerListEntryDto[]) => {
@@ -86,6 +103,21 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     },
     [vaultKey],
   );
+
+  const syncSelectedCapsules = useCallback((entries: DecryptedCapsule[]) => {
+    setSelectedById((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      const next = new Map(current);
+      for (const capsule of entries) {
+        if (next.has(capsule.capsuleId)) {
+          next.set(capsule.capsuleId, capsule);
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!core || !vaultKey) return;
@@ -108,19 +140,23 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
         const filtered = decrypted.filter((capsule) =>
           capsule.ownerMetadata.name.toLocaleLowerCase().includes(query),
         );
-        setCapsules(filtered.slice((page - 1) * 30, page * 30));
+        const pageCapsules = filtered.slice((page - 1) * 30, page * 30);
+        setCapsules(pageCapsules);
         setTotal(filtered.length);
+        syncSelectedCapsules(filtered);
       } else {
         const response = await core.listCapsules(workspaceId, page);
-        setCapsules(await decryptPage(response.capsules));
+        const decrypted = await decryptPage(response.capsules);
+        setCapsules(decrypted);
         setTotal(response.total);
+        syncSelectedCapsules(decrypted);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить капсулы");
     } finally {
       setLoading(false);
     }
-  }, [core, decryptPage, page, search, vaultKey, workspaceId]);
+  }, [core, decryptPage, page, search, syncSelectedCapsules, vaultKey, workspaceId]);
 
   useEffect(() => {
     void load();
@@ -131,8 +167,12 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   }), [load]);
 
   const pageCount = Math.max(1, Math.ceil(total / 30));
-  const allSelected = capsules.length > 0 && capsules.every((capsule) => selectedIds.includes(capsule.capsuleId));
-  const selectedCount = selectedIds.length;
+  const selectedCapsules = useMemo(() => [...selectedById.values()], [selectedById]);
+  const selectedCount = selectedCapsules.length;
+  const allSelected = capsules.length > 0 && capsules.every((capsule) => selectedById.has(capsule.capsuleId));
+  const pageItems = useMemo(() => buildCapsulePageItems(page, pageCount), [page, pageCount]);
+  const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns]);
+  const tableColSpan = 2 + visibleColumns.length;
 
   const openCreate = () => {
     navigate({
@@ -142,31 +182,110 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     });
   };
 
-  const changeState = async (capsule: DecryptedCapsule) => {
-    if (!core) return;
-    await core.setCapsuleState(capsule.capsuleId, capsule.state === "active" ? "inactive" : "active");
-    toast.success(capsule.state === "active" ? "Капсула деактивирована" : "Капсула активирована");
-    await load();
+  const openEdit = (capsuleId: string) => {
+    navigate({
+      pathname: location.pathname,
+      search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_CAPSULE_POPUP_ID, capsuleId)),
+      hash: location.hash,
+    });
   };
 
-  const remove = async (capsuleIds: string[]) => {
-    if (!core || capsuleIds.length === 0) return;
-    await Promise.all(capsuleIds.map((capsuleId) => core.deleteCapsule(capsuleId)));
-    setSelectedIds([]);
-    toast.success(capsuleIds.length === 1 ? "Капсула удалена" : "Капсулы удалены");
-    await load();
-  };
-
-  const copyLink = async (capsule: DecryptedCapsule) => {
-    if (!vaultKey) return;
-    const fragment = await recoverOwnerCapsuleFragment(vaultKey, capsule.ownerKeyWrap);
-    await navigator.clipboard.writeText(
-      `${window.location.origin}/capsule/${capsule.capsuleId}#key=${fragment}`,
+  const closeEdit = () => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: true },
     );
-    toast.success("Ссылка скопирована");
   };
 
-  const rows = useMemo(() => capsules, [capsules]);
+  const setCapsuleSelected = (capsule: DecryptedCapsule, checked: boolean) => {
+    setSelectedById((current) => {
+      const next = new Map(current);
+      if (checked) {
+        next.set(capsule.capsuleId, capsule);
+      } else {
+        next.delete(capsule.capsuleId);
+      }
+      return next;
+    });
+  };
+
+  const setPageSelected = (checked: boolean) => {
+    setSelectedById((current) => {
+      const next = new Map(current);
+      for (const capsule of capsules) {
+        if (checked) {
+          next.set(capsule.capsuleId, capsule);
+        } else {
+          next.delete(capsule.capsuleId);
+        }
+      }
+      return next;
+    });
+  };
+
+  const toggleColumn = (columnId: CapsuleTableColumnId) => {
+    if (columnId === CAPSULE_TABLE_LOCKED_COLUMN) {
+      return;
+    }
+    setVisibleColumns((current) => {
+      const next = current.includes(columnId)
+        ? current.filter((id) => id !== columnId)
+        : [...current, columnId];
+      const normalized = normalizeVisibleCapsuleColumns(next);
+      saveVisibleCapsuleColumns(normalized);
+      return normalized;
+    });
+  };
+
+  const changeState = async (targets: DecryptedCapsule[], state: "active" | "inactive") => {
+    if (!core || targets.length === 0) return;
+    await Promise.all(targets.map((capsule) => core.setCapsuleState(capsule.capsuleId, state)));
+    toast.success(
+      state === "inactive"
+        ? targets.length === 1
+          ? "Капсула деактивирована"
+          : "Капсулы деактивированы"
+        : targets.length === 1
+          ? "Капсула активирована"
+          : "Капсулы активированы",
+    );
+    await load({ silent: true });
+  };
+
+  const remove = async (targets: DecryptedCapsule[]) => {
+    if (!core || targets.length === 0) return;
+    const ids = new Set(targets.map((capsule) => capsule.capsuleId));
+    await Promise.all(targets.map((capsule) => core.deleteCapsule(capsule.capsuleId)));
+    setSelectedById((current) => {
+      const next = new Map(current);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+    if (editingCapsuleId && ids.has(editingCapsuleId)) {
+      closeEdit();
+    }
+    toast.success(targets.length === 1 ? "Капсула удалена" : "Капсулы удалены");
+    await load({ silent: true });
+  };
+
+  const copyLink = async (targets: DecryptedCapsule[]) => {
+    if (!vaultKey || targets.length === 0) return;
+    const links = await Promise.all(
+      targets.map(async (capsule) => {
+        const fragment = await recoverOwnerCapsuleFragment(vaultKey, capsule.ownerKeyWrap);
+        return `${window.location.origin}/capsule/${capsule.capsuleId}#key=${fragment}`;
+      }),
+    );
+    await navigator.clipboard.writeText(links.join("\n"));
+    toast.success(targets.length === 1 ? "Ссылка скопирована" : "Ссылки скопированы");
+  };
+
+  const selectedCanActivate = selectedCapsules.some((capsule) => capsule.state !== "active");
+  const selectedCanDeactivate = selectedCapsules.some((capsule) => capsule.state === "active");
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -191,16 +310,25 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
       </BreadcrumbBar>
       <main className="mx-auto flex w-full max-w-[948px] flex-col gap-9 px-6 py-8">
         <section className="flex flex-col gap-4">
-          <h1 className="text-lg font-semibold">{t("web.nav.capsules")}</h1>
+          <h1 className="text-lg font-semibold text-foreground">{t("web.nav.capsules")}</h1>
           <div className="flex items-center gap-6">
-            <p className="flex-1 text-sm text-muted-foreground">
+            <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               Капсулы — это специальные зашифрованные записи для безопасной передачи по электронной почте или в чате.{" "}
-              <a className="font-medium text-foreground" href="/docs/capsules" target="_blank" rel="noreferrer">
-                Подробнее <ExternalLinkIcon className="inline size-4" />
+              <a
+                className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
+                href="/docs/capsules"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Подробнее
+                <LearnMoreExternalLinkIcon />
               </a>
             </p>
             {canCreate ? (
-              <Button onClick={openCreate}><PlusIcon data-icon="inline-start" />Создать капсулу</Button>
+              <Button className="shrink-0" onClick={openCreate}>
+                <PlusIcon data-icon="inline-start" />
+                Создать капсулу
+              </Button>
             ) : null}
           </div>
         </section>
@@ -219,70 +347,235 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                 placeholder="Поиск по названию..."
               />
             </div>
-            <Button variant="outline"><Columns3Icon data-icon="inline-start" />Колонки</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <CapsuleColumnsIcon data-icon="inline-start" />
+                  Колонки
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56 p-1">
+                <DropdownMenuGroup>
+                  {CAPSULE_TABLE_COLUMN_IDS.map((columnId) => {
+                    const locked = columnId === CAPSULE_TABLE_LOCKED_COLUMN;
+                    const checked = visibleColumnSet.has(columnId);
+                    return (
+                      <DropdownMenuItem
+                        key={columnId}
+                        className="gap-2"
+                        disabled={locked}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          toggleColumn(columnId);
+                        }}
+                      >
+                        {checked ? (
+                          <CapsuleCheckIcon className="size-4 shrink-0" />
+                        ) : (
+                          <span className="size-4 shrink-0" aria-hidden />
+                        )}
+                        <span>{CAPSULE_TABLE_COLUMN_LABELS[columnId]}</span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-
-          {selectedCount > 0 ? (
-            <div className="flex items-center justify-between rounded-lg bg-secondary px-3 py-2">
-              <span className="text-sm">Выбрано: {selectedCount}</span>
-              <Button size="sm" variant="destructive" onClick={() => void remove(selectedIds)}>
-                <Trash2Icon data-icon="inline-start" />Удалить
-              </Button>
-            </div>
-          ) : null}
 
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full min-w-[780px] border-collapse text-left text-sm">
               <thead className="bg-secondary">
-                <tr>
-                  <th className="w-10 p-2"><Checkbox checked={allSelected} onCheckedChange={(checked) => setSelectedIds(checked ? capsules.map((capsule) => capsule.capsuleId) : [])} /></th>
-                  <th className="w-52 p-2 font-medium">Название</th>
-                  <th className="p-2 font-medium">Тип</th>
-                  <th className="p-2 font-medium">Создан</th>
-                  <th className="p-2 font-medium">Активен</th>
-                  <th className="p-2 font-medium">Просмотров</th>
-                  <th className="p-2 font-medium">С паролем</th>
-                  <th className="w-12 p-2" />
+                <tr className={ROW_CLASS_NAME}>
+                  <th className={cn(CELL_CLASS_NAME, "w-10")}>
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={(checked) => setPageSelected(Boolean(checked))}
+                    />
+                  </th>
+                  {visibleColumns.includes("name") ? (
+                    <th className={cn(CELL_CLASS_NAME, "w-52 font-medium")}>Название</th>
+                  ) : null}
+                  {visibleColumns.includes("type") ? (
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Тип</th>
+                  ) : null}
+                  {visibleColumns.includes("created") ? (
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Создан</th>
+                  ) : null}
+                  {visibleColumns.includes("active") ? (
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Активен</th>
+                  ) : null}
+                  {visibleColumns.includes("views") ? (
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Просмотров</th>
+                  ) : null}
+                  {visibleColumns.includes("password") ? (
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>С паролем</th>
+                  ) : null}
+                  <th className={cn(CELL_CLASS_NAME, "w-12")} />
                 </tr>
               </thead>
               <tbody>
-                {loading ? Array.from({ length: 3 }, (_, index) => (
-                  <tr key={index} className="border-t"><td colSpan={8} className="p-3"><Skeleton className="h-6 w-full" /></td></tr>
-                )) : rows.length ? rows.map((capsule) => (
-                  <tr key={capsule.capsuleId} className="border-t">
-                    <td className="p-2"><Checkbox checked={selectedIds.includes(capsule.capsuleId)} onCheckedChange={(checked) => setSelectedIds((current) => checked ? [...current, capsule.capsuleId] : current.filter((id) => id !== capsule.capsuleId))} /></td>
-                    <td className="max-w-52 truncate p-2">{capsule.ownerMetadata.name}</td>
-                    <td className="p-2">{typeLabel(capsule.type)}</td>
-                    <td className="p-2">{formatDate(capsule.createdAt)}</td>
-                    <td className="p-2">{capsule.state === "active" ? capsule.deactivateAt ? `до ${formatDate(capsule.deactivateAt)}` : "Да" : "Нет"}</td>
-                    <td className="p-2">{capsule.viewCount}/{capsule.maxViews ?? "∞"}</td>
-                    <td className="p-2">{capsule.passwordRequired ? "Да" : "Нет"}</td>
-                    <td className="p-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button size="iconSm" variant="ghost"><EllipsisIcon /><span className="sr-only">Действия</span></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem onSelect={() => void copyLink(capsule)}><CopyIcon />Копировать ссылку</DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => void changeState(capsule)}>{capsule.state === "active" ? <PauseIcon /> : <PlayIcon />}{capsule.state === "active" ? "Деактивировать" : "Активировать"}</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onSelect={() => void remove([capsule.capsuleId])}><Trash2Icon />Удалить</DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                {loading ? (
+                  Array.from({ length: 3 }, (_, index) => (
+                    <tr key={index} className={cn(ROW_CLASS_NAME, "border-t")}>
+                      <td colSpan={tableColSpan} className={CELL_CLASS_NAME}>
+                        <Skeleton className="h-6 w-full" />
+                      </td>
+                    </tr>
+                  ))
+                ) : capsules.length ? (
+                  capsules.map((capsule) => (
+                    <tr
+                      key={capsule.capsuleId}
+                      className={cn(ROW_CLASS_NAME, "relative border-t hover:bg-muted/60")}
+                    >
+                      <td
+                        className={cn(ROW_CONTROL_CELL_CLASS_NAME, "w-10")}
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={selectedById.has(capsule.capsuleId)}
+                          onCheckedChange={(checked) => setCapsuleSelected(capsule, Boolean(checked))}
+                        />
+                      </td>
+                      {visibleColumns.includes("name") ? (
+                        <td className={cn(CELL_CLASS_NAME, "max-w-52")}>
+                          <span className="block truncate">{capsule.ownerMetadata.name}</span>
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("type") ? (
+                        <td className={CELL_CLASS_NAME}>{typeLabel(capsule.type)}</td>
+                      ) : null}
+                      {visibleColumns.includes("created") ? (
+                        <td className={CELL_CLASS_NAME}>{formatDate(capsule.createdAt)}</td>
+                      ) : null}
+                      {visibleColumns.includes("active") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <span className="inline-flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "size-1.5 shrink-0 rounded-full",
+                                capsule.state === "active" ? "bg-green-500" : "bg-muted-foreground/40",
+                              )}
+                              aria-hidden
+                            />
+                            {capsule.state === "active"
+                              ? capsule.deactivateAt
+                                ? `до ${formatDate(capsule.deactivateAt)}`
+                                : "Да"
+                              : "Нет"}
+                          </span>
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("views") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          {capsule.viewCount}/{capsule.maxViews ?? "∞"}
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("password") ? (
+                        <td className={CELL_CLASS_NAME}>{capsule.passwordRequired ? "Да" : "Нет"}</td>
+                      ) : null}
+                      <td
+                        className={cn(CELL_CLASS_NAME, "w-12")}
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          aria-label={capsule.ownerMetadata.name || "Открыть капсулу"}
+                          className="absolute inset-0 z-[1] cursor-pointer"
+                          onClick={() => openEdit(capsule.capsuleId)}
+                        />
+                        <div className="relative z-20">
+                          <CapsuleActionsMenu
+                            t={t}
+                            variant="icon"
+                            canActivate={capsule.state !== "active"}
+                            canDeactivate={capsule.state === "active"}
+                            onCopy={() => void copyLink([capsule])}
+                            onActivate={() => void changeState([capsule], "active")}
+                            onDeactivate={() => void changeState([capsule], "inactive")}
+                            onDelete={() => void remove([capsule])}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className={ROW_CLASS_NAME}>
+                    <td colSpan={tableColSpan} className="h-14 px-3 text-center text-muted-foreground">
+                      {error ?? "Капсул пока нет"}
                     </td>
                   </tr>
-                )) : (
-                  <tr><td colSpan={8} className="p-10 text-center text-muted-foreground">{error ?? "Капсул пока нет"}</td></tr>
                 )}
               </tbody>
             </table>
           </div>
 
-          <footer className="flex items-center gap-2">
-            <span className="flex-1 text-sm text-muted-foreground">Выделено {selectedCount} из {total}</span>
-            <Button variant="outline" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Назад</Button>
-            <span className="text-sm text-muted-foreground">{page} / {pageCount}</span>
-            <Button variant="outline" disabled={page >= pageCount} onClick={() => setPage((value) => value + 1)}>Вперёд</Button>
-          </footer>
+          {selectedCount > 0 ? (
+            <footer className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 truncate text-left text-sm text-foreground">
+                Выделено {selectedCount} из {total}
+              </p>
+              <CapsuleActionsMenu
+                t={t}
+                variant="button"
+                align="end"
+                canActivate={selectedCanActivate}
+                canDeactivate={selectedCanDeactivate}
+                onCopy={() => void copyLink(selectedCapsules)}
+                onActivate={() =>
+                  void changeState(
+                    selectedCapsules.filter((capsule) => capsule.state !== "active"),
+                    "active",
+                  )
+                }
+                onDeactivate={() =>
+                  void changeState(
+                    selectedCapsules.filter((capsule) => capsule.state === "active"),
+                    "inactive",
+                  )
+                }
+                onDelete={() => void remove(selectedCapsules)}
+              />
+            </footer>
+          ) : pageCount > 1 ? (
+            <footer className="flex items-center justify-end">
+              <ControlGroup className="w-auto" aria-label="Страницы">
+                {pageItems.map((item, index) =>
+                  item === "ellipsis" ? (
+                    <Button
+                      key={`ellipsis-${index}`}
+                      type="button"
+                      variant="outline"
+                      tabIndex={-1}
+                      className="pointer-events-none"
+                      aria-hidden
+                    >
+                      …
+                    </Button>
+                  ) : (
+                    <Button
+                      key={item}
+                      type="button"
+                      variant={item === page ? "default" : "outline"}
+                      aria-current={item === page ? "page" : undefined}
+                      tabIndex={item === page ? -1 : undefined}
+                      className={
+                        item === page
+                          ? "pointer-events-none hover:bg-primary hover:text-primary-foreground"
+                          : undefined
+                      }
+                      onClick={() => setPage(item)}
+                    >
+                      {item}
+                    </Button>
+                  ),
+                )}
+              </ControlGroup>
+            </footer>
+          ) : null}
         </section>
       </main>
     </div>
@@ -300,4 +593,25 @@ function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function LearnMoreExternalLinkIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className="size-4 shrink-0"
+    >
+      <path
+        d="M14 6V2H10M14 2L6.66667 9.33333M12 8.66667V12.6667C12 13.0203 11.8595 13.3594 11.6095 13.6095C11.3594 13.8595 11.0203 14 10.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V5.33333C2 4.97971 2.14048 4.64057 2.39052 4.39052C2.64057 4.14048 2.97971 4 3.33333 4H7.33333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

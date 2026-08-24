@@ -1,5 +1,7 @@
 import type {
   CapsuleCreateRequestDto,
+  CapsuleOwnerDetailDto,
+  CapsuleUpdateRequestDto,
   CapsuleApprovalListResponseDto,
   CapsuleApprovalResolveResponseDto,
   CapsuleApprovalStatusDto,
@@ -603,6 +605,25 @@ export class CoreApiClient {
     }
     return this.api.post<CapsuleMetadataDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/capsules`,
+      body,
+    );
+  }
+
+  getOwnerCapsule(capsuleId: string): Promise<CapsuleOwnerDetailDto> {
+    return this.api.get<CapsuleOwnerDetailDto>(
+      `/capsules/${encodeURIComponent(capsuleId)}/owner`,
+    );
+  }
+
+  updateCapsule(capsuleId: string, body: CapsuleUpdateRequestDto): Promise<CapsuleMetadataDto> {
+    this.assertStrictWritePathCapability(body.encryptedPayload, "capsule.create");
+    this.assertStrictWritePathCapability(body.encryptedMetadata, "capsule.create");
+    this.assertStrictWritePathCapability(body.ownerKeyWrap, "capsule.create");
+    if (body.filePayload) {
+      this.assertStrictWritePathCapability(body.filePayload, "capsule.create");
+    }
+    return this.api.put<CapsuleMetadataDto>(
+      `/capsules/${encodeURIComponent(capsuleId)}`,
       body,
     );
   }

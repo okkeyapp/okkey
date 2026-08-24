@@ -5,7 +5,9 @@ import {
   hasPlanFeature,
   type CapsuleAccessDefaultsDto,
   type CapsuleCreateRequestDto,
+  type CapsuleOwnerDetailDto,
   type CapsuleType,
+  type CapsuleUpdateRequestDto,
   type Workspace,
   type WorkspaceMemberDirectoryEntryDto,
 } from "@okkey/types";
@@ -63,7 +65,12 @@ import { notifyCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
 import {
   buildEncryptedCapsule,
   bytesToBlob,
+  decryptOwnerCapsuleMetadata,
+  decryptOwnerCapsulePayload,
+  reencryptCapsuleWithOwnerKey,
+  recoverOwnerCapsuleFragment,
   releaseCapsuleKey,
+  type CapsuleOwnerMetadata,
 } from "../../capsules/crypto";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { itemMatchesPrimaryFieldSearch } from "../../items/itemListRecordDescription";
@@ -75,8 +82,10 @@ import { getDatePickerLocale } from "../../lib/datePickerLocale";
 import { useLocale } from "../../locale/LocaleContext";
 import ExitNewItemFormConfirmPopup from "../items/ExitNewItemFormConfirmPopup";
 import ItemRecordFavicon from "../items/ItemRecordFavicon";
+import CapsuleActionsMenu from "./CapsuleActionsMenu";
 import {
   CAPSULE_FROM_ITEM_QUERY_PARAM,
+  EDIT_CAPSULE_POPUP_ID,
   NEW_CAPSULE_POPUP_ID,
   POPUP_QUERY_PARAM,
   parsePopupQueryValue,
@@ -136,7 +145,10 @@ export default function NewCapsulePopup({
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const popup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
-  const open = popup?.popupId === NEW_CAPSULE_POPUP_ID;
+  const editingCapsuleId =
+    popup?.popupId === EDIT_CAPSULE_POPUP_ID ? popup.menuItemId?.trim() ?? "" : "";
+  const isEditing = Boolean(editingCapsuleId);
+  const open = popup?.popupId === NEW_CAPSULE_POPUP_ID || isEditing;
   const sourceItemId = open
     ? (searchParams.get(CAPSULE_FROM_ITEM_QUERY_PARAM)?.trim() ?? "")
     : "";
@@ -184,6 +196,13 @@ export default function NewCapsulePopup({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [editingDetail, setEditingDetail] = useState<CapsuleOwnerDetailDto | null>(null);
+  const [existingFileMeta, setExistingFileMeta] = useState<KeyFieldFileValue | null>(null);
+  const [hadPassword, setHadPassword] = useState(false);
+  const [hadRecipients, setHadRecipients] = useState(false);
+  const [editHydrated, setEditHydrated] = useState(false);
+  const [editBaseline, setEditBaseline] = useState<string | null>(null);
+  const popupIdentity = !open ? "closed" : isEditing ? `edit:${editingCapsuleId}` : "create";
   const activationMinimumDate = useMemo(
     () =>
       resolveScheduleDate(activatePreset, activateCustom, new Date()) ??
@@ -192,6 +211,47 @@ export default function NewCapsulePopup({
   );
 
   useEffect(() => {
+    setType("text");
+    setName("");
+    setText("");
+    setFile(null);
+    setItemSearch("");
+    setItemResultsOpen(false);
+    setSelectedItemId("");
+    setFieldScope("all");
+    setSelectedFieldIds([]);
+    setAdvancedOpen(false);
+    setViewsEnabled(false);
+    setMaxViews(1);
+    setViewLimitAction("deactivate");
+    setTimeEnabled(false);
+    setActivatePreset("now");
+    setDeactivatePreset("never");
+    setDeletePreset("never");
+    setActivateCustom("");
+    setDeactivateCustom("");
+    setDeleteCustom("");
+    setAccessEnabled(false);
+    setRecipientInput("");
+    setRecipients([]);
+    setPasswordEnabled(false);
+    setPassword("");
+    setAttemptLimit(3);
+    setApprovalRequired(false);
+    setSaveDefaults(false);
+    setSavedDefaults(null);
+    setError(null);
+    setExitConfirmOpen(false);
+    setEditingDetail(null);
+    setExistingFileMeta(null);
+    setHadPassword(false);
+    setHadRecipients(false);
+    setEditHydrated(false);
+    setEditBaseline(null);
+  }, [popupIdentity]);
+
+  useEffect(() => {
+    if (isEditing) return;
     const minimumTime = activationMinimumDate.getTime();
     if (
       deactivateCustom &&
@@ -202,7 +262,7 @@ export default function NewCapsulePopup({
     if (deleteCustom && new Date(deleteCustom).getTime() < minimumTime) {
       setDeleteCustom("");
     }
-  }, [activationMinimumDate, deactivateCustom, deleteCustom]);
+  }, [activationMinimumDate, deactivateCustom, deleteCustom, isEditing]);
 
   const availableRecords = useMemo(() => {
     const needle = itemSearch.trim();
@@ -238,7 +298,7 @@ export default function NewCapsulePopup({
 
   useEffect(() => {
     if (!open) return;
-    if (sourceItemId) {
+    if (!isEditing && sourceItemId) {
       setType("item");
       setSelectedItemId(sourceItemId);
     }
@@ -246,19 +306,21 @@ export default function NewCapsulePopup({
       void core
         .listWorkspaceMemberDirectory(workspaceId)
         .then((result) => setMembers(result.members));
-      void core
-        .getWorkspaceCapsuleDefaults(workspaceId)
-        .then((result) => {
-          setSavedDefaults(pickSharedCapsuleDefaults(result.defaults));
-        })
-        .catch(() => {
-          setSavedDefaults(null);
-        });
+      if (!isEditing) {
+        void core
+          .getWorkspaceCapsuleDefaults(workspaceId)
+          .then((result) => {
+            setSavedDefaults(pickSharedCapsuleDefaults(result.defaults));
+          })
+          .catch(() => {
+            setSavedDefaults(null);
+          });
+      }
     }
-  }, [advancedAvailable, core, open, sourceItemId, workspaceId]);
+  }, [advancedAvailable, core, isEditing, open, sourceItemId, workspaceId]);
 
   useEffect(() => {
-    if (!open || !advancedAvailable) return;
+    if (!open || !advancedAvailable || isEditing) return;
     applyCapsuleAccessDefaults(savedDefaults, {
       setViewsEnabled,
       setMaxViews,
@@ -272,42 +334,59 @@ export default function NewCapsulePopup({
       setAttemptLimit,
       setApprovalRequired,
     });
-  }, [advancedAvailable, savedDefaults, open]);
+  }, [advancedAvailable, isEditing, savedDefaults, open]);
 
   useEffect(() => {
-    if (open) return;
-    setType("text");
-    setName("");
-    setText("");
-    setFile(null);
-    setItemSearch("");
-    setItemResultsOpen(false);
-    setSelectedItemId("");
-    setFieldScope("all");
-    setSelectedFieldIds([]);
-    setAdvancedOpen(false);
-    setViewsEnabled(false);
-    setMaxViews(1);
-    setViewLimitAction("deactivate");
-    setTimeEnabled(false);
-    setActivatePreset("now");
-    setDeactivatePreset("never");
-    setDeletePreset("never");
-    setActivateCustom("");
-    setDeactivateCustom("");
-    setDeleteCustom("");
-    setAccessEnabled(false);
-    setRecipientInput("");
-    setRecipients([]);
-    setPasswordEnabled(false);
-    setPassword("");
-    setAttemptLimit(3);
-    setApprovalRequired(false);
-    setSaveDefaults(false);
-    setSavedDefaults(null);
-    setError(null);
-    setExitConfirmOpen(false);
-  }, [open]);
+    if (!open || !isEditing || !core || !vaultKey || !editingCapsuleId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const detail = await core.getOwnerCapsule(editingCapsuleId);
+        const [payload, metadata] = await Promise.all([
+          decryptOwnerCapsulePayload(vaultKey, detail.encryptedPayload, detail.ownerKeyWrap),
+          decryptOwnerCapsuleMetadata(vaultKey, detail.encryptedMetadata, detail.ownerKeyWrap),
+        ]);
+        if (cancelled) return;
+        const baseline = applyLoadedCapsule(detail, payload, metadata, {
+          setType,
+          setName,
+          setText,
+          setSelectedItemId,
+          setFieldScope,
+          setSelectedFieldIds,
+          setViewsEnabled,
+          setMaxViews,
+          setViewLimitAction,
+          setTimeEnabled,
+          setActivatePreset,
+          setDeactivatePreset,
+          setDeletePreset,
+          setActivateCustom,
+          setDeactivateCustom,
+          setDeleteCustom,
+          setAccessEnabled,
+          setPasswordEnabled,
+          setAttemptLimit,
+          setApprovalRequired,
+          setAdvancedOpen,
+          setExistingFileMeta,
+          setHadPassword,
+          setHadRecipients,
+          setRecipients,
+          setEditingDetail,
+        });
+        setEditBaseline(baseline);
+        setEditHydrated(true);
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : "Не удалось загрузить капсулу");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, editingCapsuleId, isEditing, open, vaultKey]);
 
   const close = () => {
     navigate(
@@ -320,41 +399,47 @@ export default function NewCapsulePopup({
     );
   };
 
-  const passwordInvalid = passwordEnabled && password.length < 4;
-  const recipientsInvalid = accessEnabled && recipients.length === 0;
-  const canSave =
-    (type === "item" || name.trim().length > 0) &&
-    (type === "text"
-      ? text.trim().length > 0
-      : type === "file"
-        ? Boolean(file)
-        : Boolean(selectedItem)) &&
-    !passwordInvalid &&
-    !recipientsInvalid;
-  const advancedSettingsSummary = useMemo(
-    () =>
-      summarizeCapsuleAdvancedSettings({
-        viewsEnabled,
-        maxViews,
-        timeEnabled,
-        accessEnabled,
-        recipients,
-        passwordEnabled,
-        password,
-        approvalRequired,
-      }),
-    [
-      accessEnabled,
-      approvalRequired,
-      maxViews,
-      password,
-      passwordEnabled,
-      recipients,
-      timeEnabled,
-      viewsEnabled,
-    ],
-  );
-  const dirty = useMemo(() => {
+  const passwordInvalid =
+    passwordEnabled &&
+    password.length < 4 &&
+    !(isEditing && hadPassword && password.length === 0);
+  const recipientsInvalid =
+    accessEnabled && recipients.length === 0 && !(isEditing && hadRecipients);
+  const activateSchedulePast = timeEnabled && isPastCustomDate(activateCustom);
+  const deactivateSchedulePast = timeEnabled && isPastCustomDate(deactivateCustom);
+  const deleteSchedulePast = timeEnabled && isPastCustomDate(deleteCustom);
+  const schedulePast = activateSchedulePast || deactivateSchedulePast || deleteSchedulePast;
+  const editorFingerprint = capsuleEditorFingerprint({
+    type,
+    name,
+    text,
+    fileKey: file
+      ? `upload:${file.name}:${file.size}:${file.lastModified}`
+      : existingFileMeta
+        ? `keep:${existingFileMeta.name}`
+        : "",
+    selectedItemId,
+    fieldScope,
+    selectedFieldIds,
+    viewsEnabled,
+    maxViews,
+    viewLimitAction,
+    timeEnabled,
+    activatePreset,
+    deactivatePreset,
+    deletePreset,
+    activateCustom,
+    deactivateCustom,
+    deleteCustom,
+    accessEnabled,
+    recipients,
+    passwordEnabled,
+    password,
+    attemptLimit,
+    approvalRequired,
+    saveDefaults,
+  });
+  const createDirty = useMemo(() => {
     const advanced = savedDefaults ?? emptyCapsuleAccessDefaults;
     const baselineType: CapsuleType = sourceItemId ? "item" : "text";
     const baselineItemId = sourceItemId || "";
@@ -418,6 +503,49 @@ export default function NewCapsulePopup({
     viewLimitAction,
     viewsEnabled,
   ]);
+  const dirty = isEditing
+    ? editBaseline !== null && editorFingerprint !== editBaseline
+    : createDirty;
+  const canSave =
+    (!isEditing || editHydrated) &&
+    (!isEditing || dirty) &&
+    (type === "item" || name.trim().length > 0) &&
+    (type === "text"
+      ? text.trim().length > 0
+      : type === "file"
+        ? Boolean(file) || Boolean(existingFileMeta)
+        : Boolean(selectedItem)) &&
+    !passwordInvalid &&
+    !recipientsInvalid &&
+    !schedulePast;
+  const advancedSettingsSummary = useMemo(
+    () =>
+      summarizeCapsuleAdvancedSettings({
+        viewsEnabled,
+        maxViews,
+        timeEnabled,
+        accessEnabled,
+        recipients,
+        passwordEnabled,
+        password,
+        passwordKept: isEditing && hadPassword && password.length === 0,
+        recipientsKept: isEditing && hadRecipients && recipients.length === 0,
+        approvalRequired,
+      }),
+    [
+      accessEnabled,
+      approvalRequired,
+      hadPassword,
+      hadRecipients,
+      isEditing,
+      maxViews,
+      password,
+      passwordEnabled,
+      recipients,
+      timeEnabled,
+      viewsEnabled,
+    ],
+  );
   const requestClose = () => {
     if (dirty) {
       setExitConfirmOpen(true);
@@ -443,12 +571,75 @@ export default function NewCapsulePopup({
     return true;
   };
 
+  const copyEditingLink = async () => {
+    if (!vaultKey || !editingDetail) return;
+    const fragment = await recoverOwnerCapsuleFragment(vaultKey, editingDetail.ownerKeyWrap);
+    await navigator.clipboard.writeText(
+      `${window.location.origin}/capsule/${editingDetail.capsuleId}#key=${fragment}`,
+    );
+    toast.success("Ссылка скопирована");
+  };
+
+  const changeEditingState = async (state: "active" | "inactive") => {
+    if (!core || !editingDetail) return;
+    const updated = await core.setCapsuleState(editingDetail.capsuleId, state);
+    setEditingDetail({ ...editingDetail, ...updated });
+    toast.success(state === "inactive" ? "Капсула деактивирована" : "Капсула активирована");
+    notifyCapsulesListRefresh();
+    if (state === "active") {
+      const nextActivatePreset = activateSchedulePast ? "now" : activatePreset;
+      const nextActivateCustom = activateSchedulePast ? "" : activateCustom;
+      const nextDeactivatePreset = deactivateSchedulePast ? "never" : deactivatePreset;
+      const nextDeactivateCustom = deactivateSchedulePast ? "" : deactivateCustom;
+      const nextDeletePreset = deleteSchedulePast ? "never" : deletePreset;
+      const nextDeleteCustom = deleteSchedulePast ? "" : deleteCustom;
+      if (timeEnabled) {
+        if (activateSchedulePast) {
+          setActivatePreset("now");
+          setActivateCustom("");
+        }
+        if (deactivateSchedulePast) {
+          setDeactivatePreset("never");
+          setDeactivateCustom("");
+        }
+        if (deleteSchedulePast) {
+          setDeletePreset("never");
+          setDeleteCustom("");
+        }
+      }
+      if (editBaseline) {
+        const previous = JSON.parse(editBaseline) as Parameters<typeof capsuleEditorFingerprint>[0];
+        setEditBaseline(
+          capsuleEditorFingerprint({
+            ...previous,
+            activatePreset: nextActivatePreset,
+            deactivatePreset: nextDeactivatePreset,
+            deletePreset: nextDeletePreset,
+            activateCustom: nextActivateCustom,
+            deactivateCustom: nextDeactivateCustom,
+            deleteCustom: nextDeleteCustom,
+          }),
+        );
+      }
+    }
+  };
+
+  const deleteEditing = async () => {
+    if (!core || !editingDetail) return;
+    await core.deleteCapsule(editingDetail.capsuleId);
+    toast.success("Капсула удалена");
+    notifyCapsulesListRefresh();
+    close();
+  };
+
   const save = async () => {
     if (!core || !vaultKey || !canSave) return;
     setSaving(true);
     setError(null);
-    let generated: Awaited<ReturnType<typeof buildEncryptedCapsule>> | null =
-      null;
+    let generated:
+      | Awaited<ReturnType<typeof buildEncryptedCapsule>>
+      | Awaited<ReturnType<typeof reencryptCapsuleWithOwnerKey>>
+      | null = null;
     try {
       const itemPayload = selectedItem
         ? {
@@ -462,20 +653,29 @@ export default function NewCapsulePopup({
             ),
           }
         : null;
-      generated = await buildEncryptedCapsule({
-        accountVaultKey: vaultKey,
-        payload:
-          type === "text"
-            ? { type, text }
-            : type === "file"
-              ? { type, name: file?.name }
-              : { type, item: itemPayload },
-        metadata: {
-          name: type === "item" ? (selectedItem?.title ?? "") : name.trim(),
-          fileName: file?.name,
-          itemTitle: selectedItem?.title,
-        },
-      });
+      const payload =
+        type === "text"
+          ? { type, text }
+          : type === "file"
+            ? { type, name: file?.name ?? existingFileMeta?.name }
+            : { type, item: itemPayload };
+      const metadata = {
+        name: type === "item" ? (selectedItem?.title ?? "") : name.trim(),
+        fileName: file?.name ?? existingFileMeta?.name,
+        itemTitle: selectedItem?.title,
+      };
+      generated = isEditing && editingDetail
+        ? await reencryptCapsuleWithOwnerKey({
+            accountVaultKey: vaultKey,
+            ownerKeyWrap: editingDetail.ownerKeyWrap,
+            payload,
+            metadata,
+          })
+        : await buildEncryptedCapsule({
+            accountVaultKey: vaultKey,
+            payload,
+            metadata,
+          });
       const scheduleBase = new Date();
       const resolvedActivationDate =
         resolveScheduleDate(activatePreset, activateCustom, scheduleBase) ??
@@ -511,7 +711,14 @@ export default function NewCapsulePopup({
           "Время удаления не может быть раньше времени активации",
         );
       }
-      const body: CapsuleCreateRequestDto = {
+      const keepExistingPassword = Boolean(
+        isEditing && passwordEnabled && hadPassword && password.length === 0,
+      );
+      const keepExistingRecipients = Boolean(
+        isEditing && accessEnabled && hadRecipients && recipients.length === 0,
+      );
+      const keepExistingFile = Boolean(isEditing && type === "file" && !file && existingFileMeta);
+      const body: CapsuleCreateRequestDto & CapsuleUpdateRequestDto = {
         type,
         encryptedPayload: generated.encryptedPayload,
         encryptedMetadata: generated.encryptedMetadata,
@@ -528,10 +735,15 @@ export default function NewCapsulePopup({
         ...(accessEnabled && recipients.length > 0
           ? { allowedRecipientEmails: recipients }
           : {}),
-        ...(passwordEnabled
+        ...(passwordEnabled && password.length >= 4
           ? { password, passwordAttemptLimit: attemptLimit }
-          : {}),
+          : keepExistingPassword
+            ? { passwordAttemptLimit: attemptLimit }
+            : {}),
         ...(approvalRequired ? { approvalRequired: true } : {}),
+        ...(isEditing
+          ? { keepExistingPassword, keepExistingRecipients, keepExistingFile }
+          : {}),
       };
       if (type === "file" && file) {
         body.filePayload = bytesToBlob(
@@ -542,9 +754,16 @@ export default function NewCapsulePopup({
           "capsule_file_payload",
         );
       }
-      const created = await core.createCapsule(workspaceId, body);
-      const url = `${window.location.origin}/capsule/${created.capsuleId}#key=${generated.fragment}`;
-      await navigator.clipboard.writeText(url);
+      if (isEditing && editingCapsuleId) {
+        await core.updateCapsule(editingCapsuleId, body);
+        toast.success("Капсула сохранена");
+      } else {
+        const created = await core.createCapsule(workspaceId, body);
+        const url = `${window.location.origin}/capsule/${created.capsuleId}#key=${generated.fragment}`;
+        await navigator.clipboard.writeText(url);
+        toast.success("Капсула создана, ссылка скопирована");
+        onCreated?.();
+      }
       if (saveDefaults) {
         const settings: CapsuleAccessDefaultsDto = {
           viewsEnabled,
@@ -568,16 +787,18 @@ export default function NewCapsulePopup({
           }
           setSavedDefaults(settings);
         } catch {
-          /* Capsule is already created; defaults persist can retry next time. */
+          /* Capsule is already saved; defaults persist can retry next time. */
         }
       }
-      toast.success("Капсула создана, ссылка скопирована");
       notifyCapsulesListRefresh();
-      onCreated?.();
       close();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Не удалось создать капсулу",
+        cause instanceof Error
+          ? cause.message
+          : isEditing
+            ? "Не удалось сохранить капсулу"
+            : "Не удалось создать капсулу",
       );
     } finally {
       if (generated) releaseCapsuleKey(generated.capsuleKey);
@@ -590,23 +811,46 @@ export default function NewCapsulePopup({
   return (
     <>
       <Popup
-        header="Новая капсула"
+        header={isEditing ? "Редактирование капсулы" : "Новая капсула"}
         width={720}
         onClose={close}
         onCloseRequest={requestClose}
         panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
         contentClassName="flex flex-col gap-4 overflow-visible"
         footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={handleClose}>
-              Отмена
-            </Button>
-            <Button disabled={!canSave || saving} onClick={() => void save()}>
-              {saving ? "Сохранение…" : "Сохранить"}
-            </Button>
+          <div className="flex w-full items-center justify-between gap-2">
+            {isEditing && editingDetail ? (
+              <CapsuleActionsMenu
+                t={t}
+                variant="button"
+                align="start"
+                canActivate={editingDetail.state !== "active"}
+                canDeactivate={editingDetail.state === "active"}
+                onCopy={() => void copyEditingLink()}
+                onActivate={() => void changeEditingState("active")}
+                onDeactivate={() => void changeEditingState("inactive")}
+                onDelete={() => void deleteEditing()}
+              />
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={handleClose}>
+                Отмена
+              </Button>
+              <Button disabled={!canSave || saving} onClick={() => void save()}>
+                {saving ? "Сохранение…" : "Сохранить"}
+              </Button>
+            </div>
           </div>
         }
       >
+        {isEditing && !editHydrated ? (
+          <p className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+            {error ?? "Загрузка…"}
+          </p>
+        ) : (
+          <>
         <div className="relative flex w-fit rounded-lg bg-secondary p-1">
           {(
             [
@@ -869,10 +1113,15 @@ export default function NewCapsulePopup({
                             mimeType: file.type || "application/octet-stream",
                             sizeBytes: file.size,
                           })
-                        : ""
+                        : existingFileMeta
+                          ? serializeKeyFieldFileValue(existingFileMeta)
+                          : ""
                     }
                     onValueChange={(value) => {
-                      if (!value) setFile(null);
+                      if (!value) {
+                        setFile(null);
+                        setExistingFileMeta(null);
+                      }
                     }}
                     onFileUpload={async (
                       nextFile,
@@ -953,7 +1202,7 @@ export default function NewCapsulePopup({
                   onChange={setViewsEnabled}
                 >
                   <div className="grid grid-cols-2 gap-3">
-                    <label className="flex flex-col gap-3 text-sm font-medium">
+                    <label className="flex flex-col gap-3 text-sm font-normal">
                       Количество просмотров:
                       <Input
                         type="number"
@@ -964,7 +1213,7 @@ export default function NewCapsulePopup({
                         }
                       />
                     </label>
-                    <label className="flex flex-col gap-3 text-sm font-medium">
+                    <label className="flex flex-col gap-3 text-sm font-normal">
                       Дальнейшее действие:
                       <CapsuleSelect
                         value={viewLimitAction}
@@ -991,6 +1240,7 @@ export default function NewCapsulePopup({
                       allowNow
                       value={activatePreset}
                       custom={activateCustom}
+                      invalid={activateSchedulePast}
                       datePickerLocale={datePickerLocale}
                       onChange={setActivatePreset}
                       onCustom={setActivateCustom}
@@ -999,6 +1249,7 @@ export default function NewCapsulePopup({
                       label="Деактивация по времени:"
                       value={deactivatePreset}
                       custom={deactivateCustom}
+                      invalid={deactivateSchedulePast}
                       minimumDate={activationMinimumDate}
                       relativeToActivation
                       datePickerLocale={datePickerLocale}
@@ -1009,6 +1260,7 @@ export default function NewCapsulePopup({
                       label="Удаление по времени:"
                       value={deletePreset}
                       custom={deleteCustom}
+                      invalid={deleteSchedulePast}
                       minimumDate={activationMinimumDate}
                       relativeToActivation
                       datePickerLocale={datePickerLocale}
@@ -1052,7 +1304,10 @@ export default function NewCapsulePopup({
                   >
                     <MultiSelectTrigger
                       aria-invalid={recipientsInvalid || undefined}
-                      className={recipientsInvalid ? capsuleFieldErrorClassName : undefined}
+                      className={cn(
+                        "font-normal",
+                        recipientsInvalid ? capsuleFieldErrorClassName : undefined,
+                      )}
                     />
                     <MultiSelectContent className="min-w-[min(100vw-2rem,22rem)]">
                       {members.map((member) => (
@@ -1085,17 +1340,18 @@ export default function NewCapsulePopup({
                   onChange={setPasswordEnabled}
                 >
                   <div className="grid grid-cols-2 gap-3">
-                    <label className="flex flex-col gap-3 text-sm font-medium">
+                    <label className="flex flex-col gap-3 text-sm font-normal">
                       Задайте пароль:
                       <Input
                         type="password"
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
+                        placeholder={isEditing && hadPassword ? "Оставьте пустым, чтобы не менять" : undefined}
                         aria-invalid={passwordInvalid || undefined}
                         className={passwordInvalid ? capsuleFieldErrorClassName : undefined}
                       />
                     </label>
-                    <label className="flex flex-col gap-3 text-sm font-medium">
+                    <label className="flex flex-col gap-3 text-sm font-normal">
                       Колличество неудачных попыток:
                       <Input
                         type="number"
@@ -1131,6 +1387,8 @@ export default function NewCapsulePopup({
           </label>
         ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </>
+        )}
       </Popup>
       <ExitNewItemFormConfirmPopup
         open={exitConfirmOpen}
@@ -1164,6 +1422,8 @@ function summarizeCapsuleAdvancedSettings(input: {
   recipients: readonly string[];
   passwordEnabled: boolean;
   password: string;
+  passwordKept?: boolean;
+  recipientsKept?: boolean;
   approvalRequired: boolean;
 }): { enabledCount: number; fieldsComplete: boolean } {
   let enabledCount = 0;
@@ -1180,13 +1440,13 @@ function summarizeCapsuleAdvancedSettings(input: {
   }
   if (input.accessEnabled) {
     enabledCount += 1;
-    if (input.recipients.length === 0) {
+    if (input.recipients.length === 0 && !input.recipientsKept) {
       fieldsComplete = false;
     }
   }
   if (input.passwordEnabled) {
     enabledCount += 1;
-    if (input.password.length < 4) {
+    if (input.password.length < 4 && !input.passwordKept) {
       fieldsComplete = false;
     }
   }
@@ -1280,16 +1540,21 @@ function CapsuleSelect({
   options,
   triggerClassName,
   sectionLabelAfterNever,
+  invalid = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: readonly (readonly [string, string])[];
   triggerClassName?: string;
   sectionLabelAfterNever?: string;
+  invalid?: boolean;
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={cn("font-normal", triggerClassName)}>
+      <SelectTrigger
+        aria-invalid={invalid || undefined}
+        className={cn("font-normal", triggerClassName)}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -1318,6 +1583,7 @@ function ScheduleField({
   minimumDate,
   allowNow = false,
   relativeToActivation = false,
+  invalid = false,
   onChange,
   onCustom,
 }: {
@@ -1328,6 +1594,7 @@ function ScheduleField({
   minimumDate?: Date;
   allowNow?: boolean;
   relativeToActivation?: boolean;
+  invalid?: boolean;
   onChange: (value: SchedulePreset) => void;
   onCustom: (value: string) => void;
 }) {
@@ -1368,7 +1635,7 @@ function ScheduleField({
 
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-sm font-normal">{label}</span>
       <ControlGroup className="w-full">
         <CapsuleSelect
           value={custom ? "custom" : value}
@@ -1378,19 +1645,21 @@ function ScheduleField({
             onCustom("");
           }}
           options={selectOptions}
+          invalid={invalid}
           sectionLabelAfterNever={
             relativeToActivation ? "После активации" : undefined
           }
           triggerClassName={cn(
             controlGroupItemFixedClassName,
             "min-w-0 flex-1",
+            invalid && capsuleFieldErrorClassName,
           )}
         />
         <Popover open={pickerOpen} onOpenChange={handlePickerOpenChange}>
           <PopoverTrigger asChild>
             <Button
               type="button"
-              variant="outline"
+              variant={invalid ? "danger" : "outline"}
               size="icon"
               className={cn(
                 controlGroupItemFixedClassName,
@@ -1607,6 +1876,190 @@ function toTimeValue(value: Date): string {
 
 function toLocalDateTimeValue(value: Date): string {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}T${toTimeValue(value)}`;
+}
+
+function isPastCustomDate(custom: string, now = Date.now()): boolean {
+  if (!custom) return false;
+  const time = new Date(custom).getTime();
+  return Number.isFinite(time) && time < now;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function applyLoadedCapsule(
+  detail: CapsuleOwnerDetailDto,
+  payload: unknown,
+  metadata: CapsuleOwnerMetadata,
+  setters: {
+    setType: (value: CapsuleType) => void;
+    setName: (value: string) => void;
+    setText: (value: string) => void;
+    setSelectedItemId: (value: string) => void;
+    setFieldScope: (value: ScopeMode) => void;
+    setSelectedFieldIds: (value: string[]) => void;
+    setViewsEnabled: (value: boolean) => void;
+    setMaxViews: (value: number) => void;
+    setViewLimitAction: (value: "deactivate" | "delete") => void;
+    setTimeEnabled: (value: boolean) => void;
+    setActivatePreset: (value: SchedulePreset) => void;
+    setDeactivatePreset: (value: SchedulePreset) => void;
+    setDeletePreset: (value: SchedulePreset) => void;
+    setActivateCustom: (value: string) => void;
+    setDeactivateCustom: (value: string) => void;
+    setDeleteCustom: (value: string) => void;
+    setAccessEnabled: (value: boolean) => void;
+    setPasswordEnabled: (value: boolean) => void;
+    setAttemptLimit: (value: number) => void;
+    setApprovalRequired: (value: boolean) => void;
+    setAdvancedOpen: (value: boolean) => void;
+    setExistingFileMeta: (value: KeyFieldFileValue | null) => void;
+    setHadPassword: (value: boolean) => void;
+    setHadRecipients: (value: boolean) => void;
+    setRecipients: (value: string[]) => void;
+    setEditingDetail: (value: CapsuleOwnerDetailDto) => void;
+  },
+): string {
+  const record = asRecord(payload);
+  const itemRecord = asRecord(record?.item);
+  const type = detail.type;
+  const name = metadata.name;
+  const text = type === "text" && typeof record?.text === "string" ? record.text : "";
+  const loadedItemId =
+    typeof itemRecord?.itemId === "string"
+      ? itemRecord.itemId
+      : typeof itemRecord?.id === "string"
+        ? itemRecord.id
+        : "";
+  const rawFields = itemRecord && Array.isArray(itemRecord.fields) ? itemRecord.fields : [];
+  const fieldIds =
+    type === "item"
+      ? rawFields.flatMap((field) => {
+          const fieldRecord = asRecord(field);
+          return typeof fieldRecord?.id === "string" ? [fieldRecord.id] : [];
+        })
+      : [];
+  const fieldScope: ScopeMode = type === "item" && fieldIds.length > 0 ? "selected" : "all";
+  const fileName =
+    type === "file"
+      ? metadata.fileName || (typeof record?.name === "string" && record.name) || "file"
+      : "";
+  const viewsEnabled = detail.maxViews !== null;
+  const maxViews = detail.maxViews ?? 1;
+  const timeEnabled = Boolean(detail.activateAt || detail.deactivateAt || detail.deleteAt);
+  const activateCustom = detail.activateAt
+    ? toLocalDateTimeValue(new Date(detail.activateAt))
+    : "";
+  const deactivateCustom = detail.deactivateAt
+    ? toLocalDateTimeValue(new Date(detail.deactivateAt))
+    : "";
+  const deleteCustom = detail.deleteAt
+    ? toLocalDateTimeValue(new Date(detail.deleteAt))
+    : "";
+  const recipients = (detail.allowedRecipientEmails ?? [])
+    .map((email) => email.trim().toLocaleLowerCase())
+    .filter(Boolean);
+  setters.setType(type);
+  setters.setName(name);
+  setters.setEditingDetail(detail);
+  setters.setText(text);
+  if (type === "item" && loadedItemId) {
+    setters.setSelectedItemId(loadedItemId);
+    if (fieldIds.length > 0) {
+      setters.setFieldScope("selected");
+      setters.setSelectedFieldIds(fieldIds);
+    }
+  }
+  if (type === "file") {
+    setters.setExistingFileMeta({
+      attachmentId: `capsule-existing-${detail.capsuleId}`,
+      name: fileName,
+      mimeType: "application/octet-stream",
+      sizeBytes: 0,
+    });
+  }
+  setters.setViewsEnabled(viewsEnabled);
+  if (viewsEnabled) {
+    setters.setMaxViews(maxViews);
+  }
+  setters.setViewLimitAction(detail.viewLimitAction);
+  setters.setTimeEnabled(timeEnabled);
+  setters.setActivatePreset("now");
+  setters.setActivateCustom(activateCustom);
+  setters.setDeactivatePreset("never");
+  setters.setDeactivateCustom(deactivateCustom);
+  setters.setDeletePreset("never");
+  setters.setDeleteCustom(deleteCustom);
+  setters.setAccessEnabled(detail.recipientRestricted);
+  setters.setRecipients(recipients);
+  setters.setPasswordEnabled(detail.passwordRequired);
+  setters.setAttemptLimit(detail.passwordAttemptLimit ?? 3);
+  setters.setApprovalRequired(detail.approvalRequired);
+  setters.setHadPassword(detail.passwordRequired);
+  setters.setHadRecipients(detail.recipientRestricted);
+  setters.setAdvancedOpen(false);
+  return capsuleEditorFingerprint({
+    type,
+    name,
+    text,
+    fileKey: type === "file" ? `keep:${fileName}` : "",
+    selectedItemId: loadedItemId,
+    fieldScope,
+    selectedFieldIds: fieldIds,
+    viewsEnabled,
+    maxViews,
+    viewLimitAction: detail.viewLimitAction,
+    timeEnabled,
+    activatePreset: "now",
+    deactivatePreset: "never",
+    deletePreset: "never",
+    activateCustom,
+    deactivateCustom,
+    deleteCustom,
+    accessEnabled: detail.recipientRestricted,
+    recipients,
+    passwordEnabled: detail.passwordRequired,
+    password: "",
+    attemptLimit: detail.passwordAttemptLimit ?? 3,
+    approvalRequired: detail.approvalRequired,
+    saveDefaults: false,
+  });
+}
+
+function capsuleEditorFingerprint(input: {
+  type: CapsuleType;
+  name: string;
+  text: string;
+  fileKey: string;
+  selectedItemId: string;
+  fieldScope: ScopeMode;
+  selectedFieldIds: readonly string[];
+  viewsEnabled: boolean;
+  maxViews: number;
+  viewLimitAction: string;
+  timeEnabled: boolean;
+  activatePreset: SchedulePreset;
+  deactivatePreset: SchedulePreset;
+  deletePreset: SchedulePreset;
+  activateCustom: string;
+  deactivateCustom: string;
+  deleteCustom: string;
+  accessEnabled: boolean;
+  recipients: readonly string[];
+  passwordEnabled: boolean;
+  password: string;
+  attemptLimit: number;
+  approvalRequired: boolean;
+  saveDefaults: boolean;
+}): string {
+  return JSON.stringify({
+    ...input,
+    selectedFieldIds: [...input.selectedFieldIds].sort(),
+    recipients: [...input.recipients].sort(),
+  });
 }
 
 function nextAvailableDateTime(minimumDate: Date = new Date()): Date {

@@ -47,6 +47,8 @@ import {
   createCapsulePendingApprovalsRoute,
   createCapsuleRevokeRoute,
   createCapsuleStateRoute,
+  createCapsuleOwnerDetailRoute,
+  createCapsuleUpdateRoute,
 } from "./routes/capsules.ts";
 import {
   createWorkspaceItemCategoryPreferencesRoute,
@@ -472,6 +474,16 @@ export function createApiApp(
       createCapsuleCreateRoute(deps.capsuleService, resolveUserId),
     );
     app.route("GET", "/capsules/:capsuleId", createCapsuleMetadataRoute(deps.capsuleService));
+    app.route(
+      "GET",
+      "/capsules/:capsuleId/owner",
+      createCapsuleOwnerDetailRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "PUT",
+      "/capsules/:capsuleId",
+      createCapsuleUpdateRoute(deps.capsuleService, resolveUserId),
+    );
     app.route(
       "POST",
       "/capsules/:capsuleId/open",

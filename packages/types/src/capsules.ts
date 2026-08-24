@@ -57,6 +57,19 @@ export interface CapsuleCreateRequestDto {
   approvalRequired?: boolean;
 }
 
+export interface CapsuleOwnerDetailDto extends CapsuleOwnerListEntryDto {
+  encryptedPayload: EncryptedBlobDto;
+  filePayload?: EncryptedBlobDto;
+  /** Owner-only: emails used for access restriction (for edit form). */
+  allowedRecipientEmails?: string[];
+}
+
+export interface CapsuleUpdateRequestDto extends CapsuleCreateRequestDto {
+  keepExistingPassword?: boolean;
+  keepExistingRecipients?: boolean;
+  keepExistingFile?: boolean;
+}
+
 export interface CapsuleOpenResponseDto extends CapsuleMetadataDto {
   encryptedPayload: EncryptedBlobDto;
   filePayload?: EncryptedBlobDto;

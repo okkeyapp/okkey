@@ -378,3 +378,83 @@ test("integration: capsule create works on FREE without access settings", async 
     (err: unknown) => err instanceof CapsuleServiceError && err.code === "FEATURE_NOT_AVAILABLE",
   );
 });
+
+test("integration: update resets view count; activate clears past schedule and views", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-edit-${testEntityId()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "text",
+    encryptedPayload: mkBlob("edit-payload"),
+    encryptedMetadata: mkBlob("edit-metadata"),
+    ownerKeyWrap: mkBlob("edit-wrap"),
+    maxViews: 3,
+  });
+
+  const opened = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
+  assert.equal(opened.viewCount, 1);
+
+  const ownerDetail = await capsules.getOwnerCapsule(created.capsuleId, userId);
+  assert.equal(ownerDetail.viewCount, 1);
+  assert.equal(
+    Buffer.from(ownerDetail.encryptedPayload.payload, "base64").toString("utf8"),
+    "edit-payload",
+  );
+
+  const updated = await capsules.updateCapsule(created.capsuleId, userId, {
+    type: "text",
+    encryptedPayload: mkBlob("edit-payload-2"),
+    encryptedMetadata: mkBlob("edit-metadata-2"),
+    ownerKeyWrap: mkBlob("edit-wrap"),
+    maxViews: 3,
+  });
+  assert.equal(updated.viewCount, 0);
+
+  const pastActivate = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+  const pastDeactivate = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const pastDelete = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  await capsules.updateCapsule(created.capsuleId, userId, {
+    type: "text",
+    encryptedPayload: mkBlob("edit-payload-3"),
+    encryptedMetadata: mkBlob("edit-metadata-3"),
+    ownerKeyWrap: mkBlob("edit-wrap"),
+    maxViews: 3,
+    activateAt: pastActivate,
+    deactivateAt: pastDeactivate,
+    deleteAt: pastDelete,
+  });
+  await storage.postgres.query("UPDATE capsules SET view_count = 2 WHERE id = $1", [created.capsuleId]);
+
+  const reactivated = await capsules.setCapsuleState(created.capsuleId, userId, "active");
+  assert.equal(reactivated.viewCount, 0);
+  assert.equal(reactivated.activateAt, null);
+  assert.equal(reactivated.deactivateAt, null);
+  assert.equal(reactivated.deleteAt, null);
+  assert.equal(reactivated.state, "active");
+});

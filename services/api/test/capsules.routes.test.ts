@@ -110,6 +110,57 @@ async function dispatch(input: {
   return res;
 }
 
+test("GET /capsules/:capsuleId/owner and PUT /capsules/:capsuleId require auth", async () => {
+  const capsuleId = testEntityId();
+  const ownerRes = await dispatch({
+    method: "GET",
+    url: `/capsules/${capsuleId}/owner`,
+  });
+  assert.equal(ownerRes.statusCode, 401);
+
+  const updateRes = await dispatch({
+    method: "PUT",
+    url: `/capsules/${capsuleId}`,
+    body: { type: "text", encryptedPayload: mkBlob("x") },
+  });
+  assert.equal(updateRes.statusCode, 401);
+});
+
+test("GET /capsules/:capsuleId/owner returns owner detail", async () => {
+  const capsuleId = testEntityId();
+  const res = await dispatch({
+    method: "GET",
+    url: `/capsules/${capsuleId}/owner`,
+    headers: { "x-user-id": "u1" },
+    capsuleService: createCapsuleServiceStub({
+      getOwnerCapsule: async () => ({
+        capsuleId,
+        type: "text",
+        state: "active",
+        activateAt: null,
+        deactivateAt: null,
+        deleteAt: null,
+        maxViews: 2,
+        viewCount: 1,
+        viewLimitAction: "deactivate",
+        passwordRequired: false,
+        passwordAttemptLimit: null,
+        recipientRestricted: false,
+        approvalRequired: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        encryptedMetadata: mkBlob("meta"),
+        ownerKeyWrap: mkBlob("wrap"),
+        encryptedPayload: mkBlob("payload"),
+      }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { capsuleId: string; encryptedPayload?: unknown };
+  assert.equal(payload.capsuleId, capsuleId);
+  assert.ok(payload.encryptedPayload);
+});
+
 test("POST /workspaces/:workspaceId/capsules requires auth", async () => {
   const res = await dispatch({
     method: "POST",
