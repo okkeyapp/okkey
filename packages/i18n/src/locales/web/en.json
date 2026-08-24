@@ -481,7 +481,7 @@
   "web.capsules.list.empty": "No capsules yet",
   "web.capsules.list.searchEmpty": "No results found for \"{query}\"",
   "web.capsules.public.title": "Okkey secure capsule",
-  "web.capsules.public.description": "Data is decrypted on your device only; the server never sees it",
+  "web.capsules.public.description": "Data is decrypted on your device only, the server never sees it",
   "web.capsules.public.decrypting": "Decrypting…",
   "web.capsules.public.missingKey": "The link has no decryption key. Copy the link using \"Copy link\" in Okkey (it must include the #key=… fragment) and paste the full URL — messengers often strip the part after #.",
   "web.capsules.public.viewLimit": "This capsule's view limit has been reached.",
