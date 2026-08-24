@@ -141,7 +141,7 @@ export default function PublicCapsuleContent({
       <div className="flex flex-col gap-4">
         <CapsuleItemHeader item={item} />
         <KeyFormEditor
-          key={item.itemId}
+          key={`${locale}-${item.itemId}`}
           mode="view"
           initialSections={formSections}
           fieldTypes={keyFormFieldTypes}
@@ -162,6 +162,7 @@ export default function PublicCapsuleContent({
           <h2 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{textTitle}</h2>
         </div>
         <KeyFormEditor
+          key={`text-${locale}`}
           mode="view"
           initialSections={formSections}
           fieldTypes={keyFormFieldTypes}
@@ -181,6 +182,7 @@ export default function PublicCapsuleContent({
           <h2 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{title}</h2>
         </div>
         <KeyFormEditor
+          key={`file-${locale}`}
           mode="view"
           initialSections={formSections}
           fieldTypes={keyFormFieldTypes}
