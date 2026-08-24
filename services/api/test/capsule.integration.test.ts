@@ -177,13 +177,16 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   });
 
-  await storage.postgres.query("UPDATE capsules SET expires_at = now() - interval '1 second' WHERE id = $1", [
-    created.capsuleId,
-  ]);
+  await storage.postgres.query(
+    "UPDATE capsules SET expires_at = now() - interval '1 second', deactivate_at = now() - interval '1 second' WHERE id = $1",
+    [created.capsuleId],
+  );
 
   await assert.rejects(
     () => capsules.openCapsule(created.capsuleId, "127.0.0.1"),
-    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_EXPIRED",
+    (err: unknown) =>
+      err instanceof CapsuleServiceError &&
+      (err.code === "CAPSULE_EXPIRED" || err.code === "CAPSULE_INACTIVE"),
   );
 });
 
@@ -457,4 +460,70 @@ test("integration: update resets view count; activate clears past schedule and v
   assert.equal(reactivated.deactivateAt, null);
   assert.equal(reactivated.deleteAt, null);
   assert.equal(reactivated.state, "active");
+
+  const metadata = await capsules.getCapsuleMetadata(created.capsuleId);
+  assert.equal(metadata.state, "active");
+  const reopened = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
+  assert.equal(reopened.viewCount, 1);
+});
+
+test("integration: deactivate then activate restores public access after view limit", async (t) => {
+  const config = loadConfig();
+  const storage = await createStorageLayer(config, createLoggerStub());
+  await applyMigrations(storage);
+
+  const email = `capsule-reactivate-${testEntityId()}@okkey.local`;
+  t.after(async () => {
+    try {
+      await cleanupUserData(storage, email);
+    } finally {
+      await storage.close();
+    }
+  });
+
+  const { userId } = await registerUser(storage, config, email);
+  const workspaceRows = await storage.postgres.query<{ id: string }>(
+    "SELECT id FROM workspaces WHERE owner_id = $1 LIMIT 1",
+    [userId],
+  );
+  const workspaceId = workspaceRows[0]?.id;
+  assert.ok(workspaceId);
+  await storage.postgres.query("UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE id = $1", [workspaceId]);
+
+  const capsules = new CapsuleService({
+    db: storage.postgres,
+    redis: storage.redis,
+    objectStorage: storage.objectStorage,
+    config,
+  });
+
+  const created = await capsules.createCapsule(workspaceId, userId, {
+    type: "text",
+    encryptedPayload: mkBlob("limit-payload"),
+    encryptedMetadata: mkBlob("limit-metadata"),
+    ownerKeyWrap: mkBlob("limit-wrap"),
+    maxViews: 1,
+  });
+
+  const firstOpen = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
+  assert.equal(firstOpen.viewCount, 1);
+
+  await assert.rejects(
+    () => capsules.openCapsule(created.capsuleId, "127.0.0.1"),
+    (err: unknown) => err instanceof CapsuleServiceError && err.code === "CAPSULE_VIEW_LIMIT_EXCEEDED",
+  );
+
+  const limitedMetadata = await capsules.getCapsuleMetadata(created.capsuleId);
+  assert.equal(limitedMetadata.state, "inactive");
+  assert.equal(limitedMetadata.viewCount, 1);
+
+  await capsules.setCapsuleState(created.capsuleId, userId, "inactive");
+  const reactivated = await capsules.setCapsuleState(created.capsuleId, userId, "active");
+  assert.equal(reactivated.state, "active");
+  assert.equal(reactivated.viewCount, 0);
+
+  const metadata = await capsules.getCapsuleMetadata(created.capsuleId);
+  assert.equal(metadata.state, "active");
+  const secondOpen = await capsules.openCapsule(created.capsuleId, "127.0.0.1");
+  assert.equal(secondOpen.viewCount, 1);
 });
