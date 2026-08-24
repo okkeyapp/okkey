@@ -667,9 +667,13 @@ export default function NewCapsulePopup({
         : null;
       const payload =
         type === "text"
-          ? { type, text }
+          ? { type, text, name: name.trim() }
           : type === "file"
-            ? { type, name: file?.name ?? existingFileMeta?.name }
+            ? {
+                type,
+                name: name.trim(),
+                fileName: file?.name ?? existingFileMeta?.name,
+              }
             : { type, item: itemPayload };
       const metadata = {
         name: type === "item" ? (selectedItem?.title ?? "") : name.trim(),
@@ -1128,7 +1132,7 @@ export default function NewCapsulePopup({
                 ) : (
                   <KeyField
                     className="border-b-transparent"
-                    label="Файл"
+                    label="Секретный файл"
                     mode="edit"
                     editableValue
                     fileValue
@@ -1982,7 +1986,10 @@ function applyLoadedCapsule(
   const fieldScope: ScopeMode = type === "item" && fieldIds.length > 0 ? "selected" : "all";
   const fileName =
     type === "file"
-      ? metadata.fileName || (typeof record?.name === "string" && record.name) || "file"
+      ? metadata.fileName ||
+        (typeof record?.fileName === "string" && record.fileName) ||
+        (typeof record?.name === "string" && record.name) ||
+        "file"
       : "";
   const viewsEnabled = detail.maxViews !== null;
   const maxViews = detail.maxViews ?? 1;

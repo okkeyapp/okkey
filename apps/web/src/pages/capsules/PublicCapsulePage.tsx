@@ -359,7 +359,7 @@ export default function PublicCapsulePage() {
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       contentClassName="max-w-[600px]"
     >
-      <div className={cn(capsulePanelClassName, state === "content" ? "px-4 py-6" : "p-6")}>
+      <div className={cn(capsulePanelClassName, "p-6")}>
         {state === "loading" || state === "decrypting" ? (
           <Centered>
             <Spinner />

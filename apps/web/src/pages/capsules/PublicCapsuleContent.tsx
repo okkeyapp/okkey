@@ -22,8 +22,15 @@ type CapsulePayload = {
   type?: string;
   text?: string;
   name?: string;
+  fileName?: string;
   item?: ItemPlaintextV2;
 };
+
+function resolveFileCapsuleNames(data: CapsulePayload): { title: string; fileName: string } {
+  const fileName = data.fileName?.trim() || data.name?.trim() || "file";
+  const title = data.fileName ? data.name?.trim() || fileName : fileName;
+  return { title, fileName };
+}
 
 function guessMimeType(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
@@ -74,7 +81,7 @@ export default function PublicCapsuleContent({
             {
               id: "note",
               type: "multiline-text",
-              label: keyFormMessages.fieldLabels.secureNote,
+              label: "Секретный текст",
               value: data.text ?? "",
               editableLabel: true,
               deletable: false,
@@ -84,7 +91,7 @@ export default function PublicCapsuleContent({
       ];
     }
     if (data.type === "file" && fileBytes) {
-      const fileName = data.name || "file";
+      const { fileName } = resolveFileCapsuleNames(data);
       const fileValue: KeyFieldFileValue = {
         attachmentId: "capsule-file",
         name: fileName,
@@ -99,7 +106,7 @@ export default function PublicCapsuleContent({
             {
               id: "secure-file",
               type: "file",
-              label: keyFormMessages.fieldLabels.file,
+              label: "Секретный файл",
               value: serializeKeyFieldFileValue(fileValue),
               editableLabel: true,
               deletable: false,
@@ -159,11 +166,12 @@ export default function PublicCapsuleContent({
   }
 
   if (data.type === "text") {
+    const textTitle = data.name?.trim() ?? "";
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-4">
-          <ItemRecordFavicon categoryId="secure_note" title="Заметка" size={40} alt="" />
-          <h2 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">Заметка</h2>
+          <ItemRecordFavicon categoryId="secure_note" title={textTitle} size={40} alt="" />
+          <h2 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{textTitle}</h2>
         </div>
         <KeyFormEditor
           mode="view"
@@ -177,12 +185,12 @@ export default function PublicCapsuleContent({
   }
 
   if (data.type === "file" && fileBytes) {
-    const fileName = data.name || "Файл";
+    const { title } = resolveFileCapsuleNames(data);
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-4">
-          <ItemRecordFavicon categoryId="secure_files" title={fileName} size={40} alt="" />
-          <h2 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{fileName}</h2>
+          <ItemRecordFavicon categoryId="secure_files" title={title} size={40} alt="" />
+          <h2 className="min-w-0 flex-1 text-xl font-semibold leading-7 text-foreground">{title}</h2>
         </div>
         <KeyFormEditor
           mode="view"
