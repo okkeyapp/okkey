@@ -4,7 +4,6 @@ import {
   CapsuleDefaultsService,
   CapsuleDefaultsServiceError,
   parseCapsuleAccessDefaultsPayload,
-  parseCapsuleDefaultsType,
 } from "../capsule-defaults/service.ts";
 
 function errorPayload(code: string, message: string, requestId: string) {
@@ -12,7 +11,6 @@ function errorPayload(code: string, message: string, requestId: string) {
 }
 
 type UpsertBody = {
-  type?: unknown;
   settings?: unknown;
 };
 
@@ -45,15 +43,6 @@ export function createWorkspaceCapsuleDefaultsRoute(
       }
 
       const body = await readJsonBody<UpsertBody>(ctx.req);
-      const type = parseCapsuleDefaultsType(body.type);
-      if (!type) {
-        json(
-          ctx.res,
-          400,
-          errorPayload("INVALID_CAPSULE_TYPE", "type must be text, file, or item", ctx.requestId),
-        );
-        return;
-      }
       const settings = parseCapsuleAccessDefaultsPayload(body.settings);
       if (!settings) {
         json(
@@ -64,7 +53,7 @@ export function createWorkspaceCapsuleDefaultsRoute(
         return;
       }
 
-      const updated = await service.upsertDefaults(workspaceId, userId, type, settings);
+      const updated = await service.upsertDefaults(workspaceId, userId, settings);
       json(ctx.res, 200, updated);
     } catch (error) {
       handleError(ctx.requestId, ctx.res, error);

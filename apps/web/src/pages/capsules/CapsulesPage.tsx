@@ -38,6 +38,7 @@ import {
   recoverOwnerCapsuleFragment,
   type CapsuleOwnerMetadata,
 } from "../../capsules/crypto";
+import { subscribeCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
 import { useLocale } from "../../locale/LocaleContext";
 import { itemsPathAllWorkspaceMerged } from "../../routes/paths";
 import {
@@ -86,9 +87,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     [vaultKey],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!core || !vaultKey) return;
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const query = search.trim().toLocaleLowerCase();
@@ -122,6 +125,10 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => subscribeCapsulesListRefresh(() => {
+    void load({ silent: true });
+  }), [load]);
 
   const pageCount = Math.max(1, Math.ceil(total / 30));
   const allSelected = capsules.length > 0 && capsules.every((capsule) => selectedIds.includes(capsule.capsuleId));

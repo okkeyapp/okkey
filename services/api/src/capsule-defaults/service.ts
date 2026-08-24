@@ -32,7 +32,8 @@ export type CapsuleDefaultsEntry = {
   settings: CapsuleAccessDefaults;
 };
 
-const CAPSULE_TYPES = new Set<CapsuleDefaultsType>(["text", "file", "item"]);
+const CAPSULE_TYPE_VALUES: CapsuleDefaultsType[] = ["text", "file", "item"];
+const CAPSULE_TYPES = new Set<CapsuleDefaultsType>(CAPSULE_TYPE_VALUES);
 const SCHEDULE_PRESETS = new Set<CapsuleSchedulePreset>([
   "never",
   "now",
@@ -80,21 +81,21 @@ export class CapsuleDefaultsService {
   async upsertDefaults(
     workspaceId: string,
     userId: string,
-    type: CapsuleDefaultsType,
     settings: CapsuleAccessDefaults,
-  ): Promise<CapsuleDefaultsEntry> {
+  ): Promise<{ settings: CapsuleAccessDefaults }> {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const normalized = normalizeCapsuleAccessDefaults(settings);
-    const row = await this.defaults.upsert({
-      workspaceId,
-      userId,
-      capsuleType: type,
-      settings: normalized,
-    });
-    return {
-      type: row.capsuleType,
-      settings: normalizeCapsuleAccessDefaults(row.settings),
-    };
+    let lastSettings = normalized;
+    for (const capsuleType of CAPSULE_TYPE_VALUES) {
+      const row = await this.defaults.upsert({
+        workspaceId,
+        userId,
+        capsuleType,
+        settings: normalized,
+      });
+      lastSettings = normalizeCapsuleAccessDefaults(row.settings);
+    }
+    return { settings: lastSettings };
   }
 
   private async assertWorkspaceAccess(workspaceId: string, userId: string): Promise<void> {

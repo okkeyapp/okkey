@@ -59,6 +59,7 @@ import {
   useAuthVault,
   useAuthenticatedCoreClient,
 } from "../../auth/AuthVaultContext";
+import { notifyCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
 import {
   buildEncryptedCapsule,
   bytesToBlob,
@@ -101,6 +102,20 @@ const scheduleOptions: { value: SchedulePreset; label: string }[] = [
   { value: "12h", label: "Через 12 часов" },
   { value: "24h", label: "Через 24 часа" },
 ];
+
+const emptyCapsuleAccessDefaults: CapsuleAccessDefaultsDto = {
+  viewsEnabled: false,
+  maxViews: 1,
+  viewLimitAction: "deactivate",
+  timeEnabled: false,
+  activatePreset: "now",
+  deactivatePreset: "never",
+  deletePreset: "never",
+  accessEnabled: false,
+  passwordEnabled: false,
+  attemptLimit: 3,
+  approvalRequired: false,
+};
 const scheduleHours = Array.from({ length: 24 }, (_, index) => index);
 const scheduleMinutes = Array.from({ length: 60 }, (_, index) => index);
 const capsuleCalendarStartMonth = new Date(new Date().getFullYear() - 100, 0);
@@ -165,9 +180,7 @@ export default function NewCapsulePopup({
   const [attemptLimit, setAttemptLimit] = useState(3);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [saveDefaults, setSaveDefaults] = useState(false);
-  const [defaultsByType, setDefaultsByType] = useState<
-    Partial<Record<CapsuleType, CapsuleAccessDefaultsDto>>
-  >({});
+  const [savedDefaults, setSavedDefaults] = useState<CapsuleAccessDefaultsDto | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
@@ -236,39 +249,30 @@ export default function NewCapsulePopup({
       void core
         .getWorkspaceCapsuleDefaults(workspaceId)
         .then((result) => {
-          const next: Partial<Record<CapsuleType, CapsuleAccessDefaultsDto>> =
-            {};
-          for (const entry of result.defaults) {
-            next[entry.type] = entry.settings;
-          }
-          setDefaultsByType(next);
+          setSavedDefaults(pickSharedCapsuleDefaults(result.defaults));
         })
         .catch(() => {
-          setDefaultsByType({});
+          setSavedDefaults(null);
         });
     }
   }, [advancedAvailable, core, open, sourceItemId, workspaceId]);
 
   useEffect(() => {
     if (!open || !advancedAvailable) return;
-    applyCapsuleAccessDefaults(
-      defaultsByType[type] ?? null,
-      {
-        setViewsEnabled,
-        setMaxViews,
-        setViewLimitAction,
-        setTimeEnabled,
-        setActivatePreset,
-        setDeactivatePreset,
-        setDeletePreset,
-        setAccessEnabled,
-        setPasswordEnabled,
-        setAttemptLimit,
-        setApprovalRequired,
-        setAdvancedOpen,
-      },
-    );
-  }, [advancedAvailable, defaultsByType, open, type]);
+    applyCapsuleAccessDefaults(savedDefaults, {
+      setViewsEnabled,
+      setMaxViews,
+      setViewLimitAction,
+      setTimeEnabled,
+      setActivatePreset,
+      setDeactivatePreset,
+      setDeletePreset,
+      setAccessEnabled,
+      setPasswordEnabled,
+      setAttemptLimit,
+      setApprovalRequired,
+    });
+  }, [advancedAvailable, savedDefaults, open]);
 
   useEffect(() => {
     if (open) return;
@@ -300,7 +304,7 @@ export default function NewCapsulePopup({
     setAttemptLimit(3);
     setApprovalRequired(false);
     setSaveDefaults(false);
-    setDefaultsByType({});
+    setSavedDefaults(null);
     setError(null);
     setExitConfirmOpen(false);
   }, [open]);
@@ -316,6 +320,8 @@ export default function NewCapsulePopup({
     );
   };
 
+  const passwordInvalid = passwordEnabled && password.length < 4;
+  const recipientsInvalid = accessEnabled && recipients.length === 0;
   const canSave =
     (type === "item" || name.trim().length > 0) &&
     (type === "text"
@@ -323,24 +329,95 @@ export default function NewCapsulePopup({
       : type === "file"
         ? Boolean(file)
         : Boolean(selectedItem)) &&
-    (!passwordEnabled || password.length >= 4);
-  const dirty = Boolean(
-    type !== "text" ||
-    name ||
-    text ||
-    file ||
-    itemSearch ||
-    selectedItemId ||
-    fieldScope !== "all" ||
-    selectedFieldIds.length ||
-    viewsEnabled ||
-    timeEnabled ||
-    accessEnabled ||
-    recipientInput ||
-    recipients.length ||
-    passwordEnabled ||
-    approvalRequired,
+    !passwordInvalid &&
+    !recipientsInvalid;
+  const advancedSettingsSummary = useMemo(
+    () =>
+      summarizeCapsuleAdvancedSettings({
+        viewsEnabled,
+        maxViews,
+        timeEnabled,
+        accessEnabled,
+        recipients,
+        passwordEnabled,
+        password,
+        approvalRequired,
+      }),
+    [
+      accessEnabled,
+      approvalRequired,
+      maxViews,
+      password,
+      passwordEnabled,
+      recipients,
+      timeEnabled,
+      viewsEnabled,
+    ],
   );
+  const dirty = useMemo(() => {
+    const advanced = savedDefaults ?? emptyCapsuleAccessDefaults;
+    const baselineType: CapsuleType = sourceItemId ? "item" : "text";
+    const baselineItemId = sourceItemId || "";
+    const stillApplyingSourceItem =
+      Boolean(sourceItemId) && type === "text" && selectedItemId === "";
+    return (
+      (!stillApplyingSourceItem && type !== baselineType) ||
+      name !== "" ||
+      text !== "" ||
+      file !== null ||
+      itemSearch !== "" ||
+      selectedItemId !== baselineItemId ||
+      fieldScope !== "all" ||
+      selectedFieldIds.length > 0 ||
+      viewsEnabled !== advanced.viewsEnabled ||
+      maxViews !== advanced.maxViews ||
+      viewLimitAction !== advanced.viewLimitAction ||
+      timeEnabled !== advanced.timeEnabled ||
+      activatePreset !== advanced.activatePreset ||
+      deactivatePreset !== advanced.deactivatePreset ||
+      deletePreset !== advanced.deletePreset ||
+      activateCustom !== "" ||
+      deactivateCustom !== "" ||
+      deleteCustom !== "" ||
+      accessEnabled !== advanced.accessEnabled ||
+      recipientInput !== "" ||
+      recipients.length > 0 ||
+      passwordEnabled !== advanced.passwordEnabled ||
+      password !== "" ||
+      attemptLimit !== advanced.attemptLimit ||
+      approvalRequired !== advanced.approvalRequired ||
+      saveDefaults
+    );
+  }, [
+    accessEnabled,
+    activateCustom,
+    activatePreset,
+    approvalRequired,
+    attemptLimit,
+    deactivateCustom,
+    deactivatePreset,
+    deleteCustom,
+    deletePreset,
+    fieldScope,
+    file,
+    itemSearch,
+    maxViews,
+    name,
+    password,
+    passwordEnabled,
+    recipientInput,
+    recipients,
+    saveDefaults,
+    savedDefaults,
+    selectedFieldIds,
+    selectedItemId,
+    sourceItemId,
+    text,
+    timeEnabled,
+    type,
+    viewLimitAction,
+    viewsEnabled,
+  ]);
   const requestClose = () => {
     if (dirty) {
       setExitConfirmOpen(true);
@@ -483,16 +560,19 @@ export default function NewCapsulePopup({
           approvalRequired,
         };
         try {
-          await core.updateWorkspaceCapsuleDefaults(workspaceId, {
-            type,
-            settings,
-          });
-          setDefaultsByType((current) => ({ ...current, [type]: settings }));
+          for (const capsuleType of ["text", "file", "item"] as const) {
+            await core.updateWorkspaceCapsuleDefaults(workspaceId, {
+              type: capsuleType,
+              settings,
+            });
+          }
+          setSavedDefaults(settings);
         } catch {
           /* Capsule is already created; defaults persist can retry next time. */
         }
       }
       toast.success("Капсула создана, ссылка скопирована");
+      notifyCapsulesListRefresh();
       onCreated?.();
       close();
     } catch (cause) {
@@ -822,6 +902,18 @@ export default function NewCapsulePopup({
           onClick={() => setAdvancedOpen((value) => !value)}
         >
           Расширенные настройки
+          <span
+            className={cn(
+              "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none",
+              advancedSettingsSummary.enabledCount === 0
+                ? "bg-input text-muted-foreground"
+                : advancedSettingsSummary.fieldsComplete
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-destructive text-destructive-foreground",
+            )}
+          >
+            {advancedSettingsSummary.enabledCount}
+          </span>
           <ChevronDownIcon
             data-icon="inline-end"
             className={advancedOpen ? "rotate-180" : undefined}
@@ -952,13 +1044,16 @@ export default function NewCapsulePopup({
                           Добавить {query}
                         </Button>
                       ) : (
-                        <div className="flex h-8 w-full items-center justify-center text-sm leading-5 text-muted-foreground">
+                        <div className="flex h-8 w-full items-center justify-center text-sm leading-5 text-destructive">
                           Неверный емейл
                         </div>
                       )
                     }
                   >
-                    <MultiSelectTrigger />
+                    <MultiSelectTrigger
+                      aria-invalid={recipientsInvalid || undefined}
+                      className={recipientsInvalid ? capsuleFieldErrorClassName : undefined}
+                    />
                     <MultiSelectContent className="min-w-[min(100vw-2rem,22rem)]">
                       {members.map((member) => (
                         <MultiSelectItem
@@ -996,6 +1091,8 @@ export default function NewCapsulePopup({
                         type="password"
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
+                        aria-invalid={passwordInvalid || undefined}
+                        className={passwordInvalid ? capsuleFieldErrorClassName : undefined}
                       />
                     </label>
                     <label className="flex flex-col gap-3 text-sm font-medium">
@@ -1045,6 +1142,61 @@ export default function NewCapsulePopup({
   );
 }
 
+function pickSharedCapsuleDefaults(
+  entries: readonly { type: CapsuleType; settings: CapsuleAccessDefaultsDto }[],
+): CapsuleAccessDefaultsDto | null {
+  const byType = new Map(entries.map((entry) => [entry.type, entry.settings]));
+  return byType.get("text") ?? byType.get("file") ?? byType.get("item") ?? entries[0]?.settings ?? null;
+}
+
+const capsuleFieldErrorClassName =
+  "border-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] hover:border-destructive " +
+  "focus:border-destructive focus:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] " +
+  "focus-visible:border-destructive focus-visible:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] " +
+  "data-[state=open]:border-destructive data-[state=open]:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] " +
+  "data-[state=open]:hover:border-destructive data-[state=open]:hover:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]";
+
+function summarizeCapsuleAdvancedSettings(input: {
+  viewsEnabled: boolean;
+  maxViews: number;
+  timeEnabled: boolean;
+  accessEnabled: boolean;
+  recipients: readonly string[];
+  passwordEnabled: boolean;
+  password: string;
+  approvalRequired: boolean;
+}): { enabledCount: number; fieldsComplete: boolean } {
+  let enabledCount = 0;
+  let fieldsComplete = true;
+
+  if (input.viewsEnabled) {
+    enabledCount += 1;
+    if (!(input.maxViews >= 1)) {
+      fieldsComplete = false;
+    }
+  }
+  if (input.timeEnabled) {
+    enabledCount += 1;
+  }
+  if (input.accessEnabled) {
+    enabledCount += 1;
+    if (input.recipients.length === 0) {
+      fieldsComplete = false;
+    }
+  }
+  if (input.passwordEnabled) {
+    enabledCount += 1;
+    if (input.password.length < 4) {
+      fieldsComplete = false;
+    }
+  }
+  if (input.approvalRequired) {
+    enabledCount += 1;
+  }
+
+  return { enabledCount, fieldsComplete };
+}
+
 function applyCapsuleAccessDefaults(
   defaults: CapsuleAccessDefaultsDto | null,
   setters: {
@@ -1059,7 +1211,6 @@ function applyCapsuleAccessDefaults(
     setPasswordEnabled: (value: boolean) => void;
     setAttemptLimit: (value: number) => void;
     setApprovalRequired: (value: boolean) => void;
-    setAdvancedOpen: (value: boolean) => void;
   },
 ): void {
   if (!defaults) {
@@ -1087,15 +1238,6 @@ function applyCapsuleAccessDefaults(
   setters.setPasswordEnabled(defaults.passwordEnabled);
   setters.setAttemptLimit(defaults.attemptLimit);
   setters.setApprovalRequired(defaults.approvalRequired);
-  if (
-    defaults.viewsEnabled ||
-    defaults.timeEnabled ||
-    defaults.accessEnabled ||
-    defaults.passwordEnabled ||
-    defaults.approvalRequired
-  ) {
-    setters.setAdvancedOpen(true);
-  }
 }
 
 function AdvancedRow({

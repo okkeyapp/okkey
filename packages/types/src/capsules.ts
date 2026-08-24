@@ -124,7 +124,7 @@ export type CapsuleSchedulePreset =
   | "12h"
   | "24h";
 
-/** Non-secret access defaults for the create-capsule form (per member + type). */
+/** Non-secret access defaults for the create-capsule form (per member, shared across types). */
 export interface CapsuleAccessDefaultsDto {
   viewsEnabled: boolean;
   maxViews: number;
@@ -151,8 +151,11 @@ export interface CapsuleDefaultsListResponseDto {
 
 /** `PUT /workspaces/:workspaceId/capsule-defaults` (Bearer). */
 export interface CapsuleDefaultsUpsertRequestDto {
-  type: CapsuleType;
   settings: CapsuleAccessDefaultsDto;
+  /** Older API builds required a type; current API applies settings to all types. */
+  type?: CapsuleType;
 }
 
-export type CapsuleDefaultsUpsertResponseDto = CapsuleDefaultsEntryDto;
+export interface CapsuleDefaultsUpsertResponseDto {
+  settings: CapsuleAccessDefaultsDto;
+}
