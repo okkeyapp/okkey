@@ -83,6 +83,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import ExitNewItemFormConfirmPopup from "../items/ExitNewItemFormConfirmPopup";
 import ItemRecordFavicon from "../items/ItemRecordFavicon";
 import CapsuleActionsMenu from "./CapsuleActionsMenu";
+import DeleteCapsulesConfirmPopup from "./DeleteCapsulesConfirmPopup";
 import {
   CAPSULE_FROM_ITEM_QUERY_PARAM,
   EDIT_CAPSULE_POPUP_ID,
@@ -196,6 +197,8 @@ export default function NewCapsulePopup({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [editingDetail, setEditingDetail] = useState<CapsuleOwnerDetailDto | null>(null);
   const [existingFileMeta, setExistingFileMeta] = useState<KeyFieldFileValue | null>(null);
   const [hadPassword, setHadPassword] = useState(false);
@@ -242,6 +245,8 @@ export default function NewCapsulePopup({
     setSavedDefaults(null);
     setError(null);
     setExitConfirmOpen(false);
+    setDeleteConfirmOpen(false);
+    setDeleting(false);
     setEditingDetail(null);
     setExistingFileMeta(null);
     setHadPassword(false);
@@ -626,10 +631,16 @@ export default function NewCapsulePopup({
 
   const deleteEditing = async () => {
     if (!core || !editingDetail) return;
-    await core.deleteCapsule(editingDetail.capsuleId);
-    toast.success("Капсула удалена");
-    notifyCapsulesListRefresh();
-    close();
+    setDeleting(true);
+    try {
+      await core.deleteCapsule(editingDetail.capsuleId);
+      toast.success("Капсула удалена");
+      notifyCapsulesListRefresh();
+      setDeleteConfirmOpen(false);
+      close();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const save = async () => {
@@ -829,7 +840,7 @@ export default function NewCapsulePopup({
                 onCopy={() => void copyEditingLink()}
                 onActivate={() => void changeEditingState("active")}
                 onDeactivate={() => void changeEditingState("inactive")}
-                onDelete={() => void deleteEditing()}
+                onDelete={() => setDeleteConfirmOpen(true)}
               />
             ) : (
               <span />
@@ -1395,6 +1406,16 @@ export default function NewCapsulePopup({
         t={t}
         onClose={() => setExitConfirmOpen(false)}
         onConfirm={confirmExit}
+      />
+      <DeleteCapsulesConfirmPopup
+        open={deleteConfirmOpen}
+        multiple={false}
+        deleting={deleting}
+        t={t}
+        onClose={() => {
+          if (!deleting) setDeleteConfirmOpen(false);
+        }}
+        onConfirm={() => void deleteEditing()}
       />
     </>
   );

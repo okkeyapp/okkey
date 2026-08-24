@@ -41,6 +41,7 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import CapsuleActionsMenu from "../../components/capsules/CapsuleActionsMenu";
+import DeleteCapsulesConfirmPopup from "../../components/capsules/DeleteCapsulesConfirmPopup";
 import { CapsuleCheckIcon, CapsuleCloseIcon, CapsuleColumnsIcon, CapsuleSearchIcon } from "../../components/capsules/capsuleIcons";
 import {
   CAPSULE_TABLE_COLUMN_IDS,
@@ -83,6 +84,8 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<CapsuleTableColumnId[]>(() => loadVisibleCapsuleColumns());
+  const [deleteConfirm, setDeleteConfirm] = useState<DecryptedCapsule[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const editingCapsuleId =
@@ -264,18 +267,24 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
 
   const remove = async (targets: DecryptedCapsule[]) => {
     if (!core || targets.length === 0) return;
-    const ids = new Set(targets.map((capsule) => capsule.capsuleId));
-    await Promise.all(targets.map((capsule) => core.deleteCapsule(capsule.capsuleId)));
-    setSelectedById((current) => {
-      const next = new Map(current);
-      for (const id of ids) next.delete(id);
-      return next;
-    });
-    if (editingCapsuleId && ids.has(editingCapsuleId)) {
-      closeEdit();
+    setDeleting(true);
+    try {
+      const ids = new Set(targets.map((capsule) => capsule.capsuleId));
+      await Promise.all(targets.map((capsule) => core.deleteCapsule(capsule.capsuleId)));
+      setSelectedById((current) => {
+        const next = new Map(current);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      if (editingCapsuleId && ids.has(editingCapsuleId)) {
+        closeEdit();
+      }
+      toast.success(targets.length === 1 ? "Капсула удалена" : "Капсулы удалены");
+      setDeleteConfirm(null);
+      await load({ silent: true });
+    } finally {
+      setDeleting(false);
     }
-    toast.success(targets.length === 1 ? "Капсула удалена" : "Капсулы удалены");
-    await load({ silent: true });
   };
 
   const copyLink = async (targets: DecryptedCapsule[]) => {
@@ -544,7 +553,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                             onCopy={() => void copyLink([capsule])}
                             onActivate={() => void changeState([capsule], "active")}
                             onDeactivate={() => void changeState([capsule], "inactive")}
-                            onDelete={() => void remove([capsule])}
+                            onDelete={() => setDeleteConfirm([capsule])}
                           />
                         </div>
                       </td>
@@ -603,7 +612,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                     "inactive",
                   )
                 }
-                onDelete={() => void remove(selectedCapsules)}
+                onDelete={() => setDeleteConfirm(selectedCapsules)}
               />
             </footer>
           ) : pageCount > 1 ? (
@@ -655,6 +664,18 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
           ) : null}
         </section>
       </main>
+      <DeleteCapsulesConfirmPopup
+        open={deleteConfirm !== null}
+        multiple={(deleteConfirm?.length ?? 0) > 1}
+        deleting={deleting}
+        t={t}
+        onClose={() => {
+          if (!deleting) setDeleteConfirm(null);
+        }}
+        onConfirm={() => {
+          if (deleteConfirm) void remove(deleteConfirm);
+        }}
+      />
     </div>
   );
 }
