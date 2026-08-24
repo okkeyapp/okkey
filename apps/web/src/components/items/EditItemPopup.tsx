@@ -2,7 +2,7 @@ import type { WebMessageValues } from "@okkey/i18n";
 import type { Vault } from "@okkey/types";
 import { generateEntityId } from "@okkey/types";
 import { Button, Popup, type KeyFieldFileValue } from "@okkey/ui";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
@@ -36,6 +36,7 @@ import NewItemForm, {
   type NewItemFormInitialValues,
 } from "./NewItemForm";
 import NewItemFormActionsMenu from "./NewItemFormActionsMenu";
+import ExitNewItemFormConfirmPopup from "./ExitNewItemFormConfirmPopup";
 import SaveItemTemplatePopup from "./SaveItemTemplatePopup";
 import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
@@ -69,6 +70,7 @@ export default function EditItemPopup({
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const { getItemById, updateItem, resolveVaultEncryptionKey, getItemCreatedByUserId } = useWorkspaceItems();
   const { canPutItem } = useWorkspaceVaultProfiles();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
@@ -81,6 +83,12 @@ export default function EditItemPopup({
 
   const item = itemId ? getItemById(itemId) : undefined;
   const folderId = item ? itemFolderByItemId.get(item.itemId) ?? NO_FOLDER_VALUE : NO_FOLDER_VALUE;
+
+  useEffect(() => {
+    if (!open) {
+      setExitConfirmOpen(false);
+    }
+  }, [open]);
 
   const initialValues = useMemo((): NewItemFormInitialValues | undefined => {
     if (!item || !isItemCategoryId(item.categoryId)) {
@@ -105,6 +113,7 @@ export default function EditItemPopup({
   function closePopup() {
     setShowValidation(false);
     setSaveError(null);
+    setExitConfirmOpen(false);
     navigate(
       {
         pathname: location.pathname,
@@ -113,6 +122,25 @@ export default function EditItemPopup({
       },
       { replace: false },
     );
+  }
+
+  function handleCloseRequest(): boolean {
+    if (formRef.current?.hasUnsavedChanges()) {
+      setExitConfirmOpen(true);
+      return false;
+    }
+    return true;
+  }
+
+  function requestClosePopup() {
+    if (handleCloseRequest()) {
+      closePopup();
+    }
+  }
+
+  function confirmExit() {
+    setExitConfirmOpen(false);
+    closePopup();
   }
 
   async function handleSaveTemplate({ templateName, addToFavorite }: { templateName: string; addToFavorite: boolean }) {
@@ -301,6 +329,7 @@ export default function EditItemPopup({
         header={t("web.editItemPopup.title")}
         closeLabel={t("web.settingsPopup.close")}
         onClose={closePopup}
+        onCloseRequest={handleCloseRequest}
         closeDisabled={saving || savingTemplate}
         panelClassName="min-h-[min(720px,calc(100dvh-32px))]"
         footer={
@@ -314,7 +343,7 @@ export default function EditItemPopup({
               }}
             />
             <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" onClick={closePopup} disabled={saving || savingTemplate}>
+              <Button type="button" variant="outline" onClick={requestClosePopup} disabled={saving || savingTemplate}>
                 {t("web.newItemPopup.cancel")}
               </Button>
               <PopupSaveButton
@@ -341,6 +370,12 @@ export default function EditItemPopup({
           onCanSaveChange={setCanSave}
         />
       </Popup>
+      <ExitNewItemFormConfirmPopup
+        open={exitConfirmOpen}
+        t={t}
+        onClose={() => setExitConfirmOpen(false)}
+        onConfirm={confirmExit}
+      />
       <SaveItemTemplatePopup
         open={saveTemplateOpen}
         t={t}
