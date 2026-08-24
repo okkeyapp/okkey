@@ -104,15 +104,14 @@ interface NewCapsulePopupProps {
   onCreated?: () => void;
 }
 
-const scheduleOptions: { value: SchedulePreset; label: string }[] = [
-  { value: "never", label: "Никогда" },
-  { value: "now", label: "Сразу" },
-  { value: "15m", label: "Через 15 минут" },
-  { value: "1h", label: "Через 1 час" },
-  { value: "6h", label: "Через 6 часов" },
-  { value: "12h", label: "Через 12 часов" },
-  { value: "24h", label: "Через 24 часа" },
-];
+const scheduleOptionKeys: SchedulePreset[] = ["never", "now", "15m", "1h", "6h", "12h", "24h"];
+
+function getScheduleOptions(t: (messageKey: string) => string): { value: SchedulePreset; label: string }[] {
+  return scheduleOptionKeys.map((value) => ({
+    value,
+    label: t(`web.capsules.popup.schedule.${value}`),
+  }));
+}
 
 const emptyCapsuleAccessDefaults: CapsuleAccessDefaultsDto = {
   viewsEnabled: false,
@@ -159,6 +158,16 @@ export default function NewCapsulePopup({
     "capsuleAccessSettings",
   );
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
+  const scheduleOptions = useMemo(() => getScheduleOptions(t), [t]);
+  const capsuleTypeOptions = useMemo(
+    () =>
+      [
+        ["text", CapsuleTextIcon, t("web.capsules.list.type.text")],
+        ["file", CapsuleFileIcon, t("web.capsules.list.type.file")],
+        ["item", CapsuleItemIcon, t("web.capsules.list.type.item")],
+      ] as const,
+    [t],
+  );
 
   const [type, setType] = useState<CapsuleType>("text");
   const [name, setName] = useState("");
@@ -385,7 +394,7 @@ export default function NewCapsulePopup({
         setEditHydrated(true);
       } catch (cause) {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Не удалось загрузить капсулу");
+          setError(cause instanceof Error ? cause.message : t("web.capsules.popup.loadError"));
         }
       }
     })();
@@ -583,14 +592,18 @@ export default function NewCapsulePopup({
     await navigator.clipboard.writeText(
       `${window.location.origin}/capsule/${editingDetail.capsuleId}#key=${fragment}`,
     );
-    toast.success("Ссылка скопирована");
+    toast.success(t("web.capsules.list.toast.linkCopiedSingle"));
   };
 
   const changeEditingState = async (state: "active" | "inactive") => {
     if (!core || !editingDetail) return;
     const updated = await core.setCapsuleState(editingDetail.capsuleId, state);
     setEditingDetail({ ...editingDetail, ...updated });
-    toast.success(state === "inactive" ? "Капсула деактивирована" : "Капсула активирована");
+    toast.success(
+      state === "inactive"
+        ? t("web.capsules.list.toast.deactivatedSingle")
+        : t("web.capsules.list.toast.activatedSingle"),
+    );
     notifyCapsulesListRefresh();
     if (state === "active") {
       const nextActivatePreset = activateSchedulePast ? "now" : activatePreset;
@@ -635,7 +648,7 @@ export default function NewCapsulePopup({
     setDeleting(true);
     try {
       await core.deleteCapsule(editingDetail.capsuleId);
-      toast.success("Капсула удалена");
+      toast.success(t("web.capsules.list.toast.deletedSingle"));
       notifyCapsulesListRefresh();
       setDeleteConfirmOpen(false);
       close();
@@ -715,17 +728,13 @@ export default function NewCapsulePopup({
         deactivateAt &&
         new Date(deactivateAt).getTime() < resolvedActivationDate.getTime()
       ) {
-        throw new Error(
-          "Время деактивации не может быть раньше времени активации",
-        );
+        throw new Error(t("web.capsules.popup.deactivateBeforeActivateError"));
       }
       if (
         deleteAt &&
         new Date(deleteAt).getTime() < resolvedActivationDate.getTime()
       ) {
-        throw new Error(
-          "Время удаления не может быть раньше времени активации",
-        );
+        throw new Error(t("web.capsules.popup.deleteBeforeActivateError"));
       }
       const keepExistingPassword = Boolean(
         isEditing && passwordEnabled && hadPassword && password.length === 0,
@@ -772,7 +781,7 @@ export default function NewCapsulePopup({
       }
       if (type === "item" && itemPayload) {
         if (!accessToken) {
-          throw new Error("Не удалось сохранить вложения: требуется авторизация");
+          throw new Error(t("web.capsules.popup.attachmentsAuthError"));
         }
         const itemVaultKey = await resolveVaultEncryptionKey(itemPayload.vaultId);
         const attachmentFilePayloads = await buildItemCapsuleAttachmentPayloads({
@@ -787,12 +796,12 @@ export default function NewCapsulePopup({
       }
       if (isEditing && editingCapsuleId) {
         await core.updateCapsule(editingCapsuleId, body);
-        toast.success("Капсула сохранена");
+        toast.success(t("web.capsules.list.toast.saved"));
       } else {
         const created = await core.createCapsule(workspaceId, body);
         const url = `${window.location.origin}/capsule/${created.capsuleId}#key=${generated.fragment}`;
         await navigator.clipboard.writeText(url);
-        toast.success("Капсула создана, ссылка скопирована");
+        toast.success(t("web.capsules.list.toast.createdWithLink"));
         onCreated?.();
       }
       if (saveDefaults) {
@@ -828,8 +837,8 @@ export default function NewCapsulePopup({
         cause instanceof Error
           ? cause.message
           : isEditing
-            ? "Не удалось сохранить капсулу"
-            : "Не удалось создать капсулу",
+            ? t("web.capsules.popup.saveError")
+            : t("web.capsules.popup.createError"),
       );
     } finally {
       if (generated) releaseCapsuleKey(generated.capsuleKey);
@@ -842,7 +851,7 @@ export default function NewCapsulePopup({
   return (
     <>
       <Popup
-        header={isEditing ? "Редактирование капсулы" : "Новая капсула"}
+        header={isEditing ? t("web.capsules.popup.editTitle") : t("web.capsules.popup.newTitle")}
         width={720}
         onClose={close}
         onCloseRequest={requestClose}
@@ -867,10 +876,10 @@ export default function NewCapsulePopup({
             )}
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={handleClose}>
-                Отмена
+                {t("web.newItemPopup.cancel")}
               </Button>
               <Button disabled={!canSave || saving} onClick={() => void save()}>
-                {saving ? "Сохранение…" : "Сохранить"}
+                {saving ? t("web.newItemPopup.saving") : t("web.newItemPopup.save")}
               </Button>
             </div>
           </div>
@@ -878,18 +887,12 @@ export default function NewCapsulePopup({
       >
         {isEditing && !editHydrated ? (
           <p className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-            {error ?? "Загрузка…"}
+            {error ?? t("web.capsules.popup.loading")}
           </p>
         ) : (
           <>
         <div className="relative flex w-fit rounded-lg bg-secondary p-1">
-          {(
-            [
-              ["text", CapsuleTextIcon, "Текст"],
-              ["file", CapsuleFileIcon, "Файл"],
-              ["item", CapsuleItemIcon, "Запись"],
-            ] as const
-          ).map(([value, Icon, label]) => {
+          {capsuleTypeOptions.map(([value, Icon, label]) => {
             const active = type === value;
             return (
               <Button
@@ -948,7 +951,7 @@ export default function NewCapsulePopup({
                     size="iconSm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
-                    aria-label="Удалить выбранную запись"
+                    aria-label={t("web.capsules.popup.removeSelectedItemAria")}
                     onClick={() => {
                       setSelectedItemId("");
                       setSelectedFieldIds([]);
@@ -960,7 +963,7 @@ export default function NewCapsulePopup({
                 <div className="flex items-center justify-between gap-10 border-t px-4 py-3">
                   <div className="flex shrink-0 items-center gap-3">
                     <FieldsAccessIcon className="shrink-0 text-muted-foreground" />
-                    <span className="text-sm font-medium">Доступные поля:</span>
+                    <span className="text-sm font-medium">{t("web.capsules.popup.availableFields")}</span>
                   </div>
                   <ControlGroup className="w-full max-w-[270px] flex-1">
                     <Select
@@ -991,19 +994,19 @@ export default function NewCapsulePopup({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value="all">Все</SelectItem>
-                          <SelectItem value="all_except">Все кроме</SelectItem>
-                          <SelectItem value="selected">Выбранные</SelectItem>
+                          <SelectItem value="all">{t("web.capsules.popup.scope.all")}</SelectItem>
+                          <SelectItem value="all_except">{t("web.capsules.popup.scope.allExcept")}</SelectItem>
+                          <SelectItem value="selected">{t("web.capsules.popup.scope.selected")}</SelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>
                     {fieldScope !== "all" ? (
                       <MultiSelect
                         displayMode="summary"
-                        selectionCountLabel="Выбрано"
+                        selectionCountLabel={t("web.capsules.popup.selectedCount")}
                         value={selectedFieldIds}
                         onValueChange={setSelectedFieldIds}
-                        placeholder="Выбранные"
+                        placeholder={t("web.capsules.popup.scope.selected")}
                       >
                         <MultiSelectTrigger
                           className={cn(
@@ -1034,7 +1037,7 @@ export default function NewCapsulePopup({
                       <KeySection variant="primary" mode="edit">
                         <KeyField
                           className="border-b-transparent"
-                          label="Поиск записи"
+                          label={t("web.capsules.popup.itemSearchLabel")}
                           mode="edit"
                           editableValue
                           leading={<CapsuleSearchIcon />}
@@ -1046,7 +1049,7 @@ export default function NewCapsulePopup({
                           onValueFocus={() =>
                             setItemResultsOpen(Boolean(itemSearch))
                           }
-                          valuePlaceholder="Введите текст для поиска"
+                          valuePlaceholder={t("web.capsules.popup.itemSearchPlaceholder")}
                           surfaceRounding={capsuleFieldRounding(0, 1)}
                         />
                       </KeySection>
@@ -1086,7 +1089,7 @@ export default function NewCapsulePopup({
                         ))
                       ) : (
                         <p className="px-3 py-4 text-sm text-muted-foreground">
-                          Записей не найдено
+                          {t("web.capsules.popup.itemsNotFound")}
                         </p>
                       )}
                     </div>
@@ -1109,9 +1112,9 @@ export default function NewCapsulePopup({
               <Input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Название"
+                placeholder={t("web.capsules.popup.namePlaceholder")}
                 className="h-10 min-w-0 flex-1 text-xl font-semibold leading-6"
-                aria-label="Название"
+                aria-label={t("web.capsules.popup.namePlaceholder")}
               />
             </div>
 
@@ -1120,19 +1123,19 @@ export default function NewCapsulePopup({
                 {type === "text" ? (
                   <KeyField
                     className="border-b-transparent"
-                    label="Секретный текст"
+                    label={t("web.capsules.public.secretText")}
                     mode="edit"
                     editableValue
                     multilineValue
                     value={text}
                     onValueChange={setText}
-                    valuePlaceholder="Введите текст, которым хотите поделиться"
+                    valuePlaceholder={t("web.capsules.popup.textValuePlaceholder")}
                     surfaceRounding={capsuleFieldRounding(0, 1)}
                   />
                 ) : (
                   <KeyField
                     className="border-b-transparent"
-                    label="Секретный файл"
+                    label={t("web.capsules.public.secretFile")}
                     mode="edit"
                     editableValue
                     fileValue
@@ -1166,8 +1169,8 @@ export default function NewCapsulePopup({
                       };
                     }}
                     fileUploadConstraints={fileUploadConstraints}
-                    fileUploadLabel="Загрузить файл"
-                    fileClearLabel="Удалить файл"
+                    fileUploadLabel={t("web.capsules.popup.fileUploadLabel")}
+                    fileClearLabel={t("web.capsules.popup.fileClearLabel")}
                     surfaceRounding={capsuleFieldRounding(0, 1)}
                   />
                 )}
@@ -1181,7 +1184,7 @@ export default function NewCapsulePopup({
           className="w-full"
           onClick={() => setAdvancedOpen((value) => !value)}
         >
-          Расширенные настройки
+          {t("web.capsules.popup.advancedSettings")}
           <span
             className={cn(
               "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none",
@@ -1205,19 +1208,21 @@ export default function NewCapsulePopup({
             {!advancedAvailable ? (
               <>
                 <p className="p-4 text-sm text-muted-foreground">
-                  Расширенные настройки доступны в тарифе Enterprise.
+                  {t("web.capsules.popup.enterpriseHint")}
                 </p>
-                {[
-                  "Просмотры",
-                  "Время",
-                  "Доступ",
-                  "Пароль",
-                  "Подтверждение",
-                ].map((title) => (
+                {(
+                  [
+                    "web.capsules.popup.settings.views",
+                    "web.capsules.popup.settings.time",
+                    "web.capsules.popup.settings.access",
+                    "web.capsules.popup.settings.password",
+                    "web.capsules.popup.settings.approval",
+                  ] as const
+                ).map((titleKey) => (
                   <AdvancedRow
-                    key={title}
-                    title={title}
-                    description="Недоступно на текущем тарифе"
+                    key={titleKey}
+                    title={t(titleKey)}
+                    description={t("web.capsules.popup.planUnavailable")}
                     checked={false}
                     onChange={() => undefined}
                     disabled
@@ -1227,14 +1232,14 @@ export default function NewCapsulePopup({
             ) : (
               <>
                 <AdvancedRow
-                  title="Просмотры"
-                  description="Ограничьте просмотры и назначьте действие после достижения ограничения"
+                  title={t("web.capsules.popup.views.title")}
+                  description={t("web.capsules.popup.views.description")}
                   checked={viewsEnabled}
                   onChange={setViewsEnabled}
                 >
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-3 text-sm font-normal">
-                      Количество просмотров:
+                      {t("web.capsules.popup.views.maxViews")}
                       <Input
                         type="number"
                         min={1}
@@ -1245,29 +1250,31 @@ export default function NewCapsulePopup({
                       />
                     </label>
                     <label className="flex flex-col gap-3 text-sm font-normal">
-                      Дальнейшее действие:
+                      {t("web.capsules.popup.views.limitAction")}
                       <CapsuleSelect
                         value={viewLimitAction}
                         onChange={(value) =>
                           setViewLimitAction(value as "deactivate" | "delete")
                         }
                         options={[
-                          ["deactivate", "Деактивировать"],
-                          ["delete", "Удалить капсулу"],
+                          ["deactivate", t("web.capsules.popup.views.action.deactivate")],
+                          ["delete", t("web.capsules.popup.views.action.delete")],
                         ]}
                       />
                     </label>
                   </div>
                 </AdvancedRow>
                 <AdvancedRow
-                  title="Время"
-                  description="Активируйте, деактивируйте и удаляйте капсулу по времени"
+                  title={t("web.capsules.popup.time.title")}
+                  description={t("web.capsules.popup.time.description")}
                   checked={timeEnabled}
                   onChange={setTimeEnabled}
                 >
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <ScheduleField
-                      label="Активировать:"
+                      t={t}
+                      scheduleOptions={scheduleOptions}
+                      label={t("web.capsules.popup.time.activate")}
                       allowNow
                       value={activatePreset}
                       custom={activateCustom}
@@ -1277,7 +1284,9 @@ export default function NewCapsulePopup({
                       onCustom={setActivateCustom}
                     />
                     <ScheduleField
-                      label="Деактивация по времени:"
+                      t={t}
+                      scheduleOptions={scheduleOptions}
+                      label={t("web.capsules.popup.time.deactivate")}
                       value={deactivatePreset}
                       custom={deactivateCustom}
                       invalid={deactivateSchedulePast}
@@ -1288,7 +1297,9 @@ export default function NewCapsulePopup({
                       onCustom={setDeactivateCustom}
                     />
                     <ScheduleField
-                      label="Удаление по времени:"
+                      t={t}
+                      scheduleOptions={scheduleOptions}
+                      label={t("web.capsules.popup.time.delete")}
                       value={deletePreset}
                       custom={deleteCustom}
                       invalid={deleteSchedulePast}
@@ -1301,18 +1312,18 @@ export default function NewCapsulePopup({
                   </div>
                 </AdvancedRow>
                 <AdvancedRow
-                  title="Доступ"
-                  description="Разрешите просмотр только конкретным пользователям"
+                  title={t("web.capsules.popup.access.title")}
+                  description={t("web.capsules.popup.access.description")}
                   checked={accessEnabled}
                   onChange={setAccessEnabled}
                 >
                   <MultiSelect
                     filterable
-                    searchPlaceholder="Имя, фамилия или email…"
+                    searchPlaceholder={t("web.capsules.popup.access.searchPlaceholder")}
                     value={recipients}
                     onValueChange={setRecipients}
                     onSearchQueryChange={setRecipientInput}
-                    placeholder="Выберите пользователей"
+                    placeholder={t("web.capsules.popup.access.placeholder")}
                     onSearchSubmit={addRecipient}
                     renderSearchEmpty={(query, submit) =>
                       isValidEmail(query) ? (
@@ -1324,11 +1335,11 @@ export default function NewCapsulePopup({
                           onClick={submit}
                         >
                           <CapsulePlusIcon className="size-4" />
-                          Добавить {query}
+                          {t("web.capsules.popup.access.addEmail", { query })}
                         </Button>
                       ) : (
                         <div className="flex h-8 w-full items-center justify-center text-sm leading-5 text-destructive">
-                          Неверный емейл
+                          {t("web.capsules.popup.access.invalidEmail")}
                         </div>
                       )
                     }
@@ -1365,25 +1376,29 @@ export default function NewCapsulePopup({
                   </MultiSelect>
                 </AdvancedRow>
                 <AdvancedRow
-                  title="Пароль"
-                  description="Требовать ввести пароль для просмотра"
+                  title={t("web.capsules.popup.password.title")}
+                  description={t("web.capsules.popup.password.description")}
                   checked={passwordEnabled}
                   onChange={setPasswordEnabled}
                 >
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-3 text-sm font-normal">
-                      Задайте пароль:
+                      {t("web.capsules.popup.password.setLabel")}
                       <Input
                         type="password"
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
-                        placeholder={isEditing && hadPassword ? "Оставьте пустым, чтобы не менять" : undefined}
+                        placeholder={
+                          isEditing && hadPassword
+                            ? t("web.capsules.popup.password.keepPlaceholder")
+                            : undefined
+                        }
                         aria-invalid={passwordInvalid || undefined}
                         className={passwordInvalid ? capsuleFieldErrorClassName : undefined}
                       />
                     </label>
                     <label className="flex flex-col gap-3 text-sm font-normal">
-                      Колличество неудачных попыток:
+                      {t("web.capsules.popup.password.attemptLimit")}
                       <Input
                         type="number"
                         min={1}
@@ -1398,8 +1413,8 @@ export default function NewCapsulePopup({
                   </div>
                 </AdvancedRow>
                 <AdvancedRow
-                  title="Подтверждение"
-                  description="Требовать подтверждение владельца перед показом"
+                  title={t("web.capsules.popup.approval.title")}
+                  description={t("web.capsules.popup.approval.description")}
                   checked={approvalRequired}
                   onChange={setApprovalRequired}
                 />
@@ -1414,7 +1429,7 @@ export default function NewCapsulePopup({
               checked={saveDefaults}
               onCheckedChange={(checked) => setSaveDefaults(Boolean(checked))}
             />
-            Установить эти настройки по умолчанию для меня
+            {t("web.capsules.popup.saveDefaults")}
           </label>
         ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -1617,6 +1632,8 @@ function CapsuleSelect({
 }
 
 function ScheduleField({
+  t,
+  scheduleOptions,
   label,
   value,
   custom,
@@ -1628,6 +1645,8 @@ function ScheduleField({
   onChange,
   onCustom,
 }: {
+  t: (messageKey: string) => string;
+  scheduleOptions: { value: SchedulePreset; label: string }[];
   label: string;
   value: SchedulePreset;
   custom: string;
@@ -1688,7 +1707,7 @@ function ScheduleField({
           options={selectOptions}
           invalid={invalid}
           sectionLabelAfterNever={
-            relativeToActivation ? "После активации" : undefined
+            relativeToActivation ? t("web.capsules.popup.schedule.afterActivation") : undefined
           }
           triggerClassName={cn(
             controlGroupItemFixedClassName,
@@ -1706,7 +1725,7 @@ function ScheduleField({
                 controlGroupItemFixedClassName,
                 "h-9 w-10 shrink-0 font-normal",
               )}
-              aria-label="Выбрать дату и время"
+              aria-label={t("web.capsules.popup.datePicker.selectAria")}
             >
               <CapsuleCalendarIcon />
             </Button>
@@ -1743,11 +1762,11 @@ function ScheduleField({
               />
               <div className="flex min-h-0 flex-col border-l">
                 <div className="border-b px-3 py-2 text-center text-sm font-medium">
-                  Время
+                  {t("web.capsules.popup.datePicker.time")}
                 </div>
                 <div className="grid grid-cols-2 border-b text-center text-xs text-muted-foreground">
-                  <span className="px-2 py-1.5">Час</span>
-                  <span className="border-l px-2 py-1.5">Мин</span>
+                  <span className="px-2 py-1.5">{t("web.capsules.popup.datePicker.hour")}</span>
+                  <span className="border-l px-2 py-1.5">{t("web.capsules.popup.datePicker.minute")}</span>
                 </div>
                 <div className="flex min-h-0 flex-1">
                   <TimeValueScroll
@@ -1783,7 +1802,7 @@ function ScheduleField({
                   setCalendarMonth(next);
                 }}
               >
-                Сегодня
+                {t("web.capsules.popup.datePicker.today")}
               </Button>
               <Button
                 type="button"
@@ -1793,7 +1812,7 @@ function ScheduleField({
                   setPickerOpen(false);
                 }}
               >
-                Готово
+                {t("web.capsules.popup.datePicker.done")}
               </Button>
             </div>
           </PopoverContent>

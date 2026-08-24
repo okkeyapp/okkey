@@ -89,7 +89,7 @@ export default function CapsuleActionsMenu({
               }}
             >
               <CapsuleCopyIcon className="size-4 shrink-0" />
-              <span>Копировать ссылку</span>
+              <span>{t("web.capsules.menu.copyLink")}</span>
             </DropdownMenuItem>
           ) : null}
           {canDeactivate ? (
@@ -101,7 +101,7 @@ export default function CapsuleActionsMenu({
               }}
             >
               <CapsuleDeactivateIcon className="size-4 shrink-0" />
-              <span>Деактивировать</span>
+              <span>{t("web.capsules.menu.deactivate")}</span>
             </DropdownMenuItem>
           ) : null}
           {canActivate ? (
@@ -113,7 +113,7 @@ export default function CapsuleActionsMenu({
               }}
             >
               <CapsuleActivateIcon className="size-4 shrink-0" />
-              <span>Активировать</span>
+              <span>{t("web.capsules.menu.activate")}</span>
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem
@@ -124,7 +124,7 @@ export default function CapsuleActionsMenu({
             }}
           >
             <CapsuleDeleteIcon className="size-4 shrink-0" />
-            <span>Удалить</span>
+            <span>{t("web.capsules.menu.delete")}</span>
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

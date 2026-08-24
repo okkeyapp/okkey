@@ -1,5 +1,5 @@
 import type { ItemPlaintextV2 } from "@okkey/types";
-import { serializeKeyFieldFileValue, type KeyFieldFileValue } from "@okkey/ui";
+import { serializeKeyFieldFileValue, resolveKeyFieldFileMimeType, type KeyFieldFileValue } from "@okkey/ui";
 import { useCallback, useMemo } from "react";
 
 import { KeyFormEditor } from "../../components/key-form/KeyFormEditor";
@@ -32,22 +32,6 @@ function resolveFileCapsuleNames(data: CapsulePayload): { title: string; fileNam
   return { title, fileName };
 }
 
-function guessMimeType(fileName: string): string {
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-  const map: Record<string, string> = {
-    pdf: "application/pdf",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    txt: "text/plain",
-    doc: "application/msword",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  };
-  return map[ext] ?? "application/octet-stream";
-}
-
 export default function PublicCapsuleContent({
   payload,
   fileBytes,
@@ -59,7 +43,7 @@ export default function PublicCapsuleContent({
   attachmentFiles: Map<string, Uint8Array>;
   onVaultFileOpen?: (file: KeyFieldFileValue, item: ItemPlaintextV2) => Promise<string>;
 }) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const keyFormFieldTypes = useMemo(() => createLocalizedKeyFieldTypes(locale), [locale]);
@@ -81,7 +65,7 @@ export default function PublicCapsuleContent({
             {
               id: "note",
               type: "multiline-text",
-              label: "Секретный текст",
+              label: t("web.capsules.public.secretText"),
               value: data.text ?? "",
               editableLabel: true,
               deletable: false,
@@ -95,7 +79,7 @@ export default function PublicCapsuleContent({
       const fileValue: KeyFieldFileValue = {
         attachmentId: "capsule-file",
         name: fileName,
-        mimeType: guessMimeType(fileName),
+        mimeType: resolveKeyFieldFileMimeType(fileName),
         sizeBytes: fileBytes.length,
       };
       return [
@@ -106,7 +90,7 @@ export default function PublicCapsuleContent({
             {
               id: "secure-file",
               type: "file",
-              label: "Секретный файл",
+              label: t("web.capsules.public.secretFile"),
               value: serializeKeyFieldFileValue(fileValue),
               editableLabel: true,
               deletable: false,
@@ -116,23 +100,27 @@ export default function PublicCapsuleContent({
       ];
     }
     return [];
-  }, [data, fileBytes, keyFormMessages]);
+  }, [data, fileBytes, keyFormMessages, t]);
 
   const itemForFiles = data?.type === "item" ? data.item ?? null : null;
 
-  const handleFileOpen = useCallback(async () => {
-    if (!fileBytes) {
-      throw new Error("missing file");
-    }
-    return URL.createObjectURL(new Blob([fileBytes]));
-  }, [fileBytes]);
+  const handleFileOpen = useCallback(
+    async (file: KeyFieldFileValue) => {
+      if (!fileBytes) {
+        throw new Error("missing file");
+      }
+      const mimeType = resolveKeyFieldFileMimeType(file.name, file.mimeType);
+      return URL.createObjectURL(new Blob([fileBytes], { type: mimeType }));
+    },
+    [fileBytes],
+  );
 
   const handleItemFileOpen = useCallback(
     async (file: KeyFieldFileValue) => {
       const attachmentId = file.attachmentId.trim();
       const embedded = attachmentFiles.get(attachmentId);
       if (embedded) {
-        const mimeType = file.mimeType || guessMimeType(file.name);
+        const mimeType = resolveKeyFieldFileMimeType(file.name, file.mimeType);
         return URL.createObjectURL(new Blob([embedded], { type: mimeType }));
       }
       if (itemForFiles && onVaultFileOpen) {
@@ -144,7 +132,7 @@ export default function PublicCapsuleContent({
   );
 
   if (!data) {
-    return <p className="text-sm text-muted-foreground">Пустая капсула</p>;
+    return <p className="text-sm text-muted-foreground">{t("web.capsules.public.empty")}</p>;
   }
 
   if (data.type === "item" && data.item) {
@@ -204,7 +192,7 @@ export default function PublicCapsuleContent({
     );
   }
 
-  return <p className="text-sm text-muted-foreground">Неизвестный тип капсулы</p>;
+  return <p className="text-sm text-muted-foreground">{t("web.capsules.public.unknownType")}</p>;
 }
 
 function CapsuleItemHeader({ item }: { item: ItemPlaintextV2 }) {

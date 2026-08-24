@@ -6,14 +6,21 @@ export type CapsuleTableColumnId = (typeof CAPSULE_TABLE_COLUMN_IDS)[number];
 
 export const CAPSULE_TABLE_LOCKED_COLUMN: CapsuleTableColumnId = "name";
 
-export const CAPSULE_TABLE_COLUMN_LABELS: Record<CapsuleTableColumnId, string> = {
-  name: "Название",
-  type: "Тип",
-  created: "Создан",
-  active: "Активен",
-  views: "Просмотров",
-  password: "С паролем",
+export const CAPSULE_TABLE_COLUMN_MESSAGE_KEYS: Record<CapsuleTableColumnId, string> = {
+  name: "web.capsules.list.column.name",
+  type: "web.capsules.list.column.type",
+  created: "web.capsules.list.column.created",
+  active: "web.capsules.list.column.active",
+  views: "web.capsules.list.column.views",
+  password: "web.capsules.list.column.password",
 };
+
+export function capsuleTableColumnLabel(
+  t: (messageKey: string) => string,
+  columnId: CapsuleTableColumnId,
+): string {
+  return t(CAPSULE_TABLE_COLUMN_MESSAGE_KEYS[columnId]);
+}
 
 /** Page size for the capsules owner list. */
 export const CAPSULE_TABLE_PAGE_SIZE = 30;

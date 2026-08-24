@@ -45,11 +45,11 @@ import DeleteCapsulesConfirmPopup from "../../components/capsules/DeleteCapsules
 import { CapsuleCheckIcon, CapsuleCloseIcon, CapsuleColumnsIcon, CapsuleSearchIcon } from "../../components/capsules/capsuleIcons";
 import {
   CAPSULE_TABLE_COLUMN_IDS,
-  CAPSULE_TABLE_COLUMN_LABELS,
   CAPSULE_TABLE_LOCKED_COLUMN,
   CAPSULE_TABLE_PAGE_SIZE,
   buildCapsulePageItems,
   capsulePageRowCount,
+  capsuleTableColumnLabel,
   loadVisibleCapsuleColumns,
   normalizeVisibleCapsuleColumns,
   saveVisibleCapsuleColumns,
@@ -71,7 +71,7 @@ const ROW_CONTROL_CELL_CLASS_NAME = `${CELL_CLASS_NAME} relative z-20`;
 export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: CapsulesPageProps) {
   const core = useAuthenticatedCoreClient();
   const { vaultKey } = useAuthVault();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -159,11 +159,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
         syncSelectedCapsules(decrypted);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить капсулы");
+      setError(cause instanceof Error ? cause.message : t("web.capsules.list.loadError"));
     } finally {
       setLoading(false);
     }
-  }, [core, decryptPage, page, search, syncSelectedCapsules, vaultKey, workspaceId]);
+  }, [core, decryptPage, page, search, syncSelectedCapsules, t, vaultKey, workspaceId]);
 
   useEffect(() => {
     void load();
@@ -256,11 +256,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     toast.success(
       state === "inactive"
         ? targets.length === 1
-          ? "Капсула деактивирована"
-          : "Капсулы деактивированы"
+          ? t("web.capsules.list.toast.deactivatedSingle")
+          : t("web.capsules.list.toast.deactivatedMultiple")
         : targets.length === 1
-          ? "Капсула активирована"
-          : "Капсулы активированы",
+          ? t("web.capsules.list.toast.activatedSingle")
+          : t("web.capsules.list.toast.activatedMultiple"),
     );
     await load({ silent: true });
   };
@@ -279,7 +279,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
       if (editingCapsuleId && ids.has(editingCapsuleId)) {
         closeEdit();
       }
-      toast.success(targets.length === 1 ? "Капсула удалена" : "Капсулы удалены");
+      toast.success(
+        targets.length === 1
+          ? t("web.capsules.list.toast.deletedSingle")
+          : t("web.capsules.list.toast.deletedMultiple"),
+      );
       setDeleteConfirm(null);
       await load({ silent: true });
     } finally {
@@ -296,7 +300,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
       }),
     );
     await navigator.clipboard.writeText(links.join("\n"));
-    toast.success(targets.length === 1 ? "Ссылка скопирована" : "Ссылки скопированы");
+    toast.success(
+      targets.length === 1
+        ? t("web.capsules.list.toast.linkCopiedSingle")
+        : t("web.capsules.list.toast.linkCopiedMultiple"),
+    );
   };
 
   const selectedCanActivate = selectedCapsules.some((capsule) => capsule.state !== "active");
@@ -328,21 +336,21 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
           <h1 className="text-lg font-semibold text-foreground">{t("web.nav.capsules")}</h1>
           <div className="flex items-center gap-6">
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
-              Капсулы — это специальные зашифрованные записи для безопасной передачи по электронной почте или в чате.{" "}
+              {t("web.capsules.list.intro")}{" "}
               <a
                 className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
                 href="/docs/capsules"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Подробнее
+                {t("web.capsules.list.learnMore")}
                 <LearnMoreExternalLinkIcon />
               </a>
             </p>
             {canCreate ? (
               <Button className="shrink-0" onClick={openCreate}>
                 <PlusIcon data-icon="inline-start" />
-                Создать капсулу
+                {t("web.capsules.list.create")}
               </Button>
             ) : null}
           </div>
@@ -359,14 +367,14 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                   setSearch(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Поиск по названию..."
+                placeholder={t("web.capsules.list.searchPlaceholder")}
               />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
                   <CapsuleColumnsIcon data-icon="inline-start" />
-                  Колонки
+                  {t("web.capsules.list.columns")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-56 p-1">
@@ -389,7 +397,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                         ) : (
                           <span className="size-4 shrink-0" aria-hidden />
                         )}
-                        <span>{CAPSULE_TABLE_COLUMN_LABELS[columnId]}</span>
+                        <span>{capsuleTableColumnLabel(t, columnId)}</span>
                       </DropdownMenuItem>
                     );
                   })}
@@ -417,23 +425,23 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                     <th
                       className={cn(CELL_CLASS_NAME, "font-medium", !onlyNameColumn && "w-52")}
                     >
-                      Название
+                      {t("web.capsules.list.column.name")}
                     </th>
                   ) : null}
                   {visibleColumns.includes("type") ? (
-                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Тип</th>
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.type")}</th>
                   ) : null}
                   {visibleColumns.includes("created") ? (
-                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Создан</th>
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.created")}</th>
                   ) : null}
                   {visibleColumns.includes("active") ? (
-                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Активен</th>
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.active")}</th>
                   ) : null}
                   {visibleColumns.includes("views") ? (
-                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>Просмотров</th>
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.views")}</th>
                   ) : null}
                   {visibleColumns.includes("password") ? (
-                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>С паролем</th>
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.password")}</th>
                   ) : null}
                   <th className={cn(CELL_CLASS_NAME, "w-12")} />
                 </tr>
@@ -502,10 +510,10 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                         </td>
                       ) : null}
                       {visibleColumns.includes("type") ? (
-                        <td className={CELL_CLASS_NAME}>{typeLabel(capsule.type)}</td>
+                        <td className={CELL_CLASS_NAME}>{typeLabel(capsule.type, t)}</td>
                       ) : null}
                       {visibleColumns.includes("created") ? (
-                        <td className={CELL_CLASS_NAME}>{formatDate(capsule.createdAt)}</td>
+                        <td className={CELL_CLASS_NAME}>{formatDate(capsule.createdAt, locale)}</td>
                       ) : null}
                       {visibleColumns.includes("active") ? (
                         <td className={CELL_CLASS_NAME}>
@@ -519,9 +527,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                             />
                             {capsule.state === "active"
                               ? capsule.deactivateAt
-                                ? `до ${formatDate(capsule.deactivateAt)}`
-                                : "Да"
-                              : "Нет"}
+                                ? t("web.capsules.list.activeUntil", {
+                                    date: formatDate(capsule.deactivateAt, locale),
+                                  })
+                                : t("web.capsules.list.yes")
+                              : t("web.capsules.list.no")}
                           </span>
                         </td>
                       ) : null}
@@ -531,7 +541,9 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                         </td>
                       ) : null}
                       {visibleColumns.includes("password") ? (
-                        <td className={CELL_CLASS_NAME}>{capsule.passwordRequired ? "Да" : "Нет"}</td>
+                        <td className={CELL_CLASS_NAME}>
+                          {capsule.passwordRequired ? t("web.capsules.list.yes") : t("web.capsules.list.no")}
+                        </td>
                       ) : null}
                       <td
                         className={cn(CELL_CLASS_NAME, "w-12")}
@@ -540,7 +552,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                       >
                         <button
                           type="button"
-                          aria-label={capsule.ownerMetadata.name || "Открыть капсулу"}
+                          aria-label={capsule.ownerMetadata.name || t("web.capsules.list.openCapsuleAria")}
                           className="absolute inset-0 z-[1] cursor-pointer"
                           onClick={() => openEdit(capsule.capsuleId)}
                         />
@@ -617,7 +629,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
             </footer>
           ) : pageCount > 1 ? (
             <footer className="flex items-center justify-end">
-              <div className="relative flex w-fit rounded-lg bg-secondary p-1" aria-label="Страницы">
+              <div className="relative flex w-fit rounded-lg bg-secondary p-1" aria-label={t("web.capsules.list.pagesAria")}>
                 {pageItems.map((item, index) =>
                   item === "ellipsis" ? (
                     <span
@@ -680,12 +692,19 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   );
 }
 
-function typeLabel(type: DecryptedCapsule["type"]): string {
-  return type === "text" ? "Текст" : type === "file" ? "Файл" : "Запись";
+function typeLabel(
+  type: DecryptedCapsule["type"],
+  t: (messageKey: string) => string,
+): string {
+  return type === "text"
+    ? t("web.capsules.list.type.text")
+    : type === "file"
+      ? t("web.capsules.list.type.file")
+      : t("web.capsules.list.type.item");
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("ru", {
+function formatDate(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",

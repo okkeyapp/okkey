@@ -20,6 +20,7 @@ import { decryptCapsuleAttachmentFiles, openCapsuleItemFileFromVault } from "../
 import { storeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { captureCapsuleFragmentKey } from "../../capsules/fragmentKey";
 import PublicCapsuleContent from "./PublicCapsuleContent";
+import { useLocale } from "../../locale/LocaleContext";
 
 const capsulePanelClassName = cn(
   "w-full rounded-xl bg-background text-foreground",
@@ -71,6 +72,7 @@ function getOrCreateGuestSessionId(capsuleId: string): string {
 }
 
 export default function PublicCapsulePage() {
+  const { t } = useLocale();
   const { capsuleId = "" } = useParams();
   const publicApi = useRef(createPublicApiClient());
   const core = useAuthenticatedCoreClient();
@@ -267,10 +269,10 @@ export default function PublicCapsulePage() {
       capsuleOpenInflight.delete(capsuleId);
       const code = errorCode(cause);
       if (code === "CAPSULE_PASSWORD_REQUIRED" || code === "CAPSULE_PASSWORD_INVALID") {
-        setPasswordError(code === "CAPSULE_PASSWORD_INVALID" ? "Неверный пароль" : null);
+        setPasswordError(code === "CAPSULE_PASSWORD_INVALID" ? t("web.capsules.public.wrongPassword") : null);
         setState("password");
       } else if (code === "CAPSULE_PASSWORD_ATTEMPTS_EXCEEDED") {
-        setPasswordError("Лимит попыток исчерпан");
+        setPasswordError(t("web.capsules.public.passwordAttemptsExceeded"));
         setState("password");
       } else if (code === "CAPSULE_APPROVAL_REQUIRED") {
         setState("approval");
@@ -284,7 +286,7 @@ export default function PublicCapsulePage() {
         setState("unavailable");
       }
     }
-  }, [accessToken, approvalToken, capsuleId, core, guestSessionId, metadata, password]);
+  }, [accessToken, approvalToken, capsuleId, core, guestSessionId, metadata, password, t]);
 
   useEffect(() => {
     if (state === "decrypting") void open();
@@ -350,12 +352,11 @@ export default function PublicCapsulePage() {
 
   const capsuleReturnPath = `/capsule/${encodeURIComponent(capsuleId)}`;
   const returnUrl = encodeURIComponent(capsuleReturnPath);
-  const loginMessage = "Для просмотра этой капсулы войдите в Okkey.";
 
   return (
     <AppShellLayout
-      title="Защищённая капсула Okkey"
-      description="Содержимое расшифровывается только в вашем браузере."
+      title={t("web.capsules.public.title")}
+      description={t("web.capsules.public.description")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       contentClassName="max-w-[600px]"
     >
@@ -363,32 +364,27 @@ export default function PublicCapsulePage() {
         {state === "loading" || state === "decrypting" ? (
           <Centered>
             <Spinner />
-            Расшифровка…
+            {t("web.capsules.public.decrypting")}
           </Centered>
         ) : null}
         {state === "missing_key" ? (
-          <Centered>
-            В ссылке нет ключа расшифровки. Скопируйте ссылку кнопкой «Копировать ссылку» в Okkey
-            (должен быть фрагмент #key=…) и вставьте её целиком — мессенджеры часто обрезают часть после #.
-          </Centered>
+          <Centered>{t("web.capsules.public.missingKey")}</Centered>
         ) : null}
         {state === "view_limit" ? (
-          <Centered>Лимит просмотров этой капсулы исчерпан.</Centered>
+          <Centered>{t("web.capsules.public.viewLimit")}</Centered>
         ) : null}
         {state === "unavailable" ? (
-          <Centered>
-            Капсула недоступна, не активирована или срок её действия закончился.
-          </Centered>
+          <Centered>{t("web.capsules.public.unavailable")}</Centered>
         ) : null}
         {state === "login" ? (
           <Centered>
-            {loginMessage}
+            {t("web.capsules.public.loginMessage")}
             <Button asChild>
               <Link
                 to={`/auth/email?returnTo=${returnUrl}`}
                 onClick={() => storeCapsuleReturnUrl(capsuleReturnPath)}
               >
-                Войти
+                {t("web.capsules.public.signIn")}
               </Link>
             </Button>
           </Centered>
@@ -404,7 +400,7 @@ export default function PublicCapsulePage() {
             <label className="flex flex-col gap-2 text-sm font-medium text-copy-primary">
               <span className="inline-flex items-center gap-2">
                 <LockKeyholeIcon className="size-5" />
-                Пароль
+                {t("web.capsules.public.password")}
               </span>
               <Input
                 type="password"
@@ -415,23 +411,23 @@ export default function PublicCapsulePage() {
             </label>
             {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
             <Button type="submit" className="w-full" disabled={!password}>
-              Разблокировать
+              {t("web.capsules.public.unlock")}
             </Button>
           </form>
         ) : null}
         {state === "approval" ? (
           <Centered>
-            Владелец должен подтвердить показ.
-            <Button onClick={() => void requestApproval()}>Показать</Button>
+            {t("web.capsules.public.approvalRequired")}
+            <Button onClick={() => void requestApproval()}>{t("web.capsules.public.requestShow")}</Button>
           </Centered>
         ) : null}
         {state === "waiting" ? (
           <Centered>
             <Spinner />
-            Ожидание подтверждения владельца…
+            {t("web.capsules.public.waitingApproval")}
           </Centered>
         ) : null}
-        {state === "denied" ? <Centered>Владелец запретил показ этой капсулы.</Centered> : null}
+        {state === "denied" ? <Centered>{t("web.capsules.public.denied")}</Centered> : null}
         {state === "content" ? (
           <PublicCapsuleContent
             payload={payload}
