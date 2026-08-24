@@ -751,7 +751,7 @@ export default function NewCapsulePopup({
           : keepExistingPassword
             ? { passwordAttemptLimit: attemptLimit }
             : {}),
-        ...(approvalRequired ? { approvalRequired: true } : {}),
+        approvalRequired,
         ...(isEditing
           ? { keepExistingPassword, keepExistingRecipients, keepExistingFile }
           : {}),
