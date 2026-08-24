@@ -1,4 +1,4 @@
-import { isKeyFieldFileImageMimeType, type KeyFieldFileValue } from "@okkey/ui";
+import { isKeyFieldFileImageMimeType, resolveKeyFieldFileMimeType, type KeyFieldFileValue } from "@okkey/ui";
 import { decryptAttachmentPayload, encryptAttachmentPayload } from "@okkey/crypto";
 
 import { getApiBaseUrl } from "./client";
@@ -127,7 +127,9 @@ export async function downloadKeyFieldFileAttachment(input: {
   file: KeyFieldFileValue;
 }): Promise<string> {
   const downloaded = await downloadKeyFieldFileAttachmentBytes(input);
-  const blob = new Blob([downloaded.plaintext], { type: downloaded.mimeType });
+  const blob = new Blob([downloaded.plaintext], {
+    type: resolveKeyFieldFileMimeType(downloaded.name, downloaded.mimeType),
+  });
   return URL.createObjectURL(blob);
 }
 

@@ -217,6 +217,26 @@ const mimeTypeByExtension: Record<string, string[]> = {
   rar: ["application/vnd.rar", "application/x-rar-compressed"],
 };
 
+const primaryMimeTypeByExtension: Record<string, string> = Object.fromEntries(
+  Object.entries(mimeTypeByExtension).flatMap(([extension, mimeTypes]) =>
+    mimeTypes[0] ? [[extension, mimeTypes[0]]] : [],
+  ),
+);
+
+export function resolveKeyFieldFileMimeType(name: string, mimeType?: string): string {
+  const normalizedMimeType = mimeType?.trim().toLowerCase() ?? "";
+  if (normalizedMimeType && normalizedMimeType !== "application/octet-stream") {
+    return normalizedMimeType;
+  }
+
+  const extension = getFileExtension(name);
+  if (extension && primaryMimeTypeByExtension[extension]) {
+    return primaryMimeTypeByExtension[extension]!;
+  }
+
+  return normalizedMimeType || "application/octet-stream";
+}
+
 export function buildKeyFieldFileUploadConstraints(
   allowedExtensions: readonly string[],
   maxSizeMb: number,

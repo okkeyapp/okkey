@@ -9,6 +9,7 @@ import {
   getKeyFieldFileExtensionLabel,
   isKeyFieldFileImageMimeType,
   parseKeyFieldFileValue,
+  resolveKeyFieldFileMimeType,
   serializeKeyFieldFileValue,
   validateKeyFieldFileUpload,
   type KeyFieldFileUploadConstraints,
@@ -157,6 +158,9 @@ export function KeyFieldFileControl({
   });
   const [previewLoading, setPreviewLoading] = React.useState(false);
   const parsedFile = parseKeyFieldFileValue(value);
+  const resolvedMimeType = parsedFile
+    ? resolveKeyFieldFileMimeType(parsedFile.name, parsedFile.mimeType)
+    : null;
   const displayFile =
     parsedFile && resolvedPreviewUrl
       ? { ...parsedFile, url: resolvedPreviewUrl }
@@ -165,7 +169,7 @@ export function KeyFieldFileControl({
     parsedFile &&
       !parsedFile.url &&
       !resolvedPreviewUrl &&
-      isKeyFieldFileImageMimeType(parsedFile.mimeType) &&
+      isKeyFieldFileImageMimeType(resolvedMimeType ?? "") &&
       onResolveFileUrl,
   );
   const uploadHint = formatKeyFieldFileUploadHint(uploadConstraints, uploadHintLabels);
@@ -183,7 +187,7 @@ export function KeyFieldFileControl({
   }, [parsedFile?.attachmentId]);
 
   React.useEffect(() => {
-    if (!parsedFile || parsedFile.url || !isKeyFieldFileImageMimeType(parsedFile.mimeType) || !onResolveFileUrl) {
+    if (!parsedFile || parsedFile.url || !isKeyFieldFileImageMimeType(resolvedMimeType ?? "") || !onResolveFileUrl) {
       setPreviewLoading(false);
       return undefined;
     }
@@ -299,7 +303,7 @@ export function KeyFieldFileControl({
       return;
     }
 
-    if (displayFile.url && isKeyFieldFileImageMimeType(displayFile.mimeType)) {
+    if (displayFile.url && isKeyFieldFileImageMimeType(resolvedMimeType ?? "")) {
       setLightboxOpen(true);
       return;
     }
@@ -317,7 +321,7 @@ export function KeyFieldFileControl({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-foreground">{displayFile.name}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {formatKeyFieldFileMeta(displayFile.name, displayFile.mimeType, displayFile.sizeBytes)}
+              {formatKeyFieldFileMeta(displayFile.name, resolvedMimeType ?? displayFile.mimeType, displayFile.sizeBytes)}
             </p>
             {mode === "edit" && onClear && deleteLabel ? (
               <button
@@ -330,7 +334,7 @@ export function KeyFieldFileControl({
             ) : null}
           </div>
         </div>
-        {lightboxOpen && !onOpen && displayFile.url && isKeyFieldFileImageMimeType(displayFile.mimeType) ? (
+        {lightboxOpen && !onOpen && displayFile.url && isKeyFieldFileImageMimeType(resolvedMimeType ?? "") ? (
           <KeyFieldFileLightbox file={{ ...displayFile, url: displayFile.url }} onClose={() => setLightboxOpen(false)} />
         ) : null}
       </>

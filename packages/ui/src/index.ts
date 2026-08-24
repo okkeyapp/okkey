@@ -73,6 +73,7 @@ export {
   hasKeyFieldFileAttachment,
   isKeyFieldFileImageMimeType,
   parseKeyFieldFileValue,
+  resolveKeyFieldFileMimeType,
   serializeKeyFieldFileValue,
   validateKeyFieldFileUpload,
   type KeyFieldFileUploadConstraints,

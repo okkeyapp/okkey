@@ -21,6 +21,7 @@ import {
   defaultKeyFieldFileUploadConstraints,
   isKeyFieldFileImageMimeType,
   parseKeyFieldFileValue,
+  resolveKeyFieldFileMimeType,
   type KeyFieldFileUploadConstraints,
   type KeyFieldFileUploadHintLabels,
   type KeyFieldFileValue,
@@ -911,7 +912,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           return;
         }
 
-        if (isKeyFieldFileImageMimeType(parsedFileValue.mimeType)) {
+        if (isKeyFieldFileImageMimeType(
+          resolveKeyFieldFileMimeType(parsedFileValue.name, parsedFileValue.mimeType),
+        )) {
           setFileLightboxFile({ ...parsedFileValue, url });
           return;
         }
