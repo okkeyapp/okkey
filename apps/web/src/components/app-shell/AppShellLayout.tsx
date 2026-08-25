@@ -15,6 +15,8 @@ export type AppShellLayoutProps = {
   copyright?: string;
   /** Max width for header + main column (e.g. wide row of cards). */
   contentClassName?: string;
+  /** Horizontal inset for the main slot only (header/footer stay at px-10). */
+  childrenClassName?: string;
 };
 
 export default function AppShellLayout({
@@ -24,6 +26,7 @@ export default function AppShellLayout({
   logo,
   copyright,
   contentClassName,
+  childrenClassName,
 }: AppShellLayoutProps) {
   const { locale, setLocale, t } = useLocale();
 
@@ -49,22 +52,26 @@ export default function AppShellLayout({
         </Select>
       </div>
 
-      <div className="relative flex min-h-screen flex-col px-10 py-10">
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto py-6">
-          <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
-            <header className="flex w-full flex-col items-center gap-2 text-center">
-              {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
-              <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
-                {title}
-              </h1>
-              <p className="okkey-body text-center text-copy-secondary">{description}</p>
-            </header>
+      <div className="relative flex min-h-screen flex-col py-10">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-6">
+            <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
+              <header className="flex w-full flex-col items-center gap-2 px-10 text-center">
+                {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
+                <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
+                  {title}
+                </h1>
+                <p className="okkey-body text-center text-copy-secondary">{description}</p>
+              </header>
 
-            <div className="w-full">{children}</div>
+              <div className={cn("w-full", childrenClassName ?? "px-10")}>{children}</div>
+            </div>
           </div>
         </div>
 
-        <footer className="okkey-body mt-8 shrink-0 text-center text-copy-secondary">{resolvedCopyright}</footer>
+        <footer className="okkey-body mt-8 shrink-0 px-10 text-center text-copy-secondary">
+          {resolvedCopyright}
+        </footer>
       </div>
 
       <div

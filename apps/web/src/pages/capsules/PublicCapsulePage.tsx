@@ -27,6 +27,10 @@ const capsulePanelClassName = cn(
   "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
 );
 
+type PasswordErrorKey =
+  | "web.capsules.public.wrongPassword"
+  | "web.capsules.public.passwordAttemptsExceeded";
+
 type ViewerState =
   | "loading"
   | "unavailable"
@@ -81,7 +85,7 @@ export default function PublicCapsulePage() {
   const [metadata, setMetadata] = useState<CapsuleMetadataDto | null>(null);
   const [state, setState] = useState<ViewerState>("loading");
   const [password, setPassword] = useState("");
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordErrorKey, setPasswordErrorKey] = useState<PasswordErrorKey | null>(null);
   const [passwordUnlocking, setPasswordUnlocking] = useState(false);
   const [approvalRequestId, setApprovalRequestId] = useState("");
   const [approvalToken, setApprovalToken] = useState("");
@@ -202,7 +206,7 @@ export default function PublicCapsulePage() {
       setPasswordUnlocking(true);
     } else {
       setState("decrypting");
-      setPasswordError(null);
+      setPasswordErrorKey(null);
     }
     try {
       const cached = capsuleOpenCache.get(capsuleId);
@@ -276,10 +280,10 @@ export default function PublicCapsulePage() {
       capsuleOpenInflight.delete(capsuleId);
       const code = errorCode(cause);
       if (code === "CAPSULE_PASSWORD_REQUIRED" || code === "CAPSULE_PASSWORD_INVALID") {
-        setPasswordError(code === "CAPSULE_PASSWORD_INVALID" ? t("web.capsules.public.wrongPassword") : null);
+        setPasswordErrorKey(code === "CAPSULE_PASSWORD_INVALID" ? "web.capsules.public.wrongPassword" : null);
         setState("password");
       } else if (code === "CAPSULE_PASSWORD_ATTEMPTS_EXCEEDED") {
-        setPasswordError(t("web.capsules.public.passwordAttemptsExceeded"));
+        setPasswordErrorKey("web.capsules.public.passwordAttemptsExceeded");
         setState("password");
       } else if (code === "CAPSULE_APPROVAL_REQUIRED") {
         setState("approval");
@@ -297,7 +301,7 @@ export default function PublicCapsulePage() {
     } finally {
       setPasswordUnlocking(false);
     }
-  }, [accessToken, approvalToken, capsuleId, core, guestSessionId, metadata, password, t]);
+  }, [accessToken, approvalToken, capsuleId, core, guestSessionId, metadata, password]);
 
   useEffect(() => {
     if (state === "decrypting") void open();
@@ -422,6 +426,7 @@ export default function PublicCapsulePage() {
       description={t("web.capsules.public.description")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       contentClassName="max-w-[600px]"
+      childrenClassName="px-4 md:px-10"
     >
       <div className={cn(capsulePanelClassName, "relative p-6")}>
         {state === "loading" || (state === "decrypting" && !passwordUnlocking) ? (
@@ -470,10 +475,10 @@ export default function PublicCapsulePage() {
                   void open({ fromPassword: true });
                 }}
               >
-                {passwordError ? (
+                {passwordErrorKey ? (
                   <Alert variant="error">
                     <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
-                    <AlertDescription>{passwordError}</AlertDescription>
+                    <AlertDescription>{t(passwordErrorKey)}</AlertDescription>
                   </Alert>
                 ) : null}
                 <label className="flex w-full flex-col gap-3 text-sm font-medium text-copy-primary">
