@@ -67,11 +67,15 @@ function capsulePoliciesEqual(a: WorkspaceCapsulePolicies, b: WorkspaceCapsulePo
     JSON.stringify(workspaceCapsulePoliciesToDto(b))
   );
 }
+type WorkspaceSettingsGeneralPanel = "general" | "items" | "capsules";
+
 type WorkspaceSettingsGeneralSectionProps = {
   workspaceId: string;
   workspace?: Workspace;
   vaults: readonly Vault[];
   t: (messageKey: string, values?: WebMessageValues) => string;
+  /** Which block of general settings to show. */
+  panel?: WorkspaceSettingsGeneralPanel;
   onSettingsChanged?: (patch: ReturnType<typeof workspacePatchFromSettingsResponse>) => void;
   /** When omitted, falls back to workspace owner (tests / legacy). */
   canPut?: boolean;
@@ -88,6 +92,7 @@ export default function WorkspaceSettingsGeneralSection({
   workspace,
   vaults,
   t,
+  panel = "general",
   onSettingsChanged,
   canPut,
 }: WorkspaceSettingsGeneralSectionProps) {
@@ -448,6 +453,23 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   if (initialLoading) {
+    if (panel !== "general") {
+      return (
+        <div
+          className="flex w-full flex-col gap-6"
+          role="status"
+          aria-busy="true"
+          aria-label={t("web.workspaceSettings.general.loading")}
+        >
+          <div className="h-7 w-28 animate-pulse rounded-md bg-muted" />
+          <div className="flex flex-col gap-4">
+            <div className="h-5 w-48 max-w-full animate-pulse rounded-md bg-muted" />
+            <div className="h-5 w-full max-w-md animate-pulse rounded-md bg-muted" />
+            <div className="h-9 w-full max-w-[150px] animate-pulse rounded-md bg-muted sm:self-end" />
+          </div>
+        </div>
+      );
+    }
     return (
       <WorkspaceSettingsGeneralSkeleton
         showDangerZone={isOwner}
@@ -459,6 +481,7 @@ export default function WorkspaceSettingsGeneralSection({
   return (
     <>
       <div className="flex w-full flex-col gap-9">
+        {panel === "general" ? (
         <div className="flex flex-col gap-6">
           <div className="flex flex-wrap items-center gap-6">
             <WorkspaceLogoTile
@@ -528,9 +551,18 @@ export default function WorkspaceSettingsGeneralSection({
             />
           </div>
         </div>
+        ) : null}
 
+        {panel === "items" ? (
         <div className="flex flex-col gap-6">
-          <h3 className="text-lg font-semibold text-foreground">{t("web.workspaceSettings.general.itemsSection")}</h3>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-lg font-semibold text-foreground">
+              {t("web.workspaceSettings.sections.items")}
+            </h2>
+            <p className="text-sm leading-5 text-muted-foreground">
+              {t("web.workspaceSettings.items.intro")}
+            </p>
+          </div>
           <div className="flex flex-col">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0 flex-1 space-y-1">
@@ -622,11 +654,18 @@ export default function WorkspaceSettingsGeneralSection({
             ) : null}
           </div>
         </div>
+        ) : null}
 
+        {panel === "capsules" ? (
         <div className="flex flex-col gap-6">
-          <h3 className="text-lg font-semibold text-foreground">
-            {t("web.workspaceSettings.general.capsulesSection")}
-          </h3>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-lg font-semibold text-foreground">
+              {t("web.workspaceSettings.sections.capsules")}
+            </h2>
+            <p className="text-sm leading-5 text-muted-foreground">
+              {t("web.workspaceSettings.capsules.intro")}
+            </p>
+          </div>
           <div className="flex flex-col">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
               <div className="min-w-0 flex-1 space-y-1">
@@ -868,8 +907,9 @@ export default function WorkspaceSettingsGeneralSection({
             </div>
           </div>
         </div>
+        ) : null}
 
-        {isOwner ? (
+        {panel === "general" && isOwner ? (
           <div className="flex flex-col gap-6">
             <h3 className="text-lg font-semibold text-destructive">{t("web.workspaceSettings.general.dangerZone")}</h3>
             <div className="flex flex-col gap-4 rounded-lg bg-red-50 p-4 dark:bg-red-950/40 sm:flex-row sm:items-center sm:justify-between">

@@ -14,6 +14,8 @@ export function settingsSectionPermissionResource(
 ): WorkspacePermissionResourceId {
   switch (section) {
     case "general":
+    case "items":
+    case "capsules":
       return "settings";
     case "roles":
       return "roles";

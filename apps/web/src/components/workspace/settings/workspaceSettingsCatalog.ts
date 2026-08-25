@@ -43,6 +43,8 @@ export const WORKSPACE_TILE_PRESET_COLORS = [
 
 export type WorkspaceSettingsSectionId =
   | "general"
+  | "items"
+  | "capsules"
   | "roles"
   | "profiles"
   | "members"
@@ -52,8 +54,30 @@ export type WorkspaceSettingsSectionId =
 
 export const DEFAULT_WORKSPACE_SETTINGS_SECTION: WorkspaceSettingsSectionId = "general";
 
+/** Nested under General in the settings sidebar (same permissions as `general`). */
+export const WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS: readonly WorkspaceSettingsSectionId[] = [
+  "items",
+  "capsules",
+];
+
+export function isWorkspaceSettingsGeneralSubsection(
+  section: WorkspaceSettingsSectionId,
+): boolean {
+  return WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS.includes(section);
+}
+
 export function isWorkspaceSettingsSectionId(value: string): value is WorkspaceSettingsSectionId {
-  return ["general", "roles", "profiles", "members", "vaults", "plan", "billing"].includes(value);
+  return [
+    "general",
+    "items",
+    "capsules",
+    "roles",
+    "profiles",
+    "members",
+    "vaults",
+    "plan",
+    "billing",
+  ].includes(value);
 }
 
 export function normalizeHexColor(value: string): string | null {

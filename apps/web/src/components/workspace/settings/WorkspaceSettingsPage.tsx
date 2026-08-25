@@ -145,12 +145,15 @@ export default function WorkspaceSettingsPage({
             allowedSections={allowedSections}
           />
           <main className="min-w-0 flex-1">
-            {activeSection === "general" ? (
+            {activeSection === "general" ||
+            activeSection === "items" ||
+            activeSection === "capsules" ? (
               <WorkspaceSettingsGeneralSection
                 workspaceId={workspaceId}
                 workspace={workspace}
                 vaults={vaults}
                 t={t}
+                panel={activeSection === "general" ? "general" : activeSection}
                 onSettingsChanged={onSettingsChanged}
                 canPut={Boolean(sectionPermissions && sectionPermissions.put >= 1)}
               />

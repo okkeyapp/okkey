@@ -22,6 +22,8 @@ function emptyMatrix(): WorkspacePermissionsMatrixDto {
 describe("settingsPermissions", () => {
   it("maps plan and billing to billing resource", () => {
     expect(settingsSectionPermissionResource("general")).toBe("settings");
+    expect(settingsSectionPermissionResource("items")).toBe("settings");
+    expect(settingsSectionPermissionResource("capsules")).toBe("settings");
     expect(settingsSectionPermissionResource("plan")).toBe("billing");
     expect(settingsSectionPermissionResource("billing")).toBe("billing");
   });
@@ -34,7 +36,15 @@ describe("settingsPermissions", () => {
     expect(allowedSettingsSections(matrix)).toEqual(["members", "vaults", "plan", "billing"]);
     expect(firstAllowedSettingsSection(matrix)).toBe("members");
     expect(canGetSettingsSection(matrix, "general")).toBe(false);
+    expect(canGetSettingsSection(matrix, "items")).toBe(false);
     expect(canGetSettingsSection(matrix, "plan")).toBe(true);
+  });
+
+  it("includes general subsections when settings GET is allowed", () => {
+    const matrix = emptyMatrix();
+    matrix.settings.get = 1;
+    expect(allowedSettingsSections(matrix)).toEqual(["general", "items", "capsules"]);
+    expect(firstAllowedSettingsSection(matrix)).toBe("general");
   });
 
   it("returns no sections for empty matrix", () => {
