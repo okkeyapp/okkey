@@ -572,7 +572,7 @@ function PublicCapsuleLimitsNotice({
         {untilAt ? (
           <p>
             {t("web.capsules.public.timeLimitNotice", {
-              date: formatScheduleDate(untilAt, locale),
+              date: formatScheduleDate(untilAt, locale, t),
             })}
           </p>
         ) : null}
@@ -583,8 +583,32 @@ function PublicCapsuleLimitsNotice({
   );
 }
 
-function formatScheduleDate(value: string, locale: string): string {
+function formatTime(value: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function calendarDayOffset(date: Date, now = new Date()): number {
+  const startOfDay = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  return Math.round((startOfDay(date) - startOfDay(now)) / 86_400_000);
+}
+
+function formatScheduleDate(
+  value: string,
+  locale: string,
+  t: (messageKey: string, values?: Record<string, string | number>) => string,
+): string {
   const date = new Date(value);
+  const dayOffset = calendarDayOffset(date);
+  if (dayOffset === 0) {
+    return formatTime(date, locale);
+  }
+  if (dayOffset === 1) {
+    return t("web.capsules.list.scheduleTomorrow", { time: formatTime(date, locale) });
+  }
   const includeYear = date.getFullYear() !== new Date().getFullYear();
   return new Intl.DateTimeFormat(locale, {
     day: "2-digit",

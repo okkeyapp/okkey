@@ -513,7 +513,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                         <td className={CELL_CLASS_NAME}>{typeLabel(capsule.type, t)}</td>
                       ) : null}
                       {visibleColumns.includes("created") ? (
-                        <td className={CELL_CLASS_NAME}>{formatDate(capsule.createdAt, locale)}</td>
+                        <td className={CELL_CLASS_NAME}>{formatCreatedAt(capsule.createdAt, locale, t)}</td>
                       ) : null}
                       {visibleColumns.includes("active") ? (
                         <td className={CELL_CLASS_NAME}>
@@ -697,17 +697,62 @@ function typeLabel(
       : t("web.capsules.list.type.item");
 }
 
-function formatDate(value: string, locale: string): string {
+function formatTime(value: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function calendarDayOffset(date: Date, now = new Date()): number {
+  const startOfDay = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  return Math.round((startOfDay(date) - startOfDay(now)) / 86_400_000);
+}
+
+function formatCreatedAt(
+  value: string,
+  locale: string,
+  t: (messageKey: string, values?: Record<string, string | number>) => string,
+): string {
+  const date = new Date(value);
+  const dayOffset = calendarDayOffset(date);
+  const time = formatTime(date, locale);
+  if (dayOffset === 0) {
+    return t("web.capsules.list.createdRelative", {
+      day: t("web.capsules.list.today"),
+      time,
+    });
+  }
+  if (dayOffset === -1) {
+    return t("web.capsules.list.createdRelative", {
+      day: t("web.capsules.list.yesterday"),
+      time,
+    });
+  }
+  const includeYear = date.getFullYear() !== new Date().getFullYear();
   return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "2-digit",
+    ...(includeYear ? { year: "numeric" as const } : {}),
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
 }
 
-function formatScheduleDate(value: string, locale: string): string {
+function formatScheduleDate(
+  value: string,
+  locale: string,
+  t: (messageKey: string, values?: Record<string, string | number>) => string,
+): string {
   const date = new Date(value);
+  const dayOffset = calendarDayOffset(date);
+  if (dayOffset === 0) {
+    return formatTime(date, locale);
+  }
+  if (dayOffset === 1) {
+    return t("web.capsules.list.scheduleTomorrow", { time: formatTime(date, locale) });
+  }
   const includeYear = date.getFullYear() !== new Date().getFullYear();
   return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
@@ -726,11 +771,11 @@ function formatActiveLabel(
   if (capsule.state === "active") {
     const untilAt = capsule.deactivateAt ?? capsule.deleteAt;
     return untilAt
-      ? t("web.capsules.list.activeUntil", { date: formatScheduleDate(untilAt, locale) })
+      ? t("web.capsules.list.activeUntil", { date: formatScheduleDate(untilAt, locale, t) })
       : t("web.capsules.list.yes");
   }
   return capsule.activateAt
-    ? t("web.capsules.list.activeFrom", { date: formatScheduleDate(capsule.activateAt, locale) })
+    ? t("web.capsules.list.activeFrom", { date: formatScheduleDate(capsule.activateAt, locale, t) })
     : t("web.capsules.list.no");
 }
 
