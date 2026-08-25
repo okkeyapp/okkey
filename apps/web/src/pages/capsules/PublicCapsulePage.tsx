@@ -161,14 +161,15 @@ export default function PublicCapsulePage() {
         setFileBytes(cached.fileBytes);
         setAttachmentFiles(cached.attachmentFiles ?? new Map());
         setState("content");
-        return;
+      } else {
+        setState("loading");
       }
-      setState("loading");
       void publicApi.current
         .get<CapsuleMetadataDto>(`/capsules/${encodeURIComponent(capsuleId)}`)
         .then((result) => {
           if (cancelled) return;
           setMetadata(result);
+          if (cached) return;
           const next = resolveViewerState(result);
           if (next === "content") {
             const opened = capsuleOpenCache.get(capsuleId);
@@ -181,7 +182,7 @@ export default function PublicCapsulePage() {
           setState(next);
         })
         .catch(() => {
-          if (!cancelled) setState("unavailable");
+          if (!cancelled && !cached) setState("unavailable");
         });
     };
 
@@ -521,12 +522,14 @@ export default function PublicCapsulePage() {
           <Centered>{t("web.capsules.public.blacklisted")}</Centered>
         ) : null}
         {state === "content" ? (
-          <PublicCapsuleContent
-            payload={payload}
-            fileBytes={fileBytes}
-            attachmentFiles={attachmentFiles}
-            onVaultFileOpen={handleVaultFileOpen}
-          />
+          <PublicCapsuleLimitsNotice metadata={metadata}>
+            <PublicCapsuleContent
+              payload={payload}
+              fileBytes={fileBytes}
+              attachmentFiles={attachmentFiles}
+              onVaultFileOpen={handleVaultFileOpen}
+            />
+          </PublicCapsuleLimitsNotice>
         ) : null}
         {passwordUnlocking ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-background/70">
@@ -544,4 +547,50 @@ function Centered({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+function PublicCapsuleLimitsNotice({
+  metadata,
+  children,
+}: {
+  metadata: CapsuleMetadataDto | null;
+  children: ReactNode;
+}) {
+  const { locale, t } = useLocale();
+  const maxViews = metadata?.maxViews ?? null;
+  const untilAt = metadata?.deactivateAt ?? metadata?.deleteAt ?? null;
+  if (maxViews === null && !untilAt) {
+    return children;
+  }
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex flex-col gap-1 pb-6 pt-0 text-center text-sm text-copy-secondary">
+        {maxViews !== null ? (
+          <p>{t("web.capsules.public.viewLimitNotice", { count: maxViews })}</p>
+        ) : null}
+        {untilAt ? (
+          <p>
+            {t("web.capsules.public.timeLimitNotice", {
+              date: formatScheduleDate(untilAt, locale),
+            })}
+          </p>
+        ) : null}
+      </div>
+      <div className="-mx-6 border-t border-border" />
+      <div className="pt-6">{children}</div>
+    </div>
+  );
+}
+
+function formatScheduleDate(value: string, locale: string): string {
+  const date = new Date(value);
+  const includeYear = date.getFullYear() !== new Date().getFullYear();
+  return new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    ...(includeYear ? { year: "numeric" as const } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }

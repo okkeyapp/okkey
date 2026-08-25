@@ -525,13 +525,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                               )}
                               aria-hidden
                             />
-                            {capsule.state === "active"
-                              ? capsule.deactivateAt
-                                ? t("web.capsules.list.activeUntil", {
-                                    date: formatDate(capsule.deactivateAt, locale),
-                                  })
-                                : t("web.capsules.list.yes")
-                              : t("web.capsules.list.no")}
+                            {formatActiveLabel(capsule, locale, t)}
                           </span>
                         </td>
                       ) : null}
@@ -710,6 +704,34 @@ function formatDate(value: string, locale: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatScheduleDate(value: string, locale: string): string {
+  const date = new Date(value);
+  const includeYear = date.getFullYear() !== new Date().getFullYear();
+  return new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    ...(includeYear ? { year: "numeric" as const } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatActiveLabel(
+  capsule: Pick<DecryptedCapsule, "state" | "activateAt" | "deactivateAt" | "deleteAt">,
+  locale: string,
+  t: (messageKey: string, values?: Record<string, string | number>) => string,
+): string {
+  if (capsule.state === "active") {
+    const untilAt = capsule.deactivateAt ?? capsule.deleteAt;
+    return untilAt
+      ? t("web.capsules.list.activeUntil", { date: formatScheduleDate(untilAt, locale) })
+      : t("web.capsules.list.yes");
+  }
+  return capsule.activateAt
+    ? t("web.capsules.list.activeFrom", { date: formatScheduleDate(capsule.activateAt, locale) })
+    : t("web.capsules.list.no");
 }
 
 function LearnMoreExternalLinkIcon() {
