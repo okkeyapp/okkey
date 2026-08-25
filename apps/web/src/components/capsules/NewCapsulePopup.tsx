@@ -1244,7 +1244,7 @@ export default function NewCapsulePopup({
                   checked={viewsEnabled}
                   onChange={setViewsEnabled}
                 >
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <label className="flex flex-col gap-3 text-sm font-normal">
                       {t("web.capsules.popup.views.maxViews")}
                       <Input
@@ -1388,7 +1388,7 @@ export default function NewCapsulePopup({
                   checked={passwordEnabled}
                   onChange={setPasswordEnabled}
                 >
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <label className="flex flex-col gap-3 text-sm font-normal">
                       {t("web.capsules.popup.password.setLabel")}
                       <Input

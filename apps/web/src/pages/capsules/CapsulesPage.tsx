@@ -18,10 +18,11 @@ import {
   DropdownMenuTrigger,
   Input,
   Skeleton,
+  buttonVariants,
   cn,
 } from "@okkey/ui";
 import { PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -32,6 +33,9 @@ import {
   type CapsuleOwnerMetadata,
 } from "../../capsules/crypto";
 import { subscribeCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
+import { BackChevronIcon } from "../../components/items/itemCategoryIcons";
+import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "../../components/workspace/stickyHeaderShadow";
+import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { useLocale } from "../../locale/LocaleContext";
 import { itemsPathAllWorkspaceMerged } from "../../routes/paths";
 import {
@@ -88,6 +92,8 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   const [visibleColumns, setVisibleColumns] = useState<CapsuleTableColumnId[]>(() => loadVisibleCapsuleColumns());
   const [deleteConfirm, setDeleteConfirm] = useState<DecryptedCapsule[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const pageRootRef = useRef<HTMLDivElement>(null);
+  const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0);
 
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const editingCapsuleId =
@@ -313,9 +319,14 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   const selectedCanActivate = selectedCapsules.some((capsule) => capsule.state !== "active");
   const selectedCanDeactivate = selectedCapsules.some((capsule) => capsule.state === "active");
 
+  const mobileBackButtonClassName = cn(
+    buttonVariants({ variant: "secondary", size: "iconSm" }),
+    "!size-7 !min-h-7 !min-w-7 shrink-0 rounded-md",
+  );
+
   return (
-    <div className="flex h-full flex-col bg-background">
-      <BreadcrumbBar className="flex">
+    <div ref={pageRootRef} className="flex h-full flex-col bg-background">
+      <BreadcrumbBar>
         <Breadcrumb aria-label={t("web.nav.capsules")}>
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -334,6 +345,28 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
           </BreadcrumbList>
         </Breadcrumb>
       </BreadcrumbBar>
+
+      <header
+        className={cn(
+          stickyHeaderSurfaceClassName,
+          stickyHeaderShadowClassName(headerScrolled),
+          "flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-2 md:hidden",
+        )}
+      >
+        <Button asChild variant="secondary" size="iconSm" className={mobileBackButtonClassName}>
+          <Link to={itemsHref} aria-label={t("web.items.detail.back")}>
+            <BackChevronIcon />
+          </Link>
+        </Button>
+        <div className="min-w-0 flex-1" />
+        {canCreate ? (
+          <Button type="button" className="shrink-0" onClick={openCreate}>
+            <PlusIcon data-icon="inline-start" />
+            {t("web.capsules.list.create")}
+          </Button>
+        ) : null}
+      </header>
+
       <main className="mx-auto flex w-full max-w-[948px] flex-col gap-9 px-6 py-8">
         <section className="flex flex-col gap-4">
           <h1 className="text-lg font-semibold text-foreground">{t("web.nav.capsules")}</h1>
@@ -351,7 +384,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
               </a>
             </p>
             {canCreate ? (
-              <Button className="w-full shrink-0 md:w-auto" onClick={openCreate}>
+              <Button className="hidden shrink-0 md:inline-flex" onClick={openCreate}>
                 <PlusIcon data-icon="inline-start" />
                 {t("web.capsules.list.create")}
               </Button>
@@ -366,8 +399,8 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
         ) : null}
 
         <section className={cn("flex flex-col gap-4", isGloballyEmpty && "max-md:hidden")}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="relative w-full max-w-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="relative min-w-0 w-full max-w-sm flex-1">
               <CapsuleSearchIcon className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -381,9 +414,13 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button
+                  variant="outline"
+                  className="size-9 shrink-0 px-0 md:h-9 md:w-auto md:px-4"
+                  aria-label={t("web.capsules.list.columns")}
+                >
                   <CapsuleColumnsIcon data-icon="inline-start" />
-                  {t("web.capsules.list.columns")}
+                  <span className="hidden md:inline">{t("web.capsules.list.columns")}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-56 p-1">
