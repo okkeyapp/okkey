@@ -527,6 +527,7 @@
   "web.capsules.list.column.name": "Название",
   "web.capsules.list.column.type": "Тип",
   "web.capsules.list.column.created": "Создан",
+  "web.capsules.list.column.updated": "Изменён",
   "web.capsules.list.column.active": "Активен",
   "web.capsules.list.column.views": "Просмотров",
   "web.capsules.list.column.password": "С паролем",

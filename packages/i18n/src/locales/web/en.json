@@ -527,6 +527,7 @@
   "web.capsules.list.column.name": "Name",
   "web.capsules.list.column.type": "Type",
   "web.capsules.list.column.created": "Created",
+  "web.capsules.list.column.updated": "Updated",
   "web.capsules.list.column.active": "Active",
   "web.capsules.list.column.views": "Views",
   "web.capsules.list.column.password": "Password protected",

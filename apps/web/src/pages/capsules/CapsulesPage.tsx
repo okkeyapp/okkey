@@ -1,5 +1,7 @@
 import type { CapsuleOwnerListEntryDto } from "@okkey/types";
 import {
+  Alert,
+  AlertDescription,
   Breadcrumb,
   BreadcrumbBar,
   BreadcrumbItem,
@@ -182,6 +184,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns]);
   const tableColSpan = 2 + visibleColumns.length;
   const onlyNameColumn = visibleColumns.length === 1 && visibleColumns[0] === "name";
+  const isGloballyEmpty = !loading && total === 0 && !search.trim();
 
   const openCreate = () => {
     navigate({
@@ -334,7 +337,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
       <main className="mx-auto flex w-full max-w-[948px] flex-col gap-9 px-6 py-8">
         <section className="flex flex-col gap-4">
           <h1 className="text-lg font-semibold text-foreground">{t("web.nav.capsules")}</h1>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col items-stretch gap-4 md:flex-row md:items-center md:gap-6">
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               {t("web.capsules.list.intro")}{" "}
               <a
@@ -348,7 +351,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
               </a>
             </p>
             {canCreate ? (
-              <Button className="shrink-0" onClick={openCreate}>
+              <Button className="w-full shrink-0 md:w-auto" onClick={openCreate}>
                 <PlusIcon data-icon="inline-start" />
                 {t("web.capsules.list.create")}
               </Button>
@@ -356,7 +359,13 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
           </div>
         </section>
 
-        <section className="flex flex-col gap-4">
+        {isGloballyEmpty ? (
+          <Alert className="text-center text-copy-secondary md:hidden">
+            <AlertDescription className="text-copy-secondary">{t("web.capsules.list.empty")}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <section className={cn("flex flex-col gap-4", isGloballyEmpty && "max-md:hidden")}>
           <div className="flex items-center justify-between gap-4">
             <div className="relative w-full max-w-sm">
               <CapsuleSearchIcon className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
@@ -434,6 +443,9 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                   {visibleColumns.includes("created") ? (
                     <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.created")}</th>
                   ) : null}
+                  {visibleColumns.includes("updated") ? (
+                    <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.updated")}</th>
+                  ) : null}
                   {visibleColumns.includes("active") ? (
                     <th className={cn(CELL_CLASS_NAME, "font-medium")}>{t("web.capsules.list.column.active")}</th>
                   ) : null}
@@ -464,6 +476,11 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                         </td>
                       ) : null}
                       {visibleColumns.includes("created") ? (
+                        <td className={CELL_CLASS_NAME}>
+                          <Skeleton className="h-4 w-24" />
+                        </td>
+                      ) : null}
+                      {visibleColumns.includes("updated") ? (
                         <td className={CELL_CLASS_NAME}>
                           <Skeleton className="h-4 w-24" />
                         </td>
@@ -514,6 +531,9 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
                       ) : null}
                       {visibleColumns.includes("created") ? (
                         <td className={CELL_CLASS_NAME}>{formatCreatedAt(capsule.createdAt, locale, t)}</td>
+                      ) : null}
+                      {visibleColumns.includes("updated") ? (
+                        <td className={CELL_CLASS_NAME}>{formatCreatedAt(capsule.updatedAt, locale, t)}</td>
                       ) : null}
                       {visibleColumns.includes("active") ? (
                         <td className={CELL_CLASS_NAME}>

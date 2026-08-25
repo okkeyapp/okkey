@@ -41,7 +41,7 @@ describe("capsule column persistence", () => {
     memory.clear();
   });
 
-  it("loads every column by default", () => {
+  it("loads default columns without updated", () => {
     expect(loadVisibleCapsuleColumns()).toEqual([
       "name",
       "type",

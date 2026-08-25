@@ -1,6 +1,14 @@
 export const CAPSULE_TABLE_COLUMNS_STORAGE_KEY = "okkey.capsules.visibleColumns";
 
-export const CAPSULE_TABLE_COLUMN_IDS = ["name", "type", "created", "active", "views", "password"] as const;
+export const CAPSULE_TABLE_COLUMN_IDS = [
+  "name",
+  "type",
+  "created",
+  "updated",
+  "active",
+  "views",
+  "password",
+] as const;
 
 export type CapsuleTableColumnId = (typeof CAPSULE_TABLE_COLUMN_IDS)[number];
 
@@ -10,6 +18,7 @@ export const CAPSULE_TABLE_COLUMN_MESSAGE_KEYS: Record<CapsuleTableColumnId, str
   name: "web.capsules.list.column.name",
   type: "web.capsules.list.column.type",
   created: "web.capsules.list.column.created",
+  updated: "web.capsules.list.column.updated",
   active: "web.capsules.list.column.active",
   views: "web.capsules.list.column.views",
   password: "web.capsules.list.column.password",
@@ -28,7 +37,9 @@ export const CAPSULE_TABLE_PAGE_SIZE = 30;
 /** Skeleton rows before the first successful list response (total still unknown). */
 export const CAPSULE_TABLE_INITIAL_SKELETON_ROWS = 5;
 
-const DEFAULT_VISIBLE_COLUMNS: readonly CapsuleTableColumnId[] = CAPSULE_TABLE_COLUMN_IDS;
+const DEFAULT_VISIBLE_COLUMNS: readonly CapsuleTableColumnId[] = CAPSULE_TABLE_COLUMN_IDS.filter(
+  (columnId) => columnId !== "updated",
+);
 
 function isColumnId(value: unknown): value is CapsuleTableColumnId {
   return CAPSULE_TABLE_COLUMN_IDS.includes(value as CapsuleTableColumnId);
