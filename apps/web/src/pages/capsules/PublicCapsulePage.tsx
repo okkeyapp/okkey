@@ -426,7 +426,8 @@ export default function PublicCapsulePage() {
       description={t("web.capsules.public.description")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       contentClassName="max-w-[600px]"
-      childrenClassName="px-4 md:px-10"
+      frameClassName="px-4 md:px-10"
+      headerClassName="px-6 md:px-0"
     >
       <div className={cn(capsulePanelClassName, "relative p-6")}>
         {state === "loading" || (state === "decrypting" && !passwordUnlocking) ? (

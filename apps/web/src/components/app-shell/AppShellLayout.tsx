@@ -15,7 +15,11 @@ export type AppShellLayoutProps = {
   copyright?: string;
   /** Max width for header + main column (e.g. wide row of cards). */
   contentClassName?: string;
-  /** Horizontal inset for the main slot only (header/footer stay at px-10). */
+  /** Horizontal padding around the content column (outside max-width). Default: px-10. */
+  frameClassName?: string;
+  /** Extra classes for the title/description header. */
+  headerClassName?: string;
+  /** Extra classes for the main slot wrapper. */
   childrenClassName?: string;
 };
 
@@ -26,6 +30,8 @@ export default function AppShellLayout({
   logo,
   copyright,
   contentClassName,
+  frameClassName,
+  headerClassName,
   childrenClassName,
 }: AppShellLayoutProps) {
   const { locale, setLocale, t } = useLocale();
@@ -54,9 +60,16 @@ export default function AppShellLayout({
 
       <div className="relative flex min-h-screen flex-col py-10">
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center py-6">
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col items-center justify-center py-6",
+              frameClassName ?? "px-10",
+            )}
+          >
             <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
-              <header className="flex w-full flex-col items-center gap-2 px-10 text-center">
+              <header
+                className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
+              >
                 {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
                 <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
                   {title}
@@ -64,7 +77,7 @@ export default function AppShellLayout({
                 <p className="okkey-body text-center text-copy-secondary">{description}</p>
               </header>
 
-              <div className={cn("w-full", childrenClassName ?? "px-10")}>{children}</div>
+              <div className={cn("w-full", childrenClassName)}>{children}</div>
             </div>
           </div>
         </div>
