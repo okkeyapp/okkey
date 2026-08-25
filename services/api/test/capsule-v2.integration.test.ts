@@ -175,4 +175,41 @@ test("capsules v2: owner pagination, isolation, approval and reactivation", asyn
     guestSessionId,
   );
   assert.equal(guestOpened.viewCount, 1);
+
+  const softDenyCapsule = await service.createCapsule(workspaceId, owner.userId, {
+    type: "text",
+    encryptedPayload: blob("soft-deny-payload"),
+    encryptedMetadata: blob("soft-deny-metadata"),
+    ownerKeyWrap: blob("soft-deny-wrap"),
+    approvalRequired: true,
+  });
+  const softDenySession = `guest-session-soft-${testEntityId()}`;
+  const softDenyPending = await service.requestCapsuleApproval({
+    capsuleId: softDenyCapsule.capsuleId,
+    guestSessionId: softDenySession,
+    requestIp: "203.0.113.30",
+  });
+  assert.equal(await service.resolveApproval(softDenyPending.requestId, owner.userId, "deny"), "denied");
+  const softDenyAgain = await service.requestCapsuleApproval({
+    capsuleId: softDenyCapsule.capsuleId,
+    guestSessionId: softDenySession,
+    requestIp: "203.0.113.30",
+  });
+  assert.equal(softDenyAgain.status, "pending");
+
+  const blacklistPending = softDenyAgain;
+  assert.equal(
+    await service.resolveApproval(blacklistPending.requestId, owner.userId, "blacklist"),
+    "blacklisted",
+  );
+  await assert.rejects(
+    () =>
+      service.requestCapsuleApproval({
+        capsuleId: softDenyCapsule.capsuleId,
+        guestSessionId: `guest-session-other-${testEntityId()}`,
+        requestIp: "203.0.113.30",
+      }),
+    (error: unknown) =>
+      error instanceof CapsuleServiceError && error.code === "CAPSULE_APPROVAL_BLACKLISTED",
+  );
 });

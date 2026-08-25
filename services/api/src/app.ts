@@ -37,6 +37,7 @@ import {
 } from "./routes/two-factor.ts";
 import {
   createCapsuleApprovalRequestRoute,
+  createCapsuleApprovalEligibilityRoute,
   createCapsuleApprovalResolveRoute,
   createCapsuleApprovalStatusRoute,
   createCapsuleCreateRoute,
@@ -508,6 +509,11 @@ export function createApiApp(
       "POST",
       "/capsules/:capsuleId/approval-requests",
       createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/capsules/:capsuleId/approval-eligibility",
+      createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId),
     );
     app.route(
       "GET",

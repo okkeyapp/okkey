@@ -375,9 +375,11 @@ export function loadConfig(): ApiConfig {
       process.env.CAPSULE_RATE_LIMIT_WINDOW_SECONDS,
       60,
     ),
-    geoIpEnabled: parseBoolean(process.env.GEOIP_ENABLED, false),
+    geoIpEnabled: parseBoolean(process.env.GEOIP_ENABLED, true),
     geoIpProvider: process.env.GEOIP_PROVIDER ?? "db-ip",
-    geoIpDbPath: process.env.GEOIP_DB_PATH ?? "/var/lib/okkey/geoip/city.mmdb",
+    geoIpDbPath:
+      process.env.GEOIP_DB_PATH ??
+      path.resolve(serviceRoot, "../../.data/geoip/city.mmdb"),
     geoIpAutoUpdate: parseBoolean(process.env.GEOIP_AUTO_UPDATE, false),
     trustedProxyHops: parseNonNegativeInt(process.env.TRUSTED_PROXY_HOPS, 0),
     allowedCryptoProfileVersions,

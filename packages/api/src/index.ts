@@ -4,6 +4,7 @@ import type {
   CapsuleUpdateRequestDto,
   CapsuleApprovalListResponseDto,
   CapsuleApprovalResolveResponseDto,
+  CapsuleApprovalEligibilityDto,
   CapsuleApprovalStatusDto,
   CapsuleDefaultsListResponseDto,
   CapsuleDefaultsUpsertRequestDto,
@@ -677,6 +678,12 @@ export class CoreApiClient {
     );
   }
 
+  getCapsuleApprovalEligibility(capsuleId: string): Promise<CapsuleApprovalEligibilityDto> {
+    return this.api.get<CapsuleApprovalEligibilityDto>(
+      `/capsules/${encodeURIComponent(capsuleId)}/approval-eligibility`,
+    );
+  }
+
   getCapsuleApprovalStatus(
     requestId: string,
     options?: { guestSessionId?: string },
@@ -695,7 +702,7 @@ export class CoreApiClient {
 
   resolveCapsuleApproval(
     requestId: string,
-    decision: "approve" | "deny",
+    decision: "approve" | "deny" | "blacklist",
   ): Promise<CapsuleApprovalResolveResponseDto> {
     return this.api.post<CapsuleApprovalResolveResponseDto>(
       `/capsule-approval-requests/${encodeURIComponent(requestId)}/resolve`,

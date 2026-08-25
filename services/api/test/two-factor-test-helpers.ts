@@ -409,6 +409,17 @@ export async function applyMigrations(
     );
     await storage.postgres.query(migration0025);
   }
+
+  const blacklistTable = await storage.postgres.query<{ exists: boolean }>(
+    "SELECT to_regclass('public.capsule_approval_blacklist') IS NOT NULL AS exists",
+  );
+  if (!blacklistTable[0]?.exists) {
+    const migration0026 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0026_capsule_approval_blacklist.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0026);
+  }
 }
 
 export async function cleanupUserData(

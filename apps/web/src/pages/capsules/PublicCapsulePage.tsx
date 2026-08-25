@@ -1,13 +1,13 @@
 import { decryptCapsulePayload } from "@okkey/crypto";
 import type {
+  CapsuleApprovalEligibilityDto,
   CapsuleApprovalStatusDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
   ItemPlaintextV2,
 } from "@okkey/types";
-import { Button, cn, Input, Spinner } from "@okkey/ui";
+import { Alert, AlertDescription, AlertTitle, Button, cn, Input, Spinner } from "@okkey/ui";
 import type { KeyFieldFileValue } from "@okkey/ui";
-import { LockKeyholeIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -37,6 +37,7 @@ type ViewerState =
   | "approval"
   | "waiting"
   | "denied"
+  | "blacklisted"
   | "decrypting"
   | "content";
 
@@ -81,6 +82,7 @@ export default function PublicCapsulePage() {
   const [state, setState] = useState<ViewerState>("loading");
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordUnlocking, setPasswordUnlocking] = useState(false);
   const [approvalRequestId, setApprovalRequestId] = useState("");
   const [approvalToken, setApprovalToken] = useState("");
   const [guestSessionId, setGuestSessionId] = useState("");
@@ -193,10 +195,15 @@ export default function PublicCapsulePage() {
     };
   }, [accessToken, capsuleId, resolveViewerState]);
 
-  const open = useCallback(async () => {
+  const open = useCallback(async (options?: { fromPassword?: boolean }) => {
     if (!metadata || !capsuleId) return;
-    setState("decrypting");
-    setPasswordError(null);
+    const fromPasswordForm = options?.fromPassword === true || stateRef.current === "password";
+    if (fromPasswordForm) {
+      setPasswordUnlocking(true);
+    } else {
+      setState("decrypting");
+      setPasswordError(null);
+    }
     try {
       const cached = capsuleOpenCache.get(capsuleId);
       if (cached) {
@@ -276,6 +283,8 @@ export default function PublicCapsulePage() {
         setState("password");
       } else if (code === "CAPSULE_APPROVAL_REQUIRED") {
         setState("approval");
+      } else if (code === "CAPSULE_APPROVAL_BLACKLISTED") {
+        setState("blacklisted");
       } else if (code === "CAPSULE_APPROVAL_DENIED") {
         setState("denied");
       } else if (code === "CAPSULE_RECIPIENT_REQUIRED" || code === "CAPSULE_RECIPIENT_FORBIDDEN") {
@@ -285,6 +294,8 @@ export default function PublicCapsulePage() {
       } else {
         setState("unavailable");
       }
+    } finally {
+      setPasswordUnlocking(false);
     }
   }, [accessToken, approvalToken, capsuleId, core, guestSessionId, metadata, password, t]);
 
@@ -304,14 +315,28 @@ export default function PublicCapsulePage() {
       );
     };
     const timer = window.setInterval(() => {
-      void poll().then((result) => {
+      void poll().then(async (result) => {
         if (result.status === "approved" && result.approvalToken) {
           setApprovalToken(result.approvalToken);
           window.clearInterval(timer);
           setState(metadata?.passwordRequired ? "password" : "decrypting");
         } else if (result.status === "denied") {
           window.clearInterval(timer);
-          setState("denied");
+          try {
+            const eligibility: CapsuleApprovalEligibilityDto =
+              core && accessToken
+                ? await core.getCapsuleApprovalEligibility(capsuleId)
+                : await publicApi.current.get<CapsuleApprovalEligibilityDto>(
+                    `/capsules/${encodeURIComponent(capsuleId)}/approval-eligibility`,
+                  );
+            setState(
+              !eligibility.eligible && eligibility.reason === "blacklisted"
+                ? "blacklisted"
+                : "denied",
+            );
+          } catch {
+            setState("denied");
+          }
         }
       });
     }, 2_000);
@@ -326,6 +351,31 @@ export default function PublicCapsulePage() {
     state,
   ]);
 
+  useEffect(() => {
+    if (state !== "approval" || !capsuleId) return;
+    let active = true;
+    const checkEligibility = async () => {
+      try {
+        const result: CapsuleApprovalEligibilityDto =
+          core && accessToken
+            ? await core.getCapsuleApprovalEligibility(capsuleId)
+            : await publicApi.current.get<CapsuleApprovalEligibilityDto>(
+                `/capsules/${encodeURIComponent(capsuleId)}/approval-eligibility`,
+              );
+        if (!active) return;
+        if (!result.eligible && result.reason === "blacklisted") {
+          setState("blacklisted");
+        }
+      } catch {
+        // Eligibility check is best-effort; request button still handles blacklist errors.
+      }
+    };
+    void checkEligibility();
+    return () => {
+      active = false;
+    };
+  }, [accessToken, capsuleId, core, state]);
+
   const requestApproval = async () => {
     if (metadata?.recipientRestricted && !core) {
       setState("login");
@@ -335,19 +385,32 @@ export default function PublicCapsulePage() {
       deviceLabel: navigator.userAgent,
       platform: navigator.platform,
     };
-    const result =
-      core && accessToken
-        ? await core.requestCapsuleApproval(capsuleId, device)
-        : await (async () => {
-            const sessionId = getOrCreateGuestSessionId(capsuleId);
-            setGuestSessionId(sessionId);
-            return publicApi.current.post<CapsuleApprovalStatusDto>(
-              `/capsules/${encodeURIComponent(capsuleId)}/approval-requests`,
-              { ...device, guestSessionId: sessionId },
-            );
-          })();
-    setApprovalRequestId(result.requestId);
-    setState("waiting");
+    try {
+      const result =
+        core && accessToken
+          ? await core.requestCapsuleApproval(capsuleId, device)
+          : await (async () => {
+              const sessionId = getOrCreateGuestSessionId(capsuleId);
+              setGuestSessionId(sessionId);
+              return publicApi.current.post<CapsuleApprovalStatusDto>(
+                `/capsules/${encodeURIComponent(capsuleId)}/approval-requests`,
+                { ...device, guestSessionId: sessionId },
+              );
+            })();
+      setApprovalRequestId(result.requestId);
+      setState("waiting");
+    } catch (cause) {
+      const code = errorCode(cause);
+      if (code === "CAPSULE_APPROVAL_BLACKLISTED") {
+        setState("blacklisted");
+        return;
+      }
+      if (code === "CAPSULE_APPROVAL_DENIED") {
+        setState("denied");
+        return;
+      }
+      throw cause;
+    }
   };
 
   const capsuleReturnPath = `/capsule/${encodeURIComponent(capsuleId)}`;
@@ -360,8 +423,8 @@ export default function PublicCapsulePage() {
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       contentClassName="max-w-[600px]"
     >
-      <div className={cn(capsulePanelClassName, "p-6")}>
-        {state === "loading" || state === "decrypting" ? (
+      <div className={cn(capsulePanelClassName, "relative p-6")}>
+        {state === "loading" || (state === "decrypting" && !passwordUnlocking) ? (
           <Centered>
             <Spinner />
             {t("web.capsules.public.decrypting")}
@@ -389,31 +452,51 @@ export default function PublicCapsulePage() {
             </Button>
           </Centered>
         ) : null}
-        {state === "password" ? (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void open();
-            }}
+        {state === "password" || (passwordUnlocking && state !== "content") ? (
+          <div
+            className={cn("flex flex-col", passwordUnlocking && "pointer-events-none select-none")}
+            aria-busy={passwordUnlocking || undefined}
           >
-            <label className="flex flex-col gap-2 text-sm font-medium text-copy-primary">
-              <span className="inline-flex items-center gap-2">
-                <LockKeyholeIcon className="size-5" />
-                {t("web.capsules.public.password")}
-              </span>
-              <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoFocus
-              />
-            </label>
-            {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
-            <Button type="submit" className="w-full" disabled={!password}>
-              {t("web.capsules.public.unlock")}
-            </Button>
-          </form>
+            <div className="pb-6 pt-0 text-center text-sm text-copy-secondary">
+              {t("web.capsules.public.passwordProtected")}
+            </div>
+            <div className="-mx-6 border-t border-border" />
+            <div className="flex justify-center pb-6 pt-12">
+              <form
+                className="flex w-full max-w-[360px] flex-col gap-6"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (passwordUnlocking) return;
+                  void open({ fromPassword: true });
+                }}
+              >
+                {passwordError ? (
+                  <Alert variant="error">
+                    <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+                    <AlertDescription>{passwordError}</AlertDescription>
+                  </Alert>
+                ) : null}
+                <label className="flex w-full flex-col gap-3 text-sm font-medium text-copy-primary">
+                  {t("web.capsules.public.password")}
+                  <Input
+                    type="password"
+                    className="font-normal"
+                    value={password}
+                    placeholder={t("web.capsules.public.passwordPlaceholder")}
+                    disabled={passwordUnlocking}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoFocus
+                  />
+                </label>
+                <Button type="submit" className="w-full" disabled={!password || passwordUnlocking}>
+                  {t("web.capsules.public.unlock")}
+                </Button>
+                <p className="text-center text-xs leading-4 text-copy-secondary">
+                  {t("web.capsules.public.passwordAttemptsHint")}
+                </p>
+              </form>
+            </div>
+          </div>
         ) : null}
         {state === "approval" ? (
           <Centered>
@@ -428,6 +511,9 @@ export default function PublicCapsulePage() {
           </Centered>
         ) : null}
         {state === "denied" ? <Centered>{t("web.capsules.public.denied")}</Centered> : null}
+        {state === "blacklisted" ? (
+          <Centered>{t("web.capsules.public.blacklisted")}</Centered>
+        ) : null}
         {state === "content" ? (
           <PublicCapsuleContent
             payload={payload}
@@ -435,6 +521,11 @@ export default function PublicCapsulePage() {
             attachmentFiles={attachmentFiles}
             onVaultFileOpen={handleVaultFileOpen}
           />
+        ) : null}
+        {passwordUnlocking ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-background/70">
+            <Spinner />
+          </div>
         ) : null}
       </div>
     </AppShellLayout>

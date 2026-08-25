@@ -117,19 +117,26 @@ export interface CapsuleApprovalListResponseDto {
   requests: CapsuleApprovalRequestDto[];
 }
 
+export type CapsuleApprovalDecision = "approve" | "deny" | "blacklist";
+
 export interface CapsuleApprovalResolveRequestDto {
-  decision: "approve" | "deny";
+  decision: CapsuleApprovalDecision;
 }
 
 export interface CapsuleApprovalResolveResponseDto {
   requestId: EntityId;
-  status: "approved" | "denied";
+  status: "approved" | "denied" | "blacklisted";
 }
 
 export interface CapsuleApprovalStatusDto {
   requestId: EntityId;
   status: CapsuleApprovalStatus;
   approvalToken?: string;
+}
+
+export interface CapsuleApprovalEligibilityDto {
+  eligible: boolean;
+  reason?: "blacklisted";
 }
 
 export type CapsuleSchedulePreset =

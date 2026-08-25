@@ -20,7 +20,10 @@ async function update() {
   await mkdir(directory, { recursive: true });
 
   try {
-    const response = await fetch(url, { redirect: "follow" });
+    const response = await fetch(url, {
+      redirect: "follow",
+      headers: { "User-Agent": "OkkeyGeoIpUpdater/1.0" },
+    });
     if (!response.ok || !response.body) {
       throw new Error(`download failed with HTTP ${response.status}`);
     }

@@ -416,6 +416,26 @@ export function createCapsuleApprovalRequestRoute(
   };
 }
 
+export function createCapsuleApprovalEligibilityRoute(
+  capsuleService: CapsuleService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    try {
+      const userId = await resolveUserId(ctx.req);
+      const requesterContext = await resolveRequesterContext(capsuleService, ctx.req);
+      const result = await capsuleService.getApprovalEligibility({
+        capsuleId: ctx.params.capsuleId ?? "",
+        ...(userId ? { requesterUserId: userId } : {}),
+        requestIp: requesterContext.ipAddress,
+      });
+      json(ctx.res, 200, result);
+    } catch (error) {
+      handleCapsuleError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createCapsuleApprovalStatusRoute(
   capsuleService: CapsuleService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
@@ -473,8 +493,12 @@ export function createCapsuleApprovalResolveRoute(
       return;
     }
     try {
-      const body = await readJsonBody<{ decision?: "approve" | "deny" }>(ctx.req);
-      if (body.decision !== "approve" && body.decision !== "deny") {
+      const body = await readJsonBody<{ decision?: "approve" | "deny" | "blacklist" }>(ctx.req);
+      if (
+        body.decision !== "approve" &&
+        body.decision !== "deny" &&
+        body.decision !== "blacklist"
+      ) {
         json(ctx.res, 400, errorPayload("CAPSULE_BAD_REQUEST", "decision is required", ctx.requestId));
         return;
       }

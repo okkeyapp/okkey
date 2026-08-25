@@ -47,7 +47,9 @@ import {
   type CapsuleKeyTransportMode,
 } from "./key-transport-policy.ts";
 import {
-  clientIpFromTrustedProxy,
+  isLoopbackIp,
+  resolveClientIpForGeo,
+  resolveEgressPublicIp,
   type GeoIpLookup,
   type GeoIpLocation,
 } from "./geoip.ts";
@@ -205,10 +207,11 @@ export class CapsuleService {
     platform: string;
     location: GeoIpLocation;
   }> {
-    const ipAddress = clientIpFromTrustedProxy(
+    const ipAddress = await resolveClientIpForGeo(
       input.remoteAddress,
       input.forwardedFor,
       this.config.trustedProxyHops,
+      this.log,
     );
     const { deviceLabel, platform } = parseUserAgent(input.userAgent);
     return {
@@ -912,7 +915,7 @@ export class CapsuleService {
     } else if (guestSessionId) {
       requesterUserId = undefined;
       requesterEmail = "guest";
-      requesterName = "Гость";
+      requesterName = null;
     } else {
       throw new CapsuleServiceError("AUTH_REQUIRED", 401, "authenticated email required");
     }
@@ -921,16 +924,26 @@ export class CapsuleService {
       ? "requester_user_id = $2"
       : "guest_session_id = $2";
     const identityValue = requesterUserId ?? guestSessionId!;
+    const emailForHash = requesterUserId
+      ? requesterEmail!
+      : `guest:${guestSessionId}`;
+    const requesterEmailHash = hashRecipient(emailForHash, this.config.sessionSecret);
 
-    const denied = await this.db.query<{ id: string }>(
-      `SELECT id FROM capsule_view_requests
-       WHERE capsule_id = $1 AND ${identityClause} AND status = 'denied'
-       LIMIT 1`,
-      [input.capsuleId, identityValue],
-    );
-    if (denied[0]) {
-      throw new CapsuleServiceError("CAPSULE_APPROVAL_DENIED", 403, "capsule approval denied");
+    if (
+      await this.isRequesterBlacklisted({
+        capsuleId: input.capsuleId,
+        requesterUserId,
+        requesterEmailHash: requesterUserId ? requesterEmailHash : undefined,
+        requestIp: input.requestIp,
+      })
+    ) {
+      throw new CapsuleServiceError(
+        "CAPSULE_APPROVAL_BLACKLISTED",
+        403,
+        "capsule approval blacklisted",
+      );
     }
+
     const existing = await this.db.query<{ id: string; status: string }>(
       `SELECT id, status FROM capsule_view_requests
        WHERE capsule_id = $1 AND ${identityClause} AND status IN ('pending', 'approved')
@@ -944,9 +957,6 @@ export class CapsuleService {
       };
     }
     const requestId = generateEntityId();
-    const emailForHash = requesterUserId
-      ? requesterEmail!
-      : `guest:${guestSessionId}`;
     await this.db.query(
       `
         INSERT INTO capsule_view_requests (
@@ -960,7 +970,7 @@ export class CapsuleService {
         input.capsuleId,
         requesterUserId ?? null,
         guestSessionId ?? null,
-        hashRecipient(emailForHash, this.config.sessionSecret),
+        requesterEmailHash,
         requesterEmail!,
         requesterName,
         input.deviceLabel?.trim() || "Unknown device",
@@ -971,6 +981,65 @@ export class CapsuleService {
       ],
     );
     return { requestId, status: "pending" };
+  }
+
+  async getApprovalEligibility(input: {
+    capsuleId: string;
+    requesterUserId?: string;
+    requestIp: string;
+  }): Promise<{ eligible: boolean; reason?: "blacklisted" }> {
+    const capsule = await this.loadCapsule(input.capsuleId);
+    if (!capsule.approval_required) {
+      return { eligible: true };
+    }
+    let requesterEmailHash: string | undefined;
+    if (input.requesterUserId) {
+      let email: string | undefined;
+      if (this.users) {
+        email = (await this.users.findById(input.requesterUserId))?.email;
+      }
+      if (email) {
+        requesterEmailHash = hashRecipient(normalizeEmail(email), this.config.sessionSecret);
+      }
+    }
+    if (
+      await this.isRequesterBlacklisted({
+        capsuleId: input.capsuleId,
+        requesterUserId: input.requesterUserId,
+        requesterEmailHash,
+        requestIp: input.requestIp,
+      })
+    ) {
+      return { eligible: false, reason: "blacklisted" };
+    }
+    return { eligible: true };
+  }
+
+  private async isRequesterBlacklisted(input: {
+    capsuleId: string;
+    requesterUserId?: string;
+    requesterEmailHash?: string;
+    requestIp: string;
+  }): Promise<boolean> {
+    if (input.requesterUserId && input.requesterEmailHash) {
+      const blocked = await this.db.query<{ id: string }>(
+        `SELECT id FROM capsule_approval_blacklist
+         WHERE capsule_id = $1 AND requester_email_hash = $2
+         LIMIT 1`,
+        [input.capsuleId, input.requesterEmailHash],
+      );
+      return Boolean(blocked[0]);
+    }
+    if (!input.requesterUserId && input.requestIp && input.requestIp !== "unknown") {
+      const blocked = await this.db.query<{ id: string }>(
+        `SELECT id FROM capsule_approval_blacklist
+         WHERE capsule_id = $1 AND ip_address = $2::inet
+         LIMIT 1`,
+        [input.capsuleId, input.requestIp],
+      );
+      return Boolean(blocked[0]);
+    }
+    return false;
   }
 
   async getApprovalStatus(
@@ -1034,37 +1103,76 @@ export class CapsuleService {
       `,
       [ownerId],
     );
-    return rows.map((row) => ({
-      requestId: row.id,
-      capsuleId: row.capsule_id,
-      capsuleType: normalizeCapsuleType(row.type),
-      ...(row.encrypted_metadata
-        ? { encryptedCapsuleMetadata: decodeEncryptedBlobFromStorage(Uint8Array.from(row.encrypted_metadata)) }
-        : {}),
-      ...(row.owner_key_wrap
-        ? { ownerKeyWrap: decodeEncryptedBlobFromStorage(Uint8Array.from(row.owner_key_wrap)) }
-        : {}),
-      requesterUserId: row.requester_user_id,
-      requesterEmail: row.requester_email,
-      requesterName: row.requester_name,
-      deviceLabel: row.device_label,
-      platform: row.platform,
-      ipAddress: row.ip_address ?? "unknown",
-      country: row.country,
-      city: row.city,
-      requestedAt: row.requested_at,
-      status: "pending",
-    }));
+    const mapped: CapsuleApprovalRequestDto[] = [];
+    for (const row of rows) {
+      let country = row.country;
+      let city = row.city;
+      let ipAddress = row.ip_address ?? "unknown";
+      const originalIp = ipAddress;
+
+      if (isLoopbackIp(ipAddress)) {
+        const egress = await resolveEgressPublicIp(this.log);
+        if (egress) {
+          ipAddress = egress;
+        }
+      }
+
+      if ((!country || !city) && this.geoIp && ipAddress !== "unknown") {
+        const location = await this.geoIp.lookup(ipAddress);
+        country = country || location.country;
+        city = city || location.city;
+      }
+
+      if (ipAddress !== originalIp || country !== row.country || city !== row.city) {
+        await this.db.query(
+          `UPDATE capsule_view_requests
+           SET
+             ip_address = COALESCE(NULLIF($2, 'unknown')::inet, ip_address),
+             country = COALESCE($3, country),
+             city = COALESCE($4, city)
+           WHERE id = $1`,
+          [row.id, ipAddress, country, city],
+        );
+      }
+
+      mapped.push({
+        requestId: row.id,
+        capsuleId: row.capsule_id,
+        capsuleType: normalizeCapsuleType(row.type),
+        ...(row.encrypted_metadata
+          ? { encryptedCapsuleMetadata: decodeEncryptedBlobFromStorage(Uint8Array.from(row.encrypted_metadata)) }
+          : {}),
+        ...(row.owner_key_wrap
+          ? { ownerKeyWrap: decodeEncryptedBlobFromStorage(Uint8Array.from(row.owner_key_wrap)) }
+          : {}),
+        requesterUserId: row.requester_user_id,
+        requesterEmail: row.requester_email,
+        requesterName: row.requester_name,
+        deviceLabel: row.device_label,
+        platform: row.platform,
+        ipAddress,
+        country,
+        city,
+        requestedAt: row.requested_at,
+        status: "pending",
+      });
+    }
+    return mapped;
   }
 
   async resolveApproval(
     requestId: string,
     ownerId: string,
-    decision: "approve" | "deny",
-  ): Promise<"approved" | "denied"> {
+    decision: "approve" | "deny" | "blacklist",
+  ): Promise<"approved" | "denied" | "blacklisted"> {
     return this.db.transaction(async (tx) => {
-      const rows = await tx.query<{ capsule_id: string }>(
-        `SELECT r.capsule_id
+      const rows = await tx.query<{
+        capsule_id: string;
+        requester_user_id: string | null;
+        requester_email_hash: string;
+        ip_address: string | null;
+      }>(
+        `SELECT r.capsule_id, r.requester_user_id, r.requester_email_hash, host(r.ip_address) AS ip_address
          FROM capsule_view_requests r
          JOIN capsules c ON c.id = r.capsule_id
          WHERE r.id = $1 AND c.creator_id = $2 AND r.status = 'pending'
@@ -1091,6 +1199,25 @@ export class CapsuleService {
          WHERE id = $1`,
         [requestId],
       );
+      if (decision === "blacklist") {
+        if (row.requester_user_id) {
+          await tx.query(
+            `INSERT INTO capsule_approval_blacklist (id, capsule_id, requester_email_hash, created_by)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT DO NOTHING`,
+            [generateEntityId(), row.capsule_id, row.requester_email_hash, ownerId],
+          );
+        } else if (row.ip_address) {
+          await tx.query(
+            `INSERT INTO capsule_approval_blacklist (id, capsule_id, ip_address, created_by)
+             VALUES ($1, $2, $3::inet, $4)
+             ON CONFLICT DO NOTHING`,
+            [generateEntityId(), row.capsule_id, row.ip_address, ownerId],
+          );
+        }
+        await this.deactivateIfAllRecipientsDenied(tx, row.capsule_id);
+        return "blacklisted";
+      }
       await this.deactivateIfAllRecipientsDenied(tx, row.capsule_id);
       return "denied";
     });
