@@ -12,6 +12,8 @@ import type {
   WorkspaceBuiltInRoleDto,
   WorkspaceBuiltInRolesListResponseDto,
 } from "./workspace-roles.js";
+import type { WorkspaceCapsulePolicies } from "./workspace-capsule-policies.js";
+import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.js";
 
 export type {
   PlanFeature,
@@ -64,6 +66,8 @@ export interface Workspace {
   maxFileSizeMb: number;
   /** When false, users cannot add file fields or upload files in items. */
   filesInItemsEnabled: boolean;
+  /** Workspace-level capsule admin policies. */
+  capsulePolicies: WorkspaceCapsulePolicies;
   /** Hex tile color when no custom logo is set. */
   tileColor?: string | null;
   /** Vault storing the encrypted workspace logo attachment. */
@@ -829,6 +833,7 @@ export interface WorkspaceSettingsResponseDto {
   allowed_file_extensions: string[];
   max_file_size_mb: number;
   files_in_items_enabled: boolean;
+  capsule_policies: WorkspaceCapsulePoliciesDto;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
@@ -841,6 +846,7 @@ export interface WorkspaceSettingsUpdateRequestDto {
   allowed_file_extensions?: string[];
   max_file_size_mb?: number;
   files_in_items_enabled?: boolean;
+  capsule_policies?: Partial<WorkspaceCapsulePoliciesDto>;
   tile_color?: string | null;
   logo_vault_id?: string | null;
   logo_attachment_id?: string | null;
@@ -949,6 +955,7 @@ export interface VaultMemberRoleUpdateRequestDto {
 }
 
 export * from "./capsules.js";
+export * from "./workspace-capsule-policies.js";
 
 /** Optional nested metadata (same semantics as `POST /devices/register`). */
 export interface RegisterCompleteMetadataDto {

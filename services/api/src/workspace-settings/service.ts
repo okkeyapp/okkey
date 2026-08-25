@@ -8,6 +8,10 @@ import {
   MAX_MAX_FILE_SIZE_MB,
   MIN_MAX_FILE_SIZE_MB,
   normalizeAllowedFileExtensions,
+  workspaceCapsulePoliciesFromDto,
+  workspaceCapsulePoliciesToDto,
+  type WorkspaceCapsulePolicies,
+  type WorkspaceCapsulePoliciesDto,
 } from "@okkey/types";
 
 export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30;
@@ -22,6 +26,7 @@ export type WorkspaceSettingsSnapshot = {
   allowedFileExtensions: string[];
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
+  capsulePolicies: WorkspaceCapsulePolicies;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -33,6 +38,7 @@ export type WorkspaceSettingsPatch = {
   allowedFileExtensions?: string[];
   maxFileSizeMb?: number;
   filesInItemsEnabled?: boolean;
+  capsulePolicies?: WorkspaceCapsulePolicies;
   tileColor?: string | null;
   logoVaultId?: string | null;
   logoAttachmentId?: string | null;
@@ -95,6 +101,9 @@ export class WorkspaceSettingsService {
     }
     if (patch.filesInItemsEnabled !== undefined) {
       update.filesInItemsEnabled = sanitizeFilesInItemsEnabled(patch.filesInItemsEnabled);
+    }
+    if (patch.capsulePolicies !== undefined) {
+      update.capsulePolicies = sanitizeCapsulePolicies(patch.capsulePolicies);
     }
     if (patch.tileColor !== undefined) {
       update.tileColor = patch.tileColor === null ? null : sanitizeTileColor(patch.tileColor);
@@ -175,6 +184,7 @@ function toSettingsSnapshot(workspace: {
   allowedFileExtensions: string[];
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
+  capsulePolicies: WorkspaceCapsulePolicies;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -185,6 +195,7 @@ function toSettingsSnapshot(workspace: {
     allowedFileExtensions: workspace.allowedFileExtensions,
     maxFileSizeMb: workspace.maxFileSizeMb,
     filesInItemsEnabled: workspace.filesInItemsEnabled,
+    capsulePolicies: workspace.capsulePolicies,
     tileColor: workspace.tileColor,
     logoVaultId: workspace.logoVaultId,
     logoAttachmentId: workspace.logoAttachmentId,
@@ -327,6 +338,46 @@ export function parseFilesInItemsEnabledPayload(value: unknown): boolean | null 
     return null;
   }
   return sanitizeFilesInItemsEnabled(value);
+}
+
+export function sanitizeCapsulePolicies(value: WorkspaceCapsulePolicies): WorkspaceCapsulePolicies {
+  const normalized = workspaceCapsulePoliciesFromDto(workspaceCapsulePoliciesToDto(value));
+  if (normalized.forceMaxViews > 10_000) {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_CAPSULE_POLICIES",
+      400,
+      "capsule_policies.force_max_views must be between 0 and 10000",
+    );
+  }
+  if (normalized.passwordAttemptLimit > 100) {
+    throw new WorkspaceSettingsServiceError(
+      "INVALID_CAPSULE_POLICIES",
+      400,
+      "capsule_policies.password_attempt_limit must be between 0 and 100",
+    );
+  }
+  return normalized;
+}
+
+export function parseCapsulePoliciesPayload(
+  value: unknown,
+): WorkspaceCapsulePolicies | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  try {
+    return sanitizeCapsulePolicies(
+      workspaceCapsulePoliciesFromDto(value as Partial<WorkspaceCapsulePoliciesDto>),
+    );
+  } catch (error) {
+    if (error instanceof WorkspaceSettingsServiceError) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 export function parseOptionalStringPayload(value: unknown): string | null | undefined {

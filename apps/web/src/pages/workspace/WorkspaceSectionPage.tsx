@@ -1,4 +1,8 @@
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
+import {
+  DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+  isCapsuleAllowedForMember,
+} from "@okkey/types";
 import { useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 
 import ItemDetailCard from "../../components/items/ItemDetailCard";
@@ -6,6 +10,7 @@ import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelE
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
 import CapsulesPage from "../capsules/CapsulesPage";
 import { useLocale } from "../../locale/LocaleContext";
+import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import {
   FOLDER_QUERY_PARAM,
@@ -15,6 +20,7 @@ import {
   isSettingsPathname,
   VAULT_QUERY_PARAM,
 } from "../../routes/paths";
+import WorkspaceNotFoundPage from "./WorkspaceNotFoundPage";
 
 export type WorkspaceShellOutletContext = {
   workspaceId: string;
@@ -40,6 +46,7 @@ export default function WorkspaceSectionPage() {
     workspacePermissionsReady,
   } = useOutletContext<WorkspaceShellOutletContext>();
   const { t } = useLocale();
+  const { userId } = useAuthVault();
   const { canUseFunction } = useWorkspaceVaultProfiles();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -49,6 +56,10 @@ export default function WorkspaceSectionPage() {
   const isItemsRoute = location.pathname === ITEMS_PATH;
   const isCapsulesRoute = location.pathname === CAPSULES_PATH;
   const isSettingsRoute = isSettingsPathname(location.pathname);
+  const capsulesAllowed = isCapsuleAllowedForMember(
+    workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+    userId,
+  );
 
   if (isSettingsRoute) {
     return (
@@ -79,6 +90,9 @@ export default function WorkspaceSectionPage() {
   }
 
   if (isCapsulesRoute) {
+    if (!capsulesAllowed) {
+      return <WorkspaceNotFoundPage />;
+    }
     return (
       <CapsulesPage
         workspaceId={workspaceId}

@@ -1,4 +1,8 @@
-import type { Workspace, WorkspaceSettingsResponseDto } from "@okkey/types";
+import {
+  workspaceCapsulePoliciesFromDto,
+  type Workspace,
+  type WorkspaceSettingsResponseDto,
+} from "@okkey/types";
 
 export const DEFAULT_WORKSPACE_TILE_COLOR = "#3b82f6";
 
@@ -77,6 +81,7 @@ export function workspacePatchFromSettingsResponse(
   | "allowedFileExtensions"
   | "maxFileSizeMb"
   | "filesInItemsEnabled"
+  | "capsulePolicies"
   | "tileColor"
   | "logoVaultId"
   | "logoAttachmentId"
@@ -87,6 +92,7 @@ export function workspacePatchFromSettingsResponse(
     allowedFileExtensions: updated.allowed_file_extensions,
     maxFileSizeMb: updated.max_file_size_mb,
     filesInItemsEnabled: updated.files_in_items_enabled,
+    capsulePolicies: workspaceCapsulePoliciesFromDto(updated.capsule_policies),
     tileColor: updated.tile_color,
     logoVaultId: updated.logo_vault_id,
     logoAttachmentId: updated.logo_attachment_id,

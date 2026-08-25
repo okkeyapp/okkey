@@ -4,7 +4,12 @@ import {
   DEFAULT_NEW_VAULT_CRYPTO_VERSION,
 } from "../crypto/downgrade.ts";
 import { entityIdFromDb, generateEntityId } from "../entity-id.ts";
-import type { PlanTier } from "@okkey/types";
+import type { PlanTier, WorkspaceCapsulePolicies } from "@okkey/types";
+import {
+  workspaceCapsulePoliciesFromDto,
+  workspaceCapsulePoliciesToDto,
+  type WorkspaceCapsulePoliciesDto,
+} from "@okkey/types";
 import type { QueryExecutor } from "./postgres.ts";
 import {
   EntityNotFoundError,
@@ -308,6 +313,7 @@ export interface WorkspaceRecord {
   allowedFileExtensions: string[];
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
+  capsulePolicies: WorkspaceCapsulePolicies;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -316,10 +322,10 @@ export interface WorkspaceRecord {
 }
 
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+  "id, name, owner_id, plan_tier, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
@@ -329,6 +335,7 @@ type WorkspaceRow = BaseRow & {
   allowed_file_extensions: string[];
   max_file_size_mb: number;
   files_in_items_enabled: boolean;
+  capsule_policies: unknown;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
@@ -461,6 +468,7 @@ export class WorkspacesRepository {
       allowedFileExtensions?: string[];
       maxFileSizeMb?: number;
       filesInItemsEnabled?: boolean;
+      capsulePolicies?: WorkspaceCapsulePolicies;
     },
   ): Promise<WorkspaceRecord> {
     const sets: string[] = ["updated_at = now()"];
@@ -498,6 +506,10 @@ export class WorkspacesRepository {
     if (input.filesInItemsEnabled !== undefined) {
       sets.push(`files_in_items_enabled = $${paramIndex++}`);
       values.push(input.filesInItemsEnabled);
+    }
+    if (input.capsulePolicies !== undefined) {
+      sets.push(`capsule_policies = $${paramIndex++}::jsonb`);
+      values.push(JSON.stringify(workspaceCapsulePoliciesToDto(input.capsulePolicies)));
     }
 
     const rows = await this.db.query<WorkspaceRow>(
@@ -1845,6 +1857,9 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     allowedFileExtensions: row.allowed_file_extensions ?? [],
     maxFileSizeMb: Number(row.max_file_size_mb),
     filesInItemsEnabled: row.files_in_items_enabled ?? true,
+    capsulePolicies: workspaceCapsulePoliciesFromDto(
+      (row.capsule_policies ?? undefined) as Partial<WorkspaceCapsulePoliciesDto> | undefined,
+    ),
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,
     logoAttachmentId: row.logo_attachment_id,

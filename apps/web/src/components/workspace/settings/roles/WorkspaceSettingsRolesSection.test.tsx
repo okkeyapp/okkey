@@ -51,6 +51,17 @@ function renderRolesSection(planTier = "FREE") {
           allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
           maxFileSizeMb: 2,
           filesInItemsEnabled: true,
+          capsulePolicies: {
+            allowMode: "all",
+            allowMemberIds: [],
+            forceMaxViews: 0,
+            requireTimeDeactivation: false,
+            requireAccess: false,
+            accessAudience: "all_users",
+            requirePassword: false,
+            passwordAttemptLimit: 0,
+            requireApproval: false,
+          },
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }}

@@ -53,6 +53,17 @@ describe("WorkspaceSettingsVaultsSection", () => {
             allowedFileExtensions: [],
             maxFileSizeMb: 2,
             filesInItemsEnabled: true,
+            capsulePolicies: {
+              allowMode: "all",
+              allowMemberIds: [],
+              forceMaxViews: 0,
+              requireTimeDeactivation: false,
+              requireAccess: false,
+              accessAudience: "all_users",
+              requirePassword: false,
+              passwordAttemptLimit: 0,
+              requireApproval: false,
+            },
             createdAt: "",
             updatedAt: "",
           }}

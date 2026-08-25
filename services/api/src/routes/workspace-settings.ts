@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { json, readJsonBody, type RouteHandler } from "../http.ts";
 import {
   parseAllowedFileExtensionsPayload,
+  parseCapsulePoliciesPayload,
   parseDeletedItemsRetentionDaysPayload,
   parseFilesInItemsEnabledPayload,
   parseMaxFileSizeMbPayload,
@@ -10,6 +11,7 @@ import {
   WorkspaceSettingsService,
   WorkspaceSettingsServiceError,
 } from "../workspace-settings/service.ts";
+import { workspaceCapsulePoliciesToDto } from "@okkey/types";
 
 function errorPayload(code: string, message: string, requestId: string) {
   return { error: code, message, requestId };
@@ -21,6 +23,7 @@ type WorkspaceSettingsBody = {
   allowed_file_extensions?: unknown;
   max_file_size_mb?: unknown;
   files_in_items_enabled?: unknown;
+  capsule_policies?: unknown;
   tile_color?: unknown;
   logo_vault_id?: unknown;
   logo_attachment_id?: unknown;
@@ -36,6 +39,7 @@ function serializeSettings(settings: {
   allowedFileExtensions: string[];
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
+  capsulePolicies: import("@okkey/types").WorkspaceCapsulePolicies;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -46,6 +50,7 @@ function serializeSettings(settings: {
     allowed_file_extensions: settings.allowedFileExtensions,
     max_file_size_mb: settings.maxFileSizeMb,
     files_in_items_enabled: settings.filesInItemsEnabled,
+    capsule_policies: workspaceCapsulePoliciesToDto(settings.capsulePolicies),
     tile_color: settings.tileColor,
     logo_vault_id: settings.logoVaultId,
     logo_attachment_id: settings.logoAttachmentId,
@@ -92,6 +97,7 @@ export function createWorkspaceSettingsRoute(
         allowedFileExtensions?: string[];
         maxFileSizeMb?: number;
         filesInItemsEnabled?: boolean;
+        capsulePolicies?: import("@okkey/types").WorkspaceCapsulePolicies;
         tileColor?: string | null;
         logoVaultId?: string | null;
         logoAttachmentId?: string | null;
@@ -168,6 +174,29 @@ export function createWorkspaceSettingsRoute(
           return;
         }
         patch.filesInItemsEnabled = filesInItemsEnabled;
+      }
+
+      if (body.capsule_policies !== undefined) {
+        try {
+          const capsulePolicies = parseCapsulePoliciesPayload(body.capsule_policies);
+          if (capsulePolicies === null) {
+            json(
+              ctx.res,
+              400,
+              errorPayload("INVALID_CAPSULE_POLICIES", "capsule_policies is invalid", ctx.requestId),
+            );
+            return;
+          }
+          if (capsulePolicies !== undefined) {
+            patch.capsulePolicies = capsulePolicies;
+          }
+        } catch (error) {
+          if (error instanceof WorkspaceSettingsServiceError) {
+            json(ctx.res, error.statusCode, errorPayload(error.code, error.message, ctx.requestId));
+            return;
+          }
+          throw error;
+        }
       }
 
       const tileColor = parseOptionalStringPayload(body.tile_color);

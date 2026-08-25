@@ -249,6 +249,25 @@ export async function applyMigrations(
     await storage.postgres.query(migration0015);
   }
 
+  const capsulePoliciesColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'capsule_policies'
+      ) AS exists
+    `,
+  );
+  if (!capsulePoliciesColumn[0]?.exists) {
+    const migration0027 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0027_workspace_capsule_policies.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0027);
+  }
+
   const profileBuiltinKeyColumn = await storage.postgres.query<{ exists: boolean }>(
     `SELECT EXISTS (
       SELECT 1

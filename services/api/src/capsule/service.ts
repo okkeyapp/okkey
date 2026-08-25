@@ -1,6 +1,8 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import {
   hasPlanFeature,
+  isCapsuleAllowedForMember,
+  workspaceCapsulePoliciesFromDto,
   type CapsuleApprovalRequestDto,
   type CapsuleApprovalStatusDto,
   type CapsuleListResponseDto,
@@ -10,6 +12,8 @@ import {
   type CapsuleState,
   type CapsuleType,
   type CapsuleViewLimitAction,
+  type WorkspaceCapsulePolicies,
+  type WorkspaceCapsulePoliciesDto,
 } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
@@ -308,6 +312,9 @@ export class CapsuleService {
     if (!hasPlanFeature(workspace.planTier, "capsules")) {
       throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
     }
+    if (!isCapsuleAllowedForMember(workspace.capsulePolicies, creatorId)) {
+      throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
+    }
     if (
       requestsCapsuleAccessSettings(input) &&
       !hasPlanFeature(workspace.planTier, "capsuleAccessSettings")
@@ -318,6 +325,7 @@ export class CapsuleService {
         "capsule access settings are unavailable on this plan",
       );
     }
+    enforceCapsulePoliciesOnWrite(workspace.capsulePolicies, input);
 
     const activateAt = normalizeOptionalIsoDate(input.activateAt);
     const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
@@ -611,6 +619,9 @@ export class CapsuleService {
       if (!workspace.canAccess) {
         throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
       }
+      if (!isCapsuleAllowedForMember(workspace.capsulePolicies, creatorId)) {
+        throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
+      }
       if (
         requestsCapsuleAccessSettings(input) &&
         !hasPlanFeature(workspace.planTier, "capsuleAccessSettings")
@@ -621,6 +632,7 @@ export class CapsuleService {
           "capsule access settings are unavailable on this plan",
         );
       }
+      enforceCapsulePoliciesOnWrite(workspace.capsulePolicies, input);
 
       const activateAt = normalizeOptionalIsoDate(input.activateAt);
       const deactivateAt = normalizeOptionalIsoDate(input.deactivateAt ?? input.expiresAt);
@@ -1225,6 +1237,7 @@ export class CapsuleService {
 
   async getCapsuleMetadata(capsuleId: string): Promise<CapsuleMetadataResponse> {
     const capsule = await this.loadCapsule(capsuleId);
+    await this.assertWorkspaceCapsulesEnabled(capsule.workspace_id);
     const policy = parsePolicy(capsule.access_policy);
     if (policy.revoked) {
       throw new CapsuleServiceError("CAPSULE_REVOKED", 410, "capsule revoked");
@@ -1272,6 +1285,7 @@ export class CapsuleService {
       if (!capsule) {
         throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
       }
+      await this.assertWorkspaceCapsulesEnabled(capsule.workspace_id);
       ensureCapsuleAccessible(capsule);
       try {
         validatePassword(capsule, password, this.config.sessionSecret);
@@ -1533,13 +1547,24 @@ export class CapsuleService {
   private async readWorkspaceAccess(
     workspaceId: string,
     userId: string,
-  ): Promise<{ exists: boolean; canAccess: boolean; planTier: string | null }> {
-    const rows = await this.db.query<{ exists: boolean; can_access: boolean; plan_tier: string | null }>(
+  ): Promise<{
+    exists: boolean;
+    canAccess: boolean;
+    planTier: string | null;
+    capsulePolicies: WorkspaceCapsulePolicies;
+  }> {
+    const rows = await this.db.query<{
+      exists: boolean;
+      can_access: boolean;
+      plan_tier: string | null;
+      capsule_policies: unknown;
+    }>(
       `
         SELECT
           TRUE AS exists,
           (w.owner_id = $2 OR wm.user_id IS NOT NULL) AS can_access,
-          w.plan_tier
+          w.plan_tier,
+          w.capsule_policies
         FROM workspaces w
         LEFT JOIN workspace_members wm
           ON wm.workspace_id = w.id
@@ -1550,13 +1575,34 @@ export class CapsuleService {
     );
     const row = rows[0];
     if (!row) {
-      return { exists: false, canAccess: false, planTier: null };
+      return {
+        exists: false,
+        canAccess: false,
+        planTier: null,
+        capsulePolicies: workspaceCapsulePoliciesFromDto(undefined),
+      };
     }
     return {
       exists: true,
       canAccess: Boolean(row.can_access),
       planTier: row.plan_tier,
+      capsulePolicies: workspaceCapsulePoliciesFromDto(
+        row.capsule_policies as Partial<WorkspaceCapsulePoliciesDto> | undefined,
+      ),
     };
+  }
+
+  private async assertWorkspaceCapsulesEnabled(workspaceId: string): Promise<void> {
+    const rows = await this.db.query<{ capsule_policies: unknown }>(
+      `SELECT capsule_policies FROM workspaces WHERE id = $1`,
+      [workspaceId],
+    );
+    const policies = workspaceCapsulePoliciesFromDto(
+      rows[0]?.capsule_policies as Partial<WorkspaceCapsulePoliciesDto> | undefined,
+    );
+    if (policies.allowMode === "none") {
+      throw new CapsuleServiceError("CAPSULE_NOT_FOUND", 404, "capsule not found");
+    }
   }
 
   private async consumeOpenRateLimit(requestIp: string): Promise<void> {
@@ -1637,6 +1683,72 @@ function requestsCapsuleAccessSettings(input: {
       (input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) ||
       input.approvalRequired,
   );
+}
+
+function enforceCapsulePoliciesOnWrite(
+  policies: WorkspaceCapsulePolicies,
+  input: {
+    maxViews?: number;
+    deactivateAt?: string;
+    expiresAt?: string;
+    password?: string;
+    passwordAttemptLimit?: number;
+    allowedRecipientEmails?: string[];
+    keepExistingPassword?: boolean;
+    keepExistingRecipients?: boolean;
+    approvalRequired?: boolean;
+  },
+): void {
+  if (policies.forceMaxViews > 0 && input.maxViews !== policies.forceMaxViews) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      `maxViews must be ${policies.forceMaxViews}`,
+    );
+  }
+  if (policies.requireTimeDeactivation && !input.deactivateAt && !input.expiresAt) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      "deactivateAt is required by workspace policy",
+    );
+  }
+  if (
+    policies.requireAccess &&
+    !(input.allowedRecipientEmails && input.allowedRecipientEmails.length > 0) &&
+    !input.keepExistingRecipients
+  ) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      "allowedRecipientEmails is required by workspace policy",
+    );
+  }
+  if (policies.requirePassword && !(input.password && input.password.length > 0) && !input.keepExistingPassword) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      "password is required by workspace policy",
+    );
+  }
+  if (
+    policies.passwordAttemptLimit > 0 &&
+    input.passwordAttemptLimit !== undefined &&
+    input.passwordAttemptLimit !== policies.passwordAttemptLimit
+  ) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      `passwordAttemptLimit must be ${policies.passwordAttemptLimit}`,
+    );
+  }
+  if (policies.requireApproval && !input.approvalRequired) {
+    throw new CapsuleServiceError(
+      "CAPSULE_BAD_REQUEST",
+      400,
+      "approvalRequired is required by workspace policy",
+    );
+  }
 }
 
 function parseBlobOrThrow(value: unknown, fieldName: string): EncryptedBlob {

@@ -4,6 +4,8 @@ import {
   DEFAULT_ALLOWED_FILE_EXTENSIONS,
   DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
   DEFAULT_MAX_FILE_SIZE_MB,
+  DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+  isCapsuleAllowedForMember,
 } from "@okkey/types";
 import {
   cn,
@@ -266,8 +268,14 @@ export default function WorkspaceRoutesLayout() {
     const base = okkeyWorkspaceShellNavItems(navPaths, labels);
     const firstSettings = firstAllowedSettingsSection(workspacePermissions);
     const hideSettings = workspacePermissionsReady && !firstSettings;
+    const workspaceForNav = workspaceList.find((workspace) => workspace.id === resolvedWorkspaceId);
+    const capsulesAllowed = isCapsuleAllowedForMember(
+      workspaceForNav?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+      userId,
+    );
     return base
       .filter((item) => !(hideSettings && item.id === "set"))
+      .filter((item) => !(item.to === CAPSULES_PATH && !capsulesAllowed))
       .map((item) => {
         const isItemsEntry = item.to === ITEMS_PATH;
         if (isItemsEntry) {
@@ -312,6 +320,9 @@ export default function WorkspaceRoutesLayout() {
     itemsPathMergeOptions,
     workspacePermissions,
     workspacePermissionsReady,
+    workspaceList,
+    resolvedWorkspaceId,
+    userId,
   ]);
 
   // Vault rows: each link is `/items?vault=…`. Active when that vault id matches the query and we are not in folder-only mode (`folder` is cleared if both were set).
@@ -893,9 +904,12 @@ function WorkspaceShellWithItems({
     userId,
     vaults,
   });
-  const canCreateCapsules = vaults.some((vault) =>
-    workspaceVaultProfilesState.canUseFunction(vault.id, "create_capsules"),
-  );
+  const canCreateCapsules =
+    isCapsuleAllowedForMember(
+      currentWorkspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+      userId,
+    ) &&
+    vaults.some((vault) => workspaceVaultProfilesState.canUseFunction(vault.id, "create_capsules"));
   const permittedWorkspaceNavItems = workspaceNavItems.map((item) =>
     item.to === CAPSULES_PATH && !canCreateCapsules
       ? { ...item, onAddPointerDown: undefined }
