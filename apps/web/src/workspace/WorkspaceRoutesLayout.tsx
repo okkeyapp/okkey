@@ -947,7 +947,10 @@ function WorkspaceShellWithItems({
             title={title}
             description={description}
             hideShellMainHeader={
-              isShellNotFound || isSettingsPathname(pathname) || pathname === CAPSULES_PATH
+              isShellNotFound ||
+              isSettingsPathname(pathname) ||
+              pathname === CAPSULES_PATH ||
+              pathname === MONITORING_PATH
             }
             mainColumnLayout={pathname === ITEMS_PATH ? "items-two-pane" : "single"}
             workspaceNavItems={permittedWorkspaceNavItems}

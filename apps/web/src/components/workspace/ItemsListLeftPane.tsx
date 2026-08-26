@@ -46,9 +46,15 @@ import {
 import {
   applyWorkspaceSearchToParams,
   FILTER_QUERY_ARCHIVED,
+  FILTER_QUERY_COMPROMISED,
   FILTER_QUERY_DELETED,
   FILTER_QUERY_FAVOURITES,
   FILTER_QUERY_PARAM,
+  FILTER_QUERY_PASSKEY_GAP,
+  FILTER_QUERY_REUSED,
+  FILTER_QUERY_STALE,
+  FILTER_QUERY_TWO_FACTOR_GAP,
+  FILTER_QUERY_WEAK,
   FOLDER_QUERY_PARAM,
   CATEGORY_QUERY_PARAM,
   ITEM_QUERY_PARAM,
@@ -59,9 +65,12 @@ import {
   SORT_QUERY_DATE_DESC,
   SORT_QUERY_PARAM,
   VAULT_QUERY_PARAM,
+  WORKSPACE_QUERY_PARAM,
   itemsPathWithCategoryMerged,
   withoutOpenItemQueryParam,
 } from "../../routes/paths";
+import { monitoringIssueItemIds } from "../../monitoring/analytics";
+import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
 
 const itemsPanelSelectTriggerClassName = cn(
   "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
@@ -521,8 +530,34 @@ function IconClose16({ className }: { className?: string }) {
   );
 }
 
-export type ItemsListFilter = "all" | "favorites" | "archived" | "recently_deleted";
+export type ItemsListFilter =
+  | "all"
+  | "favorites"
+  | "archived"
+  | "recently_deleted"
+  | "reused"
+  | "weak"
+  | "stale"
+  | "compromised"
+  | "2fa-gap"
+  | "passkey-gap";
 export type ItemsListSort = "name_asc" | "name_desc" | "date_asc" | "date_desc";
+
+function isMonitoringListFilter(
+  filter: ItemsListFilter,
+): filter is Extract<
+  ItemsListFilter,
+  "reused" | "weak" | "stale" | "compromised" | "2fa-gap" | "passkey-gap"
+> {
+  return (
+    filter === "reused" ||
+    filter === "weak" ||
+    filter === "stale" ||
+    filter === "compromised" ||
+    filter === "2fa-gap" ||
+    filter === "passkey-gap"
+  );
+}
 
 function filterIconForValue(value: ItemsListFilter, className?: string) {
   const c = cn("shrink-0", className);
@@ -535,6 +570,13 @@ function filterIconForValue(value: ItemsListFilter, className?: string) {
       return <FilterIconArchived className={c} />;
     case "recently_deleted":
       return <FilterIconDeleted className={c} />;
+    case "reused":
+    case "weak":
+    case "stale":
+    case "compromised":
+    case "2fa-gap":
+    case "passkey-gap":
+      return <FilterIconAllRecords className={c} />;
     default: {
       const _ex: never = value;
       return _ex;
@@ -552,6 +594,13 @@ function filterSecondaryGlyph(filter: ItemsListFilter): ReactNode {
       return <FilterIconArchived className={c} />;
     case "recently_deleted":
       return <FilterIconDeleted className={c} />;
+    case "reused":
+    case "weak":
+    case "stale":
+    case "compromised":
+    case "2fa-gap":
+    case "passkey-gap":
+      return <FilterIconAllRecords className={c} />;
     case "all":
       return null;
     default: {
@@ -595,6 +644,24 @@ function filterFromSearchParam(raw: string): ItemsListFilter {
   if (x === FILTER_QUERY_DELETED || x === "deleted") {
     return "recently_deleted";
   }
+  if (x === FILTER_QUERY_REUSED) {
+    return "reused";
+  }
+  if (x === FILTER_QUERY_WEAK) {
+    return "weak";
+  }
+  if (x === FILTER_QUERY_STALE) {
+    return "stale";
+  }
+  if (x === FILTER_QUERY_COMPROMISED) {
+    return "compromised";
+  }
+  if (x === FILTER_QUERY_TWO_FACTOR_GAP) {
+    return "2fa-gap";
+  }
+  if (x === FILTER_QUERY_PASSKEY_GAP) {
+    return "passkey-gap";
+  }
   return "all";
 }
 
@@ -608,6 +675,18 @@ function filterToSearchParam(filter: ItemsListFilter): string | null {
       return FILTER_QUERY_ARCHIVED;
     case "recently_deleted":
       return FILTER_QUERY_DELETED;
+    case "reused":
+      return FILTER_QUERY_REUSED;
+    case "weak":
+      return FILTER_QUERY_WEAK;
+    case "stale":
+      return FILTER_QUERY_STALE;
+    case "compromised":
+      return FILTER_QUERY_COMPROMISED;
+    case "2fa-gap":
+      return FILTER_QUERY_TWO_FACTOR_GAP;
+    case "passkey-gap":
+      return FILTER_QUERY_PASSKEY_GAP;
     default: {
       const _ex: never = filter;
       return _ex;
@@ -736,7 +815,11 @@ function compareTwoItemsSort(a: ItemsListRecord, b: ItemsListRecord, sort: Items
   }
 }
 
-function filterItems(items: readonly ItemsListRecord[], filter: ItemsListFilter): ItemsListRecord[] {
+function filterItems(
+  items: readonly ItemsListRecord[],
+  filter: ItemsListFilter,
+  monitoringItemIds?: ReadonlySet<string>,
+): ItemsListRecord[] {
   switch (filter) {
     case "all":
       return items.filter((r) => !r.deleted && !r.archived);
@@ -746,6 +829,13 @@ function filterItems(items: readonly ItemsListRecord[], filter: ItemsListFilter)
       return items.filter((r) => !r.deleted && r.archived);
     case "recently_deleted":
       return items.filter((r) => r.deleted);
+    case "reused":
+    case "weak":
+    case "stale":
+    case "compromised":
+    case "2fa-gap":
+    case "passkey-gap":
+      return items.filter((r) => !r.deleted && !r.archived && (monitoringItemIds?.has(r.id) ?? false));
     default: {
       const _ex: never = filter;
       return _ex;
@@ -861,6 +951,8 @@ export default function ItemsListLeftPane({
   } = useWorkspaceItems();
   const { canPutItem, canDeleteItem, canUseFunction } = useWorkspaceVaultProfiles();
   const [searchParams, setSearchParams] = useSearchParams();
+  const workspaceId = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
+  const monitoringReport = useMonitoringReport(workspaceId);
   const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
@@ -868,6 +960,13 @@ export default function ItemsListLeftPane({
   const filter = filterFromSearchParam(searchParams.get(FILTER_QUERY_PARAM) ?? "");
   const sort = sortFromSearchParam(searchParams.get(SORT_QUERY_PARAM) ?? "");
   const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
+
+  const monitoringItemIds = useMemo(() => {
+    if (!isMonitoringListFilter(filter)) {
+      return undefined;
+    }
+    return new Set(monitoringIssueItemIds(monitoringReport.report, filter));
+  }, [filter, monitoringReport.report]);
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -967,7 +1066,7 @@ export default function ItemsListLeftPane({
       const inVault = filterRowsByVault(records, vaultQ);
       pool = filterRowsByFolder(inVault, folderQ);
     }
-    const filtered = filterItems(pool, filter);
+    const filtered = filterItems(pool, filter, monitoringItemIds);
     const sorted = searchTrim
       ? [...filtered].sort((a, b) => {
           const ds = scoreItemsListRecordSearch(b, searchTrim) - scoreItemsListRecordSearch(a, searchTrim);
@@ -978,7 +1077,7 @@ export default function ItemsListLeftPane({
         })
       : sortItems(filtered, sort);
     return buildSections(sorted, sort, locale);
-  }, [categoryQ, filter, sort, locale, vaultQ, folderQ, records, searchQ]);
+  }, [categoryQ, filter, sort, locale, vaultQ, folderQ, records, searchQ, monitoringItemIds]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
@@ -1314,7 +1413,17 @@ export default function ItemsListLeftPane({
                           : folderTitle
                         : categoryQ
                           ? (categoryLabel ?? categoryQ)
-                        : t(`web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`)}
+                        : t(
+                            `web.items.filter.${
+                              filter === "recently_deleted"
+                                ? "recentlyDeleted"
+                                : filter === "2fa-gap"
+                                  ? "twoFactorGap"
+                                  : filter === "passkey-gap"
+                                    ? "passkeyGap"
+                                    : filter
+                            }`,
+                          )}
                 </span>
                 <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
               </button>

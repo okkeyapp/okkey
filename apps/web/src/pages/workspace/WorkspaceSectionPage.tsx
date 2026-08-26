@@ -9,6 +9,7 @@ import ItemDetailCard from "../../components/items/ItemDetailCard";
 import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
 import CapsulesPage from "../capsules/CapsulesPage";
+import MonitoringPage from "../monitoring/MonitoringPage";
 import { useLocale } from "../../locale/LocaleContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
@@ -17,6 +18,7 @@ import {
   ITEM_QUERY_PARAM,
   ITEMS_PATH,
   CAPSULES_PATH,
+  MONITORING_PATH,
   isSettingsPathname,
   VAULT_QUERY_PARAM,
 } from "../../routes/paths";
@@ -55,6 +57,7 @@ export default function WorkspaceSectionPage() {
   const itemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const isItemsRoute = location.pathname === ITEMS_PATH;
   const isCapsulesRoute = location.pathname === CAPSULES_PATH;
+  const isMonitoringRoute = location.pathname === MONITORING_PATH;
   const isSettingsRoute = isSettingsPathname(location.pathname);
   const capsulesAllowed = isCapsuleAllowedForMember(
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
@@ -98,6 +101,15 @@ export default function WorkspaceSectionPage() {
         workspaceId={workspaceId}
         workspaceName={workspace?.name ?? t("web.nav.capsules")}
         canCreate={vaults.some((vault) => canUseFunction(vault.id, "create_capsules"))}
+      />
+    );
+  }
+
+  if (isMonitoringRoute) {
+    return (
+      <MonitoringPage
+        workspaceId={workspaceId}
+        workspaceName={workspace?.name ?? t("web.nav.monitoring")}
       />
     );
   }
