@@ -2,6 +2,8 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 
 export const WORKSPACE_PERMISSION_RESOURCES = [
   "settings",
+  "settings_items",
+  "settings_capsules",
   "roles",
   "profiles",
   "members",
@@ -39,9 +41,21 @@ export class WorkspacePermissionError extends Error {
 const FULL_CELL: WorkspaceResourcePermission = { get: 1, post: 1, put: 1, delete: 1 };
 const EMPTY_CELL: WorkspaceResourcePermission = { get: 0, post: 0, put: 0, delete: 0 };
 
+/** Nested settings pages use GET/PUT checkboxes only. */
+function checkboxCellFromSettings(settings: WorkspaceResourcePermission): WorkspaceResourcePermission {
+  return {
+    get: settings.get >= 1 ? 1 : 0,
+    post: 0,
+    put: settings.put >= 1 ? 1 : 0,
+    delete: 0,
+  };
+}
+
 export function fullPermissionsMatrix(): WorkspacePermissionsMatrix {
   return {
     settings: { ...FULL_CELL },
+    settings_items: { ...FULL_CELL, post: 0, delete: 0 },
+    settings_capsules: { ...FULL_CELL, post: 0, delete: 0 },
     roles: { ...FULL_CELL },
     profiles: { ...FULL_CELL },
     members: { ...FULL_CELL },
@@ -53,6 +67,8 @@ export function fullPermissionsMatrix(): WorkspacePermissionsMatrix {
 export function emptyPermissionsMatrix(): WorkspacePermissionsMatrix {
   return {
     settings: { ...EMPTY_CELL },
+    settings_items: { ...EMPTY_CELL },
+    settings_capsules: { ...EMPTY_CELL },
     roles: { ...EMPTY_CELL },
     profiles: { ...EMPTY_CELL },
     members: { ...EMPTY_CELL },
@@ -93,6 +109,13 @@ export function parsePermissionsMatrix(raw: unknown): WorkspacePermissionsMatrix
       put: asLevel012(c.put),
       delete: asLevel012(c.delete),
     };
+  }
+  // Legacy roles without nested settings resources inherit from `settings`.
+  if (!("settings_items" in record)) {
+    base.settings_items = checkboxCellFromSettings(base.settings);
+  }
+  if (!("settings_capsules" in record)) {
+    base.settings_capsules = checkboxCellFromSettings(base.settings);
   }
   return base;
 }

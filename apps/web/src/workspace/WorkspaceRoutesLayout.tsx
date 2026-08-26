@@ -1,5 +1,6 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
+import { normalizeWorkspacePermissionsMatrix } from "@okkey/types";
 import {
   DEFAULT_ALLOWED_FILE_EXTENSIONS,
   DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
@@ -578,7 +579,7 @@ export default function WorkspaceRoutesLayout() {
       try {
         const result = await core.getWorkspaceMePermissions(resolvedWorkspaceId);
         if (!cancelled) {
-          setWorkspacePermissions(result.permissions);
+          setWorkspacePermissions(normalizeWorkspacePermissionsMatrix(result.permissions));
         }
       } catch {
         if (!cancelled) {

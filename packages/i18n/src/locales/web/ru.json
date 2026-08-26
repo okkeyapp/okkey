@@ -876,6 +876,8 @@
   "web.workspaceSettings.roles.permissions.introSuffix": ".",
   "web.workspaceSettings.roles.permissions.nameColumn": "Название",
   "web.workspaceSettings.roles.permissions.settings": "Основное",
+  "web.workspaceSettings.roles.permissions.settings_items": "Записи",
+  "web.workspaceSettings.roles.permissions.settings_capsules": "Капсулы",
   "web.workspaceSettings.roles.permissions.roles": "Роли",
   "web.workspaceSettings.roles.permissions.profiles": "Профили",
   "web.workspaceSettings.roles.permissions.members": "Участники",

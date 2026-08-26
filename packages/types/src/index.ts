@@ -196,6 +196,8 @@ export type WorkspacePermissionPostLevel = 0 | 1;
 
 export type WorkspacePermissionResourceId =
   | "settings"
+  | "settings_items"
+  | "settings_capsules"
   | "roles"
   | "profiles"
   | "members"
@@ -251,6 +253,8 @@ export function permissionAllowsObject(
 
 export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionResourceId[] = [
   "settings",
+  "settings_items",
+  "settings_capsules",
   "roles",
   "profiles",
   "members",
@@ -258,6 +262,68 @@ export const WORKSPACE_PERMISSION_RESOURCE_IDS: readonly WorkspacePermissionReso
   "billing",
 ] as const;
 
+const EMPTY_PERMISSION_CELL: WorkspaceResourcePermissionDto = {
+  get: 0,
+  post: 0,
+  put: 0,
+  delete: 0,
+};
+
+function inheritSettingsNestedCell(
+  settings: WorkspaceResourcePermissionDto,
+): WorkspaceResourcePermissionDto {
+  return {
+    get: settings.get >= 1 ? 1 : 0,
+    post: 0,
+    put: settings.put >= 1 ? 1 : 0,
+    delete: 0,
+  };
+}
+
+/**
+ * Fills missing permission resources. Legacy matrices without
+ * `settings_items` / `settings_capsules` inherit those cells from `settings`.
+ */
+export function normalizeWorkspacePermissionsMatrix(
+  input: Partial<WorkspacePermissionsMatrixDto> | WorkspacePermissionsMatrixDto | null | undefined,
+): WorkspacePermissionsMatrixDto {
+  const normalized = {
+    settings: { ...EMPTY_PERMISSION_CELL },
+    settings_items: { ...EMPTY_PERMISSION_CELL },
+    settings_capsules: { ...EMPTY_PERMISSION_CELL },
+    roles: { ...EMPTY_PERMISSION_CELL },
+    profiles: { ...EMPTY_PERMISSION_CELL },
+    members: { ...EMPTY_PERMISSION_CELL },
+    vaults: { ...EMPTY_PERMISSION_CELL },
+    billing: { ...EMPTY_PERMISSION_CELL },
+  } satisfies WorkspacePermissionsMatrixDto;
+
+  if (!input || typeof input !== "object") {
+    return normalized;
+  }
+
+  for (const resource of WORKSPACE_PERMISSION_RESOURCE_IDS) {
+    const cell = input[resource];
+    if (!cell || typeof cell !== "object") {
+      continue;
+    }
+    normalized[resource] = {
+      get: cell.get,
+      post: cell.post,
+      put: cell.put,
+      delete: cell.delete,
+    };
+  }
+
+  if (!input.settings_items) {
+    normalized.settings_items = inheritSettingsNestedCell(normalized.settings);
+  }
+  if (!input.settings_capsules) {
+    normalized.settings_capsules = inheritSettingsNestedCell(normalized.settings);
+  }
+
+  return normalized;
+}
 
 /** `GET /invitations/:token` success body (public). */
 export interface InvitationPreviewDto {

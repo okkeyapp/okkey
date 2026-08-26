@@ -29,14 +29,16 @@ export default function WorkspaceSettingsSidebar({
   allowedSections,
 }: WorkspaceSettingsSidebarProps) {
   const allowed = new Set(allowedSections ?? WORKSPACE_SETTINGS_TOP_LEVEL_SECTIONS);
-  const topLevelSections = WORKSPACE_SETTINGS_TOP_LEVEL_SECTIONS.filter((section) =>
-    allowed.has(section),
-  );
   const generalSubsections = WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS.filter((section) =>
     allowed.has(section),
   );
-  const showGeneralSubsections =
-    allowed.has("general") && generalSubsections.length > 0;
+  const showGeneralGroup = allowed.has("general") || generalSubsections.length > 0;
+  const topLevelSections = WORKSPACE_SETTINGS_TOP_LEVEL_SECTIONS.filter((section) => {
+    if (section === "general") {
+      return showGeneralGroup;
+    }
+    return allowed.has(section);
+  });
 
   return (
     <nav
@@ -47,20 +49,30 @@ export default function WorkspaceSettingsSidebar({
         {topLevelSections.map((section) => {
           const Icon = workspaceSettingsSectionIcon(section);
           const sectionActive = section === activeSection;
-          const showSubsections = section === "general" && showGeneralSubsections;
+          const showSubsections = section === "general" && generalSubsections.length > 0;
+          const canOpenGeneral = section !== "general" || allowed.has("general");
 
           return (
             <li key={section}>
-              <Link
-                to={sectionHref(section)}
-                className={navLinkClassName(sectionActive)}
-                aria-current={sectionActive ? "page" : undefined}
-              >
-                <Icon className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">
-                  {t(`web.workspaceSettings.sections.${section}`)}
-                </span>
-              </Link>
+              {canOpenGeneral ? (
+                <Link
+                  to={sectionHref(section)}
+                  className={navLinkClassName(sectionActive)}
+                  aria-current={sectionActive ? "page" : undefined}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {t(`web.workspaceSettings.sections.${section}`)}
+                  </span>
+                </Link>
+              ) : (
+                <div className={cn(navLinkClassName(false), "cursor-default hover:bg-transparent")}>
+                  <Icon className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {t(`web.workspaceSettings.sections.${section}`)}
+                  </span>
+                </div>
+              )}
 
               {showSubsections ? (
                 <div className="relative mt-1">

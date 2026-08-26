@@ -876,6 +876,8 @@
   "web.workspaceSettings.roles.permissions.introSuffix": ".",
   "web.workspaceSettings.roles.permissions.nameColumn": "Name",
   "web.workspaceSettings.roles.permissions.settings": "General",
+  "web.workspaceSettings.roles.permissions.settings_items": "Items",
+  "web.workspaceSettings.roles.permissions.settings_capsules": "Capsules",
   "web.workspaceSettings.roles.permissions.roles": "Roles",
   "web.workspaceSettings.roles.permissions.profiles": "Profiles",
   "web.workspaceSettings.roles.permissions.members": "Members",

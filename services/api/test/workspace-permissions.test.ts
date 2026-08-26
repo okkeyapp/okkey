@@ -10,15 +10,28 @@ import {
   permissionAllowsPost,
 } from "../src/workspace-roles/permissions.ts";
 
-test("parsePermissionsMatrix reads members cells", () => {
+test("parsePermissionsMatrix inherits nested settings from settings when missing", () => {
   const matrix = parsePermissionsMatrix({
+    settings: { get: 1, post: 0, put: 1, delete: 0 },
     members: { get: 1, post: 1, put: 0, delete: 2 },
   });
-  assert.equal(matrix.members.get, 1);
-  assert.equal(matrix.members.post, 1);
-  assert.equal(matrix.members.put, 0);
+  assert.equal(matrix.settings_items.get, 1);
+  assert.equal(matrix.settings_items.put, 1);
+  assert.equal(matrix.settings_items.post, 0);
+  assert.equal(matrix.settings_capsules.get, 1);
+  assert.equal(matrix.settings_capsules.put, 1);
   assert.equal(matrix.members.delete, 2);
-  assert.equal(matrix.roles.get, 0);
+});
+
+test("parsePermissionsMatrix keeps explicit nested settings zeros", () => {
+  const matrix = parsePermissionsMatrix({
+    settings: { get: 1, post: 0, put: 1, delete: 0 },
+    settings_items: { get: 0, post: 0, put: 0, delete: 0 },
+    settings_capsules: { get: 1, post: 0, put: 0, delete: 0 },
+  });
+  assert.equal(matrix.settings_items.get, 0);
+  assert.equal(matrix.settings_capsules.get, 1);
+  assert.equal(matrix.settings_capsules.put, 0);
 });
 
 test("full and empty permission matrices", () => {

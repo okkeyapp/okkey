@@ -2,7 +2,9 @@ import type { WorkspacesRepository } from "../storage/repositories.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import {
   assertWorkspacePermission,
+  resolveWorkspacePermissions,
   WorkspacePermissionError,
+  type WorkspacePermissionResource,
 } from "../workspace-roles/permissions.ts";
 import {
   MAX_MAX_FILE_SIZE_MB,
@@ -74,7 +76,7 @@ export class WorkspaceSettingsService {
 
   async getSettings(workspaceId: string, userId: string): Promise<WorkspaceSettingsSnapshot> {
     const workspace = await this.requireAccessibleWorkspace(workspaceId, userId);
-    await this.assertSettings(workspaceId, userId, "get");
+    await this.assertAnySettingsGet(workspaceId, userId);
     return toSettingsSnapshot(workspace);
   }
 
@@ -84,7 +86,7 @@ export class WorkspaceSettingsService {
     patch: WorkspaceSettingsPatch,
   ): Promise<WorkspaceSettingsSnapshot> {
     const workspace = await this.requireAccessibleWorkspace(workspaceId, userId);
-    await this.assertSettings(workspaceId, userId, "put");
+    await this.assertSettingsPatch(workspaceId, userId, patch);
 
     const update: Parameters<WorkspacesRepository["updateGeneralSettings"]>[1] = {};
     if (patch.name !== undefined) {
@@ -138,13 +140,47 @@ export class WorkspaceSettingsService {
     }
   }
 
-  private async assertSettings(
+  private async assertAnySettingsGet(workspaceId: string, userId: string): Promise<void> {
+    try {
+      const matrix = await resolveWorkspacePermissions(this.db, workspaceId, userId);
+      if (
+        matrix.settings.get < 1 &&
+        matrix.settings_items.get < 1 &&
+        matrix.settings_capsules.get < 1
+      ) {
+        throw new WorkspacePermissionError("ACCESS_DENIED", 403, "access denied");
+      }
+    } catch (error) {
+      if (error instanceof WorkspacePermissionError) {
+        throw new WorkspaceSettingsServiceError(error.code, error.statusCode, error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async assertSettingsPatch(
     workspaceId: string,
     userId: string,
-    action: "get" | "put",
+    patch: WorkspaceSettingsPatch,
   ): Promise<void> {
+    const touches = settingsPatchResourceTouches(patch);
+    const resources: WorkspacePermissionResource[] = [];
+    if (touches.settings) {
+      resources.push("settings");
+    }
+    if (touches.settings_items) {
+      resources.push("settings_items");
+    }
+    if (touches.settings_capsules) {
+      resources.push("settings_capsules");
+    }
+    if (resources.length === 0) {
+      return;
+    }
     try {
-      await assertWorkspacePermission(this.db, workspaceId, userId, "settings", action);
+      for (const resource of resources) {
+        await assertWorkspacePermission(this.db, workspaceId, userId, resource, "put");
+      }
     } catch (error) {
       if (error instanceof WorkspacePermissionError) {
         throw new WorkspaceSettingsServiceError(error.code, error.statusCode, error.message);
@@ -199,6 +235,26 @@ function toSettingsSnapshot(workspace: {
     tileColor: workspace.tileColor,
     logoVaultId: workspace.logoVaultId,
     logoAttachmentId: workspace.logoAttachmentId,
+  };
+}
+
+function settingsPatchResourceTouches(patch: WorkspaceSettingsPatch): {
+  settings: boolean;
+  settings_items: boolean;
+  settings_capsules: boolean;
+} {
+  return {
+    settings:
+      patch.name !== undefined ||
+      patch.tileColor !== undefined ||
+      patch.logoVaultId !== undefined ||
+      patch.logoAttachmentId !== undefined,
+    settings_items:
+      patch.deletedItemsRetentionDays !== undefined ||
+      patch.allowedFileExtensions !== undefined ||
+      patch.maxFileSizeMb !== undefined ||
+      patch.filesInItemsEnabled !== undefined,
+    settings_capsules: patch.capsulePolicies !== undefined,
   };
 }
 

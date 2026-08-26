@@ -3,7 +3,7 @@ import type {
   WorkspacePermissionsMatrixDto,
   WorkspaceResourcePermissionDto,
 } from "@okkey/types";
-import { permissionAllowsGet } from "@okkey/types";
+import { normalizeWorkspacePermissionsMatrix, permissionAllowsGet } from "@okkey/types";
 
 import type { WorkspaceSettingsSectionId } from "./workspaceSettingsCatalog";
 import { WORKSPACE_SETTINGS_SECTIONS } from "./workspaceSettingsMenu";
@@ -14,9 +14,11 @@ export function settingsSectionPermissionResource(
 ): WorkspacePermissionResourceId {
   switch (section) {
     case "general":
-    case "items":
-    case "capsules":
       return "settings";
+    case "items":
+      return "settings_items";
+    case "capsules":
+      return "settings_capsules";
     case "roles":
       return "roles";
     case "profiles":
@@ -38,7 +40,7 @@ export function settingsSectionPermissionCell(
   if (!matrix) {
     return null;
   }
-  return matrix[settingsSectionPermissionResource(section)];
+  return normalizeWorkspacePermissionsMatrix(matrix)[settingsSectionPermissionResource(section)];
 }
 
 export function canGetSettingsSection(

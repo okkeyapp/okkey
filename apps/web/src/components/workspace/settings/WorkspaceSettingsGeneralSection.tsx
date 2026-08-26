@@ -43,7 +43,9 @@ import { WORKSPACES_PATH } from "../../../routes/paths";
 import WorkspaceLogoTile from "../WorkspaceLogoTile";
 import DeleteWorkspaceConfirmPopup from "./DeleteWorkspaceConfirmPopup";
 import FileExtensionTagsInput from "./FileExtensionTagsInput";
+import WorkspaceSettingsCapsulesSkeleton from "./WorkspaceSettingsCapsulesSkeleton";
 import WorkspaceSettingsGeneralSkeleton from "./WorkspaceSettingsGeneralSkeleton";
+import WorkspaceSettingsItemsSkeleton from "./WorkspaceSettingsItemsSkeleton";
 import WorkspaceTileColorPicker from "./WorkspaceTileColorPicker";
 import {
   DEFAULT_WORKSPACE_TILE_COLOR,
@@ -453,22 +455,11 @@ export default function WorkspaceSettingsGeneralSection({
   }
 
   if (initialLoading) {
-    if (panel !== "general") {
-      return (
-        <div
-          className="flex w-full flex-col gap-6"
-          role="status"
-          aria-busy="true"
-          aria-label={t("web.workspaceSettings.general.loading")}
-        >
-          <div className="h-7 w-28 animate-pulse rounded-md bg-muted" />
-          <div className="flex flex-col gap-4">
-            <div className="h-5 w-48 max-w-full animate-pulse rounded-md bg-muted" />
-            <div className="h-5 w-full max-w-md animate-pulse rounded-md bg-muted" />
-            <div className="h-9 w-full max-w-[150px] animate-pulse rounded-md bg-muted sm:self-end" />
-          </div>
-        </div>
-      );
+    if (panel === "items") {
+      return <WorkspaceSettingsItemsSkeleton label={t("web.workspaceSettings.general.loading")} />;
+    }
+    if (panel === "capsules") {
+      return <WorkspaceSettingsCapsulesSkeleton label={t("web.workspaceSettings.general.loading")} />;
     }
     return (
       <WorkspaceSettingsGeneralSkeleton
