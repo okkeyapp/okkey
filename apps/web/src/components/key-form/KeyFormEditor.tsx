@@ -1882,9 +1882,7 @@ function SortableField({
       copyHoverActiveClassName={
         section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
       }
-      copyTextClassName={
-        section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
-      }
+      copyTextClassName={section.variant === "additional" ? "bg-secondary" : undefined}
       onCopyAction={onCopyAction}
       onLabelChange={onLabelChange}
       onValueChange={onValueChange}
@@ -3569,9 +3567,7 @@ export function KeyFormEditor({
         copyHoverActiveClassName={
           section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
         }
-        copyTextClassName={
-          section.variant === "additional" ? mutedSurfaceActiveBgClassName : "bg-secondary"
-        }
+        copyTextClassName={section.variant === "additional" ? "bg-secondary" : undefined}
         onCopyAction={field.type === "url" ? openWebsite : undefined}
       />
     );

@@ -191,13 +191,16 @@ function OpenFileIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Matches field `border-border` so the chip reads on white/card section hover fills. */
+const keyFieldOverlayActionBgClassName = "bg-border";
+
 const keyFieldOverlayActionClassName = cn(
   keyFormFieldSurfaceTransitionClassName,
-  "absolute left-1/2 bottom-full block box-content w-max -translate-x-1/2 rounded-t-md border-x border-t border-border border-b-0 pt-1 group-focus-within/key-field:border-x-accent group-focus-within/key-field:border-t-accent group-focus-within/key-field:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] group-focus-within/key-field:[clip-path:inset(-20px_-20px_0_-20px)]",
+  "absolute left-1/2 top-2 block w-max -translate-x-1/2 rounded-[10px]",
 );
 
 const keyFieldOverlayActionRowClassName =
-  "flex h-[16px] shrink-0 items-center gap-1 px-3 text-[12px] leading-none [&_svg]:!size-3 [&_svg]:shrink-0";
+  "flex h-5 shrink-0 items-center gap-1 px-2 text-[12px] leading-none [&_svg]:!size-3 [&_svg]:shrink-0";
 
 const keyFieldOverlayTriggerClassName =
   "pointer-events-none absolute inset-0 z-10 invisible group-hover/key-field:visible group-hover/key-field:pointer-events-auto focus-visible:outline-none";
@@ -1021,7 +1024,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             <span
               className={cn(
                 keyFieldOverlayActionClassName,
-                copyTextClassName ?? "bg-secondary",
+                copyTextClassName ?? keyFieldOverlayActionBgClassName,
               )}
             >
               <span className={keyFieldOverlayActionRowClassName}>
@@ -1045,7 +1048,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             <span
               className={cn(
                 keyFieldOverlayActionClassName,
-                copyTextClassName ?? "bg-secondary",
+                copyTextClassName ?? keyFieldOverlayActionBgClassName,
               )}
             >
               <span className={keyFieldOverlayActionRowClassName}>
@@ -1066,7 +1069,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
             <span
               className={cn(
                 keyFieldOverlayActionClassName,
-                copyTextClassName ?? "bg-secondary",
+                copyTextClassName ?? keyFieldOverlayActionBgClassName,
               )}
             >
               <span className={keyFieldOverlayActionRowClassName}>
