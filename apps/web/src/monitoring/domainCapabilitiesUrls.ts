@@ -1,4 +1,4 @@
-const DEFAULT_REPO = "okkey/domain-capabilities";
+const DEFAULT_REPO = "okkeyapp/domain-capabilities";
 const DEFAULT_BRANCH = "main";
 
 function repoFromEnv(): string {
