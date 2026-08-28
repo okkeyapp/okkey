@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useWorkspaceItems } from "../items/WorkspaceItemsContext";
 import { computeMonitoringAnalytics, type MonitoringAnalytics } from "./analytics";
 import { findCompromisedItemIds } from "./compromisedPasswords";
+import { getCachedDomainCapabilitiesEntries } from "./domainCapabilitiesCache";
+import type { DomainCapabilitiesEntries } from "./domainCapabilitiesTypes";
 import { extractItemPasswordEntries } from "./extractPasswords";
 import {
   loadScoreHistory,
@@ -35,7 +37,10 @@ const EMPTY_REPORT: MonitoringAnalytics = {
   analyzedItemIds: [],
 };
 
-export function useMonitoringReport(workspaceId: string): MonitoringReportState {
+export function useMonitoringReport(
+  workspaceId: string,
+  catalogEntries?: DomainCapabilitiesEntries | null,
+): MonitoringReportState {
   const { items, bootstrapped, loading: itemsLoading } = useWorkspaceItems();
   const [compromisedItemIds, setCompromisedItemIds] = useState<string[]>([]);
   const [compromisedChecking, setCompromisedChecking] = useState(false);
@@ -43,9 +48,18 @@ export function useMonitoringReport(workspaceId: string): MonitoringReportState 
 
   const passwordEntries = useMemo(() => extractItemPasswordEntries(items), [items]);
 
+  const resolvedCatalogEntries = useMemo(
+    () => catalogEntries ?? getCachedDomainCapabilitiesEntries(),
+    [catalogEntries],
+  );
+
   const baseReport = useMemo(
-    () => computeMonitoringAnalytics(items, { compromisedItemIds }),
-    [items, compromisedItemIds],
+    () =>
+      computeMonitoringAnalytics(items, {
+        compromisedItemIds,
+        catalogEntries: resolvedCatalogEntries,
+      }),
+    [items, compromisedItemIds, resolvedCatalogEntries],
   );
 
   useEffect(() => {

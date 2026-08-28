@@ -63,4 +63,62 @@ describe("computeMonitoringAnalytics", () => {
     );
     expect(report.staleItemIds).toEqual(["old"]);
   });
+
+  it("detects 2FA gap when catalog supports totp but item has no totp field", () => {
+    const report = computeMonitoringAnalytics(
+      [
+        item({
+          itemId: "gh-login",
+          fields: [
+            {
+              id: "url",
+              type: "url",
+              sectionId: "s",
+              order: 0,
+              value: { kind: "url", url: "https://github.com/login" },
+            },
+            {
+              id: "pw",
+              type: "password",
+              sectionId: "s",
+              order: 1,
+              value: { kind: "password", password: "UniqueStrongPassphrase-2026!" },
+            },
+          ],
+        }),
+        item({
+          itemId: "gh-with-totp",
+          fields: [
+            {
+              id: "url",
+              type: "url",
+              sectionId: "s",
+              order: 0,
+              value: { kind: "url", url: "https://github.com" },
+            },
+            {
+              id: "pw",
+              type: "password",
+              sectionId: "s",
+              order: 1,
+              value: { kind: "password", password: "AnotherUniquePassphrase-2026!" },
+            },
+            {
+              id: "totp",
+              type: "totp",
+              sectionId: "s",
+              order: 2,
+              value: { kind: "totp", secretBase32: "JBSWY3DPEHPK3PXP" },
+            },
+          ],
+        }),
+      ],
+      {
+        catalogEntries: {
+          "github.com": { supports2FA: true, supportsPasskeys: true, sources: ["test"] },
+        },
+      },
+    );
+    expect(report.twoFactorGapItemIds).toEqual(["gh-login"]);
+  });
 });

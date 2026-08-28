@@ -5,6 +5,8 @@ import {
   toMonitoringStrengthBucket,
   type MonitoringStrengthBucket,
 } from "../lib/passwordStrength.js";
+import type { DomainCapabilitiesEntries } from "./domainCapabilitiesTypes.js";
+import { extractItemDomains, itemHasConfiguredTotp } from "./extractItemDomains.js";
 import { extractItemPasswordEntries } from "./extractPasswords.js";
 
 export const STALE_PASSWORD_AGE_MS = 365 * 24 * 60 * 60 * 1000;
@@ -20,9 +22,8 @@ export type MonitoringAnalytics = {
   reusedItemIds: string[];
   weakItemIds: string[];
   staleItemIds: string[];
-  /** Stub until domain capability catalog exists. */
+  /** Stub until passkey field type exists in item schema. */
   passkeyGapItemIds: string[];
-  /** Stub until domain capability catalog exists. */
   twoFactorGapItemIds: string[];
   compromisedItemIds: string[];
   analyzedItemIds: string[];
@@ -76,7 +77,34 @@ export type ComputeMonitoringAnalyticsOptions = {
   nowMs?: number;
   /** Item ids already known to be compromised (from async HIBP check). */
   compromisedItemIds?: readonly string[];
+  /** Domain capability catalog entries (2FA / passkeys). */
+  catalogEntries?: DomainCapabilitiesEntries | null;
 };
+
+function computeTwoFactorGapItemIds(
+  items: readonly ItemPlaintextV2[],
+  passwordItemIds: ReadonlySet<string>,
+  catalogEntries: DomainCapabilitiesEntries | null | undefined,
+): string[] {
+  if (!catalogEntries || Object.keys(catalogEntries).length === 0) {
+    return [];
+  }
+  const gapIds: string[] = [];
+  for (const item of items) {
+    if (item.deleted || item.archived || !passwordItemIds.has(item.itemId)) {
+      continue;
+    }
+    if (itemHasConfiguredTotp(item)) {
+      continue;
+    }
+    const domains = extractItemDomains(item);
+    const has2FaCapableDomain = domains.some((domain) => catalogEntries[domain]?.supports2FA === true);
+    if (has2FaCapableDomain) {
+      gapIds.push(item.itemId);
+    }
+  }
+  return uniqueIds(gapIds);
+}
 
 export function computeMonitoringAnalytics(
   items: readonly ItemPlaintextV2[],
@@ -128,6 +156,9 @@ export function computeMonitoringAnalytics(
     analyzedItemIds.includes(id),
   );
 
+  const passwordItemIds = new Set(entries.map((e) => e.itemId));
+  const twoFactorGapItemIds = computeTwoFactorGapItemIds(items, passwordItemIds, options.catalogEntries);
+
   const passwordCount = entries.length;
   const score = computeScore({
     passwordCount,
@@ -152,7 +183,7 @@ export function computeMonitoringAnalytics(
     weakItemIds: uniqueIds(weakItemIds),
     staleItemIds: uniqueIds(staleItemIds),
     passkeyGapItemIds: [],
-    twoFactorGapItemIds: [],
+    twoFactorGapItemIds,
     compromisedItemIds,
     analyzedItemIds,
   };

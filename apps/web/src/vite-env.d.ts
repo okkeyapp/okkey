@@ -48,6 +48,11 @@ interface ImportMetaEnv {
   readonly VITE_ENTERPRISE_MODULES?: string;
   /** Deployment mode for UI gates: self_hosted (default) | saas. */
   readonly VITE_DEPLOYMENT_MODE?: string;
+  /** GitHub repo slug for domain capabilities catalog (default: okkey/domain-capabilities). */
+  readonly VITE_DOMAIN_CAPABILITIES_REPO?: string;
+  readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;
+  readonly VITE_DOMAIN_CAPABILITIES_MANIFEST_URL?: string;
+  readonly VITE_DOMAIN_CAPABILITIES_CATALOG_URL?: string;
 }
 
 interface ImportMeta {

@@ -37,6 +37,8 @@ import {
   MonitoringTrendChart,
 } from "../../monitoring/MonitoringCharts";
 import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
+import { useDomainCapabilitiesCatalog } from "../../monitoring/useDomainCapabilitiesCatalog";
+import { DOMAIN_CAPABILITIES_REPO_URL } from "../../monitoring/domainCapabilitiesUrls";
 
 type MonitoringPageProps = {
   workspaceId: string;
@@ -137,7 +139,12 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
   const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0);
-  const { loading, empty, allGood, report, trendPoints } = useMonitoringReport(workspaceId);
+  const { catalog, loading: catalogLoading } = useDomainCapabilitiesCatalog(true);
+  const { loading: reportLoading, empty, allGood, report, trendPoints } = useMonitoringReport(
+    workspaceId,
+    catalog?.entries ?? null,
+  );
+  const loading = catalogLoading || reportLoading;
 
   const showLabel = t("web.monitoring.show");
 
@@ -237,6 +244,19 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
               />
             </>
           ) : null}
+
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("web.monitoring.catalogAttribution")}{" "}
+            <a
+              href={DOMAIN_CAPABILITIES_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              {t("web.monitoring.catalogRepoLink")}
+            </a>
+            . {t("web.monitoring.catalogUpstreamAttribution")}
+          </p>
         </div>
       </main>
     </div>
