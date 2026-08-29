@@ -1,6 +1,21 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
 import { coerceSecretRawToFormValue, parseKeyFieldSecretRaw } from "@okkey/ui";
 
+/**
+ * Standard password fields in Authorization-group categories only.
+ * Custom password/secret fields are excluded (often tokens or arbitrary hidden text).
+ */
+const MONITORING_PASSWORD_FIELD_IDS_BY_CATEGORY: Readonly<Record<string, ReadonlySet<string>>> = {
+  login: new Set(["password"]),
+  database: new Set(["db-password"]),
+  server: new Set(["server-password", "admin-console-password"]),
+  wifi_router: new Set([
+    "wifi-station-password",
+    "wifi-network-password",
+    "wifi-connected-storage-password",
+  ]),
+};
+
 export type ItemPasswordEntry = {
   itemId: string;
   vaultId: string;
@@ -31,7 +46,15 @@ function passwordFromField(field: ItemFieldV2): string | null {
   return null;
 }
 
-/** Active (non-deleted, non-archived) items with non-empty password-like fields. */
+function isMonitoredPasswordField(categoryId: string, fieldId: string): boolean {
+  const allowed = MONITORING_PASSWORD_FIELD_IDS_BY_CATEGORY[categoryId];
+  return allowed?.has(fieldId) ?? false;
+}
+
+/**
+ * Active Authorization items: only preset password fields (login / DB / server / Wi‑Fi).
+ * Skips credit-card PINs, API secrets, and any custom password fields.
+ */
 export function extractItemPasswordEntries(items: readonly ItemPlaintextV2[]): ItemPasswordEntry[] {
   const out: ItemPasswordEntry[] = [];
   for (const item of items) {
@@ -39,6 +62,9 @@ export function extractItemPasswordEntries(items: readonly ItemPlaintextV2[]): I
       continue;
     }
     for (const field of item.fields) {
+      if (!isMonitoredPasswordField(item.categoryId, field.id)) {
+        continue;
+      }
       const password = passwordFromField(field);
       if (!password) {
         continue;

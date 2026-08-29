@@ -49,10 +49,12 @@ import {
   FILTER_QUERY_COMPROMISED,
   FILTER_QUERY_DELETED,
   FILTER_QUERY_FAVOURITES,
+  FILTER_QUERY_MEDIUM,
   FILTER_QUERY_PARAM,
   FILTER_QUERY_PASSKEY_GAP,
   FILTER_QUERY_REUSED,
   FILTER_QUERY_STALE,
+  FILTER_QUERY_STRONG,
   FILTER_QUERY_TWO_FACTOR_GAP,
   FILTER_QUERY_WEAK,
   FOLDER_QUERY_PARAM,
@@ -536,6 +538,8 @@ export type ItemsListFilter =
   | "archived"
   | "recently_deleted"
   | "reused"
+  | "strong"
+  | "medium"
   | "weak"
   | "stale"
   | "compromised"
@@ -547,10 +551,12 @@ function isMonitoringListFilter(
   filter: ItemsListFilter,
 ): filter is Extract<
   ItemsListFilter,
-  "reused" | "weak" | "stale" | "compromised" | "2fa-gap" | "passkey-gap"
+  "reused" | "strong" | "medium" | "weak" | "stale" | "compromised" | "2fa-gap" | "passkey-gap"
 > {
   return (
     filter === "reused" ||
+    filter === "strong" ||
+    filter === "medium" ||
     filter === "weak" ||
     filter === "stale" ||
     filter === "compromised" ||
@@ -571,6 +577,8 @@ function filterIconForValue(value: ItemsListFilter, className?: string) {
     case "recently_deleted":
       return <FilterIconDeleted className={c} />;
     case "reused":
+    case "strong":
+    case "medium":
     case "weak":
     case "stale":
     case "compromised":
@@ -595,6 +603,8 @@ function filterSecondaryGlyph(filter: ItemsListFilter): ReactNode {
     case "recently_deleted":
       return <FilterIconDeleted className={c} />;
     case "reused":
+    case "strong":
+    case "medium":
     case "weak":
     case "stale":
     case "compromised":
@@ -647,6 +657,12 @@ function filterFromSearchParam(raw: string): ItemsListFilter {
   if (x === FILTER_QUERY_REUSED) {
     return "reused";
   }
+  if (x === FILTER_QUERY_STRONG) {
+    return "strong";
+  }
+  if (x === FILTER_QUERY_MEDIUM) {
+    return "medium";
+  }
   if (x === FILTER_QUERY_WEAK) {
     return "weak";
   }
@@ -677,6 +693,10 @@ function filterToSearchParam(filter: ItemsListFilter): string | null {
       return FILTER_QUERY_DELETED;
     case "reused":
       return FILTER_QUERY_REUSED;
+    case "strong":
+      return FILTER_QUERY_STRONG;
+    case "medium":
+      return FILTER_QUERY_MEDIUM;
     case "weak":
       return FILTER_QUERY_WEAK;
     case "stale":
@@ -830,6 +850,8 @@ function filterItems(
     case "recently_deleted":
       return items.filter((r) => r.deleted);
     case "reused":
+    case "strong":
+    case "medium":
     case "weak":
     case "stale":
     case "compromised":

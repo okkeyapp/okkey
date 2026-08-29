@@ -22,19 +22,19 @@ describe("computeMonitoringAnalytics", () => {
     const report = computeMonitoringAnalytics([
       item({
         itemId: "a",
-        fields: [{ id: "f1", type: "password", sectionId: "s", order: 0, value: { kind: "password", password: "password" } }],
+        fields: [{ id: "password", type: "password", sectionId: "credentials", order: 0, value: { kind: "password", password: "password" } }],
       }),
       item({
         itemId: "b",
-        fields: [{ id: "f2", type: "password", sectionId: "s", order: 0, value: { kind: "password", password: "password" } }],
+        fields: [{ id: "password", type: "password", sectionId: "credentials", order: 0, value: { kind: "password", password: "password" } }],
       }),
       item({
         itemId: "c",
         fields: [
           {
-            id: "f3",
+            id: "password",
             type: "password",
-            sectionId: "s",
+            sectionId: "credentials",
             order: 0,
             value: { kind: "password", password: "Correct-Horse-Battery-Staple-99!" },
           },
@@ -56,7 +56,7 @@ describe("computeMonitoringAnalytics", () => {
         item({
           itemId: "old",
           updatedAtMs: now - 400 * 24 * 60 * 60 * 1000,
-          fields: [{ id: "f1", type: "password", sectionId: "s", order: 0, value: { kind: "password", password: "UniqueStrongPass99!" } }],
+          fields: [{ id: "password", type: "password", sectionId: "credentials", order: 0, value: { kind: "password", password: "UniqueStrongPass99!" } }],
         }),
       ],
       { nowMs: now },
@@ -73,14 +73,14 @@ describe("computeMonitoringAnalytics", () => {
             {
               id: "url",
               type: "url",
-              sectionId: "s",
+              sectionId: "websites",
               order: 0,
               value: { kind: "url", url: "https://github.com/login" },
             },
             {
-              id: "pw",
+              id: "password",
               type: "password",
-              sectionId: "s",
+              sectionId: "credentials",
               order: 1,
               value: { kind: "password", password: "UniqueStrongPassphrase-2026!" },
             },
@@ -92,21 +92,21 @@ describe("computeMonitoringAnalytics", () => {
             {
               id: "url",
               type: "url",
-              sectionId: "s",
+              sectionId: "websites",
               order: 0,
               value: { kind: "url", url: "https://github.com" },
             },
             {
-              id: "pw",
+              id: "password",
               type: "password",
-              sectionId: "s",
+              sectionId: "credentials",
               order: 1,
               value: { kind: "password", password: "AnotherUniquePassphrase-2026!" },
             },
             {
               id: "totp",
               type: "totp",
-              sectionId: "s",
+              sectionId: "credentials",
               order: 2,
               value: { kind: "totp", secretBase32: "JBSWY3DPEHPK3PXP" },
             },
@@ -120,5 +120,30 @@ describe("computeMonitoringAnalytics", () => {
       },
     );
     expect(report.twoFactorGapItemIds).toEqual(["gh-login"]);
+  });
+
+  it("ignores credit card PIN for strength and weak counts", () => {
+    const report = computeMonitoringAnalytics([
+      item({
+        itemId: "card-1",
+        categoryId: "credit_card",
+        fields: [
+          {
+            id: "card-pin",
+            type: "pin",
+            sectionId: "credit-card",
+            order: 2,
+            value: {
+              kind: "unknown",
+              declaredType: "secret",
+              raw: { secretKind: "password", value: "1234" },
+            },
+          },
+        ],
+      }),
+    ]);
+    expect(report.passwordCount).toBe(0);
+    expect(report.weakItemIds).toEqual([]);
+    expect(report.analyzedItemIds).toEqual([]);
   });
 });

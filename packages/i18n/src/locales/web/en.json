@@ -473,6 +473,8 @@
   "web.items.filter.archived": "Archived",
   "web.items.filter.recentlyDeleted": "Recently deleted",
   "web.items.filter.reused": "Reused passwords",
+  "web.items.filter.strong": "Strong passwords",
+  "web.items.filter.medium": "Medium passwords",
   "web.items.filter.weak": "Weak passwords",
   "web.items.filter.stale": "Outdated passwords",
   "web.items.filter.compromised": "Compromised passwords",

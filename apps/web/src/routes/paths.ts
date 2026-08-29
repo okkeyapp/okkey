@@ -50,6 +50,8 @@ export const FILTER_QUERY_FAVOURITES = "favourites";
 export const FILTER_QUERY_ARCHIVED = "archived";
 export const FILTER_QUERY_DELETED = "deleted";
 export const FILTER_QUERY_REUSED = "reused";
+export const FILTER_QUERY_STRONG = "strong";
+export const FILTER_QUERY_MEDIUM = "medium";
 export const FILTER_QUERY_WEAK = "weak";
 export const FILTER_QUERY_STALE = "stale";
 export const FILTER_QUERY_COMPROMISED = "compromised";
@@ -58,6 +60,8 @@ export const FILTER_QUERY_PASSKEY_GAP = "passkey-gap";
 
 export type MonitoringItemsFilter =
   | typeof FILTER_QUERY_REUSED
+  | typeof FILTER_QUERY_STRONG
+  | typeof FILTER_QUERY_MEDIUM
   | typeof FILTER_QUERY_WEAK
   | typeof FILTER_QUERY_STALE
   | typeof FILTER_QUERY_COMPROMISED
@@ -68,6 +72,8 @@ export function isMonitoringItemsFilter(raw: string): raw is MonitoringItemsFilt
   const x = raw.trim().toLowerCase();
   return (
     x === FILTER_QUERY_REUSED ||
+    x === FILTER_QUERY_STRONG ||
+    x === FILTER_QUERY_MEDIUM ||
     x === FILTER_QUERY_WEAK ||
     x === FILTER_QUERY_STALE ||
     x === FILTER_QUERY_COMPROMISED ||

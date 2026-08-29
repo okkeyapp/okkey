@@ -20,6 +20,8 @@ export type MonitoringAnalytics = {
   score: number;
   scoreLabelKey: MonitoringScoreLabelKey;
   reusedItemIds: string[];
+  strongItemIds: string[];
+  mediumItemIds: string[];
   weakItemIds: string[];
   staleItemIds: string[];
   /**
@@ -123,6 +125,8 @@ export function computeMonitoringAnalytics(
     medium: 0,
     weak: 0,
   };
+  const strongItemIds: string[] = [];
+  const mediumItemIds: string[] = [];
   const weakItemIds: string[] = [];
   const staleItemIds: string[] = [];
   const passwordsByValue = new Map<string, string[]>();
@@ -134,7 +138,11 @@ export function computeMonitoringAnalytics(
     }
     const bucket = toMonitoringStrengthBucket(strength.labelKey);
     strengthCounts[bucket] += 1;
-    if (bucket === "weak") {
+    if (bucket === "strong") {
+      strongItemIds.push(entry.itemId);
+    } else if (bucket === "medium") {
+      mediumItemIds.push(entry.itemId);
+    } else {
       weakItemIds.push(entry.itemId);
     }
     if (nowMs - entry.updatedAtMs >= STALE_PASSWORD_AGE_MS) {
@@ -184,6 +192,8 @@ export function computeMonitoringAnalytics(
     score,
     scoreLabelKey: scoreLabelKey(score),
     reusedItemIds: uniqueIds(reusedItemIds),
+    strongItemIds: uniqueIds(strongItemIds),
+    mediumItemIds: uniqueIds(mediumItemIds),
     weakItemIds: uniqueIds(weakItemIds),
     staleItemIds: uniqueIds(staleItemIds),
     // Always [] until: (1) desktop/browser WebAuthn, (2) passkey on login item UI, (3) gap analytics here.
@@ -198,6 +208,8 @@ export function monitoringIssueItemIds(
   report: MonitoringAnalytics,
   issue:
     | "reused"
+    | "strong"
+    | "medium"
     | "weak"
     | "stale"
     | "compromised"
@@ -207,6 +219,10 @@ export function monitoringIssueItemIds(
   switch (issue) {
     case "reused":
       return report.reusedItemIds;
+    case "strong":
+      return report.strongItemIds;
+    case "medium":
+      return report.mediumItemIds;
     case "weak":
       return report.weakItemIds;
     case "stale":

@@ -20,8 +20,10 @@ import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolle
 import { useLocale } from "../../locale/LocaleContext";
 import {
   FILTER_QUERY_COMPROMISED,
+  FILTER_QUERY_MEDIUM,
   FILTER_QUERY_REUSED,
   FILTER_QUERY_STALE,
+  FILTER_QUERY_STRONG,
   FILTER_QUERY_TWO_FACTOR_GAP,
   FILTER_QUERY_WEAK,
   ITEMS_PATH,
@@ -336,21 +338,24 @@ function MonitoringDashboard({
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <p className="text-lg font-semibold text-foreground">{t("web.monitoring.strengthTitle")}</p>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col items-start gap-1">
               <LegendRow
                 colorClass="bg-lime-500"
                 percent={report.strengthPercents.strong}
                 label={t("web.monitoring.strengthStrong")}
+                href={issueHref(searchParams, FILTER_QUERY_STRONG, report.strongItemIds.length)}
               />
               <LegendRow
                 colorClass="bg-yellow-400"
                 percent={report.strengthPercents.medium}
                 label={t("web.monitoring.strengthMedium")}
+                href={issueHref(searchParams, FILTER_QUERY_MEDIUM, report.mediumItemIds.length)}
               />
               <LegendRow
                 colorClass="bg-destructive"
                 percent={report.strengthPercents.weak}
                 label={t("web.monitoring.strengthWeak")}
+                href={issueHref(searchParams, FILTER_QUERY_WEAK, report.weakItemIds.length)}
               />
             </div>
           </div>
@@ -430,17 +435,36 @@ function LegendRow({
   colorClass,
   percent,
   label,
+  href,
 }: {
   colorClass: string;
   percent: number;
   label: string;
+  href: string | null;
 }) {
-  return (
-    <div className="flex items-center gap-2">
+  const content = (
+    <>
       <span className={cn("size-3 shrink-0 rounded-full", colorClass)} aria-hidden />
-      <p className="text-sm text-muted-foreground">
+      <p className="min-w-0 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">{percent}%</span> {label}
       </p>
-    </div>
+    </>
+  );
+
+  if (!href) {
+    return <div className="inline-flex max-w-full items-center gap-2 px-1 py-0.5">{content}</div>;
+  }
+
+  return (
+    <Link
+      to={href}
+      className={cn(
+        "inline-flex max-w-full items-center gap-2 rounded-sm px-1 py-0.5",
+        "text-inherit no-underline",
+        "hover:bg-muted",
+      )}
+    >
+      {content}
+    </Link>
   );
 }

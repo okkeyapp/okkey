@@ -47,32 +47,56 @@ type DonutChartProps = {
 export function MonitoringDonutChart({ segments, className }: DonutChartProps) {
   const radius = 78;
   const stroke = 16;
+  const cx = 96;
+  const cy = 96;
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0) || 1;
+
   let offset = 0;
+  const arcs = segments.map((segment, index) => {
+    const length = (Math.max(0, segment.value) / total) * circumference;
+    const startOffset = offset;
+    offset += length;
+    return { index, className: segment.className, length, startOffset };
+  });
 
   return (
     <svg viewBox="0 0 192 192" className={cn("size-48", className)} aria-hidden>
-      <circle cx="96" cy="96" r={radius} fill="none" className="stroke-muted" strokeWidth={stroke} />
-      {segments.map((segment, index) => {
-        const length = (Math.max(0, segment.value) / total) * circumference;
-        const node = (
+      <circle cx={cx} cy={cy} r={radius} fill="none" className="stroke-muted" strokeWidth={stroke} />
+      {arcs.map((arc) =>
+        arc.length > 0 ? (
           <circle
-            key={index}
-            cx="96"
-            cy="96"
+            key={`arc-${arc.index}`}
+            cx={cx}
+            cy={cy}
             r={radius}
             fill="none"
-            className={segment.className}
+            className={arc.className}
             strokeWidth={stroke}
-            strokeDasharray={`${length} ${circumference}`}
-            strokeDashoffset={-offset}
-            transform="rotate(-90 96 96)"
+            strokeDasharray={`${arc.length} ${circumference}`}
+            strokeDashoffset={-arc.startOffset}
+            transform={`rotate(-90 ${cx} ${cy})`}
           />
-        );
-        offset += length;
-        return node;
-      })}
+        ) : null,
+      )}
+      {/* Rounded leading cap overlaps the previous segment's flat tail (same stroke classes). */}
+      {arcs.map((arc) =>
+        arc.length > 0 ? (
+          <circle
+            key={`cap-${arc.index}`}
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            className={arc.className}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`0.01 ${circumference}`}
+            strokeDashoffset={-arc.startOffset}
+            transform={`rotate(-90 ${cx} ${cy})`}
+          />
+        ) : null,
+      )}
     </svg>
   );
 }

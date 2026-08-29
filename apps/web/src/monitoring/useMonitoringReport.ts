@@ -29,6 +29,8 @@ const EMPTY_REPORT: MonitoringAnalytics = {
   score: 100,
   scoreLabelKey: "excellent",
   reusedItemIds: [],
+  strongItemIds: [],
+  mediumItemIds: [],
   weakItemIds: [],
   staleItemIds: [],
   passkeyGapItemIds: [],

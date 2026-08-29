@@ -473,6 +473,8 @@
   "web.items.filter.archived": "Архивные",
   "web.items.filter.recentlyDeleted": "Недавно удалённые",
   "web.items.filter.reused": "Повторно используемые пароли",
+  "web.items.filter.strong": "Сильные пароли",
+  "web.items.filter.medium": "Средние пароли",
   "web.items.filter.weak": "Слабые пароли",
   "web.items.filter.stale": "Устаревшие пароли",
   "web.items.filter.compromised": "Скомпрометированные пароли",
