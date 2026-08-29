@@ -288,6 +288,52 @@ export const TOOLS_PATH = "/tools";
 export const SETTINGS_PATH = "/settings";
 export const SETTINGS_MAIN_PATH = `${SETTINGS_PATH}/main`;
 
+export type ToolsSectionId = "generator" | "import" | "export";
+
+export const DEFAULT_TOOLS_SECTION: ToolsSectionId = "generator";
+
+export const TOOLS_SECTIONS: readonly ToolsSectionId[] = ["generator", "import", "export"];
+
+const TOOLS_SECTION_SLUGS: Record<ToolsSectionId, string> = {
+  generator: "generator",
+  import: "import",
+  export: "export",
+};
+
+const TOOLS_SLUG_TO_SECTION: Record<string, ToolsSectionId> = Object.fromEntries(
+  Object.entries(TOOLS_SECTION_SLUGS).map(([section, slug]) => [slug, section as ToolsSectionId]),
+) as Record<string, ToolsSectionId>;
+
+export const TOOLS_GENERATOR_PATH = `${TOOLS_PATH}/${TOOLS_SECTION_SLUGS.generator}`;
+
+export function toolsSectionSlug(section: ToolsSectionId = DEFAULT_TOOLS_SECTION): string {
+  return TOOLS_SECTION_SLUGS[section];
+}
+
+export function toolsPath(section: ToolsSectionId = DEFAULT_TOOLS_SECTION): string {
+  return `${TOOLS_PATH}/${toolsSectionSlug(section)}`;
+}
+
+export function toolsSectionFromSlug(slug: string): ToolsSectionId | null {
+  return TOOLS_SLUG_TO_SECTION[slug] ?? null;
+}
+
+export function toolsSectionFromPathname(pathname: string): ToolsSectionId | null {
+  if (pathname === TOOLS_PATH) {
+    return null;
+  }
+  const prefix = `${TOOLS_PATH}/`;
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+  const slug = pathname.slice(prefix.length).split("/")[0]?.trim() ?? "";
+  return toolsSectionFromSlug(slug);
+}
+
+export function isToolsPathname(pathname: string): boolean {
+  return pathname === TOOLS_PATH || pathname.startsWith(`${TOOLS_PATH}/`);
+}
+
 /** @deprecated Query-param settings URLs; use {@link settingsPath} with path segments. */
 export const SETTINGS_SECTION_QUERY_PARAM = "section";
 
@@ -416,7 +462,7 @@ export function workspaceShellPath(pathname: WorkspaceAppShellPath, workspaceId:
 }
 
 export function isWorkspaceAppShellPathname(pathname: string): pathname is WorkspaceAppShellPath {
-  if (isSettingsPathname(pathname)) {
+  if (isSettingsPathname(pathname) || isToolsPathname(pathname)) {
     return true;
   }
   return (WORKSPACE_APP_SHELL_PATHS as readonly string[]).includes(pathname);

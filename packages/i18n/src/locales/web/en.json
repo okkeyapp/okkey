@@ -84,6 +84,14 @@
   "web.shell.toolsTitle": "Tools",
   "web.shell.settingsTitle": "Settings",
 
+  "web.tools.breadcrumbsAria": "Tools navigation",
+  "web.tools.breadcrumbsRoot": "Tools",
+  "web.tools.sidebarAria": "Tools sections",
+  "web.tools.comingSoon": "This tool is coming soon.",
+  "web.tools.sections.generator": "Generator",
+  "web.tools.sections.import": "Import",
+  "web.tools.sections.export": "Export",
+
   "web.monitoring.title": "Monitoring",
   "web.monitoring.description": "The security score is calculated from records you can access in the current workspace. Analysis runs locally and does not collect or send statistics about your data.",
   "web.monitoring.breadcrumbsAria": "Monitoring breadcrumb",

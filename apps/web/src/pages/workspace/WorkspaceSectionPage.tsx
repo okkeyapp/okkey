@@ -8,6 +8,7 @@ import { useLocation, useOutletContext, useSearchParams } from "react-router-dom
 import ItemDetailCard from "../../components/items/ItemDetailCard";
 import ItemsDetailPanelEmptyState from "../../components/items/ItemsDetailPanelEmptyState";
 import WorkspaceSettingsPage from "../../components/workspace/settings/WorkspaceSettingsPage";
+import ToolsPage from "../../components/workspace/tools/ToolsPage";
 import CapsulesPage from "../capsules/CapsulesPage";
 import MonitoringPage from "../monitoring/MonitoringPage";
 import { useLocale } from "../../locale/LocaleContext";
@@ -20,6 +21,7 @@ import {
   CAPSULES_PATH,
   MONITORING_PATH,
   isSettingsPathname,
+  isToolsPathname,
   VAULT_QUERY_PARAM,
 } from "../../routes/paths";
 import WorkspaceNotFoundPage from "./WorkspaceNotFoundPage";
@@ -59,10 +61,15 @@ export default function WorkspaceSectionPage() {
   const isCapsulesRoute = location.pathname === CAPSULES_PATH;
   const isMonitoringRoute = location.pathname === MONITORING_PATH;
   const isSettingsRoute = isSettingsPathname(location.pathname);
+  const isToolsRoute = isToolsPathname(location.pathname);
   const capsulesAllowed = isCapsuleAllowedForMember(
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES,
     userId,
   );
+
+  if (isToolsRoute) {
+    return <ToolsPage workspaceName={workspace?.name ?? "…"} />;
+  }
 
   if (isSettingsRoute) {
     return (

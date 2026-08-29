@@ -30,6 +30,7 @@ import LegacyWorkspaceNestedRedirect from "../pages/workspace/LegacyWorkspaceNes
 import WorkspaceNotFoundPage from "../pages/workspace/WorkspaceNotFoundPage";
 import WorkspaceSectionPage from "../pages/workspace/WorkspaceSectionPage";
 import SettingsIndexRedirect from "../pages/workspace/SettingsIndexRedirect";
+import ToolsIndexRedirect from "../pages/workspace/ToolsIndexRedirect";
 import WorkspacesPage from "../pages/workspaces/WorkspacesPage";
 import ProtectedVaultLayout from "../auth/ProtectedVaultLayout";
 import WorkspaceRoutesLayout from "../workspace/WorkspaceRoutesLayout";
@@ -148,7 +149,8 @@ export default function AppRoutes() {
           <Route path={ITEMS_PATH} element={<WorkspaceSectionPage />} />
           <Route path={CAPSULES_PATH} element={<WorkspaceSectionPage />} />
           <Route path={MONITORING_PATH} element={<WorkspaceSectionPage />} />
-          <Route path={TOOLS_PATH} element={<WorkspaceSectionPage />} />
+          <Route path={TOOLS_PATH} element={<ToolsIndexRedirect />} />
+          <Route path={`${TOOLS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path={SETTINGS_PATH} element={<SettingsIndexRedirect />} />
           <Route path={`${SETTINGS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path="*" element={<WorkspaceNotFoundPage />} />

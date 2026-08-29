@@ -74,7 +74,9 @@ import {
   SETTINGS_PATH,
   settingsPath,
   isSettingsPathname,
+  isToolsPathname,
   TOOLS_PATH,
+  toolsPath,
   VAULT_KIND_QUERY_PARAM,
   VAULT_QUERY_PARAM,
   WORKSPACE_APP_SHELL_PATHS,
@@ -133,6 +135,9 @@ function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | nu
   }
   if (isSettingsPathname(pathname)) {
     return SETTINGS_PATH;
+  }
+  if (isToolsPathname(pathname)) {
+    return TOOLS_PATH;
   }
   return null;
 }
@@ -232,7 +237,7 @@ export default function WorkspaceRoutesLayout() {
       items: ITEMS_PATH,
       capsules: CAPSULES_PATH,
       monitoring: MONITORING_PATH,
-      tools: TOOLS_PATH,
+      tools: toolsPath(),
       settings: firstSettings ? settingsPath(firstSettings) : settingsPath("general"),
     };
   }, [workspacePermissions]);
@@ -307,7 +312,9 @@ export default function WorkspaceRoutesLayout() {
           ...item,
           isActive: item.to?.startsWith(SETTINGS_PATH)
             ? isSettingsPathname(pathname)
-            : item.to === pathname,
+            : item.to?.startsWith(TOOLS_PATH)
+              ? isToolsPathname(pathname)
+              : item.to === pathname,
         };
       });
   }, [
@@ -976,6 +983,7 @@ function WorkspaceShellWithItems({
             hideShellMainHeader={
               isShellNotFound ||
               isSettingsPathname(pathname) ||
+              isToolsPathname(pathname) ||
               pathname === CAPSULES_PATH ||
               pathname === MONITORING_PATH
             }

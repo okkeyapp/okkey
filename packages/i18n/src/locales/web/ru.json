@@ -84,6 +84,14 @@
   "web.shell.toolsTitle": "Инструменты",
   "web.shell.settingsTitle": "Настройки",
 
+  "web.tools.breadcrumbsAria": "Навигация по инструментам",
+  "web.tools.breadcrumbsRoot": "Инструменты",
+  "web.tools.sidebarAria": "Разделы инструментов",
+  "web.tools.comingSoon": "Этот инструмент скоро появится.",
+  "web.tools.sections.generator": "Генератор",
+  "web.tools.sections.import": "Импорт",
+  "web.tools.sections.export": "Экспорт",
+
   "web.monitoring.title": "Мониторинг",
   "web.monitoring.description": "Оценка безопасности рассчитывается на основе записей, к которым у вас есть доступ в текущем пространстве. Анализ выполняется локально и не предполагает сбора или передачи статистики о ваших данных.",
   "web.monitoring.breadcrumbsAria": "Навигация: мониторинг",
