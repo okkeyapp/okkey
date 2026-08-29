@@ -501,6 +501,7 @@
   "web.items.list.rowMenuAria": "Действия с записью",
   "web.items.list.rowMenuPlaceholder": "Скоро",
   "web.items.list.empty": "Нет записей",
+  "web.items.list.loading": "Загрузка записей",
   "web.items.menu.edit": "Редактировать",
   "web.items.menu.copy": "Копировать",
   "web.items.menu.addToFavorites": "В избранное",

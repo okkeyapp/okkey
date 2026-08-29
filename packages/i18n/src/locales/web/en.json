@@ -501,6 +501,7 @@
   "web.items.list.rowMenuAria": "Item actions",
   "web.items.list.rowMenuPlaceholder": "Coming soon",
   "web.items.list.empty": "No items",
+  "web.items.list.loading": "Loading items",
   "web.items.menu.edit": "Edit",
   "web.items.menu.copy": "Copy",
   "web.items.menu.addToFavorites": "Add to favorites",

@@ -10,6 +10,7 @@ import {
   KeyFieldCopyIcon,
   ScrollArea,
   SidebarGroupLabel,
+  Skeleton,
   Spinner,
   mutedSurfaceHoverBgClassName,
   mutedSurfaceHoverBgImportantClassName,
@@ -981,6 +982,39 @@ function buildSections(sorted: readonly ItemsListRecord[], sort: ItemsListSort, 
 
 export type ItemsListPaneVault = { id: string; name: string; isPersonal: boolean; icon?: string };
 
+const ITEMS_LIST_SKELETON_ROW_WIDTHS = [
+  { title: "w-28", subtitle: "w-40" },
+  { title: "w-36", subtitle: "w-24" },
+  { title: "w-24", subtitle: "w-44" },
+  { title: "w-32", subtitle: "w-28" },
+  { title: "w-40", subtitle: "w-36" },
+] as const;
+
+function ItemsListRecordsSkeleton({ label }: { label: string }) {
+  return (
+    <div className="pt-2" role="status" aria-busy="true" aria-label={label}>
+      <section className="pb-2">
+        <div className="px-5 py-2">
+          <Skeleton className="h-5 w-24" />
+        </div>
+        <ul className="flex flex-col gap-0 px-2" role="presentation">
+          {ITEMS_LIST_SKELETON_ROW_WIDTHS.map((widths, index) => (
+            <li key={index}>
+              <div className="flex h-[60px] w-full items-center gap-4 rounded-lg px-3">
+                <Skeleton className="size-8 shrink-0 rounded-md" />
+                <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center gap-1">
+                  <Skeleton className={cn("h-5 max-w-[55%]", widths.title)} />
+                  <Skeleton className={cn("h-5 max-w-[70%]", widths.subtitle)} />
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
+
 function ItemsListRecordFavicon({
   row,
 }: {
@@ -1219,6 +1253,12 @@ export default function ItemsListLeftPane({
   ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
+  const listLoading =
+    !itemsListRecordsLoaded ||
+    Boolean(vaultKind && !itemsListVaultsLoaded) ||
+    Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta) ||
+    Boolean(folderQ && !itemsListFoldersLoaded && !folderPath) ||
+    (monitoringFilterActive && monitoringReport.loading);
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
 
   const rowActionPermits = (row: ItemsListRecord) => {
@@ -1810,7 +1850,9 @@ export default function ItemsListLeftPane({
         </div>
         </div>
 
-        {totalRows === 0 ? (
+        {listLoading ? (
+          <ItemsListRecordsSkeleton label={t("web.items.list.loading")} />
+        ) : totalRows === 0 ? (
           <div className="flex min-h-[12rem] flex-col items-center justify-center px-4 py-10">
             <p className="okkey-body text-center text-sm text-muted-foreground">{t("web.items.list.empty")}</p>
           </div>
