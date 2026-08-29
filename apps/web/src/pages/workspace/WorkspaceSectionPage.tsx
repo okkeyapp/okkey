@@ -110,6 +110,10 @@ export default function WorkspaceSectionPage() {
       <MonitoringPage
         workspaceId={workspaceId}
         workspaceName={workspace?.name ?? t("web.nav.monitoring")}
+        workspace={workspace}
+        vaults={vaults}
+        workspacePermissions={workspacePermissions ?? null}
+        patchWorkspace={patchWorkspace}
       />
     );
   }

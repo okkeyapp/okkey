@@ -12,8 +12,12 @@ import {
   normalizeAllowedFileExtensions,
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
+  workspaceMonitoringCardSettingsFromDto,
+  workspaceMonitoringCardSettingsToDto,
   type WorkspaceCapsulePolicies,
   type WorkspaceCapsulePoliciesDto,
+  type WorkspaceMonitoringCardSettings,
+  type WorkspaceMonitoringCardSettingsDto,
 } from "@okkey/types";
 
 export const DEFAULT_DELETED_ITEMS_RETENTION_DAYS = 30;
@@ -29,6 +33,7 @@ export type WorkspaceSettingsSnapshot = {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: WorkspaceCapsulePolicies;
+  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -41,6 +46,7 @@ export type WorkspaceSettingsPatch = {
   maxFileSizeMb?: number;
   filesInItemsEnabled?: boolean;
   capsulePolicies?: WorkspaceCapsulePolicies;
+  monitoringCardSettings?: WorkspaceMonitoringCardSettings;
   tileColor?: string | null;
   logoVaultId?: string | null;
   logoAttachmentId?: string | null;
@@ -106,6 +112,9 @@ export class WorkspaceSettingsService {
     }
     if (patch.capsulePolicies !== undefined) {
       update.capsulePolicies = sanitizeCapsulePolicies(patch.capsulePolicies);
+    }
+    if (patch.monitoringCardSettings !== undefined) {
+      update.monitoringCardSettings = sanitizeMonitoringCardSettings(patch.monitoringCardSettings);
     }
     if (patch.tileColor !== undefined) {
       update.tileColor = patch.tileColor === null ? null : sanitizeTileColor(patch.tileColor);
@@ -221,6 +230,7 @@ function toSettingsSnapshot(workspace: {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: WorkspaceCapsulePolicies;
+  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -232,6 +242,7 @@ function toSettingsSnapshot(workspace: {
     maxFileSizeMb: workspace.maxFileSizeMb,
     filesInItemsEnabled: workspace.filesInItemsEnabled,
     capsulePolicies: workspace.capsulePolicies,
+    monitoringCardSettings: workspace.monitoringCardSettings,
     tileColor: workspace.tileColor,
     logoVaultId: workspace.logoVaultId,
     logoAttachmentId: workspace.logoAttachmentId,
@@ -248,7 +259,8 @@ function settingsPatchResourceTouches(patch: WorkspaceSettingsPatch): {
       patch.name !== undefined ||
       patch.tileColor !== undefined ||
       patch.logoVaultId !== undefined ||
-      patch.logoAttachmentId !== undefined,
+      patch.logoAttachmentId !== undefined ||
+      patch.monitoringCardSettings !== undefined,
     settings_items:
       patch.deletedItemsRetentionDays !== undefined ||
       patch.allowedFileExtensions !== undefined ||
@@ -434,6 +446,26 @@ export function parseCapsulePoliciesPayload(
     }
     return null;
   }
+}
+
+export function sanitizeMonitoringCardSettings(
+  value: WorkspaceMonitoringCardSettings,
+): WorkspaceMonitoringCardSettings {
+  return workspaceMonitoringCardSettingsFromDto(workspaceMonitoringCardSettingsToDto(value));
+}
+
+export function parseMonitoringCardSettingsPayload(
+  value: unknown,
+): WorkspaceMonitoringCardSettings | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return sanitizeMonitoringCardSettings(
+    workspaceMonitoringCardSettingsFromDto(value as Partial<WorkspaceMonitoringCardSettingsDto>),
+  );
 }
 
 export function parseOptionalStringPayload(value: unknown): string | null | undefined {

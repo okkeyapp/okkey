@@ -66,10 +66,13 @@ import {
   SORT_QUERY_DATE_ASC,
   SORT_QUERY_DATE_DESC,
   SORT_QUERY_PARAM,
+  VAULT_KIND_QUERY_PARAM,
   VAULT_QUERY_PARAM,
   WORKSPACE_QUERY_PARAM,
+  isItemsVaultKind,
   itemsPathWithCategoryMerged,
   withoutOpenItemQueryParam,
+  type ItemsVaultKind,
 } from "../../routes/paths";
 import { monitoringIssueItemIds } from "../../monitoring/analytics";
 import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
@@ -126,6 +129,30 @@ function filterRowsByVault(
   return rows.filter((row) => row.vaultId === vaultId);
 }
 
+function filterRowsByVaultIds(
+  rows: readonly ItemsListRecord[],
+  vaultIds: ReadonlySet<string> | undefined,
+): ItemsListRecord[] {
+  if (!vaultIds) {
+    return [...rows];
+  }
+  return rows.filter((row) => vaultIds.has(row.vaultId));
+}
+
+function resolveVaultIdsForKind(
+  vaults: readonly ItemsListPaneVault[],
+  kind: ItemsVaultKind | null,
+): ReadonlySet<string> | undefined {
+  if (!kind) {
+    return undefined;
+  }
+  return new Set(
+    vaults
+      .filter((vault) => (kind === "personal" ? vault.isPersonal : !vault.isPersonal))
+      .map((vault) => vault.id),
+  );
+}
+
 function filterRowsByFolder(rows: readonly ItemsListRecord[], folderId: string): ItemsListRecord[] {
   if (!folderId) {
     return [...rows];
@@ -153,6 +180,28 @@ function FilterIconAllRecords({ className, ...props }: SVGProps<SVGSVGElement>) 
       />
       <path
         d="M2.37801 10.8333C2.37801 10.4797 2.51848 10.1406 2.76853 9.89052C3.01858 9.64048 3.35772 9.5 3.71134 9.5L12.1667 9.5C12.5203 9.5 12.8594 9.64048 13.1095 9.89052C13.3595 10.1406 13.5 10.4797 13.5 10.8333V12.1667C13.5 12.5203 13.3595 12.8594 13.1095 13.1095C12.8594 13.3595 12.5203 13.5 12.1667 13.5H3.71134C3.35772 13.5 3.01858 13.3595 2.76853 13.1095C2.51848 12.8594 2.37801 12.5203 2.37801 12.1667V10.8333Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Same glyph as sidebar «Monitoring» nav item (`NavMonitoringIcon` in okkey-app-sidebar). */
+function FilterIconMonitoring({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M13.526 10.336C13.1443 11.2389 12.5473 12.0345 11.7871 12.6533C11.027 13.2721 10.1269 13.6952 9.16553 13.8856C8.20415 14.0761 7.21077 14.0281 6.27223 13.7458C5.33368 13.4635 4.47856 12.9556 3.78161 12.2664C3.08466 11.5772 2.56712 10.7277 2.27422 9.79221C1.98132 8.85671 1.92198 7.86369 2.1014 6.89995C2.28082 5.93622 2.69352 5.03112 3.30344 4.26378C3.91335 3.49645 4.70191 2.89024 5.60015 2.49816M14 8.00138C14 7.21327 13.8448 6.43287 13.5433 5.70475C13.2418 4.97663 12.7998 4.31504 12.2427 3.75776C11.6855 3.20048 11.0241 2.75843 10.2962 2.45683C9.56826 2.15523 8.78806 2 8.00015 2V8.00138H14Z"
         stroke="currentColor"
         strokeWidth="1"
         strokeLinecap="round"
@@ -584,7 +633,7 @@ function filterIconForValue(value: ItemsListFilter, className?: string) {
     case "compromised":
     case "2fa-gap":
     case "passkey-gap":
-      return <FilterIconAllRecords className={c} />;
+      return <FilterIconMonitoring className={c} />;
     default: {
       const _ex: never = value;
       return _ex;
@@ -610,13 +659,36 @@ function filterSecondaryGlyph(filter: ItemsListFilter): ReactNode {
     case "compromised":
     case "2fa-gap":
     case "passkey-gap":
-      return <FilterIconAllRecords className={c} />;
+      return <FilterIconMonitoring className={c} />;
     case "all":
       return null;
     default: {
       const _ex: never = filter;
       return _ex;
     }
+  }
+}
+
+function monitoringFilterLabelKey(filter: ItemsListFilter): string {
+  switch (filter) {
+    case "reused":
+      return "web.monitoring.reusedTitle";
+    case "strong":
+      return "web.items.filter.strong";
+    case "medium":
+      return "web.items.filter.medium";
+    case "weak":
+      return "web.monitoring.weakTitle";
+    case "stale":
+      return "web.monitoring.staleTitle";
+    case "compromised":
+      return "web.monitoring.compromisedTitle";
+    case "2fa-gap":
+      return "web.monitoring.twoFactorGapTitle";
+    case "passkey-gap":
+      return "web.monitoring.passkeyGapTitle";
+    default:
+      return `web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`;
   }
 }
 
@@ -949,6 +1021,7 @@ type ItemsListLeftPaneProps = {
   itemsListFoldersLoaded?: boolean;
   /** False until workspace item sync bootstrap completes. */
   itemsListRecordsLoaded?: boolean;
+  monitoringCardSettings?: import("@okkey/types").WorkspaceMonitoringCardSettings;
 };
 
 export default function ItemsListLeftPane({
@@ -958,6 +1031,7 @@ export default function ItemsListLeftPane({
   itemsListVaultsLoaded = true,
   itemsListFoldersLoaded = true,
   itemsListRecordsLoaded = true,
+  monitoringCardSettings,
 }: ItemsListLeftPaneProps) {
   const { locale, t } = useLocale();
   const location = useLocation();
@@ -974,9 +1048,35 @@ export default function ItemsListLeftPane({
   const { canPutItem, canDeleteItem, canUseFunction } = useWorkspaceVaultProfiles();
   const [searchParams, setSearchParams] = useSearchParams();
   const workspaceId = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
-  const monitoringReport = useMonitoringReport(workspaceId);
-  const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
+  const vaultKindRaw = searchParams.get(VAULT_KIND_QUERY_PARAM)?.trim() ?? "";
+  const vaultKind: ItemsVaultKind | null = isItemsVaultKind(vaultKindRaw) ? vaultKindRaw : null;
+  const vaultsScopeKey = useMemo(
+    () => vaults.map((vault) => `${vault.id}:${vault.isPersonal ? "1" : "0"}`).join("|"),
+    [vaults],
+  );
+  const vaultKindIds = useMemo(() => {
+    if (vaultQ || !vaultKind) {
+      return undefined;
+    }
+    return resolveVaultIdsForKind(vaults, vaultKind);
+    // vaultsScopeKey gates identity churn of the `vaults` array from the parent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by vaultsScopeKey
+  }, [vaultQ, vaultKind, vaultsScopeKey]);
+  const monitoringVaultIds = useMemo(() => {
+    if (vaultKindIds) {
+      return vaultKindIds;
+    }
+    if (vaultQ) {
+      return new Set([vaultQ]);
+    }
+    return undefined;
+  }, [vaultKindIds, vaultQ]);
+  const monitoringReport = useMonitoringReport(workspaceId, {
+    enabledCards: monitoringCardSettings,
+    vaultIds: monitoringVaultIds,
+  });
+  const activeItemId = searchParams.get(ITEM_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const categoryQ = searchParams.get(CATEGORY_QUERY_PARAM)?.trim() ?? "";
   const filter = filterFromSearchParam(searchParams.get(FILTER_QUERY_PARAM) ?? "");
@@ -1005,14 +1105,17 @@ export default function ItemsListLeftPane({
   const categoryLabel = categoryQ ? getActiveCategoryLabel(categoryQ, t) : undefined;
   const categoryDefinition = categoryQ ? getItemCategoryDefinition(categoryQ) : undefined;
 
-  const categoryScopeActive = Boolean(categoryQ && categoryDefinition && !searchQ && !vaultQ && !folderQ);
+  const categoryScopeActive = Boolean(categoryQ && categoryDefinition && !searchQ && !vaultQ && !vaultKind && !folderQ);
   const tagSearchActive = Boolean(searchQ && parseTagSearchNeedle(searchQ) !== null);
   const searchScopeLabel = tagSearchActive ? (parseTagSearchNeedle(searchQ) ?? searchQ) : searchQ;
-  const hasListScope = Boolean(searchQ || vaultQ || folderQ || categoryQ);
-  const secondaryFilterInTrigger = hasListScope && filterToSearchParam(filter) !== null;
+  const hasListScope = Boolean(searchQ || vaultQ || vaultKind || folderQ || categoryQ);
+  const monitoringFilterActive = isMonitoringListFilter(filter);
+  const secondaryFilterInTrigger =
+    hasListScope && filterToSearchParam(filter) !== null && !monitoringFilterActive;
   const categoryWithSecondaryFilter = categoryScopeActive && secondaryFilterInTrigger;
   const vaultScopeLoading = Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta);
-  const scopeTriggerLoading = vaultScopeLoading || folderScopeLoading;
+  const vaultKindScopeLoading = Boolean(vaultKind && !itemsListVaultsLoaded);
+  const scopeTriggerLoading = vaultScopeLoading || vaultKindScopeLoading || folderScopeLoading;
 
   const setFilterUrl = (next: ItemsListFilter) => {
     setSearchParams(
@@ -1052,6 +1155,7 @@ export default function ItemsListLeftPane({
       (prev) => {
         const n = new URLSearchParams(prev);
         n.delete(VAULT_QUERY_PARAM);
+        n.delete(VAULT_KIND_QUERY_PARAM);
         n.delete(FOLDER_QUERY_PARAM);
         n.delete(CATEGORY_QUERY_PARAM);
         n.delete(SEARCH_QUERY_PARAM);
@@ -1085,7 +1189,9 @@ export default function ItemsListLeftPane({
     } else if (categoryQ) {
       pool = filterRowsByCategory(records, categoryQ);
     } else {
-      const inVault = filterRowsByVault(records, vaultQ);
+      const inVault = vaultQ
+        ? filterRowsByVault(records, vaultQ)
+        : filterRowsByVaultIds(records, vaultKindIds);
       pool = filterRowsByFolder(inVault, folderQ);
     }
     const filtered = filterItems(pool, filter, monitoringItemIds);
@@ -1099,7 +1205,18 @@ export default function ItemsListLeftPane({
         })
       : sortItems(filtered, sort);
     return buildSections(sorted, sort, locale);
-  }, [categoryQ, filter, sort, locale, vaultQ, folderQ, records, searchQ, monitoringItemIds]);
+  }, [
+    categoryQ,
+    filter,
+    sort,
+    locale,
+    vaultQ,
+    vaultKindIds,
+    folderQ,
+    records,
+    searchQ,
+    monitoringItemIds,
+  ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
   const selectedRows = useMemo(() => records.filter((row) => selectedIds.has(row.id)), [records, selectedIds]);
@@ -1367,7 +1484,9 @@ export default function ItemsListLeftPane({
                 )}
               >
                 <FilterIconFrame wide={secondaryFilterInTrigger} flush={categoryScopeActive}>
-                  {hasListScope ? (
+                  {monitoringFilterActive ? (
+                    <FilterIconMonitoring />
+                  ) : hasListScope ? (
                     <span
                       className={cn(
                         "flex items-center",
@@ -1402,6 +1521,16 @@ export default function ItemsListLeftPane({
                             <span className="text-[14px] leading-none">{vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}</span>
                           </span>
                         )
+                      ) : vaultKind ? (
+                        vaultKindScopeLoading ? (
+                          <Spinner size="small" className="size-4 shrink-0" />
+                        ) : (
+                          <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
+                            <span className="text-[14px] leading-none">
+                              {vaultDisplayIcon({ isPersonal: vaultKind === "personal" })}
+                            </span>
+                          </span>
+                        )
                       ) : folderQ ? (
                         folderScopeLoading ? (
                           <Spinner size="small" className="size-4 shrink-0" />
@@ -1423,29 +1552,35 @@ export default function ItemsListLeftPane({
                   )}
                 </FilterIconFrame>
                 <span className="min-w-0 flex-1 truncate text-left text-sm font-normal text-foreground">
-                  {searchQ
-                    ? searchScopeLabel
-                    : vaultQ
-                      ? vaultScopeLoading
-                        ? null
-                        : (vaultMeta?.name ?? vaultQ)
-                      : folderQ
-                        ? folderScopeLoading
+                  {monitoringFilterActive
+                    ? t(monitoringFilterLabelKey(filter))
+                    : searchQ
+                      ? searchScopeLabel
+                      : vaultQ
+                        ? vaultScopeLoading
                           ? null
-                          : folderTitle
-                        : categoryQ
-                          ? (categoryLabel ?? categoryQ)
-                        : t(
-                            `web.items.filter.${
-                              filter === "recently_deleted"
-                                ? "recentlyDeleted"
-                                : filter === "2fa-gap"
-                                  ? "twoFactorGap"
-                                  : filter === "passkey-gap"
-                                    ? "passkeyGap"
-                                    : filter
-                            }`,
-                          )}
+                          : (vaultMeta?.name ?? vaultQ)
+                        : vaultKind
+                          ? vaultKindScopeLoading
+                            ? null
+                            : t(`web.monitoring.vaultScope.${vaultKind}`)
+                          : folderQ
+                            ? folderScopeLoading
+                              ? null
+                              : folderTitle
+                            : categoryQ
+                              ? (categoryLabel ?? categoryQ)
+                              : t(
+                                  `web.items.filter.${
+                                    filter === "recently_deleted"
+                                      ? "recentlyDeleted"
+                                      : filter === "2fa-gap"
+                                        ? "twoFactorGap"
+                                        : filter === "passkey-gap"
+                                          ? "passkeyGap"
+                                          : filter
+                                  }`,
+                                )}
                 </span>
                 <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
               </button>
@@ -1489,7 +1624,27 @@ export default function ItemsListLeftPane({
                   <DropdownMenuSeparator className="mx-1 my-1" />
                 </>
               ) : null}
-              {!vaultQ && folderQ ? (
+              {!vaultQ && vaultKind ? (
+                <>
+                  <DropdownMenuItem
+                    className={cn(
+                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                      "bg-muted/80 data-[highlighted]:bg-secondary",
+                    )}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <span className="text-base leading-none" aria-hidden>
+                      {vaultDisplayIcon({ isPersonal: vaultKind === "personal" })}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {t(`web.monitoring.vaultScope.${vaultKind}`)}
+                    </span>
+                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="mx-1 my-1" />
+                </>
+              ) : null}
+              {!vaultQ && !vaultKind && folderQ ? (
                 <>
                   <DropdownMenuItem
                     className={cn(
@@ -1507,7 +1662,7 @@ export default function ItemsListLeftPane({
                   <DropdownMenuSeparator className="mx-1 my-1" />
                 </>
               ) : null}
-              {!searchQ && !vaultQ && !folderQ && categoryQ && categoryDefinition ? (
+              {!searchQ && !vaultQ && !vaultKind && !folderQ && categoryQ && categoryDefinition ? (
                 <>
                   <DropdownMenuItem
                     className={cn(

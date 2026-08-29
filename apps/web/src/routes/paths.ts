@@ -34,15 +34,24 @@ export const WORKSPACE_QUERY_PARAM = "workspace";
 export const ITEMS_PATH = "/items";
 
 /**
- * `/items` scope: at most one of `vault`, `folder`, `category`, or `search` in the URL.
- * The shell (`WorkspaceRoutesLayout`) normalizes conflicts (search clears vault/folder/category; vault clears folder).
+ * `/items` scope: at most one of `vault`/`vaultKind`, `folder`, `category`, or `search` in the URL.
+ * The shell (`WorkspaceRoutesLayout`) normalizes conflicts (search clears vault/vaultKind/folder/category; vault clears folder).
  * Sidebar “active” rules treat “All items” as active only when none of these are set.
  */
 export const VAULT_QUERY_PARAM = "vault";
+/** Monitoring vault-scope on `/items`: personal vault(s) or all shared vaults (mutually exclusive with `vault`). */
+export const VAULT_KIND_QUERY_PARAM = "vaultKind";
 export const FOLDER_QUERY_PARAM = "folder";
 export const CATEGORY_QUERY_PARAM = "category";
 /** Selected item row on `/items` (master–detail); coexists with `workspace`, `vault`, or `folder`. */
 export const ITEM_QUERY_PARAM = "item";
+
+export type ItemsVaultKind = "personal" | "shared";
+
+export function isItemsVaultKind(raw: string): raw is ItemsVaultKind {
+  const x = raw.trim().toLowerCase();
+  return x === "personal" || x === "shared";
+}
 
 /** Non-default list filter on `/items` (`all` omits this param). */
 export const FILTER_QUERY_PARAM = "filter";
@@ -86,6 +95,7 @@ export function isMonitoringItemsFilter(raw: string): raw is MonitoringItemsFilt
 export function itemsPathWithMonitoringFilter(
   prev: URLSearchParams,
   filter: MonitoringItemsFilter,
+  options?: { vaultKind?: ItemsVaultKind | "all" },
 ): string {
   const next = new URLSearchParams(prev);
   next.delete(VAULT_QUERY_PARAM);
@@ -94,6 +104,12 @@ export function itemsPathWithMonitoringFilter(
   next.delete(SEARCH_QUERY_PARAM);
   next.delete(ITEM_QUERY_PARAM);
   next.set(FILTER_QUERY_PARAM, filter);
+  const kind = options?.vaultKind;
+  if (kind === "personal" || kind === "shared") {
+    next.set(VAULT_KIND_QUERY_PARAM, kind);
+  } else {
+    next.delete(VAULT_KIND_QUERY_PARAM);
+  }
   const qs = next.toString();
   return qs ? `${ITEMS_PATH}?${qs}` : ITEMS_PATH;
 }
@@ -137,6 +153,7 @@ export function applyWorkspaceSearchToParams(
   if (trimmed) {
     next.set(SEARCH_QUERY_PARAM, trimmed);
     next.delete(VAULT_QUERY_PARAM);
+    next.delete(VAULT_KIND_QUERY_PARAM);
     next.delete(FOLDER_QUERY_PARAM);
     next.delete(CATEGORY_QUERY_PARAM);
     next.delete(FILTER_QUERY_PARAM);
@@ -195,6 +212,7 @@ export function itemsPathWithVaultMerged(
     current,
     (n) => {
       n.set(VAULT_QUERY_PARAM, vaultId);
+      n.delete(VAULT_KIND_QUERY_PARAM);
       n.delete(FOLDER_QUERY_PARAM);
       n.delete(CATEGORY_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);
@@ -214,6 +232,7 @@ export function itemsPathWithFolderMerged(
     (n) => {
       n.set(FOLDER_QUERY_PARAM, folderId);
       n.delete(VAULT_QUERY_PARAM);
+      n.delete(VAULT_KIND_QUERY_PARAM);
       n.delete(CATEGORY_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);
       n.delete(FILTER_QUERY_PARAM);
@@ -232,6 +251,7 @@ export function itemsPathWithCategoryMerged(
     (n) => {
       n.set(CATEGORY_QUERY_PARAM, categoryId);
       n.delete(VAULT_QUERY_PARAM);
+      n.delete(VAULT_KIND_QUERY_PARAM);
       n.delete(FOLDER_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);
       n.delete(FILTER_QUERY_PARAM);
@@ -246,6 +266,7 @@ export function itemsPathAllWorkspaceMerged(current: URLSearchParams, options?: 
     current,
     (n) => {
       n.delete(VAULT_QUERY_PARAM);
+      n.delete(VAULT_KIND_QUERY_PARAM);
       n.delete(FOLDER_QUERY_PARAM);
       n.delete(CATEGORY_QUERY_PARAM);
       n.delete(SEARCH_QUERY_PARAM);

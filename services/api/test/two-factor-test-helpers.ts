@@ -268,6 +268,25 @@ export async function applyMigrations(
     await storage.postgres.query(migration0027);
   }
 
+  const monitoringCardSettingsColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'monitoring_card_settings'
+      ) AS exists
+    `,
+  );
+  if (!monitoringCardSettingsColumn[0]?.exists) {
+    const migration0028 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0028_workspace_monitoring_card_settings.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0028);
+  }
+
   const profileBuiltinKeyColumn = await storage.postgres.query<{ exists: boolean }>(
     `SELECT EXISTS (
       SELECT 1

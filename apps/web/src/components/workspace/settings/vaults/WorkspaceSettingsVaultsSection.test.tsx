@@ -64,6 +64,16 @@ describe("WorkspaceSettingsVaultsSection", () => {
               passwordAttemptLimit: 0,
               requireApproval: false,
             },
+            monitoringCardSettings: {
+              overall: true,
+              strength: true,
+              reused: true,
+              weak: true,
+              compromised: true,
+              stale: true,
+              passkeyGap: true,
+              twoFactorGap: true,
+            },
             createdAt: "",
             updatedAt: "",
           }}

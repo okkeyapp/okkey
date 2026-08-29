@@ -1,5 +1,6 @@
 import {
   workspaceCapsulePoliciesFromDto,
+  workspaceMonitoringCardSettingsFromDto,
   type Workspace,
   type WorkspaceSettingsResponseDto,
 } from "@okkey/types";
@@ -106,6 +107,7 @@ export function workspacePatchFromSettingsResponse(
   | "maxFileSizeMb"
   | "filesInItemsEnabled"
   | "capsulePolicies"
+  | "monitoringCardSettings"
   | "tileColor"
   | "logoVaultId"
   | "logoAttachmentId"
@@ -117,6 +119,9 @@ export function workspacePatchFromSettingsResponse(
     maxFileSizeMb: updated.max_file_size_mb,
     filesInItemsEnabled: updated.files_in_items_enabled,
     capsulePolicies: workspaceCapsulePoliciesFromDto(updated.capsule_policies),
+    monitoringCardSettings: workspaceMonitoringCardSettingsFromDto(
+      updated.monitoring_card_settings,
+    ),
     tileColor: updated.tile_color,
     logoVaultId: updated.logo_vault_id,
     logoAttachmentId: updated.logo_attachment_id,

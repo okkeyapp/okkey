@@ -1,4 +1,5 @@
-import type { ItemPlaintextV2 } from "@okkey/types";
+import type { ItemPlaintextV2, WorkspaceMonitoringCardSettings } from "@okkey/types";
+import { DEFAULT_WORKSPACE_MONITORING_CARD_SETTINGS } from "@okkey/types";
 
 import {
   getPasswordStrength,
@@ -81,6 +82,10 @@ function computeScore(input: {
 
 export type ComputeMonitoringAnalyticsOptions = {
   nowMs?: number;
+  /** When set, only items whose vaultId is in the set are analyzed. */
+  vaultIds?: ReadonlySet<string>;
+  /** Per-card feature toggles; disabled cards omit score penalties and issue lists. */
+  enabledCards?: WorkspaceMonitoringCardSettings;
   /** Item ids already known to be compromised (from async HIBP check). */
   compromisedItemIds?: readonly string[];
   /** Domain capability catalog entries (2FA / passkeys). */
@@ -112,12 +117,24 @@ function computeTwoFactorGapItemIds(
   return uniqueIds(gapIds);
 }
 
+function filterItemsByVaultIds(
+  items: readonly ItemPlaintextV2[],
+  vaultIds: ReadonlySet<string> | undefined,
+): readonly ItemPlaintextV2[] {
+  if (!vaultIds) {
+    return items;
+  }
+  return items.filter((item) => vaultIds.has(item.vaultId));
+}
+
 export function computeMonitoringAnalytics(
   items: readonly ItemPlaintextV2[],
   options: ComputeMonitoringAnalyticsOptions = {},
 ): MonitoringAnalytics {
   const nowMs = options.nowMs ?? Date.now();
-  const entries = extractItemPasswordEntries(items);
+  const enabled = options.enabledCards ?? DEFAULT_WORKSPACE_MONITORING_CARD_SETTINGS;
+  const scopedItems = filterItemsByVaultIds(items, options.vaultIds);
+  const entries = extractItemPasswordEntries(scopedItems);
   const analyzedItemIds = uniqueIds(entries.map((e) => e.itemId));
 
   const strengthCounts: Record<MonitoringStrengthBucket, number> = {
@@ -164,20 +181,22 @@ export function computeMonitoringAnalytics(
     }
   }
 
-  const compromisedItemIds = uniqueIds(options.compromisedItemIds ?? []).filter((id) =>
-    analyzedItemIds.includes(id),
-  );
+  const compromisedItemIds = enabled.compromised
+    ? uniqueIds(options.compromisedItemIds ?? []).filter((id) => analyzedItemIds.includes(id))
+    : [];
 
   const passwordItemIds = new Set(entries.map((e) => e.itemId));
-  const twoFactorGapItemIds = computeTwoFactorGapItemIds(items, passwordItemIds, options.catalogEntries);
+  const twoFactorGapItemIds = enabled.twoFactorGap
+    ? computeTwoFactorGapItemIds(scopedItems, passwordItemIds, options.catalogEntries)
+    : [];
 
   const passwordCount = entries.length;
   const score = computeScore({
     passwordCount,
-    weakCount: strengthCounts.weak,
-    mediumCount: strengthCounts.medium,
-    reusedItemCount: uniqueIds(reusedItemIds).length,
-    staleItemCount: uniqueIds(staleItemIds).length,
+    weakCount: enabled.weak ? strengthCounts.weak : 0,
+    mediumCount: enabled.strength ? strengthCounts.medium : 0,
+    reusedItemCount: enabled.reused ? uniqueIds(reusedItemIds).length : 0,
+    staleItemCount: enabled.stale ? uniqueIds(staleItemIds).length : 0,
     compromisedItemCount: compromisedItemIds.length,
   });
 
@@ -191,11 +210,11 @@ export function computeMonitoringAnalytics(
     },
     score,
     scoreLabelKey: scoreLabelKey(score),
-    reusedItemIds: uniqueIds(reusedItemIds),
+    reusedItemIds: enabled.reused ? uniqueIds(reusedItemIds) : [],
     strongItemIds: uniqueIds(strongItemIds),
     mediumItemIds: uniqueIds(mediumItemIds),
-    weakItemIds: uniqueIds(weakItemIds),
-    staleItemIds: uniqueIds(staleItemIds),
+    weakItemIds: enabled.weak ? uniqueIds(weakItemIds) : [],
+    staleItemIds: enabled.stale ? uniqueIds(staleItemIds) : [],
     // Always [] until: (1) desktop/browser WebAuthn, (2) passkey on login item UI, (3) gap analytics here.
     passkeyGapItemIds: [],
     twoFactorGapItemIds,

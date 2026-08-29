@@ -122,6 +122,10 @@
   "web.monitoring.scoreLabels.good": "Good",
   "web.monitoring.scoreLabels.fair": "Fair",
   "web.monitoring.scoreLabels.poor": "Poor",
+  "web.monitoring.configure": "Configure",
+  "web.monitoring.vaultScope.all": "All vaults",
+  "web.monitoring.vaultScope.personal": "Personal",
+  "web.monitoring.vaultScope.shared": "Shared",
 
   "web.items.searchPlaceholder": "Search…",
   "web.items.createRecord": "Create item",

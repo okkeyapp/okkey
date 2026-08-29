@@ -64,6 +64,7 @@ import {
   CAPSULES_PATH,
   CATEGORY_QUERY_PARAM,
   FOLDER_QUERY_PARAM,
+  isItemsVaultKind,
   ITEMS_PATH,
   itemsPathAllWorkspaceMerged,
   itemsPathWithFolderMerged,
@@ -74,6 +75,7 @@ import {
   settingsPath,
   isSettingsPathname,
   TOOLS_PATH,
+  VAULT_KIND_QUERY_PARAM,
   VAULT_QUERY_PARAM,
   WORKSPACE_APP_SHELL_PATHS,
   WORKSPACE_QUERY_PARAM,
@@ -171,6 +173,7 @@ export default function WorkspaceRoutesLayout() {
 
   const workspaceParam = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
+  const vaultKindQ = searchParams.get(VAULT_KIND_QUERY_PARAM)?.trim() ?? "";
   const folderQ = searchParams.get(FOLDER_QUERY_PARAM)?.trim() ?? "";
   const categoryQ = searchParams.get(CATEGORY_QUERY_PARAM)?.trim() ?? "";
   const searchQ = searchParams.get(SEARCH_QUERY_PARAM)?.trim() ?? "";
@@ -283,7 +286,7 @@ export default function WorkspaceRoutesLayout() {
           return {
             ...item,
             to: itemsPathAllWorkspaceMerged(searchParams, itemsPathMergeOptions),
-            isActive: pathname === ITEMS_PATH && !vaultQ && !folderQ && !categoryQ && !searchQ,
+            isActive: pathname === ITEMS_PATH && !vaultQ && !vaultKindQ && !folderQ && !categoryQ && !searchQ,
             onAddPointerDown: (e: PointerEvent<HTMLButtonElement>) => {
               e.preventDefault();
               openNewItemPopup();
@@ -312,6 +315,7 @@ export default function WorkspaceRoutesLayout() {
     pathname,
     t,
     vaultQ,
+    vaultKindQ,
     folderQ,
     categoryQ,
     searchQ,
@@ -389,14 +393,21 @@ export default function WorkspaceRoutesLayout() {
   );
 
   /**
-   * `/items`: at most one of `vault`, `folder`, `category`, or `search`. If `search` is set with other scopes,
+   * `/items`: at most one of `vault`/`vaultKind`, `folder`, `category`, or `search`. If `search` is set with other scopes,
    * drop them (search scope). If both vault and folder, drop folder (vault wins). Vault/folder drop category.
+   * Prefer concrete `vault` over `vaultKind` when both are present.
    */
   useEffect(() => {
-    const conflictSearch = Boolean(searchQ && (vaultQ || folderQ || categoryQ));
-    const conflictVaultFolder = Boolean(vaultQ && folderQ);
-    const conflictCategoryWithVaultOrFolder = Boolean(categoryQ && (vaultQ || folderQ));
-    if (!conflictSearch && !conflictVaultFolder && !conflictCategoryWithVaultOrFolder) {
+    const conflictSearch = Boolean(searchQ && (vaultQ || vaultKindQ || folderQ || categoryQ));
+    const conflictVaultFolder = Boolean((vaultQ || vaultKindQ) && folderQ);
+    const conflictCategoryWithVaultOrFolder = Boolean(categoryQ && (vaultQ || vaultKindQ || folderQ));
+    const conflictVaultAndKind = Boolean(vaultQ && vaultKindQ);
+    if (
+      !conflictSearch &&
+      !conflictVaultFolder &&
+      !conflictCategoryWithVaultOrFolder &&
+      !conflictVaultAndKind
+    ) {
       return;
     }
     setSearchParams(
@@ -404,18 +415,26 @@ export default function WorkspaceRoutesLayout() {
         const next = new URLSearchParams(prev);
         if (searchQ) {
           next.delete(VAULT_QUERY_PARAM);
+          next.delete(VAULT_KIND_QUERY_PARAM);
           next.delete(FOLDER_QUERY_PARAM);
           next.delete(CATEGORY_QUERY_PARAM);
-        } else if (vaultQ && folderQ) {
+        } else if (vaultQ && vaultKindQ) {
+          next.delete(VAULT_KIND_QUERY_PARAM);
+        } else if ((vaultQ || vaultKindQ) && folderQ) {
           next.delete(FOLDER_QUERY_PARAM);
-        } else if (categoryQ && (vaultQ || folderQ)) {
+        } else if (categoryQ && (vaultQ || vaultKindQ || folderQ)) {
           next.delete(CATEGORY_QUERY_PARAM);
+        }
+        // Returning a new URLSearchParams with the same string still retriggers navigation
+        // and can freeze the page in a setSearchParams loop.
+        if (next.toString() === prev.toString()) {
+          return prev;
         }
         return next;
       },
       { replace: true },
     );
-  }, [vaultQ, folderQ, categoryQ, searchQ, setSearchParams]);
+  }, [vaultQ, vaultKindQ, folderQ, categoryQ, searchQ, setSearchParams]);
 
   /** Drop stale `vault` / `folder` / `category` query params when the id is unknown in the current workspace. */
   useEffect(() => {
@@ -424,6 +443,7 @@ export default function WorkspaceRoutesLayout() {
     }
 
     const unknownVault = Boolean(vaultQ && vaultsListReady && !vaults.some((vault) => vault.id === vaultQ));
+    const unknownVaultKind = Boolean(vaultKindQ && !isItemsVaultKind(vaultKindQ));
     const foldersReady =
       vaultUnlocked && workspaceFoldersState.bootstrapped && !workspaceFoldersState.loading;
     const unknownFolder = Boolean(
@@ -433,7 +453,7 @@ export default function WorkspaceRoutesLayout() {
     );
     const unknownCategory = Boolean(categoryQ && !isItemCategoryId(categoryQ));
 
-    if (!unknownVault && !unknownFolder && !unknownCategory) {
+    if (!unknownVault && !unknownVaultKind && !unknownFolder && !unknownCategory) {
       return;
     }
 
@@ -443,11 +463,17 @@ export default function WorkspaceRoutesLayout() {
         if (unknownVault) {
           next.delete(VAULT_QUERY_PARAM);
         }
+        if (unknownVaultKind) {
+          next.delete(VAULT_KIND_QUERY_PARAM);
+        }
         if (unknownFolder) {
           next.delete(FOLDER_QUERY_PARAM);
         }
         if (unknownCategory) {
           next.delete(CATEGORY_QUERY_PARAM);
+        }
+        if (next.toString() === prev.toString()) {
+          return prev;
         }
         return next;
       },
@@ -456,6 +482,7 @@ export default function WorkspaceRoutesLayout() {
   }, [
     pathname,
     vaultQ,
+    vaultKindQ,
     folderQ,
     categoryQ,
     vaults,
@@ -985,6 +1012,7 @@ function WorkspaceShellWithItems({
               ),
             )}
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
+            monitoringCardSettings={currentWorkspace?.monitoringCardSettings}
           >
             <Outlet
               context={{

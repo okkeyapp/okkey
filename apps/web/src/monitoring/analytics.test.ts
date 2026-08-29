@@ -146,4 +146,86 @@ describe("computeMonitoringAnalytics", () => {
     expect(report.weakItemIds).toEqual([]);
     expect(report.analyzedItemIds).toEqual([]);
   });
+
+  it("filters items by vaultIds", () => {
+    const report = computeMonitoringAnalytics(
+      [
+        item({
+          itemId: "a",
+          vaultId: "vault-personal",
+          fields: [
+            {
+              id: "password",
+              type: "password",
+              sectionId: "credentials",
+              order: 0,
+              value: { kind: "password", password: "password" },
+            },
+          ],
+        }),
+        item({
+          itemId: "b",
+          vaultId: "vault-shared",
+          fields: [
+            {
+              id: "password",
+              type: "password",
+              sectionId: "credentials",
+              order: 0,
+              value: { kind: "password", password: "password" },
+            },
+          ],
+        }),
+      ],
+      { vaultIds: new Set(["vault-personal"]) },
+    );
+    expect(report.passwordCount).toBe(1);
+    expect(report.analyzedItemIds).toEqual(["a"]);
+  });
+
+  it("omits disabled card issues from score and lists", () => {
+    const report = computeMonitoringAnalytics(
+      [
+        item({
+          itemId: "a",
+          fields: [
+            {
+              id: "password",
+              type: "password",
+              sectionId: "credentials",
+              order: 0,
+              value: { kind: "password", password: "password" },
+            },
+          ],
+        }),
+        item({
+          itemId: "b",
+          fields: [
+            {
+              id: "password",
+              type: "password",
+              sectionId: "credentials",
+              order: 0,
+              value: { kind: "password", password: "password" },
+            },
+          ],
+        }),
+      ],
+      {
+        enabledCards: {
+          overall: true,
+          strength: false,
+          reused: false,
+          weak: false,
+          compromised: false,
+          stale: false,
+          passkeyGap: false,
+          twoFactorGap: false,
+        },
+      },
+    );
+    expect(report.reusedItemIds).toEqual([]);
+    expect(report.weakItemIds).toEqual([]);
+    expect(report.score).toBe(100);
+  });
 });

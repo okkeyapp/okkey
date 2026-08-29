@@ -7,15 +7,37 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Skeleton,
   cn,
 } from "@okkey/ui";
+import type {
+  MonitoringCardId,
+  Vault,
+  Workspace,
+  WorkspaceMonitoringCardSettings,
+  WorkspacePermissionsMatrixDto,
+} from "@okkey/types";
+import {
+  DEFAULT_WORKSPACE_MONITORING_CARD_SETTINGS,
+  MONITORING_CARD_IDS,
+  normalizeWorkspacePermissionsMatrix,
+  workspaceMonitoringCardSettingsToDto,
+} from "@okkey/types";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
-import { useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { CapsuleCheckIcon } from "../../components/capsules/capsuleIcons";
 import { BackChevronIcon } from "../../components/items/itemCategoryIcons";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "../../components/workspace/stickyHeaderShadow";
+import { workspacePatchFromSettingsResponse } from "../../components/workspace/settings/workspaceSettingsCatalog";
+import { GeneralIcon } from "../../components/workspace/settings/workspaceSettingsIcons";
 import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import { useLocale } from "../../locale/LocaleContext";
 import {
@@ -40,9 +62,15 @@ import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
 import { useDomainCapabilitiesCatalog } from "../../monitoring/useDomainCapabilitiesCatalog";
 import { DOMAIN_CAPABILITIES_REPO_URL } from "../../monitoring/domainCapabilitiesUrls";
 
+type VaultScopeTab = "all" | "personal" | "shared";
+
 type MonitoringPageProps = {
   workspaceId: string;
   workspaceName: string;
+  workspace?: Workspace;
+  vaults: readonly Vault[];
+  workspacePermissions?: WorkspacePermissionsMatrixDto | null;
+  patchWorkspace?: (workspaceId: string, patch: Partial<Workspace>) => void;
 };
 
 type IssueCardProps = {
@@ -56,6 +84,17 @@ type IssueCardProps = {
   disabled?: boolean;
   /** Optional status chip next to the title (e.g. Beta). */
   badgeLabel?: string;
+};
+
+const CARD_LABEL_KEYS: Record<MonitoringCardId, string> = {
+  overall: "web.monitoring.overallTitle",
+  strength: "web.monitoring.strengthTitle",
+  reused: "web.monitoring.reusedTitle",
+  weak: "web.monitoring.weakTitle",
+  compromised: "web.monitoring.compromisedTitle",
+  stale: "web.monitoring.staleTitle",
+  passkeyGap: "web.monitoring.passkeyGapTitle",
+  twoFactorGap: "web.monitoring.twoFactorGapTitle",
 };
 
 function IssueCard({
@@ -156,26 +195,112 @@ function issueHref(
   searchParams: URLSearchParams,
   filter: MonitoringItemsFilter,
   count: number,
+  vaultKind: VaultScopeTab,
 ): string | null {
   if (count <= 0) {
     return null;
   }
-  return itemsPathWithMonitoringFilter(searchParams, filter);
+  return itemsPathWithMonitoringFilter(searchParams, filter, {
+    vaultKind: vaultKind === "all" ? "all" : vaultKind,
+  });
 }
 
-export default function MonitoringPage({ workspaceId, workspaceName }: MonitoringPageProps) {
+function resolveVaultIdsForScope(
+  vaults: readonly Vault[],
+  scope: VaultScopeTab,
+): ReadonlySet<string> | undefined {
+  if (scope === "all") {
+    return undefined;
+  }
+  const ids = vaults
+    .filter((vault) => (scope === "personal" ? vault.isPersonal : !vault.isPersonal))
+    .map((vault) => vault.id);
+  return new Set(ids);
+}
+
+export default function MonitoringPage({
+  workspaceId,
+  workspaceName,
+  workspace,
+  vaults,
+  workspacePermissions,
+  patchWorkspace,
+}: MonitoringPageProps) {
   const { t } = useLocale();
+  const core = useAuthenticatedCoreClient();
   const [searchParams] = useSearchParams();
   const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0);
-  const { catalog } = useDomainCapabilitiesCatalog(true);
-  const { loading, empty, allGood, report } = useMonitoringReport(
-    workspaceId,
-    catalog.entries,
+  const [vaultScope, setVaultScope] = useState<VaultScopeTab>("all");
+  const [cardSettingsSaving, setCardSettingsSaving] = useState(false);
+
+  const enabledCards = useMemo(
+    () => workspace?.monitoringCardSettings ?? DEFAULT_WORKSPACE_MONITORING_CARD_SETTINGS,
+    [workspace?.monitoringCardSettings],
   );
 
+  const canConfigureMonitoring = useMemo(() => {
+    if (!workspacePermissions) {
+      return false;
+    }
+    return normalizeWorkspacePermissionsMatrix(workspacePermissions).settings.put >= 1;
+  }, [workspacePermissions]);
+
+  const vaultIds = useMemo(
+    () => resolveVaultIdsForScope(vaults, vaultScope),
+    [vaults, vaultScope],
+  );
+
+  const { catalog } = useDomainCapabilitiesCatalog(enabledCards.twoFactorGap);
+  const { loading, empty, allGood, report } = useMonitoringReport(workspaceId, {
+    vaultIds,
+    enabledCards,
+    catalogEntries: catalog.entries,
+  });
+
   const showLabel = t("web.monitoring.show");
+
+  const vaultScopeOptions: { value: VaultScopeTab; label: string }[] = [
+    { value: "all", label: t("web.monitoring.vaultScope.all") },
+    { value: "personal", label: t("web.monitoring.vaultScope.personal") },
+    { value: "shared", label: t("web.monitoring.vaultScope.shared") },
+  ];
+
+  const persistCardSettings = useCallback(
+    async (next: WorkspaceMonitoringCardSettings) => {
+      if (!core || cardSettingsSaving) {
+        return;
+      }
+      const previous = enabledCards;
+      patchWorkspace?.(workspaceId, { monitoringCardSettings: next });
+      setCardSettingsSaving(true);
+      try {
+        const updated = await core.updateWorkspaceSettings(workspaceId, {
+          monitoring_card_settings: workspaceMonitoringCardSettingsToDto(next),
+        });
+        patchWorkspace?.(workspaceId, workspacePatchFromSettingsResponse(updated));
+      } catch {
+        patchWorkspace?.(workspaceId, { monitoringCardSettings: previous });
+      } finally {
+        setCardSettingsSaving(false);
+      }
+    },
+    [cardSettingsSaving, core, enabledCards, patchWorkspace, workspaceId],
+  );
+
+  const toggleCard = useCallback(
+    (cardId: MonitoringCardId) => {
+      void persistCardSettings({
+        ...enabledCards,
+        [cardId]: !enabledCards[cardId],
+      });
+    },
+    [enabledCards, persistCardSettings],
+  );
+
+  const showCompromisedFootnote = enabledCards.compromised;
+  const showCatalogFootnote = enabledCards.twoFactorGap || enabledCards.passkeyGap;
 
   return (
     <div ref={pageRootRef} className="flex min-h-full min-w-0 flex-1 flex-col">
@@ -219,6 +344,84 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
             <p className="text-sm leading-5 text-muted-foreground">{t("web.monitoring.description")}</p>
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative flex w-fit rounded-lg bg-secondary p-1">
+              {vaultScopeOptions.map(({ value, label }) => {
+                const active = vaultScope === value;
+                return (
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant={active ? "outline" : "ghost"}
+                    className={cn(
+                      "relative border",
+                      active
+                        ? cn(
+                            "z-10",
+                            "!bg-background hover:!bg-background active:!bg-background",
+                            "hover:!border-input focus:!border-input focus-visible:!border-input",
+                            "focus:hover:!border-input focus-visible:hover:!border-input",
+                            "!shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                            "focus:!shadow-[0_1px_2px_rgba(0,0,0,0.05)] focus-visible:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                            "focus:hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)] focus-visible:hover:!shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                            "dark:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                            "dark:focus:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:focus-visible:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                            "dark:focus:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)] dark:focus-visible:hover:!shadow-[0_1px_2px_rgba(255,255,255,0.05)]",
+                          )
+                        : cn(
+                            "z-0 border-transparent shadow-none",
+                            "hover:border-transparent hover:bg-foreground/5",
+                            "focus:shadow-none focus-visible:shadow-none",
+                            "dark:focus:shadow-none dark:focus-visible:shadow-none",
+                            "focus:bg-foreground/10 focus-visible:bg-foreground/10",
+                            "active:bg-foreground/10",
+                          ),
+                    )}
+                    onClick={() => setVaultScope(value)}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            {canConfigureMonitoring ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="shrink-0" aria-label={t("web.monitoring.configure")}>
+                    <GeneralIcon data-icon="inline-start" className="size-4 shrink-0" />
+                    {t("web.monitoring.configure")}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56 p-1">
+                  <DropdownMenuGroup>
+                    {MONITORING_CARD_IDS.map((cardId) => {
+                      const checked = enabledCards[cardId];
+                      return (
+                        <DropdownMenuItem
+                          key={cardId}
+                          className="gap-2"
+                          disabled={cardSettingsSaving}
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            toggleCard(cardId);
+                          }}
+                        >
+                          {checked ? (
+                            <CapsuleCheckIcon className="size-4 shrink-0" />
+                          ) : (
+                            <span className="size-4 shrink-0" aria-hidden />
+                          )}
+                          <span>{t(CARD_LABEL_KEYS[cardId])}</span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+
           {empty ? (
             <div className="flex flex-col items-start gap-4 rounded-xl border border-border p-6">
               <p className="text-base font-medium text-foreground">{t("web.monitoring.emptyTitle")}</p>
@@ -232,16 +435,18 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
           {loading ? (
             <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-6 lg:flex-row">
-                <ChartCardSkeleton />
-                <ChartCardSkeleton />
+                {enabledCards.overall ? <ChartCardSkeleton /> : null}
+                {enabledCards.strength ? <ChartCardSkeleton /> : null}
               </div>
               <div className="grid gap-6 md:grid-cols-2">
-                <IssueCardSkeleton />
-                <IssueCardSkeleton />
-                <IssueCardSkeleton />
-                <IssueCardSkeleton />
-                <IssueCardSkeleton />
-                <IssueCardSkeleton />
+                {MONITORING_CARD_IDS.filter(
+                  (id) =>
+                    id !== "overall" &&
+                    id !== "strength" &&
+                    enabledCards[id],
+                ).map((id) => (
+                  <IssueCardSkeleton key={id} />
+                ))}
               </div>
             </div>
           ) : null}
@@ -261,26 +466,32 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
                 report={report}
                 searchParams={searchParams}
                 showLabel={showLabel}
+                enabledCards={enabledCards}
+                vaultScope={vaultScope}
                 t={t}
               />
             </>
           ) : null}
 
-          <ol className="mb-4 list-decimal space-y-2 ps-5 text-xs leading-5 text-muted-foreground">
-            <li>{t("web.monitoring.compromisedAttribution")}</li>
-            <li>
-              {t("web.monitoring.catalogAttribution")}{" "}
-              <a
-                href={DOMAIN_CAPABILITIES_REPO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                {t("web.monitoring.catalogRepoLink")}
-              </a>
-              . {t("web.monitoring.catalogUpstreamAttribution")}
-            </li>
-          </ol>
+          {showCompromisedFootnote || showCatalogFootnote ? (
+            <ol className="mb-4 list-decimal space-y-2 ps-5 text-xs leading-5 text-muted-foreground">
+              {showCompromisedFootnote ? <li>{t("web.monitoring.compromisedAttribution")}</li> : null}
+              {showCatalogFootnote ? (
+                <li>
+                  {t("web.monitoring.catalogAttribution")}{" "}
+                  <a
+                    href={DOMAIN_CAPABILITIES_REPO_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {t("web.monitoring.catalogRepoLink")}
+                  </a>
+                  . {t("web.monitoring.catalogUpstreamAttribution")}
+                </li>
+              ) : null}
+            </ol>
+          ) : null}
         </div>
       </div>
     </div>
@@ -291,11 +502,15 @@ function MonitoringDashboard({
   report,
   searchParams,
   showLabel,
+  enabledCards,
+  vaultScope,
   t,
 }: {
   report: MonitoringAnalytics;
   searchParams: URLSearchParams;
   showLabel: string;
+  enabledCards: WorkspaceMonitoringCardSettings;
+  vaultScope: VaultScopeTab;
   t: (key: string) => string;
 }) {
   const donutSegments = [
@@ -304,92 +519,108 @@ function MonitoringDashboard({
     { value: report.strengthCounts.weak, className: "stroke-destructive" },
   ];
 
+  const showChartsRow = enabledCards.overall || enabledCards.strength;
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="flex min-w-0 flex-1 items-center gap-4 rounded-xl border border-border p-3">
-          <div className="relative size-48 shrink-0">
-            <MonitoringGaugeChart score={report.score} />
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-              <p className="text-3xl font-bold leading-9 text-foreground">{report.score}/100</p>
-              <p className="text-xs text-muted-foreground">{t(scoreLabelMessageKey(report.scoreLabelKey))}</p>
+      {showChartsRow ? (
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {enabledCards.overall ? (
+            <div className="flex min-w-0 flex-1 items-center gap-4 rounded-xl border border-border p-3">
+              <div className="relative size-48 shrink-0">
+                <MonitoringGaugeChart score={report.score} />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <p className="text-3xl font-bold leading-9 text-foreground">{report.score}/100</p>
+                  <p className="text-xs text-muted-foreground">{t(scoreLabelMessageKey(report.scoreLabelKey))}</p>
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                <p className="text-lg font-semibold text-foreground">{t("web.monitoring.overallTitle")}</p>
+                <p className="text-sm leading-5 text-muted-foreground">{t("web.monitoring.overallDescription")}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            <p className="text-lg font-semibold text-foreground">{t("web.monitoring.overallTitle")}</p>
-            <p className="text-sm leading-5 text-muted-foreground">{t("web.monitoring.overallDescription")}</p>
-          </div>
-        </div>
+          ) : null}
 
-        <div className="flex min-w-0 flex-1 items-center gap-4 rounded-xl border border-border p-3">
-          <div className="relative size-48 shrink-0">
-            <MonitoringDonutChart segments={donutSegments} />
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-              <p className="text-3xl font-bold leading-9 text-foreground">
-                {report.passwordCount.toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">{t("web.monitoring.passwordsLabel")}</p>
+          {enabledCards.strength ? (
+            <div className="flex min-w-0 flex-1 items-center gap-4 rounded-xl border border-border p-3">
+              <div className="relative size-48 shrink-0">
+                <MonitoringDonutChart segments={donutSegments} />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <p className="text-3xl font-bold leading-9 text-foreground">
+                    {report.passwordCount.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{t("web.monitoring.passwordsLabel")}</p>
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                <p className="text-lg font-semibold text-foreground">{t("web.monitoring.strengthTitle")}</p>
+                <div className="flex flex-col items-start gap-1">
+                  <LegendRow
+                    colorClass="bg-lime-500"
+                    percent={report.strengthPercents.strong}
+                    label={t("web.monitoring.strengthStrong")}
+                    href={issueHref(searchParams, FILTER_QUERY_STRONG, report.strongItemIds.length, vaultScope)}
+                  />
+                  <LegendRow
+                    colorClass="bg-yellow-400"
+                    percent={report.strengthPercents.medium}
+                    label={t("web.monitoring.strengthMedium")}
+                    href={issueHref(searchParams, FILTER_QUERY_MEDIUM, report.mediumItemIds.length, vaultScope)}
+                  />
+                  <LegendRow
+                    colorClass="bg-destructive"
+                    percent={report.strengthPercents.weak}
+                    label={t("web.monitoring.strengthWeak")}
+                    href={issueHref(searchParams, FILTER_QUERY_WEAK, report.weakItemIds.length, vaultScope)}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            <p className="text-lg font-semibold text-foreground">{t("web.monitoring.strengthTitle")}</p>
-            <div className="flex flex-col items-start gap-1">
-              <LegendRow
-                colorClass="bg-lime-500"
-                percent={report.strengthPercents.strong}
-                label={t("web.monitoring.strengthStrong")}
-                href={issueHref(searchParams, FILTER_QUERY_STRONG, report.strongItemIds.length)}
-              />
-              <LegendRow
-                colorClass="bg-yellow-400"
-                percent={report.strengthPercents.medium}
-                label={t("web.monitoring.strengthMedium")}
-                href={issueHref(searchParams, FILTER_QUERY_MEDIUM, report.mediumItemIds.length)}
-              />
-              <LegendRow
-                colorClass="bg-destructive"
-                percent={report.strengthPercents.weak}
-                label={t("web.monitoring.strengthWeak")}
-                href={issueHref(searchParams, FILTER_QUERY_WEAK, report.weakItemIds.length)}
-              />
-            </div>
-          </div>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
       <div className="grid gap-6 md:grid-cols-2">
-        <IssueCard
-          count={report.reusedItemIds.length}
-          title={t("web.monitoring.reusedTitle")}
-          description={t("web.monitoring.reusedDescription")}
-          tone={report.reusedItemIds.length > 0 ? "warning" : "success"}
-          showHref={issueHref(searchParams, FILTER_QUERY_REUSED, report.reusedItemIds.length)}
-          showLabel={showLabel}
-        />
-        <IssueCard
-          count={report.weakItemIds.length}
-          title={t("web.monitoring.weakTitle")}
-          description={t("web.monitoring.weakDescription")}
-          tone={report.weakItemIds.length > 0 ? "danger" : "success"}
-          showHref={issueHref(searchParams, FILTER_QUERY_WEAK, report.weakItemIds.length)}
-          showLabel={showLabel}
-        />
-        <IssueCard
-          count={report.compromisedItemIds.length}
-          title={t("web.monitoring.compromisedTitle")}
-          description={t("web.monitoring.compromisedDescription")}
-          tone={report.compromisedItemIds.length > 0 ? "danger" : "success"}
-          showHref={issueHref(searchParams, FILTER_QUERY_COMPROMISED, report.compromisedItemIds.length)}
-          showLabel={showLabel}
-        />
-        <IssueCard
-          count={report.staleItemIds.length}
-          title={t("web.monitoring.staleTitle")}
-          description={t("web.monitoring.staleDescription")}
-          tone={report.staleItemIds.length > 0 ? "warning" : "success"}
-          showHref={issueHref(searchParams, FILTER_QUERY_STALE, report.staleItemIds.length)}
-          showLabel={showLabel}
-        />
+        {enabledCards.reused ? (
+          <IssueCard
+            count={report.reusedItemIds.length}
+            title={t("web.monitoring.reusedTitle")}
+            description={t("web.monitoring.reusedDescription")}
+            tone={report.reusedItemIds.length > 0 ? "warning" : "success"}
+            showHref={issueHref(searchParams, FILTER_QUERY_REUSED, report.reusedItemIds.length, vaultScope)}
+            showLabel={showLabel}
+          />
+        ) : null}
+        {enabledCards.weak ? (
+          <IssueCard
+            count={report.weakItemIds.length}
+            title={t("web.monitoring.weakTitle")}
+            description={t("web.monitoring.weakDescription")}
+            tone={report.weakItemIds.length > 0 ? "danger" : "success"}
+            showHref={issueHref(searchParams, FILTER_QUERY_WEAK, report.weakItemIds.length, vaultScope)}
+            showLabel={showLabel}
+          />
+        ) : null}
+        {enabledCards.compromised ? (
+          <IssueCard
+            count={report.compromisedItemIds.length}
+            title={t("web.monitoring.compromisedTitle")}
+            description={t("web.monitoring.compromisedDescription")}
+            tone={report.compromisedItemIds.length > 0 ? "danger" : "success"}
+            showHref={issueHref(searchParams, FILTER_QUERY_COMPROMISED, report.compromisedItemIds.length, vaultScope)}
+            showLabel={showLabel}
+          />
+        ) : null}
+        {enabledCards.stale ? (
+          <IssueCard
+            count={report.staleItemIds.length}
+            title={t("web.monitoring.staleTitle")}
+            description={t("web.monitoring.staleDescription")}
+            tone={report.staleItemIds.length > 0 ? "warning" : "success"}
+            showHref={issueHref(searchParams, FILTER_QUERY_STALE, report.staleItemIds.length, vaultScope)}
+            showLabel={showLabel}
+          />
+        ) : null}
         {/*
           Passkey gap is intentionally disabled until vault passkeys exist end-to-end.
           Implementation order:
@@ -397,24 +628,28 @@ function MonitoringDashboard({
           2) Item schema + login item UI: store passkey credentials on the record card (like Bitwarden fido2Credentials).
           3) Monitoring: compute passkeyGapItemIds from catalog.supportsPasskeys vs empty credentials, then enable this card.
         */}
-        <IssueCard
-          count={0}
-          title={t("web.monitoring.passkeyGapTitle")}
-          description={t("web.monitoring.passkeyGapDescription")}
-          tone="success"
-          showHref={null}
-          showLabel={showLabel}
-          disabled
-        />
-        <IssueCard
-          count={report.twoFactorGapItemIds.length}
-          title={t("web.monitoring.twoFactorGapTitle")}
-          description={t("web.monitoring.twoFactorGapDescription")}
-          tone={report.twoFactorGapItemIds.length > 0 ? "danger" : "success"}
-          showHref={issueHref(searchParams, FILTER_QUERY_TWO_FACTOR_GAP, report.twoFactorGapItemIds.length)}
-          showLabel={showLabel}
-          badgeLabel={t("web.monitoring.betaBadge")}
-        />
+        {enabledCards.passkeyGap ? (
+          <IssueCard
+            count={0}
+            title={t("web.monitoring.passkeyGapTitle")}
+            description={t("web.monitoring.passkeyGapDescription")}
+            tone="success"
+            showHref={null}
+            showLabel={showLabel}
+            disabled
+          />
+        ) : null}
+        {enabledCards.twoFactorGap ? (
+          <IssueCard
+            count={report.twoFactorGapItemIds.length}
+            title={t("web.monitoring.twoFactorGapTitle")}
+            description={t("web.monitoring.twoFactorGapDescription")}
+            tone={report.twoFactorGapItemIds.length > 0 ? "danger" : "success"}
+            showHref={issueHref(searchParams, FILTER_QUERY_TWO_FACTOR_GAP, report.twoFactorGapItemIds.length, vaultScope)}
+            showLabel={showLabel}
+            badgeLabel={t("web.monitoring.betaBadge")}
+          />
+        ) : null}
       </div>
     </div>
   );

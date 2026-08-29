@@ -4,11 +4,18 @@ import {
   DEFAULT_NEW_VAULT_CRYPTO_VERSION,
 } from "../crypto/downgrade.ts";
 import { entityIdFromDb, generateEntityId } from "../entity-id.ts";
-import type { PlanTier, WorkspaceCapsulePolicies } from "@okkey/types";
+import type {
+  PlanTier,
+  WorkspaceCapsulePolicies,
+  WorkspaceMonitoringCardSettings,
+} from "@okkey/types";
 import {
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
+  workspaceMonitoringCardSettingsFromDto,
+  workspaceMonitoringCardSettingsToDto,
   type WorkspaceCapsulePoliciesDto,
+  type WorkspaceMonitoringCardSettingsDto,
 } from "@okkey/types";
 import type { QueryExecutor } from "./postgres.ts";
 import {
@@ -314,6 +321,7 @@ export interface WorkspaceRecord {
   maxFileSizeMb: number;
   filesInItemsEnabled: boolean;
   capsulePolicies: WorkspaceCapsulePolicies;
+  monitoringCardSettings: WorkspaceMonitoringCardSettings;
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
@@ -322,10 +330,10 @@ export interface WorkspaceRecord {
 }
 
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+  "id, name, owner_id, plan_tier, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
@@ -336,6 +344,7 @@ type WorkspaceRow = BaseRow & {
   max_file_size_mb: number;
   files_in_items_enabled: boolean;
   capsule_policies: unknown;
+  monitoring_card_settings: unknown;
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
@@ -469,6 +478,7 @@ export class WorkspacesRepository {
       maxFileSizeMb?: number;
       filesInItemsEnabled?: boolean;
       capsulePolicies?: WorkspaceCapsulePolicies;
+      monitoringCardSettings?: WorkspaceMonitoringCardSettings;
     },
   ): Promise<WorkspaceRecord> {
     const sets: string[] = ["updated_at = now()"];
@@ -510,6 +520,12 @@ export class WorkspacesRepository {
     if (input.capsulePolicies !== undefined) {
       sets.push(`capsule_policies = $${paramIndex++}::jsonb`);
       values.push(JSON.stringify(workspaceCapsulePoliciesToDto(input.capsulePolicies)));
+    }
+    if (input.monitoringCardSettings !== undefined) {
+      sets.push(`monitoring_card_settings = $${paramIndex++}::jsonb`);
+      values.push(
+        JSON.stringify(workspaceMonitoringCardSettingsToDto(input.monitoringCardSettings)),
+      );
     }
 
     const rows = await this.db.query<WorkspaceRow>(
@@ -1859,6 +1875,11 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     filesInItemsEnabled: row.files_in_items_enabled ?? true,
     capsulePolicies: workspaceCapsulePoliciesFromDto(
       (row.capsule_policies ?? undefined) as Partial<WorkspaceCapsulePoliciesDto> | undefined,
+    ),
+    monitoringCardSettings: workspaceMonitoringCardSettingsFromDto(
+      (row.monitoring_card_settings ?? undefined) as
+        | Partial<WorkspaceMonitoringCardSettingsDto>
+        | undefined,
     ),
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,

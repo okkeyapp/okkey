@@ -122,6 +122,10 @@
   "web.monitoring.scoreLabels.good": "Хорошо",
   "web.monitoring.scoreLabels.fair": "Средне",
   "web.monitoring.scoreLabels.poor": "Плохо",
+  "web.monitoring.configure": "Настроить",
+  "web.monitoring.vaultScope.all": "Все сейфы",
+  "web.monitoring.vaultScope.personal": "Личный",
+  "web.monitoring.vaultScope.shared": "Общие",
 
   "web.items.searchPlaceholder": "Поиск...",
   "web.items.createRecord": "Создать запись",
