@@ -22,7 +22,11 @@ export type MonitoringAnalytics = {
   reusedItemIds: string[];
   weakItemIds: string[];
   staleItemIds: string[];
-  /** Stub until passkey field type exists in item schema. */
+  /**
+   * Always empty until vault passkeys ship end-to-end.
+   * Order: (1) desktop/browser WebAuthn create+use, (2) passkey field on login item UI,
+   * (3) compute gap here from catalog.supportsPasskeys vs stored credentials.
+   */
   passkeyGapItemIds: string[];
   twoFactorGapItemIds: string[];
   compromisedItemIds: string[];
@@ -182,6 +186,7 @@ export function computeMonitoringAnalytics(
     reusedItemIds: uniqueIds(reusedItemIds),
     weakItemIds: uniqueIds(weakItemIds),
     staleItemIds: uniqueIds(staleItemIds),
+    // Always [] until: (1) desktop/browser WebAuthn, (2) passkey on login item UI, (3) gap analytics here.
     passkeyGapItemIds: [],
     twoFactorGapItemIds,
     compromisedItemIds,

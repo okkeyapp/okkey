@@ -43,10 +43,14 @@ export function useMonitoringReport(
 ): MonitoringReportState {
   const { items, bootstrapped, loading: itemsLoading } = useWorkspaceItems();
   const [compromisedItemIds, setCompromisedItemIds] = useState<string[]>([]);
-  const [compromisedChecking, setCompromisedChecking] = useState(false);
+  const [compromisedReady, setCompromisedReady] = useState(false);
   const [trendPoints, setTrendPoints] = useState<ScoreSnapshot[]>(() => loadScoreHistory(workspaceId));
 
   const passwordEntries = useMemo(() => extractItemPasswordEntries(items), [items]);
+  const passwordFingerprint = useMemo(
+    () => passwordEntries.map((e) => `${e.itemId}\0${e.password}`).join("\n"),
+    [passwordEntries],
+  );
 
   const resolvedCatalogEntries = useMemo(
     () => catalogEntries ?? getCachedDomainCapabilitiesEntries(),
@@ -68,31 +72,36 @@ export function useMonitoringReport(
 
   useEffect(() => {
     if (!bootstrapped || itemsLoading) {
+      setCompromisedReady(false);
       return;
     }
     if (passwordEntries.length === 0) {
       setCompromisedItemIds([]);
-      setCompromisedChecking(false);
+      setCompromisedReady(true);
       return;
     }
 
     let cancelled = false;
-    setCompromisedChecking(true);
-    void findCompromisedItemIds(passwordEntries).then((ids) => {
-      if (cancelled) {
-        return;
-      }
-      setCompromisedItemIds(ids);
-      setCompromisedChecking(false);
-    });
+    setCompromisedReady(false);
+    void findCompromisedItemIds(passwordEntries)
+      .then((ids) => {
+        if (!cancelled) {
+          setCompromisedItemIds(ids);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCompromisedReady(true);
+        }
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [bootstrapped, itemsLoading, passwordEntries]);
+  }, [bootstrapped, itemsLoading, passwordFingerprint, passwordEntries]);
 
   useEffect(() => {
-    if (!bootstrapped || itemsLoading || compromisedChecking) {
+    if (!bootstrapped || itemsLoading || !compromisedReady) {
       return;
     }
     if (passwordEntries.length === 0) {
@@ -103,13 +112,14 @@ export function useMonitoringReport(
   }, [
     baseReport.score,
     bootstrapped,
-    compromisedChecking,
+    compromisedReady,
     itemsLoading,
     passwordEntries.length,
     workspaceId,
   ]);
 
-  const loading = !bootstrapped || itemsLoading || (passwordEntries.length > 0 && compromisedChecking);
+  // Hold skeleton until items + HIBP finish so KPIs do not flash (0 → N).
+  const loading = !bootstrapped || itemsLoading || !compromisedReady;
   const empty = bootstrapped && !itemsLoading && passwordEntries.length === 0;
   const issueCount =
     baseReport.reusedItemIds.length +
@@ -124,8 +134,8 @@ export function useMonitoringReport(
     loading,
     empty,
     allGood,
-    report: bootstrapped ? baseReport : EMPTY_REPORT,
+    report: bootstrapped && compromisedReady ? baseReport : EMPTY_REPORT,
     trendPoints,
-    compromisedChecking,
+    compromisedChecking: !compromisedReady,
   };
 }

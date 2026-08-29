@@ -1,4 +1,5 @@
 const HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range";
+const HIBP_FETCH_TIMEOUT_MS = 8_000;
 
 async function sha1HexUpper(password: string): Promise<string> {
   const data = new TextEncoder().encode(password);
@@ -13,22 +14,29 @@ async function fetchPwnedSuffixes(prefix: string): Promise<Set<string>> {
   if (cached) {
     return cached;
   }
-  const response = await fetch(`${HIBP_RANGE_URL}/${prefix}`, {
-    headers: { "Add-Padding": "true" },
-  });
-  if (!response.ok) {
-    throw new Error(`HIBP range failed: ${response.status}`);
-  }
-  const text = await response.text();
-  const suffixes = new Set<string>();
-  for (const line of text.split("\n")) {
-    const suffix = line.trim().split(":")[0]?.toUpperCase();
-    if (suffix) {
-      suffixes.add(suffix);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HIBP_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${HIBP_RANGE_URL}/${prefix}`, {
+      signal: controller.signal,
+      headers: { "Add-Padding": "true" },
+    });
+    if (!response.ok) {
+      throw new Error(`HIBP range failed: ${response.status}`);
     }
+    const text = await response.text();
+    const suffixes = new Set<string>();
+    for (const line of text.split("\n")) {
+      const suffix = line.trim().split(":")[0]?.toUpperCase();
+      if (suffix) {
+        suffixes.add(suffix);
+      }
+    }
+    rangeCache.set(prefix, suffixes);
+    return suffixes;
+  } finally {
+    clearTimeout(timer);
   }
-  rangeCache.set(prefix, suffixes);
-  return suffixes;
 }
 
 export async function isPasswordCompromised(password: string): Promise<boolean> {

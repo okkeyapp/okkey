@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 import {
-  isCacheValidForManifest,
   loadDomainCapabilitiesCache,
   saveDomainCapabilitiesCache,
-  shouldRefreshDomainCapabilitiesCache,
+  saveDomainCapabilitiesFetchAttempt,
+  shouldAttemptDomainCapabilitiesNetworkFetch,
 } from "./domainCapabilitiesCache";
 import {
   fetchDomainCapabilitiesCatalog,
@@ -17,92 +17,89 @@ import type {
 } from "./domainCapabilitiesTypes";
 
 export type DomainCapabilitiesCatalogState = {
-  catalog: DomainCapabilitiesCatalog | null;
-  loading: boolean;
-  source: DomainCapabilitiesSource | null;
+  catalog: DomainCapabilitiesCatalog;
+  source: DomainCapabilitiesSource;
 };
 
+function resolvePaintCatalog(): {
+  catalog: DomainCapabilitiesCatalog;
+  source: DomainCapabilitiesSource;
+} {
+  const cached = loadDomainCapabilitiesCache();
+  if (cached) {
+    return {
+      catalog: {
+        version: cached.version,
+        generatedAt: new Date(cached.fetchedAt).toISOString(),
+        sha256: cached.sha256,
+        entries: cached.entries,
+      },
+      source: "cache",
+    };
+  }
+  return {
+    catalog: loadBaselineDomainCapabilitiesCatalog(),
+    source: "baseline",
+  };
+}
+
+/**
+ * Catalog is always available synchronously (cache or bundled baseline).
+ * Background refresh races GitHub raw + jsDelivr + statically.io and stores
+ * the first successful catalog in localStorage for the next visit (no mid-session KPI swap).
+ *
+ * Freshness:
+ * - Successful fetch → revalidate after 24h (`DOMAIN_CAPABILITIES_REFRESH_MS`).
+ * - Failed fetch → cooldown 1h before retry (`DOMAIN_CAPABILITIES_RETRY_AFTER_FAIL_MS`).
+ */
 export function useDomainCapabilitiesCatalog(enabled: boolean): DomainCapabilitiesCatalogState {
-  const [catalog, setCatalog] = useState<DomainCapabilitiesCatalog | null>(null);
-  const [loading, setLoading] = useState(enabled);
-  const [source, setSource] = useState<DomainCapabilitiesSource | null>(null);
+  const [initial] = useState(resolvePaintCatalog);
+  const [catalog] = useState<DomainCapabilitiesCatalog>(initial.catalog);
+  const [source] = useState<DomainCapabilitiesSource>(initial.source);
 
   useEffect(() => {
     if (!enabled) {
-      setLoading(false);
+      return;
+    }
+    if (!shouldAttemptDomainCapabilitiesNetworkFetch()) {
       return;
     }
 
     let cancelled = false;
 
     void (async () => {
-      setLoading(true);
-      const now = Date.now();
-      const cached = loadDomainCapabilitiesCache();
-
       try {
+        const cached = loadDomainCapabilitiesCache();
         const manifest = await fetchDomainCapabilitiesManifest();
         if (cancelled) {
           return;
         }
-
-        if (isCacheValidForManifest(cached, manifest.version, now)) {
-          setCatalog({
-            version: cached!.version,
-            generatedAt: manifest.generatedAt,
-            sha256: cached!.sha256,
-            entries: cached!.entries,
-          });
-          setSource("cache");
-          setLoading(false);
+        if (
+          cached &&
+          cached.version === manifest.version &&
+          cached.sha256 === manifest.sha256
+        ) {
+          // Touch freshness without re-downloading the full catalog.
+          saveDomainCapabilitiesCache(
+            {
+              version: cached.version,
+              generatedAt: manifest.generatedAt,
+              sha256: cached.sha256,
+              entries: cached.entries,
+            },
+            Date.now(),
+          );
+          saveDomainCapabilitiesFetchAttempt(true);
           return;
         }
-
-        const needsCatalogFetch =
-          !cached ||
-          cached.version !== manifest.version ||
-          cached.sha256 !== manifest.sha256 ||
-          shouldRefreshDomainCapabilitiesCache(cached.fetchedAt, now);
-
-        if (!needsCatalogFetch && cached) {
-          setCatalog({
-            version: cached.version,
-            generatedAt: manifest.generatedAt,
-            sha256: cached.sha256,
-            entries: cached.entries,
-          });
-          setSource("cache");
-          setLoading(false);
-          return;
-        }
-
         const remote = await fetchDomainCapabilitiesCatalog(manifest.sha256);
         if (cancelled) {
           return;
         }
-        saveDomainCapabilitiesCache(remote, now);
-        setCatalog(remote);
-        setSource("github");
+        saveDomainCapabilitiesCache(remote);
+        saveDomainCapabilitiesFetchAttempt(true);
       } catch {
-        if (cancelled) {
-          return;
-        }
-        if (cached) {
-          setCatalog({
-            version: cached.version,
-            generatedAt: new Date(cached.fetchedAt).toISOString(),
-            sha256: cached.sha256,
-            entries: cached.entries,
-          });
-          setSource("cache");
-        } else {
-          setCatalog(loadBaselineDomainCapabilitiesCatalog());
-          setSource("baseline");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        saveDomainCapabilitiesFetchAttempt(false);
       }
     })();
 
@@ -111,5 +108,5 @@ export function useDomainCapabilitiesCatalog(enabled: boolean): DomainCapabiliti
     };
   }, [enabled]);
 
-  return { catalog, loading, source };
+  return { catalog, source };
 }

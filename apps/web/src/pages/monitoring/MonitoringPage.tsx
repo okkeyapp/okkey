@@ -20,7 +20,6 @@ import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolle
 import { useLocale } from "../../locale/LocaleContext";
 import {
   FILTER_QUERY_COMPROMISED,
-  FILTER_QUERY_PASSKEY_GAP,
   FILTER_QUERY_REUSED,
   FILTER_QUERY_STALE,
   FILTER_QUERY_TWO_FACTOR_GAP,
@@ -52,41 +51,53 @@ type IssueCardProps = {
   tone: "warning" | "danger" | "success";
   showHref: string | null;
   showLabel: string;
+  /** Grayed-out placeholder; no Show link and muted styling. */
+  disabled?: boolean;
 };
 
-function IssueCard({ count, title, description, tone, showHref, showLabel }: IssueCardProps) {
-  const iconWrap =
-    tone === "success"
+function IssueCard({ count, title, description, tone, showHref, showLabel, disabled = false }: IssueCardProps) {
+  const iconWrap = disabled
+    ? "bg-muted text-muted-foreground"
+    : tone === "success"
       ? "bg-lime-100 text-lime-700 dark:bg-lime-950 dark:text-lime-400"
       : tone === "warning"
         ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400"
         : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400";
-  const countClass =
-    tone === "success"
+  const countClass = disabled
+    ? "text-muted-foreground"
+    : tone === "success"
       ? "text-lime-700 dark:text-lime-400"
       : tone === "warning"
         ? "text-yellow-600 dark:text-yellow-400"
         : "text-destructive";
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-xl border border-border p-4">
+    <div
+      className={cn(
+        "flex min-w-0 flex-1 flex-col gap-3 rounded-xl border border-border p-4",
+        disabled && "opacity-60",
+      )}
+      aria-disabled={disabled || undefined}
+    >
       <div className="flex items-center gap-2.5">
         <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", iconWrap)}>
-          {tone === "success" ? (
+          {disabled || tone === "success" ? (
             <CheckCircle2 className="size-5" aria-hidden />
           ) : (
             <AlertCircle className="size-5" aria-hidden />
           )}
         </div>
         <p className={cn("min-w-0 flex-1 text-3xl font-bold leading-9", countClass)}>{count}</p>
-        {showHref && count > 0 ? (
+        {!disabled && showHref && count > 0 ? (
           <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
             <Link to={showHref}>{showLabel}</Link>
           </Button>
         ) : null}
       </div>
       <div className="flex flex-col gap-1.5">
-        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className={cn("text-sm font-medium", disabled ? "text-muted-foreground" : "text-foreground")}>
+          {title}
+        </p>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
     </div>
@@ -139,12 +150,11 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
   const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0);
-  const { catalog, loading: catalogLoading } = useDomainCapabilitiesCatalog(true);
-  const { loading: reportLoading, empty, allGood, report, trendPoints } = useMonitoringReport(
+  const { catalog } = useDomainCapabilitiesCatalog(true);
+  const { loading, empty, allGood, report, trendPoints } = useMonitoringReport(
     workspaceId,
-    catalog?.entries ?? null,
+    catalog.entries,
   );
-  const loading = catalogLoading || reportLoading;
 
   const showLabel = t("web.monitoring.show");
 
@@ -245,7 +255,7 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
             </>
           ) : null}
 
-          <p className="text-xs leading-5 text-muted-foreground">
+          <p className="mb-4 text-xs leading-5 text-muted-foreground">
             {t("web.monitoring.catalogAttribution")}{" "}
             <a
               href={DOMAIN_CAPABILITIES_REPO_URL}
@@ -371,13 +381,21 @@ function MonitoringDashboard({
           showHref={issueHref(searchParams, FILTER_QUERY_STALE, report.staleItemIds.length)}
           showLabel={showLabel}
         />
+        {/*
+          Passkey gap is intentionally disabled until vault passkeys exist end-to-end.
+          Implementation order:
+          1) Desktop / browser extension: create & use WebAuthn/FIDO2 credentials (synced software passkeys).
+          2) Item schema + login item UI: store passkey credentials on the record card (like Bitwarden fido2Credentials).
+          3) Monitoring: compute passkeyGapItemIds from catalog.supportsPasskeys vs empty credentials, then enable this card.
+        */}
         <IssueCard
-          count={report.passkeyGapItemIds.length}
+          count={0}
           title={t("web.monitoring.passkeyGapTitle")}
           description={t("web.monitoring.passkeyGapDescription")}
-          tone={report.passkeyGapItemIds.length > 0 ? "warning" : "success"}
-          showHref={issueHref(searchParams, FILTER_QUERY_PASSKEY_GAP, report.passkeyGapItemIds.length)}
+          tone="success"
+          showHref={null}
           showLabel={showLabel}
+          disabled
         />
         <IssueCard
           count={report.twoFactorGapItemIds.length}
