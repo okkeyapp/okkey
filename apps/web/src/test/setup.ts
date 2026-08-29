@@ -26,6 +26,17 @@ beforeEach(() => {
       onchange: null,
     })),
   });
+
+  class ResizeObserverStub {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+  Object.defineProperty(window, "ResizeObserver", {
+    writable: true,
+    configurable: true,
+    value: ResizeObserverStub,
+  });
 });
 
 afterEach(() => {

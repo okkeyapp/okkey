@@ -21,6 +21,7 @@ import {
   toolsSectionFromSlug,
   type ToolsSectionId,
 } from "../../../routes/paths";
+import GeneratorSection from "./generator/GeneratorSection";
 import ToolsMobileHeader from "./ToolsMobileHeader";
 import ToolsSidebar from "./ToolsSidebar";
 
@@ -95,7 +96,11 @@ export default function ToolsPage({ workspaceName }: ToolsPageProps) {
         <div className="flex w-full max-w-[900px] flex-col gap-4 md:flex-row">
           <ToolsSidebar activeSection={activeSection} t={t} sectionHref={sectionHref} />
           <main className="min-w-0 flex-1">
-            <ToolsPlaceholderSection section={activeSection} t={t} />
+            {activeSection === "generator" ? (
+              <GeneratorSection />
+            ) : (
+              <ToolsPlaceholderSection section={activeSection} t={t} />
+            )}
           </main>
         </div>
       </div>

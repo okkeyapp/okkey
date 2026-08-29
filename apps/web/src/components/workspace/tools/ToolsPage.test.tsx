@@ -18,7 +18,7 @@ function renderToolsPage(path = "/tools/generator") {
 }
 
 describe("ToolsPage", () => {
-  it("renders settings-like breadcrumbs, sidebar, and a stub for the active tool", () => {
+  it("renders settings-like breadcrumbs, sidebar, and the generator section", () => {
     renderToolsPage("/tools/generator");
 
     expect(screen.getByRole("navigation", { name: "Tools navigation" })).toHaveTextContent("Okkey team");
@@ -33,7 +33,9 @@ describe("ToolsPage", () => {
     expect(screen.getByRole("link", { name: "Export" })).toHaveAttribute("href", "/tools/export");
 
     expect(screen.getByRole("heading", { name: "Generator" })).toBeInTheDocument();
-    expect(screen.getByText("This tool is coming soon.")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Password" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Passphrase" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Username" })).toBeInTheDocument();
   });
 
   it("shows the import stub when that section is active", () => {
@@ -42,5 +44,6 @@ describe("ToolsPage", () => {
     expect(screen.getByRole("heading", { name: "Import" })).toBeInTheDocument();
     const sidebar = screen.getByRole("navigation", { name: "Tools sections" });
     expect(sidebar.querySelector('[aria-current="page"]')).toHaveAttribute("href", "/tools/import");
+    expect(screen.getByText("This tool is coming soon.")).toBeInTheDocument();
   });
 });
