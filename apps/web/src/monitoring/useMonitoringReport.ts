@@ -6,19 +6,12 @@ import { findCompromisedItemIds } from "./compromisedPasswords";
 import { getCachedDomainCapabilitiesEntries } from "./domainCapabilitiesCache";
 import type { DomainCapabilitiesEntries } from "./domainCapabilitiesTypes";
 import { extractItemPasswordEntries } from "./extractPasswords";
-import {
-  loadScoreHistory,
-  recordScoreSnapshot,
-  scoreHistoryForDays,
-  type ScoreSnapshot,
-} from "./scoreHistory";
 
 export type MonitoringReportState = {
   loading: boolean;
   empty: boolean;
   allGood: boolean;
   report: MonitoringAnalytics;
-  trendPoints: ScoreSnapshot[];
   compromisedChecking: boolean;
 };
 
@@ -40,13 +33,12 @@ const EMPTY_REPORT: MonitoringAnalytics = {
 };
 
 export function useMonitoringReport(
-  workspaceId: string,
+  _workspaceId: string,
   catalogEntries?: DomainCapabilitiesEntries | null,
 ): MonitoringReportState {
   const { items, bootstrapped, loading: itemsLoading } = useWorkspaceItems();
   const [compromisedItemIds, setCompromisedItemIds] = useState<string[]>([]);
   const [compromisedReady, setCompromisedReady] = useState(false);
-  const [trendPoints, setTrendPoints] = useState<ScoreSnapshot[]>(() => loadScoreHistory(workspaceId));
 
   const passwordEntries = useMemo(() => extractItemPasswordEntries(items), [items]);
   const passwordFingerprint = useMemo(
@@ -67,10 +59,6 @@ export function useMonitoringReport(
       }),
     [items, compromisedItemIds, resolvedCatalogEntries],
   );
-
-  useEffect(() => {
-    setTrendPoints(loadScoreHistory(workspaceId));
-  }, [workspaceId]);
 
   useEffect(() => {
     if (!bootstrapped || itemsLoading) {
@@ -102,24 +90,6 @@ export function useMonitoringReport(
     };
   }, [bootstrapped, itemsLoading, passwordFingerprint, passwordEntries]);
 
-  useEffect(() => {
-    if (!bootstrapped || itemsLoading || !compromisedReady) {
-      return;
-    }
-    if (passwordEntries.length === 0) {
-      return;
-    }
-    const next = recordScoreSnapshot(workspaceId, baseReport.score);
-    setTrendPoints(scoreHistoryForDays(next, 90));
-  }, [
-    baseReport.score,
-    bootstrapped,
-    compromisedReady,
-    itemsLoading,
-    passwordEntries.length,
-    workspaceId,
-  ]);
-
   // Hold skeleton until items + HIBP finish so KPIs do not flash (0 → N).
   const loading = !bootstrapped || itemsLoading || !compromisedReady;
   const empty = bootstrapped && !itemsLoading && passwordEntries.length === 0;
@@ -137,7 +107,6 @@ export function useMonitoringReport(
     empty,
     allGood,
     report: bootstrapped && compromisedReady ? baseReport : EMPTY_REPORT,
-    trendPoints,
     compromisedChecking: !compromisedReady,
   };
 }

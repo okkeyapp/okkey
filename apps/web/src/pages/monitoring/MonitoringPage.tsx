@@ -35,7 +35,6 @@ import type { MonitoringAnalytics, MonitoringScoreLabelKey } from "../../monitor
 import {
   MonitoringDonutChart,
   MonitoringGaugeChart,
-  MonitoringTrendChart,
 } from "../../monitoring/MonitoringCharts";
 import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
 import { useDomainCapabilitiesCatalog } from "../../monitoring/useDomainCapabilitiesCatalog";
@@ -171,7 +170,7 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
   const pageRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0);
   const { catalog } = useDomainCapabilitiesCatalog(true);
-  const { loading, empty, allGood, report, trendPoints } = useMonitoringReport(
+  const { loading, empty, allGood, report } = useMonitoringReport(
     workspaceId,
     catalog.entries,
   );
@@ -236,10 +235,6 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
                 <ChartCardSkeleton />
                 <ChartCardSkeleton />
               </div>
-              <div className="rounded-xl border border-border p-4">
-                <Skeleton className="mb-3 h-7 w-40" />
-                <Skeleton className="h-24 w-full" />
-              </div>
               <div className="grid gap-6 md:grid-cols-2">
                 <IssueCardSkeleton />
                 <IssueCardSkeleton />
@@ -264,7 +259,6 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
               ) : null}
               <MonitoringDashboard
                 report={report}
-                trendPoints={trendPoints}
                 searchParams={searchParams}
                 showLabel={showLabel}
                 t={t}
@@ -272,18 +266,21 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
             </>
           ) : null}
 
-          <p className="mb-4 text-xs leading-5 text-muted-foreground">
-            {t("web.monitoring.catalogAttribution")}{" "}
-            <a
-              href={DOMAIN_CAPABILITIES_REPO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              {t("web.monitoring.catalogRepoLink")}
-            </a>
-            . {t("web.monitoring.catalogUpstreamAttribution")}
-          </p>
+          <ol className="mb-4 list-decimal space-y-2 ps-5 text-xs leading-5 text-muted-foreground">
+            <li>{t("web.monitoring.compromisedAttribution")}</li>
+            <li>
+              {t("web.monitoring.catalogAttribution")}{" "}
+              <a
+                href={DOMAIN_CAPABILITIES_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                {t("web.monitoring.catalogRepoLink")}
+              </a>
+              . {t("web.monitoring.catalogUpstreamAttribution")}
+            </li>
+          </ol>
         </div>
       </div>
     </div>
@@ -292,13 +289,11 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
 
 function MonitoringDashboard({
   report,
-  trendPoints,
   searchParams,
   showLabel,
   t,
 }: {
   report: MonitoringAnalytics;
-  trendPoints: { ts: number; score: number }[];
   searchParams: URLSearchParams;
   showLabel: string;
   t: (key: string) => string;
@@ -360,12 +355,6 @@ function MonitoringDashboard({
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="rounded-xl border border-border p-4">
-        <p className="mb-3 text-lg font-semibold text-foreground">{t("web.monitoring.trendTitle")}</p>
-        <p className="mb-3 text-sm text-muted-foreground">{t("web.monitoring.trendDescription")}</p>
-        <MonitoringTrendChart points={trendPoints} />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
