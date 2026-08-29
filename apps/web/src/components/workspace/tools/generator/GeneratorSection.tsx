@@ -110,7 +110,6 @@ function GeneratorOutputCard({
   crackTimeClassName,
   onCopy,
   copyAria,
-  copiedFlash,
 }: {
   value: string;
   colored?: boolean;
@@ -125,21 +124,25 @@ function GeneratorOutputCard({
   crackTimeClassName: string;
   onCopy: () => void;
   copyAria: string;
-  copiedFlash: boolean;
 }) {
   return (
     <div
       className={cn(
         "overflow-hidden rounded-xl border border-border transition-[border-color,box-shadow]",
-        copiedFlash &&
-          "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "has-[[data-generator-copy]:focus]:border-accent",
+        "has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "has-[[data-generator-copy]:focus-visible]:border-accent",
+        "has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "dark:has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+        "dark:has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
       )}
     >
       <div className="flex min-h-[100px] items-center gap-4 p-4">
         <span className="size-6 shrink-0" aria-hidden />
         <button
           type="button"
-          className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground sm:text-[32px] sm:leading-10"
+          data-generator-copy
+          className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground outline-none sm:text-[32px] sm:leading-10"
           onClick={onCopy}
           aria-label={copyAria}
           title={copyAria}
@@ -195,7 +198,6 @@ export default function GeneratorSection() {
   );
   const [usernameValue, setUsernameValue] = useState(() => generateUsername(usernamePreferences));
   const [separatorDraft, setSeparatorDraft] = useState(passphrasePreferences.wordSeparator);
-  const [copiedFlash, setCopiedFlash] = useState(false);
 
   useEffect(() => {
     savePasswordGeneratorPreferences(passwordPreferences);
@@ -208,14 +210,6 @@ export default function GeneratorSection() {
   useEffect(() => {
     saveUsernameGeneratorPreferences(usernamePreferences);
   }, [usernamePreferences]);
-
-  useEffect(() => {
-    if (!copiedFlash) {
-      return;
-    }
-    const timer = window.setTimeout(() => setCopiedFlash(false), 1200);
-    return () => window.clearTimeout(timer);
-  }, [copiedFlash]);
 
   const activeValue =
     mode === "password" ? passwordValue : mode === "passphrase" ? passphraseValue : usernameValue;
@@ -312,7 +306,6 @@ export default function GeneratorSection() {
   async function copyActiveValue() {
     try {
       await navigator.clipboard.writeText(activeValue);
-      setCopiedFlash(true);
       toast.success(t("web.keyForm.copied"));
     } catch {
       /* ignore */
@@ -385,7 +378,6 @@ export default function GeneratorSection() {
           crackTimeClassName={strengthClassName}
           onCopy={() => void copyActiveValue()}
           copyAria={t("web.tools.generator.copyAria")}
-          copiedFlash={copiedFlash}
         />
 
         {mode === "password" ? (
