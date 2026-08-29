@@ -448,7 +448,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
     const hasValueOverlay =
       canCopyValue || canOpenFileValue || canShowStatusOverlay;
     const actionsWrapperClassName = cn(
-      "relative z-30 flex shrink-0 items-center gap-1",
+      "relative z-10 flex shrink-0 items-center gap-1",
       actionsHideOnFieldHover &&
         "transition-opacity group-hover/key-field:invisible group-hover/key-field:pointer-events-none group-hover/key-field:opacity-0",
       actionsHideOnFieldHover &&
@@ -972,7 +972,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
           ],
           isHoverLocked && copyHoverActiveClassName,
           className,
-          hasOpenOverlay && "relative z-30",
+          hasOpenOverlay && "relative z-20",
           Boolean(floatingActions) && "relative",
           !hasValidationError && [
             "focus-within:relative focus-within:z-10",
@@ -1082,7 +1082,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
         {floatingActions ? (
           <div
             className={cn(
-              "pointer-events-none absolute inset-y-0 right-4 z-30 flex items-center gap-1 opacity-0 transition-opacity",
+              "pointer-events-none absolute inset-y-0 right-4 z-20 flex items-center gap-1 opacity-0 transition-opacity",
               "group-hover/key-field:pointer-events-auto group-hover/key-field:opacity-100",
               isHoverLocked && "pointer-events-auto opacity-100",
             )}

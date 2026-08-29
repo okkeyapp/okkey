@@ -159,44 +159,41 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
   const showLabel = t("web.monitoring.show");
 
   return (
-    <div ref={pageRootRef} className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <div
+    <div ref={pageRootRef} className="flex min-h-full min-w-0 flex-1 flex-col">
+      <BreadcrumbBar className="max-md:hidden">
+        <Breadcrumb aria-label={t("web.monitoring.breadcrumbsAria")}>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to={itemsHref} title={workspaceName}>
+                  <span className="truncate">{workspaceName}</span>
+                </Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage title={t("web.monitoring.title")}>{t("web.monitoring.title")}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </BreadcrumbBar>
+
+      <header
         className={cn(
-          "sticky top-0 z-20",
           stickyHeaderSurfaceClassName,
-          headerScrolled && stickyHeaderShadowClassName,
+          stickyHeaderShadowClassName(headerScrolled),
+          "top-0 box-border flex h-[53px] shrink-0 items-center gap-2 border-b border-border py-2 pl-2 pr-2 md:hidden",
         )}
       >
-        <div className="flex items-center gap-1 border-b border-border px-2 py-2 md:hidden">
-          <Link
-            to={itemsHref}
-            className="inline-flex size-9 items-center justify-center rounded-md text-foreground hover:bg-muted"
-            aria-label={t("web.monitoring.backAria")}
-          >
-            <BackChevronIcon className="size-5" />
+        <Button asChild variant="secondary" size="iconSm" className="!size-7 !min-h-7 !min-w-7 shrink-0 rounded-md">
+          <Link to={itemsHref} aria-label={t("web.monitoring.backAria")}>
+            <BackChevronIcon />
           </Link>
-          <p className="truncate text-sm font-medium">{t("web.monitoring.title")}</p>
-        </div>
-        <BreadcrumbBar className="max-md:hidden">
-          <Breadcrumb aria-label={t("web.monitoring.breadcrumbsAria")}>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink asChild>
-                  <Link to={itemsHref} title={workspaceName}>
-                    <span className="truncate">{workspaceName}</span>
-                  </Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage title={t("web.monitoring.title")}>{t("web.monitoring.title")}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </BreadcrumbBar>
-      </div>
+        </Button>
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">{t("web.monitoring.title")}</p>
+      </header>
 
-      <main className="flex min-h-0 flex-1 justify-center overflow-y-auto px-6 py-8">
+      <div className="flex flex-1 flex-col items-center px-4 py-6 md:px-6 md:pb-8 md:pt-8">
         <div className="flex w-full max-w-[900px] flex-col gap-9">
           <div className="flex flex-col gap-4">
             <h1 className="text-lg font-semibold leading-7 text-foreground">{t("web.monitoring.title")}</h1>
@@ -268,7 +265,7 @@ export default function MonitoringPage({ workspaceId, workspaceName }: Monitorin
             . {t("web.monitoring.catalogUpstreamAttribution")}
           </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

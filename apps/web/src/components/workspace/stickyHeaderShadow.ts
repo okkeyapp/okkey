@@ -1,6 +1,6 @@
 import { cn } from "@okkey/ui";
 
-export const stickyHeaderSurfaceClassName = "sticky top-0 z-30 bg-background transition-shadow";
+export const stickyHeaderSurfaceClassName = "sticky top-0 z-40 bg-background transition-shadow";
 
 export function stickyHeaderShadowClassName(scrolled: boolean): string {
   return cn(
