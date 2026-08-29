@@ -110,6 +110,7 @@
   "web.monitoring.passkeyGapDescription": "Некоторые сервисы поддерживают вход через passkeys. Их использование повышает уровень защиты.",
   "web.monitoring.twoFactorGapTitle": "2FA доступны, но не настроены",
   "web.monitoring.twoFactorGapDescription": "Для части аккаунтов доступна двухфакторная аутентификация. Её включение усиливает защиту.",
+  "web.monitoring.betaBadge": "Beta",
   "web.monitoring.emptyTitle": "Пока нечего анализировать",
   "web.monitoring.emptyDescription": "Добавьте записи с паролями в доступные сейфы — мониторинг рассчитает показатели локально на устройстве.",
   "web.monitoring.emptyCta": "Перейти к записям",

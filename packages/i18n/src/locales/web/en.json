@@ -110,6 +110,7 @@
   "web.monitoring.passkeyGapDescription": "Some services support passkey sign-in. Using them improves protection.",
   "web.monitoring.twoFactorGapTitle": "2FA available but not set up",
   "web.monitoring.twoFactorGapDescription": "Some accounts support two-factor authentication. Enabling it strengthens protection.",
+  "web.monitoring.betaBadge": "Beta",
   "web.monitoring.emptyTitle": "Nothing to analyze yet",
   "web.monitoring.emptyDescription": "Add records with passwords to vaults you can access — monitoring will calculate metrics locally on your device.",
   "web.monitoring.emptyCta": "Go to items",

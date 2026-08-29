@@ -53,9 +53,20 @@ type IssueCardProps = {
   showLabel: string;
   /** Grayed-out placeholder; no Show link and muted styling. */
   disabled?: boolean;
+  /** Optional status chip next to the title (e.g. Beta). */
+  badgeLabel?: string;
 };
 
-function IssueCard({ count, title, description, tone, showHref, showLabel, disabled = false }: IssueCardProps) {
+function IssueCard({
+  count,
+  title,
+  description,
+  tone,
+  showHref,
+  showLabel,
+  disabled = false,
+  badgeLabel,
+}: IssueCardProps) {
   const iconWrap = disabled
     ? "bg-muted text-muted-foreground"
     : tone === "success"
@@ -95,9 +106,16 @@ function IssueCard({ count, title, description, tone, showHref, showLabel, disab
         ) : null}
       </div>
       <div className="flex flex-col gap-1.5">
-        <p className={cn("text-sm font-medium", disabled ? "text-muted-foreground" : "text-foreground")}>
-          {title}
-        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className={cn("text-sm font-medium", disabled ? "text-muted-foreground" : "text-foreground")}>
+            {title}
+          </p>
+          {badgeLabel ? (
+            <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-secondary px-2 text-xs leading-5 text-muted-foreground">
+              {badgeLabel}
+            </span>
+          ) : null}
+        </div>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
     </div>
@@ -401,6 +419,7 @@ function MonitoringDashboard({
           tone={report.twoFactorGapItemIds.length > 0 ? "danger" : "success"}
           showHref={issueHref(searchParams, FILTER_QUERY_TWO_FACTOR_GAP, report.twoFactorGapItemIds.length)}
           showLabel={showLabel}
+          badgeLabel={t("web.monitoring.betaBadge")}
         />
       </div>
     </div>
