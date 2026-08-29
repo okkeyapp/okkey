@@ -9,7 +9,6 @@ describe("fetchFirstJson", () => {
   });
 
   it("returns the first successful mirror and aborts slower ones", async () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("slow")) {
@@ -31,16 +30,13 @@ describe("fetchFirstJson", () => {
         }
         return raw as { value: string };
       },
-      { timeoutMs: 1000, label: "test" },
+      { timeoutMs: 1000 },
     );
 
     expect(result.value).toBe("fast");
-    expect(info).toHaveBeenCalled();
-    info.mockRestore();
   });
 
   it("fails when every mirror errors", async () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("missing", { status: 404 })),
@@ -49,10 +45,7 @@ describe("fetchFirstJson", () => {
     await expect(
       fetchFirstJson(["https://example.test/a.json", "https://example.test/b.json"], () => ({ ok: true }), {
         timeoutMs: 500,
-        label: "test-fail",
       }),
     ).rejects.toThrow();
-    expect(info).toHaveBeenCalled();
-    info.mockRestore();
   });
 });
