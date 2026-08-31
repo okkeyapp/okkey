@@ -117,7 +117,7 @@ async function writeCachedState(
 export type WorkspaceFoldersSyncController = {
   refresh: () => Promise<WorkspaceFolderReplayState>;
   drainOutbox: () => Promise<void>;
-  createFolder: (label: string) => Promise<string>;
+  createFolder: (label: string, parentFolderId?: string | null) => Promise<string>;
   commitFolderTree: (nextTree: readonly WorkspaceFolderNode[]) => Promise<void>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
   setItemFavorite: (itemId: string, favorite: boolean) => Promise<void>;
@@ -244,7 +244,7 @@ export function createWorkspaceFoldersSyncController(input: {
       await outbox.drain(input.workspaceId);
       await replayIncremental(state.lastAppliedVersion);
     },
-    createFolder: async (label: string) => {
+    createFolder: async (label: string, parentFolderId: string | null = null) => {
       const trimmed = label.trim();
       if (!trimmed) {
         return "";
@@ -252,16 +252,20 @@ export function createWorkspaceFoldersSyncController(input: {
       const key = await ensureMetadataKey();
       const nowMs = Date.now();
       const id = generateEntityId();
-      const rootSiblingCount = [...state.folders.values()].filter(
-        (folder) => folder.parentFolderId === null,
+      const resolvedParentId = parentFolderId?.trim() ? parentFolderId : null;
+      if (resolvedParentId && !state.folders.has(resolvedParentId)) {
+        throw new Error("Parent folder not found");
+      }
+      const siblingCount = [...state.folders.values()].filter(
+        (folder) => folder.parentFolderId === resolvedParentId,
       ).length;
       const folder: FolderPlaintextV2 = {
         schemaVersion: 2,
         folderId: id,
         workspaceId: input.workspaceId,
         name: trimmed,
-        parentFolderId: null,
-        sortOrder: rootSiblingCount,
+        parentFolderId: resolvedParentId,
+        sortOrder: siblingCount,
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
       };

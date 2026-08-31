@@ -28,7 +28,7 @@ export type WorkspaceFoldersContextValue = {
   bootstrapped: boolean;
   error: string | null;
   syncVersion: number;
-  createFolder: (label: string) => Promise<string>;
+  createFolder: (label: string, parentFolderId?: string | null) => Promise<string>;
   commitFolderTree: (tree: WorkspaceFolderNode[]) => Promise<void>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
   setItemFavorite: (itemId: string, favorite: boolean) => Promise<void>;
@@ -151,10 +151,10 @@ export function useWorkspaceFoldersState(input: {
   );
 
   const createFolder = useCallback(
-    async (label: string) => {
+    async (label: string, parentFolderId?: string | null) => {
       let createdId = "";
       await runMutation(async (controller) => {
-        createdId = await controller.createFolder(label);
+        createdId = await controller.createFolder(label, parentFolderId);
       });
       return createdId;
     },

@@ -43,6 +43,7 @@ import {
   KeyFieldRecoveryCodesChecklistView,
   KeyFieldRecoveryCodesConcealedView,
 } from "./key-field-recovery-codes-view.js";
+import { ScrollArea } from "./scroll-area.js";
 
 export type KeyFormMode = "view" | "edit";
 
@@ -224,6 +225,8 @@ export type KeyFieldProps = Omit<
   editableLabel?: boolean;
   editableValue?: boolean;
   multilineValue?: boolean;
+  /** Cap auto-growing multiline height (line count at `leading-5`); overflow scrolls. */
+  multilineMaxRows?: number;
   dateValue?: boolean;
   addressValue?: boolean;
   recoveryCodesValue?: boolean;
@@ -309,6 +312,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       editableLabel = false,
       editableValue = false,
       multilineValue = false,
+      multilineMaxRows,
       dateValue = false,
       addressValue = false,
       recoveryCodesValue = false,
@@ -464,6 +468,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       ? (copySuccessIcon ?? <CopySuccessIcon className="size-4" />)
       : (copyIcon ?? <KeyFieldCopyIcon className="size-4" />);
 
+    const multilineScrollMaxHeightPx =
+      multilineValue && multilineMaxRows != null && multilineMaxRows > 0
+        ? multilineMaxRows * KEY_FIELD_SINGLE_LINE_HEIGHT_PX
+        : null;
+
     const resizeTextarea = React.useCallback(() => {
       if (!shouldAutoResizeTextarea) {
         return;
@@ -479,7 +488,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       const nextHeight = secretMultilineValue
         ? Math.max(KEY_FIELD_SINGLE_LINE_HEIGHT_PX, measuredHeight)
         : measuredHeight;
+      // When `multilineMaxRows` is set, ScrollArea caps height; textarea grows with content.
       valueControl.style.height = `${nextHeight}px`;
+      valueControl.style.overflowY = "hidden";
     }, [secretMultilineValue, shouldAutoResizeTextarea]);
 
     const setValueTextareaRef = React.useCallback(
@@ -955,6 +966,40 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       }
     }
 
+    const multilineTextarea =
+      canEditValue && multilineValue ? (
+        <textarea
+          ref={setValueTextareaRef}
+          value={draftValue}
+          rows={2}
+          placeholder={valuePlaceholder}
+          onChange={handleValueChange}
+          onFocus={() => {
+            setIsValueFocused(true);
+            resizeTextarea();
+          }}
+          onBlur={() => setIsValueFocused(false)}
+          className={cn(
+            "min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground",
+            multilineScrollMaxHeightPx != null && "pr-4",
+          )}
+        />
+      ) : null;
+
+    const multilineValueEditor =
+      multilineTextarea == null
+        ? null
+        : multilineScrollMaxHeightPx != null ? (
+            <ScrollArea
+              className="-mr-4"
+              style={{ maxHeight: multilineScrollMaxHeightPx }}
+            >
+              {multilineTextarea}
+            </ScrollArea>
+          ) : (
+            multilineTextarea
+          );
+
     return (
       <div
         ref={ref}
@@ -1206,19 +1251,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     )}
                   />
                 ) : multilineValue ? (
-                  <textarea
-                    ref={setValueTextareaRef}
-                    value={draftValue}
-                    rows={2}
-                    placeholder={valuePlaceholder}
-                    onChange={handleValueChange}
-                    onFocus={() => {
-                      setIsValueFocused(true);
-                      resizeTextarea();
-                    }}
-                    onBlur={() => setIsValueFocused(false)}
-                    className="min-h-10 w-full min-w-0 resize-none overflow-hidden bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
-                  />
+                  multilineValueEditor
                 ) : recoveryCodesValue ? (
                   <KeyFieldRecoveryCodesInput
                     textareaRef={setValueTextareaRef}

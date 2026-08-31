@@ -30,7 +30,7 @@ type NewItemSaveLocationSectionProps = {
 };
 
 const saveLocationTriggerClassName = cn(
-  "!w-auto inline-flex h-7 min-h-7 max-h-7 max-w-full shrink-0 items-center gap-2 rounded-md bg-background px-2 py-0 text-sm leading-5 text-foreground shadow-none",
+  "!w-auto inline-flex h-7 min-h-7 max-h-7 max-w-full shrink-0 items-center gap-2 rounded-md bg-background px-2 py-0 text-sm font-normal leading-5 text-foreground shadow-none",
   "max-md:min-w-0 max-md:flex-1 max-md:shrink max-md:!w-full",
   "hover:!bg-background",
   "focus-visible:!shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",

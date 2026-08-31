@@ -68,7 +68,13 @@ export default function WorkspaceSectionPage() {
   );
 
   if (isToolsRoute) {
-    return <ToolsPage workspaceName={workspace?.name ?? "…"} />;
+    return (
+      <ToolsPage
+        workspaceName={workspace?.name ?? "…"}
+        vaults={vaults}
+        vaultsListReady={Boolean(vaultsListReady)}
+      />
+    );
   }
 
   if (isSettingsRoute) {

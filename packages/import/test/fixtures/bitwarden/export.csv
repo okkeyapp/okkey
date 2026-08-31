@@ -1,0 +1,3 @@
+folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp
+Social,1,login,Twitter Demo,,,,https://twitter.com,demo_user,demo_pass,
+Work,0,login,GitHub Demo,,,,https://github.com,dev@example.com,Gh_Pass_123,

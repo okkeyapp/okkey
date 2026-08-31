@@ -1,4 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
+import type { Vault } from "@okkey/types";
 import {
   Breadcrumb,
   BreadcrumbBar,
@@ -22,11 +23,14 @@ import {
   type ToolsSectionId,
 } from "../../../routes/paths";
 import GeneratorSection from "./generator/GeneratorSection";
+import ImportSection from "./import/ImportSection";
 import ToolsMobileHeader from "./ToolsMobileHeader";
 import ToolsSidebar from "./ToolsSidebar";
 
 type ToolsPageProps = {
   workspaceName: string;
+  vaults: readonly Vault[];
+  vaultsListReady: boolean;
 };
 
 function ToolsPlaceholderSection({
@@ -44,7 +48,7 @@ function ToolsPlaceholderSection({
   );
 }
 
-export default function ToolsPage({ workspaceName }: ToolsPageProps) {
+export default function ToolsPage({ workspaceName, vaults, vaultsListReady }: ToolsPageProps) {
   const { t } = useLocale();
   const { sectionSlug = "" } = useParams<{ sectionSlug: string }>();
   const [searchParams] = useSearchParams();
@@ -98,6 +102,12 @@ export default function ToolsPage({ workspaceName }: ToolsPageProps) {
           <main className="min-w-0 flex-1">
             {activeSection === "generator" ? (
               <GeneratorSection />
+            ) : activeSection === "import" ? (
+              <ImportSection
+                workspaceName={workspaceName}
+                vaults={vaults}
+                vaultsListReady={vaultsListReady}
+              />
             ) : (
               <ToolsPlaceholderSection section={activeSection} t={t} />
             )}

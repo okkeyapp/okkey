@@ -18,6 +18,7 @@
     "@okkey/auth": "0.0.1",
     "@okkey/crypto": "0.0.1",
     "@okkey/i18n": "0.0.1",
+    "@okkey/import": "0.0.1",
     "@okkey/types": "0.0.1",
     "@okkey/ui": "0.0.1",
     "lucide-react": "^1.31.0",

@@ -1,0 +1,11 @@
+{
+  "passwords": [
+    {
+      "name": "Passwork Entry",
+      "login": "admin",
+      "password": "Pw123456",
+      "url": "https://passwork.example.com",
+      "description": "Fixture entry"
+    }
+  ]
+}

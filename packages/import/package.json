@@ -1,0 +1,27 @@
+{
+  "name": "@okkey/import",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@okkey/id": "0.0.1",
+    "@okkey/types": "0.0.1"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.5"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "port:bitwarden": "node scripts/port-bitwarden.mjs"
+  }
+}

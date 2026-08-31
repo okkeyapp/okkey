@@ -24,6 +24,7 @@
       "@okkey/i18n": ["../../packages/i18n/src/index.ts"],
       "@okkey/ui": ["../../packages/ui/src/index.ts"],
       "@workspace/ui/*": ["../../packages/ui/src/*"],
+      "@okkey/import": ["../../packages/import/src/index.ts"],
       "@okkey/types": ["../../packages/types/src/index.ts"],
       "@okkey/api": ["../../packages/api/src/index.ts"],
       "@okkey/auth": ["../../packages/auth/src/index.ts"],

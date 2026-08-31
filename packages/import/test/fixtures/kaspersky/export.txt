@@ -1,0 +1,14 @@
+Websites
+
+Website name: Demo Site
+Website URL: https://demo.example.com
+Login name: primary
+Login: demo@example.com
+Password: KpmPass123
+Comment: imported from fixture
+---
+Website name: Second Site
+Website URL: https://second.example.com
+Login:
+Password: OnlyPass456
+Comment:

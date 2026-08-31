@@ -1,0 +1,5 @@
+Portions of the importers in this package are adapted from Bitwarden clients
+(https://github.com/bitwarden/clients), specifically libs/importer, licensed under
+AGPL-3.0-or-later. Copyright (c) Bitwarden, Inc.
+
+Okkey modifications are licensed under AGPL-3.0-or-later.

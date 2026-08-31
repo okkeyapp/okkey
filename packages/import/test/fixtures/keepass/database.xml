@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<KeePassFile>
+  <Root>
+    <Group>
+      <Entry>
+        <String><Key>Title</Key><Value>KeePass Demo</Value></String>
+        <String><Key>UserName</Key><Value>keepass-user</Value></String>
+        <String><Key>Password</Key><Value>KeePassPass</Value></String>
+        <String><Key>URL</Key><Value>https://keepass.example.com</Value></String>
+      </Entry>
+    </Group>
+  </Root>
+</KeePassFile>

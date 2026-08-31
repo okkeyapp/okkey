@@ -1,0 +1,163 @@
+{
+  "encrypted": false,
+  "folders": [
+    { "id": "f-work", "name": "Work" },
+    { "id": "f-work-dev", "name": "Work/Dev" },
+    { "id": "f-work-dev-api", "name": "Work/Dev/API" },
+    { "id": "f-personal", "name": "Personal" },
+    { "id": "f-finance", "name": "Personal/Finance" },
+    { "id": "f-archive", "name": "Archive" }
+  ],
+  "items": [
+    {
+      "id": "item-login-full",
+      "type": 1,
+      "name": "Full Login",
+      "notes": "Login notes with details",
+      "favorite": true,
+      "reprompt": 1,
+      "folderId": "f-work-dev-api",
+      "login": {
+        "username": "user@example.com",
+        "password": "Secret123!",
+        "totp": "otpauth://totp/Example:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example",
+        "passwordRevisionDate": "2024-01-15T12:00:00.000Z",
+        "uris": [
+          { "uri": "https://example.com", "match": 0 },
+          { "uri": "https://app.example.com/login", "match": 1 },
+          { "uri": "https://m.example.com", "match": null }
+        ],
+        "fido2Credentials": []
+      },
+      "fields": [
+        { "name": "Recovery email", "value": "backup@example.com", "type": 0 },
+        { "name": "Security PIN", "value": "9988", "type": 1 },
+        { "name": "VIP account", "value": "true", "type": 2 },
+        { "name": "Linked username", "value": "", "type": 3, "linkedId": 100 }
+      ],
+      "passwordHistory": [
+        { "lastUsedDate": "2023-06-01T00:00:00.000Z", "password": "OldSecret1!" }
+      ]
+    },
+    {
+      "id": "item-login-minimal",
+      "type": 1,
+      "name": "Minimal Login",
+      "favorite": false,
+      "folderId": "f-work",
+      "login": {
+        "username": "minimal",
+        "password": "MinPass1!",
+        "uris": [{ "uri": "https://minimal.example" }]
+      }
+    },
+    {
+      "id": "item-note-full",
+      "type": 2,
+      "name": "Full Secure Note",
+      "notes": "Keep this safe\nSecond line of the note",
+      "favorite": true,
+      "reprompt": 0,
+      "folderId": "f-personal",
+      "secureNote": { "type": 0 },
+      "fields": [
+        { "name": "Section Meta / Author", "value": "Alice", "type": 0 },
+        { "name": "Section Meta / Ticket", "value": "OK-42", "type": 0 },
+        { "name": "Section Secrets / Token", "value": "tok_hidden", "type": 1 },
+        { "name": "Section Flags / Reviewed", "value": "false", "type": 2 }
+      ]
+    },
+    {
+      "id": "item-card-full",
+      "type": 3,
+      "name": "Full Card",
+      "notes": "Corporate card",
+      "favorite": false,
+      "folderId": "f-finance",
+      "card": {
+        "cardholderName": "Demo User",
+        "brand": "Visa",
+        "number": "4111111111111111",
+        "expMonth": "12",
+        "expYear": "2028",
+        "code": "123"
+      },
+      "fields": [
+        { "name": "Bank", "value": "Demo Bank", "type": 0 },
+        { "name": "Billing ZIP", "value": "101000", "type": 0 },
+        { "name": "CVV backup", "value": "456", "type": 1 }
+      ]
+    },
+    {
+      "id": "item-card-amex",
+      "type": 3,
+      "name": "Amex Card",
+      "folderId": "f-finance",
+      "card": {
+        "cardholderName": "Demo User",
+        "brand": "Amex",
+        "number": "378282246310005",
+        "expMonth": "3",
+        "expYear": "30",
+        "code": "1234"
+      }
+    },
+    {
+      "id": "item-identity-full",
+      "type": 4,
+      "name": "Full Identity",
+      "notes": "Identity dossier",
+      "favorite": true,
+      "folderId": "f-personal",
+      "identity": {
+        "title": "Mr",
+        "firstName": "Demo",
+        "middleName": "Quincy",
+        "lastName": "User",
+        "username": "demo.user",
+        "company": "Acme Inc",
+        "ssn": "000-00-0000",
+        "passportNumber": "P1234567",
+        "licenseNumber": "D9999999",
+        "email": "identity@example.com",
+        "phone": "+1 555 0100",
+        "address1": "1 Main St",
+        "address2": "Suite 200",
+        "address3": "Floor 3",
+        "city": "Springfield",
+        "state": "IL",
+        "postalCode": "62701",
+        "country": "US"
+      },
+      "fields": [
+        { "name": "Nationality", "value": "US", "type": 0 },
+        { "name": "Tax ID", "value": "TIN-HIDDEN", "type": 1 }
+      ]
+    },
+    {
+      "id": "item-ssh-full",
+      "type": 5,
+      "name": "Full SSH Key",
+      "notes": "Deploy key for staging",
+      "favorite": false,
+      "folderId": "f-work-dev",
+      "sshKey": {
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nTESTPRIVATEKEY\n-----END OPENSSH PRIVATE KEY-----",
+        "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestPublicKey demo@okkey",
+        "keyFingerprint": "SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDE"
+      },
+      "fields": [
+        { "name": "Host", "value": "git.example.com", "type": 0 },
+        { "name": "Passphrase", "value": "ssh-pass", "type": 1 }
+      ]
+    },
+    {
+      "id": "item-root-note",
+      "type": 2,
+      "name": "Unfiled Archive Note",
+      "notes": "No folder assigned",
+      "folderId": "f-archive",
+      "secureNote": { "type": 0 }
+    }
+  ]
+}

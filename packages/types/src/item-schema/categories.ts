@@ -16,22 +16,24 @@ export interface CategoryDefinition {
   fieldTemplates: Omit<ItemFieldV2, "value">[];
 }
 
-const SEC_LOGIN = "s-login-general";
+/** Aligns with web UI presets (`itemCategoryDefaultSections`). */
+const SEC_LOGIN_CREDENTIALS = "credentials";
+const SEC_LOGIN_WEBSITES = "websites";
 const SEC_NOTE = "secure-note";
-const SEC_CARD = "s-card-main";
+const SEC_CARD = "credit-card";
 
 export const ITEM_CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   [ITEM_CATEGORY_LOGIN]: {
     id: ITEM_CATEGORY_LOGIN,
     displayNameKey: "itemCategory.login",
     sections: [
-      { id: SEC_LOGIN, title: "General", order: 0, isPreset: true },
+      { id: SEC_LOGIN_CREDENTIALS, title: "General", order: 0, isPreset: true },
+      { id: SEC_LOGIN_WEBSITES, title: "Websites", order: 1, isPreset: true },
     ],
     fieldTemplates: [
-      { id: "f-login-username", type: "text", sectionId: SEC_LOGIN, order: 0, label: "Username" },
-      { id: "f-login-password", type: "password", sectionId: SEC_LOGIN, order: 1, label: "Password" },
-      { id: "f-login-uri", type: "url", sectionId: SEC_LOGIN, order: 2, label: "URI" },
-      { id: "f-login-totp", type: "totp", sectionId: SEC_LOGIN, order: 3, label: "Authenticator" },
+      { id: "login", type: "text", sectionId: SEC_LOGIN_CREDENTIALS, order: 0, label: "Login" },
+      { id: "password", type: "password", sectionId: SEC_LOGIN_CREDENTIALS, order: 1, label: "Password" },
+      { id: "website-1", type: "url", sectionId: SEC_LOGIN_WEBSITES, order: 0, label: "Website" },
     ],
   },
   [ITEM_CATEGORY_SECURE_NOTE]: {
@@ -45,13 +47,12 @@ export const ITEM_CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   [ITEM_CATEGORY_CREDIT_CARD]: {
     id: ITEM_CATEGORY_CREDIT_CARD,
     displayNameKey: "itemCategory.creditCard",
-    sections: [{ id: SEC_CARD, title: "Card", order: 0, isPreset: true }],
+    sections: [{ id: SEC_CARD, title: "Credit card", order: 0, isPreset: true }],
     fieldTemplates: [
-      { id: "f-card-holder", type: "text", sectionId: SEC_CARD, order: 0, label: "Cardholder" },
-      { id: "f-card-number", type: "text", sectionId: SEC_CARD, order: 1, label: "Number" },
-      { id: "f-card-brand", type: "text", sectionId: SEC_CARD, order: 2, label: "Brand" },
-      { id: "f-card-exp", type: "text", sectionId: SEC_CARD, order: 3, label: "Expiration" },
-      { id: "f-card-cvv", type: "password", sectionId: SEC_CARD, order: 4, label: "CVV" },
+      { id: "card-number", type: "text", sectionId: SEC_CARD, order: 0, label: "Card number" },
+      { id: "card-expiry", type: "text", sectionId: SEC_CARD, order: 1, label: "Expiry" },
+      { id: "card-pin", type: "password", sectionId: SEC_CARD, order: 2, label: "PIN / CVV" },
+      { id: "card-holder", type: "text", sectionId: SEC_CARD, order: 3, label: "Cardholder" },
     ],
   },
 };
