@@ -402,7 +402,7 @@ function ensureAdditionalSection(item: ItemPlaintextV2) {
   }
   item.sections.push({
     id: ADDITIONAL_SECTION_ID,
-    title: "Additional",
+    title: "",
     order: item.sections.length,
     isPreset: false,
   });

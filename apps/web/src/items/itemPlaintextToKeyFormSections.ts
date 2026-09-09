@@ -116,6 +116,7 @@ function stringValueFromField(field: ItemFieldV2): string {
 const DEFAULT_SECTION_TITLES: Record<string, string> = {
   credentials: "General",
   websites: "Websites",
+  additional: "Additional",
   [API_ACCESS_SECTION_ID]: "API Access",
   [DATABASE_SECTION_ID]: "Database",
   [WIFI_ROUTER_SECTION_ID]: "Wi‑Fi router",

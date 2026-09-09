@@ -1,105 +1,186 @@
+import { CipherType, FieldType, SecureNoteType } from "../types/enums.js";
 import { ImportResult } from "../types/import-result.js";
+import { CipherView, SecureNoteView } from "../types/views/cipher.view.js";
 import { BaseImporter } from "./base-importer.js";
 import type { Importer } from "./importer.js";
 
-const NotesHeader = "Notes\n\n";
-const ApplicationsHeader = "Applications\n\n";
-const WebsitesHeader = "Websites\n\n";
 const Delimiter = "\n---\n";
 
+const SECTION_HEADERS = [
+  { id: "websites", title: "Websites" },
+  { id: "applications", title: "Applications" },
+  { id: "otherAccounts", title: "Other Accounts" },
+  { id: "notes", title: "Notes" },
+] as const;
+
+type KasperskySectionId = (typeof SECTION_HEADERS)[number]["id"];
+
+/**
+ * Kaspersky Password Manager plaintext export:
+ * Websites / Applications / Other Accounts / Notes, entries separated by `---`.
+ */
 export class KasperskyTxtImporter extends BaseImporter implements Importer {
   parse(data: string): Promise<ImportResult> {
     const result = new ImportResult();
+    const workingData = this.splitNewLine(data.replace(/^\uFEFF/, "")).join("\n");
+    const sections = this.splitSections(workingData);
 
-    let notesData: string | undefined;
-    let applicationsData: string | undefined;
-    let websitesData: string | undefined;
-    let workingData = this.splitNewLine(data).join("\n");
-
-    if (workingData.indexOf(NotesHeader) !== -1) {
-      const parts = workingData.split(NotesHeader);
-      if (parts.length > 1) {
-        workingData = parts[0];
-        notesData = parts[1];
-      }
-    }
-    if (workingData.indexOf(ApplicationsHeader) !== -1) {
-      const parts = workingData.split(ApplicationsHeader);
-      if (parts.length > 1) {
-        workingData = parts[0];
-        applicationsData = parts[1];
-      }
-    }
-    if (workingData.indexOf(WebsitesHeader) === 0) {
-      const parts = workingData.split(WebsitesHeader);
-      if (parts.length > 1) {
-        workingData = parts[0];
-        websitesData = parts[1];
-      }
-    }
-
-    const notes = this.parseDataCategory(notesData);
-    const applications = this.parseDataCategory(applicationsData);
-    const websites = this.parseDataCategory(websitesData);
-
-    notes.forEach((n) => {
-      const cipher = this.initLoginCipher();
-      cipher.name = this.getValueOrDefault(n.get("Name")) ?? "--";
-      cipher.notes = this.getValueOrDefault(n.get("Text"));
-      this.cleanupCipher(cipher);
+    this.parseNotes(this.parseDataCategory(sections.notes)).forEach((cipher) => {
       result.ciphers.push(cipher);
     });
 
-    websites.concat(applications).forEach((w) => {
-      const cipher = this.initLoginCipher();
-      const nameKey = w.has("Website name") ? "Website name" : "Application";
-      cipher.name = this.getValueOrDefault(w.get(nameKey), "") ?? "--";
-      if (!this.isNullOrWhitespace(w.get("Login name"))) {
-        if (!this.isNullOrWhitespace(cipher.name)) {
-          cipher.name += ": ";
-        }
-        cipher.name += w.get("Login name") ?? "";
-      }
-      cipher.notes = this.getValueOrDefault(w.get("Comment"));
-      if (w.has("Website URL")) {
-        cipher.login!.uris = this.makeUriArray(w.get("Website URL") ?? "");
-      }
-      cipher.login!.username = this.getValueOrDefault(w.get("Login"));
-      cipher.login!.password = this.getValueOrDefault(w.get("Password"));
-      this.cleanupCipher(cipher);
+    this.parseOtherAccounts(this.parseDataCategory(sections.otherAccounts)).forEach((cipher) => {
       result.ciphers.push(cipher);
     });
+
+    this.parseWebsiteOrAppLogins(this.parseDataCategory(sections.websites), "Website name").forEach(
+      (cipher) => {
+        result.ciphers.push(cipher);
+      },
+    );
+
+    this.parseWebsiteOrAppLogins(this.parseDataCategory(sections.applications), "Application").forEach(
+      (cipher) => {
+        result.ciphers.push(cipher);
+      },
+    );
 
     result.success = true;
     return Promise.resolve(result);
   }
 
+  private splitSections(data: string): Record<KasperskySectionId, string> {
+    const empty: Record<KasperskySectionId, string> = {
+      websites: "",
+      applications: "",
+      otherAccounts: "",
+      notes: "",
+    };
+
+    const matches: Array<{ id: KasperskySectionId; index: number; headerLength: number }> = [];
+    for (const header of SECTION_HEADERS) {
+      const pattern = new RegExp(`(^|\\n)${escapeRegExp(header.title)}\\s*(?=\\n|$)`);
+      const match = pattern.exec(data);
+      if (!match) {
+        continue;
+      }
+      const index = match.index + (match[1] ? match[1].length : 0);
+      matches.push({ id: header.id, index, headerLength: header.title.length });
+    }
+
+    if (matches.length === 0) {
+      // Legacy / partial exports that omit section headers.
+      empty.websites = data;
+      return empty;
+    }
+
+    matches.sort((a, b) => a.index - b.index);
+
+    // Content before the first known header is treated as Websites (header may be missing after BOM strip).
+    if (matches[0]!.index > 0 && matches[0]!.id !== "websites") {
+      empty.websites = data.slice(0, matches[0]!.index).replace(/^\n+|\n+$/g, "");
+    }
+
+    for (let i = 0; i < matches.length; i += 1) {
+      const current = matches[i]!;
+      const contentStart = current.index + current.headerLength;
+      const contentEnd = i + 1 < matches.length ? matches[i + 1]!.index : data.length;
+      empty[current.id] = data.slice(contentStart, contentEnd).replace(/^\n+/, "");
+    }
+    return empty;
+  }
+
+  private parseNotes(items: Map<string, string>[]): CipherView[] {
+    return items.map((item) => {
+      const cipher = this.initSecureNoteCipher();
+      cipher.name = this.getValueOrDefault(item.get("Name")) ?? "--";
+      cipher.notes = this.getValueOrDefault(item.get("Text"));
+      this.cleanupCipher(cipher);
+      return cipher;
+    });
+  }
+
+  private parseOtherAccounts(items: Map<string, string>[]): CipherView[] {
+    return items.map((item) => {
+      const cipher = this.initSecureNoteCipher();
+      cipher.name = this.getValueOrDefault(item.get("Account name")) ?? "--";
+      if (!this.isNullOrWhitespace(item.get("Login name"))) {
+        if (!this.isNullOrWhitespace(cipher.name) && cipher.name !== "--") {
+          cipher.name += ": ";
+        } else {
+          cipher.name = "";
+        }
+        cipher.name += item.get("Login name") ?? "";
+      }
+      cipher.notes = this.getValueOrDefault(item.get("Comment"));
+      this.processKvp(cipher, "Login", item.get("Login") ?? "", FieldType.Text);
+      this.processKvp(cipher, "Password", item.get("Password") ?? "", FieldType.Hidden);
+      this.cleanupCipher(cipher);
+      return cipher;
+    });
+  }
+
+  private parseWebsiteOrAppLogins(items: Map<string, string>[], nameKey: string): CipherView[] {
+    return items.map((item) => {
+      const cipher = this.initLoginCipher();
+      cipher.name = this.getValueOrDefault(item.get(nameKey), "") ?? "--";
+      if (!this.isNullOrWhitespace(item.get("Login name"))) {
+        if (!this.isNullOrWhitespace(cipher.name)) {
+          cipher.name += ": ";
+        }
+        cipher.name += item.get("Login name") ?? "";
+      }
+      cipher.notes = this.getValueOrDefault(item.get("Comment"));
+      if (item.has("Website URL")) {
+        cipher.login!.uris = this.makeUriArray(item.get("Website URL") ?? "");
+      }
+      cipher.login!.username = this.getValueOrDefault(item.get("Login"));
+      cipher.login!.password = this.getValueOrDefault(item.get("Password"));
+      this.convertToNoteIfNeeded(cipher);
+      this.cleanupCipher(cipher);
+      return cipher;
+    });
+  }
+
+  private initSecureNoteCipher(): CipherView {
+    const cipher = new CipherView();
+    cipher.favorite = false;
+    cipher.notes = "";
+    cipher.fields = [];
+    cipher.login = null;
+    cipher.type = CipherType.SecureNote;
+    cipher.secureNote = new SecureNoteView();
+    cipher.secureNote.type = SecureNoteType.Generic;
+    return cipher;
+  }
+
   private parseDataCategory(data: string | undefined): Map<string, string>[] {
-    if (this.isNullOrWhitespace(data) || data!.indexOf(Delimiter) === -1) {
+    if (this.isNullOrWhitespace(data)) {
       return [];
     }
+
+    const chunks = data!.includes(Delimiter) ? data!.split(Delimiter) : [data!];
     const items: Map<string, string>[] = [];
-    data!.split(Delimiter).forEach((p) => {
-      if (p.indexOf("\n") === -1) {
-        return;
+
+    for (const chunk of chunks) {
+      if (chunk.indexOf("\n") === -1 && chunk.indexOf(":") === -1) {
+        continue;
       }
       const item = new Map<string, string>();
       let itemComment: string | undefined;
       let itemCommentKey: string | undefined;
-      p.split("\n").forEach((l) => {
+      chunk.split("\n").forEach((line) => {
         if (itemComment != null) {
-          itemComment += "\n" + l;
+          itemComment += "\n" + line;
           return;
         }
-        const colonIndex = l.indexOf(":");
+        const colonIndex = line.indexOf(":");
         if (colonIndex === -1) {
           return;
         }
-        const key = l.substring(0, colonIndex);
-        const val = l.length > colonIndex + 1 ? l.substring(colonIndex + 2) : "";
-        if (key != null) {
-          item.set(key, val);
-        }
+        const key = line.substring(0, colonIndex);
+        const val = line.length > colonIndex + 1 ? line.substring(colonIndex + 2) : "";
+        item.set(key, val);
         if (key === "Comment" || key === "Text") {
           itemComment = val;
           itemCommentKey = key;
@@ -109,10 +190,14 @@ export class KasperskyTxtImporter extends BaseImporter implements Importer {
         item.set(itemCommentKey, itemComment);
       }
       if (item.size === 0) {
-        return;
+        continue;
       }
       items.push(item);
-    });
+    }
     return items;
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

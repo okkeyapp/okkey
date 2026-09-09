@@ -6,9 +6,53 @@ Login name: primary
 Login: demo@example.com
 Password: KpmPass123
 Comment: imported from fixture
+
 ---
+
 Website name: Second Site
 Website URL: https://second.example.com
 Login:
 Password: OnlyPass456
 Comment:
+
+---
+
+Applications
+
+Application: Demo App
+Login name: work
+Login: app-user
+Password: AppPass789
+Comment: desktop app
+
+---
+
+Other Accounts
+
+Account name: Wi-Fi Home
+Login name: router
+Login: admin
+Password: WifiPass000
+Comment: living room
+
+---
+
+Account name: Door code
+Login name: 
+Login: 
+Password: 
+Comment: building entrance note only
+
+---
+
+Notes
+
+Name: Backup codes
+Text: 001400
+730656
+521030
+
+---
+
+Name: Single line note
+Text: just a note

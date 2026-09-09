@@ -483,6 +483,47 @@ describe("itemPlaintextToKeyFormSections all categories", () => {
     expect(restoredForCard[0]?.fields.map((field) => field.id)).toEqual(["server-url"]);
   });
 
+  it("does not show default Additional title for unnamed import sections", () => {
+    const restored = itemPlaintextToKeyFormSections(
+      {
+        schemaVersion: 2,
+        itemId: "item-note-1",
+        vaultId: "vault-1",
+        title: "Backup codes",
+        categoryId: "secure_note",
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        sections: [
+          { id: "secure-note", title: "Note", order: 0, isPreset: true },
+          { id: "additional", title: "Additional", order: 1, isPreset: false },
+        ],
+        fields: [
+          {
+            id: "note",
+            type: "note",
+            sectionId: "secure-note",
+            order: 0,
+            label: "Note",
+            value: { kind: "note", note: "" },
+          },
+          {
+            id: "notes-extra",
+            type: "note",
+            sectionId: "additional",
+            order: 0,
+            label: "Notes",
+            value: { kind: "note", note: "001400\n730656" },
+          },
+        ],
+      },
+      messages,
+    );
+
+    const additional = restored.find((section) => section.id === "additional");
+    expect(additional?.title).toBeUndefined();
+    expect(additional?.fields[0]?.value).toContain("001400");
+  });
+
   it("preserves custom field order in preset sections", () => {
     const sections = [
       {

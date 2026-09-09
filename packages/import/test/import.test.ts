@@ -37,10 +37,42 @@ describe("import parsers", () => {
     expect(result.ciphers.length).toBe(2);
   });
 
-  it("parses Kaspersky TXT", async () => {
+  it("maps Kaspersky Notes and Other Accounts to secure notes", async () => {
     const result = await runImport("kasperskytxt", readFixture("kaspersky/export.txt"));
     expect(result.success).toBe(true);
-    expect(result.ciphers.length).toBeGreaterThanOrEqual(2);
+
+    const website = result.ciphers.find((cipher) => cipher.name.startsWith("Demo Site"));
+    expect(website?.type).toBe(1);
+    expect(website?.login?.username).toBe("demo@example.com");
+
+    const app = result.ciphers.find((cipher) => cipher.name.startsWith("Demo App"));
+    expect(app?.type).toBe(1);
+    expect(app?.login?.password).toBe("AppPass789");
+
+    const other = result.ciphers.find((cipher) => cipher.name.startsWith("Wi-Fi Home"));
+    expect(other?.type).toBe(2);
+    expect(other?.login).toBeNull();
+    expect(other?.fields.some((field) => field.name === "Login" && field.value === "admin")).toBe(
+      true,
+    );
+
+    const note = result.ciphers.find((cipher) => cipher.name === "Backup codes");
+    expect(note?.type).toBe(2);
+    expect(note?.notes).toContain("001400");
+
+    const mapped = mapImportResultToOkkeyItems({
+      result,
+      vaultId: "vault-demo",
+    });
+    expect(mapped.find((draft) => draft.item.title === "Backup codes")?.item.categoryId).toBe(
+      "secure_note",
+    );
+    expect(mapped.find((draft) => draft.item.title.startsWith("Wi-Fi Home"))?.item.categoryId).toBe(
+      "secure_note",
+    );
+    expect(mapped.find((draft) => draft.item.title.startsWith("Demo Site"))?.item.categoryId).toBe(
+      "login",
+    );
   });
 
   it("parses Passwork JSON", async () => {
@@ -103,6 +135,7 @@ describe("okkey mapper", () => {
       kind: "totp",
     });
     expect(login?.sections.some((section) => section.id === "additional")).toBe(true);
+    expect(login?.sections.find((section) => section.id === "additional")?.title).toBe("");
     expect(login?.fields.some((field) => field.label === "Recovery email")).toBe(true);
 
     const card = mapped.find((draft) => draft.item.title === "Full Card")?.item;
