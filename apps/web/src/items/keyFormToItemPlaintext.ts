@@ -1,7 +1,7 @@
 import type { ItemFieldV2, ItemPlaintextV2, ItemSectionV2 } from "@okkey/types";
 import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2 } from "@okkey/types";
 import type { EntityId } from "@okkey/types";
-import { parseKeyFieldFileValue, serializeKeyFieldSecretRaw } from "@okkey/ui";
+import { normalizePinValue, parseKeyFieldFileValue, serializeKeyFieldSecretRaw } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import { serializeSelectFieldValue } from "./keyFormSelectField";
@@ -85,7 +85,7 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
       return {
         kind: "unknown",
         declaredType: "secret",
-        raw: serializeKeyFieldSecretRaw("password", raw),
+        raw: serializeKeyFieldSecretRaw("password", normalizePinValue(raw)),
       };
     case "select":
       return serializeSelectFieldValue(field);

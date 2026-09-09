@@ -49,4 +49,26 @@ describe("creditCardFormValidation", () => {
       }),
     ).toBe(true);
   });
+
+  it("requires exactly three CVC/CVV digits", () => {
+    expect(
+      isInvalidCreditCardRequiredField({
+        id: "card-pin",
+        type: "pin",
+        label: "CVC/CVV",
+        value: "12",
+        required: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      isInvalidCreditCardRequiredField({
+        id: "card-pin",
+        type: "pin",
+        label: "CVC/CVV",
+        value: "123",
+        required: true,
+      }),
+    ).toBe(false);
+  });
 });

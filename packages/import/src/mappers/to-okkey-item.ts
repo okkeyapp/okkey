@@ -66,7 +66,7 @@ function mapCipherToOkkeyItem(params: {
     });
     setFieldText(item, "card-number", cipher.card.number ?? "");
     setFieldText(item, "card-expiry", formatCardExpiration(cipher));
-    setFieldPassword(item, "card-pin", cipher.card.code ?? "");
+    applyImportedCardCode(item, cipher.card.code ?? "");
     setFieldText(item, "card-holder", cipher.card.cardholderName ?? "");
     if (cipher.card.brand?.trim()) {
       appendCustomFieldsAsFields(item, [
@@ -417,6 +417,35 @@ function formatCardExpiration(cipher: CipherView): string {
   const month = monthRaw.padStart(2, "0").slice(-2);
   const year = yearRaw.length >= 2 ? yearRaw.slice(-2) : yearRaw.padStart(2, "0");
   return `${month} / ${year}`;
+}
+
+/**
+ * Importers expose a single `card.code` field. OKKEY separates:
+ * - exactly 3 digits → CVC/CVV preset field
+ * - exactly 4 digits → PIN custom field (never truncated into CVC)
+ * - any other non-empty digit string → custom "Security code" (data preserved)
+ */
+function applyImportedCardCode(item: ItemPlaintextV2, rawCode: string) {
+  const digits = rawCode.replace(/\D/g, "");
+  if (!digits) {
+    setFieldPassword(item, "card-pin", "");
+    return;
+  }
+
+  if (digits.length === 3) {
+    setFieldPassword(item, "card-pin", digits);
+    return;
+  }
+
+  setFieldPassword(item, "card-pin", "");
+  if (digits.length === 4) {
+    appendCustomFieldsAsFields(item, [{ name: "PIN", value: digits, type: FieldType.Hidden }]);
+    return;
+  }
+
+  appendCustomFieldsAsFields(item, [
+    { name: "Security code", value: digits, type: FieldType.Hidden },
+  ]);
 }
 
 function resolveAttachments(

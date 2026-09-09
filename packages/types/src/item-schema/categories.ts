@@ -51,7 +51,7 @@ export const ITEM_CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
     fieldTemplates: [
       { id: "card-number", type: "text", sectionId: SEC_CARD, order: 0, label: "Card number" },
       { id: "card-expiry", type: "text", sectionId: SEC_CARD, order: 1, label: "Expiry" },
-      { id: "card-pin", type: "password", sectionId: SEC_CARD, order: 2, label: "PIN / CVV" },
+      { id: "card-pin", type: "password", sectionId: SEC_CARD, order: 2, label: "CVC / CVV" },
       { id: "card-holder", type: "text", sectionId: SEC_CARD, order: 3, label: "Cardholder" },
     ],
   },

@@ -124,6 +124,20 @@ describe("okkey mapper", () => {
       text: "Demo User",
     });
 
+    const amex = mapped.find((draft) => draft.item.title === "Amex Card")?.item;
+    expect(amex?.fields.find((field) => field.id === "card-pin")?.value).toMatchObject({
+      kind: "password",
+      password: "",
+    });
+    expect(amex?.fields.some((field) => field.label === "PIN" && field.value.kind === "password")).toBe(
+      true,
+    );
+    expect(
+      amex?.fields.find((field) => field.label === "PIN" && field.value.kind === "password"),
+    ).toMatchObject({
+      value: { kind: "password", password: "1234" },
+    });
+
     const note = mapped.find((draft) => draft.item.title === "Full Secure Note")?.item;
     expect(note?.categoryId).toBe("secure_note");
     expect(note?.fields.find((field) => field.id === "note")?.value).toMatchObject({

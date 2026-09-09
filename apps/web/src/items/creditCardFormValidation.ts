@@ -41,5 +41,9 @@ export function isInvalidCreditCardRequiredField(field: KeyFormEditorField): boo
     return isInvalidCardExpiryFieldValue(field.value);
   }
 
+  if (field.id === "card-pin") {
+    return normalizePinValue(field.value).length !== 3;
+  }
+
   return false;
 }

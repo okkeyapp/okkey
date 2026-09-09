@@ -1,5 +1,5 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
-import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, formatCardExpiry, formatCardNumber, getSecretKindFromRaw, serializeKeyFieldFileValue } from "@okkey/ui";
+import { coerceRecoveryCodesRawToFormValue, coerceSecretRawToFormValue, formatCardExpiry, formatCardNumber, getSecretKindFromRaw, normalizePinValue, serializeKeyFieldFileValue } from "@okkey/ui";
 
 import type { KeyFormEditorField, KeyFormEditorSection } from "../components/key-form/KeyFormEditor";
 import type { KeyFormEditorMessages } from "../components/key-form/keyFormI18n";
@@ -778,6 +778,9 @@ function mergeCreditCardPresetField(
   }
   if (presetField.type === "card-expiry") {
     value = formatCardExpiry(value);
+  }
+  if (presetField.type === "pin") {
+    value = normalizePinValue(value);
   }
 
   return {
