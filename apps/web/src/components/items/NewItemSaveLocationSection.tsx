@@ -27,6 +27,10 @@ type NewItemSaveLocationSectionProps = {
   onVaultIdChange: (vaultId: string) => void;
   folderId: string;
   onFolderIdChange: (folderId: string) => void;
+  /** Hide the "Save to" caption above the selectors. */
+  hideLabel?: boolean;
+  /** Vault-only picker (no folder select). */
+  hideFolder?: boolean;
 };
 
 const saveLocationTriggerClassName = cn(
@@ -133,6 +137,8 @@ export default function NewItemSaveLocationSection({
   onVaultIdChange,
   folderId,
   onFolderIdChange,
+  hideLabel = false,
+  hideFolder = false,
 }: NewItemSaveLocationSectionProps) {
   const { flatFolders, createFolder } = useWorkspaceFolders();
   const { canPostToVault } = useWorkspaceVaultProfiles();
@@ -159,8 +165,10 @@ export default function NewItemSaveLocationSection({
       className="overflow-visible rounded-[10px] bg-secondary px-4 pb-2 pt-2 text-secondary-foreground"
       aria-label={t("web.newItemPopup.saveLocationAria")}
     >
-      <p className="text-xs leading-5 text-muted-foreground">{t("web.newItemPopup.saveLocationLabel")}</p>
-      <div className="-mx-1 mt-0.5 overflow-x-auto px-1 py-0.5 max-md:overflow-x-hidden">
+      {hideLabel ? null : (
+        <p className="text-xs leading-5 text-muted-foreground">{t("web.newItemPopup.saveLocationLabel")}</p>
+      )}
+      <div className={cn("-mx-1 overflow-x-auto px-1 py-0.5 max-md:overflow-x-hidden", hideLabel ? "mt-0" : "mt-0.5")}>
         <div className="flex min-w-0 flex-nowrap items-center gap-2 max-md:w-full">
         <span className="hidden shrink-0 text-sm font-medium text-foreground md:inline">{workspaceName}</span>
         <span className="hidden shrink-0 text-sm text-foreground md:inline" aria-hidden>
@@ -192,46 +200,50 @@ export default function NewItemSaveLocationSection({
           </SearchableSelectContent>
         </SearchableSelect>
         </div>
-        <span className="shrink-0 text-sm text-foreground" aria-hidden>
-          •
-        </span>
-        <div className="min-w-0 max-md:flex-1">
-        <SearchableSelect
-          variant="inline"
-          value={folderId}
-          onValueChange={onFolderIdChange}
-          selectedLabel={folderSelectedLabel}
-          placeholder={t("web.newItemPopup.noFolder")}
-          searchPlaceholder={t("web.newItemPopup.folderSearch")}
-          searchEmptyMessage={t("web.newItemPopup.folderSearchEmpty")}
-        >
-          <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[15rem] max-md:max-w-none")} />
-          <SearchableSelectContent align="start" className="min-w-[16rem]">
-            <SearchableSelectItem
-              value={NO_FOLDER_VALUE}
-              label={<FolderSelectLabel label={t("web.newItemPopup.noFolder")} />}
-              searchText={t("web.newItemPopup.noFolder")}
+        {hideFolder ? null : (
+          <>
+            <span className="shrink-0 text-sm text-foreground" aria-hidden>
+              •
+            </span>
+            <div className="min-w-0 max-md:flex-1">
+            <SearchableSelect
+              variant="inline"
+              value={folderId}
+              onValueChange={onFolderIdChange}
+              selectedLabel={folderSelectedLabel}
+              placeholder={t("web.newItemPopup.noFolder")}
+              searchPlaceholder={t("web.newItemPopup.folderSearch")}
+              searchEmptyMessage={t("web.newItemPopup.folderSearchEmpty")}
             >
-              <FolderSelectLabel label={t("web.newItemPopup.noFolder")} />
-            </SearchableSelectItem>
-            {flatFolders.map((folder) => (
-              <SearchableSelectItem
-                key={folder.id}
-                value={folder.id}
-                label={<FolderSelectLabel label={folder.path} />}
-                searchText={folder.path}
-              >
-                <FolderSelectLabel label={folder.path} />
-              </SearchableSelectItem>
-            ))}
-            <FolderSelectCreateRow
-              flatFolders={flatFolders}
-              createFolderLabel={(name) => t("web.newItemPopup.createFolder", { name })}
-              onCreateFolder={createFolder}
-            />
-          </SearchableSelectContent>
-        </SearchableSelect>
-        </div>
+              <SearchableSelectTrigger className={cn(saveLocationTriggerClassName, "max-w-[15rem] max-md:max-w-none")} />
+              <SearchableSelectContent align="start" className="min-w-[16rem]">
+                <SearchableSelectItem
+                  value={NO_FOLDER_VALUE}
+                  label={<FolderSelectLabel label={t("web.newItemPopup.noFolder")} />}
+                  searchText={t("web.newItemPopup.noFolder")}
+                >
+                  <FolderSelectLabel label={t("web.newItemPopup.noFolder")} />
+                </SearchableSelectItem>
+                {flatFolders.map((folder) => (
+                  <SearchableSelectItem
+                    key={folder.id}
+                    value={folder.id}
+                    label={<FolderSelectLabel label={folder.path} />}
+                    searchText={folder.path}
+                  >
+                    <FolderSelectLabel label={folder.path} />
+                  </SearchableSelectItem>
+                ))}
+                <FolderSelectCreateRow
+                  flatFolders={flatFolders}
+                  createFolderLabel={(name) => t("web.newItemPopup.createFolder", { name })}
+                  onCreateFolder={createFolder}
+                />
+              </SearchableSelectContent>
+            </SearchableSelect>
+            </div>
+          </>
+        )}
         </div>
       </div>
     </section>

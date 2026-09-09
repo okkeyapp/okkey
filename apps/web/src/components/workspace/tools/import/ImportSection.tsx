@@ -3,6 +3,7 @@ import {
   getImportFormatOption,
   listImportFormatOptions,
   looksLikeBitwardenPasswordProtectedJson,
+  looksLikeOkkeyPasswordProtectedJson,
   parseImportInput,
   ImportInvalidPasswordError,
   ImportPasswordRequiredError,
@@ -42,7 +43,6 @@ import NewItemSaveLocationSection, {
   useSyncedNewItemVaultId,
 } from "../../../items/NewItemSaveLocationSection";
 import { GeneratorExternalLinkIcon } from "../generator/generatorIcons";
-import { ImportIcon } from "../toolsIcons";
 import ImportExportPasswordPopup from "./ImportExportPasswordPopup";
 
 type ImportInputMode = "file" | "text";
@@ -105,9 +105,9 @@ export default function ImportSection({
 
   const selectedFormat = getImportFormatOption(formatId);
   const supportsTextPaste = selectedFormat?.supportsTextPaste ?? true;
-  const isBitwardenFormat =
-    formatId === "bitwardenjson" || formatId === "bitwardencsv" || formatId === "bitwardenzip";
-  const showZipAttachmentsNote = formatId === "bitwardenzip" && inputMode === "file";
+  const supportsFolders = Boolean(selectedFormat?.supportsFolders);
+  const showZipAttachmentsNote =
+    (formatId === "bitwardenzip" || formatId === "okkeyzip") && inputMode === "file";
   const attachmentLimitMb = maxFileSizeMb > 0 ? maxFileSizeMb : 2;
   const allowedAttachmentFormatsLabel = useMemo(() => {
     if (allowedFileExtensions.length === 0) {
@@ -179,8 +179,10 @@ export default function ImportSection({
       });
 
       if (
-        (formatId === "bitwardenjson" || formatId === "bitwardenzip") &&
-        looksLikeBitwardenPasswordProtectedJson(bundle.text)
+        ((formatId === "bitwardenjson" || formatId === "bitwardenzip") &&
+          looksLikeBitwardenPasswordProtectedJson(bundle.text)) ||
+        ((formatId === "okkeyjson" || formatId === "okkeyzip") &&
+          looksLikeOkkeyPasswordProtectedJson(bundle.text))
       ) {
         setPendingBundle(bundle);
         setPasswordPopupOpen(true);
@@ -225,7 +227,7 @@ export default function ImportSection({
         attachmentFiles: bundle.attachmentFiles,
         vaultId,
         targetFolderId: folderId === NO_FOLDER_VALUE ? null : folderId,
-        importFolders: isBitwardenFormat && importFolders,
+        importFolders: supportsFolders && importFolders,
         accessToken,
         vaultKey,
         exportPassword,
@@ -323,6 +325,7 @@ export default function ImportSection({
             onVaultIdChange={setVaultId}
             folderId={folderId}
             onFolderIdChange={setFolderId}
+            hideLabel
           />
         </div>
 
@@ -351,7 +354,7 @@ export default function ImportSection({
           </SearchableSelect>
         </div>
 
-        {isBitwardenFormat ? (
+        {supportsFolders ? (
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-medium text-foreground">{t("web.tools.import.importFoldersLabel")}</p>
@@ -494,16 +497,15 @@ export default function ImportSection({
 
         {progressLabel ? <p className="text-sm text-muted-foreground">{progressLabel}</p> : null}
 
-        <div className="flex justify-end">
+        <div className="flex justify-end max-md:w-full">
           <Button
             type="button"
             variant="default"
-            className="h-9 shrink-0 gap-[4px] rounded-lg px-4 text-sm font-medium"
+            className="h-9 shrink-0 gap-[4px] rounded-lg px-4 text-sm font-medium max-md:w-full"
             disabled={!canImport}
             aria-label={t("web.tools.import.submit")}
             onClick={() => void handleImport()}
           >
-            <ImportIcon className="size-4 shrink-0" />
             {importing ? t("web.tools.import.importing") : t("web.tools.import.submit")}
           </Button>
         </div>

@@ -10,8 +10,10 @@ import {
   type ItemSectionV2,
 } from "@okkey/types";
 
+import { remintItemIds } from "../utils/okkey-item-ids.js";
 import { CipherType, FieldType } from "../types/enums.js";
 import type { ImportResult } from "../types/import-result.js";
+import type { OkkeyNativeImportEntry } from "../types/okkey-export.js";
 import type { AttachmentView, CipherView, FieldView } from "../types/views/cipher.view.js";
 
 export type OkkeyImportItemDraft = {
@@ -26,6 +28,8 @@ export type ImportAttachmentDraft = {
   bytes: Uint8Array;
   /** Bitwarden attachment id/path inside export, if known. */
   sourceKey?: string;
+  /** When set, restore bytes into this field instead of appending a new file field. */
+  targetFieldId?: string;
 };
 
 const ITEM_CATEGORY_PERSONAL_DATA = "personal_data";
@@ -36,6 +40,15 @@ export function mapImportResultToOkkeyItems(params: {
   vaultId: string;
   attachmentFiles?: Map<string, Uint8Array>;
 }): OkkeyImportItemDraft[] {
+  if (params.result.nativeEntries.length > 0) {
+    return params.result.nativeEntries.map((entry) =>
+      mapNativeEntryToOkkeyItem({
+        entry,
+        vaultId: params.vaultId,
+        attachmentFiles: params.attachmentFiles,
+      }),
+    );
+  }
   return params.result.ciphers.map((cipher, index) =>
     mapCipherToOkkeyItem({
       cipher,
@@ -44,6 +57,45 @@ export function mapImportResultToOkkeyItems(params: {
       cipherIndex: index,
     }),
   );
+}
+
+function mapNativeEntryToOkkeyItem(params: {
+  entry: OkkeyNativeImportEntry;
+  vaultId: string;
+  attachmentFiles?: Map<string, Uint8Array>;
+}): OkkeyImportItemDraft {
+  const reminted = remintItemIds(params.entry.item, params.vaultId);
+  const attachments: ImportAttachmentDraft[] = [];
+  for (const ref of params.entry.attachmentRefs) {
+    const bytes =
+      params.attachmentFiles?.get(ref.relativePath) ??
+      params.attachmentFiles?.get(ref.relativePath.replace(/\\/g, "/"));
+    if (!bytes) {
+      continue;
+    }
+    const targetFieldId = reminted.fieldIdMap.get(ref.fieldId);
+    attachments.push({
+      fileName: ref.fileName,
+      mimeType: guessMime(ref.fileName),
+      bytes,
+      sourceKey: ref.relativePath,
+      targetFieldId,
+    });
+  }
+  return {
+    item: reminted.item,
+    attachments,
+    favorite: params.entry.favorite,
+  };
+}
+
+function guessMime(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".txt")) return "text/plain";
+  return "application/octet-stream";
 }
 
 function mapCipherToOkkeyItem(params: {

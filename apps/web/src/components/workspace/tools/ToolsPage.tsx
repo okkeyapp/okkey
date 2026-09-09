@@ -24,6 +24,7 @@ import {
 } from "../../../routes/paths";
 import GeneratorSection from "./generator/GeneratorSection";
 import ImportSection from "./import/ImportSection";
+import ExportSection from "./export/ExportSection";
 import ToolsMobileHeader from "./ToolsMobileHeader";
 import ToolsSidebar from "./ToolsSidebar";
 
@@ -104,6 +105,12 @@ export default function ToolsPage({ workspaceName, vaults, vaultsListReady }: To
               <GeneratorSection />
             ) : activeSection === "import" ? (
               <ImportSection
+                workspaceName={workspaceName}
+                vaults={vaults}
+                vaultsListReady={vaultsListReady}
+              />
+            ) : activeSection === "export" ? (
+              <ExportSection
                 workspaceName={workspaceName}
                 vaults={vaults}
                 vaultsListReady={vaultsListReady}

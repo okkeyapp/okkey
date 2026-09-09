@@ -257,7 +257,9 @@ async function importDraftItem(params: {
         sizeBytes: attachment.bytes.byteLength,
       });
       uploadedFiles.push(uploaded);
-      item = appendFileField(item, uploaded);
+      item = attachment.targetFieldId
+        ? setFileField(item, attachment.targetFieldId, uploaded)
+        : appendFileField(item, uploaded);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Upload failed";
       attachmentWarnings.push(
@@ -285,6 +287,44 @@ async function importDraftItem(params: {
 }
 
 const IMPORT_ATTACHMENTS_SECTION_ID = "attachments";
+
+function fileValueFromUpload(file: KeyFieldFileValue) {
+  const parsed = parseKeyFieldFileValue(serializeKeyFieldFileValue(file));
+  if (!parsed) {
+    return { kind: "file" as const, name: file.name };
+  }
+  return {
+    kind: "file" as const,
+    attachmentId: parsed.attachmentId,
+    name: parsed.name,
+    mimeType: parsed.mimeType,
+    sizeBytes: parsed.sizeBytes,
+  };
+}
+
+function setFileField(
+  item: ItemPlaintextV2,
+  fieldId: string,
+  file: KeyFieldFileValue,
+): ItemPlaintextV2 {
+  let found = false;
+  const fields = item.fields.map((field) => {
+    if (field.id !== fieldId) {
+      return field;
+    }
+    found = true;
+    return {
+      ...field,
+      type: "file" as const,
+      label: field.label ?? file.name ?? "Attachment",
+      value: fileValueFromUpload(file),
+    };
+  });
+  if (found) {
+    return { ...item, fields };
+  }
+  return appendFileField(item, file);
+}
 
 function appendFileField(item: ItemPlaintextV2, file: KeyFieldFileValue): ItemPlaintextV2 {
   const existingSection = item.sections.find((section) => section.id === IMPORT_ATTACHMENTS_SECTION_ID);
@@ -314,19 +354,7 @@ function appendFileField(item: ItemPlaintextV2, file: KeyFieldFileValue): ItemPl
         sectionId,
         order: sectionFieldCount,
         label: file.name ?? "Attachment",
-        value: (() => {
-          const parsed = parseKeyFieldFileValue(serializeKeyFieldFileValue(file));
-          if (!parsed) {
-            return { kind: "file" as const, name: file.name };
-          }
-          return {
-            kind: "file" as const,
-            attachmentId: parsed.attachmentId,
-            name: parsed.name,
-            mimeType: parsed.mimeType,
-            sizeBytes: parsed.sizeBytes,
-          };
-        })(),
+        value: fileValueFromUpload(file),
       },
     ],
   };

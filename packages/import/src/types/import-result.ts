@@ -16,6 +16,8 @@ export class ImportResult {
   collections: import("./views/collection.view.js").CollectionView[] = [];
   collectionRelationships: CollectionRelationship[] = [];
   errors: ImportRecordError[] = [];
+  /** Native Okkey export entries (bypass CipherView mapping). */
+  nativeEntries: import("./okkey-export.js").OkkeyNativeImportEntry[] = [];
 }
 
 export type ParsedImportBundle = {

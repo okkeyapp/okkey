@@ -9,6 +9,10 @@ import { KasperskyTxtImporter } from "./importers/kaspersky-txt-importer.js";
 import { KeePass2XmlImporter } from "./importers/keepass2-xml-importer.js";
 import { LastPassCsvImporter } from "./importers/lastpass-csv-importer.js";
 import { NordPassCsvImporter } from "./importers/nordpass-csv-importer.js";
+import { OkkeyCsvImporter } from "./importers/okkey-csv-importer.js";
+import { OkkeyJsonImporter } from "./importers/okkey-json-importer.js";
+import { OnePassword1PuxImporter } from "./importers/onepassword-1pux-importer.js";
+import { OnePasswordCsvImporter } from "./importers/onepassword-csv-importer.js";
 import { PassworkJsonImporter } from "./importers/passwork-json-importer.js";
 import { RoboFormCsvImporter } from "./importers/roboform-csv-importer.js";
 import { SafariCsvImporter } from "./importers/safari-csv-importer.js";
@@ -21,14 +25,20 @@ export type ImportFormatOption = {
   acceptedFileTypes: readonly string[];
   supportsTextPaste: boolean;
   requiresExportPassword?: boolean;
+  supportsFolders?: boolean;
 };
 
-type ImporterFactory = () => Importer;
+type ImporterFactory = (options?: { password?: string }) => Importer;
 
 const importerFactories: Record<string, ImporterFactory> = {
-  bitwardenjson: () => new BitwardenJsonImporter(),
+  okkeyjson: (options) => new OkkeyJsonImporter({ password: options?.password }),
+  okkeycsv: () => new OkkeyCsvImporter(),
+  okkeyzip: (options) => new OkkeyJsonImporter({ password: options?.password }),
+  onepasswordcsv: () => new OnePasswordCsvImporter(),
+  onepassword1pux: () => new OnePassword1PuxImporter(),
+  bitwardenjson: (options) => new BitwardenJsonImporter({ password: options?.password }),
   bitwardencsv: () => new BitwardenCsvImporter(),
-  bitwardenzip: () => new BitwardenJsonImporter(),
+  bitwardenzip: (options) => new BitwardenJsonImporter({ password: options?.password }),
   chromecsv: () => new ChromeCsvImporter(),
   edgecsv: () => new ChromeCsvImporter(),
   operacsv: () => new ChromeCsvImporter(),
@@ -50,6 +60,11 @@ const importerFactories: Record<string, ImporterFactory> = {
 };
 
 const featuredFormatIds = new Set([
+  "okkeyjson",
+  "okkeycsv",
+  "okkeyzip",
+  "onepasswordcsv",
+  "onepassword1pux",
   "bitwardenjson",
   "bitwardencsv",
   "bitwardenzip",
@@ -62,14 +77,34 @@ const featuredFormatIds = new Set([
 ]);
 
 export const importFormatOptions: ImportFormatOption[] = [
-  { id: "bitwardenjson", name: "Bitwarden (json)", featured: true, acceptedFileTypes: ["json"], supportsTextPaste: true },
-  { id: "bitwardencsv", name: "Bitwarden (csv)", featured: true, acceptedFileTypes: ["csv"], supportsTextPaste: true },
+  { id: "okkeyjson", name: "Okkey (json)", featured: true, acceptedFileTypes: ["json"], supportsTextPaste: true, supportsFolders: true },
+  { id: "okkeycsv", name: "Okkey (csv)", featured: true, acceptedFileTypes: ["csv"], supportsTextPaste: true, supportsFolders: true },
+  {
+    id: "okkeyzip",
+    name: "Okkey ZIP (с файлами)",
+    featured: true,
+    acceptedFileTypes: ["zip"],
+    supportsTextPaste: false,
+    supportsFolders: true,
+  },
+  { id: "onepasswordcsv", name: "1Password (csv)", featured: true, acceptedFileTypes: ["csv"], supportsTextPaste: true },
+  {
+    id: "onepassword1pux",
+    name: "1Password (1pux)",
+    featured: true,
+    acceptedFileTypes: ["1pux", "zip"],
+    supportsTextPaste: false,
+    supportsFolders: true,
+  },
+  { id: "bitwardenjson", name: "Bitwarden (json)", featured: true, acceptedFileTypes: ["json"], supportsTextPaste: true, supportsFolders: true },
+  { id: "bitwardencsv", name: "Bitwarden (csv)", featured: true, acceptedFileTypes: ["csv"], supportsTextPaste: true, supportsFolders: true },
   {
     id: "bitwardenzip",
     name: "Bitwarden ZIP (с файлами)",
     featured: true,
     acceptedFileTypes: ["zip"],
     supportsTextPaste: false,
+    supportsFolders: true,
   },
   { id: "chromecsv", name: "Chrome (csv)", featured: true, acceptedFileTypes: ["csv"], supportsTextPaste: true },
   { id: "edgecsv", name: "Microsoft Edge (csv)", featured: false, acceptedFileTypes: ["csv"], supportsTextPaste: true },
@@ -109,11 +144,8 @@ export function createImporter(
   formatId: string,
   options?: { password?: string },
 ): Importer {
-  if (formatId === "bitwardenjson" || formatId === "bitwardenzip") {
-    return new BitwardenJsonImporter({ password: options?.password });
-  }
   const factory = importerFactories[formatId] ?? importerFactories.genericcsv;
-  return factory();
+  return factory(options);
 }
 
 export async function runImport(formatId: string, text: string, options?: { password?: string }) {

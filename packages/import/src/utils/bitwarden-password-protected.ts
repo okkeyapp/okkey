@@ -15,7 +15,9 @@ export type BitwardenPasswordProtectedFile = {
 const KDF_PBKDF2 = 0;
 const ENC_TYPE_AES_CBC_256_HMAC_SHA256 = 2;
 
-export function isBitwardenPasswordProtected(data: unknown): data is BitwardenPasswordProtectedFile {
+export function isPasswordProtectedExportEnvelope(
+  data: unknown,
+): data is BitwardenPasswordProtectedFile {
   if (!data || typeof data !== "object") {
     return false;
   }
@@ -28,6 +30,15 @@ export function isBitwardenPasswordProtected(data: unknown): data is BitwardenPa
     typeof record.encKeyValidation_DO_NOT_EDIT === "string" &&
     typeof record.data === "string"
   );
+}
+
+export function isBitwardenPasswordProtected(data: unknown): data is BitwardenPasswordProtectedFile {
+  if (!isPasswordProtectedExportEnvelope(data)) {
+    return false;
+  }
+  const record = data as Record<string, unknown>;
+  // Okkey password-protected exports share the envelope but carry format: "okkey".
+  return record.format !== "okkey";
 }
 
 export function looksLikeBitwardenPasswordProtectedJson(text: string): boolean {
@@ -131,6 +142,64 @@ async function hkdfExpand(prk: Uint8Array, info: string, length: number): Promis
     prev = block;
   }
   return out.slice(0, length);
+}
+
+const DEFAULT_KDF_ITERATIONS = 600_000;
+
+export async function encryptPasswordProtectedExport(
+  plaintext: string,
+  password: string,
+  options?: { kdfIterations?: number },
+): Promise<BitwardenPasswordProtectedFile> {
+  if (!password.trim()) {
+    throw new ImportInvalidPasswordError("Export password is required");
+  }
+  const iterations = options?.kdfIterations ?? DEFAULT_KDF_ITERATIONS;
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const salt = bytesToB64(saltBytes);
+  const masterKey = await derivePbkdf2Key(password, salt, iterations);
+  const stretched = await stretchKey(masterKey);
+  const encKeyValidation_DO_NOT_EDIT = await encryptEncString("okkey-export-key-validation", stretched);
+  const data = await encryptEncString(plaintext, stretched);
+  return {
+    encrypted: true,
+    passwordProtected: true,
+    salt,
+    kdfType: KDF_PBKDF2,
+    kdfIterations: iterations,
+    encKeyValidation_DO_NOT_EDIT,
+    data,
+  };
+}
+
+async function encryptEncString(plaintext: string, stretchedKey: Uint8Array): Promise<string> {
+  const encKey = stretchedKey.slice(0, 32);
+  const macKey = stretchedKey.slice(32, 64);
+  const iv = crypto.getRandomValues(new Uint8Array(16));
+  const aesKey = await crypto.subtle.importKey("raw", encKey, { name: "AES-CBC" }, false, ["encrypt"]);
+  const cipher = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-CBC", iv }, aesKey, new TextEncoder().encode(plaintext)),
+  );
+  const macData = new Uint8Array(iv.length + cipher.length);
+  macData.set(iv, 0);
+  macData.set(cipher, iv.length);
+  const macCryptoKey = await crypto.subtle.importKey(
+    "raw",
+    macKey,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", macCryptoKey, macData));
+  return `${ENC_TYPE_AES_CBC_256_HMAC_SHA256}.${bytesToB64(iv)}|${bytesToB64(cipher)}|${bytesToB64(mac)}`;
+}
+
+function bytesToB64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
 }
 
 async function decryptEncString(encryptedString: string, stretchedKey: Uint8Array): Promise<string> {
