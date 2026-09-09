@@ -59,7 +59,7 @@ const MODE_ICONS: Record<GeneratorMode, typeof GeneratorPasswordTabIcon> = {
 
 const tabButtonClassName = (active: boolean) =>
   cn(
-    "relative border gap-2.5",
+    "relative min-w-0 shrink gap-2 overflow-hidden border",
     active
       ? cn(
           "z-10",
@@ -339,8 +339,12 @@ export default function GeneratorSection() {
         </p>
       </div>
 
-      <div className="flex w-full items-center justify-center">
-        <div className="relative flex w-fit rounded-lg bg-secondary p-1" role="tablist" aria-label={t("web.tools.generator.tabsAria")}>
+      <div className="flex w-full min-w-0 items-center justify-center">
+        <div
+          className="relative flex w-fit max-w-full min-w-0 rounded-lg bg-secondary p-1"
+          role="tablist"
+          aria-label={t("web.tools.generator.tabsAria")}
+        >
           {GENERATOR_MODES.map((value) => {
             const active = mode === value;
             const Icon = MODE_ICONS[value];
@@ -355,8 +359,8 @@ export default function GeneratorSection() {
                 className={tabButtonClassName(active)}
                 onClick={() => setMode(value)}
               >
-                <Icon />
-                {t(`web.tools.generator.modes.${value}`)}
+                <Icon className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">{t(`web.tools.generator.modes.${value}`)}</span>
               </Button>
             );
           })}

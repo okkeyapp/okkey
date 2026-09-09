@@ -367,7 +367,7 @@ export default function ImportSection({
         ) : null}
 
         <div className="flex flex-col gap-3">
-          <div className="relative flex w-fit rounded-lg bg-secondary p-1" role="tablist" aria-label={t("web.tools.import.inputTabsAria")}>
+          <div className="relative flex w-fit max-w-full min-w-0 rounded-lg bg-secondary p-1" role="tablist" aria-label={t("web.tools.import.inputTabsAria")}>
             {inputModeOptions.map(([value, Icon, label]) => {
               const active = inputMode === value;
               return (
@@ -379,7 +379,7 @@ export default function ImportSection({
                   variant={active ? "outline" : "ghost"}
                   aria-selected={active}
                   className={cn(
-                    "relative border",
+                    "relative min-w-0 shrink gap-2 overflow-hidden border",
                     active
                       ? cn(
                           "z-10",
@@ -404,8 +404,8 @@ export default function ImportSection({
                   )}
                   onClick={() => setInputMode(value)}
                 >
-                  <Icon data-icon="inline-start" />
-                  {label}
+                  <Icon data-icon="inline-start" className="size-4 shrink-0" />
+                  <span className="min-w-0 truncate">{label}</span>
                 </Button>
               );
             })}

@@ -13,6 +13,7 @@ vi.mock("@okkey-enterprise/workspace-shared-vaults", () => ({
   default: {
     SharedVaultsSection: null,
     PersonalVaultCardPopup: null,
+    SharedVaultCardPopup: null,
   },
 }));
 

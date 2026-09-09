@@ -1120,6 +1120,12 @@ function OkkeyAppSidebarInner({
   const { expanded } = useSidebar();
   const shell = useOkkeyAppShellLayout();
   const showExpanded = shell.isMobile || expanded;
+  const handleVaultHeaderPlusPointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      onVaultHeaderPlusPointerDown?.(event);
+    },
+    [onVaultHeaderPlusPointerDown],
+  );
   const [safesOpen, setSafesOpen] = React.useState(true);
   const [collapsedVaultDropdownOpen, setCollapsedVaultDropdownOpen] = React.useState(false);
   const [collapsedFolderDropdownOpen, setCollapsedFolderDropdownOpen] = React.useState(false);
@@ -1275,7 +1281,7 @@ function OkkeyAppSidebarInner({
                         items={vaultData}
                         showHeaderPlus
                         headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
-                        onHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
+                        onHeaderPlusPointerDown={handleVaultHeaderPlusPointerDown}
                         linkComponent={vaultNavLink}
                         onDropdownClose={() => setCollapsedVaultDropdownOpen(false)}
                       />
@@ -1343,7 +1349,7 @@ function OkkeyAppSidebarInner({
                     items={vaultData}
                     showHeaderPlus
                     headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
-                    onHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
+                    onHeaderPlusPointerDown={handleVaultHeaderPlusPointerDown}
                     linkComponent={vaultNavLink}
                   />
                   {showFolders ? (

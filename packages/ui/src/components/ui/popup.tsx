@@ -1,5 +1,5 @@
 import * as React from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 
 import {
   getScrollAreaViewport,
@@ -372,10 +372,13 @@ function PopupMobileMenu({ menu }: { menu: PopupMenu }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          sideOffset={6}
-          className="max-h-[min(var(--radix-dropdown-menu-content-available-height),18rem)] w-[var(--radix-dropdown-menu-trigger-width)] min-w-0 overflow-y-auto p-1"
+          sideOffset={8}
+          collisionPadding={16}
+          className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0 overflow-visible p-0"
         >
-          <PopupMenuItems menu={menu} surface="dropdown" />
+          <div className="max-h-[min(var(--radix-dropdown-menu-content-available-height,18rem),18rem)] overflow-y-auto overscroll-contain rounded-md p-1">
+            <PopupMenuItems menu={menu} surface="dropdown" />
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -497,7 +500,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
     const hasMenu = Boolean(menu);
     const hasDescription = Boolean(description);
 
-    return (
+    const overlay = (
       <div
         ref={ref}
         role={role}
@@ -584,13 +587,19 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
               className="shrink-0 max-md:hidden"
             />
 
-            <ScrollArea ref={contentScrollAreaRef} className="min-h-0 flex-1 max-h-full">
-              {menu ? (
-                <div className="px-4 pt-4 md:hidden">
-                  <PopupMobileMenu menu={menu} />
-                </div>
-              ) : null}
+            {menu ? (
+              <div
+                className={cn(
+                  popupChromeSurfaceClassName,
+                  popupHeaderShadowClassName(scrollEdges.fromTop),
+                  "shrink-0 border-b border-border px-4 pb-4 pt-4 md:hidden",
+                )}
+              >
+                <PopupMobileMenu menu={menu} />
+              </div>
+            ) : null}
 
+            <ScrollArea ref={contentScrollAreaRef} className="min-h-0 flex-1 max-h-full">
               <PopupTitleSection
                 header={header}
                 withMenu={hasMenu}
@@ -621,6 +630,11 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         </div>
       </div>
     );
+
+    if (typeof document === "undefined") {
+      return overlay;
+    }
+    return createPortal(overlay, document.body);
   },
 );
 Popup.displayName = "Popup";

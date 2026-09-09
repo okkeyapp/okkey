@@ -41,6 +41,7 @@ import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
+import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
@@ -357,12 +358,12 @@ export default function WorkspaceRoutesLayout() {
     (event: PointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       navigate({
-        pathname: settingsPath("vaults"),
-        search: popupQuerySearch("", NEW_VAULT_POPUP_ID),
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, NEW_VAULT_POPUP_ID),
         hash: location.hash,
       });
     },
-    [location.hash, navigate],
+    [location.hash, location.pathname, location.search, navigate],
   );
 
   const currentWorkspace = useMemo(
@@ -977,6 +978,13 @@ function WorkspaceShellWithItems({
             vaultsListReady={vaultsListReady}
           />
           <FoldersSettingsPopup t={t} />
+          <NewVaultPopup
+            workspaceId={resolvedWorkspaceId}
+            workspace={currentWorkspace}
+            workspacePermissions={workspacePermissions}
+            t={t}
+            onVaultsChanged={refreshVaults}
+          />
           <WorkspaceSidebarLayout
             title={title}
             description={description}
