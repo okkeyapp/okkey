@@ -23,7 +23,7 @@ export async function parseImportInput(input: {
   const lowerName = input.file.name.toLowerCase();
   if (lowerName.endsWith(".zip")) {
     const bytes = new Uint8Array(await input.file.arrayBuffer());
-    return parseZipImport(bytes, input.formatId);
+    return await parseZipImport(bytes, input.formatId);
   }
 
   return {
@@ -32,8 +32,8 @@ export async function parseImportInput(input: {
   };
 }
 
-export function parseZipImport(bytes: Uint8Array, formatId: string): ParsedImportBundle {
-  const files = unzipToMap(bytes);
+export async function parseZipImport(bytes: Uint8Array, formatId: string): Promise<ParsedImportBundle> {
+  const files = await unzipToMap(bytes);
   const attachmentFiles = new Map<string, Uint8Array>();
 
   if (formatId === "bitwardenzip" || formatId === "bitwardenjson") {

@@ -5,9 +5,15 @@ import {
   type OkkeyImportItemDraft,
 } from "@okkey/import";
 import { generateEntityId, type ItemPlaintextV2 } from "@okkey/types";
-import { serializeKeyFieldFileValue, parseKeyFieldFileValue, type KeyFieldFileValue } from "@okkey/ui";
+import {
+  parseKeyFieldFileValue,
+  resolveKeyFieldFileMimeType,
+  serializeKeyFieldFileValue,
+  type KeyFieldFileValue,
+} from "@okkey/ui";
 
-import { uploadEncryptedAttachment } from "../api/key-field-files";
+import { deleteKeyFieldFileAttachment, uploadEncryptedAttachment } from "../api/key-field-files";
+import { syncItemFaviconForPlaintext } from "../items/syncItemFavicon";
 
 export type ImportOrchestratorProgress = {
   phase: "parsing" | "importing" | "done";
@@ -33,7 +39,6 @@ export async function runVaultImport(params: {
   vaultKey: Uint8Array;
   exportPassword?: string;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
-  updateItem: (item: ItemPlaintextV2) => Promise<string>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
   createFolder?: (label: string, parentFolderId?: string | null) => Promise<string>;
   setItemFavorite?: (itemId: string, favorite: boolean) => Promise<void>;
@@ -84,14 +89,17 @@ export async function runVaultImport(params: {
     });
 
     try {
-      const itemId = await importDraftItem({
+      const imported = await importDraftItem({
         draft,
         vaultId: params.vaultId,
         accessToken: params.accessToken,
         vaultKey: params.vaultKey,
         createItem: params.createItem,
-        updateItem: params.updateItem,
       });
+      const itemId = imported.itemId;
+      for (const warning of imported.attachmentWarnings) {
+        errors.push(warning);
+      }
 
       const importFolderIndex = cipherFolderIndex.get(index);
       const mappedFolderId =
@@ -217,40 +225,83 @@ async function importDraftItem(params: {
   accessToken: string;
   vaultKey: Uint8Array;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
-  updateItem: (item: ItemPlaintextV2) => Promise<string>;
-}): Promise<string> {
-  const itemWithVault = { ...params.draft.item, vaultId: params.vaultId };
-  const itemId = await params.createItem(itemWithVault);
+}): Promise<{ itemId: string; attachmentWarnings: string[] }> {
+  let item: ItemPlaintextV2 = { ...params.draft.item, vaultId: params.vaultId };
+  const attachmentWarnings: string[] = [];
+  const uploadedFiles: KeyFieldFileValue[] = [];
 
-  if (params.draft.attachments.length === 0) {
-    return itemId;
+  try {
+    const faviconSync = await syncItemFaviconForPlaintext(
+      params.accessToken,
+      params.vaultKey,
+      item,
+    );
+    item = faviconSync.item;
+  } catch {
+    // Favicon fetch/upload is best-effort; import should still succeed without it.
   }
 
-  let item = { ...itemWithVault, itemId };
+  // Upload attachments before createItem (same pattern as favicon / NewItemPopup),
+  // so the first persisted plaintext already includes file fields.
   for (const attachment of params.draft.attachments) {
-    const uploaded = await uploadEncryptedAttachment({
-      accessToken: params.accessToken,
-      vaultId: params.vaultId,
-      itemId,
-      vaultKey: params.vaultKey,
-      plaintext: attachment.bytes,
-      name: attachment.fileName,
-      mimeType: attachment.mimeType,
-      sizeBytes: attachment.bytes.byteLength,
-    });
-    item = appendFileField(item, uploaded);
+    try {
+      const mimeType = resolveKeyFieldFileMimeType(attachment.fileName, attachment.mimeType);
+      const uploaded = await uploadEncryptedAttachment({
+        accessToken: params.accessToken,
+        vaultId: params.vaultId,
+        itemId: item.itemId,
+        vaultKey: params.vaultKey,
+        plaintext: attachment.bytes,
+        name: attachment.fileName,
+        mimeType,
+        sizeBytes: attachment.bytes.byteLength,
+      });
+      uploadedFiles.push(uploaded);
+      item = appendFileField(item, uploaded);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Upload failed";
+      attachmentWarnings.push(
+        `${item.title}: attachment "${attachment.fileName}" skipped (${reason})`,
+      );
+    }
   }
 
-  await params.updateItem(item);
-  return itemId;
+  try {
+    const itemId = await params.createItem(item);
+    return { itemId, attachmentWarnings };
+  } catch (error) {
+    await Promise.allSettled(
+      uploadedFiles.map((file) =>
+        deleteKeyFieldFileAttachment({
+          accessToken: params.accessToken,
+          vaultId: params.vaultId,
+          itemId: item.itemId,
+          file,
+        }),
+      ),
+    );
+    throw error;
+  }
 }
 
+const IMPORT_ATTACHMENTS_SECTION_ID = "attachments";
+
 function appendFileField(item: ItemPlaintextV2, file: KeyFieldFileValue): ItemPlaintextV2 {
-  const sectionId = item.sections[0]?.id ?? generateEntityId();
-  const sections =
-    item.sections.length > 0
-      ? item.sections
-      : [{ id: sectionId, title: "Attachments", order: 0, isPreset: false }];
+  const existingSection = item.sections.find((section) => section.id === IMPORT_ATTACHMENTS_SECTION_ID);
+  const sectionId = existingSection?.id ?? IMPORT_ATTACHMENTS_SECTION_ID;
+  const sections = existingSection
+    ? item.sections
+    : [
+        ...item.sections,
+        {
+          id: sectionId,
+          title: "Attachments",
+          order: item.sections.reduce((max, section) => Math.max(max, section.order), -1) + 1,
+          isPreset: false,
+        },
+      ];
+
+  const sectionFieldCount = item.fields.filter((field) => field.sectionId === sectionId).length;
 
   return {
     ...item,
@@ -261,7 +312,7 @@ function appendFileField(item: ItemPlaintextV2, file: KeyFieldFileValue): ItemPl
         id: generateEntityId(),
         type: "file",
         sectionId,
-        order: item.fields.length,
+        order: sectionFieldCount,
         label: file.name ?? "Attachment",
         value: (() => {
           const parsed = parseKeyFieldFileValue(serializeKeyFieldFileValue(file));

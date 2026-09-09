@@ -1,6 +1,11 @@
 {
   "encrypted": false,
-  "folders": [{ "id": "f-demo", "name": "Imported" }],
+  "folders": [
+    {
+      "id": "f-demo",
+      "name": "Imported"
+    }
+  ],
   "items": [
     {
       "id": "item-login-with-file",
@@ -12,20 +17,32 @@
         "username": "attach@example.com",
         "password": "AttachPass1!",
         "uris": [
-          { "uri": "https://files.example.com" },
-          { "uri": "https://files.example.com/app" }
+          {
+            "uri": "https://files.example.com"
+          },
+          {
+            "uri": "https://files.example.com/app"
+          }
         ]
       },
       "fields": [
-        { "name": "Department", "value": "Security", "type": 0 },
-        { "name": "Secret code", "value": "hidden-value", "type": 1 }
+        {
+          "name": "Department",
+          "value": "Security",
+          "type": 0
+        },
+        {
+          "name": "Secret code",
+          "value": "hidden-value",
+          "type": 1
+        }
       ],
       "attachments": [
         {
           "id": "att-1",
-          "fileName": "demo.txt",
-          "size": "17",
-          "sizeName": "17 Bytes"
+          "fileName": "demo.pdf",
+          "size": "16",
+          "sizeName": "16 Bytes"
         }
       ],
       "folderId": "f-demo"
@@ -43,7 +60,11 @@
         "code": "123"
       },
       "fields": [
-        { "name": "Billing email", "value": "billing@example.com", "type": 0 }
+        {
+          "name": "Billing email",
+          "value": "billing@example.com",
+          "type": 0
+        }
       ]
     },
     {
@@ -51,10 +72,20 @@
       "type": 2,
       "name": "Note with custom section fields",
       "notes": "Base note body",
-      "secureNote": { "type": 0 },
+      "secureNote": {
+        "type": 0
+      },
       "fields": [
-        { "name": "Section Meta / Author", "value": "Okkey QA", "type": 0 },
-        { "name": "Section Meta / Env", "value": "staging", "type": 0 }
+        {
+          "name": "Section Meta / Author",
+          "value": "Okkey QA",
+          "type": 0
+        },
+        {
+          "name": "Section Meta / Env",
+          "value": "staging",
+          "type": 0
+        }
       ]
     }
   ]

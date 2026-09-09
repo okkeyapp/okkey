@@ -9,7 +9,7 @@ Synthetic exports for manual and automated import testing. **Do not use real pas
 | `bitwarden/unencrypted.json` | Bitwarden JSON | `bitwardenjson`, `bitwardenzip` |
 | `bitwarden/password-protected.json` | Bitwarden JSON (password: `1234`) | encrypted import popup |
 | `bitwarden/export.csv` | Bitwarden CSV | `bitwardencsv` |
-| `bitwarden/export-with-attachments/` + `.zip` | Bitwarden ZIP with `attachments/att-1/demo.txt` | `bitwardenzip` |
+| `bitwarden/export-with-attachments/` + `.zip` | Bitwarden ZIP with `attachments/att-1/demo.pdf` | `bitwardenzip` |
 | `chrome/passwords.csv` | Chrome / Chromium CSV | `chromecsv`, `edgecsv`, `yandexcsv` |
 | `lastpass/export.csv` | LastPass CSV | `lastpasscsv` |
 | `keepass/database.xml` | KeePass 2 XML | `keepass2xml` |
@@ -18,7 +18,7 @@ Synthetic exports for manual and automated import testing. **Do not use real pas
 | `yandex/passwords.csv` | Yandex Browser CSV | `yandexcsv` |
 | `passwork/export.json` | Passwork JSON | `passworkjson` |
 | `generic/custom.csv` | Generic CSV | `genericcsv` |
-| `bitwarden/export-with-attachments.zip` | Bitwarden ZIP (store) | `bitwardenzip` |
+| `bitwarden/export-with-attachments.zip` | Bitwarden ZIP (deflate) | `bitwardenzip` |
 
 ## Manual testing in OKKEY web
 

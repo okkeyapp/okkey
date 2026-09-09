@@ -4,12 +4,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { mapImportResultToOkkeyItems } from "../src/mappers/to-okkey-item.js";
+import { parseZipImport } from "../src/parse-import-input.js";
 import { runImport } from "../src/registry.js";
 import {
   decryptBitwardenPasswordProtectedExport,
   isBitwardenPasswordProtected,
   looksLikeBitwardenPasswordProtectedJson,
 } from "../src/utils/bitwarden-password-protected.js";
+import { createZipFromFiles, unzipToMap } from "../src/utils/zip.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesRoot = path.join(__dirname, "fixtures");
@@ -145,28 +147,44 @@ describe("okkey mapper", () => {
   });
 
   it("resolves Bitwarden ZIP attachments onto login drafts", async () => {
-    const files = new Map<string, Uint8Array>();
-    files.set("data.json", readFixtureBytes("bitwarden/export-with-attachments/data.json"));
-    files.set(
-      "attachments/att-1/demo.txt",
-      readFixtureBytes("bitwarden/export-with-attachments/attachments/att-1/demo.txt"),
+    const bundle = await parseZipImport(
+      readFixtureBytes("bitwarden/export-with-attachments.zip"),
+      "bitwardenzip",
     );
-
-    const result = await runImport(
-      "bitwardenjson",
-      new TextDecoder().decode(files.get("data.json")!),
-    );
-    const attachmentFiles = new Map<string, Uint8Array>([
-      ["attachments/att-1/demo.txt", files.get("attachments/att-1/demo.txt")!],
-    ]);
+    const result = await runImport("bitwardenzip", bundle.text);
     const mapped = mapImportResultToOkkeyItems({
       result,
       vaultId: "vault-demo",
-      attachmentFiles,
+      attachmentFiles: bundle.attachmentFiles,
     });
     const login = mapped.find((draft) => draft.item.title === "Login with attachment");
     expect(login?.attachments.length).toBe(1);
-    expect(login?.attachments[0]?.fileName).toBe("demo.txt");
+    expect(login?.attachments[0]?.fileName).toBe("demo.pdf");
+  });
+
+  it("parses deflated Bitwarden ZIP fixture with attachments", async () => {
+    const bundle = await parseZipImport(
+      readFixtureBytes("bitwarden/export-with-attachments.zip"),
+      "bitwardenzip",
+    );
+    expect(bundle.attachmentFiles.has("attachments/att-1/demo.pdf")).toBe(true);
+    expect(bundle.text).toContain("Login with attachment");
+  });
+});
+
+describe("zip utils", () => {
+  it("round-trips store entries and inflates deflated fixture", async () => {
+    const packed = createZipFromFiles({
+      "data.json": '{"ok":true}',
+      "attachments/a/file.txt": "hello",
+    });
+    const files = await unzipToMap(packed);
+    expect(new TextDecoder().decode(files.get("data.json")!)).toBe('{"ok":true}');
+    expect(new TextDecoder().decode(files.get("attachments/a/file.txt")!)).toBe("hello");
+
+    const deflated = await unzipToMap(readFixtureBytes("bitwarden/export-with-attachments.zip"));
+    expect(deflated.has("data.json")).toBe(true);
+    expect(deflated.has("attachments/att-1/demo.pdf")).toBe(true);
   });
 });
 

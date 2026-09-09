@@ -83,7 +83,7 @@ export default function ImportSection({
   const { t } = useLocale();
   const { accessToken } = useAuthVault();
   const { canPostToVault } = useWorkspaceVaultProfiles();
-  const { createItem, updateItem, resolveVaultEncryptionKey, maxFileSizeMb } = useWorkspaceItems();
+  const { createItem, resolveVaultEncryptionKey, maxFileSizeMb, allowedFileExtensions } = useWorkspaceItems();
   const { assignItemToFolder, createFolder, setItemFavorite } = useWorkspaceFolders();
 
   const formatOptions = useMemo(() => listImportFormatOptions(), []);
@@ -109,6 +109,14 @@ export default function ImportSection({
     formatId === "bitwardenjson" || formatId === "bitwardencsv" || formatId === "bitwardenzip";
   const showZipAttachmentsNote = formatId === "bitwardenzip" && inputMode === "file";
   const attachmentLimitMb = maxFileSizeMb > 0 ? maxFileSizeMb : 2;
+  const allowedAttachmentFormatsLabel = useMemo(() => {
+    if (allowedFileExtensions.length === 0) {
+      return "";
+    }
+    return t("web.tools.import.zipAttachmentsNoteFormatsList", {
+      formats: allowedFileExtensions.join(", "),
+    });
+  }, [allowedFileExtensions, t]);
 
   useEffect(() => {
     if (!supportsTextPaste && inputMode === "text") {
@@ -222,7 +230,6 @@ export default function ImportSection({
         vaultKey,
         exportPassword,
         createItem,
-        updateItem,
         assignItemToFolder,
         createFolder,
         setItemFavorite,
@@ -463,14 +470,23 @@ export default function ImportSection({
               <AlertInfoIcon className="size-4" />
               <AlertTitle>{t("web.tools.import.zipAttachmentsNoteTitle")}</AlertTitle>
               <AlertDescription>
-                {t("web.tools.import.zipAttachmentsNote", { maxMb: attachmentLimitMb })}{" "}
-                <Link
-                  to={settingsPath("items")}
-                  className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
-                >
-                  {t("web.tools.import.zipAttachmentsNoteLink")}
-                </Link>
-                .
+                <ol className="mt-1 list-decimal space-y-1.5 pl-4">
+                  <li>
+                    {t("web.tools.import.zipAttachmentsNoteSize", { maxMb: attachmentLimitMb })}{" "}
+                    <Link
+                      to={settingsPath("items")}
+                      className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
+                    >
+                      {t("web.tools.import.zipAttachmentsNoteLink")}
+                    </Link>
+                    .
+                  </li>
+                  <li>
+                    {t("web.tools.import.zipAttachmentsNoteFormats", {
+                      formatsSuffix: allowedAttachmentFormatsLabel,
+                    })}
+                  </li>
+                </ol>
               </AlertDescription>
             </Alert>
           ) : null}

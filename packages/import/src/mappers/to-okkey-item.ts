@@ -461,7 +461,16 @@ function resolveAttachmentBytes(
   }
 
   for (const [key, bytes] of attachmentFiles.entries()) {
-    if (key.endsWith(`/${fileName}`) || key.endsWith(fileName)) {
+    if (attachment.id && (key === `attachments/${attachment.id}` || key.startsWith(`attachments/${attachment.id}/`))) {
+      const nestedName = key.split("/").pop() || fileName;
+      return {
+        fileName: attachment.fileName?.trim() || nestedName,
+        mimeType: "application/octet-stream",
+        bytes,
+        sourceKey: key,
+      };
+    }
+    if (key.endsWith(`/${fileName}`) || key === fileName || key.endsWith(fileName)) {
       return {
         fileName,
         mimeType: "application/octet-stream",
