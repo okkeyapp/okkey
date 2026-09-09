@@ -22,6 +22,7 @@ const CSV_HEADERS = [
   "updatedAtMs",
   "archived",
   "item_json",
+  "favicon_json",
 ] as const;
 
 export class OkkeyCsvImporter implements Importer {
@@ -56,6 +57,8 @@ export class OkkeyCsvImporter implements Importer {
 }
 
 function rowToExportItem(row: Record<string, string>): OkkeyExportItemV1 | null {
+  const favicon = parseFaviconJson(row.favicon_json);
+
   if (row.item_json?.trim()) {
     try {
       const parsed = JSON.parse(row.item_json) as unknown;
@@ -67,6 +70,7 @@ function rowToExportItem(row: Record<string, string>): OkkeyExportItemV1 | null 
         item,
         folderPath: normalizeFolderPath(row.folder ?? "") || null,
         favorite: parseBool(row.favorite),
+        ...(favicon ? { favicon } : {}),
       };
     } catch {
       return null;
@@ -89,7 +93,10 @@ function rowToExportItem(row: Record<string, string>): OkkeyExportItemV1 | null 
   }
 
   const createdAtMs = Number(row.createdAtMs) || Date.now();
-  const updatedAtMs = Number(row.updatedAtMs) || createdAtMs;
+  const parsedUpdatedAtMs = Number(row.updatedAtMs);
+  const updatedAtMs = Number.isFinite(parsedUpdatedAtMs) && parsedUpdatedAtMs > 0
+    ? Math.max(parsedUpdatedAtMs, createdAtMs)
+    : createdAtMs;
   const tags = (row.tags ?? "")
     .split("|")
     .map((tag) => tag.trim())
@@ -116,7 +123,38 @@ function rowToExportItem(row: Record<string, string>): OkkeyExportItemV1 | null 
     item,
     folderPath: normalizeFolderPath(row.folder ?? "") || null,
     favorite: parseBool(row.favorite),
+    ...(favicon ? { favicon } : {}),
   };
+}
+
+function parseFaviconJson(raw: string | undefined): OkkeyExportItemV1["favicon"] {
+  if (!raw?.trim()) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return undefined;
+    }
+    const record = parsed as Record<string, unknown>;
+    const fileName = typeof record.fileName === "string" ? record.fileName.trim() : "";
+    const dataBase64 =
+      typeof record.dataBase64 === "string" && record.dataBase64.trim()
+        ? record.dataBase64.trim()
+        : undefined;
+    if (!fileName || !dataBase64) {
+      return undefined;
+    }
+    const source =
+      record.source === "manual" || record.source === "website" ? record.source : undefined;
+    return {
+      fileName,
+      dataBase64,
+      ...(source ? { source } : {}),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function parseBool(value: string | undefined): boolean {
@@ -140,6 +178,7 @@ export function serializeOkkeyCsv(bundle: OkkeyExportBundleV1): string {
       String(entry.item.updatedAtMs),
       entry.item.archived ? "true" : "false",
       JSON.stringify(entry.item),
+      entry.favicon ? JSON.stringify(entry.favicon) : "",
     ];
     lines.push(cells.map(escapeCsvCell).join(","));
   }

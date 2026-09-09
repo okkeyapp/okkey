@@ -17,7 +17,7 @@ export function migrateItemPlaintextV1ToV2(v1: ItemPlaintextV1): ItemPlaintextV2
   });
   return {
     ...base,
-    updatedAtMs: v1.updatedAtMs,
+    updatedAtMs: Math.max(v1.updatedAtMs, v1.createdAtMs),
     deleted: v1.deleted,
     schemaVersion: ITEM_PLAINTEXT_SCHEMA_VERSION_V2,
   };

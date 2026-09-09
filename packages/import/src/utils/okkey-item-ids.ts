@@ -30,6 +30,7 @@ export function remintItemIds(
       sections,
       fields,
       faviconId: undefined,
+      updatedAtMs: Math.max(item.updatedAtMs, item.createdAtMs),
     },
     fieldIdMap,
   };

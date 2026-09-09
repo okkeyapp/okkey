@@ -84,8 +84,9 @@ export async function syncItemFaviconForPlaintext(
       item,
       pngBytes: syncInput.manualFaviconPng,
     });
+    const uploadedSource = syncInput.faviconSource ?? faviconSource ?? "manual";
     return {
-      item: applyFaviconToItem(item, uploadedFavicon.attachmentId, "manual"),
+      item: applyFaviconToItem(item, uploadedFavicon.attachmentId, uploadedSource),
       uploadedFavicon,
     };
   }

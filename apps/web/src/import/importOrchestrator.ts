@@ -235,8 +235,18 @@ async function importDraftItem(params: {
       params.accessToken,
       params.vaultKey,
       item,
+      undefined,
+      params.draft.faviconPng && params.draft.faviconPng.byteLength > 0
+        ? {
+            faviconSource: item.faviconSource ?? "manual",
+            manualFaviconPng: params.draft.faviconPng,
+          }
+        : undefined,
     );
     item = faviconSync.item;
+    if (faviconSync.uploadedFavicon) {
+      uploadedFiles.push(faviconSync.uploadedFavicon);
+    }
   } catch {
     // Favicon fetch/upload is best-effort; import should still succeed without it.
   }

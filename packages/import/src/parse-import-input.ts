@@ -45,7 +45,10 @@ export async function parseZipImport(bytes: Uint8Array, formatId: string): Promi
       throw new Error("Okkey ZIP does not contain JSON export");
     }
     for (const [name, content] of files.entries()) {
-      if (name.startsWith("attachments/") && !name.endsWith("/")) {
+      if (
+        (name.startsWith("attachments/") || name.startsWith("favicons/")) &&
+        !name.endsWith("/")
+      ) {
         attachmentFiles.set(name, content);
       }
     }

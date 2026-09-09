@@ -8,6 +8,7 @@ import { serializeOkkeyCsv } from "../importers/okkey-csv-importer.js";
 import type {
   OkkeyExportAttachmentRef,
   OkkeyExportBundleV1,
+  OkkeyExportFaviconRef,
   OkkeyExportItemV1,
 } from "../types/okkey-export.js";
 import { encryptOkkeyPasswordProtectedExport } from "../utils/okkey-password-protected.js";
@@ -20,6 +21,8 @@ export type ExportSourceItem = {
   favorite: boolean;
   /** Decrypted attachment bytes keyed by field id. */
   attachmentBytesByFieldId?: Map<string, { fileName: string; bytes: Uint8Array }>;
+  /** Decrypted custom/website favicon bytes (PNG). */
+  faviconBytes?: { fileName: string; bytes: Uint8Array; source?: "manual" | "website" };
 };
 
 export type BuildOkkeyExportParams = {
@@ -74,6 +77,8 @@ export function buildOkkeyBundle(
 
     const attachments: OkkeyExportAttachmentRef[] = [];
     const item = cloneItemForExport(source.item);
+    // Stale MinIO attachment ids are meaningless after import; bytes travel via favicon/attachments.
+    delete item.faviconId;
 
     if (withAttachmentRefs && source.attachmentBytesByFieldId) {
       for (const field of item.fields) {
@@ -112,11 +117,14 @@ export function buildOkkeyBundle(
       }
     }
 
+    const favicon = buildFaviconRef(source, withAttachmentRefs);
+
     const entry: OkkeyExportItemV1 = {
       item,
       folderPath,
       favorite: source.favorite,
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(favicon ? { favicon } : {}),
     };
     bundle.items.push(entry);
   }
@@ -132,25 +140,62 @@ function buildOkkeyZipContents(
   const files: Record<string, Uint8Array | string> = {};
   const bundle = buildOkkeyBundle(items, includeFolders, true);
   for (const source of items) {
-    if (!source.attachmentBytesByFieldId) {
-      continue;
+    if (source.attachmentBytesByFieldId) {
+      for (const [fieldId, blob] of source.attachmentBytesByFieldId.entries()) {
+        const safeName = sanitizeFileName(blob.fileName);
+        const relativePath = `attachments/${source.item.itemId}/${fieldId}/${safeName}`;
+        files[relativePath] = blob.bytes;
+      }
     }
-    for (const [fieldId, blob] of source.attachmentBytesByFieldId.entries()) {
-      const safeName = sanitizeFileName(blob.fileName);
-      const relativePath = `attachments/${source.item.itemId}/${fieldId}/${safeName}`;
-      files[relativePath] = blob.bytes;
+    if (source.faviconBytes && source.faviconBytes.bytes.byteLength > 0) {
+      const safeName = sanitizeFileName(source.faviconBytes.fileName || "favicon.png");
+      files[`favicons/${source.item.itemId}/${safeName}`] = source.faviconBytes.bytes;
     }
   }
   return { bundle, files };
 }
 
+function buildFaviconRef(
+  source: ExportSourceItem,
+  withZipPaths: boolean,
+): OkkeyExportFaviconRef | undefined {
+  const blob = source.faviconBytes;
+  if (!blob || blob.bytes.byteLength === 0) {
+    return undefined;
+  }
+  const safeName = sanitizeFileName(blob.fileName || "favicon.png");
+  const sourceKind = blob.source ?? source.item.faviconSource;
+  if (withZipPaths) {
+    return {
+      fileName: safeName,
+      relativePath: `favicons/${source.item.itemId}/${safeName}`,
+      ...(sourceKind ? { source: sourceKind } : {}),
+    };
+  }
+  return {
+    fileName: safeName,
+    dataBase64: bytesToBase64(blob.bytes),
+    ...(sourceKind ? { source: sourceKind } : {}),
+  };
+}
+
 function cloneItemForExport(item: ItemPlaintextV2): ItemPlaintextV2 {
-  return JSON.parse(JSON.stringify(item)) as ItemPlaintextV2;
+  const cloned = JSON.parse(JSON.stringify(item)) as ItemPlaintextV2;
+  cloned.updatedAtMs = Math.max(cloned.updatedAtMs, cloned.createdAtMs);
+  return cloned;
 }
 
 function sanitizeFileName(name: string): string {
   const trimmed = name.trim() || "file";
   return trimmed.replace(/[\\/:*?"<>|]+/g, "_").slice(0, 180);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
 }
 
 /** Shared helper for Bitwarden password-protected JSON export. */

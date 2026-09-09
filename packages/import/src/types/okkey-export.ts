@@ -9,11 +9,20 @@ export type OkkeyExportAttachmentRef = {
   relativePath: string;
 };
 
+/** Custom/website item icon; ZIP uses relativePath, JSON/CSV embed dataBase64. */
+export type OkkeyExportFaviconRef = {
+  fileName: string;
+  relativePath?: string;
+  dataBase64?: string;
+  source?: "manual" | "website";
+};
+
 export type OkkeyExportItemV1 = {
   item: ItemPlaintextV2;
   folderPath: string | null;
   favorite: boolean;
   attachments?: OkkeyExportAttachmentRef[];
+  favicon?: OkkeyExportFaviconRef;
 };
 
 export type OkkeyExportBundleV1 = {
@@ -29,6 +38,7 @@ export type OkkeyNativeImportEntry = {
   folderPath: string | null;
   favorite: boolean;
   attachmentRefs: OkkeyExportAttachmentRef[];
+  favicon?: OkkeyExportFaviconRef;
 };
 
 export function isOkkeyExportBundle(value: unknown): value is OkkeyExportBundleV1 {

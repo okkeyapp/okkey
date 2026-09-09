@@ -160,15 +160,19 @@ function appendItemActivity(
   itemId: string,
   event: SyncEventWireDto,
   actionKey: ItemActivityWireEntry["actionKey"],
+  atMsOverride?: number,
+  idSuffix?: string,
 ): void {
   const list = itemActivity.get(itemId) ?? [];
-  if (list.some((entry) => entry.id === event.id)) {
+  const entryId = idSuffix ? `${event.id}:${idSuffix}` : event.id;
+  if (list.some((entry) => entry.id === entryId)) {
     return;
   }
+  const parsedEventAt = Date.parse(event.createdAt);
   list.push({
-    id: event.id,
+    id: entryId,
     actionKey,
-    atMs: Date.parse(event.createdAt) || Date.now(),
+    atMs: atMsOverride ?? (Number.isFinite(parsedEventAt) ? parsedEventAt : Date.now()),
     actorId: event.actorId,
   });
   itemActivity.set(itemId, list);
@@ -215,7 +219,17 @@ async function applyVaultItemEvents(
     }
 
     if (event.eventType === "ITEM_CREATE") {
-      appendItemActivity(itemActivity, parsed.itemId, event, "created");
+      appendItemActivity(itemActivity, parsed.itemId, event, "created", parsed.createdAtMs);
+      if (parsed.updatedAtMs > parsed.createdAtMs) {
+        appendItemActivity(
+          itemActivity,
+          parsed.itemId,
+          event,
+          "updated",
+          parsed.updatedAtMs,
+          "updated",
+        );
+      }
       if (!itemCreatedByUserId.has(parsed.itemId)) {
         itemCreatedByUserId.set(parsed.itemId, event.actorId);
       }

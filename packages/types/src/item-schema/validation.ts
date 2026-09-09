@@ -114,17 +114,21 @@ export function normalizeItemPlaintextV2(raw: unknown): ItemPlaintextV2 | undefi
   const title = raw.title;
   const categoryId = raw.categoryId;
   const createdAtMs = raw.createdAtMs;
-  const updatedAtMs = raw.updatedAtMs;
+  const updatedAtMsRaw = raw.updatedAtMs;
   if (
     typeof itemId !== "string" ||
     typeof vaultId !== "string" ||
     typeof title !== "string" ||
     typeof categoryId !== "string" ||
     typeof createdAtMs !== "number" ||
-    typeof updatedAtMs !== "number"
+    !Number.isFinite(createdAtMs)
   ) {
     return undefined;
   }
+  const updatedAtMs =
+    typeof updatedAtMsRaw === "number" && Number.isFinite(updatedAtMsRaw)
+      ? Math.max(updatedAtMsRaw, createdAtMs)
+      : createdAtMs;
   const sectionsRaw = Array.isArray(raw.sections) ? raw.sections : [];
   const fieldsRaw = Array.isArray(raw.fields) ? raw.fields : [];
   const sections: ItemSectionV2[] = [];

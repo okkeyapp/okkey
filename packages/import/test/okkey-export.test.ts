@@ -15,6 +15,7 @@ import {
   looksLikeOkkeyPasswordProtectedJson,
 } from "../src/utils/okkey-password-protected.js";
 import { unzipToMap, createZipFromFiles } from "../src/utils/zip.js";
+import { parseZipImport } from "../src/parse-import-input.js";
 import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2 } from "@okkey/types";
 import type { OkkeyExportBundleV1 } from "../src/types/okkey-export.js";
 
@@ -148,6 +149,95 @@ describe("okkey export/import round-trip", () => {
       new TextDecoder().decode(files.get("export.json")!),
     );
     expect(parsed.nativeEntries[0]?.attachmentRefs[0]?.fileName).toBe("note.txt");
+  });
+
+  it("round-trips custom favicon via JSON base64", async () => {
+    const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3, 4]);
+    const bytes = await buildOkkeyJsonExport({
+      items: [
+        {
+          item: {
+            ...sampleItem(),
+            faviconId: "old-favicon-id",
+            faviconSource: "manual",
+          },
+          folderPath: null,
+          favorite: false,
+          faviconBytes: { fileName: "favicon.png", bytes: png, source: "manual" },
+        },
+      ],
+    });
+    const text = new TextDecoder().decode(bytes);
+    const bundle = JSON.parse(text) as OkkeyExportBundleV1;
+    expect(bundle.items[0]?.item.faviconId).toBeUndefined();
+    expect(bundle.items[0]?.favicon?.source).toBe("manual");
+    expect(bundle.items[0]?.favicon?.dataBase64).toBeTruthy();
+
+    const result = await runImport("okkeyjson", text);
+    expect(result.nativeEntries[0]?.favicon?.dataBase64).toBeTruthy();
+
+    const drafts = mapImportResultToOkkeyItems({ result, vaultId: "vault-new" });
+    expect(drafts[0]?.faviconPng).toEqual(png);
+    expect(drafts[0]?.item.faviconSource).toBe("manual");
+    expect(drafts[0]?.item.faviconId).toBeUndefined();
+  });
+
+  it("round-trips custom favicon via ZIP file", async () => {
+    const png = new Uint8Array([137, 80, 78, 71, 9, 8, 7, 6]);
+    const bytes = await buildOkkeyZipExport({
+      items: [
+        {
+          item: {
+            ...sampleItem(),
+            faviconId: "old-favicon-id",
+            faviconSource: "manual",
+          },
+          folderPath: null,
+          favorite: false,
+          faviconBytes: { fileName: "favicon.png", bytes: png, source: "manual" },
+        },
+      ],
+    });
+    const files = await unzipToMap(bytes);
+    const faviconPath = [...files.keys()].find((name) => name.includes("favicons/"));
+    expect(faviconPath).toBeTruthy();
+    expect(files.get(faviconPath!)).toEqual(png);
+
+    const parsedBundle = await parseZipImport(bytes, "okkeyzip");
+    expect(parsedBundle.attachmentFiles.has(faviconPath!)).toBe(true);
+
+    const parsed = await createImporter("okkeyzip").parse(parsedBundle.text);
+    const drafts = mapImportResultToOkkeyItems({
+      result: parsed,
+      vaultId: "vault-new",
+      attachmentFiles: parsedBundle.attachmentFiles,
+    });
+    expect(drafts[0]?.faviconPng).toEqual(png);
+    expect(drafts[0]?.item.faviconSource).toBe("manual");
+  });
+
+  it("clamps updatedAtMs to createdAtMs when earlier or missing", async () => {
+    const createdAtMs = 1_700_000_000_000;
+    const bytes = await buildOkkeyJsonExport({
+      items: [
+        {
+          item: {
+            ...sampleItem(),
+            createdAtMs,
+            updatedAtMs: createdAtMs - 60_000,
+          },
+          folderPath: null,
+          favorite: false,
+        },
+      ],
+    });
+    const text = new TextDecoder().decode(bytes);
+    const result = await runImport("okkeyjson", text);
+    expect(result.nativeEntries[0]?.item.createdAtMs).toBe(createdAtMs);
+    expect(result.nativeEntries[0]?.item.updatedAtMs).toBe(createdAtMs);
+
+    const drafts = mapImportResultToOkkeyItems({ result, vaultId: "vault-new" });
+    expect(drafts[0]?.item.updatedAtMs).toBe(drafts[0]?.item.createdAtMs);
   });
 
   it("exports chrome csv via runExport", async () => {

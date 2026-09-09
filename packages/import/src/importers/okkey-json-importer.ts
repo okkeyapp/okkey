@@ -6,6 +6,7 @@ import {
   OKKEY_EXPORT_FORMAT_VERSION,
   type OkkeyExportAttachmentRef,
   type OkkeyExportBundleV1,
+  type OkkeyExportFaviconRef,
   type OkkeyExportItemV1,
   type OkkeyNativeImportEntry,
 } from "../types/okkey-export.js";
@@ -107,16 +108,48 @@ function normalizeExportItem(entry: OkkeyExportItemV1): OkkeyNativeImportEntry |
           Boolean(ref?.fieldId && ref?.fileName && ref?.relativePath),
       )
     : [];
+  const favicon = normalizeFaviconRef(entry.favicon);
   return {
     item: clearFileAttachmentIds(item),
     folderPath: folderPath || null,
     favorite: Boolean(entry.favorite),
     attachmentRefs,
+    ...(favicon ? { favicon } : {}),
+  };
+}
+
+function normalizeFaviconRef(value: unknown): OkkeyExportFaviconRef | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const fileName = typeof record.fileName === "string" ? record.fileName.trim() : "";
+  if (!fileName) {
+    return undefined;
+  }
+  const relativePath =
+    typeof record.relativePath === "string" && record.relativePath.trim()
+      ? record.relativePath.trim()
+      : undefined;
+  const dataBase64 =
+    typeof record.dataBase64 === "string" && record.dataBase64.trim()
+      ? record.dataBase64.trim()
+      : undefined;
+  if (!relativePath && !dataBase64) {
+    return undefined;
+  }
+  const source =
+    record.source === "manual" || record.source === "website" ? record.source : undefined;
+  return {
+    fileName,
+    ...(relativePath ? { relativePath } : {}),
+    ...(dataBase64 ? { dataBase64 } : {}),
+    ...(source ? { source } : {}),
   };
 }
 
 function clearFileAttachmentIds(item: ItemPlaintextV2): ItemPlaintextV2 {
-  return {
+  const next: ItemPlaintextV2 = {
     ...item,
     fields: item.fields.map((field) => {
       if (field.type !== "file" || field.value.kind !== "file") {
@@ -133,6 +166,8 @@ function clearFileAttachmentIds(item: ItemPlaintextV2): ItemPlaintextV2 {
       };
     }),
   };
+  delete next.faviconId;
+  return next;
 }
 
 function ensureFolderPath(

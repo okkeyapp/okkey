@@ -10,6 +10,7 @@ import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolled";
 import {
   buildItemActivityEntries,
+  enrichItemActivityWithItemTimestamps,
   mapItemActivityWireEntries,
 } from "../../items/buildItemActivityEntries";
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
@@ -193,7 +194,11 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
     };
     const wireEntries = getItemActivityById(item.itemId);
     if (wireEntries.length > 0) {
-      return mapItemActivityWireEntries(wireEntries, resolveActorLabel);
+      return enrichItemActivityWithItemTimestamps(
+        mapItemActivityWireEntries(wireEntries, resolveActorLabel),
+        item,
+        resolveActorLabel(userId ?? null),
+      );
     }
     return buildItemActivityEntries({
       itemId: item.itemId,

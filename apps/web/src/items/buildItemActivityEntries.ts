@@ -94,3 +94,36 @@ export function buildItemActivityEntries(input: {
 
   return entries.sort((a, b) => b.atMs - a.atMs);
 }
+
+/**
+ * Wire history for imports is often only ITEM_CREATE. Lists use updatedAtMs, so surface
+ * plaintext update time when there is no post-create activity yet.
+ */
+export function enrichItemActivityWithItemTimestamps(
+  entries: readonly ItemActivityEntry[],
+  item: Pick<ItemPlaintextV2, "itemId" | "createdAtMs" | "updatedAtMs">,
+  actorLabel: string,
+): ItemActivityEntry[] {
+  const next = entries.map((entry) =>
+    entry.actionKey === "created" ? { ...entry, atMs: item.createdAtMs } : entry,
+  );
+  const hasPostCreateActivity = next.some((entry) => entry.actionKey !== "created");
+  if (!hasPostCreateActivity && item.updatedAtMs > item.createdAtMs) {
+    next.push({
+      id: `${item.itemId}-updated`,
+      actionKey: "updated",
+      atMs: item.updatedAtMs,
+      actorLabel,
+    });
+  }
+  const seenIds = new Set<string>();
+  return next
+    .sort((a, b) => b.atMs - a.atMs)
+    .filter((entry) => {
+      if (seenIds.has(entry.id)) {
+        return false;
+      }
+      seenIds.add(entry.id);
+      return true;
+    });
+}

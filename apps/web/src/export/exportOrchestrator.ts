@@ -67,11 +67,21 @@ export async function runVaultExport(params: {
         })
       : undefined;
 
+    const faviconBytes =
+      option.id === "okkeyjson" || option.id === "okkeycsv" || option.id === "okkeyzip"
+        ? await collectFavicon({
+            item,
+            accessToken: params.accessToken,
+            vaultKey: params.vaultKey,
+          })
+        : undefined;
+
     sources.push({
       item,
       folderPath,
       favorite: params.itemFavoriteByItemId.has(item.itemId),
       attachmentBytesByFieldId,
+      ...(faviconBytes ? { faviconBytes } : {}),
     });
   }
 
@@ -133,6 +143,40 @@ async function collectAttachments(params: {
     }
   }
   return map;
+}
+
+async function collectFavicon(params: {
+  item: ItemPlaintextV2;
+  accessToken: string;
+  vaultKey: Uint8Array;
+}): Promise<{ fileName: string; bytes: Uint8Array; source?: "manual" | "website" } | undefined> {
+  if (!params.item.faviconId) {
+    return undefined;
+  }
+  try {
+    const downloaded = await downloadKeyFieldFileAttachmentBytes({
+      accessToken: params.accessToken,
+      vaultId: params.item.vaultId,
+      itemId: params.item.itemId,
+      file: {
+        attachmentId: params.item.faviconId,
+        name: "favicon.png",
+        mimeType: "image/png",
+        sizeBytes: 0,
+      },
+      vaultKey: params.vaultKey,
+    });
+    if (downloaded.plaintext.byteLength === 0) {
+      return undefined;
+    }
+    return {
+      fileName: downloaded.name || "favicon.png",
+      bytes: downloaded.plaintext,
+      ...(params.item.faviconSource ? { source: params.item.faviconSource } : {}),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function downloadExportBlob(result: RunExportResult): void {

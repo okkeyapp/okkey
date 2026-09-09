@@ -20,6 +20,8 @@ export type OkkeyImportItemDraft = {
   item: ItemPlaintextV2;
   attachments: ImportAttachmentDraft[];
   favorite?: boolean;
+  /** Restored custom/website favicon PNG from Okkey export. */
+  faviconPng?: Uint8Array;
 };
 
 export type ImportAttachmentDraft = {
@@ -82,11 +84,55 @@ function mapNativeEntryToOkkeyItem(params: {
       targetFieldId,
     });
   }
+
+  const faviconPng = resolveFaviconBytes(params.entry.favicon, params.attachmentFiles);
+  const faviconSource = params.entry.favicon?.source ?? reminted.item.faviconSource;
+  const item: ItemPlaintextV2 = {
+    ...reminted.item,
+    ...(faviconSource ? { faviconSource } : {}),
+  };
+  if (!faviconPng) {
+    delete item.faviconId;
+  }
+
   return {
-    item: reminted.item,
+    item,
     attachments,
     favorite: params.entry.favorite,
+    ...(faviconPng ? { faviconPng } : {}),
   };
+}
+
+function resolveFaviconBytes(
+  favicon: OkkeyNativeImportEntry["favicon"],
+  attachmentFiles?: Map<string, Uint8Array>,
+): Uint8Array | undefined {
+  if (!favicon) {
+    return undefined;
+  }
+  if (favicon.dataBase64) {
+    try {
+      return base64ToBytes(favicon.dataBase64);
+    } catch {
+      // fall through to zip path
+    }
+  }
+  if (favicon.relativePath) {
+    return (
+      attachmentFiles?.get(favicon.relativePath) ??
+      attachmentFiles?.get(favicon.relativePath.replace(/\\/g, "/"))
+    );
+  }
+  return undefined;
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function guessMime(fileName: string): string {
