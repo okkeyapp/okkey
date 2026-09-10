@@ -11,6 +11,7 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import SettingsGeneralContent from "./SettingsGeneralContent";
+import SettingsVaultContent from "./SettingsVaultContent";
 
 export type SettingsPopupItemId = "main" | "vault" | "login" | "twoFactor" | "recovery" | "devices";
 
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS_POPUP_ITEM_ID: SettingsPopupItemId = "main";
 
 type SettingsPopupProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
+  workspaceIds?: string[];
   children: (controls: { openSettingsPopup: () => void }) => ReactNode;
 };
 
@@ -141,7 +143,7 @@ function isSettingsPopupItemId(itemId: string): itemId is SettingsPopupItemId {
   return ["main", "vault", "login", "twoFactor", "recovery", "devices"].includes(itemId);
 }
 
-export default function SettingsPopup({ t, children }: SettingsPopupProps) {
+export default function SettingsPopup({ t, workspaceIds = [], children }: SettingsPopupProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -220,6 +222,8 @@ export default function SettingsPopup({ t, children }: SettingsPopupProps) {
         >
           {activeItemId === "main" ? (
             <SettingsGeneralContent t={t} />
+          ) : activeItemId === "vault" ? (
+            <SettingsVaultContent t={t} workspaceIds={workspaceIds} />
           ) : (
             <div className="min-h-[min(420px,calc(100dvh-32px))]" aria-label={heading} />
           )}

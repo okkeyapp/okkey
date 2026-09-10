@@ -196,12 +196,14 @@ export { CryptoSdkError };
 export {
   buildRegistrationCryptoArtifacts,
   reconstructVaultKeyWithMasterPassword,
+  rebalanceServerShareForNewPassword,
   OKKEY_PASSWORD_KDF_PARAMS_V1,
   OKKEY_PASSWORD_KDF_PARAMS_VERSION,
   derivePasswordShareC,
   registrationArtifactsToWire,
   type RegistrationSplitKeyMaterial,
   type RegistrationUserKeyMaterial,
+  type RebalanceServerShareForNewPasswordResult,
 } from "./registration.js";
 
 export { encryptVaultItemPayload, decryptVaultItemPayload } from "./vault-item.js";
@@ -231,6 +233,15 @@ export {
 } from "./personal-vault-metadata.js";
 
 export { wrapVaultKeyWithRecoverySecret, unwrapVaultKeyWithRecoverySecret } from "./vault-recovery-key.js";
+
+export {
+  wrapUnlockMaterialWithPin,
+  unwrapUnlockMaterialWithPin,
+  wrapUnlockMaterialWithBioKey,
+  unwrapUnlockMaterialWithBioKey,
+  generateDeviceBioWrapKey,
+  type PinUnlockWrap,
+} from "./device-unlock-wrap.js";
 
 export {
   HYBRID_VAULT_KEY_WRAP_SCHEME,

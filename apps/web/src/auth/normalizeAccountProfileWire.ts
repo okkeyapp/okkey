@@ -9,6 +9,7 @@ export type NormalizedAccountProfileWire = {
   locale: string | null;
   billing_region: string | null;
   vault_idle_lock_seconds: number;
+  master_password_changed_at: string | null;
 };
 
 function pickTrimmedString(o: Record<string, unknown>, snake: string, camel: string): string | null {
@@ -51,5 +52,6 @@ export function normalizeAccountProfileWire(raw: unknown): NormalizedAccountProf
     locale,
     billing_region,
     vault_idle_lock_seconds,
+    master_password_changed_at: pickTrimmedString(o, "master_password_changed_at", "masterPasswordChangedAt"),
   };
 }

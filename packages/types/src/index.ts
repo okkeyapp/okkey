@@ -1117,6 +1117,8 @@ export interface AccountProfileResponseDto {
   billing_region: string | null;
   /** Inactivity timeout before vault locks on device (seconds); server default 900 (15 min). */
   vault_idle_lock_seconds: number;
+  /** ISO timestamp of last master-password set/change; null if unknown (legacy). */
+  master_password_changed_at: string | null;
 }
 
 /** `PATCH /account/profile` (Bearer) — non-sensitive account preferences. */
@@ -1125,6 +1127,20 @@ export interface AccountProfileUpdateRequestDto {
   last_name?: string | null;
   locale?: string | null;
   billing_region?: string | null;
+  /** Inactivity timeout before vault locks on device (seconds); 60…86400. */
+  vault_idle_lock_seconds?: number;
+}
+
+/** `POST /account/master-password/change` (Bearer) — opaque split-key rebalance only. */
+export interface AccountMasterPasswordChangeRequestDto {
+  server_key_share: string;
+  password_kdf_salt: string;
+  password_kdf_params_version: number;
+}
+
+/** `POST /account/master-password/change` success body. */
+export interface AccountMasterPasswordChangeResponseDto {
+  master_password_changed_at: string;
 }
 
 /** `POST /account/email-change/start` and `/resend` success body. */

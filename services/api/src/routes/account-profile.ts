@@ -11,7 +11,11 @@ type AccountProfilePatchBody = {
   last_name?: unknown;
   locale?: unknown;
   billing_region?: unknown;
+  vault_idle_lock_seconds?: unknown;
 };
+
+const MIN_IDLE_SECONDS = 60;
+const MAX_IDLE_SECONDS = 86_400;
 
 function profilePayload(row: {
   email: string;
@@ -20,6 +24,7 @@ function profilePayload(row: {
   locale: string | null;
   billingRegion: string | null;
   vaultIdleLockSeconds: number;
+  masterPasswordChangedAt: string;
 }) {
   return {
     email: row.email,
@@ -28,6 +33,7 @@ function profilePayload(row: {
     locale: row.locale,
     billing_region: row.billingRegion,
     vault_idle_lock_seconds: row.vaultIdleLockSeconds,
+    master_password_changed_at: row.masterPasswordChangedAt,
   };
 }
 
@@ -78,6 +84,17 @@ function parseBillingRegion(value: unknown): string | null | undefined {
   return /^[A-Z]{2}$/u.test(region) ? region : undefined;
 }
 
+function parseVaultIdleLockSeconds(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isInteger(n) || n < MIN_IDLE_SECONDS || n > MAX_IDLE_SECONDS) {
+    return undefined;
+  }
+  return n;
+}
+
 export function createAccountProfileRoute(
   users: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
@@ -99,12 +116,15 @@ export function createAccountProfileRoute(
       const lastName = parseOptionalProfileName(body.last_name);
       const locale = parseLocale(body.locale);
       const billingRegion = parseBillingRegion(body.billing_region);
+      const vaultIdleLockSeconds = parseVaultIdleLockSeconds(body.vault_idle_lock_seconds);
 
       const invalidFirstName = body.first_name !== undefined && firstName === undefined;
       const invalidLastName = body.last_name !== undefined && lastName === undefined;
       const invalidLocale = body.locale !== undefined && locale === undefined;
       const invalidRegion = body.billing_region !== undefined && billingRegion === undefined;
-      if (invalidFirstName || invalidLastName || invalidLocale || invalidRegion) {
+      const invalidIdle =
+        body.vault_idle_lock_seconds !== undefined && vaultIdleLockSeconds === undefined;
+      if (invalidFirstName || invalidLastName || invalidLocale || invalidRegion || invalidIdle) {
         json(ctx.res, 400, errorPayload("INVALID_PROFILE_PATCH", "profile patch is invalid", ctx.requestId));
         return;
       }
@@ -114,6 +134,7 @@ export function createAccountProfileRoute(
         ...(lastName !== undefined ? { lastName } : {}),
         ...(locale !== undefined ? { locale } : {}),
         ...(billingRegion !== undefined ? { billingRegion } : {}),
+        ...(vaultIdleLockSeconds !== undefined ? { vaultIdleLockSeconds } : {}),
       });
       if (!updated) {
         json(ctx.res, 404, errorPayload("USER_NOT_FOUND", "user not found", ctx.requestId));

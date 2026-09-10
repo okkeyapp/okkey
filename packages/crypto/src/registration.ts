@@ -148,6 +148,50 @@ export async function reconstructVaultKeyWithMasterPassword(input: {
   return xor32(input.serverKeyShare, input.deviceShare, passwordShareC);
 }
 
+export type RebalanceServerShareForNewPasswordResult = {
+  /** New password share C' (caller must wipe after use). */
+  passwordShareC: Uint8Array;
+  /** New server share A' = VaultKey ⊕ B ⊕ C'. */
+  serverKeyShare: Uint8Array;
+  passwordKdfSalt: Uint8Array;
+  passwordKdfParamsVersion: typeof OKKEY_PASSWORD_KDF_PARAMS_VERSION;
+};
+
+/**
+ * Keep `VaultKey` and device share **B** fixed; derive new **C'** and rebalance server share **A'**.
+ * Used for master-password change without re-wrapping vault items or identity.
+ */
+export async function rebalanceServerShareForNewPassword(input: {
+  newMasterPasswordUtf8: Uint8Array;
+  vaultKey: Uint8Array;
+  deviceShare: Uint8Array;
+  passwordKdfParamsVersion?: number;
+}): Promise<RebalanceServerShareForNewPasswordResult> {
+  await ensureWasm();
+  if (input.vaultKey.length !== SHARE_LEN || input.deviceShare.length !== SHARE_LEN) {
+    throw new Error("vaultKey and deviceShare must be 32 bytes");
+  }
+  const paramsVersion = input.passwordKdfParamsVersion ?? OKKEY_PASSWORD_KDF_PARAMS_VERSION;
+  if (paramsVersion !== 1 && paramsVersion !== 2) {
+    throw new Error("unsupported passwordKdfParamsVersion for password change");
+  }
+
+  const passwordKdfSalt = random_bytes(KDF_SALT_LEN);
+  const passwordShareC = await derivePasswordShareC({
+    masterPasswordUtf8: input.newMasterPasswordUtf8,
+    passwordKdfSalt,
+    passwordKdfParamsVersion: paramsVersion,
+  });
+  const serverKeyShare = xor32(input.vaultKey, input.deviceShare, passwordShareC);
+
+  return {
+    passwordShareC,
+    serverKeyShare,
+    passwordKdfSalt,
+    passwordKdfParamsVersion: OKKEY_PASSWORD_KDF_PARAMS_VERSION,
+  };
+}
+
 export function registrationArtifactsToWire(
   material: RegistrationSplitKeyMaterial & RegistrationUserKeyMaterial,
 ): {

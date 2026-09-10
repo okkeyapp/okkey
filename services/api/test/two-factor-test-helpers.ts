@@ -287,6 +287,25 @@ export async function applyMigrations(
     await storage.postgres.query(migration0028);
   }
 
+  const masterPasswordChangedAtColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'master_password_changed_at'
+      ) AS exists
+    `,
+  );
+  if (!masterPasswordChangedAtColumn[0]?.exists) {
+    const migration0029 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0029_master_password_changed_at.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0029);
+  }
+
   const profileBuiltinKeyColumn = await storage.postgres.query<{ exists: boolean }>(
     `SELECT EXISTS (
       SELECT 1

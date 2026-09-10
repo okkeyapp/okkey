@@ -878,6 +878,9 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       } else {
         await navigator.clipboard.writeText(copyText);
       }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("okkey:sensitive-clipboard"));
+      }
       if (copySuccessLabel != null) {
         setIsCopied(true);
       }

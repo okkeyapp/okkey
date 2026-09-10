@@ -154,6 +154,7 @@ export class UsersRepository {
     locale: string | null;
     billingRegion: string | null;
     vaultIdleLockSeconds: number;
+    masterPasswordChangedAt: string;
   } | null> {
     const rows = await this.db.query<{
       email: string;
@@ -162,9 +163,11 @@ export class UsersRepository {
       locale: string | null;
       billing_region: string | null;
       vault_idle_lock_seconds: number;
+      master_password_changed_at: Date;
     }>(
       `
-        SELECT email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds
+        SELECT email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds,
+               master_password_changed_at
         FROM users
         WHERE id = $1::bigint
       `,
@@ -181,6 +184,7 @@ export class UsersRepository {
       locale: row.locale,
       billingRegion: row.billing_region,
       vaultIdleLockSeconds: row.vault_idle_lock_seconds,
+      masterPasswordChangedAt: row.master_password_changed_at.toISOString(),
     };
   }
 
@@ -203,6 +207,7 @@ export class UsersRepository {
     lastName?: string | null;
     locale?: string | null;
     billingRegion?: string | null;
+    vaultIdleLockSeconds?: number;
   }): Promise<{
     email: string;
     firstName: string | null;
@@ -210,6 +215,7 @@ export class UsersRepository {
     locale: string | null;
     billingRegion: string | null;
     vaultIdleLockSeconds: number;
+    masterPasswordChangedAt: string;
   } | null> {
     const rows = await this.db.query<{
       email: string;
@@ -218,6 +224,7 @@ export class UsersRepository {
       locale: string | null;
       billing_region: string | null;
       vault_idle_lock_seconds: number;
+      master_password_changed_at: Date;
     }>(
       `
         UPDATE users
@@ -226,9 +233,11 @@ export class UsersRepository {
           last_name = CASE WHEN $4::boolean THEN $5::text ELSE last_name END,
           locale = CASE WHEN $6::boolean THEN $7::text ELSE locale END,
           billing_region = CASE WHEN $8::boolean THEN $9::text ELSE billing_region END,
+          vault_idle_lock_seconds = CASE WHEN $10::boolean THEN $11::integer ELSE vault_idle_lock_seconds END,
           updated_at = now()
         WHERE id = $1::bigint
-        RETURNING email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds
+        RETURNING email, first_name, last_name, locale, billing_region, vault_idle_lock_seconds,
+                  master_password_changed_at
       `,
       [
         userId,
@@ -240,6 +249,8 @@ export class UsersRepository {
         patch.locale ?? null,
         Object.prototype.hasOwnProperty.call(patch, "billingRegion"),
         patch.billingRegion ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "vaultIdleLockSeconds"),
+        patch.vaultIdleLockSeconds ?? null,
       ],
     );
     const row = rows[0];
@@ -253,7 +264,43 @@ export class UsersRepository {
       locale: row.locale,
       billingRegion: row.billing_region,
       vaultIdleLockSeconds: row.vault_idle_lock_seconds,
+      masterPasswordChangedAt: row.master_password_changed_at.toISOString(),
     };
+  }
+
+  /**
+   * Rebalance split-key server share after client master-password change.
+   * Does not accept or store master password / C / VaultKey.
+   */
+  async updateMasterPasswordShares(
+    userId: string,
+    input: {
+      serverKeyShare: Uint8Array;
+      passwordKdfSalt: Uint8Array;
+      passwordKdfParamsVersion: number;
+    },
+  ): Promise<string | null> {
+    const rows = await this.db.query<{ master_password_changed_at: Date }>(
+      `
+        UPDATE users
+        SET
+          server_key_share = $2::bytea,
+          password_kdf_salt = $3::bytea,
+          password_kdf_params_version = $4::smallint,
+          master_password_changed_at = now(),
+          updated_at = now()
+        WHERE id = $1::bigint
+        RETURNING master_password_changed_at
+      `,
+      [
+        userId,
+        Buffer.from(input.serverKeyShare),
+        Buffer.from(input.passwordKdfSalt),
+        input.passwordKdfParamsVersion,
+      ],
+    );
+    const row = rows[0];
+    return row ? row.master_password_changed_at.toISOString() : null;
   }
 
   async isTwoFactorEnabled(userId: string): Promise<boolean> {

@@ -18,6 +18,7 @@ describe("normalizeAccountProfileWire", () => {
         locale: "ru",
         billing_region: "DE",
         vault_idle_lock_seconds: 1200,
+        master_password_changed_at: "2026-03-02T21:59:00.000Z",
       }),
     ).toEqual({
       email: "a@b.co",
@@ -26,6 +27,7 @@ describe("normalizeAccountProfileWire", () => {
       locale: "ru",
       billing_region: "DE",
       vault_idle_lock_seconds: 1200,
+      master_password_changed_at: "2026-03-02T21:59:00.000Z",
     });
   });
 
@@ -45,6 +47,7 @@ describe("normalizeAccountProfileWire", () => {
       locale: null,
       billing_region: "US",
       vault_idle_lock_seconds: 600,
+      master_password_changed_at: null,
     });
   });
 
@@ -62,6 +65,7 @@ describe("normalizeAccountProfileWire", () => {
       locale: null,
       billing_region: null,
       vault_idle_lock_seconds: 900,
+      master_password_changed_at: null,
     });
   });
 });

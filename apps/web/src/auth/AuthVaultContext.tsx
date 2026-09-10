@@ -16,13 +16,15 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   decryptUserIdentityFromEncryptedBlob,
   reconstructVaultKeyWithMasterPassword,
+  rebalanceServerShareForNewPassword,
   derivePasswordShareC,
   wipeBytes,
 } from "@okkey/crypto";
 
 import { createAuthSdk, createAuthenticatedCoreClient, createPublicApiClient } from "../api/client";
+import { migratePersonalFoldersAfterPasswordChange } from "../folders/migratePersonalFoldersAfterPasswordChange";
 import { accountLockWithRedirectQuery } from "../routes/paths";
-import { base64ToBytes } from "./base64";
+import { base64ToBytes, bytesToBase64 } from "./base64";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import {
   clearPendingVaultBundle,
@@ -47,6 +49,9 @@ import {
   writeStoredSession,
 } from "./sessionAuthStorage";
 import { clearStoredCurrentWorkspaceId } from "./workspaceStorage";
+import { clearDeviceUnlockSecrets } from "./vaultDeviceUnlockStore";
+import { readVaultDevicePrefs } from "./vaultDevicePrefs";
+import { scheduleClipboardClearAfterCopy } from "./vaultClipboardClear";
 import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
 import {
   clearVaultUnlockSession,
@@ -87,6 +92,17 @@ export type AuthVaultContextValue = {
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
   updateLocalProfile: (patch: { email?: string; firstName?: string | null; lastName?: string | null }) => void;
   tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean>;
+  /** Apply unlock material from PIN / biometric unwrap (VaultKey + C already verified). */
+  applyUnlockedSecrets: (vaultKey: Uint8Array, passwordShareC: Uint8Array) => void;
+  /** Verify master password without changing unlock state (for section re-auth). */
+  verifyMasterPassword: (masterPassword: string) => Promise<boolean>;
+  changeMasterPassword: (input: {
+    oldPassword: string;
+    newPassword: string;
+    workspaceIds: string[];
+  }) => Promise<{ ok: true; masterPasswordChangedAt: string } | { ok: false; error: string }>;
+  setVaultIdleLockMs: (ms: number) => void;
+  masterPasswordChangedAt: string | null;
   hasVaultBundle: boolean;
   /** While true, split-key is being fetched from the API after an empty local vault bundle. */
   vaultUnlockBootstrapLoading: boolean;
@@ -142,6 +158,7 @@ function IdleLockWatcher({
 
 function VaultIdleLockBridge({
   accessToken,
+  userId,
   vaultUnlocked,
   vaultIdleLockMs,
   lockVault,
@@ -149,6 +166,7 @@ function VaultIdleLockBridge({
   lastActivityRef,
 }: {
   accessToken: string | null;
+  userId: string | null;
   vaultUnlocked: boolean;
   vaultIdleLockMs: number;
   lockVault: () => void;
@@ -160,7 +178,7 @@ function VaultIdleLockBridge({
 
   useActivityListeners(touchActivity);
 
-  const handleIdle = useCallback(() => {
+  const navigateToLock = useCallback(() => {
     if (!accessToken || !vaultUnlocked) {
       return;
     }
@@ -168,6 +186,27 @@ function VaultIdleLockBridge({
     const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
     navigate(accountLockWithRedirectQuery(redirect), { replace: true });
   }, [accessToken, vaultUnlocked, lockVault, navigate, location.pathname, location.search]);
+
+  const handleIdle = useCallback(() => {
+    navigateToLock();
+  }, [navigateToLock]);
+
+  useEffect(() => {
+    if (!accessToken || !vaultUnlocked || !userId) {
+      return;
+    }
+    const onVis = () => {
+      if (document.visibilityState !== "hidden") {
+        return;
+      }
+      if (!readVaultDevicePrefs(userId).lockOnDeviceSleep) {
+        return;
+      }
+      navigateToLock();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [accessToken, userId, vaultUnlocked, navigateToLock]);
 
   return (
     <IdleLockWatcher
@@ -207,6 +246,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [passwordShareC, setPasswordShareC] = useState<Uint8Array | null>(initialTabVault.passwordShareC);
   const [vaultKey, setVaultKey] = useState<Uint8Array | null>(initialTabVault.vaultKey);
   const [vaultIdleLockMs, setVaultIdleLockMsState] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
+  const [masterPasswordChangedAt, setMasterPasswordChangedAt] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
   const [emailResendAvailableAt, setEmailResendAvailableAt] = useState<string | null>(null);
@@ -319,6 +359,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
           return;
         }
         setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(dto.vault_idle_lock_seconds));
+        if (dto.master_password_changed_at) {
+          setMasterPasswordChangedAt(dto.master_password_changed_at);
+        }
         setProfile((prev) => {
           const fromServerFirst = dto.first_name ?? undefined;
           const fromServerLast = dto.last_name ?? undefined;
@@ -423,6 +466,14 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, userId, vaultUnlocked, vaultIdleLockMs, lockVault]);
 
+  useEffect(() => {
+    const onCopy = () => {
+      scheduleClipboardClearAfterCopy(userIdRef.current);
+    };
+    window.addEventListener("okkey:sensitive-clipboard", onCopy);
+    return () => window.removeEventListener("okkey:sensitive-clipboard", onCopy);
+  }, []);
+
   const saveVaultBundle = useCallback(
     (bundle: StoredVaultBundle) => {
       writeVaultBundle(bundle, userId);
@@ -507,6 +558,184 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [userId, accessToken]);
 
+  const applyUnlockedSecrets = useCallback(
+    (nextVaultKey: Uint8Array, nextShareC: Uint8Array) => {
+      if (vaultKeyRef.current) {
+        wipeBytes(vaultKeyRef.current);
+      }
+      if (passwordShareCRef.current) {
+        wipeBytes(passwordShareCRef.current);
+      }
+      vaultKeyRef.current = nextVaultKey;
+      passwordShareCRef.current = nextShareC;
+      setVaultKey(nextVaultKey);
+      setPasswordShareC(nextShareC);
+      vaultUnlockedRef.current = true;
+      setVaultUnlocked(true);
+      lastActivityRef.current = Date.now();
+      if (userId) {
+        persistVaultUnlockSession(userId, nextVaultKey, nextShareC);
+      }
+      const token = accessToken;
+      if (token) {
+        void createAuthenticatedCoreClient(token)
+          .recordVaultUnlock()
+          .catch(() => {
+            /* best-effort */
+          });
+      }
+    },
+    [userId, accessToken],
+  );
+
+  const verifyMasterPassword = useCallback(
+    async (masterPassword: string): Promise<boolean> => {
+      const bundle = readVaultBundle(userId);
+      if (!bundle) {
+        return false;
+      }
+      const pwd = new TextEncoder().encode(masterPassword);
+      try {
+        const serverA = base64ToBytes(bundle.server_key_share_b64);
+        const deviceB = base64ToBytes(bundle.device_share_b64);
+        const salt = base64ToBytes(bundle.password_kdf_salt_b64);
+        const vaultKey = await reconstructVaultKeyWithMasterPassword({
+          masterPasswordUtf8: pwd,
+          serverKeyShare: serverA,
+          deviceShare: deviceB,
+          passwordKdfSalt: salt,
+          passwordKdfParamsVersion: bundle.password_kdf_params_version,
+        });
+        await decryptUserIdentityFromEncryptedBlob(vaultKey, bundle.encrypted_private_key.payload);
+        wipeBytes(pwd);
+        wipeBytes(serverA);
+        wipeBytes(deviceB);
+        wipeBytes(salt);
+        wipeBytes(vaultKey);
+        return true;
+      } catch {
+        wipeBytes(pwd);
+        return false;
+      }
+    },
+    [userId],
+  );
+
+  const changeMasterPassword = useCallback(
+    async (input: {
+      oldPassword: string;
+      newPassword: string;
+      workspaceIds: string[];
+    }): Promise<{ ok: true; masterPasswordChangedAt: string } | { ok: false; error: string }> => {
+      if (!accessToken || !userId || !vaultKeyRef.current || !passwordShareCRef.current) {
+        return { ok: false, error: "not_unlocked" };
+      }
+      const bundle = readVaultBundle(userId);
+      if (!bundle) {
+        return { ok: false, error: "no_bundle" };
+      }
+
+      const oldPwd = new TextEncoder().encode(input.oldPassword);
+      const newPwd = new TextEncoder().encode(input.newPassword);
+      let oldShareC: Uint8Array | null = null;
+      let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
+
+      try {
+        const serverA = base64ToBytes(bundle.server_key_share_b64);
+        const deviceB = base64ToBytes(bundle.device_share_b64);
+        const salt = base64ToBytes(bundle.password_kdf_salt_b64);
+        try {
+          const reconstructed = await reconstructVaultKeyWithMasterPassword({
+            masterPasswordUtf8: oldPwd,
+            serverKeyShare: serverA,
+            deviceShare: deviceB,
+            passwordKdfSalt: salt,
+            passwordKdfParamsVersion: bundle.password_kdf_params_version,
+          });
+          await decryptUserIdentityFromEncryptedBlob(reconstructed, bundle.encrypted_private_key.payload);
+          wipeBytes(reconstructed);
+          oldShareC = await derivePasswordShareC({
+            masterPasswordUtf8: oldPwd,
+            passwordKdfSalt: salt,
+            passwordKdfParamsVersion: bundle.password_kdf_params_version,
+          });
+        } catch {
+          return { ok: false, error: "wrong_old_password" };
+        } finally {
+          wipeBytes(serverA);
+          wipeBytes(salt);
+        }
+
+        rebalanced = await rebalanceServerShareForNewPassword({
+          newMasterPasswordUtf8: newPwd,
+          vaultKey: vaultKeyRef.current,
+          deviceShare: deviceB,
+          passwordKdfParamsVersion: bundle.password_kdf_params_version,
+        });
+        wipeBytes(deviceB);
+
+        const client = createAuthenticatedCoreClient(accessToken);
+        if (input.workspaceIds.length > 0 && oldShareC) {
+          await migratePersonalFoldersAfterPasswordChange({
+            core: client,
+            workspaceIds: input.workspaceIds,
+            oldPasswordShareC: oldShareC,
+            newPasswordShareC: rebalanced.passwordShareC,
+          });
+        }
+
+        const response = await client.changeMasterPassword({
+          server_key_share: bytesToBase64(rebalanced.serverKeyShare),
+          password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
+          password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+        });
+
+        writeVaultBundle(
+          {
+            ...bundle,
+            server_key_share_b64: bytesToBase64(rebalanced.serverKeyShare),
+            password_kdf_salt_b64: bytesToBase64(rebalanced.passwordKdfSalt),
+            password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+          },
+          userId,
+        );
+
+        if (passwordShareCRef.current) {
+          wipeBytes(passwordShareCRef.current);
+        }
+        passwordShareCRef.current = rebalanced.passwordShareC;
+        setPasswordShareC(rebalanced.passwordShareC);
+        persistVaultUnlockSession(userId, vaultKeyRef.current, rebalanced.passwordShareC);
+        setMasterPasswordChangedAt(response.master_password_changed_at);
+        clearDeviceUnlockSecrets(userId);
+
+        wipeBytes(rebalanced.serverKeyShare);
+        wipeBytes(rebalanced.passwordKdfSalt);
+        rebalanced = null;
+
+        return { ok: true, masterPasswordChangedAt: response.master_password_changed_at };
+      } catch {
+        return { ok: false, error: "change_failed" };
+      } finally {
+        wipeBytes(oldPwd);
+        wipeBytes(newPwd);
+        if (oldShareC) {
+          wipeBytes(oldShareC);
+        }
+        if (rebalanced) {
+          wipeBytes(rebalanced.passwordShareC);
+          wipeBytes(rebalanced.serverKeyShare);
+          wipeBytes(rebalanced.passwordKdfSalt);
+        }
+      }
+    },
+    [accessToken, userId],
+  );
+
+  const setVaultIdleLockMs = useCallback((ms: number) => {
+    setVaultIdleLockMsState(ms);
+  }, []);
+
   const hasVaultBundle = readVaultBundle(userId) !== null;
 
   const value = useMemo<AuthVaultContextValue>(
@@ -534,6 +763,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      applyUnlockedSecrets,
+      verifyMasterPassword,
+      changeMasterPassword,
+      setVaultIdleLockMs,
+      masterPasswordChangedAt,
       hasVaultBundle,
       vaultUnlockBootstrapLoading,
       vaultIdleLockMs,
@@ -560,6 +794,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      applyUnlockedSecrets,
+      verifyMasterPassword,
+      changeMasterPassword,
+      setVaultIdleLockMs,
+      masterPasswordChangedAt,
       hasVaultBundle,
       vaultUnlockBootstrapLoading,
       vaultIdleLockMs,
@@ -571,6 +810,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       {children}
       <VaultIdleLockBridge
         accessToken={accessToken}
+        userId={userId}
         vaultUnlocked={vaultUnlocked}
         vaultIdleLockMs={vaultIdleLockMs}
         lockVault={lockVault}

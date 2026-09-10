@@ -37,6 +37,7 @@ import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspa
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
+import { SectionReauthProvider } from "../auth/SectionReauthContext";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
@@ -777,7 +778,7 @@ export default function WorkspaceRoutesLayout() {
     : currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
 
   return (
-    <SettingsPopup t={t}>
+    <SettingsPopup t={t} workspaceIds={workspaceList.map((workspace) => workspace.id)}>
       {({ openSettingsPopup }) => {
         const email = profile?.email?.trim();
         const accountMenu: OkkeyAppSidebarAccountMenu | undefined = email
@@ -793,6 +794,7 @@ export default function WorkspaceRoutesLayout() {
           : undefined;
 
         return (
+          <SectionReauthProvider>
           <WorkspaceFoldersProvider value={workspaceFoldersState}>
             <WorkspaceShellWithItems
               isShellNotFound={isShellNotFound}
@@ -838,6 +840,7 @@ export default function WorkspaceRoutesLayout() {
               workspacePermissionsReady={workspacePermissionsReady}
             />
           </WorkspaceFoldersProvider>
+          </SectionReauthProvider>
         );
       }}
     </SettingsPopup>

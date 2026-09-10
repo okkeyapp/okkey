@@ -57,7 +57,10 @@ function createSessionServiceStub(): SessionService {
   } as unknown as SessionService;
 }
 
-function createUsersRepositoryStub(): Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile"> {
+function createUsersRepositoryStub(): Pick<
+  UsersRepository,
+  "loadAccountProfile" | "updateAccountProfile" | "updateMasterPasswordShares"
+> {
   let state = {
     email: "user@example.com",
     firstName: "Ann" as string | null,
@@ -65,6 +68,7 @@ function createUsersRepositoryStub(): Pick<UsersRepository, "loadAccountProfile"
     locale: "en" as string | null,
     billingRegion: "US" as string | null,
     vaultIdleLockSeconds: 900,
+    masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
   };
   return {
     async loadAccountProfile(userId: string) {
@@ -85,8 +89,21 @@ function createUsersRepositoryStub(): Pick<UsersRepository, "loadAccountProfile"
         billingRegion: Object.prototype.hasOwnProperty.call(patch, "billingRegion")
           ? patch.billingRegion ?? null
           : state.billingRegion,
+        vaultIdleLockSeconds: Object.prototype.hasOwnProperty.call(patch, "vaultIdleLockSeconds")
+          ? patch.vaultIdleLockSeconds ?? state.vaultIdleLockSeconds
+          : state.vaultIdleLockSeconds,
       };
       return state;
+    },
+    async updateMasterPasswordShares(userId) {
+      if (userId !== "u1") {
+        return null;
+      }
+      state = {
+        ...state,
+        masterPasswordChangedAt: "2026-03-02T21:59:00.000Z",
+      };
+      return state.masterPasswordChangedAt;
     },
   };
 }
@@ -98,7 +115,10 @@ async function dispatch(input: {
   body?: unknown;
   vaultService?: VaultService;
   sessionService?: SessionService;
-  usersRepository?: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">;
+  usersRepository?: Pick<
+    UsersRepository,
+    "loadAccountProfile" | "updateAccountProfile" | "updateMasterPasswordShares"
+  >;
 }) {
   const app = createApiApp(config, loggerStub(), {
     vaultService: input.vaultService ?? createVaultServiceStub(),
@@ -163,6 +183,7 @@ test("GET /account/profile with auth returns profile", async () => {
   assert.equal(payload.locale, "en");
   assert.equal(payload.billing_region, "US");
   assert.equal(payload.vault_idle_lock_seconds, 900);
+  assert.equal(payload.master_password_changed_at, "2026-01-01T00:00:00.000Z");
 });
 
 test("PATCH /account/profile updates display preferences", async () => {
@@ -191,6 +212,42 @@ test("PATCH /account/profile updates display preferences", async () => {
   assert.equal(payload.last_name, null);
   assert.equal(payload.locale, "ru");
   assert.equal(payload.billing_region, "DE");
+});
+
+test("PATCH /account/profile updates vault_idle_lock_seconds", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/account/profile",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: { vault_idle_lock_seconds: 1800 },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { vault_idle_lock_seconds: number };
+  assert.equal(payload.vault_idle_lock_seconds, 1800);
+});
+
+test("POST /account/master-password/change updates shares", async () => {
+  const share = Buffer.alloc(32, 7).toString("base64");
+  const salt = Buffer.alloc(16, 9).toString("base64");
+  const res = await dispatch({
+    method: "POST",
+    url: "/account/master-password/change",
+    sessionService: createSessionServiceStub(),
+    usersRepository: createUsersRepositoryStub(),
+    headers: { authorization: "Bearer test-access-token" },
+    body: {
+      server_key_share: share,
+      password_kdf_salt: salt,
+      password_kdf_params_version: 1,
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { master_password_changed_at: string };
+  assert.equal(payload.master_password_changed_at, "2026-03-02T21:59:00.000Z");
 });
 
 test("PATCH /account/profile rejects invalid payload", async () => {

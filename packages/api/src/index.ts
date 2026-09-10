@@ -33,6 +33,8 @@ import type {
   Workspace,
   AccountProfileResponseDto,
   AccountProfileUpdateRequestDto,
+  AccountMasterPasswordChangeRequestDto,
+  AccountMasterPasswordChangeResponseDto,
   AccountEmailChangeConfirmRequestDto,
   AccountEmailChangeConfirmResponseDto,
   AccountEmailChangeResendRequestDto,
@@ -247,6 +249,12 @@ export class CoreApiClient {
 
   updateAccountProfile(body: AccountProfileUpdateRequestDto): Promise<AccountProfileResponseDto> {
     return this.api.patch<AccountProfileResponseDto>("/account/profile", body);
+  }
+
+  changeMasterPassword(
+    body: AccountMasterPasswordChangeRequestDto,
+  ): Promise<AccountMasterPasswordChangeResponseDto> {
+    return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
   }
 
   /** Reports a successful master-password vault unlock (no secrets in the body). */
@@ -756,3 +764,6 @@ export function createCoreApiClient(
 ): CoreApiClient {
   return new CoreApiClient(createBearerApiClient(baseUrl, accessToken), options);
 }
+
+/** @deprecated Prefer {@link CoreApiClient}; kept for existing app imports. */
+export type CoreClient = CoreApiClient;
