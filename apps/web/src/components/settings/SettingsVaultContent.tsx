@@ -14,6 +14,7 @@ import {
   cn,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useState, type SVGProps } from "react";
+import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { normalizeAccountProfileWire } from "../../auth/normalizeAccountProfileWire";
@@ -42,6 +43,10 @@ type SettingsVaultContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   workspaceIds: string[];
 };
+
+function notifySaved(t: SettingsVaultContentProps["t"]) {
+  toast.success(t("web.toast.save.success"));
+}
 
 function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -152,19 +157,24 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
         return;
       }
       setPrefs(patchVaultDevicePrefs(userId, patch));
+      notifySaved(t);
     },
-    [userId],
+    [userId, t],
   );
 
   const zoneOptions = useMemo(
     () =>
       [
-        { id: "items" as const, label: t("web.settingsPopup.vault.zones.items") },
         { id: "capsules" as const, label: t("web.settingsPopup.vault.zones.capsules") },
         { id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") },
+        { id: "tools" as const, label: t("web.settingsPopup.vault.zones.tools") },
         {
-          id: "toolsAndWorkspaceSettings" as const,
-          label: t("web.settingsPopup.vault.zones.toolsAndSettings"),
+          id: "workspaceSettings" as const,
+          label: t("web.settingsPopup.vault.zones.workspaceSettings"),
+        },
+        {
+          id: "personalSettings" as const,
+          label: t("web.settingsPopup.vault.zones.personalSettings"),
         },
       ] satisfies Array<{ id: SectionReauthZoneId; label: string }>,
     [t],
@@ -185,6 +195,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
         setVaultIdleLockMs(vaultIdleLockMsFromServerSeconds(dto.vault_idle_lock_seconds));
         setIdleSeconds(dto.vault_idle_lock_seconds);
       }
+      notifySaved(t);
     } catch {
       /* keep optimistic local value */
     }
@@ -200,7 +211,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
           controlClassName="w-[150px]"
         >
           <Select value={String(idleSeconds)} onValueChange={(v) => void handleIdleChange(v)}>
-            <SelectTrigger className="w-full font-medium">
+            <SelectTrigger className="w-full font-normal">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -219,6 +230,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
           controlClassName="w-[100px]"
         >
           <Switch
+            size="lg"
             checked={prefs.lockOnDeviceSleep}
             onCheckedChange={(checked) => updatePrefs({ lockOnDeviceSleep: checked })}
           />
@@ -233,7 +245,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             value={String(prefs.clipboardClearSeconds)}
             onValueChange={(v) => updatePrefs({ clipboardClearSeconds: Number(v) })}
           >
-            <SelectTrigger className="w-full font-medium">
+            <SelectTrigger className="w-full font-normal">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -276,7 +288,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             }
             placeholder={t("web.settingsPopup.vault.requirePassword.placeholder")}
           >
-            <MultiSelectTrigger className="w-full font-medium" />
+            <MultiSelectTrigger className="w-full font-normal" />
             <MultiSelectContent>
               {zoneOptions.map((zone) => (
                 <MultiSelectItem key={zone.id} value={zone.id}>
@@ -304,6 +316,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             </div>
             <div className="flex min-h-12 w-[100px] shrink-0 items-center justify-end">
               <Switch
+                size="lg"
                 checked={prefs.biometricEnabled}
                 onCheckedChange={(checked) => {
                   if (!checked) {
@@ -370,6 +383,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
           controlClassName="w-[100px]"
         >
           <Switch
+            size="lg"
             checked={prefs.pinEnabled}
             onCheckedChange={(checked) => {
               if (checked) {

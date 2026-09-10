@@ -15,6 +15,7 @@ import {
 } from "@okkey/ui";
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
+import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { normalizeAccountProfileWire } from "../../auth/normalizeAccountProfileWire";
@@ -219,13 +220,14 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
           });
           firstNameDirtyRef.current = false;
           lastNameDirtyRef.current = false;
+          toast.success(t("web.toast.save.success"));
         })
         .catch(() => {
           /* Keep typed value; user can retry by editing again. */
         });
     }, 450);
     return () => window.clearTimeout(handle);
-  }, [core, firstName, lastName, updateLocalProfile]);
+  }, [core, firstName, lastName, updateLocalProfile, t]);
 
   const regionOptions = useMemo(() => {
     return REGION_CODES.map((code) => ({
@@ -239,23 +241,33 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
     window.localStorage.setItem("okkey.theme", preference);
     setThemePreference(preference);
     applyStoredTheme();
+    toast.success(t("web.toast.save.success"));
   }
 
   function updateAccent(nextAccent: AccentId) {
     window.localStorage.setItem("okkey.accent", nextAccent);
     setAccent(nextAccent);
     applyStoredTheme();
+    toast.success(t("web.toast.save.success"));
   }
 
   function updateAccentTint(enabled: boolean) {
     writeAccentTintEnabled(enabled);
     setAccentTintEnabled(enabled);
     applyStoredTheme();
+    toast.success(t("web.toast.save.success"));
   }
 
   function updateLocale(nextLocale: WebLocale) {
     setLocale(nextLocale);
-    void core?.updateAccountProfile({ locale: nextLocale }).catch(() => {});
+    void (async () => {
+      try {
+        await core?.updateAccountProfile({ locale: nextLocale });
+        toast.success(t("web.toast.save.success"));
+      } catch {
+        /* Keep local locale; user can retry. */
+      }
+    })();
   }
 
   function updateRegion(nextRegion: string) {
@@ -264,7 +276,14 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
       return;
     }
     setRegion(normalized);
-    void core?.updateAccountProfile({ billing_region: normalized }).catch(() => {});
+    void (async () => {
+      try {
+        await core?.updateAccountProfile({ billing_region: normalized });
+        toast.success(t("web.toast.save.success"));
+      } catch {
+        /* Keep local region; user can retry. */
+      }
+    })();
   }
 
   function accentColor(option: (typeof ACCENT_OPTIONS)[number]): string {
@@ -348,7 +367,7 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
         </h3>
         <Row label={t("web.settingsPopup.general.language")} description={t("web.settingsPopup.general.languageHint")} border={false}>
           <Select value={locale} onValueChange={(value) => updateLocale(value as WebLocale)}>
-            <SelectTrigger className="h-9 w-full">
+            <SelectTrigger className="h-9 w-full font-normal">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -369,7 +388,7 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
             searchPlaceholder={t("web.settingsPopup.general.regionSearch")}
             searchEmptyMessage={t("web.settingsPopup.general.regionEmpty")}
           >
-            <SearchableSelectTrigger />
+            <SearchableSelectTrigger className="font-normal" />
             <SearchableSelectContent align="end">
               {regionOptions.map((option) => (
                 <SearchableSelectItem key={option.code} value={option.code} label={option.label} searchText={`${option.code} ${option.label}`}>

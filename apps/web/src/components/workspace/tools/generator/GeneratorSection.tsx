@@ -306,7 +306,9 @@ export default function GeneratorSection() {
   async function copyActiveValue() {
     try {
       await navigator.clipboard.writeText(activeValue);
-      window.dispatchEvent(new CustomEvent("okkey:sensitive-clipboard"));
+      window.dispatchEvent(
+        new CustomEvent("okkey:sensitive-clipboard", { detail: { text: activeValue } }),
+      );
       toast.success(t("web.keyForm.copied"));
     } catch {
       /* ignore */

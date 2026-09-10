@@ -1,8 +1,11 @@
 import { Popup, type PopupMenu } from "@okkey/ui";
 import type { ReactNode, SVGProps } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { WebMessageValues } from "@okkey/i18n";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { readVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
 import {
   POPUP_QUERY_PARAM,
   SETTINGS_POPUP_ID,
@@ -10,6 +13,7 @@ import {
   parsePopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
+import SectionReauthPopup from "./SectionReauthPopup";
 import SettingsGeneralContent from "./SettingsGeneralContent";
 import SettingsVaultContent from "./SettingsVaultContent";
 
@@ -147,12 +151,34 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { userId } = useAuthVault();
+  const [prefsTick, setPrefsTick] = useState(0);
+  const [personalSettingsUnlocked, setPersonalSettingsUnlocked] = useState(false);
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const open = activePopup?.popupId === SETTINGS_POPUP_ID;
   const activeItemId =
     open && activePopup.menuItemId && isSettingsPopupItemId(activePopup.menuItemId)
       ? activePopup.menuItemId
       : DEFAULT_SETTINGS_POPUP_ITEM_ID;
+
+  useEffect(() => {
+    const onPrefs = () => setPrefsTick((n) => n + 1);
+    window.addEventListener("okkey:vault-device-prefs", onPrefs);
+    return () => window.removeEventListener("okkey:vault-device-prefs", onPrefs);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setPersonalSettingsUnlocked(false);
+    }
+  }, [open]);
+
+  const requirePersonalSettingsReauth = (() => {
+    void prefsTick;
+    return readVaultDevicePrefs(userId).requireReauthZones.includes("personalSettings");
+  })();
+  const personalGateOpen = open && requirePersonalSettingsReauth && !personalSettingsUnlocked;
+  const settingsContentOpen = open && (!requirePersonalSettingsReauth || personalSettingsUnlocked);
 
   function setPopupQuery(popupId: string, menuItemId?: SettingsPopupItemId) {
     navigate(
@@ -211,7 +237,14 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
   return (
     <>
       {children({ openSettingsPopup })}
-      {open ? (
+      {personalGateOpen ? (
+        <SectionReauthPopup
+          zone="personalSettings"
+          onUnlocked={() => setPersonalSettingsUnlocked(true)}
+          onCancel={closePopup}
+        />
+      ) : null}
+      {settingsContentOpen ? (
         <Popup
           id="settings"
           width={800}

@@ -8,9 +8,14 @@ import { itemsPathAllWorkspaceMerged } from "../../routes/paths";
 type WorkspaceErrorStateProps = {
   titleKey: string;
   descriptionKey: string;
+  /** When set, replaces the default “All items” link. */
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 };
 
-export default function WorkspaceErrorState({ titleKey, descriptionKey }: WorkspaceErrorStateProps) {
+export default function WorkspaceErrorState({ titleKey, descriptionKey, action }: WorkspaceErrorStateProps) {
   const { t } = useLocale();
   const [searchParams] = useSearchParams();
 
@@ -21,12 +26,18 @@ export default function WorkspaceErrorState({ titleKey, descriptionKey }: Worksp
           <p className="text-lg font-semibold leading-7 text-foreground">{t(titleKey)}</p>
           <p className="text-sm leading-5 text-muted-foreground">{t(descriptionKey)}</p>
         </div>
-        <Button asChild variant="secondary">
-          <Link to={itemsPathAllWorkspaceMerged(searchParams)} className="inline-flex items-center gap-2">
-            <BackChevronIcon className="size-4 shrink-0" />
-            {t("web.nav.allItems")}
-          </Link>
-        </Button>
+        {action ? (
+          <Button type="button" variant="secondary" onClick={action.onClick}>
+            {action.label}
+          </Button>
+        ) : (
+          <Button asChild variant="secondary">
+            <Link to={itemsPathAllWorkspaceMerged(searchParams)} className="inline-flex items-center gap-2">
+              <BackChevronIcon className="size-4 shrink-0" />
+              {t("web.nav.allItems")}
+            </Link>
+          </Button>
+        )}
       </div>
     </div>
   );

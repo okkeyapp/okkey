@@ -2330,7 +2330,9 @@ export function KeyFormEditor({
 
   async function copyGeneratedPassword() {
     await navigator.clipboard.writeText(generatedPassword);
-    window.dispatchEvent(new CustomEvent("okkey:sensitive-clipboard"));
+    window.dispatchEvent(
+      new CustomEvent("okkey:sensitive-clipboard", { detail: { text: generatedPassword } }),
+    );
     setIsGeneratedPasswordCopied(true);
     if (generatedPasswordCopyResetTimeoutRef.current) {
       clearTimeout(generatedPasswordCopyResetTimeoutRef.current);
@@ -3013,7 +3015,9 @@ export function KeyFormEditor({
     );
     updateFieldValue(sectionId, field.id, nextValue);
     await navigator.clipboard.writeText(copiedValue);
-    window.dispatchEvent(new CustomEvent("okkey:sensitive-clipboard"));
+    window.dispatchEvent(
+      new CustomEvent("okkey:sensitive-clipboard", { detail: { text: copiedValue } }),
+    );
     await onRecoveryCodesValueChange?.({ sectionId, fieldId: field.id, value: nextValue });
   }
 
@@ -3230,7 +3234,11 @@ export function KeyFormEditor({
                 return;
               }
               void navigator.clipboard.writeText(field.copyValue).then(() => {
-                window.dispatchEvent(new CustomEvent("okkey:sensitive-clipboard"));
+                window.dispatchEvent(
+                  new CustomEvent("okkey:sensitive-clipboard", {
+                    detail: { text: field.copyValue },
+                  }),
+                );
               });
             }}>
               <CopyIcon className="size-4" />

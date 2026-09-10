@@ -37,7 +37,8 @@ import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspa
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
-import { SectionReauthProvider } from "../auth/SectionReauthContext";
+import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthContext";
+import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
@@ -917,6 +918,7 @@ function WorkspaceShellWithItems({
   workspacePermissionsReady,
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
+  const { isContentBlocked, requestAccess } = useSectionReauth();
   const workspaceItemsState = useWorkspaceItemsState({
     userId,
     workspaceId: resolvedWorkspaceId,
@@ -1029,19 +1031,30 @@ function WorkspaceShellWithItems({
             itemsListRecordsLoaded={workspaceItemsState.bootstrapped}
             monitoringCardSettings={currentWorkspace?.monitoringCardSettings}
           >
-            <Outlet
-              context={{
-                workspaceId: resolvedWorkspaceId,
-                vaults,
-                vaultsListReady,
-                workspace: currentWorkspace,
-                refreshWorkspaces,
-                patchWorkspace,
-                refreshVaults,
-                workspacePermissions,
-                workspacePermissionsReady,
-              }}
-            />
+            {isContentBlocked ? (
+              <WorkspaceErrorState
+                titleKey="web.forbidden.title"
+                descriptionKey="web.settingsPopup.vault.reauth.deniedDescription"
+                action={{
+                  label: t("web.settingsPopup.vault.reauth.requestAccess"),
+                  onClick: requestAccess,
+                }}
+              />
+            ) : (
+              <Outlet
+                context={{
+                  workspaceId: resolvedWorkspaceId,
+                  vaults,
+                  vaultsListReady,
+                  workspace: currentWorkspace,
+                  refreshWorkspaces,
+                  patchWorkspace,
+                  refreshVaults,
+                  workspacePermissions,
+                  workspacePermissionsReady,
+                }}
+              />
+            )}
           </WorkspaceSidebarLayout>
         </WorkspaceItemsProvider>
         </WorkspaceVaultProfilesProvider>

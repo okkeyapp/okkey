@@ -4,10 +4,11 @@
  */
 
 export type SectionReauthZoneId =
-  | "items"
   | "capsules"
   | "monitoring"
-  | "toolsAndWorkspaceSettings";
+  | "tools"
+  | "workspaceSettings"
+  | "personalSettings";
 
 export type VaultDevicePrefs = {
   lockOnDeviceSleep: boolean;
@@ -27,11 +28,15 @@ const DEFAULT_PREFS: VaultDevicePrefs = {
 };
 
 const ZONE_IDS: readonly SectionReauthZoneId[] = [
-  "items",
   "capsules",
   "monitoring",
-  "toolsAndWorkspaceSettings",
+  "tools",
+  "workspaceSettings",
+  "personalSettings",
 ] as const;
+
+/** Legacy combined zone from earlier vault settings builds. */
+const LEGACY_COMBINED_ZONE = "toolsAndWorkspaceSettings";
 
 function prefsKey(userId: string): string {
   return `okkey.vault.devicePrefs.v1.u.${userId}`;
@@ -41,6 +46,25 @@ function isZoneId(value: unknown): value is SectionReauthZoneId {
   return typeof value === "string" && (ZONE_IDS as readonly string[]).includes(value);
 }
 
+function normalizeZones(raw: unknown[]): SectionReauthZoneId[] {
+  const out = new Set<SectionReauthZoneId>();
+  for (const value of raw) {
+    if (value === LEGACY_COMBINED_ZONE) {
+      out.add("tools");
+      out.add("workspaceSettings");
+      continue;
+    }
+    // "items" is no longer offered in vault settings; drop legacy selections.
+    if (value === "items") {
+      continue;
+    }
+    if (isZoneId(value)) {
+      out.add(value);
+    }
+  }
+  return [...out];
+}
+
 function parsePrefs(raw: string | null): VaultDevicePrefs {
   if (!raw) {
     return { ...DEFAULT_PREFS };
@@ -48,14 +72,13 @@ function parsePrefs(raw: string | null): VaultDevicePrefs {
   try {
     const o = JSON.parse(raw) as Record<string, unknown>;
     const zonesRaw = Array.isArray(o.requireReauthZones) ? o.requireReauthZones : [];
-    const requireReauthZones = zonesRaw.filter(isZoneId);
     return {
       lockOnDeviceSleep: typeof o.lockOnDeviceSleep === "boolean" ? o.lockOnDeviceSleep : DEFAULT_PREFS.lockOnDeviceSleep,
       clipboardClearSeconds:
         typeof o.clipboardClearSeconds === "number" && Number.isFinite(o.clipboardClearSeconds)
           ? Math.max(0, Math.trunc(o.clipboardClearSeconds))
           : DEFAULT_PREFS.clipboardClearSeconds,
-      requireReauthZones,
+      requireReauthZones: normalizeZones(zonesRaw),
       pinEnabled: o.pinEnabled === true,
       biometricEnabled: o.biometricEnabled === true,
     };

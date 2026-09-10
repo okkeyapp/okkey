@@ -14,9 +14,10 @@ type UnlockMode = "biometric" | "pin" | "master";
 type SectionReauthPopupProps = {
   zone: SectionReauthZoneId;
   onUnlocked: () => void;
+  onCancel: () => void;
 };
 
-export default function SectionReauthPopup({ zone, onUnlocked }: SectionReauthPopupProps) {
+export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: SectionReauthPopupProps) {
   const { t } = useLocale();
   const { userId, verifyMasterPassword } = useAuthVault();
   const formId = useId();
@@ -61,6 +62,7 @@ export default function SectionReauthPopup({ zone, onUnlocked }: SectionReauthPo
   }, [mode, userId, onUnlocked, prefs.pinEnabled]);
 
   const fieldsDisabled = bioBusy || submitting || (mode === "pin" && userId !== null && isPinLocked(userId));
+  const showUnlockSubmit = mode === "master" || mode === "pin";
 
   return (
     <Popup
@@ -68,18 +70,20 @@ export default function SectionReauthPopup({ zone, onUnlocked }: SectionReauthPo
       width={420}
       header={t("web.settingsPopup.vault.reauth.title")}
       closeLabel={t("web.settingsPopup.close")}
-      onClose={() => {
-        /* must unlock to proceed — stay open */
-      }}
-      closeDisabled
+      onClose={onCancel}
       panelClassName="min-h-0"
       contentClassName="pt-0 pb-1"
       footer={
-        mode === "master" || mode === "pin" ? (
-          <Button type="submit" form={formId} disabled={!value.trim() || fieldsDisabled} className="w-full">
-            {t("web.settingsPopup.vault.reauth.unlock")}
+        <>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
+            {t("web.settingsPopup.vault.reauth.cancel")}
           </Button>
-        ) : null
+          {showUnlockSubmit ? (
+            <Button type="submit" form={formId} disabled={!value.trim() || fieldsDisabled}>
+              {t("web.settingsPopup.vault.reauth.unlock")}
+            </Button>
+          ) : null}
+        </>
       }
     >
       <form
@@ -132,7 +136,9 @@ export default function SectionReauthPopup({ zone, onUnlocked }: SectionReauthPo
         }}
       >
         <p className="w-full text-sm leading-5 text-muted-foreground">
-          {t("web.settingsPopup.vault.reauth.description", { zone: t(`web.settingsPopup.vault.zones.${zone === "toolsAndWorkspaceSettings" ? "toolsAndSettings" : zone}`) })}
+          {t("web.settingsPopup.vault.reauth.description", {
+            zone: t(`web.settingsPopup.vault.zones.${zone}`),
+          })}
         </p>
         {bioBusy ? (
           <p className="text-sm text-muted-foreground">{t("unlock.biometricPending")}</p>

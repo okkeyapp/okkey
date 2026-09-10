@@ -467,8 +467,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   }, [accessToken, userId, vaultUnlocked, vaultIdleLockMs, lockVault]);
 
   useEffect(() => {
-    const onCopy = () => {
-      scheduleClipboardClearAfterCopy(userIdRef.current);
+    const onCopy = (event: Event) => {
+      const detail =
+        event instanceof CustomEvent ? (event as CustomEvent<{ text?: unknown }>).detail : undefined;
+      const text = typeof detail?.text === "string" ? detail.text : undefined;
+      scheduleClipboardClearAfterCopy(userIdRef.current, text);
     };
     window.addEventListener("okkey:sensitive-clipboard", onCopy);
     return () => window.removeEventListener("okkey:sensitive-clipboard", onCopy);
