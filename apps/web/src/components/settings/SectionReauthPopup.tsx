@@ -1,6 +1,14 @@
 import { Alert, AlertDescription, AlertTitle, Button, Input, Popup } from "@okkey/ui";
-import { useEffect, useId, useState } from "react";
 import { unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+} from "react";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { tryUnlockWithBiometrics } from "../../auth/biometricUnlock";
@@ -17,10 +25,20 @@ type SectionReauthPopupProps = {
   onCancel: () => void;
 };
 
+const PIN_LENGTH = 6;
+
+const pinCellClassName =
+  "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";
+
+function emptyPinDigits(): string[] {
+  return Array.from({ length: PIN_LENGTH }, () => "");
+}
+
 export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: SectionReauthPopupProps) {
   const { t } = useLocale();
   const { userId, verifyMasterPassword } = useAuthVault();
   const formId = useId();
+  const pinLabelId = useId();
   const prefs = readVaultDevicePrefs(userId);
   const [mode, setMode] = useState<UnlockMode>(() => {
     if (prefs.biometricEnabled) {
@@ -32,9 +50,13 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
     return "master";
   });
   const [bioBusy, setBioBusy] = useState(false);
-  const [value, setValue] = useState("");
+  const [pinDigits, setPinDigits] = useState(emptyPinDigits);
+  const [masterPassword, setMasterPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  const pinValue = pinDigits.join("");
 
   useEffect(() => {
     if (mode !== "biometric" || !userId) {
@@ -61,8 +83,75 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
     };
   }, [mode, userId, onUnlocked, prefs.pinEnabled]);
 
+  useEffect(() => {
+    if (mode !== "pin") {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      pinInputsRef.current[0]?.focus();
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [mode]);
+
+  const setDigitAt = useCallback((index: number, char: string) => {
+    const d = char.replace(/\D/g, "").slice(-1);
+    setPinDigits((prev) => {
+      const next = [...prev];
+      next[index] = d;
+      return next;
+    });
+    if (d && index < PIN_LENGTH - 1) {
+      pinInputsRef.current[index + 1]?.focus();
+    }
+  }, []);
+
+  const handleCellChange = useCallback(
+    (index: number, value: string) => {
+      setError(null);
+      if (value.length > 1) {
+        const pasted = value.replace(/\D/g, "").slice(0, PIN_LENGTH);
+        if (pasted) {
+          setPinDigits(Array.from({ length: PIN_LENGTH }, (_, i) => pasted[i] ?? ""));
+          pinInputsRef.current[Math.min(pasted.length, PIN_LENGTH - 1)]?.focus();
+        }
+        return;
+      }
+      setDigitAt(index, value);
+    },
+    [setDigitAt],
+  );
+
+  const handleKeyDown = useCallback(
+    (index: number, e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Backspace" && !pinDigits[index] && index > 0) {
+        pinInputsRef.current[index - 1]?.focus();
+      }
+      if (e.key === "ArrowLeft" && index > 0) {
+        pinInputsRef.current[index - 1]?.focus();
+      }
+      if (e.key === "ArrowRight" && index < PIN_LENGTH - 1) {
+        pinInputsRef.current[index + 1]?.focus();
+      }
+    },
+    [pinDigits],
+  );
+
+  const handlePaste = useCallback((e: ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    setError(null);
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, PIN_LENGTH);
+    if (!text) {
+      return;
+    }
+    setPinDigits(Array.from({ length: PIN_LENGTH }, (_, i) => text[i] ?? ""));
+    pinInputsRef.current[Math.min(text.length, PIN_LENGTH - 1)]?.focus();
+  }, []);
+
   const fieldsDisabled = bioBusy || submitting || (mode === "pin" && userId !== null && isPinLocked(userId));
   const showUnlockSubmit = mode === "master" || mode === "pin";
+  const unlockDisabled =
+    fieldsDisabled ||
+    (mode === "pin" ? pinValue.length !== PIN_LENGTH : !masterPassword.trim());
 
   return (
     <Popup
@@ -79,7 +168,7 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
             {t("web.settingsPopup.vault.reauth.cancel")}
           </Button>
           {showUnlockSubmit ? (
-            <Button type="submit" form={formId} disabled={!value.trim() || fieldsDisabled}>
+            <Button type="submit" form={formId} disabled={unlockDisabled}>
               {t("web.settingsPopup.vault.reauth.unlock")}
             </Button>
           ) : null}
@@ -91,7 +180,7 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
         className="flex w-full flex-col gap-6"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!userId || fieldsDisabled || !value.trim()) {
+          if (!userId || unlockDisabled) {
             return;
           }
           void (async () => {
@@ -108,7 +197,7 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
                   setMode("master");
                   return;
                 }
-                const pinBytes = new TextEncoder().encode(value);
+                const pinBytes = new TextEncoder().encode(pinValue);
                 try {
                   const unlocked = await unwrapUnlockMaterialWithPin({ wrap, pinUtf8: pinBytes });
                   wipeBytes(unlocked.vaultKey);
@@ -118,12 +207,14 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
                 } catch {
                   const result = recordPinFailure(userId);
                   setError(result.locked ? t("unlock.pinLocked") : t("unlock.pinIncorrect"));
+                  setPinDigits(emptyPinDigits());
+                  window.setTimeout(() => pinInputsRef.current[0]?.focus(), 0);
                 } finally {
                   pinBytes.fill(0);
                 }
                 return;
               }
-              const ok = await verifyMasterPassword(value);
+              const ok = await verifyMasterPassword(masterPassword);
               if (!ok) {
                 setError(t("unlock.errorIncorrectPassword"));
                 return;
@@ -150,58 +241,83 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
           </Alert>
         ) : null}
         {mode === "pin" ? (
-          <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
-            {t("web.settingsPopup.vault.pin.label")}
-            <Input
-              type="password"
-              inputMode="numeric"
-              className="font-normal tracking-widest"
-              value={value}
-              disabled={fieldsDisabled}
-              autoFocus
-              onChange={(e) => setValue(e.target.value.replace(/\D/g, "").slice(0, 8))}
-            />
-          </label>
+          <div className="flex w-full flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span id={pinLabelId} className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                {t("web.settingsPopup.vault.pin.label")}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                disabled={bioBusy}
+                onClick={() => {
+                  setPinDigits(emptyPinDigits());
+                  setMasterPassword("");
+                  setError(null);
+                  setMode("master");
+                }}
+              >
+                {t("unlock.useMasterPassword")}
+              </button>
+            </div>
+            <div
+              role="group"
+              aria-labelledby={pinLabelId}
+              className="grid w-full grid-cols-6 gap-2.5"
+            >
+              {pinDigits.map((digit, index) => (
+                <Input
+                  key={index}
+                  ref={(el) => {
+                    pinInputsRef.current[index] = el;
+                  }}
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  name={`section-reauth-pin-${index}`}
+                  maxLength={1}
+                  value={digit}
+                  disabled={fieldsDisabled}
+                  aria-label={t("auth.otp.digitAriaLabel", { n: index + 1, total: PIN_LENGTH })}
+                  className={pinCellClassName}
+                  onChange={(event) => handleCellChange(index, event.target.value)}
+                  onKeyDown={(event) => handleKeyDown(index, event)}
+                  onPaste={index === 0 ? handlePaste : undefined}
+                />
+              ))}
+            </div>
+          </div>
         ) : null}
         {mode === "master" ? (
-          <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
-            {t("unlock.masterPassword")}
+          <div className="flex w-full flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <label className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                {t("unlock.masterPassword")}
+              </label>
+              {prefs.pinEnabled ? (
+                <button
+                  type="button"
+                  className="shrink-0 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  onClick={() => {
+                    setPinDigits(emptyPinDigits());
+                    setMasterPassword("");
+                    setError(null);
+                    setMode("pin");
+                  }}
+                >
+                  {t("unlock.usePin")}
+                </button>
+              ) : null}
+            </div>
             <Input
               type="password"
               className="font-normal"
-              value={value}
+              value={masterPassword}
               disabled={fieldsDisabled}
               autoFocus
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => setMasterPassword(e.target.value)}
             />
-          </label>
-        ) : null}
-        {mode !== "master" ? (
-          <button
-            type="button"
-            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            disabled={bioBusy}
-            onClick={() => {
-              setValue("");
-              setError(null);
-              setMode("master");
-            }}
-          >
-            {t("unlock.useMasterPassword")}
-          </button>
-        ) : null}
-        {mode === "master" && prefs.pinEnabled ? (
-          <button
-            type="button"
-            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            onClick={() => {
-              setValue("");
-              setError(null);
-              setMode("pin");
-            }}
-          >
-            {t("unlock.usePin")}
-          </button>
+          </div>
         ) : null}
       </form>
     </Popup>

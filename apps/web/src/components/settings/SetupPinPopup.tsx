@@ -1,6 +1,6 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle, Button, Input, Popup } from "@okkey/ui";
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 type SetupPinPopupProps = {
   open: boolean;
@@ -9,27 +9,123 @@ type SetupPinPopupProps = {
   onSubmit: (pin: string) => void;
 };
 
-const PIN_MIN = 4;
-const PIN_MAX = 8;
+const PIN_LENGTH = 6;
+
+const pinCellClassName =
+  "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";
+
+type SetupStep = "enter" | "confirm";
+
+function emptyDigits(): string[] {
+  return Array.from({ length: PIN_LENGTH }, () => "");
+}
 
 export default function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPopupProps) {
   const formId = useId();
-  const [pin, setPin] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const labelId = useId();
+  const [step, setStep] = useState<SetupStep>("enter");
+  const [pinDigits, setPinDigits] = useState(emptyDigits);
+  const [confirmDigits, setConfirmDigits] = useState(emptyDigits);
   const [error, setError] = useState<string | null>(null);
+  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  const activeDigits = step === "enter" ? pinDigits : confirmDigits;
+  const setActiveDigits = step === "enter" ? setPinDigits : setConfirmDigits;
+  const pin = pinDigits.join("");
+  const confirm = confirmDigits.join("");
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      inputsRef.current[0]?.focus();
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [open, step]);
+
+  const resetState = useCallback(() => {
+    setStep("enter");
+    setPinDigits(emptyDigits());
+    setConfirmDigits(emptyDigits());
+    setError(null);
+  }, []);
+
+  const setDigitAt = useCallback(
+    (index: number, char: string) => {
+      const d = char.replace(/\D/g, "").slice(-1);
+      setActiveDigits((prev) => {
+        const next = [...prev];
+        next[index] = d;
+        return next;
+      });
+      if (d && index < PIN_LENGTH - 1) {
+        inputsRef.current[index + 1]?.focus();
+      }
+    },
+    [setActiveDigits],
+  );
+
+  const handleCellChange = useCallback(
+    (index: number, value: string) => {
+      setError(null);
+      if (value.length > 1) {
+        const pasted = value.replace(/\D/g, "").slice(0, PIN_LENGTH);
+        if (pasted) {
+          setActiveDigits(Array.from({ length: PIN_LENGTH }, (_, i) => pasted[i] ?? ""));
+          inputsRef.current[Math.min(pasted.length, PIN_LENGTH - 1)]?.focus();
+        }
+        return;
+      }
+      setDigitAt(index, value);
+    },
+    [setActiveDigits, setDigitAt],
+  );
+
+  const handleKeyDown = useCallback(
+    (index: number, e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Backspace" && !activeDigits[index] && index > 0) {
+        inputsRef.current[index - 1]?.focus();
+      }
+      if (e.key === "ArrowLeft" && index > 0) {
+        inputsRef.current[index - 1]?.focus();
+      }
+      if (e.key === "ArrowRight" && index < PIN_LENGTH - 1) {
+        inputsRef.current[index + 1]?.focus();
+      }
+    },
+    [activeDigits],
+  );
+
+  const handlePaste = useCallback(
+    (e: ClipboardEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      setError(null);
+      const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, PIN_LENGTH);
+      if (!text) {
+        return;
+      }
+      setActiveDigits(Array.from({ length: PIN_LENGTH }, (_, i) => text[i] ?? ""));
+      inputsRef.current[Math.min(text.length, PIN_LENGTH - 1)]?.focus();
+    },
+    [setActiveDigits],
+  );
 
   if (!open) {
     return null;
   }
 
   function handleClose() {
-    setPin("");
-    setConfirm("");
-    setError(null);
+    resetState();
     onClose();
   }
 
-  const digitsOnly = (value: string) => value.replace(/\D/g, "").slice(0, PIN_MAX);
+  const primaryDisabled =
+    step === "enter" ? pin.length !== PIN_LENGTH : confirm.length !== PIN_LENGTH;
+  const primaryLabel =
+    step === "enter"
+      ? t("web.settingsPopup.vault.pin.setupNext")
+      : t("web.settingsPopup.vault.pin.setupSubmit");
 
   return (
     <Popup
@@ -42,11 +138,25 @@ export default function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPo
       contentClassName="pt-0 pb-1"
       footer={
         <>
-          <Button type="button" variant="outline" onClick={handleClose}>
-            {t("web.newItemPopup.cancel")}
-          </Button>
-          <Button type="submit" form={formId} disabled={pin.length < PIN_MIN || confirm.length < PIN_MIN}>
-            {t("web.settingsPopup.vault.pin.setupSubmit")}
+          {step === "confirm" ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setError(null);
+                setConfirmDigits(emptyDigits());
+                setStep("enter");
+              }}
+            >
+              {t("web.settingsPopup.vault.pin.setupBack")}
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={handleClose}>
+              {t("web.newItemPopup.cancel")}
+            </Button>
+          )}
+          <Button type="submit" form={formId} disabled={primaryDisabled}>
+            {primaryLabel}
           </Button>
         </>
       }
@@ -56,18 +166,29 @@ export default function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPo
         className="flex w-full flex-col gap-6"
         onSubmit={(event) => {
           event.preventDefault();
-          if (pin.length < PIN_MIN) {
+          if (step === "enter") {
+            if (pin.length !== PIN_LENGTH) {
+              setError(t("web.settingsPopup.vault.pin.tooShort"));
+              return;
+            }
+            setError(null);
+            setConfirmDigits(emptyDigits());
+            setStep("confirm");
+            return;
+          }
+          if (confirm.length !== PIN_LENGTH) {
             setError(t("web.settingsPopup.vault.pin.tooShort"));
             return;
           }
           if (pin !== confirm) {
             setError(t("web.settingsPopup.vault.pin.mismatch"));
+            setConfirmDigits(emptyDigits());
+            window.setTimeout(() => inputsRef.current[0]?.focus(), 0);
             return;
           }
           setError(null);
           onSubmit(pin);
-          setPin("");
-          setConfirm("");
+          resetState();
         }}
       >
         <p className="w-full text-sm leading-5 text-muted-foreground">
@@ -79,29 +200,38 @@ export default function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPo
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
-        <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
-          {t("web.settingsPopup.vault.pin.label")}
-          <Input
-            type="password"
-            inputMode="numeric"
-            autoComplete="new-password"
-            className="font-normal tracking-widest"
-            value={pin}
-            autoFocus
-            onChange={(e) => setPin(digitsOnly(e.target.value))}
-          />
-        </label>
-        <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
-          {t("web.settingsPopup.vault.pin.confirmLabel")}
-          <Input
-            type="password"
-            inputMode="numeric"
-            autoComplete="new-password"
-            className="font-normal tracking-widest"
-            value={confirm}
-            onChange={(e) => setConfirm(digitsOnly(e.target.value))}
-          />
-        </label>
+        <div className="flex w-full flex-col gap-3">
+          <span id={labelId} className="text-sm font-medium text-foreground">
+            {step === "enter"
+              ? t("web.settingsPopup.vault.pin.label")
+              : t("web.settingsPopup.vault.pin.confirmLabel")}
+          </span>
+          <div
+            role="group"
+            aria-labelledby={labelId}
+            className="grid w-full grid-cols-6 gap-2.5"
+          >
+            {activeDigits.map((digit, index) => (
+              <Input
+                key={`${step}-${index}`}
+                ref={(el) => {
+                  inputsRef.current[index] = el;
+                }}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                name={`setup-pin-${step}-${index}`}
+                maxLength={1}
+                value={digit}
+                aria-label={t("auth.otp.digitAriaLabel", { n: index + 1, total: PIN_LENGTH })}
+                className={pinCellClassName}
+                onChange={(event) => handleCellChange(index, event.target.value)}
+                onKeyDown={(event) => handleKeyDown(index, event)}
+                onPaste={index === 0 ? handlePaste : undefined}
+              />
+            ))}
+          </div>
+        </div>
       </form>
     </Popup>
   );
