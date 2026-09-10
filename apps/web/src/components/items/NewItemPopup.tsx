@@ -312,6 +312,9 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       setSaveTemplateOpen(false);
       setShowValidation(false);
       setSaveError(null);
+      if (!isItemCategoryId(createdTemplate.category_id)) {
+        throw new Error("INVALID_ITEM_CATEGORY");
+      }
       navigate(
         {
           pathname: location.pathname,
@@ -459,17 +462,18 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   }
 
   async function handleSave() {
-    const validation = formRef.current?.validate();
+    const form = formRef.current;
+    const validation = form?.validate();
     if (!validation?.ok) {
       setShowValidation(true);
       return;
     }
-    const payload = formRef.current?.getSavePayload();
-    if (!payload) {
+    const payload = form?.getSavePayload();
+    if (!form || !payload) {
       setShowValidation(true);
       return;
     }
-    const faviconSyncInput = formRef.current.getFaviconSyncInput();
+    const faviconSyncInput = form.getFaviconSyncInput();
 
     if (!canPostToVault(payload.vaultId)) {
       setSaveError(t("web.newItemPopup.saveErrorGeneric"));

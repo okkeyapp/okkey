@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   core: null as null | {
     listWorkspaces: ReturnType<typeof vi.fn>;
     listWorkspaceVaults: ReturnType<typeof vi.fn>;
+    listWorkspacePersonalEvents: ReturnType<typeof vi.fn>;
+    appendWorkspacePersonalEvent: ReturnType<typeof vi.fn>;
   },
 }));
 

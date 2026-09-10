@@ -32,7 +32,7 @@ import { applyWorkspaceSearchToParams, itemsPathAllWorkspaceMerged, ITEM_QUERY_P
 import type { ItemsListRecord } from "../workspace/ItemsListLeftPane";
 import { KeyFormEditor, type RecoveryCodesValueChange } from "../key-form/KeyFormEditor";
 import { createKeyFormEditorMessages, createLocalizedKeyFieldTypes, filterKeyFieldTypesForFilesEnabled } from "../key-form/keyFormI18n";
-import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "./itemCategoryCatalog";
+import { isItemCategoryId, itemCategoryIdToPopupSlug } from "./itemCategoryCatalog";
 import ItemRecordFavicon from "./ItemRecordFavicon";
 import ItemActivitySection from "./ItemActivitySection";
 import ItemDetailBreadcrumbs from "./ItemDetailBreadcrumbs";
@@ -109,7 +109,6 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
     ? findWorkspaceFolderPathById(folderTree, folderId) || folderId
     : t("web.newItemPopup.noFolder");
 
-  const category = item && isItemCategoryId(item.categoryId) ? getItemCategoryDefinition(item.categoryId) : undefined;
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
   const datePickerLocale = useMemo(() => getDatePickerLocale(locale), [locale]);
   const formSections = useMemo(() => {
@@ -287,7 +286,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   }
 
   function openCopyPopup() {
-    if (!isItemCategoryId(item.categoryId)) {
+    if (!item || !isItemCategoryId(item.categoryId)) {
       return;
     }
     navigate(

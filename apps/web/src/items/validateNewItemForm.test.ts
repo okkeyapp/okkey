@@ -16,6 +16,7 @@ describe("validateNewItemForm unconfigured", () => {
       sections: [
         {
           id: "section-1",
+          variant: "primary",
           fields: [{ id: "field-1", type: "text", label: "Note", value: "" }],
         },
       ],
@@ -31,6 +32,7 @@ describe("validateNewItemForm unconfigured", () => {
       sections: [
         {
           id: "section-1",
+          variant: "primary",
           fields: [{ id: "field-1", type: "text", label: "Note", value: "Secret text" }],
         },
       ],
@@ -42,7 +44,7 @@ describe("validateNewItemForm unconfigured", () => {
   it("treats categories without required fields as unconfigured", () => {
     expect(
       isConfiguredNewItemForm("login", [
-        { id: "credentials", fields: [{ id: "login", type: "text", label: "Login", value: "", required: true }] },
+        { id: "credentials", variant: "primary", fields: [{ id: "login", type: "text", label: "Login", value: "", required: true }] },
       ]),
     ).toBe(true);
   });
@@ -550,7 +552,7 @@ describe("validateNewItemForm secure_note", () => {
   it("treats secure note as configured", () => {
     expect(
       isConfiguredNewItemForm("secure_note", [
-        { id: "secure-note", fields: [{ id: "note", type: "multiline-text", label: "заметка", value: "" }] },
+        { id: "secure-note", variant: "primary", fields: [{ id: "note", type: "multiline-text", label: "заметка", value: "" }] },
       ]),
     ).toBe(true);
   });

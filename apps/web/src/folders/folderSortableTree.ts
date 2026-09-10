@@ -92,11 +92,13 @@ export function buildFolderTree(flattenedItems: readonly FlattenedFolderItem[]):
   return root.children.map(stripFolderTreeNode);
 }
 
-function stripFolderTreeNode(item: {
+type MutableFolderTreeNode = {
   id: string;
   label: string;
-  children: { id: string; label: string; children: unknown[] }[];
-}): WorkspaceFolderNode {
+  children: MutableFolderTreeNode[];
+};
+
+function stripFolderTreeNode(item: MutableFolderTreeNode): WorkspaceFolderNode {
   return {
     id: item.id,
     label: item.label,

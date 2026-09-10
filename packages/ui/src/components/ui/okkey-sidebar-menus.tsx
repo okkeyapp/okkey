@@ -182,10 +182,6 @@ function folderDropdownLeafLinkClassName(isActive?: boolean) {
   );
 }
 
-/** Same surface as `SidebarMenuButton` / `SidebarMenuSubButton` rows. */
-const folderTreeRowInteractiveClassName =
-  "bg-transparent text-sidebar-foreground outline-none ring-sidebar-ring transition-[background-color,color] hover:bg-[rgba(0,0,0,0.05)] hover:text-sidebar-foreground focus-visible:ring-2 dark:hover:bg-[rgba(255,255,255,0.08)] dark:hover:text-sidebar-foreground";
-
 const folderTreeChevronHoverClassName =
   "border border-transparent hover:border-input hover:bg-background hover:shadow-[0_1px_2px_rgba(0,0,0,0.05)] dark:hover:bg-background dark:hover:shadow-[0_1px_2px_rgba(255,255,255,0.05)]";
 

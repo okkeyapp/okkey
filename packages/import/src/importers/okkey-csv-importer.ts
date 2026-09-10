@@ -26,7 +26,9 @@ const CSV_HEADERS = [
 ] as const;
 
 export class OkkeyCsvImporter implements Importer {
-  constructor(private readonly _options: OkkeyJsonImporterOptions = {}) {}
+  constructor(_options: OkkeyJsonImporterOptions = {}) {
+    void _options;
+  }
 
   async parse(data: string): Promise<ImportResult> {
     const rows = parseCsv(data, { header: true });

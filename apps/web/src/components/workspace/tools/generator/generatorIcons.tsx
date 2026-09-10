@@ -90,7 +90,6 @@ export function GeneratorExternalLinkIcon(props: SVGProps<SVGSVGElement>) {
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
       {...iconProps(props.className ?? "size-4 shrink-0")}
       {...props}
     >

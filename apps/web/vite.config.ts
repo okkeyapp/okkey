@@ -93,6 +93,7 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/types": path.resolve(enterpriseRoot, "packages/types/src"),
         "@okkey-enterprise/api": path.resolve(enterpriseRoot, "packages/api/src"),
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),
+        "date-fns": path.resolve(__dirname, "../../node_modules/date-fns"),
         "react-router-dom": path.resolve(__dirname, "../../node_modules/react-router-dom"),
       },
     },

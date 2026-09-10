@@ -285,7 +285,7 @@ function FolderRowSurface({
         <div className="flex h-5 min-w-0 flex-1 items-center">
           {isEditing ? (
             <input
-              ref={inputRef}
+              ref={inputRef as React.Ref<HTMLInputElement>}
               value={draftLabel ?? ""}
               onChange={(event) => onDraftLabelChange?.(event.target.value)}
               onBlur={onCommitEdit}

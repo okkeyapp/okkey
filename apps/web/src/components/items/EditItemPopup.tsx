@@ -224,19 +224,20 @@ export default function EditItemPopup({
   }
 
   async function handleSave() {
-    const validation = formRef.current?.validate();
+    const form = formRef.current;
+    const validation = form?.validate();
     if (!validation?.ok) {
       setShowValidation(true);
       return;
     }
-    const payload = formRef.current?.getSavePayload();
-    if (!payload || !item || payload.createdAtMs === undefined) {
+    const payload = form?.getSavePayload();
+    if (!form || !payload || !item || !initialValues || payload.createdAtMs === undefined) {
       setShowValidation(true);
       return;
     }
-    const faviconSyncInput = formRef.current.getFaviconSyncInput();
+    const faviconSyncInput = form.getFaviconSyncInput();
     const folderChanged = payload.folderId !== folderId;
-    const itemContentChanged = formRef.current.hasItemContentChanges();
+    const itemContentChanged = form.hasItemContentChanges();
 
     if (!folderChanged && !itemContentChanged) {
       closePopup();

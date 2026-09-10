@@ -58,6 +58,7 @@ function selectButtonOpenMatchesFocusAndHoverClassName(v: SelectButtonVisualVari
     case "link":
       return cn(accentRing, accentRingIfHoveredWhileOpen, "data-[state=open]:underline");
     case "destructive":
+    case "danger":
       return cn(
         "data-[state=open]:outline-none data-[state=open]:bg-destructive/85 data-[state=open]:text-destructive-foreground",
         "data-[state=open]:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] dark:data-[state=open]:shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)]",

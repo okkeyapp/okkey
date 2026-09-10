@@ -96,7 +96,6 @@ import {
   getSecretKind,
   isConfigurableSecretField,
   isFixedPasswordField,
-  isSecretFieldEmpty,
   isSecretLikeField,
   secretFieldShowsStrength,
   shouldConcealSecretField,
@@ -1141,7 +1140,6 @@ function metaForSecretLikeField(
 
 function secretVisibilityLabels(
   field: DemoField,
-  isVisible: boolean,
   messages: KeyFormEditorMessages,
 ): { show: string; hide: string } {
   if (field.type === "pin") {
@@ -2572,7 +2570,7 @@ export function KeyFormEditor({
       mode,
     );
     const fieldActionMeta = fieldActionMetaForField(field, messages, fieldValue);
-    const visibilityLabels = secretVisibilityLabels(field, isSecretVisible, messages);
+    const visibilityLabels = secretVisibilityLabels(field, messages);
     const currentSecretKind = getSecretKind(field);
     const secretKindOptions: KeyFieldSecretKind[] = ["password", "single-line", "multi-line"];
 
@@ -3114,7 +3112,7 @@ export function KeyFormEditor({
     return !isValidKeyFieldDateValue(field.value);
   }
 
-  function isEmptyConfiguredSectionField(section: DemoSection, field: DemoField): boolean {
+  function isEmptyConfiguredSectionField(section: DemoSection): boolean {
     if (!showValidation) {
       return false;
     }
@@ -3144,7 +3142,7 @@ export function KeyFormEditor({
       (isEmptyRequiredField(field) ||
         (showValidation && isInvalidCreditCardRequiredField(field)) ||
         (showValidation && isInvalidPersonalDataNameField(section, field)) ||
-        isEmptyConfiguredSectionField(section, field) ||
+        isEmptyConfiguredSectionField(section) ||
         isInvalidTotpField(field) ||
         isInvalidEmailField(field) ||
         isInvalidDateField(field))
@@ -3196,7 +3194,7 @@ export function KeyFormEditor({
     }
 
     const isSecretVisible = visiblePasswordIds.has(field.id);
-    const visibilityLabels = secretVisibilityLabels(field, isSecretVisible, messages);
+    const visibilityLabels = secretVisibilityLabels(field, messages);
     const isRecoveryCodesVisible = visibleRecoveryCodesIds.has(field.id);
     const isOpen = openFieldMenuId === field.id;
 

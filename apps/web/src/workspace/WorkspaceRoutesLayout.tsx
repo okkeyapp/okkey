@@ -144,10 +144,6 @@ function resolveWorkspaceShellPath(pathname: string): WorkspaceAppShellPath | nu
   return null;
 }
 
-function isWorkspaceAppShellPath(pathname: string): pathname is WorkspaceAppShellPath {
-  return resolveWorkspaceShellPath(pathname) !== null;
-}
-
 function shellTitleKey(pathname: string): string {
   const shellPath = resolveWorkspaceShellPath(pathname);
   if (!shellPath) {

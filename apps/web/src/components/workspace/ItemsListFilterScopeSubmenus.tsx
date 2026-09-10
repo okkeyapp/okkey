@@ -270,7 +270,6 @@ export function ItemsListFilterScopeSubmenus({
   onNavigateTo,
   onPickCategory,
   onPickTag,
-  onCloseMenu,
   menuOpen,
 }: ItemsListFilterScopeSubmenusProps) {
   const [openSubmenu, setOpenSubmenu] = useState<FilterScopeSubmenuId | null>(null);

@@ -5,7 +5,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Favicon,
-  Input,
   cn,
 } from "@okkey/ui";
 import { useMemo, useState } from "react";

@@ -175,7 +175,7 @@ export default function NewItemCategoryPicker({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext items={favoriteOrder} strategy={rectSortingStrategy}>
+            <SortableContext items={[...favoriteOrder]} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {favoriteOrder.map((orderEntry, index) => {
                   const parsed = parseFavoriteOrderEntry(orderEntry);

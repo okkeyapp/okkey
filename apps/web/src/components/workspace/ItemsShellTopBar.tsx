@@ -15,12 +15,8 @@ import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
 import { NEW_ITEM_POPUP_ID, popupQuerySearch } from "../../routes/popupQuery";
 import {
   applyWorkspaceSearchToParams,
-  FILTER_QUERY_PARAM,
-  FOLDER_QUERY_PARAM,
-  ITEM_QUERY_PARAM,
   ITEMS_PATH,
   SEARCH_QUERY_PARAM,
-  VAULT_QUERY_PARAM,
 } from "../../routes/paths";
 
 /** Same glyphs for every UI locale; platform picks modifier. */

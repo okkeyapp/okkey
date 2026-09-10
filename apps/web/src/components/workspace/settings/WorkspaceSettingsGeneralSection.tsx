@@ -112,7 +112,7 @@ export default function WorkspaceSettingsGeneralSection({
   const [logoAttachmentId, setLogoAttachmentId] = useState<string | null>(null);
   const [deletedItemsRetentionDays, setDeletedItemsRetentionDays] = useState(30);
   const [allowedFileExtensions, setAllowedFileExtensions] = useState<string[]>([...DEFAULT_ALLOWED_FILE_EXTENSIONS]);
-  const [maxFileSizeMb, setMaxFileSizeMb] = useState(DEFAULT_MAX_FILE_SIZE_MB);
+  const [maxFileSizeMb, setMaxFileSizeMb] = useState<number>(DEFAULT_MAX_FILE_SIZE_MB);
   const [maxFileSizeMbInput, setMaxFileSizeMbInput] = useState(formatMaxFileSizeMb(DEFAULT_MAX_FILE_SIZE_MB));
   const [filesInItemsEnabled, setFilesInItemsEnabled] = useState(true);
   const [capsulePolicies, setCapsulePolicies] = useState<WorkspaceCapsulePolicies>(() =>
@@ -368,7 +368,6 @@ export default function WorkspaceSettingsGeneralSection({
       accessToken,
       vaultId: logoVaultId,
       itemId: workspaceId,
-      vaultKey,
       file: {
         attachmentId: logoAttachmentId,
         name: "workspace-logo",

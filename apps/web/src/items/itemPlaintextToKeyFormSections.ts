@@ -1166,8 +1166,8 @@ export function itemPlaintextToKeyFormSections(
     fieldsBySection.set(field.sectionId, bucket);
   }
 
-  let sections = orderedSectionIds
-    .map((sectionId) => {
+  let sections: KeyFormEditorSection[] = orderedSectionIds
+    .map((sectionId): KeyFormEditorSection | null => {
       const section = sectionsById.get(sectionId);
       const sectionFields = (fieldsBySection.get(sectionId) ?? []).sort((a, b) => a.order - b.order);
       if (sectionFields.length === 0) {

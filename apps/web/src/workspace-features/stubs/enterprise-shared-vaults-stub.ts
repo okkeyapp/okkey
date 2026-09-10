@@ -1,4 +1,4 @@
-import type { WorkspaceSettingsSharedVaultsModule } from "../../registry";
+import type { WorkspaceSettingsSharedVaultsModule } from "../registry";
 
 const stub: WorkspaceSettingsSharedVaultsModule = {
   SharedVaultsSection: null,

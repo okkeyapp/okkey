@@ -74,7 +74,7 @@ export async function migratePersonalFoldersAfterPasswordChange(input: {
     const newKey = await derivePersonalWorkspaceMetadataKey(input.newPasswordShareC, workspaceId);
     try {
       let version = state.lastAppliedVersion;
-      const folders = [...state.folders.values()].sort((a, b) => a.id.localeCompare(b.id));
+      const folders = [...state.folders.values()].sort((a, b) => a.folderId.localeCompare(b.folderId));
       for (const folder of folders) {
         const request = await buildFolderCreateAppendRequest(
           newKey,

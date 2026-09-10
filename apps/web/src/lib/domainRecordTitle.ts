@@ -79,6 +79,6 @@ export function collectWebsiteUrlsFromSections(sections: readonly KeyFormEditorS
 
   return websitesSection.fields
     .filter((field) => field.type === "url" && typeof field.value === "string")
-    .map((field) => field.value.trim())
+    .map((field) => (typeof field.value === "string" ? field.value.trim() : ""))
     .filter(Boolean);
 }

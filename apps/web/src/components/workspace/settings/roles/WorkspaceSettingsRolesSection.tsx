@@ -30,6 +30,9 @@ export default function WorkspaceSettingsRolesSection({
   const canOpenBuiltInCards = normalizePlanTier(workspace?.planTier) === "ENTERPRISE";
   const EnterpriseRolesSection = enterpriseRolesModule.EnterpriseRolesSection;
   const BuiltInRoleCardPopup = enterpriseRolesModule.BuiltInRoleCardPopup;
+  if (!core) {
+    return null;
+  }
   const profilesLink = (
     <Link
       to={settingsPath("profiles")}

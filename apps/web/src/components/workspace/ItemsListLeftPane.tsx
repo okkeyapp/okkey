@@ -27,7 +27,7 @@ import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled, useRadixScrollAreaScrollEdges } from "../../hooks/useRadixScrollAreaScrolled";
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
-import ItemRecordFavicon, { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
+import { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
 import { vaultDisplayIcon } from "./settings/vaults/vaultIcons";
 import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
@@ -1614,11 +1614,7 @@ export default function ItemsListLeftPane({
                                   `web.items.filter.${
                                     filter === "recently_deleted"
                                       ? "recentlyDeleted"
-                                      : filter === "2fa-gap"
-                                        ? "twoFactorGap"
-                                        : filter === "passkey-gap"
-                                          ? "passkeyGap"
-                                          : filter
+                                      : filter
                                   }`,
                                 )}
                 </span>

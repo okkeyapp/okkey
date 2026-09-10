@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import type { PlanTier } from "@okkey/types";
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsRolesSection from "./WorkspaceSettingsRolesSection";
@@ -36,7 +37,7 @@ vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMock,
 }));
 
-function renderRolesSection(planTier = "FREE") {
+function renderRolesSection(planTier: PlanTier = "FREE") {
   return render(
     <MemoryRouter>
       <LocaleProvider>
