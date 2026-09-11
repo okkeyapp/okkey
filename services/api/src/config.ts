@@ -88,6 +88,12 @@ export interface ApiConfig {
   cryptoRolloutStopWritePaths: string[];
   /** Snowflake worker id for server-generated entity ids (0–1023). */
   snowflakeNodeId: number;
+  /** WebAuthn relying party ID (e.g. localhost or app.okkey.app). */
+  webauthnRpId: string;
+  webauthnRpName: string;
+  /** Allowed browser origins for WebAuthn ceremonies (comma-separated env). */
+  webauthnOrigins: string[];
+  webauthnChallengeTtlSeconds: number;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -219,6 +225,17 @@ function parseCsvList(raw: string | undefined): string[] {
     return [];
   }
   return [...new Set(raw.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** Comma-separated list preserving case (origins / hostnames). */
+function parseCsvPreserveCase(raw: string | undefined, fallback: string[]): string[] {
+  if (!raw || raw.trim() === "") {
+    return fallback;
+  }
+  const parsed = [
+    ...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean)),
+  ];
+  return parsed.length > 0 ? parsed : fallback;
 }
 
 function resolveEnterpriseModulesPath(explicitPath: string | undefined): string {
@@ -382,6 +399,16 @@ export function loadConfig(): ApiConfig {
       path.resolve(serviceRoot, "../../.data/geoip/city.mmdb"),
     geoIpAutoUpdate: parseBoolean(process.env.GEOIP_AUTO_UPDATE, false),
     trustedProxyHops: parseNonNegativeInt(process.env.TRUSTED_PROXY_HOPS, 0),
+    webauthnRpId: (process.env.WEBAUTHN_RP_ID ?? "localhost").trim() || "localhost",
+    webauthnRpName: (process.env.WEBAUTHN_RP_NAME ?? "Okkey").trim() || "Okkey",
+    webauthnOrigins: parseCsvPreserveCase(
+      process.env.WEBAUTHN_ORIGINS,
+      ["http://localhost:5173"],
+    ),
+    webauthnChallengeTtlSeconds: parsePositiveInt(
+      process.env.WEBAUTHN_CHALLENGE_TTL_SECONDS,
+      300,
+    ),
     allowedCryptoProfileVersions,
     cryptoRolloutMode,
     cryptoRolloutEnabled,

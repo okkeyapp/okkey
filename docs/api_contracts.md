@@ -93,6 +93,51 @@ Starts login: creates a short-lived challenge, sends code to email (provider-dep
 | `AUTH_EMAIL_INVALID` | 400 | Email fails validation. |
 | `AUTH_RATE_LIMITED` | 429 | Start/resend rate limit exceeded. |
 
+---
+
+## Auth (login methods / WebAuthn)
+
+Primary first-factor methods: **email** (always available), **passkey** (`platform`), **hardware_key** (`cross-platform`). Preferred method is stored on the user (`primary_login_method`).
+
+### `POST /auth/login/discover`
+
+Returns available methods for an email without starting a challenge.
+
+**Auth:** none.
+
+**Request:** `{ "email": string }`
+
+**Response `200`:** `{ "primary": "email"|"passkey"|"hardware_key", "methods": [...] }`  
+Unknown emails return `{ primary: "email", methods: ["email"] }` (same shape as a user with only email).
+
+### `POST /auth/webauthn/login/options`
+
+**Auth:** none. Body: `{ "email"?: string, "attachment"?: "platform"|"cross-platform" }`.  
+Returns `{ challengeId, options }` for `navigator.credentials.get`.
+
+### `POST /auth/webauthn/login/verify`
+
+**Auth:** none. Body: `{ challengeId, response }`.  
+Success matches email confirm for an existing user: `{ authStateId, userExists: true, nextStep: "device_check"|"two_factor" }`.
+
+### `GET /account/login-methods` (Bearer)
+
+`{ primary, email, passkeys[], hardware_keys[] }` — credential rows expose `id`, `name`, `created_at`, `last_used_at` only.
+
+### `PATCH /account/login-methods/primary` (Bearer)
+
+Body: `{ primary }`. Primary must be available (email always; passkey/hardware only with credentials).
+
+### `POST /account/webauthn/register/options` / `verify` (Bearer)
+
+Enroll a credential. Options body: `{ attachment: "platform"|"cross-platform" }`. Verify: `{ challengeId, response, name? }`.
+
+### `DELETE /account/webauthn/credentials/:credentialId` (Bearer)
+
+### `DELETE /account/webauthn/credentials?attachment=platform|cross-platform` (Bearer)
+
+Removes all credentials of that attachment (settings switch off). If primary becomes invalid, server falls back to `email`.
+
 ### `POST /auth/email/resend`
 
 Resends the code for an existing challenge.

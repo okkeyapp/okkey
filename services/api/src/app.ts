@@ -36,6 +36,17 @@ import {
   createTwoFactorVerifyRoute,
 } from "./routes/two-factor.ts";
 import {
+  createAuthLoginDiscoverRoute,
+  createLoginMethodsGetRoute,
+  createLoginMethodsPrimaryPatchRoute,
+  createWebAuthnCredentialDeleteRoute,
+  createWebAuthnCredentialsBulkDeleteRoute,
+  createWebAuthnLoginOptionsRoute,
+  createWebAuthnLoginVerifyRoute,
+  createWebAuthnRegisterOptionsRoute,
+  createWebAuthnRegisterVerifyRoute,
+} from "./routes/webauthn.ts";
+import {
   createCapsuleApprovalRequestRoute,
   createCapsuleApprovalEligibilityRoute,
   createCapsuleApprovalResolveRoute,
@@ -101,6 +112,7 @@ import type { SessionService } from "./session/service.ts";
 import type { SyncService } from "./sync/service.ts";
 import type { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import type { TwoFactorService } from "./two-factor/service.ts";
+import type { WebAuthnService } from "./webauthn/service.ts";
 import type { VaultService } from "./vault/service.ts";
 import type { VaultSharingService } from "./vault-sharing/service.ts";
 import type { CapsuleService } from "./capsule/service.ts";
@@ -148,6 +160,7 @@ export interface AppDeps {
   deviceService?: DeviceService;
   sessionService?: SessionService;
   twoFactorService?: TwoFactorService;
+  webauthnService?: WebAuthnService;
   capsuleService?: CapsuleService;
   itemCategoryPreferencesService?: ItemCategoryPreferencesService;
   capsuleDefaultsService?: CapsuleDefaultsService;
@@ -236,6 +249,55 @@ export function createApiApp(
       "POST",
       "/auth/two-factor/disable",
       createTwoFactorDisableRoute(deps.twoFactorService, resolveUserId),
+    );
+  }
+  if (deps.webauthnService) {
+    app.route(
+      "POST",
+      "/auth/login/discover",
+      createAuthLoginDiscoverRoute(deps.webauthnService),
+    );
+    app.route(
+      "POST",
+      "/auth/webauthn/login/options",
+      createWebAuthnLoginOptionsRoute(deps.webauthnService),
+    );
+    app.route(
+      "POST",
+      "/auth/webauthn/login/verify",
+      createWebAuthnLoginVerifyRoute(deps.webauthnService),
+    );
+  }
+  if (deps.sessionService !== undefined && deps.webauthnService) {
+    app.route(
+      "GET",
+      "/account/login-methods",
+      createLoginMethodsGetRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/account/login-methods/primary",
+      createLoginMethodsPrimaryPatchRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/webauthn/register/options",
+      createWebAuthnRegisterOptionsRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/webauthn/register/verify",
+      createWebAuthnRegisterVerifyRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/account/webauthn/credentials/:credentialId",
+      createWebAuthnCredentialDeleteRoute(deps.webauthnService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/account/webauthn/credentials",
+      createWebAuthnCredentialsBulkDeleteRoute(deps.webauthnService, resolveUserId),
     );
   }
   if (deps.vaultUnlockBootstrapService) {

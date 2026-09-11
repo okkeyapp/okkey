@@ -14,7 +14,9 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import SettingsGeneralContent from "./SettingsGeneralContent";
+import SettingsLoginContent from "./SettingsLoginContent";
 import SettingsVaultContent from "./SettingsVaultContent";
+import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
 
 export type SettingsPopupItemId = "main" | "vault" | "login" | "twoFactor" | "recovery" | "devices";
 
@@ -153,10 +155,14 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
   const { clearZoneUnlocked } = useSectionReauth();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const open = activePopup?.popupId === SETTINGS_POPUP_ID;
-  const activeItemId =
+  const activeItemIdRaw =
     open && activePopup.menuItemId && isSettingsPopupItemId(activePopup.menuItemId)
       ? activePopup.menuItemId
       : DEFAULT_SETTINGS_POPUP_ITEM_ID;
+  const activeItemId: SettingsPopupItemId =
+    !ACCOUNT_LOGIN_METHODS_UI_ENABLED && activeItemIdRaw === "login"
+      ? DEFAULT_SETTINGS_POPUP_ITEM_ID
+      : activeItemIdRaw;
 
   function setPopupQuery(popupId: string, menuItemId?: SettingsPopupItemId) {
     navigate(
@@ -168,6 +174,26 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
       { replace: false },
     );
   }
+
+  useEffect(() => {
+    if (!open || ACCOUNT_LOGIN_METHODS_UI_ENABLED) {
+      return;
+    }
+    if (activePopup?.menuItemId !== "login") {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(
+          location.search,
+          buildPopupQueryValue(SETTINGS_POPUP_ID, DEFAULT_SETTINGS_POPUP_ITEM_ID),
+        ),
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [open, activePopup?.menuItemId, location.pathname, location.search, location.hash, navigate]);
 
   function openSettingsPopup() {
     setPopupQuery(SETTINGS_POPUP_ID, DEFAULT_SETTINGS_POPUP_ITEM_ID);
@@ -195,11 +221,19 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
   const menuItems = [
     { id: "main", label: t("web.settingsPopup.main.label"), icon: <SettingsIcon className="size-4" /> },
     { id: "vault", label: t("web.settingsPopup.vault.label"), icon: <ShieldIcon className="size-4" /> },
-    { id: "login", label: t("web.settingsPopup.login.label"), icon: <LoginMethodsIcon className="size-4" /> },
+    ...(ACCOUNT_LOGIN_METHODS_UI_ENABLED
+      ? [
+          {
+            id: "login" as const,
+            label: t("web.settingsPopup.login.label"),
+            icon: <LoginMethodsIcon className="size-4" />,
+          },
+        ]
+      : []),
     { id: "twoFactor", label: t("web.settingsPopup.twoFactor.label"), icon: <TwoFactorIcon className="size-4" /> },
     { id: "recovery", label: t("web.settingsPopup.recovery.label"), icon: <RecoveryIcon className="size-4" /> },
     { id: "devices", label: t("web.settingsPopup.devices.label"), icon: <DevicesIcon className="size-4" /> },
-  ] as const;
+  ];
   const headingByItemId: Record<SettingsPopupItemId, string> = {
     main: t("web.settingsPopup.main.title"),
     vault: t("web.settingsPopup.vault.title"),
@@ -236,6 +270,8 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
             <SettingsGeneralContent t={t} />
           ) : activeItemId === "vault" ? (
             <SettingsVaultContent t={t} workspaceIds={workspaceIds} />
+          ) : activeItemId === "login" && ACCOUNT_LOGIN_METHODS_UI_ENABLED ? (
+            <SettingsLoginContent t={t} />
           ) : (
             <div className="min-h-[min(420px,calc(100dvh-32px))]" aria-label={heading} />
           )}

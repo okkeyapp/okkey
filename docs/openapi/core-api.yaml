@@ -1015,6 +1015,193 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
 
+  /auth/login/discover:
+    post:
+      tags: [Auth]
+      summary: Discover available first-factor login methods for an email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [primary, methods]
+                properties:
+                  primary:
+                    type: string
+                    enum: [email, passkey, hardware_key]
+                  methods:
+                    type: array
+                    items:
+                      type: string
+                      enum: [email, passkey, hardware_key]
+
+  /auth/webauthn/login/options:
+    post:
+      tags: [Auth]
+      summary: Begin WebAuthn authentication ceremony
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                attachment:
+                  type: string
+                  enum: [platform, cross-platform]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challengeId, options]
+                properties:
+                  challengeId:
+                    type: string
+                  options:
+                    type: object
+                    additionalProperties: true
+
+  /auth/webauthn/login/verify:
+    post:
+      tags: [Auth]
+      summary: Verify WebAuthn assertion and create auth state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, response]
+              properties:
+                challengeId:
+                  type: string
+                response:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authStateId, userExists, nextStep]
+                properties:
+                  authStateId:
+                    type: string
+                  userExists:
+                    type: boolean
+                    enum: [true]
+                  nextStep:
+                    type: string
+                    enum: [device_check, two_factor]
+
+  /account/login-methods:
+    get:
+      tags: [Account]
+      summary: List login methods and WebAuthn credentials
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Login methods snapshot
+    patch:
+      tags: [Account]
+      summary: Set primary login method
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primary]
+              properties:
+                primary:
+                  type: string
+                  enum: [email, passkey, hardware_key]
+      responses:
+        "200":
+          description: Updated login methods snapshot
+
+  /account/webauthn/register/options:
+    post:
+      tags: [Account]
+      summary: Begin WebAuthn registration ceremony
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attachment]
+              properties:
+                attachment:
+                  type: string
+                  enum: [platform, cross-platform]
+      responses:
+        "200":
+          description: challengeId + PublicKeyCredentialCreationOptionsJSON
+
+  /account/webauthn/register/verify:
+    post:
+      tags: [Account]
+      summary: Verify WebAuthn attestation and store credential
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Updated login methods snapshot
+
+  /account/webauthn/credentials:
+    delete:
+      tags: [Account]
+      summary: Delete all credentials for an attachment (switch off)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: attachment
+          required: true
+          schema:
+            type: string
+            enum: [platform, cross-platform]
+      responses:
+        "200":
+          description: Updated login methods snapshot
+
+  /account/webauthn/credentials/{credentialId}:
+    delete:
+      tags: [Account]
+      summary: Delete one WebAuthn credential
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: credentialId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated login methods snapshot
+
   /auth/email/confirm:
     post:
       tags: [Auth]

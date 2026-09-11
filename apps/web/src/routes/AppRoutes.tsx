@@ -9,6 +9,7 @@ import AuthEmailPage from "../pages/auth/AuthEmailPage";
 import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
+import AuthWebAuthnPage from "../pages/auth/AuthWebAuthnPage";
 import DevUIAlertPage from "../pages/dev-ui/DevUIAlertPage";
 import DevUIBreadcrumbPage from "../pages/dev-ui/DevUIBreadcrumbPage";
 import DevUITooltipPage from "../pages/dev-ui/DevUITooltipPage";
@@ -43,6 +44,7 @@ import {
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
+  AUTH_WEBAUTHN_PATH,
   CAPSULES_PATH,
   CAPSULE_PUBLIC_PATH_PATTERN,
   DEFAULT_AUTHENTICATED_PATH,
@@ -107,6 +109,14 @@ export default function AppRoutes() {
         element={
           <GuestAuthOnly>
             <AuthEmailPage />
+          </GuestAuthOnly>
+        }
+      />
+      <Route
+        path={AUTH_WEBAUTHN_PATH}
+        element={
+          <GuestAuthOnly>
+            <AuthWebAuthnPage />
           </GuestAuthOnly>
         }
       />

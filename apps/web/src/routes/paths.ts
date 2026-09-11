@@ -11,6 +11,7 @@ export const ROOT_PATH = "/";
 export const AUTH_EMAIL_PATH = "/auth/email";
 export const AUTH_OTP_PATH = "/auth/otp";
 export const AUTH_TWO_FACTOR_PATH = "/auth/two-factor";
+export const AUTH_WEBAUTHN_PATH = "/auth/webauthn";
 
 /** @deprecated Old URL; router redirects to {@link ACCOUNT_NEW_PATH} */
 export const AUTH_REGISTRATION_LEGACY_PATH = "/auth/registration";

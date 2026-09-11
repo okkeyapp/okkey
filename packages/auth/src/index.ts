@@ -1,6 +1,10 @@
 import { ApiClient } from "../../api/src/index.js";
 import type {
   AccessTokenResponseDto,
+  AccountLoginMethodsPrimaryPatchDto,
+  AccountLoginMethodsResponseDto,
+  AuthLoginDiscoverRequestDto,
+  AuthLoginDiscoverResponseDto,
   BackupCodesPlaintextResponseDto,
   BackupCodesRegenerateRequestDto,
   EmailAuthConfirmResponse,
@@ -11,6 +15,13 @@ import type {
   TotpEnrollStartResponseDto,
   TwoFactorDisableRequestDto,
   TwoFactorStatusResponseDto,
+  WebAuthnCeremonyOptionsResponseDto,
+  WebAuthnLoginOptionsRequestDto,
+  WebAuthnLoginVerifyRequestDto,
+  WebAuthnLoginVerifyResponseDto,
+  WebAuthnRegisterOptionsRequestDto,
+  WebAuthnRegisterVerifyRequestDto,
+  WebAuthnAuthenticatorAttachment,
 } from "../../types/src/index.js";
 
 export class LoginFlowError extends Error {
@@ -101,6 +112,73 @@ export class AuthClient {
 
   async disableTwoFactor(body: TwoFactorDisableRequestDto): Promise<{ disabled: true }> {
     return this.api.post<{ disabled: true }>("/auth/two-factor/disable", body);
+  }
+
+  async discoverLoginMethods(
+    body: AuthLoginDiscoverRequestDto,
+  ): Promise<AuthLoginDiscoverResponseDto> {
+    return this.api.post<AuthLoginDiscoverResponseDto>("/auth/login/discover", body);
+  }
+
+  async webauthnLoginOptions(
+    body: WebAuthnLoginOptionsRequestDto = {},
+  ): Promise<WebAuthnCeremonyOptionsResponseDto> {
+    return this.api.post<WebAuthnCeremonyOptionsResponseDto>(
+      "/auth/webauthn/login/options",
+      body,
+    );
+  }
+
+  async webauthnLoginVerify(
+    body: WebAuthnLoginVerifyRequestDto,
+  ): Promise<WebAuthnLoginVerifyResponseDto> {
+    return this.api.post<WebAuthnLoginVerifyResponseDto>("/auth/webauthn/login/verify", body);
+  }
+
+  async getLoginMethods(): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.get<AccountLoginMethodsResponseDto>("/account/login-methods");
+  }
+
+  async setPrimaryLoginMethod(
+    body: AccountLoginMethodsPrimaryPatchDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.patch<AccountLoginMethodsResponseDto>(
+      "/account/login-methods/primary",
+      body,
+    );
+  }
+
+  async webauthnRegisterOptions(
+    body: WebAuthnRegisterOptionsRequestDto,
+  ): Promise<WebAuthnCeremonyOptionsResponseDto> {
+    return this.api.post<WebAuthnCeremonyOptionsResponseDto>(
+      "/account/webauthn/register/options",
+      body,
+    );
+  }
+
+  async webauthnRegisterVerify(
+    body: WebAuthnRegisterVerifyRequestDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.post<AccountLoginMethodsResponseDto>(
+      "/account/webauthn/register/verify",
+      body,
+    );
+  }
+
+  async deleteWebauthnCredential(credentialId: string): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.delete<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}`,
+    );
+  }
+
+  async deleteWebauthnCredentialsByAttachment(
+    attachment: WebAuthnAuthenticatorAttachment,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    const q = new URLSearchParams({ attachment });
+    return this.api.delete<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials?${q.toString()}`,
+    );
   }
 
   /**

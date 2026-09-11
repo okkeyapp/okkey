@@ -40,6 +40,12 @@ import type {
   AccountEmailChangeResendRequestDto,
   AccountEmailChangeStartRequestDto,
   AccountEmailChangeStartResponseDto,
+  AccountLoginMethodsPrimaryPatchDto,
+  AccountLoginMethodsResponseDto,
+  WebAuthnAuthenticatorAttachment,
+  WebAuthnCeremonyOptionsResponseDto,
+  WebAuthnRegisterOptionsRequestDto,
+  WebAuthnRegisterVerifyRequestDto,
   WorkspaceItemCategoryPreferencesResponseDto,
   WorkspaceItemCategoryPreferencesUpdateRequestDto,
   WorkspaceItemTemplateCreateRequestDto,
@@ -249,6 +255,49 @@ export class CoreApiClient {
 
   updateAccountProfile(body: AccountProfileUpdateRequestDto): Promise<AccountProfileResponseDto> {
     return this.api.patch<AccountProfileResponseDto>("/account/profile", body);
+  }
+
+  getLoginMethods(): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.get<AccountLoginMethodsResponseDto>("/account/login-methods");
+  }
+
+  setPrimaryLoginMethod(
+    body: AccountLoginMethodsPrimaryPatchDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.patch<AccountLoginMethodsResponseDto>("/account/login-methods/primary", body);
+  }
+
+  webauthnRegisterOptions(
+    body: WebAuthnRegisterOptionsRequestDto,
+  ): Promise<WebAuthnCeremonyOptionsResponseDto> {
+    return this.api.post<WebAuthnCeremonyOptionsResponseDto>(
+      "/account/webauthn/register/options",
+      body,
+    );
+  }
+
+  webauthnRegisterVerify(
+    body: WebAuthnRegisterVerifyRequestDto,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.post<AccountLoginMethodsResponseDto>(
+      "/account/webauthn/register/verify",
+      body,
+    );
+  }
+
+  deleteWebauthnCredential(credentialId: string): Promise<AccountLoginMethodsResponseDto> {
+    return this.api.delete<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials/${encodeURIComponent(credentialId)}`,
+    );
+  }
+
+  deleteWebauthnCredentialsByAttachment(
+    attachment: WebAuthnAuthenticatorAttachment,
+  ): Promise<AccountLoginMethodsResponseDto> {
+    const q = new URLSearchParams({ attachment });
+    return this.api.delete<AccountLoginMethodsResponseDto>(
+      `/account/webauthn/credentials?${q.toString()}`,
+    );
   }
 
   changeMasterPassword(

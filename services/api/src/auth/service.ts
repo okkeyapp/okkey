@@ -354,6 +354,36 @@ export class AuthService {
     };
   }
 
+  /**
+   * Create intermediate auth state after a verified first-factor proof (e.g. WebAuthn).
+   * Mirrors the post-confirm branch for an existing user.
+   */
+  async createAuthStateForExistingUser(params: {
+    email: string;
+    userId: string;
+    pendingTwoFactor: boolean;
+  }): Promise<{ authStateId: string; nextStep: "device_check" | "two_factor" }> {
+    const authState: AuthStatePayload = {
+      id: this.generateId(),
+      email: params.email,
+      userId: params.userId,
+      createdAt: this.now().toISOString(),
+      ...(params.pendingTwoFactor ? { pendingTwoFactor: true } : {}),
+    };
+    const authStateTtlSeconds = params.pendingTwoFactor
+      ? this.config.authPendingTwoFactorTtlSeconds
+      : this.config.authCodeTtlSeconds;
+    await this.redis.setWithTtl(
+      authStateRedisKey(authState.id),
+      JSON.stringify(authState),
+      authStateTtlSeconds,
+    );
+    return {
+      authStateId: authState.id,
+      nextStep: params.pendingTwoFactor ? "two_factor" : "device_check",
+    };
+  }
+
   private async peekValidChallenge(challengeId: string): Promise<AuthChallenge | null> {
     const raw = await this.redis.get(challengeKey(challengeId));
     if (!raw) {

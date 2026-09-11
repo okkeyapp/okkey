@@ -21,6 +21,10 @@ describe("isAllowedPathWithoutBearerSession", () => {
     expect(isAllowedPathWithoutBearerSession("/capsule/abc-def", guest)).toBe(true);
   });
 
+  it("allows auth webauthn without a Bearer session", () => {
+    expect(isAllowedPathWithoutBearerSession("/auth/webauthn", guest)).toBe(true);
+  });
+
   it("rejects protected shell paths without a session", () => {
     expect(isAllowedPathWithoutBearerSession("/items", guest)).toBe(false);
     expect(isAllowedPathWithoutBearerSession("/workspaces", guest)).toBe(false);

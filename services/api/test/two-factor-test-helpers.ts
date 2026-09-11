@@ -306,6 +306,24 @@ export async function applyMigrations(
     await storage.postgres.query(migration0029);
   }
 
+  const webauthnCredentialsTable = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'user_webauthn_credentials'
+      ) AS exists
+    `,
+  );
+  if (!webauthnCredentialsTable[0]?.exists) {
+    const migration0030 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0030_user_webauthn_login.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0030);
+  }
+
   const profileBuiltinKeyColumn = await storage.postgres.query<{ exists: boolean }>(
     `SELECT EXISTS (
       SELECT 1

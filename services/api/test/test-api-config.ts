@@ -74,6 +74,15 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     cryptoRolloutEnabled: true,
     cryptoRolloutState: "resume",
     cryptoRolloutStopWritePaths: [],
+    geoIpEnabled: false,
+    geoIpProvider: "db-ip",
+    geoIpDbPath: "",
+    geoIpAutoUpdate: false,
+    trustedProxyHops: 0,
+    webauthnRpId: "localhost",
+    webauthnRpName: "Okkey",
+    webauthnOrigins: ["http://localhost:5173"],
+    webauthnChallengeTtlSeconds: 300,
     ...overrides,
   };
 }

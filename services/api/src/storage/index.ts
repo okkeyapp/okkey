@@ -13,6 +13,7 @@ import {
   VaultsRepository,
   WorkspacesRepository,
 } from "./repositories.ts";
+import { WebAuthnCredentialsRepository } from "../webauthn/repository.ts";
 import { WorkspaceMemberItemCategoryPreferencesRepository } from "./workspace-member-item-category-preferences.ts";
 import { WorkspaceMemberCapsuleDefaultsRepository } from "./workspace-member-capsule-defaults.ts";
 import { WorkspacePersonalEventsRepository } from "./workspace-personal-events.ts";
@@ -35,6 +36,7 @@ export interface StorageLayer {
     devices: DevicesRepository;
     sessions: SessionsRepository;
     twoFactor: TwoFactorRepository;
+    webauthnCredentials: WebAuthnCredentialsRepository;
     workspaceMemberItemCategoryPreferences: WorkspaceMemberItemCategoryPreferencesRepository;
     workspaceMemberCapsuleDefaults: WorkspaceMemberCapsuleDefaultsRepository;
     workspacePersonalEvents: WorkspacePersonalEventsRepository;
@@ -65,6 +67,7 @@ export async function createStorageLayer(
     devices: new DevicesRepository(postgres),
     sessions: new SessionsRepository(postgres),
     twoFactor: new TwoFactorRepository(postgres),
+    webauthnCredentials: new WebAuthnCredentialsRepository(postgres),
     workspaceMemberItemCategoryPreferences: new WorkspaceMemberItemCategoryPreferencesRepository(postgres),
     workspaceMemberCapsuleDefaults: new WorkspaceMemberCapsuleDefaultsRepository(postgres),
     workspacePersonalEvents: new WorkspacePersonalEventsRepository(postgres),

@@ -14,6 +14,8 @@ import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
 import { TwoFactorService } from "./two-factor/service.ts";
+import { WebAuthnService } from "./webauthn/service.ts";
+import { WebAuthnCredentialsRepository } from "./webauthn/repository.ts";
 import { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import { VaultService } from "./vault/service.ts";
 import { VaultSharingService } from "./vault-sharing/service.ts";
@@ -71,6 +73,13 @@ async function main(): Promise<void> {
     sessionService,
     config,
     emailTemplates,
+  });
+  const webauthnService = new WebAuthnService({
+    redis: storage.redis,
+    credentials: storage.repositories.webauthnCredentials,
+    users: storage.repositories.users,
+    authService,
+    config,
   });
   const registrationService = new RegistrationService({
     authService,
@@ -218,6 +227,7 @@ async function main(): Promise<void> {
     deviceService,
     sessionService,
     twoFactorService,
+    webauthnService,
     capsuleService,
     attachmentService,
     itemFaviconService,

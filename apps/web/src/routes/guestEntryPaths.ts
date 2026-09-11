@@ -6,6 +6,7 @@ import {
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
+  AUTH_WEBAUTHN_PATH,
   isCapsulePublicPathname,
   isDevUiPathname,
   isInvitePathname,
@@ -30,6 +31,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (pathname === AUTH_EMAIL_PATH) {
+    return true;
+  }
+  if (pathname === AUTH_WEBAUTHN_PATH) {
     return true;
   }
   if (pathname === AUTH_OTP_PATH && ctx.inOtpFlow) {

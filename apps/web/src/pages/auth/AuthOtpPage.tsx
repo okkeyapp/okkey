@@ -19,6 +19,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { consumeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
+import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
 import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_NEW_PATH, AUTH_EMAIL_PATH, AUTH_TWO_FACTOR_PATH } from "../../routes/paths";
 
@@ -166,11 +167,17 @@ export default function AuthOtpPage() {
       }
       if (res.nextStep === "two_factor") {
         setTwoFactorAuthStateId(res.authStateId);
+        if (email) {
+          writeLastLoginMethodHint({ email, primary: "email" });
+        }
         navigate(AUTH_TWO_FACTOR_PATH, { replace: true });
         return;
       }
       const dto = await authClient.completeLoginAfterEmailConfirm(res.authStateId, res.nextStep);
       applyAccessTokenResponse(dto);
+      if (email) {
+        writeLastLoginMethodHint({ email, primary: "email" });
+      }
       clearPendingVaultBundle();
       const capsuleReturnUrl = consumeCapsuleReturnUrl();
       if (capsuleReturnUrl) {

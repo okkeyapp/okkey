@@ -6,7 +6,12 @@ import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { storeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
-import { AUTH_OTP_PATH } from "../../routes/paths";
+import {
+  readLastLoginMethodHint,
+  writePendingLoginDiscover,
+} from "../../auth/loginMethodStorage";
+import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
+import { AUTH_OTP_PATH, AUTH_WEBAUTHN_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
 
@@ -16,8 +21,9 @@ export default function AuthEmailPage() {
   const [searchParams] = useSearchParams();
   const invitedEmail = searchParams.get("email")?.trim() ?? "";
   const returnTo = searchParams.get("returnTo")?.trim() ?? "";
+  const forceEmail = searchParams.get("method") === "email";
   const { authClient, setEmailChallenge, updateLocalProfile } = useAuthVault();
-  const [email, setEmail] = useState(invitedEmail);
+  const [email, setEmail] = useState(() => invitedEmail || readLastLoginMethodHint()?.email || "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +39,13 @@ export default function AuthEmailPage() {
     }
   }, [returnTo]);
 
+  async function startEmailOtp(trimmed: string) {
+    const start = await authClient.startEmailLogin(trimmed, locale);
+    updateLocalProfile({ email: trimmed });
+    setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt);
+    navigate(AUTH_OTP_PATH, { replace: true });
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = email.trim();
@@ -42,10 +55,22 @@ export default function AuthEmailPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const start = await authClient.startEmailLogin(trimmed, locale);
+      if (forceEmail || !ACCOUNT_LOGIN_METHODS_UI_ENABLED) {
+        await startEmailOtp(trimmed);
+        return;
+      }
+      const discovered = await authClient.discoverLoginMethods({ email: trimmed });
+      writePendingLoginDiscover({
+        email: trimmed,
+        primary: discovered.primary,
+        methods: discovered.methods,
+      });
       updateLocalProfile({ email: trimmed });
-      setEmailChallenge(trimmed, start.challengeId, start.resendAvailableAt);
-      navigate(AUTH_OTP_PATH, { replace: true });
+      if (discovered.primary === "passkey" || discovered.primary === "hardware_key") {
+        navigate(`${AUTH_WEBAUTHN_PATH}?method=${discovered.primary}`, { replace: true });
+        return;
+      }
+      await startEmailOtp(trimmed);
     } catch (err) {
       if (import.meta.env.DEV) {
         console.error("[auth/email/start]", err);

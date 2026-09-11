@@ -836,6 +836,80 @@ export interface BackupCodesPlaintextResponseDto {
   backupCodes: string[];
 }
 
+/** First-factor login method identifiers. */
+export type PrimaryLoginMethod = "email" | "passkey" | "hardware_key";
+
+export type WebAuthnAuthenticatorAttachment = "platform" | "cross-platform";
+
+/** Public credential row in login-methods settings. */
+export interface WebAuthnCredentialPublicDto {
+  id: EntityId;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** `GET /account/login-methods` and mutating login-method responses. */
+export interface AccountLoginMethodsResponseDto {
+  primary: PrimaryLoginMethod;
+  email: string;
+  passkeys: WebAuthnCredentialPublicDto[];
+  hardware_keys: WebAuthnCredentialPublicDto[];
+}
+
+/** `PATCH /account/login-methods/primary` request. */
+export interface AccountLoginMethodsPrimaryPatchDto {
+  primary: PrimaryLoginMethod;
+}
+
+/** `POST /account/webauthn/register/options` request. */
+export interface WebAuthnRegisterOptionsRequestDto {
+  attachment: WebAuthnAuthenticatorAttachment;
+}
+
+/** `POST /account/webauthn/register/options` and login options success. */
+export interface WebAuthnCeremonyOptionsResponseDto {
+  challengeId: string;
+  options: Record<string, unknown>;
+}
+
+/** `POST /account/webauthn/register/verify` request. */
+export interface WebAuthnRegisterVerifyRequestDto {
+  challengeId: string;
+  response: Record<string, unknown>;
+  name?: string;
+}
+
+/** `POST /auth/login/discover` request. */
+export interface AuthLoginDiscoverRequestDto {
+  email: string;
+}
+
+/** `POST /auth/login/discover` success. */
+export interface AuthLoginDiscoverResponseDto {
+  primary: PrimaryLoginMethod;
+  methods: PrimaryLoginMethod[];
+}
+
+/** `POST /auth/webauthn/login/options` request. */
+export interface WebAuthnLoginOptionsRequestDto {
+  email?: string;
+  attachment?: WebAuthnAuthenticatorAttachment;
+}
+
+/** `POST /auth/webauthn/login/verify` request. */
+export interface WebAuthnLoginVerifyRequestDto {
+  challengeId: string;
+  response: Record<string, unknown>;
+}
+
+/** `POST /auth/webauthn/login/verify` success (same shape as email confirm for existing users). */
+export interface WebAuthnLoginVerifyResponseDto {
+  authStateId: string;
+  userExists: true;
+  nextStep: "device_check" | "two_factor";
+}
+
 /** One event as returned by sync HTTP API (opaque base64 payload). */
 export interface SyncEventWireDto {
   id: EntityId;
