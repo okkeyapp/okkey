@@ -19,6 +19,7 @@ import { blobToBytes } from "../../capsules/crypto";
 import { decryptCapsuleAttachmentFiles, openCapsuleItemFileFromVault } from "../../capsules/itemAttachments";
 import { storeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
 import { captureCapsuleFragmentKey } from "../../capsules/fragmentKey";
+import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import PublicCapsuleContent from "./PublicCapsuleContent";
 import { useLocale } from "../../locale/LocaleContext";
 
@@ -591,9 +592,7 @@ function formatTime(value: Date, locale: string): string {
 }
 
 function calendarDayOffset(date: Date, now = new Date()): number {
-  const startOfDay = (value: Date) =>
-    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-  return Math.round((startOfDay(date) - startOfDay(now)) / 86_400_000);
+  return -calendarDaysBetween(date, now);
 }
 
 function formatScheduleDate(

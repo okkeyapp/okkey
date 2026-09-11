@@ -39,6 +39,7 @@ import {
 } from "./SettingsRows";
 import { setupBiometricUnlock, disableBiometricUnlock } from "../../auth/biometricUnlock";
 import { wrapUnlockMaterialWithPin } from "@okkey/crypto";
+import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 
 type SettingsVaultContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -87,10 +88,13 @@ function formatRelativePast(
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
-  const diffMs = Date.now() - date.getTime();
-  const days = Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+  // Compare local calendar days, not a rolling 24h window.
+  const days = Math.max(0, calendarDaysBetween(date));
   if (days === 0) {
     return t("web.settingsPopup.vault.masterPassword.changedToday", { date: absolute });
+  }
+  if (days === 1) {
+    return t("web.settingsPopup.vault.masterPassword.changedYesterday", { date: absolute });
   }
   return t("web.settingsPopup.vault.masterPassword.changedAgo", {
     date: absolute,

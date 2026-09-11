@@ -37,6 +37,7 @@ import { subscribeCapsulesListRefresh } from "../../capsules/capsulesListRefresh
 import { BackChevronIcon } from "../../components/items/itemCategoryIcons";
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName } from "../../components/workspace/stickyHeaderShadow";
 import { useScrollAncestorScrolled } from "../../hooks/useRadixScrollAreaScrolled";
+import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
 import { itemsPathAllWorkspaceMerged } from "../../routes/paths";
 import {
@@ -767,9 +768,7 @@ function formatTime(value: Date, locale: string): string {
 }
 
 function calendarDayOffset(date: Date, now = new Date()): number {
-  const startOfDay = (value: Date) =>
-    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-  return Math.round((startOfDay(date) - startOfDay(now)) / 86_400_000);
+  return -calendarDaysBetween(date, now);
 }
 
 function formatCreatedAt(
