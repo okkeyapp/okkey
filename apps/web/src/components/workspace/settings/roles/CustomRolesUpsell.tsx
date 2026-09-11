@@ -36,7 +36,7 @@ export default function CustomRolesUpsell({ t }: CustomRolesUpsellProps) {
         <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.roles.custom.subtitle")}</p>
       </div>
 
-      <Alert variant="default">
+      <Alert variant="info">
         <AlertInfoIcon className="size-4" />
         <AlertTitle>{t("web.workspaceSettings.roles.upsellNoteTitle")}</AlertTitle>
         <AlertDescription>

@@ -40,7 +40,7 @@ export default function AdditionalMembersUpsell({ t }: AdditionalMembersUpsellPr
         </p>
       </div>
 
-      <Alert variant="default">
+      <Alert variant="info">
         <AlertInfoIcon className="size-4" />
         <AlertTitle>{t("web.workspaceSettings.members.upsellNoteTitle")}</AlertTitle>
         <AlertDescription>

@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
-import { tryUnlockWithBiometrics } from "../../auth/biometricUnlock";
+import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
 import { useLocale } from "../../locale/LocaleContext";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../auth/pinRateLimit";
 import { readVaultDevicePrefs, type SectionReauthZoneId } from "../../auth/vaultDevicePrefs";
@@ -67,18 +67,20 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
     }
     let cancelled = false;
     setBioBusy(true);
+    setError(null);
     void (async () => {
       const unlocked = await tryUnlockWithBiometrics(userId);
       if (cancelled) {
         return;
       }
       setBioBusy(false);
-      if (unlocked) {
+      if (unlocked.ok) {
         wipeBytes(unlocked.vaultKey);
         wipeBytes(unlocked.passwordShareC);
         onUnlocked();
         return;
       }
+      setError(t(biometricErrorMessageKey(unlocked.code)));
       if (prefs.pinEnabled) {
         pinAutoSubmitEnabledRef.current = true;
         setMode("pin");
@@ -89,7 +91,7 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
     return () => {
       cancelled = true;
     };
-  }, [mode, userId, onUnlocked, prefs.pinEnabled]);
+  }, [mode, userId, onUnlocked, prefs.pinEnabled, t]);
 
   useEffect(() => {
     if (mode !== "pin") {

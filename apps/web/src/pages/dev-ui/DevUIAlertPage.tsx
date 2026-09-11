@@ -10,7 +10,8 @@ export default function DevUIAlertPage() {
           <h2 className="text-lg font-medium">Alert</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             shadcn-style <code className="rounded bg-muted px-1 py-0.5 text-xs">Alert</code> with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">default</code> (info),{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">default</code>,{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">info</code>,{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>, and{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">error</code> variants (
             <code className="rounded bg-muted px-1 py-0.5 text-xs">@okkey/ui</code>).
@@ -20,7 +21,12 @@ export default function DevUIAlertPage() {
           <Alert variant="default">
             <AlertInfoIcon className="size-4" />
             <AlertTitle>Note</AlertTitle>
-            <AlertDescription>Default (info): neutral surface for tips or non-blocking context.</AlertDescription>
+            <AlertDescription>Default: neutral surface for tips or non-blocking context.</AlertDescription>
+          </Alert>
+          <Alert variant="info">
+            <AlertInfoIcon className="size-4" />
+            <AlertTitle>Info</AlertTitle>
+            <AlertDescription>Info: primary-tinted surface for informational notes.</AlertDescription>
           </Alert>
           <Alert variant="warning">
             <AlertWarningIcon className="size-4" />

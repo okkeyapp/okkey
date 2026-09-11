@@ -253,7 +253,7 @@ export default function AuthRegistrationPage() {
             onChange={(e) => setRepeatMasterPassword(e.target.value)}
           />
         </div>
-        <Alert variant="default">
+        <Alert variant="info">
           <AlertTitle className="text-foreground">{t("auth.registration.requirementsTitle")}</AlertTitle>
           <AlertDescription>
             <ul className="mt-3 space-y-1">

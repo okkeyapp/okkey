@@ -469,7 +469,7 @@ export default function ImportSection({
             </KeySection>
           </KeyForm>
           {showZipAttachmentsNote ? (
-            <Alert variant="default">
+            <Alert variant="info">
               <AlertInfoIcon className="size-4" />
               <AlertTitle>{t("web.tools.import.zipAttachmentsNoteTitle")}</AlertTitle>
               <AlertDescription>

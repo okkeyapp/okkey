@@ -18,7 +18,7 @@ import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH } from "../../routes/paths";
 import { useAuthVault } from "../../auth/AuthVaultContext";
-import { tryUnlockWithBiometrics } from "../../auth/biometricUnlock";
+import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../auth/pinRateLimit";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { readVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
@@ -71,6 +71,7 @@ export default function UnlockPasswordPage() {
     return "master";
   });
   const [bioBusy, setBioBusy] = useState(false);
+  const [bioError, setBioError] = useState<string | null>(null);
   const [pinDigits, setPinDigits] = useState(emptyPinDigits);
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
@@ -95,6 +96,7 @@ export default function UnlockPasswordPage() {
     }
     let cancelled = false;
     setBioBusy(true);
+    setBioError(null);
     void (async () => {
       await initCrypto();
       const unlocked = await tryUnlockWithBiometrics(userId);
@@ -102,11 +104,12 @@ export default function UnlockPasswordPage() {
         return;
       }
       setBioBusy(false);
-      if (unlocked) {
+      if (unlocked.ok) {
         applyUnlockedSecrets(unlocked.vaultKey, unlocked.passwordShareC);
         touchActivity();
         return;
       }
+      setBioError(t(biometricErrorMessageKey(unlocked.code)));
       if (prefs.pinEnabled) {
         pinAutoSubmitEnabledRef.current = true;
         setMode("pin");
@@ -117,7 +120,7 @@ export default function UnlockPasswordPage() {
     return () => {
       cancelled = true;
     };
-  }, [mode, userId, vaultUnlocked, applyUnlockedSecrets, touchActivity, prefs.pinEnabled]);
+  }, [mode, userId, vaultUnlocked, applyUnlockedSecrets, touchActivity, prefs.pinEnabled, t]);
 
   useEffect(() => {
     if (mode !== "pin") {
@@ -315,6 +318,14 @@ export default function UnlockPasswordPage() {
 
         {bioBusy ? (
           <p className="okkey-small text-center text-copy-secondary">{t("unlock.biometricPending")}</p>
+        ) : null}
+
+        {bioError && mode !== "biometric" ? (
+          <Alert variant="error">
+            <AlertErrorIcon className="size-4" />
+            <AlertTitle>{t("unlock.biometricFailed")}</AlertTitle>
+            <AlertDescription>{bioError}</AlertDescription>
+          </Alert>
         ) : null}
 
         {mode === "pin" ? (

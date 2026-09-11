@@ -37,7 +37,7 @@ export default function AccountRestorePage() {
       <div className="flex w-full flex-col gap-6">
         <AccountUserBar />
 
-        <Alert variant="default">
+        <Alert variant="info">
           <AlertTitle className="text-foreground">{t("account.restore.proOnlyTitle")}</AlertTitle>
           <AlertDescription className="text-copy-secondary">{t("account.restore.proOnlyBody")}</AlertDescription>
         </Alert>

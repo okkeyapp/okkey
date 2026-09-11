@@ -40,7 +40,7 @@ export default function CustomProfilesUpsell({ t }: CustomProfilesUpsellProps) {
         </p>
       </div>
 
-      <Alert variant="default">
+      <Alert variant="info">
         <AlertInfoIcon className="size-4" />
         <AlertTitle>{t("web.workspaceSettings.profiles.upsellNoteTitle")}</AlertTitle>
         <AlertDescription>

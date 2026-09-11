@@ -1,5 +1,7 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import {
+  Alert,
+  AlertDescription,
   Button,
   MultiSelect,
   MultiSelectContent,
@@ -37,7 +39,14 @@ import {
   SettingsSectionDivider,
   SettingsSectionHeading,
 } from "./SettingsRows";
-import { setupBiometricUnlock, disableBiometricUnlock } from "../../auth/biometricUnlock";
+import {
+  setupBiometricUnlock,
+  disableBiometricUnlock,
+  getBiometricUnlockCapability,
+  biometricErrorMessageKey,
+  type BiometricCapability,
+  type BiometricUnlockErrorCode,
+} from "../../auth/biometricUnlock";
 import { wrapUnlockMaterialWithPin } from "@okkey/crypto";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 
@@ -142,11 +151,25 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
   const [changeError, setChangeError] = useState<string | null>(null);
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [bioError, setBioError] = useState<string | null>(null);
+  const [bioBusy, setBioBusy] = useState(false);
+  const [bioCapability, setBioCapability] = useState<BiometricCapability | null>(null);
   const [changedAt, setChangedAt] = useState(masterPasswordChangedAt);
 
   useEffect(() => {
     setPrefs(readVaultDevicePrefs(userId));
   }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getBiometricUnlockCapability().then((capability) => {
+      if (!cancelled) {
+        setBioCapability(capability);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setIdleSeconds(Math.round(vaultIdleLockMs / 1000));
@@ -166,6 +189,46 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
     },
     [userId, t],
   );
+
+  const bioMessageForCode = useCallback(
+    (code: BiometricUnlockErrorCode) => t(biometricErrorMessageKey(code)),
+    [t],
+  );
+
+  const runBiometricSetup = useCallback(async () => {
+    if (!userId || !vaultKey || !passwordShareC) {
+      setBioError(t("web.settingsPopup.vault.biometric.needUnlock"));
+      return false;
+    }
+    setBioBusy(true);
+    setBioError(null);
+    try {
+      const capability = await getBiometricUnlockCapability();
+      setBioCapability(capability);
+      if (capability.status !== "ready") {
+        setBioError(bioMessageForCode(capability.code));
+        return false;
+      }
+      const result = await setupBiometricUnlock({
+        userId,
+        vaultKey,
+        passwordShareC,
+      });
+      if (!result.ok) {
+        setBioError(bioMessageForCode(result.code));
+        return false;
+      }
+      setBioError(null);
+      updatePrefs({ biometricEnabled: true });
+      return true;
+    } finally {
+      setBioBusy(false);
+    }
+  }, [userId, vaultKey, passwordShareC, t, bioMessageForCode, updatePrefs]);
+
+  const bioReady = bioCapability?.status === "ready";
+  const bioBlockedCode =
+    bioCapability && bioCapability.status !== "ready" ? bioCapability.code : null;
 
   const zoneGroups = useMemo(
     () =>
@@ -352,63 +415,52 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
               <Switch
                 size="lg"
                 checked={prefs.biometricEnabled}
+                disabled={bioBusy || (!prefs.biometricEnabled && bioCapability !== null && !bioReady)}
                 onCheckedChange={(checked) => {
                   if (!checked) {
                     if (userId) {
                       disableBiometricUnlock(userId);
                     }
+                    setBioError(null);
                     updatePrefs({ biometricEnabled: false });
                     return;
                   }
-                  void (async () => {
-                    if (!userId || !vaultKey || !passwordShareC) {
-                      setBioError(t("web.settingsPopup.vault.biometric.needUnlock"));
-                      return;
-                    }
-                    const result = await setupBiometricUnlock({
-                      userId,
-                      vaultKey,
-                      passwordShareC,
-                    });
-                    if (!result.ok) {
-                      setBioError(t("web.settingsPopup.vault.biometric.setupFailed"));
-                      return;
-                    }
-                    setBioError(null);
-                    updatePrefs({ biometricEnabled: true });
-                  })();
+                  void runBiometricSetup();
                 }}
               />
             </div>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            onClick={() => {
-              void (async () => {
-                if (!userId || !vaultKey || !passwordShareC) {
-                  setBioError(t("web.settingsPopup.vault.biometric.needUnlock"));
-                  return;
-                }
-                const result = await setupBiometricUnlock({
-                  userId,
-                  vaultKey,
-                  passwordShareC,
-                });
-                if (!result.ok) {
-                  setBioError(t("web.settingsPopup.vault.biometric.setupFailed"));
-                  return;
-                }
-                setBioError(null);
-                updatePrefs({ biometricEnabled: true });
-              })();
-            }}
-          >
-            <SettingsIcon className="size-4" />
-            {t("web.settingsPopup.vault.biometric.setup")}
-          </Button>
-          {bioError ? <p className="text-sm text-destructive">{bioError}</p> : null}
+          {prefs.biometricEnabled ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={bioBusy || !bioReady}
+              onClick={() => {
+                void runBiometricSetup();
+              }}
+            >
+              <SettingsIcon className="size-4" />
+              {bioBusy
+                ? t("web.settingsPopup.vault.biometric.setupBusy")
+                : t("web.settingsPopup.vault.biometric.reconfigure")}
+            </Button>
+          ) : null}
+          {bioBusy && !prefs.biometricEnabled ? (
+            <p className="text-sm text-muted-foreground">
+              {t("web.settingsPopup.vault.biometric.setupBusy")}
+            </p>
+          ) : null}
+          {bioError ? (
+            <Alert variant="error">
+              <AlertDescription>{bioError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {!bioError && bioBlockedCode ? (
+            <Alert variant="info">
+              <AlertDescription>{bioMessageForCode(bioBlockedCode)}</AlertDescription>
+            </Alert>
+          ) : null}
         </div>
 
         <SettingsRow

@@ -10,6 +10,8 @@ const alertVariants = cva(
       variant: {
         default:
           "border-border bg-muted/40 text-foreground [&>svg]:text-foreground",
+        info:
+          "border-primary/30 bg-primary/5 text-foreground [&>svg]:text-primary dark:border-primary/40 dark:bg-primary/10",
         warning:
           "border-amber-200 bg-amber-50 text-amber-950 [&>svg]:text-amber-600 dark:border-amber-500/40 dark:bg-amber-950/25 dark:text-amber-100 dark:[&>svg]:text-amber-400",
         error:

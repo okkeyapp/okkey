@@ -30,7 +30,7 @@ type SharedVaultsUpsellProps = {
 
 export default function SharedVaultsUpsell({ t }: SharedVaultsUpsellProps) {
   return (
-    <Alert variant="default">
+    <Alert variant="info">
       <AlertInfoIcon className="size-4" />
       <AlertTitle>{t("web.workspaceSettings.vaults.upsellNoteTitle")}</AlertTitle>
       <AlertDescription>
