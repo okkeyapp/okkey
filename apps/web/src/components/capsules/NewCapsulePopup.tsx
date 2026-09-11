@@ -64,6 +64,8 @@ import {
   useAuthVault,
   useAuthenticatedCoreClient,
 } from "../../auth/AuthVaultContext";
+import { useSectionReauth } from "../../auth/SectionReauthContext";
+import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
 import { notifyCapsulesListRefresh } from "../../capsules/capsulesListRefresh";
 import { buildItemCapsuleAttachmentPayloads } from "../../capsules/itemAttachments";
 import {
@@ -177,7 +179,19 @@ export default function NewCapsulePopup({
   const editingCapsuleId =
     popup?.popupId === EDIT_CAPSULE_POPUP_ID ? popup.menuItemId?.trim() ?? "" : "";
   const isEditing = Boolean(editingCapsuleId);
-  const open = popup?.popupId === NEW_CAPSULE_POPUP_ID || isEditing;
+  const urlOpen = popup?.popupId === NEW_CAPSULE_POPUP_ID || isEditing;
+  const close = () => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  };
+  const open = usePopupZoneGate("capsulePopups", urlOpen, close);
+  const { requestZoneUnlock } = useSectionReauth();
   const sourceItemId = open
     ? (searchParams.get(CAPSULE_FROM_ITEM_QUERY_PARAM)?.trim() ?? "")
     : "";
@@ -505,17 +519,6 @@ export default function NewCapsulePopup({
     };
   }, [core, editingCapsuleId, isEditing, open, vaultKey]);
 
-  const close = () => {
-    navigate(
-      {
-        pathname: location.pathname,
-        search: popupQuerySearch(location.search, null),
-        hash: location.hash,
-      },
-      { replace: true },
-    );
-  };
-
   const effectiveViewsEnabled = forceMaxViews || viewsEnabled;
   const effectiveMaxViews = forceMaxViews ? capsulePolicies.forceMaxViews : maxViews;
   const effectiveTimeEnabled = forceTimeDeactivation || timeEnabled;
@@ -767,6 +770,9 @@ export default function NewCapsulePopup({
 
   const deleteEditing = async () => {
     if (!core || !editingDetail) return;
+    if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+      return;
+    }
     setDeleting(true);
     try {
       await core.deleteCapsule(editingDetail.capsuleId);

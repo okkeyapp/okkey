@@ -191,9 +191,11 @@ export {
 export {
   MultiSelect,
   MultiSelectContent,
+  MultiSelectGroupLabel,
   MultiSelectItem,
   MultiSelectTrigger,
   type MultiSelectDisplayMode,
+  type MultiSelectGroupLabelProps,
   type MultiSelectItemProps,
   type MultiSelectProps,
 } from "./components/ui/multi-select.js";

@@ -76,7 +76,10 @@ export default function UnlockPasswordPage() {
   const [showUnlockError, setShowUnlockError] = useState(false);
   const [noBundleError, setNoBundleError] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
+  const [pinSubmitting, setPinSubmitting] = useState(false);
   const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const pinAutoSubmitEnabledRef = useRef(true);
+  const pinSubmitInFlightRef = useRef(false);
   const pinLabelId = "unlock-pin-label";
 
   const pinValue = pinDigits.join("");
@@ -104,7 +107,12 @@ export default function UnlockPasswordPage() {
         touchActivity();
         return;
       }
-      setMode(prefs.pinEnabled ? "pin" : "master");
+      if (prefs.pinEnabled) {
+        pinAutoSubmitEnabledRef.current = true;
+        setMode("pin");
+      } else {
+        setMode("master");
+      }
     })();
     return () => {
       cancelled = true;
@@ -177,24 +185,25 @@ export default function UnlockPasswordPage() {
     pinInputsRef.current[Math.min(text.length, PIN_LENGTH - 1)]?.focus();
   }, []);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  const submitPin = useCallback(async () => {
+    if (pinSubmitInFlightRef.current || vaultUnlockBootstrapLoading || bioBusy) {
+      return;
+    }
+    const code = pinDigits.join("");
+    if (code.length !== PIN_LENGTH || !userId) {
+      return;
+    }
+    pinSubmitInFlightRef.current = true;
+    setPinSubmitting(true);
     setShowUnlockError(false);
     setNoBundleError(false);
     setPinError(null);
-    if (vaultUnlockBootstrapLoading || bioBusy) {
-      return;
-    }
-    if (!hasVaultBundle) {
-      setNoBundleError(true);
-      return;
-    }
-    await initCrypto();
-
-    if (mode === "pin") {
-      if (!userId || pinValue.length !== PIN_LENGTH) {
+    try {
+      if (!hasVaultBundle) {
+        setNoBundleError(true);
         return;
       }
+      await initCrypto();
       if (isPinLocked(userId)) {
         setPinError(t("unlock.pinLocked"));
         return;
@@ -204,7 +213,7 @@ export default function UnlockPasswordPage() {
         setMode("master");
         return;
       }
-      const pinBytes = new TextEncoder().encode(pinValue);
+      const pinBytes = new TextEncoder().encode(code);
       try {
         const unlocked = await unwrapUnlockMaterialWithPin({ wrap, pinUtf8: pinBytes });
         clearPinFailures(userId);
@@ -218,9 +227,50 @@ export default function UnlockPasswordPage() {
       } finally {
         wipeBytes(pinBytes);
       }
+    } finally {
+      pinSubmitInFlightRef.current = false;
+      setPinSubmitting(false);
+    }
+  }, [
+    applyUnlockedSecrets,
+    bioBusy,
+    hasVaultBundle,
+    pinDigits,
+    t,
+    touchActivity,
+    userId,
+    vaultUnlockBootstrapLoading,
+  ]);
+
+  useEffect(() => {
+    if (mode !== "pin" || !pinAutoSubmitEnabledRef.current || pinSubmitting) {
       return;
     }
+    if (pinDigits.join("").length !== PIN_LENGTH) {
+      return;
+    }
+    pinAutoSubmitEnabledRef.current = false;
+    void submitPin();
+  }, [mode, pinDigits, pinSubmitting, submitPin]);
 
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (mode === "pin") {
+      pinAutoSubmitEnabledRef.current = false;
+      await submitPin();
+      return;
+    }
+    setShowUnlockError(false);
+    setNoBundleError(false);
+    setPinError(null);
+    if (vaultUnlockBootstrapLoading || bioBusy) {
+      return;
+    }
+    if (!hasVaultBundle) {
+      setNoBundleError(true);
+      return;
+    }
+    await initCrypto();
     const ok = await tryUnlockWithMasterPassword(masterPassword);
     if (!ok) {
       setShowUnlockError(true);
@@ -238,7 +288,11 @@ export default function UnlockPasswordPage() {
     return <Navigate to={AUTH_EMAIL_PATH} replace />;
   }
 
-  const fieldsDisabled = bioBusy || vaultUnlockBootstrapLoading || (mode === "pin" && userId !== null && isPinLocked(userId));
+  const fieldsDisabled =
+    bioBusy ||
+    vaultUnlockBootstrapLoading ||
+    pinSubmitting ||
+    (mode === "pin" && userId !== null && isPinLocked(userId));
   const submitDisabled =
     fieldsDisabled ||
     (mode === "pin" ? pinValue.length !== PIN_LENGTH : masterPassword.length === 0);
@@ -324,6 +378,7 @@ export default function UnlockPasswordPage() {
                     setMasterPassword("");
                     setShowUnlockError(false);
                     setPinError(null);
+                    pinAutoSubmitEnabledRef.current = true;
                     setMode("pin");
                   }}
                 >

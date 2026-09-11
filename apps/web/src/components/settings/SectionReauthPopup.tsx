@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type FormEvent,
   type KeyboardEvent,
 } from "react";
 
@@ -55,6 +56,8 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const pinAutoSubmitEnabledRef = useRef(true);
+  const pinSubmitInFlightRef = useRef(false);
 
   const pinValue = pinDigits.join("");
 
@@ -76,7 +79,12 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
         onUnlocked();
         return;
       }
-      setMode(prefs.pinEnabled ? "pin" : "master");
+      if (prefs.pinEnabled) {
+        pinAutoSubmitEnabledRef.current = true;
+        setMode("pin");
+      } else {
+        setMode("master");
+      }
     })();
     return () => {
       cancelled = true;
@@ -147,6 +155,83 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
     pinInputsRef.current[Math.min(text.length, PIN_LENGTH - 1)]?.focus();
   }, []);
 
+  const submitPin = useCallback(async () => {
+    if (pinSubmitInFlightRef.current || bioBusy || !userId) {
+      return;
+    }
+    const code = pinDigits.join("");
+    if (code.length !== PIN_LENGTH) {
+      return;
+    }
+    pinSubmitInFlightRef.current = true;
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (isPinLocked(userId)) {
+        setError(t("unlock.pinLocked"));
+        return;
+      }
+      const wrap = readPinUnlockWrap(userId);
+      if (!wrap) {
+        setMode("master");
+        return;
+      }
+      const pinBytes = new TextEncoder().encode(code);
+      try {
+        const unlocked = await unwrapUnlockMaterialWithPin({ wrap, pinUtf8: pinBytes });
+        wipeBytes(unlocked.vaultKey);
+        wipeBytes(unlocked.passwordShareC);
+        clearPinFailures(userId);
+        onUnlocked();
+      } catch {
+        const result = recordPinFailure(userId);
+        setError(result.locked ? t("unlock.pinLocked") : t("unlock.pinIncorrect"));
+        setPinDigits(emptyPinDigits());
+        window.setTimeout(() => pinInputsRef.current[0]?.focus(), 0);
+      } finally {
+        pinBytes.fill(0);
+      }
+    } finally {
+      pinSubmitInFlightRef.current = false;
+      setSubmitting(false);
+    }
+  }, [bioBusy, onUnlocked, pinDigits, t, userId]);
+
+  useEffect(() => {
+    if (mode !== "pin" || !pinAutoSubmitEnabledRef.current || submitting) {
+      return;
+    }
+    if (pinDigits.join("").length !== PIN_LENGTH) {
+      return;
+    }
+    pinAutoSubmitEnabledRef.current = false;
+    void submitPin();
+  }, [mode, pinDigits, submitting, submitPin]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (mode === "pin") {
+      pinAutoSubmitEnabledRef.current = false;
+      await submitPin();
+      return;
+    }
+    if (!userId || submitting || !masterPassword.trim()) {
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const ok = await verifyMasterPassword(masterPassword);
+      if (!ok) {
+        setError(t("unlock.errorIncorrectPassword"));
+        return;
+      }
+      onUnlocked();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const fieldsDisabled = bioBusy || submitting || (mode === "pin" && userId !== null && isPinLocked(userId));
   const showUnlockSubmit = mode === "master" || mode === "pin";
   const unlockDisabled =
@@ -175,61 +260,16 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
         </>
       }
     >
-      <form
-        id={formId}
-        className="flex w-full flex-col gap-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!userId || unlockDisabled) {
-            return;
-          }
-          void (async () => {
-            setSubmitting(true);
-            setError(null);
-            try {
-              if (mode === "pin") {
-                if (isPinLocked(userId)) {
-                  setError(t("unlock.pinLocked"));
-                  return;
-                }
-                const wrap = readPinUnlockWrap(userId);
-                if (!wrap) {
-                  setMode("master");
-                  return;
-                }
-                const pinBytes = new TextEncoder().encode(pinValue);
-                try {
-                  const unlocked = await unwrapUnlockMaterialWithPin({ wrap, pinUtf8: pinBytes });
-                  wipeBytes(unlocked.vaultKey);
-                  wipeBytes(unlocked.passwordShareC);
-                  clearPinFailures(userId);
-                  onUnlocked();
-                } catch {
-                  const result = recordPinFailure(userId);
-                  setError(result.locked ? t("unlock.pinLocked") : t("unlock.pinIncorrect"));
-                  setPinDigits(emptyPinDigits());
-                  window.setTimeout(() => pinInputsRef.current[0]?.focus(), 0);
-                } finally {
-                  pinBytes.fill(0);
-                }
-                return;
-              }
-              const ok = await verifyMasterPassword(masterPassword);
-              if (!ok) {
-                setError(t("unlock.errorIncorrectPassword"));
-                return;
-              }
-              onUnlocked();
-            } finally {
-              setSubmitting(false);
-            }
-          })();
-        }}
-      >
+      <form id={formId} className="flex w-full flex-col gap-6" onSubmit={handleSubmit}>
         <p className="w-full text-sm leading-5 text-muted-foreground">
-          {t("web.settingsPopup.vault.reauth.description", {
-            zone: t(`web.settingsPopup.vault.zones.${zone}`),
-          })}
+          {t(
+            zone === "deletion"
+              ? "web.settingsPopup.vault.reauth.descriptionAction"
+              : "web.settingsPopup.vault.reauth.description",
+            {
+              zone: t(`web.settingsPopup.vault.zones.${zone}`),
+            },
+          )}
         </p>
         {bioBusy ? (
           <p className="text-sm text-muted-foreground">{t("unlock.biometricPending")}</p>
@@ -302,6 +342,7 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
                     setPinDigits(emptyPinDigits());
                     setMasterPassword("");
                     setError(null);
+                    pinAutoSubmitEnabledRef.current = true;
                     setMode("pin");
                   }}
                 >

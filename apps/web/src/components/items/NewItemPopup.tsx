@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
 import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
 import {
@@ -61,11 +62,11 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
-  const open = activePopup?.popupId === NEW_ITEM_POPUP_ID;
+  const urlOpen = activePopup?.popupId === NEW_ITEM_POPUP_ID;
   const selectedCategoryId =
-    open && activePopup.menuItemId ? popupSlugToItemCategoryId(activePopup.menuItemId) : null;
-  const copyFromItemId = open ? searchParams.get(COPY_ITEM_QUERY_PARAM)?.trim() ?? "" : "";
-  const templateId = open ? searchParams.get(ITEM_TEMPLATE_QUERY_PARAM)?.trim() ?? "" : "";
+    urlOpen && activePopup.menuItemId ? popupSlugToItemCategoryId(activePopup.menuItemId) : null;
+  const copyFromItemId = urlOpen ? searchParams.get(COPY_ITEM_QUERY_PARAM)?.trim() ?? "" : "";
+  const templateId = urlOpen ? searchParams.get(ITEM_TEMPLATE_QUERY_PARAM)?.trim() ?? "" : "";
 
   const formRef = useRef<NewItemFormHandle>(null);
   const [showValidation, setShowValidation] = useState(false);
@@ -122,13 +123,6 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
     return templates.find((entry) => entry.id === templateId);
   }, [templateId, templates]);
 
-  useEffect(() => {
-    if (!open) {
-      setCategoryPickerShowAllExpanded(false);
-      setPendingExitAction(null);
-    }
-  }, [open]);
-
   function closePopup() {
     setShowValidation(false);
     setSaveError(null);
@@ -142,6 +136,15 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
       { replace: false },
     );
   }
+
+  const open = usePopupZoneGate("itemPopups", urlOpen, closePopup);
+
+  useEffect(() => {
+    if (!open) {
+      setCategoryPickerShowAllExpanded(false);
+      setPendingExitAction(null);
+    }
+  }, [open]);
 
   function backToCategories() {
     setShowValidation(false);

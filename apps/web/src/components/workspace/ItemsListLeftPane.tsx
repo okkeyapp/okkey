@@ -34,6 +34,7 @@ import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug 
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useSectionReauth } from "../../auth/SectionReauthContext";
 import { useItemFaviconAttachmentUrl } from "../../items/useItemFaviconAttachmentUrl";
 import { useResolvedVaultEncryptionKey } from "../../items/useResolvedVaultEncryptionKey";
 import { EDIT_ITEM_POPUP_ID, NEW_CAPSULE_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopupQueryValue, popupQuerySearch } from "../../routes/popupQuery";
@@ -1070,6 +1071,7 @@ export default function ItemsListLeftPane({
   const { locale, t } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
+  const { requestZoneUnlock } = useSectionReauth();
   const { setItemFavorite, setItemsFavorite } = useWorkspaceFolders();
   const {
     setItemArchived,
@@ -1393,12 +1395,17 @@ export default function ItemsListLeftPane({
     if (!deleteConfirm) {
       return;
     }
-    if (deleteConfirm.kind === "single") {
-      deleteRow(deleteConfirm.row, true);
-    } else {
-      deleteSelectedItems(true);
-    }
-    setDeleteConfirm(null);
+    void (async () => {
+      if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+        return;
+      }
+      if (deleteConfirm.kind === "single") {
+        deleteRow(deleteConfirm.row, true);
+      } else {
+        deleteSelectedItems(true);
+      }
+      setDeleteConfirm(null);
+    })();
   };
 
   const archiveSelectedItems = (archived: boolean) => {

@@ -20,6 +20,8 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { runSaveWithToast } from "../../lib/saveWithToast";
+import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
+import { useSectionReauth } from "../../auth/SectionReauthContext";
 import PopupSaveButton from "../ui/PopupSaveButton";
 
 import {
@@ -345,8 +347,9 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { folderTree, commitFolderTree } = useWorkspaceFolders();
+  const { requestZoneUnlock } = useSectionReauth();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
-  const open = activePopup?.popupId === FOLDERS_POPUP_ID;
+  const urlOpen = activePopup?.popupId === FOLDERS_POPUP_ID;
 
   const [draftTree, setDraftTree] = useState<WorkspaceFolderNode[]>(() => cloneWorkspaceFolderTree(folderTree));
   const [committedLabels, setCommittedLabels] = useState(() => buildCommittedLabelMap(folderTree));
@@ -363,6 +366,20 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
       activationConstraint: { distance: 6 },
     }),
   );
+
+  function closePopup() {
+    setSaveError(null);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
+  const open = usePopupZoneGate("foldersPopup", urlOpen, closePopup);
 
   useEffect(() => {
     if (!open) {
@@ -393,18 +410,6 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
   }, [activeDragId, flattenedItems, offsetLeft, overDragId]);
 
   const activeItem = activeDragId ? flattenedItems.find((item) => item.id === activeDragId) : null;
-
-  function closePopup() {
-    setSaveError(null);
-    navigate(
-      {
-        pathname: location.pathname,
-        search: popupQuerySearch(location.search, null),
-        hash: location.hash,
-      },
-      { replace: false },
-    );
-  }
 
   function commitFolderLabel(
     tree: WorkspaceFolderNode[],
@@ -611,10 +616,15 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
                     }}
                     onCommitEdit={() => applyBlurRules(item.id, draftLabels[item.id] ?? item.label)}
                     onDelete={() => {
-                      if (editingId === item.id) {
-                        setEditingId(null);
-                      }
-                      setDraftTree((current) => removeWorkspaceFolderById(current, item.id));
+                      void (async () => {
+                        if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+                          return;
+                        }
+                        if (editingId === item.id) {
+                          setEditingId(null);
+                        }
+                        setDraftTree((current) => removeWorkspaceFolderById(current, item.id));
+                      })();
                     }}
                     editAriaLabel={t("web.foldersPopup.editFolder")}
                     deleteAriaLabel={t("web.foldersPopup.deleteFolder")}

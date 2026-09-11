@@ -775,6 +775,7 @@ export default function WorkspaceRoutesLayout() {
     : currentWorkspace?.name ?? t("workspaces.shellId", { id: resolvedWorkspaceId });
 
   return (
+    <SectionReauthProvider>
     <SettingsPopup t={t} workspaceIds={workspaceList.map((workspace) => workspace.id)}>
       {({ openSettingsPopup }) => {
         const email = profile?.email?.trim();
@@ -791,7 +792,6 @@ export default function WorkspaceRoutesLayout() {
           : undefined;
 
         return (
-          <SectionReauthProvider>
           <WorkspaceFoldersProvider value={workspaceFoldersState}>
             <WorkspaceShellWithItems
               isShellNotFound={isShellNotFound}
@@ -837,10 +837,10 @@ export default function WorkspaceRoutesLayout() {
               workspacePermissionsReady={workspacePermissionsReady}
             />
           </WorkspaceFoldersProvider>
-          </SectionReauthProvider>
         );
       }}
     </SettingsPopup>
+    </SectionReauthProvider>
   );
 }
 

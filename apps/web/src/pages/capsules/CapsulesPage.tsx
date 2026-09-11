@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { useSectionReauth } from "../../auth/SectionReauthContext";
 import {
   decryptOwnerCapsuleMetadata,
   recoverOwnerCapsuleFragment,
@@ -77,6 +78,7 @@ const ROW_CONTROL_CELL_CLASS_NAME = `${CELL_CLASS_NAME} relative z-20`;
 export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: CapsulesPageProps) {
   const core = useAuthenticatedCoreClient();
   const { vaultKey } = useAuthVault();
+  const { requestZoneUnlock } = useSectionReauth();
   const { t, locale } = useLocale();
   const location = useLocation();
   const navigate = useNavigate();
@@ -276,6 +278,9 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
 
   const remove = async (targets: DecryptedCapsule[]) => {
     if (!core || targets.length === 0) return;
+    if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+      return;
+    }
     setDeleting(true);
     try {
       const ids = new Set(targets.map((capsule) => capsule.capsuleId));

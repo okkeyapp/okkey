@@ -555,4 +555,21 @@ const MultiSelectItem = React.forwardRef<HTMLDivElement, MultiSelectItemProps>(
 );
 MultiSelectItem.displayName = "MultiSelectItem";
 
-export { MultiSelect, MultiSelectTrigger, MultiSelectContent, MultiSelectItem };
+export type MultiSelectGroupLabelProps = React.HTMLAttributes<HTMLDivElement>;
+
+const MultiSelectGroupLabel = React.forwardRef<HTMLDivElement, MultiSelectGroupLabelProps>(
+  ({ className, ...props }, ref) => {
+    useMultiSelectContext("MultiSelectGroupLabel");
+    return (
+      <div
+        ref={ref}
+        role="presentation"
+        className={cn("px-2 pb-1 pt-2 text-xs font-normal text-muted-foreground", className)}
+        {...props}
+      />
+    );
+  },
+);
+MultiSelectGroupLabel.displayName = "MultiSelectGroupLabel";
+
+export { MultiSelect, MultiSelectTrigger, MultiSelectContent, MultiSelectItem, MultiSelectGroupLabel };

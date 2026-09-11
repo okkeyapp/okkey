@@ -4,6 +4,7 @@ import { useMemo, useRef, useCallback, useState } from "react";
 import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useSectionReauth } from "../../auth/SectionReauthContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useItemsMobileListView } from "../../hooks/useItemsMobileListView";
@@ -66,6 +67,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
   const [searchParams, setSearchParams] = useSearchParams();
   const isItemsMobileListView = useItemsMobileListView();
   const { accessToken, profile, userId } = useAuthVault();
+  const { requestZoneUnlock } = useSectionReauth();
   const outletContext = useOutletContext<WorkspaceShellOutletContext | undefined>();
   const workspaceId = workspaceIdProp ?? outletContext?.workspaceId;
   const { resolveMemberDisplayName } = useWorkspaceMemberDisplayNames(workspaceId);
@@ -223,6 +225,9 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
 
   const confirmDeleteItem = useCallback(() => {
     void (async () => {
+      if (!(await requestZoneUnlock("deletion", { persist: false }))) {
+        return;
+      }
       await setItemDeleted(itemId, true);
       setSearchParams((prev) => withoutOpenItemQueryParam(prev, [itemId]), { replace: true });
       if (listRecord?.favorite) {
@@ -233,7 +238,16 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
       }
       setDeleteConfirmOpen(false);
     })();
-  }, [itemId, listRecord?.archived, listRecord?.favorite, setItemArchived, setItemDeleted, setItemFavorite, setSearchParams]);
+  }, [
+    itemId,
+    listRecord?.archived,
+    listRecord?.favorite,
+    requestZoneUnlock,
+    setItemArchived,
+    setItemDeleted,
+    setItemFavorite,
+    setSearchParams,
+  ]);
 
   if (!bootstrapped || loading) {
     return (

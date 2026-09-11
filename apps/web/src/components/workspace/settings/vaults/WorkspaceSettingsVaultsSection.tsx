@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
+import { usePopupZoneGate } from "../../../../auth/usePopupZoneGate";
 import {
   EDIT_VAULT_POPUP_ID,
   POPUP_QUERY_PARAM,
@@ -85,6 +86,9 @@ export default function WorkspaceSettingsVaultsSection({
     );
   }
 
+  const personalEditUrlOpen = Boolean(editingPersonal && core && userId && PersonalVaultCardPopup);
+  const showPersonalEdit = usePopupZoneGate("vaultPopups", personalEditUrlOpen, closePopup);
+
   return (
     <div className="flex flex-col gap-9">
       <VaultsSectionHeader t={t} />
@@ -138,7 +142,7 @@ export default function WorkspaceSettingsVaultsSection({
         </section>
       )}
 
-      {editingPersonal && core && userId && PersonalVaultCardPopup ? (
+      {showPersonalEdit && editingPersonal && core && userId && PersonalVaultCardPopup ? (
         <PersonalVaultCardPopup
           popupId={`${EDIT_VAULT_POPUP_ID}|${editVaultId}`}
           mode="personal"

@@ -3,6 +3,7 @@ import {
   Button,
   MultiSelect,
   MultiSelectContent,
+  MultiSelectGroupLabel,
   MultiSelectItem,
   MultiSelectTrigger,
   Select,
@@ -162,21 +163,45 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
     [userId, t],
   );
 
-  const zoneOptions = useMemo(
+  const zoneGroups = useMemo(
     () =>
       [
-        { id: "capsules" as const, label: t("web.settingsPopup.vault.zones.capsules") },
-        { id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") },
-        { id: "tools" as const, label: t("web.settingsPopup.vault.zones.tools") },
         {
-          id: "workspaceSettings" as const,
-          label: t("web.settingsPopup.vault.zones.workspaceSettings"),
+          label: t("web.settingsPopup.vault.zones.group.sections"),
+          zones: [
+            { id: "capsules" as const, label: t("web.settingsPopup.vault.zones.capsules") },
+            { id: "monitoring" as const, label: t("web.settingsPopup.vault.zones.monitoring") },
+            { id: "tools" as const, label: t("web.settingsPopup.vault.zones.tools") },
+            {
+              id: "workspaceSettings" as const,
+              label: t("web.settingsPopup.vault.zones.workspaceSettings"),
+            },
+          ],
         },
         {
-          id: "personalSettings" as const,
-          label: t("web.settingsPopup.vault.zones.personalSettings"),
+          label: t("web.settingsPopup.vault.zones.group.popups"),
+          zones: [
+            {
+              id: "personalSettings" as const,
+              label: t("web.settingsPopup.vault.zones.personalSettings"),
+            },
+            { id: "itemPopups" as const, label: t("web.settingsPopup.vault.zones.itemPopups") },
+            {
+              id: "capsulePopups" as const,
+              label: t("web.settingsPopup.vault.zones.capsulePopups"),
+            },
+            { id: "vaultPopups" as const, label: t("web.settingsPopup.vault.zones.vaultPopups") },
+            { id: "foldersPopup" as const, label: t("web.settingsPopup.vault.zones.foldersPopup") },
+          ],
         },
-      ] satisfies Array<{ id: SectionReauthZoneId; label: string }>,
+        {
+          label: t("web.settingsPopup.vault.zones.group.actions"),
+          zones: [{ id: "deletion" as const, label: t("web.settingsPopup.vault.zones.deletion") }],
+        },
+      ] satisfies Array<{
+        label: string;
+        zones: Array<{ id: SectionReauthZoneId; label: string }>;
+      }>,
     [t],
   );
 
@@ -214,7 +239,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             <SelectTrigger className="w-full font-normal">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               {IDLE_LOCK_OPTIONS_SECONDS.map((seconds) => (
                 <SelectItem key={seconds} value={String(seconds)}>
                   {idleLabel(seconds, t)}
@@ -248,7 +273,7 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             <SelectTrigger className="w-full font-normal">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               {CLIPBOARD_CLEAR_OPTIONS_SECONDS.map((seconds) => (
                 <SelectItem key={seconds} value={String(seconds)}>
                   {clipboardLabel(seconds, t)}
@@ -289,11 +314,16 @@ export default function SettingsVaultContent({ t, workspaceIds }: SettingsVaultC
             placeholder={t("web.settingsPopup.vault.requirePassword.placeholder")}
           >
             <MultiSelectTrigger className="w-full font-normal" />
-            <MultiSelectContent>
-              {zoneOptions.map((zone) => (
-                <MultiSelectItem key={zone.id} value={zone.id}>
-                  {zone.label}
-                </MultiSelectItem>
+            <MultiSelectContent align="end" className="w-[280px] min-w-[280px]">
+              {zoneGroups.map((group) => (
+                <div key={group.label}>
+                  <MultiSelectGroupLabel>{group.label}</MultiSelectGroupLabel>
+                  {group.zones.map((zone) => (
+                    <MultiSelectItem key={zone.id} value={zone.id}>
+                      {zone.label}
+                    </MultiSelectItem>
+                  ))}
+                </div>
               ))}
             </MultiSelectContent>
           </MultiSelect>

@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { NO_FOLDER_VALUE } from "../../folders/workspaceFolderTree";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
@@ -59,8 +60,8 @@ export default function EditItemPopup({
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
-  const open = activePopup?.popupId === EDIT_ITEM_POPUP_ID;
-  const itemId = open ? activePopup.menuItemId?.trim() ?? "" : "";
+  const urlOpen = activePopup?.popupId === EDIT_ITEM_POPUP_ID;
+  const itemId = urlOpen ? activePopup?.menuItemId?.trim() ?? "" : "";
 
   const formRef = useRef<NewItemFormHandle>(null);
   const [showValidation, setShowValidation] = useState(false);
@@ -80,6 +81,22 @@ export default function EditItemPopup({
   const { refresh: refreshTemplates } = useWorkspaceItemTemplates();
   const { locale } = useLocale();
   const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+
+  function closePopup() {
+    setShowValidation(false);
+    setSaveError(null);
+    setExitConfirmOpen(false);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: false },
+    );
+  }
+
+  const open = usePopupZoneGate("itemPopups", urlOpen, closePopup);
 
   const item = itemId ? getItemById(itemId) : undefined;
   const folderId = item ? itemFolderByItemId.get(item.itemId) ?? NO_FOLDER_VALUE : NO_FOLDER_VALUE;
@@ -109,20 +126,6 @@ export default function EditItemPopup({
       ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
     };
   }, [item, folderId, keyFormMessages]);
-
-  function closePopup() {
-    setShowValidation(false);
-    setSaveError(null);
-    setExitConfirmOpen(false);
-    navigate(
-      {
-        pathname: location.pathname,
-        search: popupQuerySearch(location.search, null),
-        hash: location.hash,
-      },
-      { replace: false },
-    );
-  }
 
   function handleCloseRequest(): boolean {
     if (formRef.current?.hasUnsavedChanges()) {

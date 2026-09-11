@@ -37,6 +37,7 @@ import {
   uploadKeyFieldFileAttachment,
 } from "../../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
+import { useSectionReauth } from "../../../auth/SectionReauthContext";
 import { useWorkspaceLogoUrl } from "../../../hooks/useWorkspaceLogoUrl";
 import { runSaveWithToast } from "../../../lib/saveWithToast";
 import { WORKSPACES_PATH } from "../../../routes/paths";
@@ -101,6 +102,7 @@ export default function WorkspaceSettingsGeneralSection({
   const core = useAuthenticatedCoreClient();
   const navigate = useNavigate();
   const { userId, accessToken, vaultKey } = useAuthVault();
+  const { requestZoneUnlock } = useSectionReauth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [initialLoading, setInitialLoading] = useState(true);
@@ -434,6 +436,10 @@ export default function WorkspaceSettingsGeneralSection({
     if (!core || !isOwner) {
       return;
     }
+    setDeleteConfirmOpen(false);
+    if (!(await requestZoneUnlock("deletion", { force: true, persist: false }))) {
+      return;
+    }
     setDeletingWorkspace(true);
     try {
       await runSaveWithToast(
@@ -444,7 +450,6 @@ export default function WorkspaceSettingsGeneralSection({
         },
         async () => core.deleteWorkspace(workspaceId, { confirmation_name: workspaceName.trim() }),
       );
-      setDeleteConfirmOpen(false);
       navigate(WORKSPACES_PATH, { replace: true });
     } catch {
       /* toast handles error */

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -11,14 +12,42 @@ import { useLocation } from "react-router-dom";
 
 import { useAuthVault } from "./AuthVaultContext";
 import { resolveSectionReauthZone } from "./sectionReauthZones";
-import { readVaultDevicePrefs, type SectionReauthZoneId } from "./vaultDevicePrefs";
+import {
+  readVaultDevicePrefs,
+  SECTION_REAUTH_PATH_ZONE_IDS,
+  type SectionReauthZoneId,
+} from "./vaultDevicePrefs";
 import SectionReauthPopup from "../components/settings/SectionReauthPopup";
+
+export type RequestZoneUnlockOptions = {
+  /** Ignore prefs and always prompt (e.g. workspace delete). */
+  force?: boolean;
+  /**
+   * When true (default), a successful unlock is remembered until cleared.
+   * Deletion actions should pass false so each delete re-prompts.
+   */
+  persist?: boolean;
+};
+
+type PendingUnlockRequest = {
+  zone: SectionReauthZoneId;
+  persist: boolean;
+  resolve: (ok: boolean) => void;
+};
 
 type SectionReauthContextValue = {
   isZoneUnlocked: (zone: SectionReauthZoneId) => boolean;
   markZoneUnlocked: (zone: SectionReauthZoneId) => void;
   clearZoneUnlocked: (zone: SectionReauthZoneId) => void;
   isZoneRequired: (zone: SectionReauthZoneId) => boolean;
+  /**
+   * Prompt for master password / PIN / biometrics when the zone is required
+   * (or when `force` is set). Resolves true on success, false on cancel.
+   */
+  requestZoneUnlock: (
+    zone: SectionReauthZoneId,
+    options?: RequestZoneUnlockOptions,
+  ) => Promise<boolean>;
   /** True while a pathname zone is gated and not yet unlocked. */
   isContentBlocked: boolean;
   /** Re-open the confirmation popup after it was dismissed. */
@@ -32,7 +61,12 @@ export function SectionReauthProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [unlockedZones, setUnlockedZones] = useState<Set<SectionReauthZoneId>>(() => new Set());
   const [promptOpen, setPromptOpen] = useState(false);
+  const [pendingRequest, setPendingRequest] = useState<PendingUnlockRequest | null>(null);
   const [prefsTick, setPrefsTick] = useState(0);
+  const unlockedZonesRef = useRef(unlockedZones);
+  unlockedZonesRef.current = unlockedZones;
+  const pendingRequestRef = useRef(pendingRequest);
+  pendingRequestRef.current = pendingRequest;
 
   useEffect(() => {
     const onPrefs = () => setPrefsTick((n) => n + 1);
@@ -48,6 +82,18 @@ export function SectionReauthProvider({ children }: { children: ReactNode }) {
     return readVaultDevicePrefs(userId).requireReauthZones;
   }, [userId, prefsTick]);
 
+  const prefsZonesKey = useMemo(() => [...prefsZones].sort().join("\0"), [prefsZones]);
+
+  useEffect(() => {
+    setUnlockedZones(new Set());
+    setPendingRequest((prev) => {
+      if (prev) {
+        prev.resolve(false);
+      }
+      return null;
+    });
+  }, [userId, prefsZonesKey]);
+
   const currentZone = resolveSectionReauthZone(location.pathname);
 
   const blockedZone =
@@ -57,20 +103,26 @@ export function SectionReauthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnlockedZones((prev) => {
-      if (!currentZone) {
-        return new Set();
+      let changed = false;
+      const next = new Set(prev);
+      for (const zone of SECTION_REAUTH_PATH_ZONE_IDS) {
+        if (zone !== currentZone && next.has(zone)) {
+          next.delete(zone);
+          changed = true;
+        }
       }
-      if (prev.has(currentZone)) {
-        return new Set([currentZone]);
-      }
-      return new Set();
+      return changed ? next : prev;
     });
   }, [currentZone]);
 
   useEffect(() => {
-    // Entering a gated zone opens the prompt; leaving or unlocking closes it.
+    // Entering a gated path zone opens the prompt; leaving or unlocking closes it.
+    // On-demand requests manage their own overlay via `pendingRequest`.
+    if (pendingRequest) {
+      return;
+    }
     setPromptOpen(blockedZone !== null);
-  }, [blockedZone]);
+  }, [blockedZone, pendingRequest]);
 
   const markZoneUnlocked = useCallback((zone: SectionReauthZoneId) => {
     setUnlockedZones((prev) => new Set(prev).add(zone));
@@ -98,8 +150,29 @@ export function SectionReauthProvider({ children }: { children: ReactNode }) {
     [prefsZones],
   );
 
+  const requestZoneUnlock = useCallback(
+    (zone: SectionReauthZoneId, options?: RequestZoneUnlockOptions): Promise<boolean> => {
+      const force = options?.force === true;
+      const persist = options?.persist !== false;
+      if (!force && !prefsZones.includes(zone)) {
+        return Promise.resolve(true);
+      }
+      if (persist && unlockedZonesRef.current.has(zone)) {
+        return Promise.resolve(true);
+      }
+      const existing = pendingRequestRef.current;
+      if (existing) {
+        existing.resolve(false);
+      }
+      return new Promise<boolean>((resolve) => {
+        setPendingRequest({ zone, persist, resolve });
+      });
+    },
+    [prefsZones],
+  );
+
   const requestAccess = useCallback(() => {
-    if (blockedZone) {
+    if (blockedZone && !pendingRequestRef.current) {
       setPromptOpen(true);
     }
   }, [blockedZone]);
@@ -107,6 +180,33 @@ export function SectionReauthProvider({ children }: { children: ReactNode }) {
   const dismissPrompt = useCallback(() => {
     setPromptOpen(false);
   }, []);
+
+  const activePromptZone = pendingRequest?.zone ?? (promptOpen ? blockedZone : null);
+
+  const handleUnlocked = useCallback(() => {
+    const pending = pendingRequestRef.current;
+    if (pending) {
+      if (pending.persist) {
+        setUnlockedZones((prev) => new Set(prev).add(pending.zone));
+      }
+      pending.resolve(true);
+      setPendingRequest(null);
+      return;
+    }
+    if (blockedZone) {
+      markZoneUnlocked(blockedZone);
+    }
+  }, [blockedZone, markZoneUnlocked]);
+
+  const handleCancel = useCallback(() => {
+    const pending = pendingRequestRef.current;
+    if (pending) {
+      pending.resolve(false);
+      setPendingRequest(null);
+      return;
+    }
+    dismissPrompt();
+  }, [dismissPrompt]);
 
   const isContentBlocked = blockedZone !== null;
 
@@ -116,20 +216,29 @@ export function SectionReauthProvider({ children }: { children: ReactNode }) {
       markZoneUnlocked,
       clearZoneUnlocked,
       isZoneRequired,
+      requestZoneUnlock,
       isContentBlocked,
       requestAccess,
     }),
-    [isZoneUnlocked, markZoneUnlocked, clearZoneUnlocked, isZoneRequired, isContentBlocked, requestAccess],
+    [
+      isZoneUnlocked,
+      markZoneUnlocked,
+      clearZoneUnlocked,
+      isZoneRequired,
+      requestZoneUnlock,
+      isContentBlocked,
+      requestAccess,
+    ],
   );
 
   return (
     <SectionReauthContext.Provider value={value}>
       {children}
-      {blockedZone && promptOpen ? (
+      {activePromptZone ? (
         <SectionReauthPopup
-          zone={blockedZone}
-          onUnlocked={() => markZoneUnlocked(blockedZone)}
-          onCancel={dismissPrompt}
+          zone={activePromptZone}
+          onUnlocked={handleUnlocked}
+          onCancel={handleCancel}
         />
       ) : null}
     </SectionReauthContext.Provider>

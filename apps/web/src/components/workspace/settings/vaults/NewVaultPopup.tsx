@@ -12,6 +12,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
+import { usePopupZoneGate } from "../../../../auth/usePopupZoneGate";
 import {
   NEW_VAULT_POPUP_ID,
   POPUP_QUERY_PARAM,
@@ -48,15 +49,28 @@ export default function NewVaultPopup({
 
   const popupRaw = searchParams.get(POPUP_QUERY_PARAM);
   const isNewVault = parsePopupQueryValue(popupRaw)?.popupId === NEW_VAULT_POPUP_ID;
-  const open = Boolean(
+  const urlOpen = Boolean(
     isNewVault && canManageSharedPlan && SharedVaultCardPopup && canPost && core && userId,
   );
 
   const [members, setMembers] = useState<WorkspaceMemberDto[]>([]);
   const [profiles, setProfiles] = useState<WorkspaceProfileSummary[]>([]);
 
+  function closePopup() {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(location.search, null),
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }
+
+  const open = usePopupZoneGate("vaultPopups", urlOpen, closePopup);
+
   useEffect(() => {
-    if (!open || !core) {
+    if (!urlOpen || !core) {
       return;
     }
     let cancelled = false;
@@ -111,18 +125,7 @@ export default function NewVaultPopup({
     return () => {
       cancelled = true;
     };
-  }, [core, open, workspaceId]);
-
-  function closePopup() {
-    navigate(
-      {
-        pathname: location.pathname,
-        search: popupQuerySearch(location.search, null),
-        hash: location.hash,
-      },
-      { replace: true },
-    );
-  }
+  }, [core, urlOpen, workspaceId]);
 
   if (!open || !SharedVaultCardPopup || !core || !userId) {
     return null;

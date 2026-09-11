@@ -8,7 +8,12 @@ export type SectionReauthZoneId =
   | "monitoring"
   | "tools"
   | "workspaceSettings"
-  | "personalSettings";
+  | "personalSettings"
+  | "itemPopups"
+  | "capsulePopups"
+  | "vaultPopups"
+  | "foldersPopup"
+  | "deletion";
 
 export type VaultDevicePrefs = {
   lockOnDeviceSleep: boolean;
@@ -33,6 +38,19 @@ const ZONE_IDS: readonly SectionReauthZoneId[] = [
   "tools",
   "workspaceSettings",
   "personalSettings",
+  "itemPopups",
+  "capsulePopups",
+  "vaultPopups",
+  "foldersPopup",
+  "deletion",
+] as const;
+
+/** Pathname-gated zones — unlock clears when leaving that path area. */
+export const SECTION_REAUTH_PATH_ZONE_IDS: readonly SectionReauthZoneId[] = [
+  "capsules",
+  "monitoring",
+  "tools",
+  "workspaceSettings",
 ] as const;
 
 /** Legacy combined zone from earlier vault settings builds. */
