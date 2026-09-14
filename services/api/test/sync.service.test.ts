@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../src/storage/errors.ts";
+import { testEntityId } from "./test-entity-id.ts";
+
+const TEST_ITEM_ID = testEntityId();
 
 function mkBlob(payload = "x", cryptoVersion = 2) {
   return {
@@ -82,6 +85,7 @@ test("appendEvent validates event type", async () => {
         eventType: "BAD_TYPE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError &&
@@ -118,6 +122,7 @@ test("appendEvent maps version conflict", async () => {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 1,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError &&
@@ -154,6 +159,7 @@ test("appendEvent rejects FOLDER_CREATE on vault stream", async () => {
         eventType: "FOLDER_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
         idempotencyKey: "1156820912149001",
       }),
     (error: unknown) =>
@@ -191,6 +197,7 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
         eventType: "ITEM_CREATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError &&
@@ -275,6 +282,7 @@ test("appendEvent rejects strip attack: missing crypto_version in encryptedBlob"
         eventType: "ITEM_UPDATE",
         encryptedBlob: encryptedBlobMissing,
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
@@ -310,6 +318,7 @@ test("appendEvent rejects strip attack: legacy encryptedBlob string when legacy 
         eventType: "ITEM_UPDATE",
         encryptedBlob: Buffer.from("x").toString("base64"),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "SYNC_BAD_REQUEST",
@@ -387,6 +396,7 @@ test("appendEvent returns VAULT_NOT_FOUND when vault does not exist", async () =
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "VAULT_NOT_FOUND",
@@ -422,6 +432,7 @@ test("appendEvent returns ACCESS_DENIED when user cannot read vault", async () =
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x"),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "ACCESS_DENIED",
@@ -461,6 +472,7 @@ test("appendEvent maps CryptoDowngradeInvariantError to CRYPTO_DOWNGRADE_NOT_ALL
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError &&
@@ -501,6 +513,7 @@ test("appendEvent rejects disallowed crypto profile by policy", async () => {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 1),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "CRYPTO_PROFILE_NOT_ALLOWED",
@@ -550,6 +563,7 @@ test("appendEvent preserves encryptedBlob crypto_version", async () => {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,
+    referencedItemId: TEST_ITEM_ID,
   });
   assert.equal(capturedVersion, 2);
 });
@@ -599,6 +613,7 @@ test("appendEvent strict mode rejects actor without PQ capability", async () => 
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "CRYPTO_CAPABILITY_REQUIRED",
@@ -657,6 +672,7 @@ test("appendEvent compat mode allows actor without PQ capability", async () => {
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,
+    referencedItemId: TEST_ITEM_ID,
   });
   assert.equal(result.eventType, "ITEM_UPDATE");
 });
@@ -706,6 +722,7 @@ test("appendEvent strict mode requires signature for VAULT_SHARE", async () => {
         eventType: "VAULT_SHARE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "SIGNATURE_REQUIRED",
@@ -767,6 +784,7 @@ test("appendEvent rejects malformed signature envelope when provided", async () 
           created_at: "2026-01-01T00:00:00.000Z",
         },
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "SIGNATURE_INVALID",

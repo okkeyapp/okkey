@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { AttachmentService } from "../src/attachments/service.ts";
 import type { KeyFieldFileStorage } from "../src/storage/key-field-file-storage.ts";
 import type { AttachmentsRepository } from "../src/storage/attachments.ts";
-import type { VaultsRepository } from "../src/storage/repositories.ts";
+import type { VaultsRepository, WorkspacesRepository } from "../src/storage/repositories.ts";
 
 test("AttachmentService removes uploaded object when metadata insert fails", async () => {
   let deletedStorageKey = "";
@@ -30,9 +30,17 @@ test("AttachmentService removes uploaded object when metadata insert fails", asy
     async canReadVault() {
       return true;
     },
-  } as unknown as Pick<VaultsRepository, "canReadVault">;
+    async findById() {
+      return null;
+    },
+  } as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
+  const workspaces = {
+    async findById() {
+      return null;
+    },
+  } as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
 
   await assert.rejects(() =>
     service.upload({
@@ -62,9 +70,17 @@ test("AttachmentService denies vault access before storage operations", async ()
     async canReadVault() {
       return false;
     },
-  } as unknown as Pick<VaultsRepository, "canReadVault">;
+    async findById() {
+      return null;
+    },
+  } as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
+  const workspaces = {
+    async findById() {
+      return null;
+    },
+  } as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
 
   await assert.rejects(
     () =>
@@ -116,9 +132,10 @@ test("AttachmentService purges all item attachment objects", async () => {
       ];
     },
   } as unknown as AttachmentsRepository;
-  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault">;
+  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
+  const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
 
   await service.purgeForItem("1000000000000000001", "1000000000000000002");
 
@@ -160,9 +177,10 @@ test("AttachmentService purges all attachment objects by item id", async () => {
       ];
     },
   } as unknown as AttachmentsRepository;
-  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault">;
+  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
+  const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
 
   await service.purgeForItemId("1000000000000000002");
 
@@ -223,9 +241,10 @@ test("AttachmentService purges template attachments by scope and referenced ids"
       return null;
     },
   } as unknown as AttachmentsRepository;
-  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault">;
+  const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
+  const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
 
   await service.purgeForTemplate("1000000000000000002", ["1000000000000000003", "1000000000000000004"]);
 

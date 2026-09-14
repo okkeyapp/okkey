@@ -146,6 +146,11 @@ vi.mock("@okkey/ui", () => ({
       {children}
     </button>
   ),
+  keyFieldTypeOptions: [
+    { id: "text", label: "Text", group: "general" },
+    { id: "secret", label: "Secret", group: "secret" },
+    { id: "file", label: "File", group: "file" },
+  ],
   okkeyWorkspaceShellNavItems: () => [],
   PersonalWorkspaceMark: () => <span data-testid="personal-workspace-mark" />,
   Spinner: () => <span>Loading</span>,

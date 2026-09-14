@@ -64,7 +64,9 @@ describe("scheduleClipboardClearAfterCopy", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const blob = await deferredBlob!;
     expect(blob).toBeInstanceOf(Blob);
-    expect(await blob.text()).toBe(" ");
+    expect(blob.type).toBe("text/plain");
+    // Cleared clipboard uses a single space; jsdom Blob lacks `.text()` / `.arrayBuffer()`.
+    expect(blob.size).toBe(1);
   });
 
   it("does not clear when clipboard content changed", async () => {

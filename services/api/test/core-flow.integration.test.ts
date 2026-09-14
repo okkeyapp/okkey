@@ -140,6 +140,7 @@ test("integration: register → email login (Bearer) → vault + sync → second
     encryptedBlob: mkBlob("opaque-event-payload", 2),
     baseVersion: 0,
     idempotencyKey: testEntityId(),
+    referencedItemId: testEntityId(),
   });
   assert.equal(created.eventType, "ITEM_CREATE");
   assert.equal(created.version, 1);

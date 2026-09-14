@@ -9,6 +9,10 @@ vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthVault: () => ({ userId: "u1", vaultKey: null }),
 }));
 
+vi.mock("../../../../auth/usePopupZoneGate", () => ({
+  usePopupZoneGate: (_zone: string, open: boolean) => open,
+}));
+
 vi.mock("@okkey-enterprise/workspace-shared-vaults", () => ({
   default: {
     SharedVaultsSection: null,

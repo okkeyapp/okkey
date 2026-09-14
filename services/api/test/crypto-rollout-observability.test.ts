@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { logCryptoPolicyViolation } from "../src/crypto/policy-log.ts";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
+import { testEntityId } from "./test-entity-id.ts";
+
+const TEST_ITEM_ID = testEntityId();
 
 function mkBlob(payload = "x", cryptoVersion = 2) {
   return {
@@ -106,6 +109,7 @@ test("sync append is blocked when rollout state is stop for path", async () => {
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) =>
       error instanceof SyncServiceError && error.code === "CRYPTO_ROLLOUT_PAUSED",
@@ -131,6 +135,7 @@ test("stop/resume drill: sync write recovers after rollout resume", async () => 
         eventType: "ITEM_UPDATE",
         encryptedBlob: mkBlob("x", 2),
         baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
       }),
     (error: unknown) => error instanceof SyncServiceError && error.code === "CRYPTO_ROLLOUT_PAUSED",
   );
@@ -143,6 +148,7 @@ test("stop/resume drill: sync write recovers after rollout resume", async () => 
     eventType: "ITEM_UPDATE",
     encryptedBlob: mkBlob("x", 2),
     baseVersion: 0,
+    referencedItemId: TEST_ITEM_ID,
   });
   assert.equal(result.eventType, "ITEM_UPDATE");
 

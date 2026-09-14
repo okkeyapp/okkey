@@ -807,12 +807,10 @@ export class VaultsRepository {
         WHERE v.workspace_id = $1
           AND (
             (v.is_personal = true AND v.owner_id = $2)
+            OR vm.user_id IS NOT NULL
             OR (
               v.is_personal = false
-              AND (
-                w.owner_id = $2
-                OR vm.user_id IS NOT NULL
-              )
+              AND w.owner_id = $2
             )
           )
         ORDER BY v.is_personal DESC, v.created_at ASC
@@ -836,12 +834,10 @@ export class VaultsRepository {
           WHERE v.id = $1
             AND (
               (v.is_personal = true AND v.owner_id = $2)
+              OR vm.user_id IS NOT NULL
               OR (
                 v.is_personal = false
-                AND (
-                  w.owner_id = $2
-                  OR vm.user_id IS NOT NULL
-                )
+                AND w.owner_id = $2
               )
             )
         ) AS can_read
