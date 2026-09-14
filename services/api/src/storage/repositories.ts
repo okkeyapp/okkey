@@ -1807,6 +1807,22 @@ export class TwoFactorRepository {
     return Number(rows[0]?.n ?? "0");
   }
 
+  async getLatestBackupCodesCreatedAt(userId: string): Promise<Date | null> {
+    const rows = await this.db.query<{ created_at: Date | string }>(
+      `
+        SELECT max(created_at) AS created_at
+        FROM user_backup_codes
+        WHERE user_id = $1
+      `,
+      [userId],
+    );
+    const value = rows[0]?.created_at;
+    if (!value) {
+      return null;
+    }
+    return value instanceof Date ? value : new Date(value);
+  }
+
   async consumeBackupCode(userId: string, codeHash: string): Promise<boolean> {
     const rows = await this.db.query<{ id: string }>(
       `

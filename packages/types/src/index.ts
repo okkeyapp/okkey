@@ -802,6 +802,8 @@ export interface AccessTokenResponseDto {
 export interface TwoFactorStatusResponseDto {
   enabled: boolean;
   backupCodesRemaining: number;
+  /** ISO-8601 timestamp of the latest backup-code batch, or null if none. */
+  backupCodesGeneratedAt: string | null;
 }
 
 /** `POST /auth/two-factor/totp/enroll/start` success body. */

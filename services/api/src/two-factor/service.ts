@@ -285,12 +285,21 @@ export class TwoFactorService {
   async getStatus(userId: string): Promise<{
     enabled: boolean;
     backupCodesRemaining: number;
+    backupCodesGeneratedAt: string | null;
   }> {
     const enabled = await this.users.isTwoFactorEnabled(userId);
-    const backupCodesRemaining = enabled
-      ? await this.twoFactorRepo.countUnusedBackupCodes(userId)
-      : 0;
-    return { enabled, backupCodesRemaining };
+    if (!enabled) {
+      return { enabled: false, backupCodesRemaining: 0, backupCodesGeneratedAt: null };
+    }
+    const [backupCodesRemaining, generatedAt] = await Promise.all([
+      this.twoFactorRepo.countUnusedBackupCodes(userId),
+      this.twoFactorRepo.getLatestBackupCodesCreatedAt(userId),
+    ]);
+    return {
+      enabled: true,
+      backupCodesRemaining,
+      backupCodesGeneratedAt: generatedAt ? generatedAt.toISOString() : null,
+    };
   }
 
   async enrollTotpStart(userId: string): Promise<{

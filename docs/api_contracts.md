@@ -268,6 +268,7 @@ Completes login when `nextStep` from email confirm was `"two_factor"`. Accepts *
 |--------|------|
 | `enabled` | boolean |
 | `backupCodesRemaining` | number |
+| `backupCodesGeneratedAt` | string \| null (ISO-8601) |
 
 ### `POST /auth/two-factor/totp/enroll/start`
 

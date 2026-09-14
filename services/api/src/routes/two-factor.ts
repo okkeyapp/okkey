@@ -104,6 +104,7 @@ export function createTwoFactorStatusRoute(
       json(ctx.res, 200, {
         enabled: status.enabled,
         backupCodesRemaining: status.backupCodesRemaining,
+        backupCodesGeneratedAt: status.backupCodesGeneratedAt,
       });
     } catch (error) {
       handleTwoFactorError(ctx.requestId, ctx.res, error);

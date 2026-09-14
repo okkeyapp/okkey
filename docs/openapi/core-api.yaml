@@ -137,12 +137,17 @@ components:
 
     TwoFactorStatusResponse:
       type: object
-      required: [enabled, backupCodesRemaining]
+      required: [enabled, backupCodesRemaining, backupCodesGeneratedAt]
       properties:
         enabled:
           type: boolean
         backupCodesRemaining:
           type: integer
+        backupCodesGeneratedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 time of the latest backup-code generation batch.
 
     TotpEnrollStartResponse:
       type: object

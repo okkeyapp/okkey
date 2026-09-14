@@ -15,6 +15,7 @@ import {
 } from "../../routes/popupQuery";
 import SettingsGeneralContent from "./SettingsGeneralContent";
 import SettingsLoginContent from "./SettingsLoginContent";
+import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
 import SettingsVaultContent from "./SettingsVaultContent";
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
 
@@ -272,6 +273,8 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
             <SettingsVaultContent t={t} workspaceIds={workspaceIds} />
           ) : activeItemId === "login" && ACCOUNT_LOGIN_METHODS_UI_ENABLED ? (
             <SettingsLoginContent t={t} />
+          ) : activeItemId === "twoFactor" ? (
+            <SettingsTwoFactorContent t={t} />
           ) : (
             <div className="min-h-[min(420px,calc(100dvh-32px))]" aria-label={heading} />
           )}
