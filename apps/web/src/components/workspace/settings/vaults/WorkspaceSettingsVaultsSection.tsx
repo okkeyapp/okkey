@@ -1,5 +1,5 @@
 import type { Vault, Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
-import { hasPlanFeature, normalizePlanTier, permissionAllowsMutate } from "@okkey/types";
+import { hasPlanFeature, permissionAllowsMutate } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -51,9 +51,9 @@ export default function WorkspaceSettingsVaultsSection({
   const SharedVaultsSection = enterpriseSharedVaultsModule.SharedVaultsSection;
   const PersonalVaultCardPopup = enterpriseSharedVaultsModule.PersonalVaultCardPopup;
   const showEnterpriseShared = Boolean(canManageSharedPlan && SharedVaultsSection);
-  /** Personal vault card opens only on paid plan + enterprise module (like built-in role cards). */
+  /** Personal vault card opens when shared-vaults plan feature + enterprise module are present. */
   const canOpenPersonalVault =
-    normalizePlanTier(workspace?.planTier) === "ENTERPRISE" && Boolean(PersonalVaultCardPopup);
+    hasPlanFeature(workspace?.planTier, "sharedVaults") && Boolean(PersonalVaultCardPopup);
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
   const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);

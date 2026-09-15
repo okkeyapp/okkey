@@ -45,6 +45,8 @@ function createVaultServiceStub(
         name: "Personal",
         ownerId: "u1",
         planTier: "FREE",
+        planCustomOverride: false,
+        planFeatureOverrides: {},
         createdAt: "",
         updatedAt: "",
       },

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsProfilesSection from "./WorkspaceSettingsProfilesSection";
+import type { PlanTier } from "@okkey/types";
 
 const enterpriseModuleMock = vi.hoisted(() => ({
   EnterpriseProfilesSection: null as ComponentType<unknown> | null,
@@ -49,7 +50,7 @@ vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMock,
 }));
 
-function renderProfilesSection(planTier: "FREE" | "ENTERPRISE" = "FREE") {
+function renderProfilesSection(planTier: PlanTier = "FREE") {
   return render(
     <MemoryRouter>
       <LocaleProvider>
@@ -60,6 +61,8 @@ function renderProfilesSection(planTier: "FREE" | "ENTERPRISE" = "FREE") {
             name: "Test",
             ownerId: "user-1",
             planTier,
+            planCustomOverride: false,
+            planFeatureOverrides: {},
             deletedItemsRetentionDays: 30,
             allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
             maxFileSizeMb: 2,

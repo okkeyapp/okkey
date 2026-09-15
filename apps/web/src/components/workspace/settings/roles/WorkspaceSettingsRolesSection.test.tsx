@@ -48,6 +48,8 @@ function renderRolesSection(planTier: PlanTier = "FREE") {
           name: "Test",
           ownerId: "user-1",
           planTier,
+          planCustomOverride: false,
+          planFeatureOverrides: {},
           deletedItemsRetentionDays: 30,
           allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
           maxFileSizeMb: 2,

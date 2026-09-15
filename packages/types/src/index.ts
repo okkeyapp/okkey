@@ -7,7 +7,7 @@ export {
   isEntityId,
 } from "./entity-id.js";
 import type { EntityId } from "./entity-id.js";
-import type { PlanTier } from "./plan-features.js";
+import type { PlanFeatureOverrides, PlanTier } from "./plan-features.js";
 import type {
   WorkspaceBuiltInRoleDto,
   WorkspaceBuiltInRolesListResponseDto,
@@ -18,16 +18,26 @@ import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-car
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
 
 export type {
+  PlanCustomOverride,
+  PlanEntitlementOptions,
   PlanFeature,
+  PlanFeatureOverrides,
+  PlanQuotaLimits,
   PlanTier,
 } from "./plan-features.js";
 export {
   PLAN_FEATURES,
   PLAN_FEATURE_MATRIX,
+  PLAN_QUOTA_LIMITS,
   PLAN_TIERS,
+  emptyPlanFeatureOverrides,
+  getPlanQuotaLimits,
   hasPlanFeature,
   isPlanTier,
   normalizePlanTier,
+  planEntitlementOptionsFromWorkspace,
+  resolvePlanFeatures,
+  sanitizePlanFeatureOverrides,
 } from "./plan-features.js";
 
 export interface User {
@@ -60,6 +70,13 @@ export interface Workspace {
   name: string;
   ownerId: EntityId;
   planTier: PlanTier;
+  /**
+   * When true, {@link planFeatureOverrides} selectively replace catalog matrix cells
+   * (“by request” / custom commercial plan). Catalog {@link planTier} stays for display/billing.
+   */
+  planCustomOverride: boolean;
+  /** Sparse feature overrides applied only when {@link planCustomOverride} is true. */
+  planFeatureOverrides: PlanFeatureOverrides;
   /** Days before soft-deleted vault items are permanently purged from the server. */
   deletedItemsRetentionDays: number;
   /** Lowercase extensions allowed for item file uploads; empty means any extension. */

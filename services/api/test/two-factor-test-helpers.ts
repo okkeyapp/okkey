@@ -324,6 +324,25 @@ export async function applyMigrations(
     await storage.postgres.query(migration0030);
   }
 
+  const planCustomOverrideColumn = await storage.postgres.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'workspaces'
+          AND column_name = 'plan_custom_override'
+      ) AS exists
+    `,
+  );
+  if (!planCustomOverrideColumn[0]?.exists) {
+    const migration0031 = readFileSync(
+      path.resolve(helpersDir, "../migrations/0031_workspace_plan_custom_override.sql"),
+      "utf8",
+    );
+    await storage.postgres.query(migration0031);
+  }
+
   const profileBuiltinKeyColumn = await storage.postgres.query<{ exists: boolean }>(
     `SELECT EXISTS (
       SELECT 1
