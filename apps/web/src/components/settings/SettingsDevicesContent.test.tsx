@@ -153,4 +153,21 @@ describe("SettingsDevicesContent", () => {
       expect(coreMocks.revokeDevice).toHaveBeenCalledWith("d-pending", "dismissed by user");
     });
   });
+
+  it("retry reloads the device list after an error", async () => {
+    coreMocks.listDevices
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({
+        devices: [trustedDevice()],
+        pending: [],
+      });
+
+    render(<SettingsDevicesContent t={t} />);
+
+    expect(await screen.findByText("web.settingsPopup.devices.error.generic")).toBeTruthy();
+    fireEvent.click(screen.getByText("web.settingsPopup.devices.retry"));
+
+    expect(await screen.findByText("Web app iMac")).toBeTruthy();
+    expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
+  });
 });

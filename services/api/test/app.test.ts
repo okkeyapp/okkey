@@ -92,6 +92,10 @@ test("OPTIONS request is handled by cors middleware", async () => {
   assert.equal(res.statusCode, 204);
   assert.equal(res.getHeader("access-control-allow-origin"), "http://localhost:5173");
   assert.equal(res.writableEnded, true);
+  const allowHeaders = String(res.getHeader("access-control-allow-headers") ?? "").toLowerCase();
+  assert.match(allowHeaders, /x-device-fingerprint/);
+  assert.match(allowHeaders, /x-device-id/);
+  assert.match(allowHeaders, /authorization/);
 });
 
 test("OPTIONS echoes matching origin from comma-separated CORS_ORIGIN", async () => {
