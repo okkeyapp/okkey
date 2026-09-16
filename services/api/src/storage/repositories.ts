@@ -1449,6 +1449,211 @@ export class DevicesRepository {
       return { kind: "rejected", device: mapDevice(rejectedRows[0]) };
     });
   }
+
+  async listByUser(
+    userId: string,
+    statuses: Array<"trusted" | "pending"> = ["trusted", "pending"],
+  ): Promise<DeviceRecord[]> {
+    if (statuses.length === 0) {
+      return [];
+    }
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_fingerprint: string;
+      device_name: string;
+      device_public_key: string;
+      device_share: Buffer;
+      platform: string;
+      os_name: string;
+      os_version: string;
+      app_version: string;
+      client_type: string;
+      user_agent: string;
+      ip_first: string;
+      ip_last: string;
+      status: "trusted" | "pending" | "revoked";
+      created_at: string | Date;
+      last_seen_at: string | Date | null;
+      approved_by: string | null;
+      approved_at: string | Date | null;
+      rejected_at: string | Date | null;
+      rejection_reason: string | null;
+      revoked_at: string | Date | null;
+    }>(
+      `
+        SELECT
+          id,
+          user_id,
+          device_fingerprint,
+          device_name,
+          device_public_key,
+          device_share,
+          platform,
+          os_name,
+          os_version,
+          app_version,
+          client_type,
+          user_agent,
+          ip_first,
+          ip_last,
+          status,
+          created_at,
+          last_seen_at,
+          approved_by,
+          approved_at,
+          rejected_at,
+          rejection_reason,
+          revoked_at
+        FROM devices
+        WHERE user_id = $1
+          AND status = ANY($2::text[])
+        ORDER BY
+          CASE WHEN status = 'pending' THEN 0 ELSE 1 END,
+          COALESCE(last_seen_at, created_at) DESC,
+          created_at DESC
+      `,
+      [userId, statuses],
+    );
+    return rows.map(mapDevice);
+  }
+
+  async renameDevice(input: {
+    userId: string;
+    deviceId: string;
+    deviceName: string;
+  }): Promise<DeviceRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_fingerprint: string;
+      device_name: string;
+      device_public_key: string;
+      device_share: Buffer;
+      platform: string;
+      os_name: string;
+      os_version: string;
+      app_version: string;
+      client_type: string;
+      user_agent: string;
+      ip_first: string;
+      ip_last: string;
+      status: "trusted" | "pending" | "revoked";
+      created_at: string | Date;
+      last_seen_at: string | Date | null;
+      approved_by: string | null;
+      approved_at: string | Date | null;
+      rejected_at: string | Date | null;
+      rejection_reason: string | null;
+      revoked_at: string | Date | null;
+    }>(
+      `
+        UPDATE devices
+        SET device_name = $3
+        WHERE id = $1
+          AND user_id = $2
+          AND status IN ('trusted', 'pending')
+        RETURNING
+          id,
+          user_id,
+          device_fingerprint,
+          device_name,
+          device_public_key,
+          device_share,
+          platform,
+          os_name,
+          os_version,
+          app_version,
+          client_type,
+          user_agent,
+          ip_first,
+          ip_last,
+          status,
+          created_at,
+          last_seen_at,
+          approved_by,
+          approved_at,
+          rejected_at,
+          rejection_reason,
+          revoked_at
+      `,
+      [input.deviceId, input.userId, input.deviceName],
+    );
+    return rows[0] ? mapDevice(rows[0]) : null;
+  }
+
+  async revokeOwned(input: {
+    userId: string;
+    deviceId: string;
+    now: string;
+    reason?: string;
+  }): Promise<DeviceRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_fingerprint: string;
+      device_name: string;
+      device_public_key: string;
+      device_share: Buffer;
+      platform: string;
+      os_name: string;
+      os_version: string;
+      app_version: string;
+      client_type: string;
+      user_agent: string;
+      ip_first: string;
+      ip_last: string;
+      status: "trusted" | "pending" | "revoked";
+      created_at: string | Date;
+      last_seen_at: string | Date | null;
+      approved_by: string | null;
+      approved_at: string | Date | null;
+      rejected_at: string | Date | null;
+      rejection_reason: string | null;
+      revoked_at: string | Date | null;
+    }>(
+      `
+        UPDATE devices
+        SET
+          status = 'revoked',
+          rejected_at = COALESCE(rejected_at, $3::timestamptz),
+          rejection_reason = COALESCE(
+            NULLIF($4, ''),
+            rejection_reason,
+            CASE WHEN status = 'pending' THEN 'dismissed by user' ELSE 'revoked by user' END
+          ),
+          revoked_at = COALESCE(revoked_at, $3::timestamptz)
+        WHERE id = $1
+          AND user_id = $2
+          AND status IN ('trusted', 'pending')
+        RETURNING
+          id,
+          user_id,
+          device_fingerprint,
+          device_name,
+          device_public_key,
+          device_share,
+          platform,
+          os_name,
+          os_version,
+          app_version,
+          client_type,
+          user_agent,
+          ip_first,
+          ip_last,
+          status,
+          created_at,
+          last_seen_at,
+          approved_by,
+          approved_at,
+          rejected_at,
+          rejection_reason,
+          revoked_at
+      `,
+      [input.deviceId, input.userId, input.now, input.reason ?? ""],
+    );
+    return rows[0] ? mapDevice(rows[0]) : null;
+  }
 }
 
 export class ItemsRepository {

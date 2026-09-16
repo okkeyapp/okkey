@@ -57,6 +57,10 @@ function createService(overrides?: {
   registerOrUpdate?: () => Promise<ReturnType<typeof createDeviceRecord>>;
   isTrustedDevice?: () => Promise<boolean>;
   resolveApproval?: () => Promise<DeviceApprovalState>;
+  listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
+  renameDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  revokeOwned?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  geoIp?: { lookup: (ip: string) => Promise<{ country: string | null; city: string | null }> };
   now?: () => Date;
 }) {
   return new DeviceService({
@@ -71,11 +75,21 @@ function createService(overrides?: {
           kind: "approved",
           device: createDeviceRecord({ status: "trusted" }),
         })),
+      listByUser:
+        overrides?.listByUser ??
+        (async () => [createDeviceRecord({ status: "trusted" })]),
+      renameDevice:
+        overrides?.renameDevice ??
+        (async () => createDeviceRecord({ status: "trusted", deviceName: "Renamed" })),
+      revokeOwned:
+        overrides?.revokeOwned ??
+        (async () => createDeviceRecord({ status: "revoked" })),
     },
     config: {
       deviceApprovalTtlSeconds: 60,
       publicAppBaseUrl: "https://app.test",
     },
+    geoIp: overrides?.geoIp,
     now: overrides?.now,
   });
 }
@@ -100,6 +114,9 @@ test("registerDevice sends device_approval_request when pending and email deps c
         kind: "approved",
         device: createDeviceRecord({ status: "trusted" }),
       }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
     },
     config: {
       deviceApprovalTtlSeconds: 60,
@@ -245,4 +262,64 @@ test("approval flow requires trusted approver device", async () => {
       error instanceof DeviceServiceError &&
       error.code === "DEVICE_APPROVAL_ACCESS_DENIED",
   );
+});
+
+test("listDevices splits trusted and pending and enriches geo", async () => {
+  const fingerprint = "b".repeat(64);
+  const service = createService({
+    listByUser: async () => [
+      createDeviceRecord({
+        id: "pending-1",
+        status: "pending",
+        deviceFingerprint: "c".repeat(64),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        ipLast: "203.0.113.10",
+      }),
+      createDeviceRecord({
+        id: "trusted-1",
+        status: "trusted",
+        deviceFingerprint: fingerprint,
+        lastSeenAt: "2026-01-02T00:00:00.000Z",
+        ipLast: "203.0.113.10",
+      }),
+    ],
+    geoIp: {
+      lookup: async () => ({ country: "Singapore", city: "Singapore" }),
+    },
+    now: () => new Date("2026-01-01T00:00:30.000Z"),
+  });
+
+  const result = await service.listDevices("u1", fingerprint);
+  assert.equal(result.devices.length, 1);
+  assert.equal(result.pending.length, 1);
+  assert.equal(result.devices[0].isCurrent, true);
+  assert.equal(result.devices[0].country, "Singapore");
+  assert.equal(result.pending[0].status, "pending_approval");
+  assert.equal(result.pending[0].approvalExpiresAt, "2026-01-01T00:01:00.000Z");
+});
+
+test("renameDevice and revokeDevice map not found", async () => {
+  const renameMissing = createService({
+    renameDevice: async () => null,
+  });
+  await assert.rejects(
+    () => renameMissing.renameDevice("u1", "missing", "New name"),
+    (error: unknown) =>
+      error instanceof DeviceServiceError && error.code === "DEVICE_NOT_FOUND",
+  );
+
+  const revokeMissing = createService({
+    revokeOwned: async () => null,
+  });
+  await assert.rejects(
+    () => revokeMissing.revokeDevice("u1", "missing"),
+    (error: unknown) =>
+      error instanceof DeviceServiceError && error.code === "DEVICE_NOT_FOUND",
+  );
+
+  const revoked = await createService().revokeDevice("u1", "d1", "not now");
+  assert.equal(revoked.status, "revoked");
+
+  const renamed = await createService().renameDevice("u1", "d1", "Office laptop");
+  assert.equal(renamed.deviceName, "Renamed");
 });

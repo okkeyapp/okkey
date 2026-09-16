@@ -20,8 +20,11 @@ import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
   createApproveDeviceRoute,
+  createListDevicesRoute,
+  createPatchDeviceRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
+  createRevokeDeviceRoute,
 } from "./routes/devices.ts";
 import {
   createSyncEventsAppendRoute,
@@ -516,9 +519,24 @@ export function createApiApp(
   }
   if (deps.deviceService) {
     app.route(
+      "GET",
+      "/devices",
+      createListDevicesRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
       "POST",
       "/devices/register",
       createRegisterDeviceRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/devices/:deviceId",
+      createPatchDeviceRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/revoke",
+      createRevokeDeviceRoute(deps.deviceService, resolveUserId),
     );
     app.route(
       "POST",

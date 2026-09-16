@@ -13,6 +13,7 @@ import {
   parsePopupQueryValue,
   popupQuerySearch,
 } from "../../routes/popupQuery";
+import SettingsDevicesContent from "./SettingsDevicesContent";
 import SettingsGeneralContent from "./SettingsGeneralContent";
 import SettingsLoginContent from "./SettingsLoginContent";
 import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
@@ -275,6 +276,8 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
             <SettingsLoginContent t={t} />
           ) : activeItemId === "twoFactor" ? (
             <SettingsTwoFactorContent t={t} />
+          ) : activeItemId === "devices" ? (
+            <SettingsDevicesContent t={t} />
           ) : (
             <div className="min-h-[min(420px,calc(100dvh-32px))]" aria-label={heading} />
           )}

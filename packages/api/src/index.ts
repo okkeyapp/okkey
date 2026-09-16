@@ -18,6 +18,10 @@ import type {
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
   DeviceRejectResponseDto,
+  DeviceListResponseDto,
+  DevicePatchRequestDto,
+  DevicePatchResponseDto,
+  DeviceRevokeResponseDto,
   EncryptedBlobDto,
   SyncAppendEventRequestDto,
   SyncEventWireDto,
@@ -769,6 +773,28 @@ export class CoreApiClient {
 
   registerDevice(body: DeviceRegisterRequestDto): Promise<DeviceRegisterResponseDto> {
     return this.api.post<DeviceRegisterResponseDto>("/devices/register", body);
+  }
+
+  listDevices(currentFingerprint?: string): Promise<DeviceListResponseDto> {
+    return this.api.get<DeviceListResponseDto>("/devices", {
+      headers: currentFingerprint
+        ? { "X-Device-Fingerprint": currentFingerprint }
+        : undefined,
+    });
+  }
+
+  patchDevice(deviceId: string, body: DevicePatchRequestDto): Promise<DevicePatchResponseDto> {
+    return this.api.patch<DevicePatchResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}`,
+      body,
+    );
+  }
+
+  revokeDevice(deviceId: string, reason?: string): Promise<DeviceRevokeResponseDto> {
+    return this.api.post<DeviceRevokeResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/revoke`,
+      reason !== undefined ? { reason } : {},
+    );
   }
 
   approveDevice(pendingDeviceId: string, approverDeviceId: string): Promise<DeviceRegisterResponseDto> {

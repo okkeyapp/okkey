@@ -168,6 +168,7 @@ async function main(): Promise<void> {
     config,
     users: storage.repositories.users,
     emailTemplates,
+    geoIp,
     log: logger,
   });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();

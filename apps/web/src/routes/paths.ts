@@ -288,6 +288,8 @@ export const MONITORING_PATH = "/monitoring";
 export const TOOLS_PATH = "/tools";
 export const SETTINGS_PATH = "/settings";
 export const SETTINGS_MAIN_PATH = `${SETTINGS_PATH}/main`;
+/** Personal devices settings deep-link (opens SettingsPopup devices tab, not workspace settings). */
+export const SETTINGS_DEVICES_PATH = `${SETTINGS_PATH}/devices`;
 
 export type ToolsSectionId = "generator" | "import" | "export";
 

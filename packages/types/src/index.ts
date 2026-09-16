@@ -1161,6 +1161,50 @@ export interface DeviceRejectResponseDto {
   status: "revoked";
 }
 
+/** Single device row for `GET /devices` (snake_case on wire). */
+export interface DeviceListItemDto {
+  device_id: EntityId;
+  device_name: string;
+  device_fingerprint: string;
+  status: "trusted" | "pending_approval";
+  platform: string;
+  os_name: string;
+  os_version: string;
+  app_version: string;
+  client_type: string;
+  ip_address: string;
+  country: string | null;
+  city: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  approved_at: string | null;
+  is_current: boolean;
+  approval_expires_at: string | null;
+}
+
+/** `GET /devices` success body. */
+export interface DeviceListResponseDto {
+  devices: DeviceListItemDto[];
+  pending: DeviceListItemDto[];
+}
+
+/** `PATCH /devices/:deviceId` request body. */
+export interface DevicePatchRequestDto {
+  device_name: string;
+}
+
+/** `PATCH /devices/:deviceId` success body. */
+export interface DevicePatchResponseDto {
+  device_id: EntityId;
+  device_name: string;
+}
+
+/** `POST /devices/:deviceId/revoke` success body. */
+export interface DeviceRevokeResponseDto {
+  device_id: EntityId;
+  status: "revoked";
+}
+
 /** `POST /auth/register/complete` request body (snake_case on wire). */
 export interface RegisterCompleteRequestDto {
   auth_state_id: EntityId;

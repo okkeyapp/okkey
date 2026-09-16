@@ -1,5 +1,9 @@
 import type { IncomingMessage } from "node:http";
-import { DeviceService, DeviceServiceError } from "../device/service.ts";
+import {
+  DeviceService,
+  DeviceServiceError,
+  type DeviceListItem,
+} from "../device/service.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 
 interface RegisterDeviceMetadataBody {
@@ -20,6 +24,14 @@ interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
 }
 
 interface RejectDeviceBody {
+  reason?: string;
+}
+
+interface PatchDeviceBody {
+  device_name?: string;
+}
+
+interface RevokeDeviceBody {
   reason?: string;
 }
 
@@ -57,6 +69,28 @@ function getApproverDeviceId(ctx: Parameters<RouteHandler>[0]): string {
     );
   }
   return deviceId;
+}
+
+function toWireDevice(item: DeviceListItem) {
+  return {
+    device_id: item.deviceId,
+    device_name: item.deviceName,
+    device_fingerprint: item.deviceFingerprint,
+    status: item.status,
+    platform: item.platform,
+    os_name: item.osName,
+    os_version: item.osVersion,
+    app_version: item.appVersion,
+    client_type: item.clientType,
+    ip_address: item.ipAddress,
+    country: item.country,
+    city: item.city,
+    created_at: item.createdAt,
+    last_seen_at: item.lastSeenAt,
+    approved_at: item.approvedAt,
+    is_current: item.isCurrent,
+    approval_expires_at: item.approvalExpiresAt,
+  };
 }
 
 export function createRegisterDeviceRoute(
@@ -111,6 +145,118 @@ export function createRegisterDeviceRoute(
         acceptLanguage: getHeader(ctx.req, "accept-language"),
       });
 
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createListDevicesRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const currentFingerprint = getHeader(ctx.req, "x-device-fingerprint");
+      const result = await deviceService.listDevices(userId, currentFingerprint);
+      json(ctx.res, 200, {
+        devices: result.devices.map(toWireDevice),
+        pending: result.pending.map(toWireDevice),
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createPatchDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+
+    let body: PatchDeviceBody;
+    try {
+      body = await readJsonBody<PatchDeviceBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+
+    if (typeof body.device_name !== "string") {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "device_name is required", ctx.requestId),
+      );
+      return;
+    }
+
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const result = await deviceService.renameDevice(userId, deviceId, body.device_name);
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        device_name: result.deviceName,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createRevokeDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+
+    let body: RevokeDeviceBody = {};
+    try {
+      body = await readJsonBody<RevokeDeviceBody>(ctx.req);
+    } catch {
+      // Empty body is allowed for revoke.
+      body = {};
+    }
+
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const result = await deviceService.revokeDevice(userId, deviceId, body.reason);
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,

@@ -40,6 +40,18 @@ function createDeviceServiceStub(overrides?: Partial<DeviceService>): DeviceServ
       deviceId: "d1",
       status: "pending_approval",
     }),
+    listDevices: async () => ({
+      devices: [],
+      pending: [],
+    }),
+    renameDevice: async () => ({
+      deviceId: "d1",
+      deviceName: "Renamed",
+    }),
+    revokeDevice: async () => ({
+      deviceId: "d1",
+      status: "revoked",
+    }),
     approveDevice: async () => ({
       deviceId: "d1",
       status: "trusted",
@@ -233,4 +245,113 @@ test("device approval routes map DEVICE_APPROVAL_EXPIRED", async () => {
   assert.equal(res.statusCode, 410);
   const payload = JSON.parse(res.body) as { error: string };
   assert.equal(payload.error, "DEVICE_APPROVAL_EXPIRED");
+});
+
+test("GET /devices requires auth and returns list payload", async () => {
+  const unauthorized = await dispatch({
+    method: "GET",
+    url: "/devices",
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  let seenFingerprint: string | null | undefined;
+  const res = await dispatch({
+    method: "GET",
+    url: "/devices",
+    headers: {
+      "x-user-id": "u1",
+      "x-device-fingerprint": "a".repeat(64),
+    },
+    deviceService: createDeviceServiceStub({
+      listDevices: async (_userId, fingerprint) => {
+        seenFingerprint = fingerprint;
+        return {
+          devices: [
+            {
+              deviceId: "d-trusted",
+              deviceName: "Mac",
+              deviceFingerprint: "a".repeat(64),
+              status: "trusted",
+              platform: "desktop",
+              osName: "macOS",
+              osVersion: "14",
+              appVersion: "1.0.0",
+              clientType: "web",
+              ipAddress: "10.0.0.1",
+              country: "Singapore",
+              city: "Singapore",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              lastSeenAt: "2026-01-01T00:00:00.000Z",
+              approvedAt: "2026-01-01T00:00:00.000Z",
+              isCurrent: true,
+              approvalExpiresAt: null,
+            },
+          ],
+          pending: [
+            {
+              deviceId: "d-pending",
+              deviceName: "Windows 11",
+              deviceFingerprint: "b".repeat(64),
+              status: "pending_approval",
+              platform: "desktop",
+              osName: "Windows",
+              osVersion: "11",
+              appVersion: "1.0.0",
+              clientType: "desktop",
+              ipAddress: "82.123.321.44",
+              country: null,
+              city: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              lastSeenAt: null,
+              approvedAt: null,
+              isCurrent: false,
+              approvalExpiresAt: "2026-01-01T00:01:00.000Z",
+            },
+          ],
+        };
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(seenFingerprint, "a".repeat(64));
+  const payload = JSON.parse(res.body) as {
+    devices: Array<{ device_id: string; is_current: boolean; country: string | null }>;
+    pending: Array<{ device_id: string; status: string; approval_expires_at: string }>;
+  };
+  assert.equal(payload.devices[0]?.device_id, "d-trusted");
+  assert.equal(payload.devices[0]?.is_current, true);
+  assert.equal(payload.devices[0]?.country, "Singapore");
+  assert.equal(payload.pending[0]?.status, "pending_approval");
+  assert.equal(payload.pending[0]?.approval_expires_at, "2026-01-01T00:01:00.000Z");
+});
+
+test("PATCH /devices/:id renames device", async () => {
+  const res = await dispatch({
+    method: "PATCH",
+    url: "/devices/d1",
+    headers: { "x-user-id": "u1" },
+    body: { device_name: "Office laptop" },
+    deviceService: createDeviceServiceStub({
+      renameDevice: async () => ({ deviceId: "d1", deviceName: "Office laptop" }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { device_id: string; device_name: string };
+  assert.equal(payload.device_name, "Office laptop");
+});
+
+test("POST /devices/:id/revoke revokes owned device", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/d1/revoke",
+    headers: { "x-user-id": "u1" },
+    body: { reason: "not now" },
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => ({ deviceId: "d1", status: "revoked" }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { device_id: string; status: string };
+  assert.equal(payload.status, "revoked");
 });

@@ -31,6 +31,7 @@ import LegacyWorkspaceNestedRedirect from "../pages/workspace/LegacyWorkspaceNes
 import WorkspaceNotFoundPage from "../pages/workspace/WorkspaceNotFoundPage";
 import WorkspaceSectionPage from "../pages/workspace/WorkspaceSectionPage";
 import SettingsIndexRedirect from "../pages/workspace/SettingsIndexRedirect";
+import PersonalDevicesSettingsRedirect from "../pages/workspace/PersonalDevicesSettingsRedirect";
 import ToolsIndexRedirect from "../pages/workspace/ToolsIndexRedirect";
 import WorkspacesPage from "../pages/workspaces/WorkspacesPage";
 import ProtectedVaultLayout from "../auth/ProtectedVaultLayout";
@@ -54,6 +55,7 @@ import {
   LEGACY_WORKSPACE_DETAIL_PATH_PATTERN,
   MONITORING_PATH,
   ROOT_PATH,
+  SETTINGS_DEVICES_PATH,
   SETTINGS_PATH,
   TOOLS_PATH,
   UNLOCK_PASSWORD_LEGACY_PATH,
@@ -162,6 +164,7 @@ export default function AppRoutes() {
           <Route path={TOOLS_PATH} element={<ToolsIndexRedirect />} />
           <Route path={`${TOOLS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path={SETTINGS_PATH} element={<SettingsIndexRedirect />} />
+          <Route path={SETTINGS_DEVICES_PATH} element={<PersonalDevicesSettingsRedirect />} />
           <Route path={`${SETTINGS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path="*" element={<WorkspaceNotFoundPage />} />
         </Route>

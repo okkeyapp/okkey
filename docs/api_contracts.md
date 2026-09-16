@@ -995,6 +995,63 @@ Registers or updates a device for the authenticated user. May return `pending_ap
 
 **Errors:** Same family as approve.
 
+### `GET /devices`
+
+Lists trusted and pending devices for the authenticated user. Revoked devices are omitted. Geo fields are best-effort (`null` when lookup is unavailable).
+
+**Auth:** Bearer preferred; optional `X-User-Id` when allowed by config. Optional `X-Device-Fingerprint` marks the matching **trusted** row as `is_current`.
+
+**Response `200`:**
+
+```json
+{
+  "devices": [ /* trusted */ ],
+  "pending": [ /* pending_approval */ ]
+}
+```
+
+Each item:
+
+| Field | Type | Notes |
+|--------|------|--------|
+| `device_id` | string | UUID |
+| `device_name` | string | |
+| `device_fingerprint` | string | |
+| `status` | string | `trusted` \| `pending_approval` |
+| `platform`, `os_name`, `os_version`, `app_version`, `client_type` | string | |
+| `ip_address` | string | Prefer `ip_last` |
+| `country`, `city` | string \| null | GeoIP best-effort |
+| `created_at` | string | ISO-8601 |
+| `last_seen_at`, `approved_at` | string \| null | |
+| `is_current` | boolean | Trusted + fingerprint match |
+| `approval_expires_at` | string \| null | Pending only: `created_at + DEVICE_APPROVAL_TTL_SECONDS` |
+
+**Errors:** `AUTH_REQUIRED` 401.
+
+### `PATCH /devices/:deviceId`
+
+Renames a trusted or pending device owned by the user.
+
+**Auth:** Bearer (or allowed `X-User-Id`).
+
+**Request body:** `{ "device_name": "string" }` (required, non-empty after trim).
+
+**Response `200`:** `{ "device_id": "uuid", "device_name": "…" }`
+
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400, `DEVICE_NOT_FOUND` 404.
+
+### `POST /devices/:deviceId/revoke`
+
+Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
+
+**Auth:** Bearer (or allowed `X-User-Id`).
+
+**Request body:** optional `{ "reason": "string" }`.
+
+**Response `200`:** `{ "device_id": "uuid", "status": "revoked" }`
+
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_NOT_FOUND` 404.
+
 ---
 
 ## Workspace invitations (enterprise plugin)

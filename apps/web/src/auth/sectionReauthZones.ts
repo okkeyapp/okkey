@@ -2,6 +2,7 @@ import type { SectionReauthZoneId } from "./vaultDevicePrefs";
 import {
   CAPSULES_PATH,
   MONITORING_PATH,
+  SETTINGS_DEVICES_PATH,
   isSettingsPathname,
   isToolsPathname,
 } from "../routes/paths";
@@ -16,6 +17,10 @@ export function resolveSectionReauthZone(pathname: string): SectionReauthZoneId 
   }
   if (isToolsPathname(pathname)) {
     return "tools";
+  }
+  // Personal devices deep-link redirects into SettingsPopup — not workspace settings.
+  if (pathname === SETTINGS_DEVICES_PATH) {
+    return null;
   }
   if (isSettingsPathname(pathname)) {
     return "workspaceSettings";

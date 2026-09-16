@@ -180,6 +180,46 @@ test("DevicesRepository.isTrustedDevice checks trusted status", async () => {
   assert.match(db.queries[0].sql, /status = 'trusted'/);
 });
 
+test("DevicesRepository.listByUser returns mapped rows", async () => {
+  const db = new FakeDb();
+  db.enqueueResult([
+    makeDeviceRow({ id: "d-pending", status: "pending" }),
+    makeDeviceRow({ id: "d-trusted", status: "trusted" }),
+  ]);
+
+  const repo = new DevicesRepository(db);
+  const rows = await repo.listByUser("u1");
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.id, "d-pending");
+  assert.match(db.queries[0].sql, /status = ANY/);
+});
+
+test("DevicesRepository.renameDevice and revokeOwned update owned rows", async () => {
+  const renameDb = new FakeDb();
+  renameDb.enqueueResult([makeDeviceRow({ device_name: "Office laptop", status: "trusted" })]);
+  const renameRepo = new DevicesRepository(renameDb);
+  const renamed = await renameRepo.renameDevice({
+    userId: "u1",
+    deviceId: "d1",
+    deviceName: "Office laptop",
+  });
+  assert.equal(renamed?.deviceName, "Office laptop");
+  assert.match(renameDb.queries[0].sql, /SET device_name/);
+
+  const revokeDb = new FakeDb();
+  revokeDb.enqueueResult([makeDeviceRow({ status: "revoked", revoked_at: "2026-01-01T00:03:00.000Z" })]);
+  const revokeRepo = new DevicesRepository(revokeDb);
+  const revoked = await revokeRepo.revokeOwned({
+    userId: "u1",
+    deviceId: "d1",
+    now: "2026-01-01T00:03:00.000Z",
+    reason: "not now",
+  });
+  assert.equal(revoked?.status, "revoked");
+  assert.match(revokeDb.queries[0].sql, /status = 'revoked'/);
+});
+
 test("DevicesRepository.resolveApproval approves pending device", async () => {
   const db = new FakeDb();
   db.enqueueResult([makeDeviceRow({ status: "pending" })]); // SELECT FOR UPDATE
