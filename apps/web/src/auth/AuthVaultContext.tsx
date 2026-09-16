@@ -1,4 +1,4 @@
-import type { AccessTokenResponseDto } from "@okkey/types";
+import type { AccessTokenResponseDto, DeviceListItemDto } from "@okkey/types";
 import { AuthClient } from "@okkey/auth";
 import {
   createContext,
@@ -26,6 +26,12 @@ import { migratePersonalFoldersAfterPasswordChange } from "../folders/migratePer
 import { accountLockWithRedirectQuery } from "../routes/paths";
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import {
+  pollDeviceTrust,
+  registerCurrentBrowserDevice,
+  resolveDeviceTrust,
+  type DeviceTrustStatus,
+} from "./deviceTrust";
 import {
   clearPendingVaultBundle,
   clearVaultBundleSessionMirror,
@@ -108,6 +114,16 @@ export type AuthVaultContextValue = {
   vaultUnlockBootstrapLoading: boolean;
   /** Idle interval before vault locks (ms), from server `vault_idle_lock_seconds`. */
   vaultIdleLockMs: number;
+  /** Current browser device trust vs account devices (gates unlock). */
+  deviceTrustStatus: DeviceTrustStatus | "idle";
+  /** Server device id for this browser when known. */
+  currentDeviceId: string | null;
+  /** Trusted devices that can approve a pending login on this browser. */
+  deviceApprovers: DeviceListItemDto[];
+  /** Re-check pending/rejected device status (poll helper for wait UI). */
+  refreshDeviceTrust: () => Promise<void>;
+  /** After rejection: register again and wait for a new approval. */
+  retryDeviceRegistration: () => Promise<void>;
 };
 
 const AuthVaultContext = createContext<AuthVaultContextValue | null>(null);
@@ -260,6 +276,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   userIdRef.current = userId;
 
   const [vaultUnlockBootstrapLoading, setVaultUnlockBootstrapLoading] = useState(false);
+  const [deviceTrustStatus, setDeviceTrustStatus] = useState<DeviceTrustStatus | "idle">("idle");
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
+  const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
+  const pendingDeviceIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     vaultUnlockedRef.current = vaultUnlocked;
@@ -309,7 +329,45 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!accessToken || !userId) {
+      setDeviceTrustStatus("idle");
+      setCurrentDeviceId(null);
+      setDeviceApprovers([]);
+      pendingDeviceIdRef.current = null;
       setVaultUnlockBootstrapLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setDeviceTrustStatus("checking");
+    void (async () => {
+      const client = createAuthenticatedCoreClient(accessToken);
+      const snapshot = await resolveDeviceTrust(client, userId);
+      if (cancelled) {
+        return;
+      }
+      pendingDeviceIdRef.current =
+        snapshot.status === "pending" || snapshot.status === "rejected"
+          ? snapshot.deviceId
+          : snapshot.status === "trusted"
+            ? null
+            : pendingDeviceIdRef.current;
+      setDeviceTrustStatus(snapshot.status);
+      setCurrentDeviceId(snapshot.deviceId);
+      setDeviceApprovers(snapshot.approverDevices);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, userId]);
+
+  useEffect(() => {
+    if (!accessToken || !userId) {
+      setVaultUnlockBootstrapLoading(false);
+      return;
+    }
+    if (deviceTrustStatus !== "trusted") {
+      setVaultUnlockBootstrapLoading(deviceTrustStatus === "checking");
       return;
     }
     if (readVaultBundle(userId)) {
@@ -340,7 +398,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, userId]);
+  }, [accessToken, userId, deviceTrustStatus]);
 
   useEffect(() => {
     if (!accessToken || !userId) {
@@ -440,6 +498,10 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setTwoFactorAuthStateIdState(null);
     setProfile(null);
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
+    setDeviceTrustStatus("idle");
+    setCurrentDeviceId(null);
+    setDeviceApprovers([]);
+    pendingDeviceIdRef.current = null;
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
   const lockVault = useCallback(() => {
@@ -739,6 +801,47 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setVaultIdleLockMsState(ms);
   }, []);
 
+  const refreshDeviceTrust = useCallback(async () => {
+    if (!accessToken || !userId) {
+      return;
+    }
+    const client = createAuthenticatedCoreClient(accessToken);
+    const fingerprint = getOrCreateDeviceFingerprint();
+    const snapshot = await pollDeviceTrust(client, fingerprint, pendingDeviceIdRef.current);
+    pendingDeviceIdRef.current =
+      snapshot.status === "pending" || snapshot.status === "rejected"
+        ? snapshot.deviceId
+        : null;
+    setDeviceTrustStatus(snapshot.status);
+    setCurrentDeviceId(snapshot.deviceId);
+    setDeviceApprovers(snapshot.approverDevices);
+  }, [accessToken, userId]);
+
+  const retryDeviceRegistration = useCallback(async () => {
+    if (!accessToken || !userId) {
+      return;
+    }
+    setDeviceTrustStatus("checking");
+    const client = createAuthenticatedCoreClient(accessToken);
+    try {
+      const registered = await registerCurrentBrowserDevice(client);
+      pendingDeviceIdRef.current = registered.device_id;
+      if (registered.status === "trusted") {
+        setDeviceTrustStatus("trusted");
+        setCurrentDeviceId(registered.device_id);
+        const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
+        setDeviceApprovers(listed?.devices ?? []);
+        return;
+      }
+      setDeviceTrustStatus("pending");
+      setCurrentDeviceId(registered.device_id);
+      const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
+      setDeviceApprovers(listed?.devices ?? []);
+    } catch {
+      setDeviceTrustStatus("error");
+    }
+  }, [accessToken, userId]);
+
   const hasVaultBundle = readVaultBundle(userId) !== null;
 
   const value = useMemo<AuthVaultContextValue>(
@@ -774,6 +877,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       hasVaultBundle,
       vaultUnlockBootstrapLoading,
       vaultIdleLockMs,
+      deviceTrustStatus,
+      currentDeviceId,
+      deviceApprovers,
+      refreshDeviceTrust,
+      retryDeviceRegistration,
     }),
     [
       accessToken,
@@ -805,6 +913,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       hasVaultBundle,
       vaultUnlockBootstrapLoading,
       vaultIdleLockMs,
+      deviceTrustStatus,
+      currentDeviceId,
+      deviceApprovers,
+      refreshDeviceTrust,
+      retryDeviceRegistration,
     ],
   );
 

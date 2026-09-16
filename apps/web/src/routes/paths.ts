@@ -19,6 +19,7 @@ export const AUTH_REGISTRATION_LEGACY_PATH = "/auth/registration";
 // --- Account (vault lock, registration, marketing restore) ---
 
 export const ACCOUNT_LOCK_PATH = "/account/lock";
+export const ACCOUNT_DEVICE_PENDING_PATH = "/account/device-pending";
 export const ACCOUNT_NEW_PATH = "/account/new";
 export const ACCOUNT_RESTORE_PATH = "/account/restore";
 
@@ -477,4 +478,12 @@ export function isWorkspaceAppShellPathname(pathname: string): pathname is Works
  */
 export function accountLockWithRedirectQuery(encodedRedirect: string): string {
   return `${ACCOUNT_LOCK_PATH}?redirect=${encodedRedirect}`;
+}
+
+/** Device approval wait screen; optional redirect preserved for post-approval unlock. */
+export function accountDevicePendingWithRedirectQuery(encodedRedirect?: string): string {
+  if (!encodedRedirect) {
+    return ACCOUNT_DEVICE_PENDING_PATH;
+  }
+  return `${ACCOUNT_DEVICE_PENDING_PATH}?redirect=${encodedRedirect}`;
 }

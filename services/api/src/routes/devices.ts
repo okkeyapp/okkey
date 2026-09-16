@@ -4,6 +4,8 @@ import {
   DeviceServiceError,
   type DeviceListItem,
 } from "../device/service.ts";
+import { resolveClientIpForGeo } from "../capsule/geoip.ts";
+import type { ApiConfig } from "../config.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 
 interface RegisterDeviceMetadataBody {
@@ -13,6 +15,7 @@ interface RegisterDeviceMetadataBody {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
+  reclaim_sole_trusted?: boolean;
 }
 
 interface RegisterDeviceBody extends RegisterDeviceMetadataBody {
@@ -35,16 +38,15 @@ interface RevokeDeviceBody {
   reason?: string;
 }
 
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
-  }
-  const first = forwardedFor.split(",")[0]?.trim();
-  return first || "unknown";
-}
-
-function getRequestIp(req: Parameters<typeof getHeader>[0]): string {
-  return requestIpFromHeaders(getHeader(req, "x-forwarded-for"));
+async function getRequestIp(
+  req: IncomingMessage,
+  config: Pick<ApiConfig, "trustedProxyHops">,
+): Promise<string> {
+  return resolveClientIpForGeo(
+    req.socket?.remoteAddress,
+    getHeader(req, "x-forwarded-for") ?? undefined,
+    config.trustedProxyHops,
+  );
 }
 
 function resolveMetadata(body: RegisterDeviceBody): RegisterDeviceMetadataBody {
@@ -82,6 +84,7 @@ function toWireDevice(item: DeviceListItem) {
     os_version: item.osVersion,
     app_version: item.appVersion,
     client_type: item.clientType,
+    user_agent: item.userAgent,
     ip_address: item.ipAddress,
     country: item.country,
     city: item.city,
@@ -96,6 +99,7 @@ function toWireDevice(item: DeviceListItem) {
 export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  trustedProxyHops = 0,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -131,18 +135,23 @@ export function createRegisterDeviceRoute(
         return;
       }
       const metadata = resolveMetadata(body);
-      const result = await deviceService.registerDevice(userId, getRequestIp(ctx.req), {
+      const reclaimSoleTrusted = Boolean(
+        body.metadata?.reclaim_sole_trusted ?? body.reclaim_sole_trusted,
+      );
+      const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
+      const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
         devicePublicKey: body.device_public_key,
         deviceShare: body.device_share,
         deviceName: body.device_name,
-        platform: metadata.platform,
-        osName: metadata.os_name,
-        osVersion: metadata.os_version,
-        appVersion: metadata.app_version,
-        clientType: metadata.client_type,
+        platform: metadata.platform ?? "unknown",
+        osName: metadata.os_name ?? "unknown",
+        osVersion: metadata.os_version ?? "unknown",
+        appVersion: metadata.app_version ?? "unknown",
+        clientType: metadata.client_type ?? "unknown",
         userAgent: metadata.user_agent ?? getHeader(ctx.req, "user-agent") ?? "unknown",
         acceptLanguage: getHeader(ctx.req, "accept-language"),
+        reclaimSoleTrusted,
       });
 
       json(ctx.res, 200, {
@@ -166,7 +175,11 @@ export function createListDevicesRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const currentFingerprint = getHeader(ctx.req, "x-device-fingerprint");
+      const url = new URL(ctx.req.url ?? "/", "http://localhost");
+      const currentFingerprint =
+        getHeader(ctx.req, "x-device-fingerprint") ??
+        url.searchParams.get("device_fingerprint") ??
+        undefined;
       const result = await deviceService.listDevices(userId, currentFingerprint);
       json(ctx.res, 200, {
         devices: result.devices.map(toWireDevice),

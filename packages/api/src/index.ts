@@ -776,7 +776,10 @@ export class CoreApiClient {
   }
 
   listDevices(currentFingerprint?: string): Promise<DeviceListResponseDto> {
-    return this.api.get<DeviceListResponseDto>("/devices", {
+    const query = currentFingerprint
+      ? `?device_fingerprint=${encodeURIComponent(currentFingerprint)}`
+      : "";
+    return this.api.get<DeviceListResponseDto>(`/devices${query}`, {
       headers: currentFingerprint
         ? { "X-Device-Fingerprint": currentFingerprint }
         : undefined,

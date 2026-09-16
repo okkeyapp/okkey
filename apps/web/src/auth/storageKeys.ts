@@ -22,3 +22,5 @@ export function profileScopedStorageKey(userId: string): string {
 export const PROFILE_STORAGE_KEY = "okkey.profile.local";
 /** localStorage: stable 64-char hex device fingerprint */
 export const DEVICE_FINGERPRINT_KEY = "okkey.device.fingerprint";
+/** localStorage: base64 device public key (stable across register retries) */
+export const DEVICE_PUBLIC_KEY_KEY = "okkey.device.public_key";

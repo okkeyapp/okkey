@@ -10,10 +10,11 @@
   "email.device.approval.deviceLine": "Устройство: {deviceName}",
   "email.device.approval.platformLine": "Платформа: {platformOs}",
   "email.device.approval.ipLine": "IP: {ip}",
+  "email.device.approval.locationLine": "Местоположение: {location}",
   "email.device.approval.ctaOpenSettings": "Открыть настройки устройств",
   "email.device.approval.noteNoUrl": "Откройте Okkey на доверенном устройстве для подтверждения.",
   "email.device.approval.textFooterWithUrl": "Подробнее: {helpUrl}",
-  "email.device.approval.plain": "{lead}\n{deviceLine}\n{platformLine}\n{ipLine}\n{footer}",
+  "email.device.approval.plain": "{lead}\n{deviceLine}\n{platformLine}\n{ipLine}\n{locationLine}\n{footer}",
 
   "email.workspaceInvite.subject": "Приглашение в пространство «{workspaceName}»",
   "email.workspaceInvite.intro": "{inviter} приглашает вас в пространство «{workspaceName}».",

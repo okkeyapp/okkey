@@ -33,6 +33,7 @@ export interface DeviceServiceDeps {
   devices: Pick<
     DevicesRepository,
     | "registerOrUpdate"
+    | "reclaimSoleTrusted"
     | "isTrustedDevice"
     | "resolveApproval"
     | "listByUser"
@@ -60,6 +61,8 @@ export interface RegisterDeviceInput {
   userAgent: string;
   /** For email template locale resolution */
   acceptLanguage?: string;
+  /** Rebind sole trusted device instead of creating pending (local vault reclaim). */
+  reclaimSoleTrusted?: boolean;
 }
 
 export interface RegisterDeviceResult {
@@ -82,6 +85,7 @@ export interface DeviceListItem {
   osVersion: string;
   appVersion: string;
   clientType: string;
+  userAgent: string;
   ipAddress: string;
   country: string | null;
   city: string | null;
@@ -150,6 +154,29 @@ export class DeviceService {
     }
 
     try {
+      if (input.reclaimSoleTrusted) {
+        const reclaimed = await this.devices.reclaimSoleTrusted({
+          userId,
+          deviceFingerprint: input.deviceFingerprint.trim().toLowerCase(),
+          deviceName: cleanString(input.deviceName, "Unknown device"),
+          devicePublicKey: input.devicePublicKey.trim(),
+          platform: cleanString(input.platform, "unknown"),
+          osName: cleanString(input.osName, "unknown"),
+          osVersion: cleanString(input.osVersion, "unknown"),
+          appVersion: cleanString(input.appVersion, "unknown"),
+          clientType: cleanString(input.clientType, "unknown"),
+          userAgent: cleanString(input.userAgent, "unknown"),
+          requestIp: cleanString(requestIp, "unknown"),
+          now: this.now().toISOString(),
+        });
+        if (reclaimed) {
+          return {
+            deviceId: reclaimed.id,
+            status: "trusted",
+          };
+        }
+      }
+
       const record = await this.devices.registerOrUpdate({
         userId,
         deviceFingerprint: input.deviceFingerprint.trim().toLowerCase(),
@@ -269,6 +296,21 @@ export class DeviceService {
       return;
     }
 
+    const ip = cleanString(requestIp, "unknown");
+    let country: string | null = null;
+    let city: string | null = null;
+    if (this.geoIp) {
+      try {
+        const location = await this.geoIp.lookup(ip);
+        country = location.country;
+        city = location.city;
+      } catch (error: unknown) {
+        this.log?.warn("[device] geoip lookup failed for approval email", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     await this.emailTemplates.sendDeviceApprovalRequest({
       to: user.email,
       localeHints: {
@@ -277,9 +319,11 @@ export class DeviceService {
       },
       variables: {
         deviceName: input.deviceName,
-        platform: input.platform,
-        osName: input.osName,
-        requestIp: cleanString(requestIp, "unknown"),
+        platform: clientTypeLabel(input.clientType),
+        osName: cleanString(input.osName, "unknown"),
+        requestIp: ip,
+        country,
+        city,
         helpUrl: buildEmailAppPathUrl(this.config.publicAppBaseUrl, "/settings/devices"),
       },
     });
@@ -344,6 +388,7 @@ export class DeviceService {
       now: now.toISOString(),
       expiresAt,
       approvedBy: input.userId,
+      approverDeviceId: input.approverDeviceId,
       rejectReason: input.reason ? cleanString(input.reason, "rejected by user") : undefined,
     });
 
@@ -443,6 +488,7 @@ export class DeviceService {
       osVersion: record.osVersion,
       appVersion: record.appVersion,
       clientType: record.clientType,
+      userAgent: record.userAgent,
       ipAddress,
       country,
       city,
@@ -466,6 +512,25 @@ export class DeviceService {
 function cleanString(value: string, fallback: string): string {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed.slice(0, 255) : fallback;
+}
+
+function clientTypeLabel(clientType: string): string {
+  const value = clientType.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    chrome: "Chrome",
+    safari: "Safari",
+    firefox: "Firefox",
+    edge: "Edge",
+    opera: "Opera",
+    yandex: "Yandex",
+    vivaldi: "Vivaldi",
+    tor: "Tor",
+    web: "Web",
+    mobile: "App",
+    desktop: "App",
+    extension: "Extension",
+  };
+  return labels[value] ?? (value || "App");
 }
 
 function normalizeFingerprint(value: string | null | undefined): string | null {

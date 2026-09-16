@@ -9,6 +9,8 @@ export interface DeviceApprovalRequestVariables {
   osName: string;
   requestIp: string;
   helpUrl: string;
+  country?: string | null;
+  city?: string | null;
 }
 
 export interface WorkspaceInviteVariables {

@@ -9,6 +9,7 @@ export interface DeviceApprovalEmailProps {
   deviceLine: string;
   platformLine: string;
   ipLine: string;
+  locationLine: string;
   helpUrl: string;
   ctaLabel: string;
   noteNoUrl: string;
@@ -19,6 +20,7 @@ export function DeviceApprovalEmail({
   deviceLine,
   platformLine,
   ipLine,
+  locationLine,
   helpUrl,
   ctaLabel,
   noteNoUrl,
@@ -31,6 +33,7 @@ export function DeviceApprovalEmail({
         <Text style={metaStyle}>{deviceLine}</Text>
         <Text style={metaStyle}>{platformLine}</Text>
         <Text style={metaStyle}>{ipLine}</Text>
+        {locationLine ? <Text style={metaStyle}>{locationLine}</Text> : null}
       </Section>
       {hasUrl ? (
         <Section style={ctaWrapStyle}>

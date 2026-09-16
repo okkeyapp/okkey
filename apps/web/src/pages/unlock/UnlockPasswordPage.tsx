@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle, Button, Input, Spinner } from "@ok
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
-import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH } from "../../routes/paths";
+import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH, accountDevicePendingWithRedirectQuery } from "../../routes/paths";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../auth/pinRateLimit";
@@ -58,6 +58,7 @@ export default function UnlockPasswordPage() {
     vaultUnlockBootstrapLoading,
     vaultUnlocked,
     touchActivity,
+    deviceTrustStatus,
   } = useAuthVault();
 
   const prefs = readVaultDevicePrefs(userId);
@@ -289,6 +290,33 @@ export default function UnlockPasswordPage() {
 
   if (!accessToken) {
     return <Navigate to={AUTH_EMAIL_PATH} replace />;
+  }
+
+  if (
+    deviceTrustStatus === "pending" ||
+    deviceTrustStatus === "rejected" ||
+    deviceTrustStatus === "error"
+  ) {
+    const rawRedirect = searchParams.get("redirect");
+    const encoded =
+      rawRedirect && rawRedirect.startsWith("/")
+        ? encodeURIComponent(rawRedirect)
+        : undefined;
+    return <Navigate to={accountDevicePendingWithRedirectQuery(encoded)} replace />;
+  }
+
+  if (deviceTrustStatus === "checking" || deviceTrustStatus === "idle") {
+    return (
+      <AppShellLayout
+        title={t("unlock.title")}
+        description={t("unlock.description")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex flex-col items-center gap-3 py-8" role="status" aria-busy="true">
+          <Spinner />
+        </div>
+      </AppShellLayout>
+    );
   }
 
   const fieldsDisabled =

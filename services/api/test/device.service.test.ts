@@ -55,6 +55,7 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
 
 function createService(overrides?: {
   registerOrUpdate?: () => Promise<ReturnType<typeof createDeviceRecord>>;
+  reclaimSoleTrusted?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   isTrustedDevice?: () => Promise<boolean>;
   resolveApproval?: () => Promise<DeviceApprovalState>;
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
@@ -68,6 +69,7 @@ function createService(overrides?: {
       registerOrUpdate:
         overrides?.registerOrUpdate ??
         (async () => createDeviceRecord() as ReturnType<typeof createDeviceRecord>),
+      reclaimSoleTrusted: overrides?.reclaimSoleTrusted ?? (async () => null),
       isTrustedDevice: overrides?.isTrustedDevice ?? (async () => true),
       resolveApproval:
         overrides?.resolveApproval ??
@@ -109,6 +111,7 @@ test("registerDevice sends device_approval_request when pending and email deps c
   const service = new DeviceService({
     devices: {
       registerOrUpdate: async () => createDeviceRecord(),
+      reclaimSoleTrusted: async () => null,
       isTrustedDevice: async () => true,
       resolveApproval: async () => ({
         kind: "approved",
@@ -148,6 +151,9 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.equal(sends[0].to, "owner@test.local");
   assert.equal(sends[0].localeHints.acceptLanguage, "ru-RU");
   assert.equal(sends[0].variables.deviceName, "Pixel");
+  assert.equal(sends[0].variables.platform, "App");
+  assert.equal(sends[0].variables.osName, "macOS");
+  assert.equal(sends[0].variables.requestIp, "203.0.113.9");
   assert.match(sends[0].variables.helpUrl, /^https:\/\/app\.test\/settings\/devices$/);
 });
 

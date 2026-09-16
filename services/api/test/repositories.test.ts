@@ -240,12 +240,15 @@ test("DevicesRepository.resolveApproval approves pending device", async () => {
     now: "2026-01-01T00:02:00.000Z",
     expiresAt: "2025-12-31T23:59:00.000Z",
     approvedBy: "u1",
+    approverDeviceId: "trusted1",
   });
 
   assert.equal(result.kind, "approved");
   assert.equal(result.device?.status, "trusted");
   assert.equal(result.device?.approvedBy, "u1");
   assert.equal(result.device?.approvedAt, "2026-01-01T00:02:00.000Z");
+  assert.match(db.queries[1].sql, /device_share = approver\.device_share/);
+  assert.equal(db.queries[1].params[3], "trusted1");
 });
 
 test("EventsRepository.append increments version in transaction", async () => {

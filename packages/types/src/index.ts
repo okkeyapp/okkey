@@ -1132,6 +1132,11 @@ export interface RegisterCompleteMetadataDto {
   client_type?: string;
   user_agent?: string;
   crypto_capable?: boolean;
+  /**
+   * When true on `POST /devices/register`, if the user has exactly one trusted device,
+   * rebind that row to this fingerprint/public key instead of creating a pending device.
+   */
+  reclaim_sole_trusted?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */
@@ -1172,6 +1177,7 @@ export interface DeviceListItemDto {
   os_version: string;
   app_version: string;
   client_type: string;
+  user_agent?: string;
   ip_address: string;
   country: string | null;
   city: string | null;

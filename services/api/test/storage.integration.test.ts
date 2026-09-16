@@ -338,12 +338,14 @@ test("integration: DevicesRepository approval transitions are consistent", async
     now: "2026-01-01T00:00:20.000Z",
     expiresAt: "2026-01-01T00:00:00.000Z",
     approvedBy: user.id,
+    approverDeviceId: trustedApprover.id,
   });
 
   assert.equal(approved.kind, "approved");
   assert.equal(approved.device?.status, "trusted");
   assert.equal(approved.device?.approvedBy, user.id);
   assert.equal(approved.device?.approvedAt, "2026-01-01T00:00:20.000Z");
+  assert.deepEqual(Array.from(approved.device?.deviceShare ?? []), [7, 8, 9]);
 
   const approveAgain = await devices.resolveApproval({
     deviceId: pending.id,
@@ -352,6 +354,7 @@ test("integration: DevicesRepository approval transitions are consistent", async
     now: "2026-01-01T00:00:25.000Z",
     expiresAt: "2026-01-01T00:00:00.000Z",
     approvedBy: user.id,
+    approverDeviceId: trustedApprover.id,
   });
   assert.equal(approveAgain.kind, "already_trusted");
 
@@ -362,6 +365,7 @@ test("integration: DevicesRepository approval transitions are consistent", async
     now: "2026-01-01T00:00:26.000Z",
     expiresAt: "2026-01-01T00:00:00.000Z",
     approvedBy: user.id,
+    approverDeviceId: trustedApprover.id,
   });
   assert.equal(rejectConflict.kind, "already_trusted");
 
@@ -392,6 +396,7 @@ test("integration: DevicesRepository approval transitions are consistent", async
     now: "2026-01-01T00:10:00.000Z",
     expiresAt: "2026-01-01T00:05:00.000Z",
     approvedBy: user.id,
+    approverDeviceId: trustedApprover.id,
   });
   assert.equal(expired.kind, "expired");
   assert.equal(expired.device?.status, "revoked");

@@ -40,6 +40,15 @@ export function buildDeviceApprovalEmailProps(
   const ipLine = formatEmailMessage(locale, "email.device.approval.ipLine", {
     ip: variables.requestIp,
   });
+  const locationParts = [variables.city, variables.country].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  );
+  const locationLine =
+    locationParts.length > 0
+      ? formatEmailMessage(locale, "email.device.approval.locationLine", {
+          location: locationParts.join(", "),
+        })
+      : "";
   const ctaLabel = formatEmailMessage(locale, "email.device.approval.ctaOpenSettings", {});
   const noteNoUrl = formatEmailMessage(locale, "email.device.approval.noteNoUrl", {});
   return {
@@ -47,6 +56,7 @@ export function buildDeviceApprovalEmailProps(
     deviceLine,
     platformLine,
     ipLine,
+    locationLine,
     helpUrl,
     ctaLabel,
     noteNoUrl,
@@ -113,10 +123,12 @@ export const previewSampleAuthCode: AuthEmailCodeVariables = {
 };
 
 export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
-  deviceName: "MacBook Pro",
-  platform: "desktop",
+  deviceName: "Web macOS - Chrome",
+  platform: "Chrome",
   osName: "macOS",
   requestIp: "203.0.113.9",
+  country: "Singapore",
+  city: "Singapore",
   helpUrl: "https://app.okkey.local/settings/devices",
 };
 

@@ -16,6 +16,8 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { bytesToBase64 } from "../../auth/base64";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
+import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
+import { DEVICE_PUBLIC_KEY_KEY } from "../../auth/storageKeys";
 import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
 import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
@@ -115,8 +117,14 @@ export default function AuthRegistrationPage() {
       const deviceKp = ed25519Keypair();
       const devicePublicKeyB64 = bytesToBase64(deviceKp.slice(32, 64));
       wipeBytes(deviceKp);
+      try {
+        window.localStorage.setItem(DEVICE_PUBLIC_KEY_KEY, devicePublicKeyB64);
+      } catch {
+        /* ignore */
+      }
 
       const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
+      const browserEnv = parseBrowserEnvironment(navigator.userAgent ?? "");
 
       const body: RegisterCompleteRequestDto = {
         auth_state_id: registrationAuthStateId,
@@ -129,11 +137,16 @@ export default function AuthRegistrationPage() {
         device_public_key: devicePublicKeyB64,
         device_share: bytesToBase64(material.deviceShare),
         device_fingerprint: getOrCreateDeviceFingerprint(),
-        device_name: `Web · ${navigator.userAgent?.slice(0, 80) ?? "browser"}`,
+        device_name: browserEnv.deviceName,
         personal_workspace_name: personalWorkspaceName,
         first_name: trimmedFirst,
         last_name: trimmedLast,
-        client_type: "web",
+        platform: browserEnv.platform,
+        os_name: browserEnv.osName,
+        os_version: browserEnv.osVersion,
+        app_version: "web",
+        client_type: browserEnv.clientType,
+        user_agent: browserEnv.userAgent,
         metadata: { crypto_capable: true },
       };
 

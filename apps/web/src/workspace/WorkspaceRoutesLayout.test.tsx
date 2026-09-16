@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     listWorkspaceVaults: ReturnType<typeof vi.fn>;
     listWorkspacePersonalEvents: ReturnType<typeof vi.fn>;
     appendWorkspacePersonalEvent: ReturnType<typeof vi.fn>;
+    listDevices: ReturnType<typeof vi.fn>;
   },
 }));
 
@@ -31,6 +32,8 @@ vi.mock("../auth/AuthVaultContext", () => ({
     passwordShareC: new Uint8Array(32),
     vaultKey: new Uint8Array(32),
     vaultUnlocked: true,
+    currentDeviceId: "device-1",
+    deviceTrustStatus: "trusted",
   }),
   useAuthenticatedCoreClient: () => mocks.core,
 }));
@@ -260,6 +263,7 @@ describe("WorkspaceRoutesLayout", () => {
         events: [],
       }),
       appendWorkspacePersonalEvent: vi.fn(),
+      listDevices: vi.fn().mockResolvedValue({ devices: [], pending: [] }),
     };
   });
 

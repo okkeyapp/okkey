@@ -326,6 +326,26 @@ test("GET /devices requires auth and returns list payload", async () => {
   assert.equal(payload.pending[0]?.approval_expires_at, "2026-01-01T00:01:00.000Z");
 });
 
+test("GET /devices accepts device_fingerprint query when header is absent", async () => {
+  let seenFingerprint: string | null | undefined;
+  const res = await dispatch({
+    method: "GET",
+    url: `/devices?device_fingerprint=${"a".repeat(64)}`,
+    headers: {
+      "x-user-id": "u1",
+    },
+    deviceService: createDeviceServiceStub({
+      listDevices: async (_userId, fingerprint) => {
+        seenFingerprint = fingerprint;
+        return { devices: [], pending: [] };
+      },
+    }),
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(seenFingerprint, "a".repeat(64));
+});
+
 test("PATCH /devices/:id renames device", async () => {
   const res = await dispatch({
     method: "PATCH",

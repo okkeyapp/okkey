@@ -5,11 +5,13 @@ const coreMocks = vi.hoisted(() => ({
   listDevices: vi.fn(),
   approveDevice: vi.fn(),
   revokeDevice: vi.fn(),
+  rejectDevice: vi.fn(),
   patchDevice: vi.fn(),
 }));
 
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMocks,
+  useAuthVault: () => ({ hasVaultBundle: true, currentDeviceId: "d-current" }),
 }));
 
 vi.mock("../../auth/deviceFingerprint", () => ({
@@ -30,7 +32,7 @@ vi.mock("./DeviceTypeIcon", () => ({
   resolveDeviceBrandIcon: () => "windows",
 }));
 
-import SettingsDevicesContent from "./SettingsDevicesContent";
+import SettingsDevicesContent, { parseOsFromDeviceName } from "./SettingsDevicesContent";
 
 const t = (key: string, values?: Record<string, string | number>) => {
   if (!values) {
@@ -45,7 +47,7 @@ const t = (key: string, values?: Record<string, string | number>) => {
 function trustedDevice(overrides?: Record<string, unknown>) {
   return {
     device_id: "d-current",
-    device_name: "Web app iMac",
+    device_name: "Web macOS - Chrome",
     device_fingerprint: "a".repeat(64),
     status: "trusted",
     platform: "desktop",
@@ -68,11 +70,11 @@ function trustedDevice(overrides?: Record<string, unknown>) {
 function pendingDevice(overrides?: Record<string, unknown>) {
   return {
     device_id: "d-pending",
-    device_name: "Windows 11",
+    device_name: "Desktop Windows 11 - App",
     device_fingerprint: "b".repeat(64),
     status: "pending_approval",
     platform: "desktop",
-    os_name: "Windows",
+    os_name: "Windows 11",
     os_version: "11",
     app_version: "1.0.0",
     client_type: "desktop",
@@ -88,6 +90,20 @@ function pendingDevice(overrides?: Record<string, unknown>) {
   };
 }
 
+describe("parseOsFromDeviceName", () => {
+  it("extracts OS from UA-style device names", () => {
+    expect(
+      parseOsFromDeviceName(
+        "Web · Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      ),
+    ).toBe("macOS");
+    expect(parseOsFromDeviceName("Web · Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).toBe(
+      "Windows",
+    );
+    expect(parseOsFromDeviceName("Friendly laptop")).toBeNull();
+  });
+});
+
 describe("SettingsDevicesContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -97,6 +113,7 @@ describe("SettingsDevicesContent", () => {
     });
     coreMocks.approveDevice.mockResolvedValue({ device_id: "d-pending", status: "trusted" });
     coreMocks.revokeDevice.mockResolvedValue({ device_id: "d-pending", status: "revoked" });
+    coreMocks.rejectDevice.mockResolvedValue({ device_id: "d-pending", status: "revoked" });
     coreMocks.patchDevice.mockResolvedValue({
       device_id: "d-other",
       device_name: "Renamed",
@@ -106,10 +123,93 @@ describe("SettingsDevicesContent", () => {
   it("renders pending banner and trusted list", async () => {
     render(<SettingsDevicesContent t={t} />);
 
-    expect(await screen.findByText("Windows 11")).toBeTruthy();
-    expect(screen.getByText("Web app iMac")).toBeTruthy();
+    expect(await screen.findByText("Desktop Windows 11 - App")).toBeTruthy();
+    expect(screen.getByText("Web macOS - Chrome")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.pending.trust")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
+  });
+
+  it("shows OS inferred from device_name when os_name is unknown", async () => {
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [
+        trustedDevice({
+          device_name:
+            "Web · Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          os_name: "unknown",
+          platform: "unknown",
+        }),
+      ],
+      pending: [],
+    });
+
+    render(<SettingsDevicesContent t={t} />);
+
+    expect(await screen.findByText("Chrome · macOS")).toBeTruthy();
+    expect(screen.getByText("Web macOS - Chrome")).toBeTruthy();
+  });
+
+  it("marks device current via fingerprint when API is_current is false", async () => {
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [
+        trustedDevice({
+          is_current: false,
+          device_fingerprint: "a".repeat(64),
+        }),
+        trustedDevice({
+          device_id: "d-other",
+          device_name: "Other laptop",
+          device_fingerprint: "b".repeat(64),
+          is_current: false,
+        }),
+      ],
+      pending: [],
+    });
+
+    render(<SettingsDevicesContent t={t} />);
+
+    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
+    expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(1);
+  });
+
+  it("does not mark sole trusted device current when fingerprints differ", async () => {
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [
+        trustedDevice({
+          device_id: "d-other",
+          is_current: false,
+          device_fingerprint: "f".repeat(64),
+        }),
+      ],
+      pending: [],
+    });
+
+    render(<SettingsDevicesContent t={t} />);
+
+    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(screen.queryByText("web.settingsPopup.devices.list.currentBadge")).toBeNull();
+    expect(screen.getByLabelText("web.settingsPopup.devices.actions.menu")).toBeTruthy();
+  });
+
+  it("hides actions menu for the current device", async () => {
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [
+        trustedDevice(),
+        trustedDevice({
+          device_id: "d-other",
+          device_name: "Other laptop",
+          device_fingerprint: "b".repeat(64),
+          is_current: false,
+        }),
+      ],
+      pending: [],
+    });
+
+    render(<SettingsDevicesContent t={t} />);
+
+    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
+    expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
+    expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(1);
   });
 
   it("trusts pending device via approveDevice", async () => {
@@ -124,7 +224,7 @@ describe("SettingsDevicesContent", () => {
       });
 
     render(<SettingsDevicesContent t={t} />);
-    await screen.findByText("Windows 11");
+    await screen.findByText("Desktop Windows 11 - App");
 
     fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.trust"));
 
@@ -133,7 +233,7 @@ describe("SettingsDevicesContent", () => {
     });
   });
 
-  it("dismisses pending device via revokeDevice", async () => {
+  it("dismisses pending device via rejectDevice", async () => {
     coreMocks.listDevices
       .mockResolvedValueOnce({
         devices: [trustedDevice()],
@@ -145,12 +245,16 @@ describe("SettingsDevicesContent", () => {
       });
 
     render(<SettingsDevicesContent t={t} />);
-    await screen.findByText("Windows 11");
+    await screen.findByText("Desktop Windows 11 - App");
 
     fireEvent.click(screen.getByText("web.settingsPopup.devices.pending.notNow"));
 
     await waitFor(() => {
-      expect(coreMocks.revokeDevice).toHaveBeenCalledWith("d-pending", "dismissed by user");
+      expect(coreMocks.rejectDevice).toHaveBeenCalledWith(
+        "d-pending",
+        "d-current",
+        "dismissed by user",
+      );
     });
   });
 
@@ -167,7 +271,7 @@ describe("SettingsDevicesContent", () => {
     expect(await screen.findByText("web.settingsPopup.devices.error.generic")).toBeTruthy();
     fireEvent.click(screen.getByText("web.settingsPopup.devices.retry"));
 
-    expect(await screen.findByText("Web app iMac")).toBeTruthy();
+    expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
     expect(coreMocks.listDevices).toHaveBeenCalledTimes(2);
   });
 });

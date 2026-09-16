@@ -526,7 +526,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(deps.deviceService, resolveUserId),
+      createRegisterDeviceRoute(deps.deviceService, resolveUserId, config.trustedProxyHops),
     );
     app.route(
       "PATCH",

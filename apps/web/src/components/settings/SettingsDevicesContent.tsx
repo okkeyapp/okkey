@@ -5,17 +5,19 @@ import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
   Popup,
 } from "@okkey/ui";
-import { EllipsisVertical } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
+import { IconActions16 } from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
 import {
@@ -23,9 +25,6 @@ import {
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,
 } from "./DeviceTypeIcon";
-
-/** UI auto-reject countdown for pending banner (product / Figma). */
-export const PENDING_UI_COUNTDOWN_SECONDS = 60;
 
 type SettingsDevicesContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -118,66 +117,12 @@ function formatLastActiveLabel(
   });
 }
 
-function formatClientOs(device: DeviceListItemDto): string {
-  const client = formatClientLabel(device.client_type);
-  const os = device.os_name && device.os_name !== "unknown" ? device.os_name : device.platform;
-  return `${client} · ${os}`;
-}
-
-function formatClientLabel(clientType: string): string {
-  const value = clientType.trim().toLowerCase();
-  if (!value || value === "unknown") return "App";
-  if (value.includes("extension")) return "Chrome extension";
-  if (value === "web" || value.includes("browser")) return "Chrome";
-  if (value.includes("mobile")) return "App";
-  if (value.includes("desktop")) return "App";
-  return clientType;
-}
-
-function remainingUiSeconds(approvalExpiresAt: string | null, nowMs: number): number {
-  if (!approvalExpiresAt) {
-    return PENDING_UI_COUNTDOWN_SECONDS;
-  }
-  const serverRemaining = Math.max(
-    0,
-    Math.ceil((new Date(approvalExpiresAt).getTime() - nowMs) / 1000),
-  );
-  return Math.min(PENDING_UI_COUNTDOWN_SECONDS, serverRemaining);
-}
-
-function CountdownRing({ progress }: { progress: number }) {
-  const radius = 6;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - Math.min(1, Math.max(0, progress)));
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden className="shrink-0">
-      <circle
-        cx="8"
-        cy="8"
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.25"
-        strokeWidth="2"
-      />
-      <circle
-        cx="8"
-        cy="8"
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        transform="rotate(-90 8 8)"
-      />
-    </svg>
-  );
-}
+/** Re-export for existing tests. */
+export { parseOsFromDeviceName } from "../../auth/browserEnvironment";
 
 export default function SettingsDevicesContent({ t }: SettingsDevicesContentProps) {
   const core = useAuthenticatedCoreClient();
+  const { currentDeviceId: sessionDeviceId } = useAuthVault();
   const { locale } = useLocale();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,8 +131,6 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<DeviceListItemDto | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const autoRejectingRef = useRef<string | null>(null);
 
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
 
@@ -214,23 +157,25 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (pending.length === 0) {
-      return;
-    }
-    const timer = window.setInterval(() => setNowMs(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, [pending.length]);
+  const isCurrentDevice = useCallback(
+    (device: DeviceListItemDto) => {
+      if (device.is_current) {
+        return true;
+      }
+      if (sessionDeviceId && device.device_id === sessionDeviceId) {
+        return true;
+      }
+      return device.device_fingerprint.toLowerCase() === fingerprint.toLowerCase();
+    },
+    [fingerprint, sessionDeviceId],
+  );
 
   const currentDeviceId = useMemo(
-    () => devices.find((device) => device.is_current)?.device_id ?? null,
-    [devices],
+    () => devices.find((device) => isCurrentDevice(device))?.device_id ?? null,
+    [devices, isCurrentDevice],
   );
 
   const primaryPending = pending[0] ?? null;
-  const countdownSeconds = primaryPending
-    ? remainingUiSeconds(primaryPending.approval_expires_at, nowMs)
-    : 0;
 
   const dismissPending = useCallback(
     async (deviceId: string, reason: string) => {
@@ -239,29 +184,21 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       }
       setBusyId(deviceId);
       try {
-        await core.revokeDevice(deviceId, reason);
+        if (currentDeviceId) {
+          await core.rejectDevice(deviceId, currentDeviceId, reason);
+        } else {
+          await core.revokeDevice(deviceId, reason);
+        }
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
         await load();
       } catch (err) {
         toast.error(devicesErrorMessage(err, t));
       } finally {
         setBusyId(null);
-        autoRejectingRef.current = null;
       }
     },
-    [busyId, core, load, t],
+    [busyId, core, currentDeviceId, load, t],
   );
-
-  useEffect(() => {
-    if (!primaryPending || countdownSeconds > 0) {
-      return;
-    }
-    if (autoRejectingRef.current === primaryPending.device_id) {
-      return;
-    }
-    autoRejectingRef.current = primaryPending.device_id;
-    void dismissPending(primaryPending.device_id, "auto-rejected after timeout");
-  }, [countdownSeconds, dismissPending, primaryPending]);
 
   const trustPending = async (deviceId: string) => {
     if (!core || !currentDeviceId) {
@@ -319,7 +256,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
 
   if (loading) {
     return (
-      <div className="flex min-h-[min(420px,calc(100dvh-32px))] items-center justify-center p-4 text-sm text-muted-foreground">
+      <div className="flex min-h-[420px] items-center justify-center text-sm text-muted-foreground">
         {t("web.settingsPopup.devices.loading")}
       </div>
     );
@@ -327,7 +264,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
 
   if (error) {
     return (
-      <div className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col items-start gap-3 p-4">
+      <div className="flex min-h-[420px] flex-col items-start gap-3">
         <p className="text-sm text-destructive">{error}</p>
         <Button type="button" variant="secondary" onClick={() => void load()}>
           {t("web.settingsPopup.devices.retry")}
@@ -337,74 +274,74 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   }
 
   return (
-    <div className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col gap-4 pb-4">
-      <p className="px-4 text-sm text-muted-foreground">
-        {t("web.settingsPopup.devices.description")}
-      </p>
+    <div className="flex min-h-[420px] flex-col gap-4 pb-1">
+      <p className="text-sm text-muted-foreground">{t("web.settingsPopup.devices.description")}</p>
 
       {primaryPending ? (
-        <div className="px-4">
-          <div className="flex flex-col gap-4 rounded-xl bg-secondary p-4">
-            <div className="flex flex-col gap-1.5">
-              <p className="text-sm font-medium text-foreground">
-                {t("web.settingsPopup.devices.pending.title")}
+        <div className="flex flex-col gap-4 rounded-xl bg-secondary p-4">
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm font-medium text-foreground">
+              {t("web.settingsPopup.devices.pending.title")}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {t("web.settingsPopup.devices.pending.body")}
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <DeviceTypeIcon
+              form={resolveDeviceFormIcon(primaryPending)}
+              brand={resolveDeviceBrandIcon(primaryPending)}
+            />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <p className="truncate text-sm font-medium text-foreground">
+                {formatDeviceTitle(primaryPending)}
               </p>
-              <p className="text-sm text-muted-foreground">
-                {t("web.settingsPopup.devices.pending.body")}
+              <p className="text-sm text-muted-foreground">{formatDeviceClientOs(primaryPending)}</p>
+            </div>
+            <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
+              <p>
+                {t("web.settingsPopup.devices.pending.ip", {
+                  ip: primaryPending.ip_address || "unknown",
+                })}
+              </p>
+              <p>
+                {t("web.settingsPopup.devices.pending.country", {
+                  country:
+                    primaryPending.country ||
+                    t("web.settingsPopup.devices.pending.unknownLocation"),
+                })}
+              </p>
+              <p>
+                {t("web.settingsPopup.devices.pending.city", {
+                  city:
+                    primaryPending.city || t("web.settingsPopup.devices.pending.unknownLocation"),
+                })}
               </p>
             </div>
-            <div className="flex items-center gap-4">
-              <DeviceTypeIcon
-                form={resolveDeviceFormIcon(primaryPending)}
-                brand={resolveDeviceBrandIcon(primaryPending)}
-              />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {primaryPending.device_name}
-                </p>
-                <p className="text-sm text-muted-foreground">{formatClientOs(primaryPending)}</p>
-              </div>
-              <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
-                <p>
-                  {t("web.settingsPopup.devices.pending.ip", {
-                    ip: primaryPending.ip_address || "unknown",
-                  })}
-                </p>
-                {primaryPending.city || primaryPending.country ? (
-                  <p>
-                    {[primaryPending.city, primaryPending.country].filter(Boolean).join(", ")}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busyId === primaryPending.device_id}
-                onClick={() => void trustPending(primaryPending.device_id)}
-              >
-                {t("web.settingsPopup.devices.pending.trust")}
-              </Button>
-              <Button
-                type="button"
-                disabled={busyId === primaryPending.device_id}
-                onClick={() =>
-                  void dismissPending(primaryPending.device_id, "dismissed by user")
-                }
-              >
-                <span>{t("web.settingsPopup.devices.pending.notNow")}</span>
-                <span className="inline-flex items-center gap-1">
-                  <span>{countdownSeconds}</span>
-                  <CountdownRing progress={countdownSeconds / PENDING_UI_COUNTDOWN_SECONDS} />
-                </span>
-              </Button>
-            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busyId === primaryPending.device_id}
+              onClick={() => void trustPending(primaryPending.device_id)}
+            >
+              {t("web.settingsPopup.devices.pending.trust")}
+            </Button>
+            <Button
+              type="button"
+              disabled={busyId === primaryPending.device_id}
+              onClick={() =>
+                void dismissPending(primaryPending.device_id, "dismissed by user")
+              }
+            >
+              {t("web.settingsPopup.devices.pending.notNow")}
+            </Button>
           </div>
         </div>
       ) : null}
 
-      <div className="flex flex-col px-4">
+      <div className="flex flex-col">
         {devices.length === 0 && !primaryPending ? (
           <p className="py-8 text-sm text-muted-foreground">
             {t("web.settingsPopup.devices.empty")}
@@ -413,65 +350,66 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         {devices.map((device, index) => {
           const form = resolveDeviceFormIcon(device);
           const brand = resolveDeviceBrandIcon(device);
+          const current = isCurrentDevice(device);
           return (
             <div
               key={device.device_id}
               className={
                 index === 0
-                  ? "flex items-center gap-4 overflow-clip py-4"
-                  : "flex items-center gap-4 overflow-clip border-t border-border py-4"
+                  ? "flex items-start gap-4 py-4"
+                  : "flex items-start gap-4 border-t border-border py-4"
               }
             >
               <DeviceTypeIcon form={form} brand={brand} />
               <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center gap-2.5">
-                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                    {device.device_name}
-                  </p>
-                  {device.is_current ? (
-                    <span className="shrink-0 rounded-full bg-secondary px-2 text-xs leading-5 text-foreground">
-                      {t("web.settingsPopup.devices.list.currentBadge")}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="text-sm text-muted-foreground">{formatClientOs(device)}</p>
+                <p className="truncate text-sm font-medium text-foreground">{formatDeviceTitle(device)}</p>
+                <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
                 <div className="pt-1.5 text-[13px] leading-5 text-muted-foreground">
                   <p>{formatAddedLabel(device.created_at, locale, t)}</p>
                   <p>{formatLastActiveLabel(device.last_seen_at, locale, t)}</p>
                 </div>
               </div>
-              {!device.is_current ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9 shrink-0"
-                      aria-label={t("web.settingsPopup.devices.actions.menu")}
-                      disabled={busyId === device.device_id}
-                    >
-                      <EllipsisVertical className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setRenameTarget(device);
-                        setRenameValue(device.device_name);
-                      }}
-                    >
-                      {t("web.settingsPopup.devices.actions.rename")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => void revokeTrusted(device.device_id)}
-                    >
-                      {t("web.settingsPopup.devices.actions.revoke")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
+              {current ? (
+                <span className="shrink-0 rounded-full bg-secondary px-2 text-xs leading-5 text-foreground">
+                  {t("web.settingsPopup.devices.list.currentBadge")}
+                </span>
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="iconSm"
+                        className="shrink-0"
+                        aria-label={t("web.settingsPopup.devices.actions.menu")}
+                        disabled={busyId === device.device_id}
+                      >
+                        <IconActions16 className="size-4 text-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-auto min-w-56 p-1">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          className="gap-2"
+                          onSelect={() => {
+                            setRenameTarget(device);
+                            setRenameValue(device.device_name);
+                          }}
+                        >
+                          {t("web.settingsPopup.devices.actions.rename")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
+                          onSelect={() => void revokeTrusted(device.device_id)}
+                        >
+                          {t("web.settingsPopup.devices.actions.revoke")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
             </div>
           );
         })}

@@ -15,11 +15,19 @@ export function getOrCreateDeviceFingerprint(): string {
   if (typeof window === "undefined") {
     return "0".repeat(64);
   }
-  const existing = window.localStorage.getItem(DEVICE_FINGERPRINT_KEY);
-  if (existing && /^[0-9a-f]{64}$/i.test(existing)) {
-    return existing.toLowerCase();
+  try {
+    const storage = window.localStorage;
+    if (!storage || typeof storage.getItem !== "function" || typeof storage.setItem !== "function") {
+      return "0".repeat(64);
+    }
+    const existing = storage.getItem(DEVICE_FINGERPRINT_KEY);
+    if (existing && /^[0-9a-f]{64}$/i.test(existing)) {
+      return existing.toLowerCase();
+    }
+    const hex = bytesToHex(randomBytesBrowser(32));
+    storage.setItem(DEVICE_FINGERPRINT_KEY, hex);
+    return hex;
+  } catch {
+    return "0".repeat(64);
   }
-  const hex = bytesToHex(randomBytesBrowser(32));
-  window.localStorage.setItem(DEVICE_FINGERPRINT_KEY, hex);
-  return hex;
 }

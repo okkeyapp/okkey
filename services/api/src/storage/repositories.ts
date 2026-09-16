@@ -942,6 +942,135 @@ export class DevicesRepository {
     this.db = db;
   }
 
+  /**
+   * Rebind the user's only trusted device to a new fingerprint/public key
+   * (keeps device_share B). Returns null when the user does not have exactly one trusted device.
+   */
+  async reclaimSoleTrusted(input: {
+    userId: string;
+    deviceFingerprint: string;
+    deviceName: string;
+    devicePublicKey: string;
+    platform: string;
+    osName: string;
+    osVersion: string;
+    appVersion: string;
+    clientType: string;
+    userAgent: string;
+    requestIp: string;
+    now: string;
+  }): Promise<DeviceRecord | null> {
+    return this.db.transaction(async (tx) => {
+      const countRows = await tx.query<{ n: string }>(
+        `
+          SELECT COUNT(*)::text AS n
+          FROM devices
+          WHERE user_id = $1::bigint AND status = 'trusted'
+        `,
+        [input.userId],
+      );
+      if (Number(countRows[0]?.n ?? 0) !== 1) {
+        return null;
+      }
+
+      // Drop conflicting pending/revoked rows that would block fingerprint uniqueness.
+      await tx.query(
+        `
+          DELETE FROM devices
+          WHERE user_id = $1::bigint
+            AND device_fingerprint = $2
+            AND status <> 'trusted'
+        `,
+        [input.userId, input.deviceFingerprint],
+      );
+
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            device_fingerprint = $2,
+            device_public_key = $3,
+            device_name = $4,
+            platform = $5,
+            os_name = $6,
+            os_version = $7,
+            app_version = $8,
+            client_type = $9,
+            user_agent = $10,
+            ip_last = $11,
+            last_seen_at = $12::timestamptz,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL
+          WHERE user_id = $1::bigint
+            AND status = 'trusted'
+          RETURNING
+            id,
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            created_at,
+            last_seen_at,
+            approved_by,
+            approved_at,
+            rejected_at,
+            rejection_reason,
+            revoked_at
+        `,
+        [
+          input.userId,
+          input.deviceFingerprint,
+          input.devicePublicKey,
+          input.deviceName,
+          input.platform,
+          input.osName,
+          input.osVersion,
+          input.appVersion,
+          input.clientType,
+          input.userAgent,
+          input.requestIp,
+          input.now,
+        ],
+      );
+
+      return rows[0] ? mapDevice(rows[0]) : null;
+    });
+  }
+
   async registerOrUpdate(input: {
     userId: string;
     deviceFingerprint: string;
@@ -1018,8 +1147,24 @@ export class DevicesRepository {
             $12,
             $13,
             $13,
-            'pending',
-            NULL,
+            CASE
+              WHEN EXISTS (
+                SELECT 1
+                FROM devices AS existing
+                WHERE existing.user_id = $2::bigint
+                  AND existing.status = 'trusted'
+              ) THEN 'pending'
+              ELSE 'trusted'
+            END,
+            CASE
+              WHEN EXISTS (
+                SELECT 1
+                FROM devices AS existing
+                WHERE existing.user_id = $2::bigint
+                  AND existing.status = 'trusted'
+              ) THEN NULL
+              ELSE $14::timestamptz
+            END,
             NULL
           )
           ON CONFLICT (user_id, device_fingerprint, device_public_key)
@@ -1034,7 +1179,18 @@ export class DevicesRepository {
             user_agent = EXCLUDED.user_agent,
             status = CASE
               WHEN devices.status = 'trusted' THEN 'trusted'
+              WHEN NOT EXISTS (
+                SELECT 1
+                FROM devices AS other
+                WHERE other.user_id = devices.user_id
+                  AND other.status = 'trusted'
+                  AND other.id <> devices.id
+              ) THEN 'trusted'
               ELSE 'pending'
+            END,
+            created_at = CASE
+              WHEN devices.status = 'trusted' THEN devices.created_at
+              ELSE $14::timestamptz
             END,
             approved_by = CASE
               WHEN devices.status = 'trusted' THEN devices.approved_by
@@ -1042,6 +1198,13 @@ export class DevicesRepository {
             END,
             approved_at = CASE
               WHEN devices.status = 'trusted' THEN devices.approved_at
+              WHEN NOT EXISTS (
+                SELECT 1
+                FROM devices AS other
+                WHERE other.user_id = devices.user_id
+                  AND other.status = 'trusted'
+                  AND other.id <> devices.id
+              ) THEN $14::timestamptz
               ELSE NULL
             END,
             rejected_at = CASE
@@ -1058,11 +1221,18 @@ export class DevicesRepository {
             END,
             last_seen_at = CASE
               WHEN devices.status = 'trusted' THEN $14::timestamptz
+              WHEN NOT EXISTS (
+                SELECT 1
+                FROM devices AS other
+                WHERE other.user_id = devices.user_id
+                  AND other.status = 'trusted'
+                  AND other.id <> devices.id
+              ) THEN $14::timestamptz
               ELSE devices.last_seen_at
             END,
             ip_last = CASE
               WHEN devices.status = 'trusted' THEN EXCLUDED.ip_last
-              ELSE devices.ip_last
+              ELSE EXCLUDED.ip_last
             END
           RETURNING
             id,
@@ -1114,42 +1284,15 @@ export class DevicesRepository {
 
   /**
    * Trusted device_share (B) for unlock bootstrap.
-   * If `fingerprint` matches a trusted row, use it; else if the user has exactly one trusted device, use that row
-   * (covers cleared localStorage where a new random fingerprint was generated).
+   * Only returns a share when `fingerprint` matches a trusted device row.
+   * No sole-device fallback — a new browser fingerprint must register and be approved first.
    */
   async findTrustedDeviceShareForUnlock(
     userId: string,
     fingerprint: string | null,
   ): Promise<Uint8Array | null> {
     const norm = fingerprint?.trim().toLowerCase() ?? null;
-    if (norm && /^[0-9a-f]{64}$/.test(norm)) {
-      const rows = await this.db.query<{ device_share: Buffer }>(
-        `
-          SELECT device_share
-          FROM devices
-          WHERE user_id = $1::bigint
-            AND device_fingerprint = $2
-            AND status = 'trusted'
-          ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
-          LIMIT 1
-        `,
-        [userId, norm],
-      );
-      if (rows[0]) {
-        return Uint8Array.from(rows[0].device_share);
-      }
-    }
-
-    const countRows = await this.db.query<{ n: string }>(
-      `
-        SELECT COUNT(*)::text AS n
-        FROM devices
-        WHERE user_id = $1::bigint AND status = 'trusted'
-      `,
-      [userId],
-    );
-    const n = Number(countRows[0]?.n ?? 0);
-    if (n !== 1) {
+    if (!norm || !/^[0-9a-f]{64}$/.test(norm)) {
       return null;
     }
 
@@ -1157,10 +1300,13 @@ export class DevicesRepository {
       `
         SELECT device_share
         FROM devices
-        WHERE user_id = $1::bigint AND status = 'trusted'
+        WHERE user_id = $1::bigint
+          AND device_fingerprint = $2
+          AND status = 'trusted'
+        ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
         LIMIT 1
       `,
-      [userId],
+      [userId, norm],
     );
     return rows[0] ? Uint8Array.from(rows[0].device_share) : null;
   }
@@ -1188,6 +1334,8 @@ export class DevicesRepository {
     now: string;
     expiresAt: string;
     approvedBy: string;
+    /** Trusted device that performs approval; its device_share (B) is copied onto the pending row. */
+    approverDeviceId?: string;
     rejectReason?: string;
   }): Promise<DeviceApprovalState> {
     return this.db.transaction(async (tx) => {
@@ -1324,6 +1472,9 @@ export class DevicesRepository {
       }
 
       if (input.action === "approve") {
+        if (!input.approverDeviceId) {
+          return { kind: "access_denied", device: mapDevice(current) };
+        }
         const approvedRows = await tx.query<{
           id: string;
           user_id: string;
@@ -1349,42 +1500,50 @@ export class DevicesRepository {
           revoked_at: string | Date | null;
         }>(
           `
-            UPDATE devices
+            UPDATE devices AS pending
             SET
               status = 'trusted',
+              device_share = approver.device_share,
               approved_by = $2,
               approved_at = $3::timestamptz,
               last_seen_at = $3::timestamptz,
               rejected_at = NULL,
               rejection_reason = NULL,
               revoked_at = NULL
-            WHERE id = $1
+            FROM devices AS approver
+            WHERE pending.id = $1
+              AND approver.id = $4
+              AND approver.user_id = pending.user_id
+              AND approver.status = 'trusted'
             RETURNING
-              id,
-              user_id,
-              device_fingerprint,
-              device_name,
-              device_public_key,
-              device_share,
-              platform,
-              os_name,
-              os_version,
-              app_version,
-              client_type,
-              user_agent,
-              ip_first,
-              ip_last,
-              status,
-              created_at,
-              last_seen_at,
-              approved_by,
-              approved_at,
-              rejected_at,
-              rejection_reason,
-              revoked_at
+              pending.id,
+              pending.user_id,
+              pending.device_fingerprint,
+              pending.device_name,
+              pending.device_public_key,
+              pending.device_share,
+              pending.platform,
+              pending.os_name,
+              pending.os_version,
+              pending.app_version,
+              pending.client_type,
+              pending.user_agent,
+              pending.ip_first,
+              pending.ip_last,
+              pending.status,
+              pending.created_at,
+              pending.last_seen_at,
+              pending.approved_by,
+              pending.approved_at,
+              pending.rejected_at,
+              pending.rejection_reason,
+              pending.revoked_at
           `,
-          [input.deviceId, input.approvedBy, input.now],
+          [input.deviceId, input.approvedBy, input.now, input.approverDeviceId],
         );
+        if (!approvedRows[0]) {
+          return { kind: "access_denied", device: mapDevice(current) };
+        }
         return { kind: "approved", device: mapDevice(approvedRows[0]) };
       }
 
