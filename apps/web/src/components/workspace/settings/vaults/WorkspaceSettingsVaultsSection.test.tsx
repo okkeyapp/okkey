@@ -54,6 +54,8 @@ describe("WorkspaceSettingsVaultsSection", () => {
             name: "WS",
             ownerId: "u1",
             planTier: "FREE",
+            planCustomOverride: false,
+            planFeatureOverrides: {},
             deletedItemsRetentionDays: 30,
             allowedFileExtensions: [],
             maxFileSizeMb: 2,

@@ -2,6 +2,8 @@ import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from
 import {
   hasPlanFeature,
   isCapsuleAllowedForMember,
+  planEntitlementOptionsFromWorkspace,
+  sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
   type CapsuleApprovalRequestDto,
   type CapsuleApprovalStatusDto,
@@ -12,6 +14,7 @@ import {
   type CapsuleState,
   type CapsuleType,
   type CapsuleViewLimitAction,
+  type PlanFeatureOverrides,
   type WorkspaceCapsulePolicies,
   type WorkspaceCapsulePoliciesDto,
 } from "@okkey/types";
@@ -309,7 +312,7 @@ export class CapsuleService {
     if (!workspace.canAccess) {
       throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
     }
-    if (!hasPlanFeature(workspace.planTier, "capsules")) {
+    if (!hasPlanFeature(workspace.planTier, "capsules", planEntitlementOptionsFromWorkspace(workspace))) {
       throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
     }
     if (!isCapsuleAllowedForMember(workspace.capsulePolicies, creatorId)) {
@@ -317,7 +320,11 @@ export class CapsuleService {
     }
     if (
       requestsCapsuleAccessSettings(input) &&
-      !hasPlanFeature(workspace.planTier, "capsuleAccessSettings")
+      !hasPlanFeature(
+        workspace.planTier,
+        "capsuleAccessSettings",
+        planEntitlementOptionsFromWorkspace(workspace),
+      )
     ) {
       throw new CapsuleServiceError(
         "FEATURE_NOT_AVAILABLE",
@@ -624,7 +631,11 @@ export class CapsuleService {
       }
       if (
         requestsCapsuleAccessSettings(input) &&
-        !hasPlanFeature(workspace.planTier, "capsuleAccessSettings")
+        !hasPlanFeature(
+          workspace.planTier,
+          "capsuleAccessSettings",
+          planEntitlementOptionsFromWorkspace(workspace),
+        )
       ) {
         throw new CapsuleServiceError(
           "FEATURE_NOT_AVAILABLE",
@@ -1551,12 +1562,16 @@ export class CapsuleService {
     exists: boolean;
     canAccess: boolean;
     planTier: string | null;
+    planCustomOverride: boolean;
+    planFeatureOverrides: PlanFeatureOverrides;
     capsulePolicies: WorkspaceCapsulePolicies;
   }> {
     const rows = await this.db.query<{
       exists: boolean;
       can_access: boolean;
       plan_tier: string | null;
+      plan_custom_override: boolean | null;
+      plan_feature_overrides: unknown;
       capsule_policies: unknown;
     }>(
       `
@@ -1564,6 +1579,8 @@ export class CapsuleService {
           TRUE AS exists,
           (w.owner_id = $2 OR wm.user_id IS NOT NULL) AS can_access,
           w.plan_tier,
+          w.plan_custom_override,
+          w.plan_feature_overrides,
           w.capsule_policies
         FROM workspaces w
         LEFT JOIN workspace_members wm
@@ -1579,6 +1596,8 @@ export class CapsuleService {
         exists: false,
         canAccess: false,
         planTier: null,
+        planCustomOverride: false,
+        planFeatureOverrides: {},
         capsulePolicies: workspaceCapsulePoliciesFromDto(undefined),
       };
     }
@@ -1586,6 +1605,8 @@ export class CapsuleService {
       exists: true,
       canAccess: Boolean(row.can_access),
       planTier: row.plan_tier,
+      planCustomOverride: Boolean(row.plan_custom_override),
+      planFeatureOverrides: sanitizePlanFeatureOverrides(row.plan_feature_overrides),
       capsulePolicies: workspaceCapsulePoliciesFromDto(
         row.capsule_policies as Partial<WorkspaceCapsulePoliciesDto> | undefined,
       ),

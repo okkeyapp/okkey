@@ -9,6 +9,7 @@ import {
   type CryptoRolloutMode,
   type DeployEnv,
 } from "./crypto/policy-matrix.ts";
+import type { PlanTier } from "@okkey/types";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -21,8 +22,11 @@ export interface ApiConfig {
   deployEnv: DeployEnv;
   /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
   deploymentMode: DeploymentMode;
-  /** Plan assigned to newly created workspaces. ENTERPRISE when enterprise modules are enabled. */
-  defaultWorkspacePlanTier: "FREE" | "ENTERPRISE";
+  /**
+   * Plan assigned to newly created workspaces.
+   * ENTERPRISE when enterprise modules are enabled (dev convenience — not a payment flow).
+   */
+  defaultWorkspacePlanTier: PlanTier;
   port: number;
   logLevel: string;
   corsOrigin: string;

@@ -3,8 +3,10 @@ import type { AttachmentsRepository, AttachmentRecord } from "../storage/attachm
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import {
   DEFAULT_MAX_FILE_SIZE_MB,
+  hasPlanFeature,
   maxFileSizeBytesFromMb,
   normalizeFileExtensionTag,
+  planEntitlementOptionsFromWorkspace,
 } from "@okkey/types";
 
 export class AttachmentServiceError extends Error {
@@ -228,7 +230,13 @@ export class AttachmentService {
     return {
       allowedExtensions: workspace.allowedFileExtensions,
       maxSizeBytes: maxFileSizeBytesFromMb(workspace.maxFileSizeMb),
-      filesInItemsEnabled: workspace.filesInItemsEnabled,
+      filesInItemsEnabled:
+        workspace.filesInItemsEnabled &&
+        hasPlanFeature(
+          workspace.planTier,
+          "filesInItems",
+          planEntitlementOptionsFromWorkspace(workspace),
+        ),
     };
   }
 }

@@ -3,6 +3,7 @@ import type { WebMessageValues } from "@okkey/i18n";
 import type { Locale } from "date-fns";
 import {
   hasPlanFeature,
+  planEntitlementOptionsFromWorkspace,
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
   type CapsuleAccessDefaultsDto,
@@ -198,6 +199,10 @@ export default function NewCapsulePopup({
   const advancedAvailable = hasPlanFeature(
     workspace?.planTier,
     "capsuleAccessSettings",
+    planEntitlementOptionsFromWorkspace({
+      planCustomOverride: workspace?.planCustomOverride,
+      planFeatureOverrides: workspace?.planFeatureOverrides,
+    }),
   );
   const capsulePolicies: WorkspaceCapsulePolicies =
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;

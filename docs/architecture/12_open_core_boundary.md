@@ -19,27 +19,62 @@ The open-source core must:
 
 ## Plan tiers (Core)
 
-Commercial workspace plan is `workspace.plan_tier`:
+Commercial workspace plan is `workspace.plan_tier` (catalog):
 
-- **`FREE`** — open-source baseline
-- **`ENTERPRISE`** — all paid entitlements (today)
-
-Entitlements are resolved only via `hasPlanFeature(planTier, feature)` in `@okkey/types` (`PLAN_FEATURE_MATRIX`).  
-Later product plans (`PREMIUM` / `FAMILY` / `TEAM`) are added by extending the matrix — call sites stay on `hasPlanFeature`.
-
-Current matrix:
-
-| Feature | FREE | ENTERPRISE |
+| Tier | Group | Role |
 |---|---|---|
-| `capsules` | yes | yes |
-| `capsuleAccessSettings` | no | yes |
-| `customWorkspaceRoles` | no | yes |
-| `customWorkspaceProfiles` | no | yes |
-| `sharedVaults` | no | yes |
-| `additionalWorkspaceMembers` | no | yes |
-| `paidPlanBadge` | no | yes |
+| `FREE` | Personal | Open-source / SaaS default baseline |
+| `PREMIUM` | Personal | Individual paid |
+| `FAMILY` | Personal | Multi-seat personal (vaults / members / roles) |
+| `TEAM` | Business | Team paid |
+| `ENTERPRISE` | Business | Top catalog tier (full matrix today) |
+
+**Custom / “by request”** is **not** a `plan_tier` value. Use:
+
+- `workspace.plan_custom_override` (boolean)
+- `workspace.plan_feature_overrides` (sparse `PlanFeature → boolean`)
+
+Catalog `plan_tier` stays for display/billing; when custom override is on, overrides win in `hasPlanFeature(..., { customOverride, featureOverrides })`.
+
+Entitlements are resolved only via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_MATRIX`). Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits`.
+
+| Feature | FREE | PREMIUM | FAMILY | TEAM | ENTERPRISE |
+|---|---|---|---|---|---|
+| `capsules` | yes | yes | yes | yes | yes |
+| `capsuleAccessSettings` | no | yes | yes | yes | yes |
+| `filesInItems` | no | yes | yes | yes | yes |
+| `monitoring` | no | yes | yes | yes | yes |
+| `accountRecovery` | no | yes | yes | yes | yes |
+| `trustedContacts` | no | yes | yes | yes | yes |
+| `storageQuotas` | no | yes | yes | yes | yes |
+| `sharedVaults` | no | no | yes | yes | yes |
+| `additionalWorkspaceMembers` | no | no | yes | yes | yes |
+| `customWorkspaceRoles` | no | no | yes | yes | yes |
+| `customWorkspaceProfiles` | no | no | yes | yes | yes |
+| `paidPlanBadge` | no | yes | yes | yes | yes |
 
 Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
+
+### How `plan_tier` changes (SaaS vs Self-hosted)
+
+| Deployment | Who changes `plan_tier` | Mechanism (future product surfaces) |
+|---|---|---|
+| **SaaS** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve “Сменить тариф”. |
+| **Self-hosted** | License / specialist activation | Specialist request or license key → `validateLicense()` + set `plan_tier` / custom overrides. **No** self-serve Stripe on self-hosted. |
+
+Core stores the tier and matrix; commercial write paths (subscribe, invoices, license blob) live in `okkey-enterprise`.
+
+### Existing `ENTERPRISE` rows (dev strategy)
+
+- Rows already on `ENTERPRISE` **stay** `ENTERPRISE` — no remapping to `TEAM` / `PREMIUM`.
+- With `ENTERPRISE_MODULES=true`, new workspaces still default to `ENTERPRISE` (local full-feature convenience, not a payment flow).
+- Optional local upgrade of FREE/personal tiers when developing with modules:
+
+```sql
+UPDATE workspaces
+SET plan_tier = 'ENTERPRISE'
+WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
+```
 
 ---
 
@@ -71,10 +106,11 @@ The open-source Core provides the FREE plan baseline:
 - Monitoring is unavailable.
 - Tools are available: generator, import, export.
 - Workspace settings: main settings available.
-- Workspace settings: roles view-only for default roles (custom roles require ENTERPRISE plan + enterprise module).
+- Workspace settings: roles view-only for default roles (custom roles require a plan with `customWorkspaceRoles` + enterprise module).
 - Workspace settings: profiles view-only for default profiles.
 - Workspace settings: members — owner only in OSS; inviting additional members requires enterprise `workspace-members` plugin **and** `additionalWorkspaceMembers` plan feature.
-- Workspace settings: vaults — personal vault metadata editable when ENTERPRISE plan **and** `workspace-shared-vaults` module (popup inject); shared vaults require the same plugin **and** `sharedVaults` plan feature.
+- Workspace settings: vaults — personal vault metadata editable when `sharedVaults` plan feature **and** `workspace-shared-vaults` module (popup inject); shared vaults require the same plugin **and** `sharedVaults` plan feature.
+- Files in items require `filesInItems` plan feature (and workspace toggle).
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
 - Personal settings: storage available except confidential sections, biometrics, and PIN.
@@ -153,10 +189,12 @@ Core schema is stable and public.
 Enterprise migrations **only add** tables and indexes.
 No core table is altered or removed by enterprise code.
 
-Local upgrade of legacy / FREE rows when developing with enterprise modules:
+Local upgrade of legacy / FREE rows when developing with enterprise modules (optional; existing ENTERPRISE rows are left as-is):
 
 ```sql
 UPDATE workspaces
 SET plan_tier = 'ENTERPRISE'
 WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
 ```
+
+Custom selective plans use `plan_custom_override` + `plan_feature_overrides` (migration `0031_workspace_plan_custom_override.sql`) instead of inventing a `CUSTOM` tier string.

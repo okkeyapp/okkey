@@ -41,10 +41,19 @@ function CreateWorkspaceMark(props: SVGProps<SVGSVGElement>) {
 }
 
 function planDescriptionKey(planTier: string): string {
-  if (planTier === "ENTERPRISE") {
-    return "plan.enterprise";
+  switch (planTier) {
+    case "PREMIUM":
+      return "plan.premium";
+    case "FAMILY":
+      return "plan.family";
+    case "TEAM":
+      return "plan.team";
+    case "ENTERPRISE":
+      return "plan.enterprise";
+    case "FREE":
+    default:
+      return "plan.free";
   }
-  return "plan.free";
 }
 
 function WorkspacesListChrome({ children }: { children: ReactNode }) {

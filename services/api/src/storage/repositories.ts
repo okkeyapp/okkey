@@ -5,11 +5,13 @@ import {
 } from "../crypto/downgrade.ts";
 import { entityIdFromDb, generateEntityId } from "../entity-id.ts";
 import type {
+  PlanFeatureOverrides,
   PlanTier,
   WorkspaceCapsulePolicies,
   WorkspaceMonitoringCardSettings,
 } from "@okkey/types";
 import {
+  sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
   workspaceCapsulePoliciesToDto,
   workspaceMonitoringCardSettingsFromDto,
@@ -363,6 +365,8 @@ export interface WorkspaceRecord {
   name: string;
   ownerId: string;
   planTier: PlanTier | string;
+  planCustomOverride: boolean;
+  planFeatureOverrides: PlanFeatureOverrides;
   deletedItemsRetentionDays: number;
   allowedFileExtensions: string[];
   maxFileSizeMb: number;
@@ -377,15 +381,17 @@ export interface WorkspaceRecord {
 }
 
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
   owner_id: string;
   plan_tier: string;
+  plan_custom_override?: boolean | null;
+  plan_feature_overrides?: unknown;
   deleted_items_retention_days: number;
   allowed_file_extensions: string[];
   max_file_size_mb: number;
@@ -1928,6 +1934,8 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     name: row.name,
     ownerId: row.owner_id,
     planTier: row.plan_tier,
+    planCustomOverride: Boolean(row.plan_custom_override),
+    planFeatureOverrides: sanitizePlanFeatureOverrides(row.plan_feature_overrides),
     deletedItemsRetentionDays: row.deleted_items_retention_days,
     allowedFileExtensions: row.allowed_file_extensions ?? [],
     maxFileSizeMb: Number(row.max_file_size_mb),

@@ -133,4 +133,6 @@ Additional members UI: `okkey-enterprise/web/workspace-members/`.
 Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.  
 SaaS create UI gates via `okkey-enterprise/web/workspace-tenancy/` (`canCreateWorkspace` when `VITE_DEPLOYMENT_MODE=saas`).
 
-Plan entitlements use `hasPlanFeature` (`FREE` | `ENTERPRISE`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
+Plan entitlements use `hasPlanFeature` over catalog tiers `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE` (plus optional `plan_custom_override`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
+
+SaaS changes `plan_tier` via subscription; self-hosted via license / specialist activation (see `docs/architecture/12_open_core_boundary.md`).

@@ -1,5 +1,5 @@
 import type { Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
-import { normalizePlanTier } from "@okkey/types";
+import { hasPlanFeature } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Link } from "react-router-dom";
 
@@ -27,7 +27,7 @@ export default function WorkspaceSettingsProfilesSection({
 }: WorkspaceSettingsProfilesSectionProps) {
   const core = useAuthenticatedCoreClient();
   const canManageCustom = canManageCustomWorkspaceProfiles(workspace?.planTier);
-  const canOpenBuiltInCards = normalizePlanTier(workspace?.planTier) === "ENTERPRISE";
+  const canOpenBuiltInCards = hasPlanFeature(workspace?.planTier, "customWorkspaceProfiles");
   const EnterpriseProfilesSection = enterpriseProfilesModule.EnterpriseProfilesSection;
   const BuiltInProfileCardPopup = enterpriseProfilesModule.BuiltInProfileCardPopup;
   if (!core) {

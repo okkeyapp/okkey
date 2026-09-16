@@ -210,6 +210,8 @@ describe("WorkspaceRoutesLayout", () => {
     name: "Personal",
     ownerId: "user-1",
     planTier: "FREE",
+    planCustomOverride: false,
+    planFeatureOverrides: {},
     deletedItemsRetentionDays: 30,
     allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
     maxFileSizeMb: 2,

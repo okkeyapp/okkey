@@ -100,9 +100,13 @@ id (snowflake bigint string)
 name
 owner_id
 plan_tier
+plan_custom_override
+plan_feature_overrides
 created_at
 ```
 
+`plan_tier` catalog values: `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE`.  
+Custom / “by request” plans keep a catalog tier and set `plan_custom_override` + sparse `plan_feature_overrides`.
 ### workspace_members
 
 Members of a workspace with assigned roles.
