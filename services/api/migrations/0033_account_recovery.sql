@@ -1,7 +1,8 @@
 -- Account recovery: vault key wrap, method prefs, trusted contacts.
+-- User FK columns are bigint to match users.id (see 0001_init / 0030_user_webauthn_login).
 
 CREATE TABLE IF NOT EXISTS user_vault_recovery_wrap (
-  user_id text PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+  user_id bigint PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   encrypted_blob jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   rotated_at timestamptz,
@@ -9,7 +10,7 @@ CREATE TABLE IF NOT EXISTS user_vault_recovery_wrap (
 );
 
 CREATE TABLE IF NOT EXISTS user_recovery_settings (
-  user_id text PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+  user_id bigint PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   key_enabled boolean NOT NULL DEFAULT true,
   devices_enabled boolean NOT NULL DEFAULT false,
   contacts_enabled boolean NOT NULL DEFAULT false,
@@ -17,10 +18,10 @@ CREATE TABLE IF NOT EXISTS user_recovery_settings (
 );
 
 CREATE TABLE IF NOT EXISTS user_trusted_contacts (
-  id text PRIMARY KEY,
-  user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  id bigint PRIMARY KEY,
+  user_id bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   contact_email text NOT NULL,
-  contact_user_id text REFERENCES users (id) ON DELETE SET NULL,
+  contact_user_id bigint REFERENCES users (id) ON DELETE SET NULL,
   status text NOT NULL CHECK (status IN ('pending', 'confirmed')),
   created_at timestamptz NOT NULL DEFAULT now(),
   confirmed_at timestamptz,
