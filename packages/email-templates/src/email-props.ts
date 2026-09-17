@@ -37,19 +37,47 @@ export function buildDeviceApprovalEmailProps(
   const platformLine = formatEmailMessage(locale, "email.device.approval.platformLine", {
     platformOs,
   });
+  const whenLine = variables.requestedAtIso
+    ? formatEmailMessage(locale, "email.device.approval.whenLine", {
+        when: formatUtcWhen(locale, variables.requestedAtIso),
+      })
+    : "";
   const ipLine = formatEmailMessage(locale, "email.device.approval.ipLine", {
     ip: variables.requestIp,
   });
+  const locationParts = [variables.city, variables.country].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  );
+  const locationLine =
+    locationParts.length > 0
+      ? formatEmailMessage(locale, "email.device.approval.locationLine", {
+          location: locationParts.join(", "),
+        })
+      : "";
   const ctaLabel = formatEmailMessage(locale, "email.device.approval.ctaOpenSettings", {});
   const noteNoUrl = formatEmailMessage(locale, "email.device.approval.noteNoUrl", {});
+  const noteBlockIfNotYou = formatEmailMessage(
+    locale,
+    "email.device.approval.noteBlockIfNotYou",
+    {},
+  );
+  const noteIgnoreIfMistake = formatEmailMessage(
+    locale,
+    "email.device.approval.noteIgnoreIfMistake",
+    {},
+  );
   return {
     lead,
     deviceLine,
     platformLine,
+    whenLine,
     ipLine,
+    locationLine,
     helpUrl,
     ctaLabel,
     noteNoUrl,
+    noteBlockIfNotYou,
+    noteIgnoreIfMistake,
   };
 }
 
@@ -113,11 +141,14 @@ export const previewSampleAuthCode: AuthEmailCodeVariables = {
 };
 
 export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
-  deviceName: "MacBook Pro",
-  platform: "desktop",
+  deviceName: "Web macOS - Chrome",
+  platform: "Web · Chrome",
   osName: "macOS",
   requestIp: "203.0.113.9",
-  helpUrl: "https://app.okkey.local/settings/devices",
+  country: "Singapore",
+  city: "Singapore",
+  helpUrl: "https://app.okkey.local/items?popup=settings|devices",
+  requestedAtIso: "2026-01-15T10:00:00.000Z",
 };
 
 export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {

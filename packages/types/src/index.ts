@@ -1132,6 +1132,11 @@ export interface RegisterCompleteMetadataDto {
   client_type?: string;
   user_agent?: string;
   crypto_capable?: boolean;
+  /**
+   * When true on `POST /devices/register`, if the user has exactly one trusted device,
+   * rebind that row to this fingerprint/public key instead of creating a pending device.
+   */
+  reclaim_sole_trusted?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */
@@ -1152,11 +1157,89 @@ export interface DeviceRegisterRequestDto {
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
   device_id: EntityId;
-  status: "trusted" | "pending_approval";
+  status: "trusted" | "pending_approval" | "blocked";
+  /** Present when status is `blocked`; null means permanently blocked. */
+  blocked_until?: string | null;
 }
 
 /** `POST /devices/:deviceId/reject` success body. */
 export interface DeviceRejectResponseDto {
+  device_id: EntityId;
+  status: "revoked";
+}
+
+/** Timed / permanent block durations for pending device dismissal. */
+export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+
+/** `POST /devices/:deviceId/block` request body. */
+export interface DeviceBlockRequestDto {
+  duration: DeviceBlockDuration;
+  reason?: string;
+}
+
+/** `POST /devices/:deviceId/block` success body. */
+export interface DeviceBlockResponseDto {
+  device_id: EntityId;
+  status: "blocked";
+  blocked_until: string | null;
+}
+
+/** `POST /devices/:deviceId/unblock` request body. */
+export interface DeviceUnblockRequestDto {
+  /** When true, device becomes trusted immediately (no new approval request). */
+  trust?: boolean;
+}
+
+/** `POST /devices/:deviceId/unblock` success body. */
+export interface DeviceUnblockResponseDto {
+  device_id: EntityId;
+  status: "trusted" | "revoked";
+}
+
+/** Single device row for `GET /devices` (snake_case on wire). */
+export interface DeviceListItemDto {
+  device_id: EntityId;
+  device_name: string;
+  device_fingerprint: string;
+  status: "trusted" | "pending_approval" | "blocked";
+  platform: string;
+  os_name: string;
+  os_version: string;
+  app_version: string;
+  client_type: string;
+  user_agent?: string;
+  ip_address: string;
+  country: string | null;
+  city: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  approved_at: string | null;
+  is_current: boolean;
+  approval_expires_at: string | null;
+  /** Present for blocked devices; null means permanently blocked. */
+  blocked_until?: string | null;
+}
+
+/** `GET /devices` success body. */
+export interface DeviceListResponseDto {
+  devices: DeviceListItemDto[];
+  pending: DeviceListItemDto[];
+  blocked: DeviceListItemDto[];
+}
+
+/** `PATCH /devices/:deviceId` request body. */
+export interface DevicePatchRequestDto {
+  device_name: string;
+}
+
+/** `PATCH /devices/:deviceId` success body. */
+export interface DevicePatchResponseDto {
+  device_id: EntityId;
+  device_name: string;
+}
+
+/** `POST /devices/:deviceId/revoke` success body. */
+export interface DeviceRevokeResponseDto {
   device_id: EntityId;
   status: "revoked";
 }

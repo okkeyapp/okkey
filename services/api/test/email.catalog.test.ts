@@ -12,11 +12,11 @@ import { EmailTemplateService, type EmailSender } from "../src/email/service.ts"
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const deviceVars = {
-  deviceName: "Pixel",
-  platform: "mobile",
+  deviceName: "Mobile Android - App",
+  platform: "Mobile · App",
   osName: "Android",
   requestIp: "198.51.100.2",
-  helpUrl: "https://app.example/settings/devices",
+  helpUrl: "https://app.example/items?popup=settings|devices",
 } as const;
 
 const workspaceVars = {
@@ -58,15 +58,17 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
 test("renderEmailTemplate device_approval_request en and ru", async () => {
   const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
   assert.match(en.subject, /device|approval/i);
-  assert.match(en.text, /Pixel/);
-  assert.match(en.html, /Pixel/);
+  assert.match(en.text, /Mobile Android - App/);
+  assert.match(en.text, /Mobile · App · Android/);
+  assert.match(en.html, /Mobile Android - App/);
   assert.match(en.html, /Okkey/);
   assert.match(en.html, /#3B82F6/i);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.device.approval.subject", {}));
-  assert.match(ru.text, /Pixel/);
+  assert.match(ru.text, /Mobile Android - App/);
+  assert.match(ru.text, /Mobile · App · Android/);
   assertNoMustachePlaceholders(ru.text);
 });
 

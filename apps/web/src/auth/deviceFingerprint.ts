@@ -1,25 +1,31 @@
+import { parseBrowserEnvironment } from "./browserEnvironment";
 import { DEVICE_FINGERPRINT_KEY } from "./storageKeys";
 
-function bytesToHex(bytes: Uint8Array): string {
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function randomBytesBrowser(len: number): Uint8Array {
-  const out = new Uint8Array(len);
-  crypto.getRandomValues(out);
-  return out;
-}
-
-/** 64 lowercase hex chars (32 random bytes), stable per browser profile. */
+/**
+ * Stable per browser/OS identity for device trust.
+ * Format: `{web_app|mobile_app|desktop_app|extension}-{browser}-{os}-{os_version}`
+ * Never includes IP / geo (VPN-safe).
+ */
 export function getOrCreateDeviceFingerprint(): string {
-  if (typeof window === "undefined") {
-    return "0".repeat(64);
+  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const fingerprint = parseBrowserEnvironment(userAgent).fingerprint;
+
+  if (typeof window !== "undefined") {
+    try {
+      const storage = window.localStorage;
+      if (storage && typeof storage.setItem === "function") {
+        // Refresh cache for debugging / older readers; source of truth is UA parse.
+        storage.setItem(DEVICE_FINGERPRINT_KEY, fingerprint);
+      }
+    } catch {
+      /* private mode / quota */
+    }
   }
-  const existing = window.localStorage.getItem(DEVICE_FINGERPRINT_KEY);
-  if (existing && /^[0-9a-f]{64}$/i.test(existing)) {
-    return existing.toLowerCase();
-  }
-  const hex = bytesToHex(randomBytesBrowser(32));
-  window.localStorage.setItem(DEVICE_FINGERPRINT_KEY, hex);
-  return hex;
+
+  return fingerprint;
+}
+
+/** Legacy random hex fingerprints (pre structured id). */
+export function isLegacyHexFingerprint(value: string): boolean {
+  return /^[a-f0-9]{32,128}$/i.test(value.trim());
 }

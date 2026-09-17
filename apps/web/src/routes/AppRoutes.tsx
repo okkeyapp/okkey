@@ -5,6 +5,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
 import AccountRestorePage from "../pages/account/AccountRestorePage";
+import DevicePendingPage from "../pages/account/DevicePendingPage";
 import AuthEmailPage from "../pages/auth/AuthEmailPage";
 import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
@@ -31,12 +32,14 @@ import LegacyWorkspaceNestedRedirect from "../pages/workspace/LegacyWorkspaceNes
 import WorkspaceNotFoundPage from "../pages/workspace/WorkspaceNotFoundPage";
 import WorkspaceSectionPage from "../pages/workspace/WorkspaceSectionPage";
 import SettingsIndexRedirect from "../pages/workspace/SettingsIndexRedirect";
+import PersonalDevicesSettingsRedirect from "../pages/workspace/PersonalDevicesSettingsRedirect";
 import ToolsIndexRedirect from "../pages/workspace/ToolsIndexRedirect";
 import WorkspacesPage from "../pages/workspaces/WorkspacesPage";
 import ProtectedVaultLayout from "../auth/ProtectedVaultLayout";
 import WorkspaceRoutesLayout from "../workspace/WorkspaceRoutesLayout";
 import PublicCapsulePage from "../pages/capsules/PublicCapsulePage";
 import {
+  ACCOUNT_DEVICE_PENDING_PATH,
   ACCOUNT_LOCK_PATH,
   ACCOUNT_NEW_PATH,
   ACCOUNT_RESTORE_PATH,
@@ -54,6 +57,7 @@ import {
   LEGACY_WORKSPACE_DETAIL_PATH_PATTERN,
   MONITORING_PATH,
   ROOT_PATH,
+  SETTINGS_DEVICES_PATH,
   SETTINGS_PATH,
   TOOLS_PATH,
   UNLOCK_PASSWORD_LEGACY_PATH,
@@ -140,6 +144,7 @@ export default function AppRoutes() {
       />
       <Route path={ACCOUNT_LOCK_PATH} element={<UnlockPasswordPage />} />
       <Route path={UNLOCK_PASSWORD_LEGACY_PATH} element={<LegacyNavigate to={ACCOUNT_LOCK_PATH} />} />
+      <Route path={ACCOUNT_DEVICE_PENDING_PATH} element={<DevicePendingPage />} />
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
       <Route path={INVITE_PATH_PATTERN} element={<workspaceMembersModule.InviteLandingPage />} />
       <Route path={CAPSULE_PUBLIC_PATH_PATTERN} element={<PublicCapsulePage />} />
@@ -162,6 +167,7 @@ export default function AppRoutes() {
           <Route path={TOOLS_PATH} element={<ToolsIndexRedirect />} />
           <Route path={`${TOOLS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path={SETTINGS_PATH} element={<SettingsIndexRedirect />} />
+          <Route path={SETTINGS_DEVICES_PATH} element={<PersonalDevicesSettingsRedirect />} />
           <Route path={`${SETTINGS_PATH}/:sectionSlug`} element={<WorkspaceSectionPage />} />
           <Route path="*" element={<WorkspaceNotFoundPage />} />
         </Route>

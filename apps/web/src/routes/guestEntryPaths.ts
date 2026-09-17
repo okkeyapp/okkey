@@ -1,4 +1,5 @@
 import {
+  ACCOUNT_DEVICE_PENDING_PATH,
   ACCOUNT_LOCK_PATH,
   ACCOUNT_NEW_PATH,
   ACCOUNT_RESTORE_PATH,
@@ -46,6 +47,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (pathname === ACCOUNT_LOCK_PATH || pathname === UNLOCK_PASSWORD_LEGACY_PATH) {
+    return true;
+  }
+  if (pathname === ACCOUNT_DEVICE_PENDING_PATH) {
     return true;
   }
   if (pathname === ACCOUNT_RESTORE_PATH) {

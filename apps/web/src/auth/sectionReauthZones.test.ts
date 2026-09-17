@@ -20,6 +20,10 @@ describe("resolveSectionReauthZone", () => {
     expect(resolveSectionReauthZone("/settings/main")).toBe("workspaceSettings");
   });
 
+  it("does not gate personal devices deep-link", () => {
+    expect(resolveSectionReauthZone("/settings/devices")).toBeNull();
+  });
+
   it("returns null outside gated areas", () => {
     expect(resolveSectionReauthZone("/account/lock")).toBeNull();
     expect(resolveSectionReauthZone("/auth/email")).toBeNull();

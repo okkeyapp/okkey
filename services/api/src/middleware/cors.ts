@@ -44,7 +44,18 @@ export function createCorsMiddleware(corsOriginConfig: string): Middleware {
     );
     ctx.res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Request-Id, X-File-Name, X-File-Mime-Type, X-File-Size, X-Encrypted-Key",
+      [
+        "Content-Type",
+        "Authorization",
+        "X-Request-Id",
+        "X-User-Id",
+        "X-Device-Id",
+        "X-Device-Fingerprint",
+        "X-File-Name",
+        "X-File-Mime-Type",
+        "X-File-Size",
+        "X-Encrypted-Key",
+      ].join(", "),
     );
 
     if (ctx.req.method === "OPTIONS") {

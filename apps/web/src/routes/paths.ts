@@ -19,6 +19,7 @@ export const AUTH_REGISTRATION_LEGACY_PATH = "/auth/registration";
 // --- Account (vault lock, registration, marketing restore) ---
 
 export const ACCOUNT_LOCK_PATH = "/account/lock";
+export const ACCOUNT_DEVICE_PENDING_PATH = "/account/device-pending";
 export const ACCOUNT_NEW_PATH = "/account/new";
 export const ACCOUNT_RESTORE_PATH = "/account/restore";
 
@@ -288,6 +289,19 @@ export const MONITORING_PATH = "/monitoring";
 export const TOOLS_PATH = "/tools";
 export const SETTINGS_PATH = "/settings";
 export const SETTINGS_MAIN_PATH = `${SETTINGS_PATH}/main`;
+/**
+ * Legacy short path — router redirects to {@link devicesSettingsHref}.
+ * Prefer the canonical popup URL in emails / docs / CTAs.
+ */
+export const SETTINGS_DEVICES_PATH = `${SETTINGS_PATH}/devices`;
+
+/** Canonical devices settings deep-link: `/items?popup=settings|devices`. */
+export const DEVICES_SETTINGS_POPUP_QUERY = "settings|devices";
+export const DEVICES_SETTINGS_HREF = `${ITEMS_PATH}?popup=${DEVICES_SETTINGS_POPUP_QUERY}`;
+
+export function devicesSettingsHref(): string {
+  return DEVICES_SETTINGS_HREF;
+}
 
 export type ToolsSectionId = "generator" | "import" | "export";
 
@@ -475,4 +489,12 @@ export function isWorkspaceAppShellPathname(pathname: string): pathname is Works
  */
 export function accountLockWithRedirectQuery(encodedRedirect: string): string {
   return `${ACCOUNT_LOCK_PATH}?redirect=${encodedRedirect}`;
+}
+
+/** Device approval wait screen; optional redirect preserved for post-approval unlock. */
+export function accountDevicePendingWithRedirectQuery(encodedRedirect?: string): string {
+  if (!encodedRedirect) {
+    return ACCOUNT_DEVICE_PENDING_PATH;
+  }
+  return `${ACCOUNT_DEVICE_PENDING_PATH}?redirect=${encodedRedirect}`;
 }

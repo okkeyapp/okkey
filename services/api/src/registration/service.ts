@@ -481,7 +481,15 @@ function decodeBase64Key(value: string, label: string): Uint8Array {
 }
 
 function isValidFingerprint(value: string): boolean {
-  return /^[a-f0-9]{32,128}$/i.test(value.trim());
+  const trimmed = value.trim();
+  // Legacy random hex (32–128 chars).
+  if (/^[a-f0-9]{32,128}$/i.test(trimmed)) {
+    return true;
+  }
+  // Structured: web_app-chrome-macos-14.5 (no IP/geo).
+  return /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(
+    trimmed,
+  );
 }
 
 function isPgUniqueViolation(error: unknown): boolean {

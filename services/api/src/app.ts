@@ -20,8 +20,13 @@ import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
   createApproveDeviceRoute,
+  createBlockDeviceRoute,
+  createListDevicesRoute,
+  createPatchDeviceRoute,
   createRegisterDeviceRoute,
   createRejectDeviceRoute,
+  createRevokeDeviceRoute,
+  createUnblockDeviceRoute,
 } from "./routes/devices.ts";
 import {
   createSyncEventsAppendRoute,
@@ -516,9 +521,24 @@ export function createApiApp(
   }
   if (deps.deviceService) {
     app.route(
+      "GET",
+      "/devices",
+      createListDevicesRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(deps.deviceService, resolveUserId),
+      createRegisterDeviceRoute(deps.deviceService, resolveUserId, config.trustedProxyHops),
+    );
+    app.route(
+      "PATCH",
+      "/devices/:deviceId",
+      createPatchDeviceRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/revoke",
+      createRevokeDeviceRoute(deps.deviceService, resolveUserId),
     );
     app.route(
       "POST",
@@ -529,6 +549,16 @@ export function createApiApp(
       "POST",
       "/devices/:deviceId/reject",
       createRejectDeviceRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/block",
+      createBlockDeviceRoute(deps.deviceService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/devices/:deviceId/unblock",
+      createUnblockDeviceRoute(deps.deviceService, resolveUserId),
     );
   }
   if (deps.capsuleService) {
