@@ -4,7 +4,10 @@ import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types"
 
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import { parseBrowserEnvironment } from "./browserEnvironment";
-import { getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import {
+  getOrCreateDeviceFingerprint,
+  isLegacyHexFingerprint,
+} from "./deviceFingerprint";
 import { readVaultBundle } from "./localVaultBundle";
 import { DEVICE_PUBLIC_KEY_KEY } from "./storageKeys";
 
@@ -50,16 +53,49 @@ function writeStoredDevicePublicKey(publicKeyB64: string): void {
 }
 
 /**
+ * Reclaim is only for the registration browser that lost a legacy random hex fingerprint
+ * but still holds the local vault bundle. Never rebind a different browser onto the sole
+ * trusted device (that collapsed 4 browsers into 1 row).
+ */
+function canReclaimSoleTrustedDevice(
+  sole: DeviceListItemDto,
+  nextFingerprint: string,
+  nextClientType: string,
+): boolean {
+  const oldFp = sole.device_fingerprint.trim().toLowerCase();
+  const nextFp = nextFingerprint.trim().toLowerCase();
+  if (oldFp === nextFp) {
+    return false;
+  }
+  if (!isLegacyHexFingerprint(oldFp)) {
+    // Structured id already identifies the browser — different fp ⇒ different device.
+    return false;
+  }
+  const soleClient = (sole.client_type ?? "").trim().toLowerCase();
+  if (
+    soleClient &&
+    soleClient !== "unknown" &&
+    soleClient !== "web" &&
+    soleClient !== nextClientType.trim().toLowerCase()
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Resolve whether the current browser is a trusted device; register as pending when new.
  *
- * Reclaims the sole trusted device when this browser still has a local vault bundle
- * (typical after fingerprint rotation / cleared storage on the original registration browser).
- * Pending rows for the same fingerprint do not block reclaim/bootstrap.
+ * Reclaims the sole trusted device only when migrating a legacy hex fingerprint on the
+ * same browser that still has a local vault bundle.
  */
 export async function resolveDeviceTrust(
   core: CoreApiClient,
   userId: string,
 ): Promise<DeviceTrustSnapshot> {
+  const env = parseBrowserEnvironment(
+    typeof navigator !== "undefined" ? navigator.userAgent : "",
+  );
   const fingerprint = getOrCreateDeviceFingerprint();
   const bundle = readVaultBundle(userId);
   const hasBundle = Boolean(bundle);
@@ -89,7 +125,11 @@ export async function resolveDeviceTrust(
   }
 
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
-  const canReclaimSole = hasBundle && listed.devices.length === 1;
+  const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
+  const canReclaimSole =
+    hasBundle &&
+    soleTrusted !== null &&
+    canReclaimSoleTrustedDevice(soleTrusted, fingerprint, env.clientType);
   const canBootstrapTrusted = hasBundle && listed.devices.length === 0;
 
   // Local vault proves this browser already owns unlock material — do not stay stuck on pending.
@@ -199,6 +239,8 @@ export async function registerCurrentBrowserDevice(
   const env = parseBrowserEnvironment(
     typeof navigator !== "undefined" ? navigator.userAgent : "",
   );
+  // Prefer structured identity from UA; argument is kept for callers/tests.
+  const deviceFingerprint = fingerprint.trim() || env.fingerprint;
 
   let devicePublicKeyB64 = readStoredDevicePublicKey();
   if (!devicePublicKeyB64) {
@@ -227,7 +269,7 @@ export async function registerCurrentBrowserDevice(
     return await core.registerDevice({
       device_public_key: devicePublicKeyB64,
       device_share: bytesToBase64(shareBytes),
-      device_fingerprint: fingerprint,
+      device_fingerprint: deviceFingerprint,
       device_name: env.deviceName,
       platform: env.platform,
       os_name: env.osName,

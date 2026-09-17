@@ -5,9 +5,13 @@ const registerDevice = vi.fn();
 const fingerprint = "a".repeat(64);
 const readVaultBundle = vi.fn(() => null as unknown);
 
-vi.mock("./deviceFingerprint", () => ({
-  getOrCreateDeviceFingerprint: () => fingerprint,
-}));
+vi.mock("./deviceFingerprint", async () => {
+  const actual = await vi.importActual<typeof import("./deviceFingerprint")>("./deviceFingerprint");
+  return {
+    ...actual,
+    getOrCreateDeviceFingerprint: () => fingerprint,
+  };
+});
 
 vi.mock("./localVaultBundle", () => ({
   readVaultBundle: (userId: string) => readVaultBundle(userId),
@@ -130,6 +134,48 @@ describe("resolveDeviceTrust", () => {
     expect(registerDevice.mock.calls[0]?.[0]?.metadata?.reclaim_sole_trusted).toBe(true);
     expect(snapshot.status).toBe("trusted");
     expect(snapshot.deviceId).toBe("d-old");
+  });
+
+  it("does not reclaim a different structured-fingerprint browser even with vault bundle", async () => {
+    readVaultBundle.mockReturnValue(vaultBundle());
+    listDevices
+      .mockResolvedValueOnce({
+        devices: [
+          {
+            device_id: "d-chrome",
+            device_fingerprint: "web_app-chrome-macos-10.15.7",
+            client_type: "chrome",
+            status: "trusted",
+          },
+        ],
+        pending: [],
+      })
+      .mockResolvedValueOnce({
+        devices: [
+          {
+            device_id: "d-chrome",
+            device_fingerprint: "web_app-chrome-macos-10.15.7",
+            client_type: "chrome",
+            status: "trusted",
+          },
+        ],
+        pending: [
+          {
+            device_id: "d-firefox",
+            device_fingerprint: fingerprint,
+            status: "pending_approval",
+          },
+        ],
+      });
+    // Override fingerprint for this test via mock — keep hex mock as "new" browser id in this suite.
+    registerDevice.mockResolvedValue({ device_id: "d-firefox", status: "pending_approval" });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).toHaveBeenCalledOnce();
+    expect(registerDevice.mock.calls[0]?.[0]?.metadata?.reclaim_sole_trusted).toBe(false);
+    expect(snapshot.status).toBe("pending");
+    expect(snapshot.deviceId).toBe("d-firefox");
   });
 
   it("reclaims even when current fingerprint already has a pending row", async () => {

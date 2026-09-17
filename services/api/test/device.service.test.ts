@@ -194,6 +194,23 @@ test("registerDevice validates fingerprint and public key", async () => {
   );
 });
 
+test("registerDevice accepts structured browser fingerprint", async () => {
+  const service = createService({
+    registerOrUpdate: async (input) =>
+      createDeviceRecord({
+        status: "trusted",
+        deviceFingerprint: input.deviceFingerprint,
+      }),
+  });
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ deviceFingerprint: "web_app-chrome-macos-10.15.7" }),
+  );
+  assert.equal(result.status, "trusted");
+  assert.equal(result.deviceId, "d1");
+});
+
 test("registerDevice maps unique conflicts to DEVICE_DUPLICATE_CONFLICT", async () => {
   const service = createService({
     registerOrUpdate: async () => {

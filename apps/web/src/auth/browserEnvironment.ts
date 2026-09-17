@@ -25,6 +25,11 @@ export type ParsedBrowserEnvironment = {
   deviceName: string;
   /** Subtitle: `Chrome · macOS`. */
   platformOsLabel: string;
+  /**
+   * Stable device identity (no IP/geo):
+   * `{web_app|mobile_app|desktop_app|extension}-{browser|device}-{os}-{os_version}`
+   */
+  fingerprint: string;
   userAgent: string;
 };
 
@@ -50,22 +55,27 @@ export function parseBrowserEnvironment(userAgent = ""): ParsedBrowserEnvironmen
   const { platform, osName, osVersion, hardwareLabel } = detectHardware(ua);
   const channel = detectChannel(platform, browserId);
   const clientLabel =
-    channel === "Web" || channel === "Extension"
+    channel === "Web" || channel === "Extension" || channel === "Mobile"
       ? CLIENT_LABELS[browserId]
-      : channel === "Mobile"
-        ? "App"
-        : "App";
+      : "App";
+  // Keep real browser id on mobile web too — needed for per-browser device identity.
   const clientType =
-    channel === "Web" || channel === "Extension"
-      ? browserId === "web"
-        ? "web"
-        : browserId
-      : channel === "Mobile"
-        ? "mobile"
-        : "desktop";
+    channel === "Desktop" && browserId === "web"
+      ? "desktop"
+      : browserId === "web"
+        ? channel === "Extension"
+          ? "extension"
+          : "web"
+        : browserId;
 
   const deviceName = `${channel} ${hardwareLabel} - ${clientLabel}`;
   const platformOsLabel = `${clientLabel} · ${osName === "unknown" ? hardwareLabel : osName}`;
+  const fingerprint = buildDeviceFingerprintId({
+    channel,
+    clientType,
+    osName,
+    osVersion,
+  });
 
   return {
     clientType,
@@ -77,6 +87,7 @@ export function parseBrowserEnvironment(userAgent = ""): ParsedBrowserEnvironmen
     hardwareLabel,
     deviceName,
     platformOsLabel,
+    fingerprint,
     userAgent: ua || "unknown",
   };
 }
@@ -228,6 +239,49 @@ function detectChannel(platform: string, _browserId: BrowserClientId): DeviceCha
   return "Web";
 }
 
+/**
+ * Build stable device fingerprint from environment.
+ * IP / country / city must never be part of this identity.
+ */
+export function buildDeviceFingerprintId(input: {
+  channel: DeviceChannel;
+  clientType: string;
+  osName: string;
+  osVersion: string;
+}): string {
+  const prefix =
+    input.channel === "Mobile"
+      ? "mobile_app"
+      : input.channel === "Desktop"
+        ? "desktop_app"
+        : input.channel === "Extension"
+          ? "extension"
+          : "web_app";
+  const browserOrDevice = normalizeFingerprintPart(input.clientType);
+  const os = osFamilyToken(input.osName);
+  const version = normalizeFingerprintPart(input.osVersion);
+  return `${prefix}-${browserOrDevice}-${os}-${version}`;
+}
+
+function osFamilyToken(osName: string): string {
+  const value = osName.trim().toLowerCase();
+  if (value.includes("windows")) return "windows";
+  if (value.includes("mac")) return "macos";
+  if (value.includes("ios") || value.includes("iphone") || value.includes("ipad")) return "ios";
+  if (value.includes("android")) return "android";
+  if (value.includes("linux")) return "linux";
+  return normalizeFingerprintPart(osName);
+}
+
+function normalizeFingerprintPart(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9.]+/g, "");
+  return normalized.length > 0 ? normalized.slice(0, 64) : "unknown";
+}
+
 function detectBrowserClient(ua: string): BrowserClientId {
   if (/YaBrowser\//iu.test(ua) || /yowser/iu.test(ua)) return "yandex";
   if (/Edg\//iu.test(ua)) return "edge";
@@ -305,8 +359,8 @@ function detectHardware(ua: string): {
       platform: "desktop",
       osName: "macOS",
       osVersion: version || "unknown",
-  // UA cannot distinguish MacBook vs iMac, and never exposes computer hostname.
-  hardwareLabel: "macOS",
+      // UA cannot distinguish MacBook vs iMac, and never exposes computer hostname.
+      hardwareLabel: "macOS",
     };
   }
   if (/Linux/iu.test(ua)) {

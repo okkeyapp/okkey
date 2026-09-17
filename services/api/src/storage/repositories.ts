@@ -1087,6 +1087,183 @@ export class DevicesRepository {
     now: string;
   }): Promise<DeviceRecord> {
     try {
+      // Prefer upsert by fingerprint so the same browser (structured id) does not spawn
+      // a second row when the local device public key was regenerated.
+      const existingByFingerprint = await this.db.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+      }>(
+        `
+          SELECT
+            id,
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            created_at,
+            last_seen_at,
+            approved_by,
+            approved_at,
+            rejected_at,
+            rejection_reason,
+            revoked_at
+          FROM devices
+          WHERE user_id = $1::bigint
+            AND device_fingerprint = $2
+            AND status IN ('trusted', 'pending')
+          ORDER BY
+            CASE WHEN status = 'trusted' THEN 0 ELSE 1 END,
+            COALESCE(last_seen_at, created_at) DESC
+          LIMIT 1
+        `,
+        [input.userId, input.deviceFingerprint],
+      );
+
+      if (existingByFingerprint[0]) {
+        const current = existingByFingerprint[0];
+        const hasOtherTrusted = await this.db.query<{ n: string }>(
+          `
+            SELECT COUNT(*)::text AS n
+            FROM devices
+            WHERE user_id = $1::bigint
+              AND status = 'trusted'
+              AND id <> $2
+          `,
+          [input.userId, current.id],
+        );
+        const otherTrusted = Number(hasOtherTrusted[0]?.n ?? 0) > 0;
+        const nextStatus =
+          current.status === "trusted" ? "trusted" : otherTrusted ? "pending" : "trusted";
+
+        const updated = await this.db.query<{
+          id: string;
+          user_id: string;
+          device_fingerprint: string;
+          device_name: string;
+          device_public_key: string;
+          device_share: Buffer;
+          platform: string;
+          os_name: string;
+          os_version: string;
+          app_version: string;
+          client_type: string;
+          user_agent: string;
+          ip_first: string;
+          ip_last: string;
+          status: "trusted" | "pending" | "revoked";
+          created_at: string | Date;
+          last_seen_at: string | Date | null;
+          approved_by: string | null;
+          approved_at: string | Date | null;
+          rejected_at: string | Date | null;
+          rejection_reason: string | null;
+          revoked_at: string | Date | null;
+        }>(
+          `
+            UPDATE devices
+            SET
+              device_public_key = $3,
+              device_share = $4,
+              device_name = $5,
+              platform = $6,
+              os_name = $7,
+              os_version = $8,
+              app_version = $9,
+              client_type = $10,
+              user_agent = $11,
+              status = $12,
+              approved_at = CASE
+                WHEN $12 = 'trusted' AND status <> 'trusted' THEN $13::timestamptz
+                WHEN $12 = 'trusted' THEN COALESCE(approved_at, $13::timestamptz)
+                ELSE approved_at
+              END,
+              last_seen_at = CASE
+                WHEN $12 = 'trusted' THEN $13::timestamptz
+                ELSE last_seen_at
+              END,
+              ip_last = CASE
+                WHEN $12 = 'trusted' THEN $14
+                ELSE ip_last
+              END,
+              rejected_at = CASE WHEN $12 = 'trusted' THEN NULL ELSE rejected_at END,
+              rejection_reason = CASE WHEN $12 = 'trusted' THEN NULL ELSE rejection_reason END,
+              revoked_at = CASE WHEN $12 = 'trusted' THEN NULL ELSE revoked_at END
+            WHERE id = $1
+              AND user_id = $2
+            RETURNING
+              id,
+              user_id,
+              device_fingerprint,
+              device_name,
+              device_public_key,
+              device_share,
+              platform,
+              os_name,
+              os_version,
+              app_version,
+              client_type,
+              user_agent,
+              ip_first,
+              ip_last,
+              status,
+              created_at,
+              last_seen_at,
+              approved_by,
+              approved_at,
+              rejected_at,
+              rejection_reason,
+              revoked_at
+          `,
+          [
+            current.id,
+            input.userId,
+            input.devicePublicKey,
+            Buffer.from(input.deviceShare),
+            input.deviceName,
+            input.platform,
+            input.osName,
+            input.osVersion,
+            input.appVersion,
+            input.clientType,
+            input.userAgent,
+            nextStatus,
+            input.now,
+            input.requestIp,
+          ],
+        );
+        return mapDevice(updated[0]);
+      }
+
       const id = generateEntityId();
       const rows = await this.db.query<{
         id: string;
@@ -1292,7 +1469,13 @@ export class DevicesRepository {
     fingerprint: string | null,
   ): Promise<Uint8Array | null> {
     const norm = fingerprint?.trim().toLowerCase() ?? null;
-    if (!norm || !/^[0-9a-f]{64}$/.test(norm)) {
+    if (
+      !norm ||
+      !(
+        /^[0-9a-f]{32,128}$/i.test(norm) ||
+        /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(norm)
+      )
+    ) {
       return null;
     }
 

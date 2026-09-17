@@ -16,6 +16,7 @@ describe("parseBrowserEnvironment", () => {
     expect(env.deviceName).toBe("Web macOS - Safari");
     expect(env.platformOsLabel).toBe("Safari · macOS");
     expect(env.hardwareLabel).toBe("macOS");
+    expect(env.fingerprint).toBe("web_app-safari-macos-10.15.7");
   });
 
   it("detects Yandex Browser before Chrome", () => {
@@ -24,6 +25,7 @@ describe("parseBrowserEnvironment", () => {
     );
     expect(env.clientType).toBe("yandex");
     expect(env.deviceName).toBe("Web macOS - Yandex");
+    expect(env.fingerprint).toBe("web_app-yandex-macos-10.15.7");
   });
 
   it("detects Chrome on macOS", () => {
@@ -32,14 +34,30 @@ describe("parseBrowserEnvironment", () => {
     );
     expect(env.clientType).toBe("chrome");
     expect(env.deviceName).toBe("Web macOS - Chrome");
+    expect(env.fingerprint).toBe("web_app-chrome-macos-10.15.7");
   });
 
-  it("detects Firefox", () => {
+  it("detects Firefox with a distinct fingerprint from Chrome", () => {
     const env = parseBrowserEnvironment(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
     );
     expect(env.clientType).toBe("firefox");
     expect(env.deviceName).toBe("Web macOS - Firefox");
+    expect(env.fingerprint).toBe("web_app-firefox-macos-10.15");
+    expect(env.fingerprint).not.toBe(
+      parseBrowserEnvironment(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      ).fingerprint,
+    );
+  });
+
+  it("uses browser id on mobile web fingerprints", () => {
+    const env = parseBrowserEnvironment(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    );
+    expect(env.channel).toBe("Mobile");
+    expect(env.clientType).toBe("safari");
+    expect(env.fingerprint).toBe("mobile_app-safari-ios-17.0");
   });
 });
 
