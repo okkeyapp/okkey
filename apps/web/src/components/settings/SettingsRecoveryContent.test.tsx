@@ -1,0 +1,136 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+
+const coreMocks = vi.hoisted(() => ({
+  getAccountRecoveryStatus: vi.fn(),
+  patchAccountRecoverySettings: vi.fn(),
+  enrollAccountRecoveryKey: vi.fn(),
+  rotateAccountRecoveryKey: vi.fn(),
+  ackAccountRecoveryKeyExport: vi.fn(),
+  inviteTrustedContact: vi.fn(),
+  deleteTrustedContact: vi.fn(),
+  acceptTrustedContactInvite: vi.fn(),
+}));
+
+vi.mock("@okkey/crypto", () => ({
+  initCrypto: vi.fn(async () => undefined),
+  generateRecoverySecret: vi.fn(async () => "AAAA-BBBB-CCCC-DDDD"),
+  wrapVaultKeyWithRecoverySecret: vi.fn(async () => ({
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  })),
+}));
+
+vi.mock("../../auth/AuthVaultContext", () => ({
+  useAuthenticatedCoreClient: () => coreMocks,
+  useAuthVault: () => ({ vaultKey: new Uint8Array(32) }),
+}));
+
+vi.mock("../../locale/LocaleContext", () => ({
+  useLocale: () => ({ locale: "ru", t: (key: string) => key }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
+}));
+
+import SettingsRecoveryContent from "./SettingsRecoveryContent";
+
+const t = (key: string) => key;
+
+function freeStatus(overrides?: Record<string, unknown>) {
+  return {
+    entitlements: {
+      recoveryKey: true,
+      trustedDevices: false,
+      trustedContacts: false,
+    },
+    settings: {
+      keyEnabled: true,
+      devicesEnabled: false,
+      contactsEnabled: false,
+    },
+    key: {
+      enrolled: true,
+      createdAt: "2026-03-02T21:59:00.000Z",
+      rotatedAt: null,
+      exportedAt: null,
+    },
+    contacts: [],
+    confirmedContactCount: 0,
+    minConfirmedContacts: 3,
+    pendingInvites: [],
+    ...overrides,
+  };
+}
+
+describe("SettingsRecoveryContent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    coreMocks.getAccountRecoveryStatus.mockResolvedValue(freeStatus());
+  });
+
+  it("shows recovery key section and FREE upsell for devices/contacts", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("web.settingsPopup.recovery.key.label")).toBeTruthy();
+    });
+    expect(screen.getByText("web.settingsPopup.recovery.devices.label")).toBeTruthy();
+    expect(screen.getByText("web.settingsPopup.recovery.contacts.label")).toBeTruthy();
+    expect(screen.getAllByText("web.settingsPopup.recovery.upsell.title").length).toBeGreaterThan(0);
+  });
+
+  it("lists trusted contacts when paid entitlement is present", async () => {
+    coreMocks.getAccountRecoveryStatus.mockResolvedValue(
+      freeStatus({
+        entitlements: {
+          recoveryKey: true,
+          trustedDevices: true,
+          trustedContacts: true,
+        },
+        settings: {
+          keyEnabled: true,
+          devicesEnabled: true,
+          contactsEnabled: false,
+        },
+        contacts: [
+          {
+            id: "1",
+            email: "a@example.com",
+            status: "confirmed",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            confirmedAt: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "2",
+            email: "b@example.com",
+            status: "pending",
+            createdAt: "2026-01-02T00:00:00.000Z",
+            confirmedAt: null,
+          },
+        ],
+        confirmedContactCount: 1,
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("a@example.com")).toBeTruthy();
+    });
+    expect(screen.getByText("b@example.com")).toBeTruthy();
+    expect(screen.getByText("web.settingsPopup.recovery.contacts.add")).toBeTruthy();
+  });
+});

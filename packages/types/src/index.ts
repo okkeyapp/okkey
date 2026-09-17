@@ -40,6 +40,15 @@ export {
   sanitizePlanFeatureOverrides,
 } from "./plan-features.js";
 
+export type {
+  AccountRecoveryEntitlements,
+  AccountRecoveryWorkspaceLike,
+} from "./account-recovery-entitlements.js";
+export {
+  MIN_TRUSTED_CONTACTS_CONFIRMED,
+  resolveAccountRecoveryEntitlements,
+} from "./account-recovery-entitlements.js";
+
 export interface User {
   id: EntityId;
   email: string;
@@ -821,6 +830,79 @@ export interface TwoFactorStatusResponseDto {
   backupCodesRemaining: number;
   /** ISO-8601 timestamp of the latest backup-code batch, or null if none. */
   backupCodesGeneratedAt: string | null;
+}
+
+/** Account-level recovery entitlements (always includes recovery key). */
+export interface AccountRecoveryEntitlementsDto {
+  recoveryKey: true;
+  trustedDevices: boolean;
+  trustedContacts: boolean;
+}
+
+export interface AccountRecoveryKeyMetaDto {
+  enrolled: boolean;
+  createdAt: string | null;
+  rotatedAt: string | null;
+  /** When the user last copied or downloaded the key (null = never). */
+  exportedAt: string | null;
+}
+
+export interface AccountRecoverySettingsDto {
+  keyEnabled: boolean;
+  devicesEnabled: boolean;
+  contactsEnabled: boolean;
+}
+
+export type TrustedContactStatusDto = "pending" | "confirmed";
+
+export interface TrustedContactDto {
+  id: EntityId;
+  email: string;
+  status: TrustedContactStatusDto;
+  createdAt: string;
+  confirmedAt: string | null;
+}
+
+export interface TrustedContactInviteDto {
+  id: EntityId;
+  ownerEmail: string;
+  createdAt: string;
+}
+
+/** `GET /account/recovery` aggregate status. */
+export interface AccountRecoveryStatusResponseDto {
+  entitlements: AccountRecoveryEntitlementsDto;
+  settings: AccountRecoverySettingsDto;
+  key: AccountRecoveryKeyMetaDto;
+  contacts: TrustedContactDto[];
+  confirmedContactCount: number;
+  minConfirmedContacts: number;
+  pendingInvites: TrustedContactInviteDto[];
+}
+
+/** `PATCH /account/recovery/settings` request. */
+export interface AccountRecoverySettingsUpdateRequestDto {
+  keyEnabled?: boolean;
+  devicesEnabled?: boolean;
+  contactsEnabled?: boolean;
+}
+
+/** `POST /account/recovery/key/enroll` and rotate request. */
+export interface AccountRecoveryKeyEnrollRequestDto {
+  encryptedBlob: EncryptedBlobDto;
+}
+
+export interface AccountRecoveryKeyEnrollResponseDto {
+  key: AccountRecoveryKeyMetaDto;
+  settings: AccountRecoverySettingsDto;
+}
+
+export interface TrustedContactInviteRequestDto {
+  email: string;
+}
+
+export interface TrustedContactInviteResponseDto {
+  contact: TrustedContactDto;
 }
 
 /** `POST /auth/two-factor/totp/enroll/start` success body. */

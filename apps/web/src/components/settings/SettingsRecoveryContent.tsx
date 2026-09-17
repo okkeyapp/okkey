@@ -1,0 +1,608 @@
+import { ApiRequestError } from "@okkey/api";
+import {
+  generateRecoverySecret,
+  initCrypto,
+  wrapVaultKeyWithRecoverySecret,
+} from "@okkey/crypto";
+import type { WebMessageValues } from "@okkey/i18n";
+import type {
+  AccountRecoveryStatusResponseDto,
+  TrustedContactDto,
+} from "@okkey/types";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  ControlGroup,
+  controlGroupItemGrowClassName,
+  Input,
+  Switch,
+} from "@okkey/ui";
+import {
+  CircleCheck,
+  Copy,
+  Download,
+  FileText,
+  Info,
+  Plus,
+  RefreshCcw,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "sonner";
+
+import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
+import { useLocale } from "../../locale/LocaleContext";
+import { settingsPath } from "../../routes/paths";
+import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
+import { SettingsRow } from "./SettingsRows";
+
+type SettingsRecoveryContentProps = {
+  t: (messageKey: string, values?: WebMessageValues) => string;
+};
+
+function recoveryErrorMessage(err: unknown, t: SettingsRecoveryContentProps["t"]): string {
+  if (err instanceof ApiRequestError) {
+    switch (err.body.error) {
+      case "RECOVERY_ENTITLEMENT_REQUIRED":
+        return t("web.settingsPopup.recovery.error.entitlement");
+      case "RECOVERY_CONTACTS_INSUFFICIENT":
+        return t("web.settingsPopup.recovery.error.contactsInsufficient");
+      case "RECOVERY_CONTACT_NOT_FOUND":
+        return t("web.settingsPopup.recovery.error.contactNotFound");
+      case "RECOVERY_CONTACT_EXISTS":
+        return t("web.settingsPopup.recovery.error.contactExists");
+      case "RECOVERY_KEY_NOT_ENROLLED":
+        return t("web.settingsPopup.recovery.error.keyNotEnrolled");
+      default:
+        return t("web.settingsPopup.recovery.error.generic");
+    }
+  }
+  return t("web.settingsPopup.recovery.error.generic");
+}
+
+function formatGeneratedAt(
+  iso: string | null | undefined,
+  locale: string,
+  t: SettingsRecoveryContentProps["t"],
+): string {
+  if (!iso) {
+    return t("web.settingsPopup.recovery.key.never");
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return t("web.settingsPopup.recovery.key.never");
+  }
+  const absolute = new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  const days = Math.max(0, calendarDaysBetween(date));
+  if (days === 0) {
+    return t("web.settingsPopup.recovery.key.generatedToday", { date: absolute });
+  }
+  if (days === 1) {
+    return t("web.settingsPopup.recovery.key.generatedYesterday", { date: absolute });
+  }
+  return t("web.settingsPopup.recovery.key.generatedAgo", {
+    date: absolute,
+    days: String(days),
+  });
+}
+
+function UpsellNote({
+  t,
+  suffixKey,
+}: {
+  t: SettingsRecoveryContentProps["t"];
+  suffixKey: string;
+}) {
+  return (
+    <Alert variant="info" className="mt-3">
+      <Info className="size-4" />
+      <AlertTitle>{t("web.settingsPopup.recovery.upsell.title")}</AlertTitle>
+      <AlertDescription>
+        {t("web.settingsPopup.recovery.upsell.prefix")}
+        <Link
+          to={settingsPath("plan")}
+          className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
+        >
+          {t("web.settingsPopup.recovery.upsell.planLink")}
+        </Link>
+        {t(suffixKey)}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentProps) {
+  const { locale } = useLocale();
+  const core = useAuthenticatedCoreClient();
+  const { vaultKey } = useAuthVault();
+
+  const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    if (!core) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await core.getAccountRecoveryStatus();
+      setStatus(next);
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setLoading(false);
+    }
+  }, [core, t]);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  const notifySaved = useCallback(() => {
+    toast.success(t("web.toast.save.success"));
+  }, [t]);
+
+  async function enrollOrRotate(rotate: boolean): Promise<string | null> {
+    if (!core || !vaultKey) {
+      setError(t("web.settingsPopup.recovery.error.vaultLocked"));
+      return null;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await initCrypto();
+      const secret = await generateRecoverySecret();
+      const secretBytes = new TextEncoder().encode(secret);
+      const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
+      if (rotate) {
+        await core.rotateAccountRecoveryKey({ encryptedBlob });
+      } else {
+        await core.enrollAccountRecoveryKey({ encryptedBlob });
+      }
+      setSessionKey(secret);
+      await loadStatus();
+      return secret;
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleKeySwitch(checked: boolean) {
+    if (!core || loading || busy) {
+      return;
+    }
+    if (checked) {
+      if (status?.settings.keyEnabled && status.key.enrolled) {
+        return;
+      }
+      const secret = await enrollOrRotate(false);
+      if (secret) {
+        notifySaved();
+      }
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.patchAccountRecoverySettings({ keyEnabled: false });
+      setSessionKey(null);
+      await loadStatus();
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDevicesSwitch(checked: boolean) {
+    if (!core || !status?.entitlements.trustedDevices) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.patchAccountRecoverySettings({ devicesEnabled: checked });
+      await loadStatus();
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleContactsSwitch(checked: boolean) {
+    if (!core || !status?.entitlements.trustedContacts) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.patchAccountRecoverySettings({ contactsEnabled: checked });
+      await loadStatus();
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!sessionKey || !core) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(sessionKey);
+      await core.ackAccountRecoveryKeyExport();
+      await loadStatus();
+      notifySaved();
+    } catch {
+      setError(t("web.settingsPopup.recovery.error.copyFailed"));
+    }
+  }
+
+  async function handleDownloadPdf() {
+    if (!sessionKey || !core) {
+      return;
+    }
+    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"), {
+      icon: <FileText className="size-4 text-primary" aria-hidden />,
+    });
+    try {
+      await downloadRecoveryKeyPdf(sessionKey, {
+        title: t("web.settingsPopup.recovery.key.pdfTitle"),
+        description: t("web.settingsPopup.recovery.key.pdfDescription"),
+      });
+      await core.ackAccountRecoveryKeyExport();
+      await loadStatus();
+    } catch {
+      setError(t("web.settingsPopup.recovery.error.generic"));
+    } finally {
+      toast.dismiss(toastId);
+    }
+  }
+
+  async function handleRegenerate() {
+    const secret = await enrollOrRotate(true);
+    if (secret) {
+      try {
+        await navigator.clipboard.writeText(secret);
+      } catch {
+        /* best-effort */
+      }
+      toast.success(t("web.settingsPopup.recovery.key.regeneratedToast"));
+    }
+  }
+
+  async function handleInvite() {
+    if (!core || !inviteEmail.trim()) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.inviteTrustedContact({ email: inviteEmail.trim() });
+      setInviteEmail("");
+      setInviteOpen(false);
+      await loadStatus();
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteContact(contact: TrustedContactDto) {
+    if (!core) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.deleteTrustedContact(contact.id);
+      await loadStatus();
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAcceptInvite(inviteId: string) {
+    if (!core) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.acceptTrustedContactInvite(inviteId);
+      await loadStatus();
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const keyEnabled = Boolean(status?.settings.keyEnabled && status.key.enrolled);
+  const devicesEnabled = Boolean(status?.settings.devicesEnabled);
+  const contactsEnabled = Boolean(status?.settings.contactsEnabled);
+  const canDevices = Boolean(status?.entitlements.trustedDevices);
+  const canContacts = Boolean(status?.entitlements.trustedContacts);
+  const showKeyPanel = keyEnabled;
+  const showContactsPanel = canContacts;
+  const generatedLabel = formatGeneratedAt(
+    status?.key.rotatedAt ?? status?.key.createdAt,
+    locale,
+    t,
+  );
+  const exportedLabel = status?.key.exportedAt
+    ? formatGeneratedAt(status.key.exportedAt, locale, t)
+    : t("web.settingsPopup.recovery.key.never");
+  const exportedNever = !status?.key.exportedAt;
+
+  return (
+    <div
+      className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col"
+      aria-label={t("web.settingsPopup.recovery.title")}
+    >
+      {error ? (
+        <Alert variant="error" className="mb-2">
+          <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {status?.pendingInvites && status.pendingInvites.length > 0 ? (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl bg-secondary p-4">
+          <p className="text-sm font-medium text-foreground">
+            {t("web.settingsPopup.recovery.invites.title")}
+          </p>
+          {status.pendingInvites.map((invite) => (
+            <div key={invite.id} className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 text-sm text-foreground">{invite.ownerEmail}</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 bg-background"
+                disabled={busy}
+                onClick={() => void handleAcceptInvite(invite.id)}
+              >
+                {t("web.settingsPopup.recovery.invites.accept")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <SettingsRow
+        label={t("web.settingsPopup.recovery.key.label")}
+        description={t("web.settingsPopup.recovery.key.description")}
+        border={false}
+        controlClassName="w-[100px]"
+      >
+        {loading ? (
+          <div className="h-6 w-11 shrink-0" aria-hidden />
+        ) : (
+          <Switch
+            size="lg"
+            checked={keyEnabled}
+            disabled={!core || busy}
+            onCheckedChange={(checked) => void handleKeySwitch(checked)}
+            aria-label={t("web.settingsPopup.recovery.key.label")}
+          />
+        )}
+      </SettingsRow>
+
+      {showKeyPanel ? (
+        <div className="mb-2 flex flex-col gap-4 rounded-xl bg-secondary p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {sessionKey ? (
+              <ControlGroup
+                className="min-w-0 flex-1"
+                aria-label={t("web.settingsPopup.recovery.key.actionsAria")}
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
+                  onClick={() => void handleCopy()}
+                >
+                  <Copy className="size-4 shrink-0" />
+                  {t("web.settingsPopup.recovery.key.copy")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
+                  onClick={() => void handleDownloadPdf()}
+                >
+                  <Download className="size-4 shrink-0" />
+                  {t("web.settingsPopup.recovery.key.downloadPdf")}
+                </Button>
+              </ControlGroup>
+            ) : (
+              <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+                {t("web.settingsPopup.recovery.key.sessionHint")}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 gap-2.5 bg-background px-4"
+              disabled={busy || !vaultKey}
+              onClick={() => void handleRegenerate()}
+            >
+              <RefreshCcw className="size-4 shrink-0" />
+              {t("web.settingsPopup.recovery.key.regenerate")}
+            </Button>
+          </div>
+          <div className="text-sm leading-5 text-muted-foreground">
+            <p>
+              <span className="text-muted-foreground">
+                {t("web.settingsPopup.recovery.key.lastGeneratedPrefix")}
+              </span>{" "}
+              <span className="font-medium text-foreground">{generatedLabel}</span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">
+                {t("web.settingsPopup.recovery.key.exportedPrefix")}
+              </span>{" "}
+              <span className={exportedNever ? "font-medium text-destructive" : "font-medium text-foreground"}>
+                {exportedLabel}
+              </span>
+            </p>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
+              {t("web.settingsPopup.recovery.key.regenerateWarning")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      <SettingsRow
+        label={t("web.settingsPopup.recovery.devices.label")}
+        description={t("web.settingsPopup.recovery.devices.description")}
+        controlClassName="w-[100px]"
+      >
+        {loading ? (
+          <div className="h-6 w-11 shrink-0" aria-hidden />
+        ) : (
+          <Switch
+            size="lg"
+            checked={canDevices && devicesEnabled}
+            disabled={!canDevices || busy}
+            onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
+            aria-label={t("web.settingsPopup.recovery.devices.label")}
+          />
+        )}
+      </SettingsRow>
+      {!loading && !canDevices ? (
+        <UpsellNote t={t} suffixKey="web.settingsPopup.recovery.upsell.devicesSuffix" />
+      ) : null}
+
+      <SettingsRow
+        label={t("web.settingsPopup.recovery.contacts.label")}
+        description={t("web.settingsPopup.recovery.contacts.description")}
+        controlClassName="w-[100px]"
+      >
+        {loading ? (
+          <div className="h-6 w-11 shrink-0" aria-hidden />
+        ) : (
+          <Switch
+            size="lg"
+            checked={canContacts && contactsEnabled}
+            disabled={
+              !canContacts ||
+              busy ||
+              (Boolean(status) &&
+                !contactsEnabled &&
+                (status?.confirmedContactCount ?? 0) < (status?.minConfirmedContacts ?? 3))
+            }
+            onCheckedChange={(checked) => void handleContactsSwitch(checked)}
+            aria-label={t("web.settingsPopup.recovery.contacts.label")}
+          />
+        )}
+      </SettingsRow>
+      {!loading && !canContacts ? (
+        <UpsellNote t={t} suffixKey="web.settingsPopup.recovery.upsell.contactsSuffix" />
+      ) : null}
+
+      {showContactsPanel ? (
+        <div className="mt-2 flex flex-col rounded-xl bg-secondary px-4">
+          {(status?.contacts ?? []).map((contact, index) => (
+            <div
+              key={contact.id}
+              className={`flex items-center gap-1.5 py-3 ${index > 0 ? "border-t border-border" : ""}`}
+            >
+              {contact.status === "confirmed" ? (
+                <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
+              ) : (
+                <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
+              )}
+              <p className="min-w-0 flex-1 text-sm text-foreground">{contact.email}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6 text-destructive"
+                aria-label={t("web.settingsPopup.recovery.contacts.remove")}
+                disabled={busy}
+                onClick={() => void handleDeleteContact(contact)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ))}
+          {inviteOpen ? (
+            <div className="flex flex-col gap-2 border-t border-border py-3">
+              <Input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 flex-1 bg-background"
+                  disabled={busy}
+                  onClick={() => void handleInvite()}
+                >
+                  {t("web.settingsPopup.recovery.contacts.sendInvite")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-9"
+                  onClick={() => {
+                    setInviteOpen(false);
+                    setInviteEmail("");
+                  }}
+                >
+                  {t("web.settingsPopup.recovery.contacts.cancel")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 w-full gap-2.5 border-t border-border"
+              disabled={busy}
+              onClick={() => setInviteOpen(true)}
+            >
+              <Plus className="size-4 shrink-0" />
+              {t("web.settingsPopup.recovery.contacts.add")}
+            </Button>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}

@@ -29,6 +29,17 @@ import {
   createUnblockDeviceRoute,
 } from "./routes/devices.ts";
 import {
+  createAccountRecoveryContactDeleteRoute,
+  createAccountRecoveryContactInviteRoute,
+  createAccountRecoveryInviteAcceptRoute,
+  createAccountRecoveryKeyAckExportRoute,
+  createAccountRecoveryKeyEnrollRoute,
+  createAccountRecoveryKeyRotateRoute,
+  createAccountRecoverySettingsPatchRoute,
+  createAccountRecoveryStatusRoute,
+} from "./routes/account-recovery.ts";
+import type { AccountRecoveryService } from "./account-recovery/service.ts";
+import {
   createSyncEventsAppendRoute,
   createSyncEventsListRoute,
 } from "./routes/sync.ts";
@@ -163,6 +174,7 @@ export interface AppDeps {
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
+  accountRecoveryService?: AccountRecoveryService;
   sessionService?: SessionService;
   twoFactorService?: TwoFactorService;
   webauthnService?: WebAuthnService;
@@ -559,6 +571,48 @@ export function createApiApp(
       "POST",
       "/devices/:deviceId/unblock",
       createUnblockDeviceRoute(deps.deviceService, resolveUserId),
+    );
+  }
+  if (deps.accountRecoveryService) {
+    app.route(
+      "GET",
+      "/account/recovery",
+      createAccountRecoveryStatusRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/account/recovery/settings",
+      createAccountRecoverySettingsPatchRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/key/enroll",
+      createAccountRecoveryKeyEnrollRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/key/rotate",
+      createAccountRecoveryKeyRotateRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/key/ack-export",
+      createAccountRecoveryKeyAckExportRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/contacts",
+      createAccountRecoveryContactInviteRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/account/recovery/contacts/:contactId",
+      createAccountRecoveryContactDeleteRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/contacts/invites/:inviteId/accept",
+      createAccountRecoveryInviteAcceptRoute(deps.accountRecoveryService, resolveUserId),
     );
   }
   if (deps.capsuleService) {

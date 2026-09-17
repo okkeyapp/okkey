@@ -22,6 +22,7 @@ import { WorkspaceItemTemplatesRepository } from "./workspace-item-templates.ts"
 import { WorkspaceRolesRepository } from "./workspace-roles.ts";
 import { WorkspaceProfilesRepository } from "./workspace-profiles.ts";
 import { AttachmentsRepository } from "./attachments.ts";
+import { AccountRecoveryRepository } from "./account-recovery.ts";
 
 export interface StorageLayer {
   postgres: PostgresDatabase;
@@ -45,6 +46,7 @@ export interface StorageLayer {
     workspaceRoles: WorkspaceRolesRepository;
     workspaceProfiles: WorkspaceProfilesRepository;
     attachments: AttachmentsRepository;
+    accountRecovery: AccountRecoveryRepository;
   };
   ping(): Promise<void>;
   close(): Promise<void>;
@@ -76,6 +78,7 @@ export async function createStorageLayer(
     workspaceRoles: new WorkspaceRolesRepository(postgres),
     workspaceProfiles: new WorkspaceProfilesRepository(postgres),
     attachments: new AttachmentsRepository(postgres),
+    accountRecovery: new AccountRecoveryRepository(postgres),
   };
 
   logger.info("storage initialized", {

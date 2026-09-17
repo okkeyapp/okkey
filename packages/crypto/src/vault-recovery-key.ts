@@ -1,6 +1,6 @@
 /**
  * Wrap the 32-byte account `VaultKey` with a high-entropy recovery secret (UTF-8 bytes).
- * Used by Enterprise recovery flows; wire format is a versioned `EncryptedBlob`.
+ * Used by account recovery flows; wire format is a versioned `EncryptedBlob`.
  */
 import initWasm, { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
 import type { EncryptedBlobDto } from "@okkey/types";
@@ -11,6 +11,9 @@ import { wipeBytes } from "./secret-buffer.js";
 const NONCE_LEN = 24;
 const VAULT_KEY_LEN = 32;
 const KDF_SALT_LEN = 16;
+/** 20 random bytes → 160-bit recovery secret (Crockford base32, grouped). */
+const RECOVERY_SECRET_ENTROPY_LEN = 20;
+const CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /** Fixed salt for Argon2id(recovery_secret) → wrap key (not the per-user password KDF salt). */
 const RECOVERY_SECRET_KDF_SALT = new TextEncoder().encode("okkey-recovery-v1").subarray(0, KDF_SALT_LEN);
@@ -57,6 +60,43 @@ function deriveRecoveryWrapKey(recoverySecretUtf8: Uint8Array): Uint8Array {
     OKKEY_PASSWORD_KDF_PARAMS_V1.pCost,
     VAULT_KEY_LEN,
   );
+}
+
+function encodeCrockfordBase32(bytes: Uint8Array): string {
+  let bits = 0;
+  let value = 0;
+  let output = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += CROCKFORD_ALPHABET[(value >>> (bits - 5)) & 31]!;
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    output += CROCKFORD_ALPHABET[(value << (5 - bits)) & 31]!;
+  }
+  return output;
+}
+
+/**
+ * Generate a high-entropy recovery secret for offline storage (UTF-8 string).
+ * Format: groups of 4 Crockford base32 characters separated by hyphens.
+ */
+export async function generateRecoverySecret(): Promise<string> {
+  await ensureWasm();
+  const entropy = random_bytes(RECOVERY_SECRET_ENTROPY_LEN);
+  try {
+    const encoded = encodeCrockfordBase32(entropy);
+    const groups: string[] = [];
+    for (let i = 0; i < encoded.length; i += 4) {
+      groups.push(encoded.slice(i, i + 4));
+    }
+    return groups.join("-");
+  } finally {
+    wipeBytes(entropy);
+  }
 }
 
 /** AEAD-encrypt `vaultKey` under a key derived from `recoverySecretUtf8`. */

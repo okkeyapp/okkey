@@ -116,7 +116,7 @@ describe("App", () => {
     clearBearerAndSession();
   });
 
-  it("renders account restore stub with Pro message and link back to lock", async () => {
+  it("renders account restore stub with recovery guidance and link back to lock", async () => {
     seedBearerSession();
     sessionStorage.setItem(
       PROFILE_STORAGE_KEY,
@@ -126,7 +126,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Forgot master password?");
     });
-    expect(screen.getByText(/^recovery is not available$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^choose a recovery method$/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to master password/i })).toHaveAttribute("href", ACCOUNT_LOCK_PATH);
     clearBearerAndSession();
   });

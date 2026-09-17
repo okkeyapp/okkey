@@ -16,6 +16,7 @@ import {
 import SettingsDevicesContent from "./SettingsDevicesContent";
 import SettingsGeneralContent from "./SettingsGeneralContent";
 import SettingsLoginContent from "./SettingsLoginContent";
+import SettingsRecoveryContent from "./SettingsRecoveryContent";
 import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
 import SettingsVaultContent from "./SettingsVaultContent";
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
@@ -278,6 +279,8 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
             <SettingsTwoFactorContent t={t} />
           ) : activeItemId === "devices" ? (
             <SettingsDevicesContent t={t} />
+          ) : activeItemId === "recovery" ? (
+            <SettingsRecoveryContent t={t} />
           ) : (
             <div className="min-h-[min(420px,calc(100dvh-32px))]" aria-label={heading} />
           )}

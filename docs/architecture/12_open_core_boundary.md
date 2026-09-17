@@ -116,7 +116,7 @@ The open-source Core provides the FREE plan baseline:
 - Personal settings: storage available except confidential sections, biometrics, and PIN.
 - Personal settings: login methods only email confirmation.
 - Personal settings: 2FA only authenticator app and backup codes.
-- Personal settings: recovery unavailable.
+- Personal settings: recovery key available to all accounts; trusted devices/contacts gated by account-level paid entitlement.
 - Personal settings: devices available.
 
 ---

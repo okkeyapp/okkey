@@ -50,6 +50,12 @@ import type {
   AccountEmailChangeStartResponseDto,
   AccountLoginMethodsPrimaryPatchDto,
   AccountLoginMethodsResponseDto,
+  AccountRecoveryKeyEnrollRequestDto,
+  AccountRecoveryKeyEnrollResponseDto,
+  AccountRecoverySettingsUpdateRequestDto,
+  AccountRecoveryStatusResponseDto,
+  TrustedContactInviteRequestDto,
+  TrustedContactInviteResponseDto,
   WebAuthnAuthenticatorAttachment,
   WebAuthnCeremonyOptionsResponseDto,
   WebAuthnRegisterOptionsRequestDto,
@@ -788,6 +794,51 @@ export class CoreApiClient {
         ? { "X-Device-Fingerprint": currentFingerprint }
         : undefined,
     });
+  }
+
+  getAccountRecoveryStatus(): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.get<AccountRecoveryStatusResponseDto>("/account/recovery");
+  }
+
+  patchAccountRecoverySettings(
+    body: AccountRecoverySettingsUpdateRequestDto,
+  ): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.patch<AccountRecoveryStatusResponseDto>("/account/recovery/settings", body);
+  }
+
+  enrollAccountRecoveryKey(
+    body: AccountRecoveryKeyEnrollRequestDto,
+  ): Promise<AccountRecoveryKeyEnrollResponseDto> {
+    return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/enroll", body);
+  }
+
+  rotateAccountRecoveryKey(
+    body: AccountRecoveryKeyEnrollRequestDto,
+  ): Promise<AccountRecoveryKeyEnrollResponseDto> {
+    return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/rotate", body);
+  }
+
+  ackAccountRecoveryKeyExport(): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.post<AccountRecoveryStatusResponseDto>("/account/recovery/key/ack-export", {});
+  }
+
+  inviteTrustedContact(
+    body: TrustedContactInviteRequestDto,
+  ): Promise<TrustedContactInviteResponseDto> {
+    return this.api.post<TrustedContactInviteResponseDto>("/account/recovery/contacts", body);
+  }
+
+  deleteTrustedContact(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.delete<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/${encodeURIComponent(contactId)}`,
+    );
+  }
+
+  acceptTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.post<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/accept`,
+      {},
+    );
   }
 
   patchDevice(deviceId: string, body: DevicePatchRequestDto): Promise<DevicePatchResponseDto> {
