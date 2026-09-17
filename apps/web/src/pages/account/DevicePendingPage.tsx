@@ -1,5 +1,5 @@
 import { Button, Spinner } from "@okkey/ui";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 
 import AccountUserBar from "../../components/account/AccountUserBar";
@@ -50,6 +50,20 @@ export default function DevicePendingPage() {
     const raw = searchParams.get("redirect");
     return raw && raw.startsWith("/") ? raw : null;
   }, [searchParams]);
+
+  const [retrying, setRetrying] = useState(false);
+
+  const onRetry = async () => {
+    if (retrying) {
+      return;
+    }
+    setRetrying(true);
+    try {
+      await retryDeviceRegistration();
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   useEffect(() => {
     if (!accessToken) {
@@ -166,7 +180,8 @@ export default function DevicePendingPage() {
           </div>
         ) : rejected ? (
           <div className="flex flex-col gap-3">
-            <Button type="button" onClick={() => void retryDeviceRegistration()}>
+            <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
+              {retrying ? <Spinner data-icon="inline-start" /> : null}
               {t("web.devicePending.retry")}
             </Button>
           </div>

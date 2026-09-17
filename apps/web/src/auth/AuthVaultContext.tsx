@@ -283,6 +283,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
   const pendingDeviceIdRef = useRef<string | null>(null);
+  const currentDeviceIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     vaultUnlockedRef.current = vaultUnlocked;
@@ -335,6 +336,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       setDeviceTrustStatus("idle");
       setDeviceBlockedUntil(null);
       setCurrentDeviceId(null);
+      currentDeviceIdRef.current = null;
       setDeviceApprovers([]);
       pendingDeviceIdRef.current = null;
       setVaultUnlockBootstrapLoading(false);
@@ -360,6 +362,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
       );
       setCurrentDeviceId(snapshot.deviceId);
+      currentDeviceIdRef.current = snapshot.deviceId;
       setDeviceApprovers(snapshot.approverDevices);
     })();
 
@@ -508,6 +511,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setDeviceTrustStatus("idle");
     setDeviceBlockedUntil(null);
     setCurrentDeviceId(null);
+    currentDeviceIdRef.current = null;
     setDeviceApprovers([]);
     pendingDeviceIdRef.current = null;
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
@@ -813,20 +817,43 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     if (!accessToken || !userId) {
       return;
     }
-    const client = createAuthenticatedCoreClient(accessToken);
-    const fingerprint = getOrCreateDeviceFingerprint();
-    const snapshot = await pollDeviceTrust(client, fingerprint, pendingDeviceIdRef.current);
-    pendingDeviceIdRef.current =
-      snapshot.status === "pending" || snapshot.status === "rejected"
-        ? snapshot.deviceId
-        : null;
-    setDeviceTrustStatus(snapshot.status);
-    setDeviceBlockedUntil(
-      snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
-    );
-    setCurrentDeviceId(snapshot.deviceId);
-    setDeviceApprovers(snapshot.approverDevices);
-  }, [accessToken, userId]);
+    try {
+      const client = createAuthenticatedCoreClient(accessToken);
+      const fingerprint = getOrCreateDeviceFingerprint();
+      const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
+      const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId);
+      pendingDeviceIdRef.current =
+        snapshot.status === "pending" ||
+        snapshot.status === "rejected" ||
+        snapshot.status === "blocked"
+          ? snapshot.deviceId
+          : null;
+      setDeviceTrustStatus(snapshot.status);
+      setDeviceBlockedUntil(
+        snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+      );
+      setCurrentDeviceId(snapshot.deviceId);
+      currentDeviceIdRef.current = snapshot.deviceId;
+      setDeviceApprovers(snapshot.approverDevices);
+      // Revoke/block from another browser must drop local unlock immediately.
+      if (snapshot.status !== "trusted" && vaultUnlockedRef.current) {
+        lockVault();
+      }
+    } catch {
+      // Best-effort; keep last known trust status on transient network errors.
+    }
+  }, [accessToken, lockVault, userId]);
+
+  // Keep trust live so revoke/block on another device ends access without a full reload.
+  useEffect(() => {
+    if (!accessToken || !userId) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refreshDeviceTrust();
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [accessToken, refreshDeviceTrust, userId]);
 
   const retryDeviceRegistration = useCallback(async () => {
     if (!accessToken || !userId) {

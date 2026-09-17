@@ -69,7 +69,8 @@ export function parseBrowserEnvironment(userAgent = ""): ParsedBrowserEnvironmen
         : browserId;
 
   const deviceName = `${channel} ${hardwareLabel} - ${clientLabel}`;
-  const platformOsLabel = `${clientLabel} · ${osName === "unknown" ? hardwareLabel : osName}`;
+  const osLabel = osName === "unknown" ? hardwareLabel : osName;
+  const platformOsLabel = `${channel} · ${clientLabel} · ${osLabel}`;
   const fingerprint = buildDeviceFingerprintId({
     channel,
     clientType,
@@ -138,7 +139,7 @@ export type DeviceDisplayHints = {
 };
 
 /**
- * Subtitle like `Chrome · macOS`.
+ * Subtitle like `Web · Chrome · macOS`.
  * Prefers stored fields; falls back to parsing UA / legacy device_name.
  */
 export function formatDeviceClientOs(device: DeviceDisplayHints): string {
@@ -162,7 +163,27 @@ export function formatDeviceClientOs(device: DeviceDisplayHints): string {
     (name ? parseOsFromDeviceName(name) : null) ??
     "unknown";
 
-  return `${client} · ${os}`;
+  const channel = formatDeviceChannel(device, parsed);
+  return `${channel} · ${client} · ${os}`;
+}
+
+export function formatDeviceChannel(
+  device: DeviceDisplayHints,
+  parsed: ParsedBrowserEnvironment | null = null,
+): DeviceChannel {
+  if (parsed) {
+    return parsed.channel;
+  }
+  const name = device.device_name?.trim() ?? "";
+  const fromName = name.match(/^(Web|Mobile|Desktop|Extension)\b/u);
+  if (fromName?.[1]) {
+    return fromName[1] as DeviceChannel;
+  }
+  const clientType = device.client_type?.trim().toLowerCase() ?? "";
+  if (clientType.includes("extension")) return "Extension";
+  if (device.platform === "mobile" || clientType.includes("mobile")) return "Mobile";
+  if (clientType === "desktop") return "Desktop";
+  return "Web";
 }
 
 function looksLikeFullDeviceTitle(value: string): boolean {

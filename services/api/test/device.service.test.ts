@@ -165,7 +165,7 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.equal(sends[0].to, "owner@test.local");
   assert.equal(sends[0].localeHints.acceptLanguage, "ru-RU");
   assert.equal(sends[0].variables.deviceName, "Pixel");
-  assert.equal(sends[0].variables.platform, "App");
+  assert.equal(sends[0].variables.platform, "Desktop · App");
   assert.equal(sends[0].variables.osName, "macOS");
   assert.equal(sends[0].variables.requestIp, "203.0.113.9");
   assert.match(

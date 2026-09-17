@@ -13,11 +13,12 @@ import {
 } from "@okkey/ui";
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
-import { IconCheck16 } from "../items/itemCategoryIcons";
+import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
 import {
   DeviceTypeIcon,
   resolveDeviceBrandIcon,
@@ -29,7 +30,6 @@ import { emitDevicesChanged } from "./devicesEvents";
 const BLOCK_OPTIONS: Array<{ duration: DeviceBlockDuration; labelKey: string }> = [
   { duration: "1h", labelKey: "web.settingsPopup.devices.pending.block1h" },
   { duration: "1d", labelKey: "web.settingsPopup.devices.pending.block1d" },
-  { duration: "1w", labelKey: "web.settingsPopup.devices.pending.block1w" },
   { duration: "forever", labelKey: "web.settingsPopup.devices.pending.blockForever" },
 ];
 
@@ -91,11 +91,15 @@ export default function DeviceApprovalController() {
     try {
       if (decision === "approve") {
         await core.approveDevice(current.device_id, currentDeviceId);
+        toast.success(t("web.settingsPopup.devices.toast.trusted"));
       } else {
         await core.rejectDevice(current.device_id, currentDeviceId, "dismissed by user");
+        toast.success(t("web.settingsPopup.devices.toast.revoked"));
       }
       setPending((items) => items.filter((item) => item.device_id !== current.device_id));
       emitDevicesChanged();
+    } catch {
+      toast.error(t("web.settingsPopup.devices.error.generic"));
     } finally {
       setResolving(false);
     }
@@ -107,6 +111,9 @@ export default function DeviceApprovalController() {
       await core.blockDevice(current.device_id, currentDeviceId, { duration });
       setPending((items) => items.filter((item) => item.device_id !== current.device_id));
       emitDevicesChanged();
+      toast.success(t("web.settingsPopup.devices.toast.blocked"));
+    } catch {
+      toast.error(t("web.settingsPopup.devices.error.generic"));
     } finally {
       setResolving(false);
     }
@@ -131,7 +138,13 @@ export default function DeviceApprovalController() {
             {t("web.settingsPopup.devices.pending.trust")}
           </Button>
           <ControlGroup className="w-auto" aria-label={t("web.settingsPopup.devices.pending.notNow")}>
-            <Button type="button" disabled={resolving} onClick={() => void resolve("reject")}>
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={resolving}
+              onClick={() => void resolve("reject")}
+            >
+              <IconNotNow16 className="size-4 shrink-0" />
               {t("web.settingsPopup.devices.pending.notNow")}
             </Button>
             <DropdownMenu>
@@ -141,6 +154,7 @@ export default function DeviceApprovalController() {
                   className={cn(
                     buttonVariants({ variant: "default", size: "icon" }),
                     controlGroupItemFixedClassName,
+                    "border-l border-primary-foreground/25",
                   )}
                   aria-label={t("web.settingsPopup.devices.pending.blockMenu")}
                   disabled={resolving}

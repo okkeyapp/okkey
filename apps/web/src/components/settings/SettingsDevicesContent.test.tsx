@@ -154,7 +154,7 @@ describe("SettingsDevicesContent", () => {
 
     render(<SettingsDevicesContent t={t} />);
 
-    expect(await screen.findByText("Chrome · macOS")).toBeTruthy();
+    expect(await screen.findByText("Web · Chrome · macOS")).toBeTruthy();
     expect(screen.getByText("Web macOS - Chrome")).toBeTruthy();
   });
 

@@ -14,7 +14,7 @@ describe("parseBrowserEnvironment", () => {
     );
     expect(env.clientType).toBe("safari");
     expect(env.deviceName).toBe("Web macOS - Safari");
-    expect(env.platformOsLabel).toBe("Safari · macOS");
+    expect(env.platformOsLabel).toBe("Web · Safari · macOS");
     expect(env.hardwareLabel).toBe("macOS");
     expect(env.fingerprint).toBe("web_app-safari-macos-10.15.7");
   });
@@ -71,7 +71,7 @@ describe("formatClientLabelFromType", () => {
 });
 
 describe("formatDeviceClientOs / formatDeviceTitle", () => {
-  it("infers Chrome · macOS from legacy UA device_name when fields are unknown", () => {
+  it("infers Web · Chrome · macOS from legacy UA device_name when fields are unknown", () => {
     const device = {
       device_name:
         "Web · Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -79,7 +79,7 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
       os_name: "unknown",
       platform: "unknown",
     };
-    expect(formatDeviceClientOs(device)).toBe("Chrome · macOS");
+    expect(formatDeviceClientOs(device)).toBe("Web · Chrome · macOS");
     expect(formatDeviceTitle(device)).toBe("Web macOS - Chrome");
   });
 
@@ -90,7 +90,7 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
       os_name: "macOS",
     };
     expect(formatDeviceTitle(device)).toBe("Web macOS - Chrome");
-    expect(formatDeviceClientOs(device)).toBe("Chrome · macOS");
+    expect(formatDeviceClientOs(device)).toBe("Web · Chrome · macOS");
   });
 
   it("rebuilds title from legacy short device_name", () => {

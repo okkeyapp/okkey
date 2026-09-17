@@ -14,8 +14,10 @@
   "email.device.approval.locationLine": "Location: {location}",
   "email.device.approval.ctaOpenSettings": "Open device settings",
   "email.device.approval.noteNoUrl": "Open Okkey on a trusted device to approve.",
+  "email.device.approval.noteBlockIfNotYou": "If this device is not yours, block it immediately in device settings and strengthen your account security.",
+  "email.device.approval.noteIgnoreIfMistake": "If you received this email by mistake, simply ignore it.",
   "email.device.approval.textFooterWithUrl": "Learn more: {helpUrl}",
-  "email.device.approval.plain": "{lead}\n{deviceLine}\n{platformLine}\n{whenLine}\n{ipLine}\n{locationLine}\n{footer}",
+  "email.device.approval.plain": "{lead}\n{deviceLine}\n{platformLine}\n{whenLine}\n{ipLine}\n{locationLine}\n{footer}\n{noteBlockIfNotYou}\n{noteIgnoreIfMistake}",
 
   "email.workspaceInvite.subject": "Invitation to workspace “{workspaceName}”",
   "email.workspaceInvite.intro": "{inviter} invited you to workspace “{workspaceName}”.",

@@ -27,6 +27,8 @@ import {
   IconCheck16,
   IconDelete16,
   IconEdit16,
+  IconNotNow16,
+  IconUnlock16,
 } from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
@@ -44,7 +46,6 @@ type SettingsDevicesContentProps = {
 const BLOCK_OPTIONS: Array<{ duration: DeviceBlockDuration; labelKey: string }> = [
   { duration: "1h", labelKey: "web.settingsPopup.devices.pending.block1h" },
   { duration: "1d", labelKey: "web.settingsPopup.devices.pending.block1d" },
-  { duration: "1w", labelKey: "web.settingsPopup.devices.pending.block1w" },
   { duration: "forever", labelKey: "web.settingsPopup.devices.pending.blockForever" },
 ];
 
@@ -432,11 +433,13 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             <ControlGroup className="w-auto" aria-label={t("web.settingsPopup.devices.pending.notNow")}>
               <Button
                 type="button"
+                className="gap-2"
                 disabled={busyId === primaryPending.device_id}
                 onClick={() =>
                   void dismissPending(primaryPending.device_id, "dismissed by user")
                 }
               >
+                <IconNotNow16 className="size-4 shrink-0" />
                 {t("web.settingsPopup.devices.pending.notNow")}
               </Button>
               <DropdownMenu>
@@ -446,6 +449,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
                     className={cn(
                       buttonVariants({ variant: "default", size: "icon" }),
                       controlGroupItemFixedClassName,
+                      "border-l border-primary-foreground/25",
                     )}
                     aria-label={t("web.settingsPopup.devices.pending.blockMenu")}
                     disabled={busyId === primaryPending.device_id}
@@ -552,85 +556,88 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       </div>
 
       <div className="flex flex-col gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          onClick={() => setBlockedOpen((value) => !value)}
-        >
-          {t("web.settingsPopup.devices.blocked.toggle", { count: String(blocked.length) })}
-          <ChevronDownIcon
-            data-icon="inline-end"
-            className={blockedOpen ? "rotate-180" : undefined}
-          />
-        </Button>
-        {blockedOpen ? (
-          <div className="overflow-hidden rounded-xl bg-secondary">
-            {blocked.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">
-                {t("web.settingsPopup.devices.blocked.empty")}
-              </p>
-            ) : (
-              blocked.map((device, index) => (
-                <div
-                  key={device.device_id}
-                  className={
-                    index === 0
-                      ? "flex items-start gap-4 p-4"
-                      : "flex items-start gap-4 border-t border-border p-4"
-                  }
-                >
-                  <DeviceTypeIcon
-                    form={resolveDeviceFormIcon(device)}
-                    brand={resolveDeviceBrandIcon(device)}
-                  />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {formatDeviceTitle(device)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {device.blocked_until
-                        ? t("web.settingsPopup.devices.blocked.until", {
-                            date: formatAbsoluteDate(device.blocked_until, locale),
-                          })
-                        : t("web.settingsPopup.devices.blocked.forever")}
-                    </p>
+        {blocked.length > 0 ? (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => setBlockedOpen((value) => !value)}
+            >
+              {t("web.settingsPopup.devices.blocked.toggle")}
+              <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold leading-none text-primary-foreground">
+                {blocked.length}
+              </span>
+              <ChevronDownIcon
+                data-icon="inline-end"
+                className={blockedOpen ? "rotate-180" : undefined}
+              />
+            </Button>
+            {blockedOpen ? (
+              <div className="overflow-hidden rounded-xl bg-secondary">
+                {blocked.map((device, index) => (
+                  <div
+                    key={device.device_id}
+                    className={
+                      index === 0
+                        ? "flex items-start gap-4 p-4"
+                        : "flex items-start gap-4 border-t border-border p-4"
+                    }
+                  >
+                    <DeviceTypeIcon
+                      form={resolveDeviceFormIcon(device)}
+                      brand={resolveDeviceBrandIcon(device)}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {formatDeviceTitle(device)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {device.blocked_until
+                          ? t("web.settingsPopup.devices.blocked.until", {
+                              date: formatAbsoluteDate(device.blocked_until, locale),
+                            })
+                          : t("web.settingsPopup.devices.blocked.forever")}
+                      </p>
+                    </div>
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="iconSm"
+                            className="hover:bg-background data-[state=open]:bg-background"
+                            aria-label={t("web.settingsPopup.devices.actions.menu")}
+                            disabled={busyId === device.device_id}
+                          >
+                            <IconActions16 className="size-4 text-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52 p-1">
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onSelect={() => void unblockDevice(device.device_id, false)}
+                          >
+                            <IconUnlock16 className="size-4 shrink-0" />
+                            {t("web.settingsPopup.devices.actions.unblock")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onSelect={() => void unblockDevice(device.device_id, true)}
+                          >
+                            <IconCheck16 className="size-4 shrink-0" />
+                            {t("web.settingsPopup.devices.actions.unblockAndTrust")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="iconSm"
-                          aria-label={t("web.settingsPopup.devices.actions.menu")}
-                          disabled={busyId === device.device_id}
-                        >
-                          <IconActions16 className="size-4 text-foreground" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52 p-1">
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onSelect={() => void unblockDevice(device.device_id, false)}
-                        >
-                          {t("web.settingsPopup.devices.actions.unblock")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onSelect={() => void unblockDevice(device.device_id, true)}
-                        >
-                          <IconCheck16 className="size-4 shrink-0" />
-                          {t("web.settingsPopup.devices.actions.unblockAndTrust")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))}
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
 

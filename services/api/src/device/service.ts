@@ -349,7 +349,7 @@ export class DeviceService {
       },
       variables: {
         deviceName: input.deviceName,
-        platform: clientTypeLabel(input.clientType),
+        platform: `${deviceChannelLabel(input)} · ${clientTypeLabel(input.clientType)}`,
         osName: cleanString(input.osName, "unknown"),
         requestIp: ip,
         country,
@@ -625,6 +625,24 @@ function resolveBlockedUntil(now: Date, duration: DeviceBlockDuration): string |
 function cleanString(value: string, fallback: string): string {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed.slice(0, 255) : fallback;
+}
+
+function deviceChannelLabel(input: {
+  platform: string;
+  clientType: string;
+  deviceName: string;
+}): string {
+  const fromName = input.deviceName.trim().match(/^(Web|Mobile|Desktop|Extension)\b/u);
+  if (fromName?.[1]) {
+    return fromName[1];
+  }
+  const clientType = input.clientType.trim().toLowerCase();
+  if (clientType.includes("extension")) return "Extension";
+  if (input.platform.trim().toLowerCase() === "mobile" || clientType.includes("mobile")) {
+    return "Mobile";
+  }
+  if (clientType === "desktop") return "Desktop";
+  return "Web";
 }
 
 function clientTypeLabel(clientType: string): string {

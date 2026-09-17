@@ -14,6 +14,8 @@ export interface DeviceApprovalEmailProps {
   helpUrl: string;
   ctaLabel: string;
   noteNoUrl: string;
+  noteBlockIfNotYou: string;
+  noteIgnoreIfMistake: string;
 }
 
 export function DeviceApprovalEmail({
@@ -26,6 +28,8 @@ export function DeviceApprovalEmail({
   helpUrl,
   ctaLabel,
   noteNoUrl,
+  noteBlockIfNotYou,
+  noteIgnoreIfMistake,
 }: DeviceApprovalEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
   return (
@@ -45,6 +49,10 @@ export function DeviceApprovalEmail({
       ) : (
         <Text style={noteStyle}>{noteNoUrl}</Text>
       )}
+      <Section style={footnotesStyle}>
+        <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
+        <Text style={footnoteStyleLast}>{noteIgnoreIfMistake}</Text>
+      </Section>
     </EmailShell>
   );
 }
@@ -71,9 +79,28 @@ const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: 0,
+  margin: "0 0 16px",
 };
 
 const ctaWrapStyle: React.CSSProperties = {
   marginTop: "4px",
+  marginBottom: "20px",
+};
+
+const footnotesStyle: React.CSSProperties = {
+  margin: 0,
+};
+
+const footnoteStyle: React.CSSProperties = {
+  fontSize: "13px",
+  lineHeight: "20px",
+  color: EMAIL_SECONDARY_TEXT,
+  margin: "0 0 8px",
+};
+
+const footnoteStyleLast: React.CSSProperties = {
+  fontSize: "13px",
+  lineHeight: "20px",
+  color: EMAIL_SECONDARY_TEXT,
+  margin: 0,
 };

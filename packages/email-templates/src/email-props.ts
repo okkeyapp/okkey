@@ -56,6 +56,16 @@ export function buildDeviceApprovalEmailProps(
       : "";
   const ctaLabel = formatEmailMessage(locale, "email.device.approval.ctaOpenSettings", {});
   const noteNoUrl = formatEmailMessage(locale, "email.device.approval.noteNoUrl", {});
+  const noteBlockIfNotYou = formatEmailMessage(
+    locale,
+    "email.device.approval.noteBlockIfNotYou",
+    {},
+  );
+  const noteIgnoreIfMistake = formatEmailMessage(
+    locale,
+    "email.device.approval.noteIgnoreIfMistake",
+    {},
+  );
   return {
     lead,
     deviceLine,
@@ -66,6 +76,8 @@ export function buildDeviceApprovalEmailProps(
     helpUrl,
     ctaLabel,
     noteNoUrl,
+    noteBlockIfNotYou,
+    noteIgnoreIfMistake,
   };
 }
 
@@ -130,7 +142,7 @@ export const previewSampleAuthCode: AuthEmailCodeVariables = {
 
 export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
   deviceName: "Web macOS - Chrome",
-  platform: "Chrome",
+  platform: "Web · Chrome",
   osName: "macOS",
   requestIp: "203.0.113.9",
   country: "Singapore",
