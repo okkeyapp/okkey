@@ -52,6 +52,7 @@ import type {
   AccountLoginMethodsResponseDto,
   AccountRecoveryKeyEnrollRequestDto,
   AccountRecoveryKeyEnrollResponseDto,
+  AccountRecoveryKeyWrapResponseDto,
   AccountRecoverySettingsUpdateRequestDto,
   AccountRecoveryStatusResponseDto,
   TrustedContactInviteRequestDto,
@@ -820,6 +821,10 @@ export class CoreApiClient {
 
   ackAccountRecoveryKeyExport(): Promise<AccountRecoveryStatusResponseDto> {
     return this.api.post<AccountRecoveryStatusResponseDto>("/account/recovery/key/ack-export", {});
+  }
+
+  getAccountRecoveryKeyWrap(): Promise<AccountRecoveryKeyWrapResponseDto> {
+    return this.api.get<AccountRecoveryKeyWrapResponseDto>("/account/recovery/key/wrap");
   }
 
   inviteTrustedContact(

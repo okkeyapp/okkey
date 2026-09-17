@@ -35,6 +35,7 @@ import {
   createAccountRecoveryKeyAckExportRoute,
   createAccountRecoveryKeyEnrollRoute,
   createAccountRecoveryKeyRotateRoute,
+  createAccountRecoveryKeyWrapRoute,
   createAccountRecoverySettingsPatchRoute,
   createAccountRecoveryStatusRoute,
 } from "./routes/account-recovery.ts";
@@ -598,6 +599,11 @@ export function createApiApp(
       "POST",
       "/account/recovery/key/ack-export",
       createAccountRecoveryKeyAckExportRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/account/recovery/key/wrap",
+      createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserId),
     );
     app.route(
       "POST",

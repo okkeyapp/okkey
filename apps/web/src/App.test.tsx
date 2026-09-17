@@ -116,18 +116,91 @@ describe("App", () => {
     clearBearerAndSession();
   });
 
-  it("renders account restore stub with recovery guidance and link back to lock", async () => {
+  it("renders account restore with no-methods notice and link back to lock", async () => {
     seedBearerSession();
     sessionStorage.setItem(
       PROFILE_STORAGE_KEY,
       JSON.stringify({ email: "user@okkey.local", firstName: "Test", lastName: "User" }),
     );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/account/recovery") && !url.includes("/key/")) {
+        return new Response(
+          JSON.stringify({
+            entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: false },
+            settings: { keyEnabled: false, devicesEnabled: false, contactsEnabled: false },
+            key: { enrolled: false, createdAt: null, rotatedAt: null, exportedAt: null },
+            contacts: [],
+            confirmedContactCount: 0,
+            minConfirmedContacts: 3,
+            pendingInvites: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: "NOT_FOUND", message: "not found", requestId: "t" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     renderWithRouter(<App />, [ACCOUNT_RESTORE_PATH]);
     await waitFor(() => {
       expect(screen.getByTestId("app-shell-title")).toHaveTextContent("Forgot master password?");
     });
-    expect(screen.getByText(/^choose a recovery method$/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/^no recovery methods enabled$/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/paid|entitlement|тариф/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to master password/i })).toHaveAttribute("href", ACCOUNT_LOCK_PATH);
+    vi.unstubAllGlobals();
+    clearBearerAndSession();
+  });
+
+  it("renders account restore key method with input when key is enabled", async () => {
+    seedBearerSession();
+    sessionStorage.setItem(
+      PROFILE_STORAGE_KEY,
+      JSON.stringify({ email: "user@okkey.local", firstName: "Test", lastName: "User" }),
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/account/recovery") && !url.includes("/key/")) {
+        return new Response(
+          JSON.stringify({
+            entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: false },
+            settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
+            key: {
+              enrolled: true,
+              createdAt: "2026-03-02T21:59:00.000Z",
+              rotatedAt: null,
+              exportedAt: null,
+            },
+            contacts: [],
+            confirmedContactCount: 0,
+            minConfirmedContacts: 3,
+            pendingInvites: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: "NOT_FOUND", message: "not found", requestId: "t" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithRouter(<App />, [ACCOUNT_RESTORE_PATH]);
+    await waitFor(() => {
+      expect(screen.getByText(/^choose a recovery method$/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /recovery key/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^recovery key$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^new master password$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^no recovery methods enabled$/i)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
     clearBearerAndSession();
   });
 

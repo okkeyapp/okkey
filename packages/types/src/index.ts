@@ -897,6 +897,11 @@ export interface AccountRecoveryKeyEnrollResponseDto {
   settings: AccountRecoverySettingsDto;
 }
 
+/** `GET /account/recovery/key/wrap` — client unwraps locally with the recovery secret. */
+export interface AccountRecoveryKeyWrapResponseDto {
+  encryptedBlob: EncryptedBlobDto;
+}
+
 export interface TrustedContactInviteRequestDto {
   email: string;
 }

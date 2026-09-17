@@ -30,7 +30,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -97,26 +97,20 @@ function formatGeneratedAt(
   });
 }
 
-function UpsellNote({
-  t,
-  suffixKey,
-}: {
-  t: SettingsRecoveryContentProps["t"];
-  suffixKey: string;
-}) {
+function PaidMethodsUpsell({ t }: { t: SettingsRecoveryContentProps["t"] }) {
   return (
-    <Alert variant="info" className="mt-3">
+    <Alert variant="info" className="mt-4">
       <Info className="size-4" />
       <AlertTitle>{t("web.settingsPopup.recovery.upsell.title")}</AlertTitle>
       <AlertDescription>
-        {t("web.settingsPopup.recovery.upsell.prefix")}
+        {t("web.settingsPopup.recovery.upsell.combinedPrefix")}
         <Link
           to={settingsPath("plan")}
           className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-primary"
         >
-          {t("web.settingsPopup.recovery.upsell.planLink")}
+          {t("web.settingsPopup.recovery.upsell.combinedPlanLink")}
         </Link>
-        {t(suffixKey)}
+        {t("web.settingsPopup.recovery.upsell.combinedSuffix")}
       </AlertDescription>
     </Alert>
   );
@@ -126,39 +120,64 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
   const { vaultKey } = useAuthVault();
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const loadStatus = useCallback(async () => {
+  const refreshStatus = useCallback(async (): Promise<AccountRecoveryStatusResponseDto | null> => {
     if (!core) {
-      setLoading(false);
-      return;
+      return null;
     }
-    setLoading(true);
-    setError(null);
     try {
       const next = await core.getAccountRecoveryStatus();
       setStatus(next);
+      setError(null);
+      return next;
     } catch (err) {
-      setError(recoveryErrorMessage(err, t));
-    } finally {
-      setLoading(false);
+      setError(recoveryErrorMessage(err, tRef.current));
+      return null;
     }
-  }, [core, t]);
+  }, [core]);
 
   useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
+    let cancelled = false;
+    async function loadInitial() {
+      if (!core) {
+        setInitialLoading(false);
+        return;
+      }
+      try {
+        const next = await core.getAccountRecoveryStatus();
+        if (!cancelled) {
+          setStatus(next);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(recoveryErrorMessage(err, tRef.current));
+        }
+      } finally {
+        if (!cancelled) {
+          setInitialLoading(false);
+        }
+      }
+    }
+    void loadInitial();
+    return () => {
+      cancelled = true;
+    };
+  }, [core]);
 
   const notifySaved = useCallback(() => {
-    toast.success(t("web.toast.save.success"));
-  }, [t]);
+    toast.success(tRef.current("web.toast.save.success"));
+  }, []);
 
   async function enrollOrRotate(rotate: boolean): Promise<string | null> {
     if (!core || !vaultKey) {
@@ -172,13 +191,28 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       const secret = await generateRecoverySecret();
       const secretBytes = new TextEncoder().encode(secret);
       const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
-      if (rotate) {
-        await core.rotateAccountRecoveryKey({ encryptedBlob });
-      } else {
-        await core.enrollAccountRecoveryKey({ encryptedBlob });
-      }
+      const result = rotate
+        ? await core.rotateAccountRecoveryKey({ encryptedBlob })
+        : await core.enrollAccountRecoveryKey({ encryptedBlob });
       setSessionKey(secret);
-      await loadStatus();
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              settings: result.settings,
+              key: result.key,
+            }
+          : {
+              entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: false },
+              settings: result.settings,
+              key: result.key,
+              contacts: [],
+              confirmedContactCount: 0,
+              minConfirmedContacts: 3,
+              pendingInvites: [],
+            },
+      );
+      void refreshStatus();
       return secret;
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -189,7 +223,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   }
 
   async function handleKeySwitch(checked: boolean) {
-    if (!core || loading || busy) {
+    if (!core || initialLoading || busy) {
       return;
     }
     if (checked) {
@@ -203,13 +237,23 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       return;
     }
     setBusy(true);
+    setStatus((prev) =>
+      prev
+        ? {
+            ...prev,
+            settings: { ...prev.settings, keyEnabled: false },
+            key: { enrolled: false, createdAt: null, rotatedAt: null, exportedAt: null },
+          }
+        : prev,
+    );
+    setSessionKey(null);
     try {
-      await core.patchAccountRecoverySettings({ keyEnabled: false });
-      setSessionKey(null);
-      await loadStatus();
+      const next = await core.patchAccountRecoverySettings({ keyEnabled: false });
+      setStatus(next);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
+      void refreshStatus();
     } finally {
       setBusy(false);
     }
@@ -220,12 +264,16 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       return;
     }
     setBusy(true);
+    setStatus((prev) =>
+      prev ? { ...prev, settings: { ...prev.settings, devicesEnabled: checked } } : prev,
+    );
     try {
-      await core.patchAccountRecoverySettings({ devicesEnabled: checked });
-      await loadStatus();
+      const next = await core.patchAccountRecoverySettings({ devicesEnabled: checked });
+      setStatus(next);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
+      void refreshStatus();
     } finally {
       setBusy(false);
     }
@@ -236,12 +284,16 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       return;
     }
     setBusy(true);
+    setStatus((prev) =>
+      prev ? { ...prev, settings: { ...prev.settings, contactsEnabled: checked } } : prev,
+    );
     try {
-      await core.patchAccountRecoverySettings({ contactsEnabled: checked });
-      await loadStatus();
+      const next = await core.patchAccountRecoverySettings({ contactsEnabled: checked });
+      setStatus(next);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
+      void refreshStatus();
     } finally {
       setBusy(false);
     }
@@ -253,8 +305,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     }
     try {
       await navigator.clipboard.writeText(sessionKey);
-      await core.ackAccountRecoveryKeyExport();
-      await loadStatus();
+      const next = await core.ackAccountRecoveryKeyExport();
+      setStatus(next);
       notifySaved();
     } catch {
       setError(t("web.settingsPopup.recovery.error.copyFailed"));
@@ -273,8 +325,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         title: t("web.settingsPopup.recovery.key.pdfTitle"),
         description: t("web.settingsPopup.recovery.key.pdfDescription"),
       });
-      await core.ackAccountRecoveryKeyExport();
-      await loadStatus();
+      const next = await core.ackAccountRecoveryKeyExport();
+      setStatus(next);
     } catch {
       setError(t("web.settingsPopup.recovery.error.generic"));
     } finally {
@@ -300,10 +352,13 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     }
     setBusy(true);
     try {
-      await core.inviteTrustedContact({ email: inviteEmail.trim() });
+      const { contact } = await core.inviteTrustedContact({ email: inviteEmail.trim() });
       setInviteEmail("");
       setInviteOpen(false);
-      await loadStatus();
+      setStatus((prev) =>
+        prev ? { ...prev, contacts: [...prev.contacts, contact] } : prev,
+      );
+      void refreshStatus();
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -317,12 +372,25 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       return;
     }
     setBusy(true);
+    setStatus((prev) =>
+      prev
+        ? {
+            ...prev,
+            contacts: prev.contacts.filter((item) => item.id !== contact.id),
+            confirmedContactCount:
+              contact.status === "confirmed"
+                ? Math.max(0, prev.confirmedContactCount - 1)
+                : prev.confirmedContactCount,
+          }
+        : prev,
+    );
     try {
-      await core.deleteTrustedContact(contact.id);
-      await loadStatus();
+      const next = await core.deleteTrustedContact(contact.id);
+      setStatus(next);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
+      void refreshStatus();
     } finally {
       setBusy(false);
     }
@@ -334,8 +402,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     }
     setBusy(true);
     try {
-      await core.acceptTrustedContactInvite(inviteId);
-      await loadStatus();
+      const next = await core.acceptTrustedContactInvite(inviteId);
+      setStatus(next);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -349,6 +417,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const contactsEnabled = Boolean(status?.settings.contactsEnabled);
   const canDevices = Boolean(status?.entitlements.trustedDevices);
   const canContacts = Boolean(status?.entitlements.trustedContacts);
+  const showPaidMethods = canDevices || canContacts;
+  const showPaidUpsell = Boolean(status) && !canDevices && !canContacts;
   const showKeyPanel = keyEnabled;
   const showContactsPanel = canContacts;
   const generatedLabel = formatGeneratedAt(
@@ -360,6 +430,18 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     ? formatGeneratedAt(status.key.exportedAt, locale, t)
     : t("web.settingsPopup.recovery.key.never");
   const exportedNever = !status?.key.exportedAt;
+
+  if (initialLoading) {
+    return (
+      <div
+        className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col"
+        aria-label={t("web.settingsPopup.recovery.title")}
+        aria-busy="true"
+      >
+        <p className="text-sm text-muted-foreground">{t("web.settingsPopup.recovery.loading")}</p>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -402,17 +484,13 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         border={false}
         controlClassName="w-[100px]"
       >
-        {loading ? (
-          <div className="h-6 w-11 shrink-0" aria-hidden />
-        ) : (
-          <Switch
-            size="lg"
-            checked={keyEnabled}
-            disabled={!core || busy}
-            onCheckedChange={(checked) => void handleKeySwitch(checked)}
-            aria-label={t("web.settingsPopup.recovery.key.label")}
-          />
-        )}
+        <Switch
+          size="lg"
+          checked={keyEnabled}
+          disabled={!core || busy || initialLoading}
+          onCheckedChange={(checked) => void handleKeySwitch(checked)}
+          aria-label={t("web.settingsPopup.recovery.key.label")}
+        />
       </SettingsRow>
 
       {showKeyPanel ? (
@@ -483,126 +561,123 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         </div>
       ) : null}
 
-      <SettingsRow
-        label={t("web.settingsPopup.recovery.devices.label")}
-        description={t("web.settingsPopup.recovery.devices.description")}
-        controlClassName="w-[100px]"
-      >
-        {loading ? (
-          <div className="h-6 w-11 shrink-0" aria-hidden />
-        ) : (
-          <Switch
-            size="lg"
-            checked={canDevices && devicesEnabled}
-            disabled={!canDevices || busy}
-            onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
-            aria-label={t("web.settingsPopup.recovery.devices.label")}
-          />
-        )}
-      </SettingsRow>
-      {!loading && !canDevices ? (
-        <UpsellNote t={t} suffixKey="web.settingsPopup.recovery.upsell.devicesSuffix" />
-      ) : null}
-
-      <SettingsRow
-        label={t("web.settingsPopup.recovery.contacts.label")}
-        description={t("web.settingsPopup.recovery.contacts.description")}
-        controlClassName="w-[100px]"
-      >
-        {loading ? (
-          <div className="h-6 w-11 shrink-0" aria-hidden />
-        ) : (
-          <Switch
-            size="lg"
-            checked={canContacts && contactsEnabled}
-            disabled={
-              !canContacts ||
-              busy ||
-              (Boolean(status) &&
-                !contactsEnabled &&
-                (status?.confirmedContactCount ?? 0) < (status?.minConfirmedContacts ?? 3))
-            }
-            onCheckedChange={(checked) => void handleContactsSwitch(checked)}
-            aria-label={t("web.settingsPopup.recovery.contacts.label")}
-          />
-        )}
-      </SettingsRow>
-      {!loading && !canContacts ? (
-        <UpsellNote t={t} suffixKey="web.settingsPopup.recovery.upsell.contactsSuffix" />
-      ) : null}
-
-      {showContactsPanel ? (
-        <div className="mt-2 flex flex-col rounded-xl bg-secondary px-4">
-          {(status?.contacts ?? []).map((contact, index) => (
-            <div
-              key={contact.id}
-              className={`flex items-center gap-1.5 py-3 ${index > 0 ? "border-t border-border" : ""}`}
+      {showPaidMethods ? (
+        <>
+          {canDevices ? (
+            <SettingsRow
+              label={t("web.settingsPopup.recovery.devices.label")}
+              description={t("web.settingsPopup.recovery.devices.description")}
+              controlClassName="w-[100px]"
             >
-              {contact.status === "confirmed" ? (
-                <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
-              ) : (
-                <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
-              )}
-              <p className="min-w-0 flex-1 text-sm text-foreground">{contact.email}</p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6 text-destructive"
-                aria-label={t("web.settingsPopup.recovery.contacts.remove")}
+              <Switch
+                size="lg"
+                checked={devicesEnabled}
                 disabled={busy}
-                onClick={() => void handleDeleteContact(contact)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
-          {inviteOpen ? (
-            <div className="flex flex-col gap-2 border-t border-border py-3">
-              <Input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
-                aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
+                aria-label={t("web.settingsPopup.recovery.devices.label")}
               />
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 flex-1 bg-background"
-                  disabled={busy}
-                  onClick={() => void handleInvite()}
-                >
-                  {t("web.settingsPopup.recovery.contacts.sendInvite")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-9"
-                  onClick={() => {
-                    setInviteOpen(false);
-                    setInviteEmail("");
-                  }}
-                >
-                  {t("web.settingsPopup.recovery.contacts.cancel")}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-9 w-full gap-2.5 border-t border-border"
-              disabled={busy}
-              onClick={() => setInviteOpen(true)}
-            >
-              <Plus className="size-4 shrink-0" />
-              {t("web.settingsPopup.recovery.contacts.add")}
-            </Button>
-          )}
-        </div>
+            </SettingsRow>
+          ) : null}
+
+          {canContacts ? (
+            <>
+              <SettingsRow
+                label={t("web.settingsPopup.recovery.contacts.label")}
+                description={t("web.settingsPopup.recovery.contacts.description")}
+                controlClassName="w-[100px]"
+              >
+                <Switch
+                  size="lg"
+                  checked={contactsEnabled}
+                  disabled={
+                    busy ||
+                    (Boolean(status) &&
+                      !contactsEnabled &&
+                      (status?.confirmedContactCount ?? 0) < (status?.minConfirmedContacts ?? 3))
+                  }
+                  onCheckedChange={(checked) => void handleContactsSwitch(checked)}
+                  aria-label={t("web.settingsPopup.recovery.contacts.label")}
+                />
+              </SettingsRow>
+
+              {showContactsPanel ? (
+                <div className="mt-2 flex flex-col rounded-xl bg-secondary px-4">
+                  {(status?.contacts ?? []).map((contact, index) => (
+                    <div
+                      key={contact.id}
+                      className={`flex items-center gap-1.5 py-3 ${index > 0 ? "border-t border-border" : ""}`}
+                    >
+                      {contact.status === "confirmed" ? (
+                        <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
+                      ) : (
+                        <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
+                      )}
+                      <p className="min-w-0 flex-1 text-sm text-foreground">{contact.email}</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 text-destructive"
+                        aria-label={t("web.settingsPopup.recovery.contacts.remove")}
+                        disabled={busy}
+                        onClick={() => void handleDeleteContact(contact)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {inviteOpen ? (
+                    <div className="flex flex-col gap-2 border-t border-border py-3">
+                      <Input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                        aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 flex-1 bg-background"
+                          disabled={busy}
+                          onClick={() => void handleInvite()}
+                        >
+                          {t("web.settingsPopup.recovery.contacts.sendInvite")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-9"
+                          onClick={() => {
+                            setInviteOpen(false);
+                            setInviteEmail("");
+                          }}
+                        >
+                          {t("web.settingsPopup.recovery.contacts.cancel")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-9 w-full gap-2.5 border-t border-border"
+                      disabled={busy}
+                      onClick={() => setInviteOpen(true)}
+                    >
+                      <Plus className="size-4 shrink-0" />
+                      {t("web.settingsPopup.recovery.contacts.add")}
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </>
       ) : null}
+
+      {showPaidUpsell ? <PaidMethodsUpsell t={t} /> : null}
     </div>
   );
 }

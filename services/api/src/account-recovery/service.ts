@@ -232,6 +232,22 @@ export class AccountRecoveryService {
     return this.getStatus(userId);
   }
 
+  async getKeyWrap(userId: string): Promise<{ encryptedBlob: EncryptedBlobDto }> {
+    const status = await this.getStatus(userId);
+    if (!status.settings.keyEnabled || !status.key.enrolled) {
+      throw new AccountRecoveryError(
+        "RECOVERY_KEY_NOT_AVAILABLE",
+        404,
+        "recovery key is not available for this account",
+      );
+    }
+    const wrap = await this.recovery.getWrap(userId);
+    if (!wrap) {
+      throw new AccountRecoveryError("RECOVERY_KEY_NOT_ENROLLED", 404, "recovery key is not enrolled");
+    }
+    return { encryptedBlob: wrap.encryptedBlob };
+  }
+
   async inviteContact(userId: string, rawEmail: string): Promise<TrustedContactDto> {
     const entitlements = await this.resolveEntitlements(userId);
     if (!entitlements.trustedContacts) {

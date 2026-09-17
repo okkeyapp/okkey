@@ -73,7 +73,7 @@ describe("SettingsRecoveryContent", () => {
     coreMocks.getAccountRecoveryStatus.mockResolvedValue(freeStatus());
   });
 
-  it("shows recovery key section and FREE upsell for devices/contacts", async () => {
+  it("shows recovery key and a single paid upsell when devices/contacts are unavailable", async () => {
     render(
       <MemoryRouter>
         <SettingsRecoveryContent t={t} />
@@ -83,9 +83,22 @@ describe("SettingsRecoveryContent", () => {
     await waitFor(() => {
       expect(screen.getByText("web.settingsPopup.recovery.key.label")).toBeTruthy();
     });
-    expect(screen.getByText("web.settingsPopup.recovery.devices.label")).toBeTruthy();
-    expect(screen.getByText("web.settingsPopup.recovery.contacts.label")).toBeTruthy();
-    expect(screen.getAllByText("web.settingsPopup.recovery.upsell.title").length).toBeGreaterThan(0);
+    expect(screen.queryByText("web.settingsPopup.recovery.devices.label")).toBeNull();
+    expect(screen.queryByText("web.settingsPopup.recovery.contacts.label")).toBeNull();
+    expect(
+      screen.getByText((_, node) => {
+        if (!node || node.children.length === 0) {
+          return false;
+        }
+        return Array.from(node.childNodes).some(
+          (child) =>
+            child.nodeType === Node.TEXT_NODE &&
+            (child.textContent ?? "").includes(
+              "web.settingsPopup.recovery.upsell.combinedPrefix",
+            ),
+        );
+      }),
+    ).toBeTruthy();
   });
 
   it("lists trusted contacts when paid entitlement is present", async () => {

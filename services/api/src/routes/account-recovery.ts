@@ -192,6 +192,24 @@ export function createAccountRecoveryKeyAckExportRoute(
   };
 }
 
+export function createAccountRecoveryKeyWrapRoute(
+  service: AccountRecoveryService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    try {
+      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      if (!userId) {
+        return;
+      }
+      const result = await service.getKeyWrap(userId);
+      json(ctx.res, 200, result);
+    } catch (error) {
+      handleRecoveryError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 export function createAccountRecoveryContactInviteRoute(
   service: AccountRecoveryService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
