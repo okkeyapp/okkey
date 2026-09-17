@@ -49,6 +49,7 @@ export default function ProtectedVaultLayout() {
 
   if (
     deviceTrustStatus === "pending" ||
+    deviceTrustStatus === "blocked" ||
     deviceTrustStatus === "rejected" ||
     deviceTrustStatus === "error"
   ) {

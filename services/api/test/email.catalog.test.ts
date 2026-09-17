@@ -16,7 +16,7 @@ const deviceVars = {
   platform: "mobile",
   osName: "Android",
   requestIp: "198.51.100.2",
-  helpUrl: "https://app.example/settings/devices",
+  helpUrl: "https://app.example/items?popup=settings|devices",
 } as const;
 
 const workspaceVars = {

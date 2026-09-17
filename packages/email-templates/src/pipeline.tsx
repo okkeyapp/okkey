@@ -88,7 +88,7 @@ export async function renderDeviceApprovalRequest(
   }
   const helpUrl = variables.helpUrl.trim();
   const props = buildDeviceApprovalEmailProps(locale, variables);
-  const { lead, deviceLine, platformLine, ipLine, locationLine, noteNoUrl } = props;
+  const { lead, deviceLine, platformLine, whenLine, ipLine, locationLine, noteNoUrl } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.approval.textFooterWithUrl", { helpUrl })
     : noteNoUrl;
@@ -96,6 +96,7 @@ export async function renderDeviceApprovalRequest(
     lead,
     deviceLine,
     platformLine,
+    whenLine: whenLine || "",
     ipLine,
     locationLine: locationLine || "",
     footer,

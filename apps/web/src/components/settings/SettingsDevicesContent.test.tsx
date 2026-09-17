@@ -7,6 +7,8 @@ const coreMocks = vi.hoisted(() => ({
   revokeDevice: vi.fn(),
   rejectDevice: vi.fn(),
   patchDevice: vi.fn(),
+  blockDevice: vi.fn(),
+  unblockDevice: vi.fn(),
 }));
 
 vi.mock("../../auth/AuthVaultContext", () => ({
@@ -110,10 +112,17 @@ describe("SettingsDevicesContent", () => {
     coreMocks.listDevices.mockResolvedValue({
       devices: [trustedDevice()],
       pending: [pendingDevice()],
+      blocked: [],
     });
     coreMocks.approveDevice.mockResolvedValue({ device_id: "d-pending", status: "trusted" });
     coreMocks.revokeDevice.mockResolvedValue({ device_id: "d-pending", status: "revoked" });
     coreMocks.rejectDevice.mockResolvedValue({ device_id: "d-pending", status: "revoked" });
+    coreMocks.blockDevice.mockResolvedValue({
+      device_id: "d-pending",
+      status: "blocked",
+      blocked_until: null,
+    });
+    coreMocks.unblockDevice.mockResolvedValue({ device_id: "d-pending", status: "revoked" });
     coreMocks.patchDevice.mockResolvedValue({
       device_id: "d-other",
       device_name: "Renamed",
@@ -140,6 +149,7 @@ describe("SettingsDevicesContent", () => {
         }),
       ],
       pending: [],
+      blocked: [],
     });
 
     render(<SettingsDevicesContent t={t} />);
@@ -163,13 +173,15 @@ describe("SettingsDevicesContent", () => {
         }),
       ],
       pending: [],
+      blocked: [],
     });
 
     render(<SettingsDevicesContent t={t} />);
 
     expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
-    expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(1);
+    // Current + other device both expose the actions menu (current: rename only).
+    expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(2);
   });
 
   it("does not mark sole trusted device current when fingerprints differ", async () => {
@@ -182,6 +194,7 @@ describe("SettingsDevicesContent", () => {
         }),
       ],
       pending: [],
+      blocked: [],
     });
 
     render(<SettingsDevicesContent t={t} />);
@@ -191,7 +204,7 @@ describe("SettingsDevicesContent", () => {
     expect(screen.getByLabelText("web.settingsPopup.devices.actions.menu")).toBeTruthy();
   });
 
-  it("hides actions menu for the current device", async () => {
+  it("shows actions menu for current and other devices", async () => {
     coreMocks.listDevices.mockResolvedValue({
       devices: [
         trustedDevice(),
@@ -203,13 +216,14 @@ describe("SettingsDevicesContent", () => {
         }),
       ],
       pending: [],
+      blocked: [],
     });
 
     render(<SettingsDevicesContent t={t} />);
 
     expect(await screen.findByText("Web macOS - Chrome")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.devices.list.currentBadge")).toBeTruthy();
-    expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(1);
+    expect(screen.getAllByLabelText("web.settingsPopup.devices.actions.menu")).toHaveLength(2);
   });
 
   it("trusts pending device via approveDevice", async () => {
@@ -217,10 +231,12 @@ describe("SettingsDevicesContent", () => {
       .mockResolvedValueOnce({
         devices: [trustedDevice()],
         pending: [pendingDevice()],
+        blocked: [],
       })
       .mockResolvedValueOnce({
         devices: [trustedDevice(), trustedDevice({ device_id: "d-pending", is_current: false })],
         pending: [],
+        blocked: [],
       });
 
     render(<SettingsDevicesContent t={t} />);
@@ -238,10 +254,12 @@ describe("SettingsDevicesContent", () => {
       .mockResolvedValueOnce({
         devices: [trustedDevice()],
         pending: [pendingDevice()],
+        blocked: [],
       })
       .mockResolvedValueOnce({
         devices: [trustedDevice()],
         pending: [],
+        blocked: [],
       });
 
     render(<SettingsDevicesContent t={t} />);
@@ -264,6 +282,7 @@ describe("SettingsDevicesContent", () => {
       .mockResolvedValueOnce({
         devices: [trustedDevice()],
         pending: [],
+        blocked: [],
       });
 
     render(<SettingsDevicesContent t={t} />);

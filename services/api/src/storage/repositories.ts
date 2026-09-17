@@ -907,7 +907,7 @@ export interface DeviceRecord {
   userAgent: string;
   ipFirst: string;
   ipLast: string;
-  status: "trusted" | "pending" | "revoked";
+  status: "trusted" | "pending" | "revoked" | "blocked";
   createdAt: string;
   lastSeenAt: string | null;
   approvedBy: string | null;
@@ -915,6 +915,7 @@ export interface DeviceRecord {
   rejectedAt: string | null;
   rejectionReason: string | null;
   revokedAt: string | null;
+  blockedUntil: string | null;
 }
 
 export interface DeviceApprovalState {
@@ -1104,7 +1105,7 @@ export class DevicesRepository {
         user_agent: string;
         ip_first: string;
         ip_last: string;
-        status: "trusted" | "pending" | "revoked";
+        status: "trusted" | "pending" | "revoked" | "blocked";
         created_at: string | Date;
         last_seen_at: string | Date | null;
         approved_by: string | null;
@@ -1112,6 +1113,7 @@ export class DevicesRepository {
         rejected_at: string | Date | null;
         rejection_reason: string | null;
         revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
       }>(
         `
           SELECT
@@ -1136,11 +1138,12 @@ export class DevicesRepository {
             approved_at,
             rejected_at,
             rejection_reason,
-            revoked_at
+            revoked_at,
+            blocked_until
           FROM devices
           WHERE user_id = $1::bigint
             AND device_fingerprint = $2
-            AND status IN ('trusted', 'pending')
+            AND status IN ('trusted', 'pending', 'blocked')
           ORDER BY
             CASE WHEN status = 'trusted' THEN 0 ELSE 1 END,
             COALESCE(last_seen_at, created_at) DESC
@@ -1151,6 +1154,18 @@ export class DevicesRepository {
 
       if (existingByFingerprint[0]) {
         const current = existingByFingerprint[0];
+        if (current.status === "blocked") {
+          if (current.blocked_until === null) {
+            return mapDevice(current);
+          }
+          const blockedUntilMs =
+            current.blocked_until instanceof Date
+              ? current.blocked_until.getTime()
+              : new Date(current.blocked_until).getTime();
+          if (blockedUntilMs > new Date(input.now).getTime()) {
+            return mapDevice(current);
+          }
+        }
         const hasOtherTrusted = await this.db.query<{ n: string }>(
           `
             SELECT COUNT(*)::text AS n
@@ -1180,7 +1195,7 @@ export class DevicesRepository {
           user_agent: string;
           ip_first: string;
           ip_last: string;
-          status: "trusted" | "pending" | "revoked";
+          status: "trusted" | "pending" | "revoked" | "blocked";
           created_at: string | Date;
           last_seen_at: string | Date | null;
           approved_by: string | null;
@@ -1188,6 +1203,7 @@ export class DevicesRepository {
           rejected_at: string | Date | null;
           rejection_reason: string | null;
           revoked_at: string | Date | null;
+          blocked_until: string | Date | null;
         }>(
           `
             UPDATE devices
@@ -1217,7 +1233,8 @@ export class DevicesRepository {
               END,
               rejected_at = CASE WHEN $12 = 'trusted' THEN NULL ELSE rejected_at END,
               rejection_reason = CASE WHEN $12 = 'trusted' THEN NULL ELSE rejection_reason END,
-              revoked_at = CASE WHEN $12 = 'trusted' THEN NULL ELSE revoked_at END
+              revoked_at = CASE WHEN $12 = 'trusted' THEN NULL ELSE revoked_at END,
+              blocked_until = NULL
             WHERE id = $1
               AND user_id = $2
             RETURNING
@@ -1242,7 +1259,8 @@ export class DevicesRepository {
               approved_at,
               rejected_at,
               rejection_reason,
-              revoked_at
+              revoked_at,
+              blocked_until
           `,
           [
             current.id,
@@ -1794,7 +1812,7 @@ export class DevicesRepository {
 
   async listByUser(
     userId: string,
-    statuses: Array<"trusted" | "pending"> = ["trusted", "pending"],
+    statuses: Array<"trusted" | "pending" | "blocked"> = ["trusted", "pending"],
   ): Promise<DeviceRecord[]> {
     if (statuses.length === 0) {
       return [];
@@ -1814,7 +1832,7 @@ export class DevicesRepository {
       user_agent: string;
       ip_first: string;
       ip_last: string;
-      status: "trusted" | "pending" | "revoked";
+      status: "trusted" | "pending" | "revoked" | "blocked";
       created_at: string | Date;
       last_seen_at: string | Date | null;
       approved_by: string | null;
@@ -1822,6 +1840,7 @@ export class DevicesRepository {
       rejected_at: string | Date | null;
       rejection_reason: string | null;
       revoked_at: string | Date | null;
+      blocked_until: string | Date | null;
     }>(
       `
         SELECT
@@ -1846,7 +1865,8 @@ export class DevicesRepository {
           approved_at,
           rejected_at,
           rejection_reason,
-          revoked_at
+          revoked_at,
+          blocked_until
         FROM devices
         WHERE user_id = $1
           AND status = ANY($2::text[])
@@ -1995,6 +2015,246 @@ export class DevicesRepository {
       [input.deviceId, input.userId, input.now, input.reason ?? ""],
     );
     return rows[0] ? mapDevice(rows[0]) : null;
+  }
+
+  async blockPending(input: {
+    userId: string;
+    deviceId: string;
+    approverDeviceId: string;
+    now: string;
+    blockedUntil: string | null;
+    reason?: string;
+  }): Promise<DeviceRecord | null> {
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_fingerprint: string;
+      device_name: string;
+      device_public_key: string;
+      device_share: Buffer;
+      platform: string;
+      os_name: string;
+      os_version: string;
+      app_version: string;
+      client_type: string;
+      user_agent: string;
+      ip_first: string;
+      ip_last: string;
+      status: "trusted" | "pending" | "revoked" | "blocked";
+      created_at: string | Date;
+      last_seen_at: string | Date | null;
+      approved_by: string | null;
+      approved_at: string | Date | null;
+      rejected_at: string | Date | null;
+      rejection_reason: string | null;
+      revoked_at: string | Date | null;
+      blocked_until: string | Date | null;
+    }>(
+      `
+        UPDATE devices AS pending
+        SET
+          status = 'blocked',
+          blocked_until = $4::timestamptz,
+          rejected_at = $3::timestamptz,
+          rejection_reason = NULLIF($5, ''),
+          approved_by = NULL,
+          approved_at = NULL
+        FROM devices AS approver
+        WHERE pending.id = $1
+          AND pending.user_id = $2
+          AND pending.status = 'pending'
+          AND approver.id = $6
+          AND approver.user_id = pending.user_id
+          AND approver.status = 'trusted'
+        RETURNING
+          pending.id,
+          pending.user_id,
+          pending.device_fingerprint,
+          pending.device_name,
+          pending.device_public_key,
+          pending.device_share,
+          pending.platform,
+          pending.os_name,
+          pending.os_version,
+          pending.app_version,
+          pending.client_type,
+          pending.user_agent,
+          pending.ip_first,
+          pending.ip_last,
+          pending.status,
+          pending.created_at,
+          pending.last_seen_at,
+          pending.approved_by,
+          pending.approved_at,
+          pending.rejected_at,
+          pending.rejection_reason,
+          pending.revoked_at,
+          pending.blocked_until
+      `,
+      [
+        input.deviceId,
+        input.userId,
+        input.now,
+        input.blockedUntil,
+        input.reason ?? "",
+        input.approverDeviceId,
+      ],
+    );
+    return rows[0] ? mapDevice(rows[0]) : null;
+  }
+
+  async unblockDevice(input: {
+    userId: string;
+    deviceId: string;
+    now: string;
+    trust: boolean;
+  }): Promise<DeviceRecord | null> {
+    if (input.trust) {
+      const rows = await this.db.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked" | "blocked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+        blocked_until: string | Date | null;
+      }>(
+        `
+          UPDATE devices
+          SET
+            status = 'trusted',
+            approved_at = $3::timestamptz,
+            blocked_until = NULL,
+            rejected_at = NULL,
+            rejection_reason = NULL,
+            revoked_at = NULL
+          WHERE id = $1
+            AND user_id = $2
+            AND status = 'blocked'
+          RETURNING
+            id,
+            user_id,
+            device_fingerprint,
+            device_name,
+            device_public_key,
+            device_share,
+            platform,
+            os_name,
+            os_version,
+            app_version,
+            client_type,
+            user_agent,
+            ip_first,
+            ip_last,
+            status,
+            created_at,
+            last_seen_at,
+            approved_by,
+            approved_at,
+            rejected_at,
+            rejection_reason,
+            revoked_at,
+            blocked_until
+        `,
+        [input.deviceId, input.userId, input.now],
+      );
+      return rows[0] ? mapDevice(rows[0]) : null;
+    }
+
+    const deleted = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_fingerprint: string;
+      device_name: string;
+      device_public_key: string;
+      device_share: Buffer;
+      platform: string;
+      os_name: string;
+      os_version: string;
+      app_version: string;
+      client_type: string;
+      user_agent: string;
+      ip_first: string;
+      ip_last: string;
+      status: "trusted" | "pending" | "revoked" | "blocked";
+      created_at: string | Date;
+      last_seen_at: string | Date | null;
+      approved_by: string | null;
+      approved_at: string | Date | null;
+      rejected_at: string | Date | null;
+      rejection_reason: string | null;
+      revoked_at: string | Date | null;
+      blocked_until: string | Date | null;
+    }>(
+      `
+        DELETE FROM devices
+        WHERE id = $1
+          AND user_id = $2
+          AND status = 'blocked'
+        RETURNING
+          id,
+          user_id,
+          device_fingerprint,
+          device_name,
+          device_public_key,
+          device_share,
+          platform,
+          os_name,
+          os_version,
+          app_version,
+          client_type,
+          user_agent,
+          ip_first,
+          ip_last,
+          status,
+          created_at,
+          last_seen_at,
+          approved_by,
+          approved_at,
+          rejected_at,
+          rejection_reason,
+          revoked_at,
+          blocked_until
+      `,
+      [input.deviceId, input.userId],
+    );
+    if (!deleted[0]) {
+      return null;
+    }
+    return mapDevice({
+      ...deleted[0],
+      status: "revoked",
+      blocked_until: null,
+    });
+  }
+
+  async clearExpiredBlocks(userId: string, now: string): Promise<void> {
+    await this.db.query(
+      `
+        DELETE FROM devices
+        WHERE user_id = $1
+          AND status = 'blocked'
+          AND blocked_until IS NOT NULL
+          AND blocked_until <= $2::timestamptz
+      `,
+      [userId, now],
+    );
   }
 }
 
@@ -2558,7 +2818,7 @@ function mapDevice(row: {
   user_agent: string;
   ip_first: string;
   ip_last: string;
-  status: "trusted" | "pending" | "revoked";
+  status: "trusted" | "pending" | "revoked" | "blocked";
   created_at: string | Date;
   last_seen_at: string | Date | null;
   approved_by: string | null;
@@ -2566,6 +2826,7 @@ function mapDevice(row: {
   rejected_at: string | Date | null;
   rejection_reason: string | null;
   revoked_at: string | Date | null;
+  blocked_until?: string | Date | null;
 }): DeviceRecord {
   return {
     id: row.id,
@@ -2590,6 +2851,7 @@ function mapDevice(row: {
     rejectedAt: toIsoString(row.rejected_at),
     rejectionReason: row.rejection_reason,
     revokedAt: toIsoString(row.revoked_at),
+    blockedUntil: toIsoString(row.blocked_until ?? null),
   };
 }
 

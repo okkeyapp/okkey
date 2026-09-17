@@ -19,12 +19,27 @@ import {
   accountLockWithRedirectQuery,
 } from "../../routes/paths";
 
+function formatAbsoluteDate(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default function DevicePendingPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [searchParams] = useSearchParams();
   const {
     accessToken,
     deviceTrustStatus,
+    deviceBlockedUntil,
     deviceApprovers,
     refreshDeviceTrust,
     retryDeviceRegistration,
@@ -40,7 +55,11 @@ export default function DevicePendingPage() {
     if (!accessToken) {
       return;
     }
-    if (deviceTrustStatus !== "pending" && deviceTrustStatus !== "checking") {
+    if (
+      deviceTrustStatus !== "pending" &&
+      deviceTrustStatus !== "checking" &&
+      deviceTrustStatus !== "blocked"
+    ) {
       return;
     }
     void refreshDeviceTrust();
@@ -78,6 +97,7 @@ export default function DevicePendingPage() {
     );
   }
 
+  const blocked = deviceTrustStatus === "blocked";
   const rejected = deviceTrustStatus === "rejected" || deviceTrustStatus === "error";
 
   return (
@@ -88,18 +108,31 @@ export default function DevicePendingPage() {
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-10">
         <div className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-foreground">
-            {rejected
-              ? t("web.devicePending.rejectedTitle")
-              : t("web.devicePending.title")}
+            {blocked
+              ? t("web.devicePending.blockedTitle")
+              : rejected
+                ? t("web.devicePending.rejectedTitle")
+                : t("web.devicePending.title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {rejected
-              ? t("web.devicePending.rejectedBody")
-              : t("web.devicePending.body")}
+            {blocked
+              ? t("web.devicePending.blockedBody")
+              : rejected
+                ? t("web.devicePending.rejectedBody")
+                : t("web.devicePending.body")}
           </p>
+          {blocked ? (
+            <p className="text-sm text-muted-foreground">
+              {deviceBlockedUntil
+                ? t("web.devicePending.blockedUntil", {
+                    date: formatAbsoluteDate(deviceBlockedUntil, locale),
+                  })
+                : t("web.devicePending.blockedForever")}
+            </p>
+          ) : null}
         </div>
 
-        {!rejected ? (
+        {!rejected && !blocked ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">
               {t("web.devicePending.approversHeading")}
@@ -131,13 +164,13 @@ export default function DevicePendingPage() {
               <span>{t("web.devicePending.waiting")}</span>
             </div>
           </div>
-        ) : (
+        ) : rejected ? (
           <div className="flex flex-col gap-3">
             <Button type="button" onClick={() => void retryDeviceRegistration()}>
               {t("web.devicePending.retry")}
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
     </AppShellLayout>
   );

@@ -37,6 +37,11 @@ export function buildDeviceApprovalEmailProps(
   const platformLine = formatEmailMessage(locale, "email.device.approval.platformLine", {
     platformOs,
   });
+  const whenLine = variables.requestedAtIso
+    ? formatEmailMessage(locale, "email.device.approval.whenLine", {
+        when: formatUtcWhen(locale, variables.requestedAtIso),
+      })
+    : "";
   const ipLine = formatEmailMessage(locale, "email.device.approval.ipLine", {
     ip: variables.requestIp,
   });
@@ -55,6 +60,7 @@ export function buildDeviceApprovalEmailProps(
     lead,
     deviceLine,
     platformLine,
+    whenLine,
     ipLine,
     locationLine,
     helpUrl,
@@ -129,7 +135,8 @@ export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
   requestIp: "203.0.113.9",
   country: "Singapore",
   city: "Singapore",
-  helpUrl: "https://app.okkey.local/settings/devices",
+  helpUrl: "https://app.okkey.local/items?popup=settings|devices",
+  requestedAtIso: "2026-01-15T10:00:00.000Z",
 };
 
 export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {

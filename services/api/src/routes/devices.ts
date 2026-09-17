@@ -30,6 +30,15 @@ interface RejectDeviceBody {
   reason?: string;
 }
 
+interface BlockDeviceBody {
+  duration?: string;
+  reason?: string;
+}
+
+interface UnblockDeviceBody {
+  trust?: boolean;
+}
+
 interface PatchDeviceBody {
   device_name?: string;
 }
@@ -93,6 +102,7 @@ function toWireDevice(item: DeviceListItem) {
     approved_at: item.approvedAt,
     is_current: item.isCurrent,
     approval_expires_at: item.approvalExpiresAt,
+    blocked_until: item.blockedUntil ?? null,
   };
 }
 
@@ -157,6 +167,9 @@ export function createRegisterDeviceRoute(
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,
+        ...(result.status === "blocked"
+          ? { blocked_until: result.blockedUntil ?? null }
+          : {}),
       });
     } catch (error) {
       handleDeviceError(ctx.requestId, ctx.res, error);
@@ -184,6 +197,7 @@ export function createListDevicesRoute(
       json(ctx.res, 200, {
         devices: result.devices.map(toWireDevice),
         pending: result.pending.map(toWireDevice),
+        blocked: (result.blocked ?? []).map(toWireDevice),
       });
     } catch (error) {
       handleDeviceError(ctx.requestId, ctx.res, error);
@@ -348,6 +362,113 @@ export function createRejectDeviceRoute(
         approverDeviceId,
         deviceId,
         body.reason,
+      );
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+const BLOCK_DURATIONS = new Set(["1h", "1d", "1w", "forever"]);
+
+export function createBlockDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+
+    let body: BlockDeviceBody;
+    try {
+      body = await readJsonBody<BlockDeviceBody>(ctx.req);
+    } catch {
+      json(ctx.res, 400, errorPayload("DEVICE_BAD_REQUEST", "invalid json", ctx.requestId));
+      return;
+    }
+
+    const duration = body.duration?.trim();
+    if (!duration || !BLOCK_DURATIONS.has(duration)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "DEVICE_BAD_REQUEST",
+          "duration must be one of 1h, 1d, 1w, forever",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const approverDeviceId = getApproverDeviceId(ctx);
+      const result = await deviceService.blockDevice(
+        userId,
+        approverDeviceId,
+        deviceId,
+        duration as "1h" | "1d" | "1w" | "forever",
+        body.reason,
+      );
+      json(ctx.res, 200, {
+        device_id: result.deviceId,
+        status: result.status,
+        blocked_until: result.blockedUntil,
+      });
+    } catch (error) {
+      handleDeviceError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createUnblockDeviceRoute(
+  deviceService: DeviceService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const deviceId = ctx.params.deviceId;
+    if (!deviceId) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+
+    let body: UnblockDeviceBody = {};
+    try {
+      body = await readJsonBody<UnblockDeviceBody>(ctx.req);
+    } catch {
+      body = {};
+    }
+
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const result = await deviceService.unblockDevice(
+        userId,
+        deviceId,
+        body.trust === true,
       );
       json(ctx.res, 200, {
         device_id: result.deviceId,

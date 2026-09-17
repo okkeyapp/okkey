@@ -8,6 +8,7 @@ export interface DeviceApprovalEmailProps {
   lead: string;
   deviceLine: string;
   platformLine: string;
+  whenLine: string;
   ipLine: string;
   locationLine: string;
   helpUrl: string;
@@ -19,6 +20,7 @@ export function DeviceApprovalEmail({
   lead,
   deviceLine,
   platformLine,
+  whenLine,
   ipLine,
   locationLine,
   helpUrl,
@@ -32,6 +34,7 @@ export function DeviceApprovalEmail({
       <Section style={listStyle}>
         <Text style={metaStyle}>{deviceLine}</Text>
         <Text style={metaStyle}>{platformLine}</Text>
+        {whenLine ? <Text style={metaStyle}>{whenLine}</Text> : null}
         <Text style={metaStyle}>{ipLine}</Text>
         {locationLine ? <Text style={metaStyle}>{locationLine}</Text> : null}
       </Section>

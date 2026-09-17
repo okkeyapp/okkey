@@ -8,8 +8,8 @@ import {
 } from "../../routes/popupQuery";
 
 /**
- * Email / help links use `/settings/devices`. That must open the personal
- * SettingsPopup Devices tab — not workspace settings (unknown slug → general).
+ * Legacy `/settings/devices` redirects to the canonical popup URL
+ * `/items?popup=settings|devices` (personal SettingsPopup Devices tab).
  */
 export default function PersonalDevicesSettingsRedirect() {
   const search = new URLSearchParams({

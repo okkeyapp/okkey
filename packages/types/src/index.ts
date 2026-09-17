@@ -1157,7 +1157,9 @@ export interface DeviceRegisterRequestDto {
 /** `POST /devices/register` success body (snake_case on wire). */
 export interface DeviceRegisterResponseDto {
   device_id: EntityId;
-  status: "trusted" | "pending_approval";
+  status: "trusted" | "pending_approval" | "blocked";
+  /** Present when status is `blocked`; null means permanently blocked. */
+  blocked_until?: string | null;
 }
 
 /** `POST /devices/:deviceId/reject` success body. */
@@ -1166,12 +1168,40 @@ export interface DeviceRejectResponseDto {
   status: "revoked";
 }
 
+/** Timed / permanent block durations for pending device dismissal. */
+export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+
+/** `POST /devices/:deviceId/block` request body. */
+export interface DeviceBlockRequestDto {
+  duration: DeviceBlockDuration;
+  reason?: string;
+}
+
+/** `POST /devices/:deviceId/block` success body. */
+export interface DeviceBlockResponseDto {
+  device_id: EntityId;
+  status: "blocked";
+  blocked_until: string | null;
+}
+
+/** `POST /devices/:deviceId/unblock` request body. */
+export interface DeviceUnblockRequestDto {
+  /** When true, device becomes trusted immediately (no new approval request). */
+  trust?: boolean;
+}
+
+/** `POST /devices/:deviceId/unblock` success body. */
+export interface DeviceUnblockResponseDto {
+  device_id: EntityId;
+  status: "trusted" | "revoked";
+}
+
 /** Single device row for `GET /devices` (snake_case on wire). */
 export interface DeviceListItemDto {
   device_id: EntityId;
   device_name: string;
   device_fingerprint: string;
-  status: "trusted" | "pending_approval";
+  status: "trusted" | "pending_approval" | "blocked";
   platform: string;
   os_name: string;
   os_version: string;
@@ -1186,12 +1216,15 @@ export interface DeviceListItemDto {
   approved_at: string | null;
   is_current: boolean;
   approval_expires_at: string | null;
+  /** Present for blocked devices; null means permanently blocked. */
+  blocked_until?: string | null;
 }
 
 /** `GET /devices` success body. */
 export interface DeviceListResponseDto {
   devices: DeviceListItemDto[];
   pending: DeviceListItemDto[];
+  blocked: DeviceListItemDto[];
 }
 
 /** `PATCH /devices/:deviceId` request body. */

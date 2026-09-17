@@ -11,7 +11,13 @@ import {
 import { readVaultBundle } from "./localVaultBundle";
 import { DEVICE_PUBLIC_KEY_KEY } from "./storageKeys";
 
-export type DeviceTrustStatus = "checking" | "trusted" | "pending" | "rejected" | "error";
+export type DeviceTrustStatus =
+  | "checking"
+  | "trusted"
+  | "pending"
+  | "blocked"
+  | "rejected"
+  | "error";
 
 export type DeviceTrustSnapshot = {
   status: DeviceTrustStatus;
@@ -19,6 +25,8 @@ export type DeviceTrustSnapshot = {
   /** Trusted devices that can approve this pending device (for wait UI). */
   approverDevices: DeviceListItemDto[];
   errorMessage?: string;
+  /** When status is blocked; null means permanently blocked. */
+  blockedUntil?: string | null;
 };
 
 const PLACEHOLDER_SHARE_LEN = 32;
@@ -124,6 +132,18 @@ export async function resolveDeviceTrust(
     };
   }
 
+  const blockedMatch = (listed.blocked ?? []).find((device) =>
+    fingerprintMatch(device, fingerprint),
+  );
+  if (blockedMatch) {
+    return {
+      status: "blocked",
+      deviceId: blockedMatch.device_id,
+      approverDevices: listed.devices,
+      blockedUntil: blockedMatch.blocked_until ?? null,
+    };
+  }
+
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   const soleTrusted = listed.devices.length === 1 ? listed.devices[0] : null;
   const canReclaimSole =
@@ -156,6 +176,15 @@ export async function resolveDeviceTrust(
         status: "trusted",
         deviceId: registered.device_id,
         approverDevices: after.devices,
+      };
+    }
+
+    if (registered.status === "blocked") {
+      return {
+        status: "blocked",
+        deviceId: registered.device_id,
+        approverDevices: listed.devices,
+        blockedUntil: registered.blocked_until ?? null,
       };
     }
 
@@ -198,6 +227,18 @@ export async function pollDeviceTrust(
       status: "trusted",
       deviceId: trustedMatch.device_id,
       approverDevices: listed.devices,
+    };
+  }
+
+  const blockedMatch = (listed.blocked ?? []).find((device) =>
+    fingerprintMatch(device, fingerprint),
+  );
+  if (blockedMatch) {
+    return {
+      status: "blocked",
+      deviceId: blockedMatch.device_id,
+      approverDevices: listed.devices,
+      blockedUntil: blockedMatch.blocked_until ?? null,
     };
   }
 

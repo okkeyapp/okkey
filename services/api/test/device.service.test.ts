@@ -49,6 +49,7 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
     rejectedAt: null,
     rejectionReason: null,
     revokedAt: null,
+    blockedUntil: null,
     ...(overrides ?? {}),
   };
 }
@@ -61,6 +62,9 @@ function createService(overrides?: {
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
   renameDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
   revokeOwned?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  blockPending?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  unblockDevice?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  clearExpiredBlocks?: () => Promise<void>;
   geoIp?: { lookup: (ip: string) => Promise<{ country: string | null; city: string | null }> };
   now?: () => Date;
 }) {
@@ -86,6 +90,13 @@ function createService(overrides?: {
       revokeOwned:
         overrides?.revokeOwned ??
         (async () => createDeviceRecord({ status: "revoked" })),
+      blockPending:
+        overrides?.blockPending ??
+        (async () => createDeviceRecord({ status: "blocked", blockedUntil: null })),
+      unblockDevice:
+        overrides?.unblockDevice ??
+        (async () => createDeviceRecord({ status: "revoked" })),
+      clearExpiredBlocks: overrides?.clearExpiredBlocks ?? (async () => undefined),
     },
     config: {
       deviceApprovalTtlSeconds: 60,
@@ -120,6 +131,9 @@ test("registerDevice sends device_approval_request when pending and email deps c
       listByUser: async () => [],
       renameDevice: async () => null,
       revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
     },
     config: {
       deviceApprovalTtlSeconds: 60,
@@ -154,7 +168,11 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.equal(sends[0].variables.platform, "App");
   assert.equal(sends[0].variables.osName, "macOS");
   assert.equal(sends[0].variables.requestIp, "203.0.113.9");
-  assert.match(sends[0].variables.helpUrl, /^https:\/\/app\.test\/settings\/devices$/);
+  assert.match(
+    sends[0].variables.helpUrl,
+    /^https:\/\/app\.test\/items\?popup=settings\|devices$/,
+  );
+  assert.ok(typeof sends[0].variables.requestedAtIso === "string");
 });
 
 test("registerDevice returns trusted for trusted device", async () => {
@@ -345,4 +363,31 @@ test("renameDevice and revokeDevice map not found", async () => {
 
   const renamed = await createService().renameDevice("u1", "d1", "Office laptop");
   assert.equal(renamed.deviceName, "Renamed");
+});
+
+
+test("blockDevice blocks pending for 1h and unblockDevice can trust", async () => {
+  const until = "2026-01-01T01:00:00.000Z";
+  const service = createService({
+    blockPending: async () =>
+      createDeviceRecord({
+        id: "d-pending",
+        status: "blocked",
+        blockedUntil: until,
+      }),
+    unblockDevice: async () =>
+      createDeviceRecord({
+        id: "d-pending",
+        status: "trusted",
+        blockedUntil: null,
+      }),
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+  });
+
+  const blocked = await service.blockDevice("u1", "d-approver", "d-pending", "1h");
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.blockedUntil, until);
+
+  const trusted = await service.unblockDevice("u1", "d-pending", true);
+  assert.equal(trusted.status, "trusted");
 });

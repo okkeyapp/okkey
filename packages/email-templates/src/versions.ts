@@ -1,7 +1,7 @@
 /** Bump when template structure or copy source changes (ops / auditing). */
 export const EMAIL_TEMPLATE_VERSIONS = {
   auth_email_code: 4,
-  device_approval_request: 3,
+  device_approval_request: 4,
   workspace_invite: 3,
   two_factor_enabled: 3,
   two_factor_backup_codes_regenerated: 3,

@@ -43,6 +43,7 @@ function createDeviceServiceStub(overrides?: Partial<DeviceService>): DeviceServ
     listDevices: async () => ({
       devices: [],
       pending: [],
+      blocked: [],
     }),
     renameDevice: async () => ({
       deviceId: "d1",
@@ -57,6 +58,15 @@ function createDeviceServiceStub(overrides?: Partial<DeviceService>): DeviceServ
       status: "trusted",
     }),
     rejectDevice: async () => ({
+      deviceId: "d1",
+      status: "revoked",
+    }),
+    blockDevice: async () => ({
+      deviceId: "d1",
+      status: "blocked",
+      blockedUntil: null,
+    }),
+    unblockDevice: async () => ({
       deviceId: "d1",
       status: "revoked",
     }),
@@ -285,6 +295,7 @@ test("GET /devices requires auth and returns list payload", async () => {
               approvedAt: "2026-01-01T00:00:00.000Z",
               isCurrent: true,
               approvalExpiresAt: null,
+              blockedUntil: null,
             },
           ],
           pending: [
@@ -306,8 +317,10 @@ test("GET /devices requires auth and returns list payload", async () => {
               approvedAt: null,
               isCurrent: false,
               approvalExpiresAt: "2026-01-01T00:01:00.000Z",
+              blockedUntil: null,
             },
           ],
+          blocked: [],
         };
       },
     }),
@@ -337,7 +350,7 @@ test("GET /devices accepts device_fingerprint query when header is absent", asyn
     deviceService: createDeviceServiceStub({
       listDevices: async (_userId, fingerprint) => {
         seenFingerprint = fingerprint;
-        return { devices: [], pending: [] };
+        return { devices: [], pending: [], blocked: [] };
       },
     }),
   });

@@ -11,6 +11,8 @@ export interface DeviceApprovalRequestVariables {
   helpUrl: string;
   country?: string | null;
   city?: string | null;
+  /** ISO timestamp of the approval request (shown as date + time). */
+  requestedAtIso?: string | null;
 }
 
 export interface WorkspaceInviteVariables {

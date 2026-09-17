@@ -39,6 +39,9 @@ export interface DeviceServiceDeps {
     | "listByUser"
     | "renameDevice"
     | "revokeOwned"
+    | "blockPending"
+    | "unblockDevice"
+    | "clearExpiredBlocks"
   >;
   config: Pick<ApiConfig, "deviceApprovalTtlSeconds" | "publicAppBaseUrl">;
   users?: Pick<UsersRepository, "findById">;
@@ -67,10 +70,24 @@ export interface RegisterDeviceInput {
 
 export interface RegisterDeviceResult {
   deviceId: string;
-  status: "trusted" | "pending_approval";
+  status: "trusted" | "pending_approval" | "blocked";
+  blockedUntil?: string | null;
 }
 
 export interface ResolveDeviceApprovalResult {
+  deviceId: string;
+  status: "trusted" | "revoked";
+}
+
+export type DeviceBlockDuration = "1h" | "1d" | "1w" | "forever";
+
+export interface BlockDeviceResult {
+  deviceId: string;
+  status: "blocked";
+  blockedUntil: string | null;
+}
+
+export interface UnblockDeviceResult {
   deviceId: string;
   status: "trusted" | "revoked";
 }
@@ -79,7 +96,7 @@ export interface DeviceListItem {
   deviceId: string;
   deviceName: string;
   deviceFingerprint: string;
-  status: "trusted" | "pending_approval";
+  status: "trusted" | "pending_approval" | "blocked";
   platform: string;
   osName: string;
   osVersion: string;
@@ -94,11 +111,13 @@ export interface DeviceListItem {
   approvedAt: string | null;
   isCurrent: boolean;
   approvalExpiresAt: string | null;
+  blockedUntil: string | null;
 }
 
 export interface DeviceListResult {
   devices: DeviceListItem[];
   pending: DeviceListItem[];
+  blocked: DeviceListItem[];
 }
 
 export interface RenameDeviceResult {
@@ -193,6 +212,14 @@ export class DeviceService {
         now: this.now().toISOString(),
       });
 
+      if (record.status === "blocked") {
+        return {
+          deviceId: record.id,
+          status: "blocked",
+          blockedUntil: record.blockedUntil,
+        };
+      }
+
       const result: RegisterDeviceResult = {
         deviceId: record.id,
         status: record.status === "trusted" ? "trusted" : "pending_approval",
@@ -225,7 +252,9 @@ export class DeviceService {
     userId: string,
     currentFingerprint?: string | null,
   ): Promise<DeviceListResult> {
-    const records = await this.devices.listByUser(userId, ["trusted", "pending"]);
+    const nowIso = this.now().toISOString();
+    await this.devices.clearExpiredBlocks(userId, nowIso);
+    const records = await this.devices.listByUser(userId, ["trusted", "pending", "blocked"]);
     const normalizedFingerprint = normalizeFingerprint(currentFingerprint);
     const items = await Promise.all(
       records.map((record) => this.toListItem(record, normalizedFingerprint)),
@@ -234,6 +263,7 @@ export class DeviceService {
     return {
       devices: items.filter((item) => item.status === "trusted"),
       pending: items.filter((item) => item.status === "pending_approval"),
+      blocked: items.filter((item) => item.status === "blocked"),
     };
   }
 
@@ -324,9 +354,77 @@ export class DeviceService {
         requestIp: ip,
         country,
         city,
-        helpUrl: buildEmailAppPathUrl(this.config.publicAppBaseUrl, "/settings/devices"),
+        helpUrl: buildEmailAppPathUrl(
+          this.config.publicAppBaseUrl,
+          "/items?popup=settings|devices",
+        ),
+        requestedAtIso: this.now().toISOString(),
       },
     });
+  }
+
+  async blockDevice(
+    userId: string,
+    approverDeviceId: string,
+    pendingDeviceId: string,
+    duration: DeviceBlockDuration,
+    reason?: string,
+  ): Promise<BlockDeviceResult> {
+    const trustedApprover = await this.devices.isTrustedDevice(userId, approverDeviceId);
+    if (!trustedApprover) {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_ACCESS_DENIED",
+        403,
+        "trusted approver device required",
+      );
+    }
+
+    const now = this.now();
+    const blockedUntil = resolveBlockedUntil(now, duration);
+    const record = await this.devices.blockPending({
+      userId,
+      deviceId: pendingDeviceId,
+      approverDeviceId,
+      now: now.toISOString(),
+      blockedUntil,
+      reason: reason
+        ? cleanString(reason, `blocked:${duration}`)
+        : `blocked:${duration}`,
+    });
+    if (!record) {
+      throw new DeviceServiceError(
+        "DEVICE_APPROVAL_NOT_FOUND",
+        404,
+        "pending device approval not found",
+      );
+    }
+
+    return {
+      deviceId: record.id,
+      status: "blocked",
+      blockedUntil: record.blockedUntil,
+    };
+  }
+
+  async unblockDevice(
+    userId: string,
+    deviceId: string,
+    trust: boolean,
+  ): Promise<UnblockDeviceResult> {
+    const record = await this.devices.unblockDevice({
+      userId,
+      deviceId,
+      now: this.now().toISOString(),
+      trust,
+    });
+    if (!record) {
+      throw new DeviceServiceError("DEVICE_NOT_FOUND", 404, "device not found");
+    }
+
+    return {
+      deviceId: record.id,
+      status: record.status === "trusted" ? "trusted" : "revoked",
+    };
   }
 
   async approveDevice(
@@ -478,11 +576,12 @@ export class DeviceService {
     }
 
     const isPending = record.status === "pending";
+    const isBlocked = record.status === "blocked";
     return {
       deviceId: record.id,
       deviceName: record.deviceName,
       deviceFingerprint: record.deviceFingerprint,
-      status: isPending ? "pending_approval" : "trusted",
+      status: isPending ? "pending_approval" : isBlocked ? "blocked" : "trusted",
       platform: record.platform,
       osName: record.osName,
       osVersion: record.osVersion,
@@ -505,8 +604,22 @@ export class DeviceService {
               this.config.deviceApprovalTtlSeconds * 1000,
           ).toISOString()
         : null,
+      blockedUntil: isBlocked ? record.blockedUntil : null,
     };
   }
+}
+
+function resolveBlockedUntil(now: Date, duration: DeviceBlockDuration): string | null {
+  if (duration === "forever") {
+    return null;
+  }
+  const ms =
+    duration === "1h"
+      ? 60 * 60 * 1000
+      : duration === "1d"
+        ? 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+  return new Date(now.getTime() + ms).toISOString();
 }
 
 function cleanString(value: string, fallback: string): string {

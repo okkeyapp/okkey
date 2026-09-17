@@ -289,8 +289,19 @@ export const MONITORING_PATH = "/monitoring";
 export const TOOLS_PATH = "/tools";
 export const SETTINGS_PATH = "/settings";
 export const SETTINGS_MAIN_PATH = `${SETTINGS_PATH}/main`;
-/** Personal devices settings deep-link (opens SettingsPopup devices tab, not workspace settings). */
+/**
+ * Legacy short path — router redirects to {@link devicesSettingsHref}.
+ * Prefer the canonical popup URL in emails / docs / CTAs.
+ */
 export const SETTINGS_DEVICES_PATH = `${SETTINGS_PATH}/devices`;
+
+/** Canonical devices settings deep-link: `/items?popup=settings|devices`. */
+export const DEVICES_SETTINGS_POPUP_QUERY = "settings|devices";
+export const DEVICES_SETTINGS_HREF = `${ITEMS_PATH}?popup=${DEVICES_SETTINGS_POPUP_QUERY}`;
+
+export function devicesSettingsHref(): string {
+  return DEVICES_SETTINGS_HREF;
+}
 
 export type ToolsSectionId = "generator" | "import" | "export";
 

@@ -18,6 +18,10 @@ import type {
   DeviceRegisterRequestDto,
   DeviceRegisterResponseDto,
   DeviceRejectResponseDto,
+  DeviceBlockRequestDto,
+  DeviceBlockResponseDto,
+  DeviceUnblockRequestDto,
+  DeviceUnblockResponseDto,
   DeviceListResponseDto,
   DevicePatchRequestDto,
   DevicePatchResponseDto,
@@ -817,6 +821,28 @@ export class CoreApiClient {
       `/devices/${encodeURIComponent(pendingDeviceId)}/reject`,
       reason !== undefined ? { reason } : {},
       { headers: { "X-Device-Id": approverDeviceId } },
+    );
+  }
+
+  blockDevice(
+    pendingDeviceId: string,
+    approverDeviceId: string,
+    body: DeviceBlockRequestDto,
+  ): Promise<DeviceBlockResponseDto> {
+    return this.api.post<DeviceBlockResponseDto>(
+      `/devices/${encodeURIComponent(pendingDeviceId)}/block`,
+      body,
+      { headers: { "X-Device-Id": approverDeviceId } },
+    );
+  }
+
+  unblockDevice(
+    deviceId: string,
+    body?: DeviceUnblockRequestDto,
+  ): Promise<DeviceUnblockResponseDto> {
+    return this.api.post<DeviceUnblockResponseDto>(
+      `/devices/${encodeURIComponent(deviceId)}/unblock`,
+      body ?? {},
     );
   }
 

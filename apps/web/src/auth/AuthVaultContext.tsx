@@ -116,6 +116,8 @@ export type AuthVaultContextValue = {
   vaultIdleLockMs: number;
   /** Current browser device trust vs account devices (gates unlock). */
   deviceTrustStatus: DeviceTrustStatus | "idle";
+  /** When status is blocked; null means permanently blocked. */
+  deviceBlockedUntil: string | null;
   /** Server device id for this browser when known. */
   currentDeviceId: string | null;
   /** Trusted devices that can approve a pending login on this browser. */
@@ -277,6 +279,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
 
   const [vaultUnlockBootstrapLoading, setVaultUnlockBootstrapLoading] = useState(false);
   const [deviceTrustStatus, setDeviceTrustStatus] = useState<DeviceTrustStatus | "idle">("idle");
+  const [deviceBlockedUntil, setDeviceBlockedUntil] = useState<string | null>(null);
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
   const pendingDeviceIdRef = useRef<string | null>(null);
@@ -330,6 +333,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!accessToken || !userId) {
       setDeviceTrustStatus("idle");
+      setDeviceBlockedUntil(null);
       setCurrentDeviceId(null);
       setDeviceApprovers([]);
       pendingDeviceIdRef.current = null;
@@ -352,6 +356,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
             ? null
             : pendingDeviceIdRef.current;
       setDeviceTrustStatus(snapshot.status);
+      setDeviceBlockedUntil(
+        snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+      );
       setCurrentDeviceId(snapshot.deviceId);
       setDeviceApprovers(snapshot.approverDevices);
     })();
@@ -499,6 +506,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setVaultIdleLockMsState(DEFAULT_VAULT_IDLE_LOCK_MS);
     setDeviceTrustStatus("idle");
+    setDeviceBlockedUntil(null);
     setCurrentDeviceId(null);
     setDeviceApprovers([]);
     pendingDeviceIdRef.current = null;
@@ -813,6 +821,9 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         ? snapshot.deviceId
         : null;
     setDeviceTrustStatus(snapshot.status);
+    setDeviceBlockedUntil(
+      snapshot.status === "blocked" ? (snapshot.blockedUntil ?? null) : null,
+    );
     setCurrentDeviceId(snapshot.deviceId);
     setDeviceApprovers(snapshot.approverDevices);
   }, [accessToken, userId]);
@@ -822,12 +833,21 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       return;
     }
     setDeviceTrustStatus("checking");
+    setDeviceBlockedUntil(null);
     const client = createAuthenticatedCoreClient(accessToken);
     try {
       const registered = await registerCurrentBrowserDevice(client);
       pendingDeviceIdRef.current = registered.device_id;
       if (registered.status === "trusted") {
         setDeviceTrustStatus("trusted");
+        setCurrentDeviceId(registered.device_id);
+        const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
+        setDeviceApprovers(listed?.devices ?? []);
+        return;
+      }
+      if (registered.status === "blocked") {
+        setDeviceTrustStatus("blocked");
+        setDeviceBlockedUntil(registered.blocked_until ?? null);
         setCurrentDeviceId(registered.device_id);
         const listed = await client.listDevices(getOrCreateDeviceFingerprint()).catch(() => null);
         setDeviceApprovers(listed?.devices ?? []);
@@ -878,6 +898,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       vaultUnlockBootstrapLoading,
       vaultIdleLockMs,
       deviceTrustStatus,
+      deviceBlockedUntil,
       currentDeviceId,
       deviceApprovers,
       refreshDeviceTrust,
@@ -914,6 +935,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       vaultUnlockBootstrapLoading,
       vaultIdleLockMs,
       deviceTrustStatus,
+      deviceBlockedUntil,
       currentDeviceId,
       deviceApprovers,
       refreshDeviceTrust,

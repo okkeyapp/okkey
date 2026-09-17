@@ -1,8 +1,9 @@
 import { ApiRequestError } from "@okkey/api";
 import type { WebMessageValues } from "@okkey/i18n";
-import type { DeviceListItemDto } from "@okkey/types";
+import type { DeviceBlockDuration, DeviceListItemDto } from "@okkey/types";
 import {
   Button,
+  ControlGroup,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -10,16 +11,26 @@ import {
   DropdownMenuTrigger,
   Input,
   Popup,
+  buttonVariants,
+  controlGroupItemFixedClassName,
+  cn,
 } from "@okkey/ui";
+import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
-import { IconActions16 } from "../items/itemCategoryIcons";
+import {
+  IconActions16,
+  IconCheck16,
+  IconDelete16,
+  IconEdit16,
+} from "../items/itemCategoryIcons";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
+import { DEVICES_CHANGED_EVENT, emitDevicesChanged } from "../devices/devicesEvents";
 import {
   DeviceTypeIcon,
   resolveDeviceBrandIcon,
@@ -29,6 +40,13 @@ import {
 type SettingsDevicesContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
 };
+
+const BLOCK_OPTIONS: Array<{ duration: DeviceBlockDuration; labelKey: string }> = [
+  { duration: "1h", labelKey: "web.settingsPopup.devices.pending.block1h" },
+  { duration: "1d", labelKey: "web.settingsPopup.devices.pending.block1d" },
+  { duration: "1w", labelKey: "web.settingsPopup.devices.pending.block1w" },
+  { duration: "forever", labelKey: "web.settingsPopup.devices.pending.blockForever" },
+];
 
 function devicesErrorMessage(
   err: unknown,
@@ -128,6 +146,8 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<DeviceListItemDto[]>([]);
   const [pending, setPending] = useState<DeviceListItemDto[]>([]);
+  const [blocked, setBlocked] = useState<DeviceListItemDto[]>([]);
+  const [blockedOpen, setBlockedOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<DeviceListItemDto | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -146,6 +166,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       const result = await core.listDevices(fingerprint);
       setDevices(result.devices);
       setPending(result.pending);
+      setBlocked(result.blocked ?? []);
     } catch (err) {
       setError(devicesErrorMessage(err, t));
     } finally {
@@ -155,6 +176,14 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onChanged = () => {
+      void load();
+    };
+    window.addEventListener(DEVICES_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DEVICES_CHANGED_EVENT, onChanged);
   }, [load]);
 
   const isCurrentDevice = useCallback(
@@ -189,7 +218,9 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         } else {
           await core.revokeDevice(deviceId, reason);
         }
+        setPending((items) => items.filter((item) => item.device_id !== deviceId));
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
+        emitDevicesChanged();
         await load();
       } catch (err) {
         toast.error(devicesErrorMessage(err, t));
@@ -200,18 +231,59 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     [busyId, core, currentDeviceId, load, t],
   );
 
-  const trustPending = async (deviceId: string) => {
+  const blockPending = useCallback(
+    async (device: DeviceListItemDto, duration: DeviceBlockDuration) => {
+      if (!core || !currentDeviceId || busyId) {
+        toast.error(t("web.settingsPopup.devices.error.accessDenied"));
+        return;
+      }
+      setBusyId(device.device_id);
+      try {
+        const result = await core.blockDevice(device.device_id, currentDeviceId, {
+          duration,
+        });
+        setPending((items) => items.filter((item) => item.device_id !== device.device_id));
+        setBlocked((items) => [
+          {
+            ...device,
+            status: "blocked",
+            blocked_until: result.blocked_until,
+            approval_expires_at: null,
+          },
+          ...items.filter((item) => item.device_id !== device.device_id),
+        ]);
+        toast.success(t("web.settingsPopup.devices.toast.blocked"));
+        emitDevicesChanged();
+        await load();
+      } catch (err) {
+        toast.error(devicesErrorMessage(err, t));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [busyId, core, currentDeviceId, load, t],
+  );
+
+  const trustPending = async (device: DeviceListItemDto) => {
     if (!core || !currentDeviceId) {
       toast.error(t("web.settingsPopup.devices.error.accessDenied"));
       return;
     }
-    setBusyId(deviceId);
+    setBusyId(device.device_id);
+    // Optimistic: move into trusted list immediately.
+    setPending((items) => items.filter((item) => item.device_id !== device.device_id));
+    setDevices((items) => [
+      { ...device, status: "trusted", is_current: false, approval_expires_at: null },
+      ...items.filter((item) => item.device_id !== device.device_id),
+    ]);
     try {
-      await core.approveDevice(deviceId, currentDeviceId);
+      await core.approveDevice(device.device_id, currentDeviceId);
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
+      emitDevicesChanged();
       await load();
     } catch (err) {
       toast.error(devicesErrorMessage(err, t));
+      await load();
     } finally {
       setBusyId(null);
     }
@@ -224,7 +296,31 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     setBusyId(deviceId);
     try {
       await core.revokeDevice(deviceId, "revoked from settings");
+      setDevices((items) => items.filter((item) => item.device_id !== deviceId));
       toast.success(t("web.settingsPopup.devices.toast.revoked"));
+      emitDevicesChanged();
+      await load();
+    } catch (err) {
+      toast.error(devicesErrorMessage(err, t));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const unblockDevice = async (deviceId: string, trust: boolean) => {
+    if (!core) {
+      return;
+    }
+    setBusyId(deviceId);
+    try {
+      const result = await core.unblockDevice(deviceId, { trust });
+      setBlocked((items) => items.filter((item) => item.device_id !== deviceId));
+      if (result.status === "trusted") {
+        toast.success(t("web.settingsPopup.devices.toast.trusted"));
+      } else {
+        toast.success(t("web.settingsPopup.devices.toast.unblocked"));
+      }
+      emitDevicesChanged();
       await load();
     } catch (err) {
       toast.error(devicesErrorMessage(err, t));
@@ -297,6 +393,9 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
                 {formatDeviceTitle(primaryPending)}
               </p>
               <p className="text-sm text-muted-foreground">{formatDeviceClientOs(primaryPending)}</p>
+              <p className="text-sm text-muted-foreground">
+                {formatAbsoluteDate(primaryPending.created_at, locale)}
+              </p>
             </div>
             <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
               <p>
@@ -323,20 +422,50 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             <Button
               type="button"
               variant="secondary"
+              className="gap-2"
               disabled={busyId === primaryPending.device_id}
-              onClick={() => void trustPending(primaryPending.device_id)}
+              onClick={() => void trustPending(primaryPending)}
             >
+              <IconCheck16 className="size-4 shrink-0" />
               {t("web.settingsPopup.devices.pending.trust")}
             </Button>
-            <Button
-              type="button"
-              disabled={busyId === primaryPending.device_id}
-              onClick={() =>
-                void dismissPending(primaryPending.device_id, "dismissed by user")
-              }
-            >
-              {t("web.settingsPopup.devices.pending.notNow")}
-            </Button>
+            <ControlGroup className="w-auto" aria-label={t("web.settingsPopup.devices.pending.notNow")}>
+              <Button
+                type="button"
+                disabled={busyId === primaryPending.device_id}
+                onClick={() =>
+                  void dismissPending(primaryPending.device_id, "dismissed by user")
+                }
+              >
+                {t("web.settingsPopup.devices.pending.notNow")}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      buttonVariants({ variant: "default", size: "icon" }),
+                      controlGroupItemFixedClassName,
+                    )}
+                    aria-label={t("web.settingsPopup.devices.pending.blockMenu")}
+                    disabled={busyId === primaryPending.device_id}
+                  >
+                    <ChevronDownIcon className="size-4 shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52 p-1">
+                  {BLOCK_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.duration}
+                      className="gap-2"
+                      onSelect={() => void blockPending(primaryPending, option.duration)}
+                    >
+                      {t(option.labelKey)}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ControlGroup>
           </div>
         </div>
       ) : null}
@@ -362,57 +491,147 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             >
               <DeviceTypeIcon form={form} brand={brand} />
               <div className="flex min-w-0 flex-1 flex-col">
-                <p className="truncate text-sm font-medium text-foreground">{formatDeviceTitle(device)}</p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {formatDeviceTitle(device)}
+                  </p>
+                  {current ? (
+                    <span className="shrink-0 rounded-full bg-secondary px-2 text-xs leading-5 text-foreground">
+                      {t("web.settingsPopup.devices.list.currentBadge")}
+                    </span>
+                  ) : null}
+                </div>
                 <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
                 <div className="pt-1.5 text-[13px] leading-5 text-muted-foreground">
                   <p>{formatAddedLabel(device.created_at, locale, t)}</p>
                   <p>{formatLastActiveLabel(device.last_seen_at, locale, t)}</p>
                 </div>
               </div>
-              {current ? (
-                <span className="shrink-0 rounded-full bg-secondary px-2 text-xs leading-5 text-foreground">
-                  {t("web.settingsPopup.devices.list.currentBadge")}
-                </span>
-              ) : (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="iconSm"
-                        className="shrink-0"
-                        aria-label={t("web.settingsPopup.devices.actions.menu")}
-                        disabled={busyId === device.device_id}
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="iconSm"
+                      className="shrink-0"
+                      aria-label={t("web.settingsPopup.devices.actions.menu")}
+                      disabled={busyId === device.device_id}
+                    >
+                      <IconActions16 className="size-4 text-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52 p-1">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        className="gap-2"
+                        onSelect={() => {
+                          setRenameTarget(device);
+                          setRenameValue(device.device_name);
+                        }}
                       >
-                        <IconActions16 className="size-4 text-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-auto min-w-56 p-1">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onSelect={() => {
-                            setRenameTarget(device);
-                            setRenameValue(device.device_name);
-                          }}
-                        >
-                          {t("web.settingsPopup.devices.actions.rename")}
-                        </DropdownMenuItem>
+                        <IconEdit16 className="size-4 shrink-0" />
+                        <span>{t("web.settingsPopup.devices.actions.rename")}</span>
+                      </DropdownMenuItem>
+                      {!current ? (
                         <DropdownMenuItem
                           className="gap-2 text-destructive data-[highlighted]:bg-destructive/15 data-[highlighted]:text-destructive"
                           onSelect={() => void revokeTrusted(device.device_id)}
                         >
-                          {t("web.settingsPopup.devices.actions.revoke")}
+                          <IconDelete16 className="size-4 shrink-0" />
+                          <span>{t("web.settingsPopup.devices.actions.revoke")}</span>
                         </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              )}
+                      ) : null}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           );
         })}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => setBlockedOpen((value) => !value)}
+        >
+          {t("web.settingsPopup.devices.blocked.toggle", { count: String(blocked.length) })}
+          <ChevronDownIcon
+            data-icon="inline-end"
+            className={blockedOpen ? "rotate-180" : undefined}
+          />
+        </Button>
+        {blockedOpen ? (
+          <div className="overflow-hidden rounded-xl bg-secondary">
+            {blocked.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground">
+                {t("web.settingsPopup.devices.blocked.empty")}
+              </p>
+            ) : (
+              blocked.map((device, index) => (
+                <div
+                  key={device.device_id}
+                  className={
+                    index === 0
+                      ? "flex items-start gap-4 p-4"
+                      : "flex items-start gap-4 border-t border-border p-4"
+                  }
+                >
+                  <DeviceTypeIcon
+                    form={resolveDeviceFormIcon(device)}
+                    brand={resolveDeviceBrandIcon(device)}
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {formatDeviceTitle(device)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{formatDeviceClientOs(device)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {device.blocked_until
+                        ? t("web.settingsPopup.devices.blocked.until", {
+                            date: formatAbsoluteDate(device.blocked_until, locale),
+                          })
+                        : t("web.settingsPopup.devices.blocked.forever")}
+                    </p>
+                  </div>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="iconSm"
+                          aria-label={t("web.settingsPopup.devices.actions.menu")}
+                          disabled={busyId === device.device_id}
+                        >
+                          <IconActions16 className="size-4 text-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52 p-1">
+                        <DropdownMenuItem
+                          className="gap-2"
+                          onSelect={() => void unblockDevice(device.device_id, false)}
+                        >
+                          {t("web.settingsPopup.devices.actions.unblock")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2"
+                          onSelect={() => void unblockDevice(device.device_id, true)}
+                        >
+                          <IconCheck16 className="size-4 shrink-0" />
+                          {t("web.settingsPopup.devices.actions.unblockAndTrust")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
       </div>
 
       {renameTarget ? (
