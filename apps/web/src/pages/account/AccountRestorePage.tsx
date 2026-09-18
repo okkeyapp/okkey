@@ -1,9 +1,11 @@
 import { ApiRequestError } from "@okkey/api";
 import {
+  generateRecoverySecret,
   initCrypto,
   rebalanceServerShareForNewPassword,
   unwrapVaultKeyWithRecoverySecret,
   wipeBytes,
+  wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import type { AccountRecoveryStatusResponseDto } from "@okkey/types";
 import {
@@ -11,15 +13,20 @@ import {
   AlertDescription,
   AlertTitle,
   Button,
+  ControlGroup,
+  controlGroupItemGrowClassName,
   Input,
 } from "@okkey/ui";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Copy, Download, FileText, TriangleAlert } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import { createAuthenticatedCoreClient } from "../../api/client";
 import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
 import { readVaultBundle, writeVaultBundle } from "../../auth/localVaultBundle";
@@ -32,6 +39,7 @@ import {
 } from "../../routes/paths";
 
 type RestoreMethod = "key" | "devices" | "contacts";
+type RestoreStep = "methods" | "newRecoveryKey";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
 
@@ -56,6 +64,13 @@ export default function AccountRestorePage() {
   const [repeatPassword, setRepeatPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [step, setStep] = useState<RestoreStep>("methods");
+  const [newRecoverySecret, setNewRecoverySecret] = useState<string | null>(null);
+  const [newKeyExported, setNewKeyExported] = useState(false);
+  const pendingUnlockRef = useRef<{
+    vaultKey: Uint8Array;
+    passwordShareC: Uint8Array;
+  } | null>(null);
 
   const lockHref = useMemo(() => {
     const redirect = searchParams.get("redirect");
@@ -117,7 +132,18 @@ export default function AccountRestorePage() {
     };
   }, [accessToken, t]);
 
-  if (vaultUnlocked) {
+  useEffect(() => {
+    return () => {
+      const pending = pendingUnlockRef.current;
+      if (pending) {
+        wipeBytes(pending.vaultKey);
+        wipeBytes(pending.passwordShareC);
+        pendingUnlockRef.current = null;
+      }
+    };
+  }, []);
+
+  if (vaultUnlocked && step !== "newRecoveryKey") {
     return <Navigate to={redirectAfterUnlock} replace />;
   }
 
@@ -160,6 +186,8 @@ export default function AccountRestorePage() {
     let vaultKey: Uint8Array | null = null;
     let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
     let deviceB: Uint8Array | null = null;
+    let newSecretBytes: Uint8Array | null = null;
+    let passwordChanged = false;
 
     try {
       await initCrypto();
@@ -179,6 +207,7 @@ export default function AccountRestorePage() {
         password_kdf_salt: bytesToBase64(rebalanced.passwordKdfSalt),
         password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
       });
+      passwordChanged = true;
 
       writeVaultBundle(
         {
@@ -190,18 +219,41 @@ export default function AccountRestorePage() {
         userId,
       );
 
-      applyUnlockedSecrets(vaultKey, rebalanced.passwordShareC);
+      // Old recovery key must not remain valid — rotate to a fresh secret (client crypto + server wrap).
+      const freshSecret = await generateRecoverySecret();
+      newSecretBytes = new TextEncoder().encode(freshSecret);
+      const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, newSecretBytes);
+      await core.rotateAccountRecoveryKey({ encryptedBlob });
+
+      const previousPending = pendingUnlockRef.current;
+      if (previousPending) {
+        wipeBytes(previousPending.vaultKey);
+        wipeBytes(previousPending.passwordShareC);
+      }
+      pendingUnlockRef.current = {
+        vaultKey,
+        passwordShareC: rebalanced.passwordShareC,
+      };
       vaultKey = null;
-      navigate(redirectAfterUnlock, { replace: true });
+      rebalanced = null;
+
+      setNewRecoverySecret(freshSecret);
+      setNewKeyExported(false);
+      setStep("newRecoveryKey");
     } catch (err) {
       if (err instanceof ApiRequestError && err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
         setFormError(t("account.restore.error.keyUnavailable"));
+      } else if (passwordChanged) {
+        setFormError(t("account.restore.error.rotateFailed"));
       } else {
         setFormError(t("account.restore.error.invalidKey"));
       }
     } finally {
       wipeBytes(secretBytes);
       wipeBytes(newPwd);
+      if (newSecretBytes) {
+        wipeBytes(newSecretBytes);
+      }
       if (deviceB) {
         wipeBytes(deviceB);
       }
@@ -215,6 +267,104 @@ export default function AccountRestorePage() {
       }
       setSubmitting(false);
     }
+  }
+
+  async function handleNewKeyCopy() {
+    if (!newRecoverySecret || !accessToken) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(newRecoverySecret);
+      setNewKeyExported(true);
+      const core = createAuthenticatedCoreClient(accessToken);
+      await core.ackAccountRecoveryKeyExport();
+      toast.success(t("web.toast.save.success"));
+    } catch {
+      setFormError(t("web.settingsPopup.recovery.error.copyFailed"));
+    }
+  }
+
+  async function handleNewKeyDownload() {
+    if (!newRecoverySecret || !accessToken) {
+      return;
+    }
+    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"), {
+      icon: <FileText className="size-4 text-primary" aria-hidden />,
+    });
+    try {
+      await downloadRecoveryKeyPdf(newRecoverySecret, {
+        title: t("account.restore.newKey.pdfTitle"),
+        description: t("account.restore.newKey.pdfDescription"),
+      });
+      setNewKeyExported(true);
+      const core = createAuthenticatedCoreClient(accessToken);
+      await core.ackAccountRecoveryKeyExport();
+    } catch {
+      setFormError(t("web.settingsPopup.recovery.error.generic"));
+    } finally {
+      toast.dismiss(toastId);
+    }
+  }
+
+  function finishNewRecoveryKey() {
+    const pending = pendingUnlockRef.current;
+    if (pending) {
+      applyUnlockedSecrets(pending.vaultKey, pending.passwordShareC);
+      pendingUnlockRef.current = null;
+    }
+    setNewRecoverySecret(null);
+    navigate(redirectAfterUnlock, { replace: true });
+  }
+
+  if (step === "newRecoveryKey" && newRecoverySecret) {
+    return (
+      <AppShellLayout
+        title={t("account.restore.newKey.title")}
+        description={t("account.restore.newKey.description")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex w-full flex-col gap-6 rounded-xl border border-border bg-background p-4 shadow-sm">
+          {formError ? (
+            <Alert variant="error">
+              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="rounded-lg bg-secondary p-3">
+            <p className="break-all font-mono text-sm leading-5 text-foreground">{newRecoverySecret}</p>
+          </div>
+          <ControlGroup aria-label={t("web.settingsPopup.recovery.key.actionsAria")}>
+            <Button
+              type="button"
+              variant="outline"
+              className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
+              onClick={() => void handleNewKeyCopy()}
+            >
+              <Copy className="size-4 shrink-0" />
+              {t("account.restore.newKey.copy")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
+              onClick={() => void handleNewKeyDownload()}
+            >
+              <Download className="size-4 shrink-0" />
+              {t("account.restore.newKey.downloadPdf")}
+            </Button>
+          </ControlGroup>
+          <div className="flex items-start gap-1.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
+              {t("account.restore.newKey.warning")}
+            </p>
+          </div>
+          <Button type="button" className="w-full" onClick={finishNewRecoveryKey} disabled={!newKeyExported}>
+            {t("account.restore.newKey.next")}
+          </Button>
+        </div>
+      </AppShellLayout>
+    );
   }
 
   return (
