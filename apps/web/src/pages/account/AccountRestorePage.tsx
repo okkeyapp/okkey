@@ -288,9 +288,7 @@ export default function AccountRestorePage() {
     if (!newRecoverySecret || !accessToken) {
       return;
     }
-    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"), {
-      icon: <FileText className="size-4 text-primary" aria-hidden />,
-    });
+    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"));
     try {
       await downloadRecoveryKeyPdf(newRecoverySecret, {
         title: t("account.restore.newKey.pdfTitle"),

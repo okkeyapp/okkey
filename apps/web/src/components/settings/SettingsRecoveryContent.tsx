@@ -23,7 +23,6 @@ import {
   CircleCheck,
   Copy,
   Download,
-  FileText,
   Info,
   Plus,
   RefreshCcw,
@@ -317,9 +316,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     if (!sessionKey || !core) {
       return;
     }
-    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"), {
-      icon: <FileText className="size-4 text-primary" aria-hidden />,
-    });
+    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"));
     try {
       await downloadRecoveryKeyPdf(sessionKey, {
         title: t("web.settingsPopup.recovery.key.pdfTitle"),

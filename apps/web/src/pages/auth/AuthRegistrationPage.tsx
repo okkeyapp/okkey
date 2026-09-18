@@ -19,7 +19,7 @@ import {
   controlGroupItemGrowClassName,
   Input,
 } from "@okkey/ui";
-import { Copy, Download, FileText, TriangleAlert } from "lucide-react";
+import { Copy, Download, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -254,9 +254,7 @@ export default function AuthRegistrationPage() {
     if (!recoverySecret) {
       return;
     }
-    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"), {
-      icon: <FileText className="size-4 text-primary" aria-hidden />,
-    });
+    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"));
     try {
       await downloadRecoveryKeyPdf(recoverySecret, {
         title: t("auth.registration.recovery.pdfTitle"),
