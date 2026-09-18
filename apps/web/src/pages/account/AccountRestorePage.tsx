@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@okkey/ui";
+import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import { Copy, Download, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -47,6 +48,9 @@ type RestoreMethod = "key" | "devices" | "contacts";
 type RestoreStep = "methods" | "newRecoveryKey";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
+
+const DevicesRestorePanel = accountRecoveryModule.DevicesRestorePanel;
+const ContactsRestorePanel = accountRecoveryModule.ContactsRestorePanel;
 
 export default function AccountRestorePage() {
   const { t } = useLocale();
@@ -169,40 +173,34 @@ export default function AccountRestorePage() {
   const passwordValid =
     newPassword.length >= MIN_MASTER_PASSWORD_LENGTH && newPassword === repeatPassword;
 
-  async function handleKeyRestore(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!accessToken || !userId || !passwordValid || !recoveryKey.trim()) {
-      return;
+  async function completeRestoreFromVaultKey(vaultKey: Uint8Array) {
+    if (!accessToken || !userId || !passwordValid) {
+      throw new Error("invalid restore state");
     }
     if (!hasVaultBundle) {
       setFormError(t("account.restore.error.noBundle"));
-      return;
+      throw new Error("no bundle");
     }
     const bundle = readVaultBundle(userId);
     if (!bundle) {
       setFormError(t("account.restore.error.noBundle"));
-      return;
+      throw new Error("no bundle");
     }
 
-    setSubmitting(true);
-    setFormError(null);
-    const secretBytes = new TextEncoder().encode(recoveryKey.trim());
     const newPwd = new TextEncoder().encode(newPassword);
-    let vaultKey: Uint8Array | null = null;
     let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
     let deviceB: Uint8Array | null = null;
     let newSecretBytes: Uint8Array | null = null;
     let passwordChanged = false;
+    let ownedVaultKey: Uint8Array | null = vaultKey;
 
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
-      const wrap = await core.getAccountRecoveryKeyWrap();
-      vaultKey = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrap.encryptedBlob);
       deviceB = base64ToBytes(bundle.device_share_b64);
       rebalanced = await rebalanceServerShareForNewPassword({
         newMasterPasswordUtf8: newPwd,
-        vaultKey,
+        vaultKey: ownedVaultKey,
         deviceShare: deviceB,
         passwordKdfParamsVersion: bundle.password_kdf_params_version,
       });
@@ -224,10 +222,9 @@ export default function AccountRestorePage() {
         userId,
       );
 
-      // Old recovery key must not remain valid — rotate to a fresh secret (client crypto + server wrap).
       const freshSecret = await generateRecoverySecret();
       newSecretBytes = new TextEncoder().encode(freshSecret);
-      const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, newSecretBytes);
+      const encryptedBlob = await wrapVaultKeyWithRecoverySecret(ownedVaultKey, newSecretBytes);
       await core.rotateAccountRecoveryKey({ encryptedBlob });
 
       const previousPending = pendingUnlockRef.current;
@@ -236,25 +233,21 @@ export default function AccountRestorePage() {
         wipeBytes(previousPending.passwordShareC);
       }
       pendingUnlockRef.current = {
-        vaultKey,
+        vaultKey: ownedVaultKey,
         passwordShareC: rebalanced.passwordShareC,
       };
-      vaultKey = null;
+      ownedVaultKey = null;
       rebalanced = null;
 
       setNewRecoverySecret(freshSecret);
       setNewKeyExported(false);
       setStep("newRecoveryKey");
     } catch (err) {
-      if (err instanceof ApiRequestError && err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
-        setFormError(t("account.restore.error.keyUnavailable"));
-      } else if (passwordChanged) {
+      if (passwordChanged) {
         setFormError(t("account.restore.error.rotateFailed"));
-      } else {
-        setFormError(t("account.restore.error.invalidKey"));
       }
+      throw err;
     } finally {
-      wipeBytes(secretBytes);
       wipeBytes(newPwd);
       if (newSecretBytes) {
         wipeBytes(newSecretBytes);
@@ -262,13 +255,49 @@ export default function AccountRestorePage() {
       if (deviceB) {
         wipeBytes(deviceB);
       }
-      if (vaultKey) {
-        wipeBytes(vaultKey);
+      if (ownedVaultKey) {
+        wipeBytes(ownedVaultKey);
       }
       if (rebalanced) {
         wipeBytes(rebalanced.serverKeyShare);
         wipeBytes(rebalanced.passwordKdfSalt);
         wipeBytes(rebalanced.passwordShareC);
+      }
+    }
+  }
+
+  async function handleKeyRestore(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!accessToken || !userId || !passwordValid || !recoveryKey.trim()) {
+      return;
+    }
+    if (!hasVaultBundle) {
+      setFormError(t("account.restore.error.noBundle"));
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    const secretBytes = new TextEncoder().encode(recoveryKey.trim());
+    let vaultKey: Uint8Array | null = null;
+
+    try {
+      await initCrypto();
+      const core = createAuthenticatedCoreClient(accessToken);
+      const wrap = await core.getAccountRecoveryKeyWrap();
+      vaultKey = await unwrapVaultKeyWithRecoverySecret(secretBytes, wrap.encryptedBlob);
+      await completeRestoreFromVaultKey(vaultKey);
+      vaultKey = null;
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.body.error === "RECOVERY_KEY_NOT_AVAILABLE") {
+        setFormError(t("account.restore.error.keyUnavailable"));
+      } else if (!formError) {
+        setFormError(t("account.restore.error.invalidKey"));
+      }
+    } finally {
+      wipeBytes(secretBytes);
+      if (vaultKey) {
+        wipeBytes(vaultKey);
       }
       setSubmitting(false);
     }
@@ -503,21 +532,57 @@ export default function AccountRestorePage() {
             ) : null}
 
             {method === "devices" ? (
-              <Alert variant="info">
-                <AlertTitle className="text-foreground">{t("account.restore.method.devices")}</AlertTitle>
-                <AlertDescription className="text-copy-secondary">
-                  {t("account.restore.devicesBody")}
-                </AlertDescription>
-              </Alert>
+              DevicesRestorePanel ? (
+                <DevicesRestorePanel
+                  accessToken={accessToken}
+                  userId={userId}
+                  t={t}
+                  onVaultKeyRecovered={completeRestoreFromVaultKey}
+                  formError={formError}
+                  setFormError={setFormError}
+                  newPassword={newPassword}
+                  setNewPassword={setNewPassword}
+                  repeatPassword={repeatPassword}
+                  setRepeatPassword={setRepeatPassword}
+                  passwordValid={passwordValid}
+                  submitting={submitting}
+                  setSubmitting={setSubmitting}
+                />
+              ) : (
+                <Alert variant="info">
+                  <AlertTitle className="text-foreground">{t("account.restore.method.devices")}</AlertTitle>
+                  <AlertDescription className="text-copy-secondary">
+                    {t("account.restore.devicesBody")}
+                  </AlertDescription>
+                </Alert>
+              )
             ) : null}
 
             {method === "contacts" ? (
-              <Alert variant="info">
-                <AlertTitle className="text-foreground">{t("account.restore.method.contacts")}</AlertTitle>
-                <AlertDescription className="text-copy-secondary">
-                  {t("account.restore.contactsBody")}
-                </AlertDescription>
-              </Alert>
+              ContactsRestorePanel ? (
+                <ContactsRestorePanel
+                  accessToken={accessToken}
+                  userId={userId}
+                  t={t}
+                  onVaultKeyRecovered={completeRestoreFromVaultKey}
+                  formError={formError}
+                  setFormError={setFormError}
+                  newPassword={newPassword}
+                  setNewPassword={setNewPassword}
+                  repeatPassword={repeatPassword}
+                  setRepeatPassword={setRepeatPassword}
+                  passwordValid={passwordValid}
+                  submitting={submitting}
+                  setSubmitting={setSubmitting}
+                />
+              ) : (
+                <Alert variant="info">
+                  <AlertTitle className="text-foreground">{t("account.restore.method.contacts")}</AlertTitle>
+                  <AlertDescription className="text-copy-secondary">
+                    {t("account.restore.contactsBody")}
+                  </AlertDescription>
+                </Alert>
+              )
             ) : null}
           </div>
         ) : null}

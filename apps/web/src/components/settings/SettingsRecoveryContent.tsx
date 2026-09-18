@@ -39,6 +39,12 @@ import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
 import { SettingsRow } from "./SettingsRows";
+import accountRecoveryModule from "@okkey-enterprise/account-recovery";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+
+const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
+const DeviceApproveInbox = accountRecoveryModule.DeviceApproveInbox;
+const ContactsReleaseInbox = accountRecoveryModule.ContactsReleaseInbox;
 
 type SettingsRecoveryContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -147,6 +153,7 @@ function PaidMethodsUpsell({ t }: { t: SettingsRecoveryContentProps["t"] }) {
 export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentProps) {
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
+  const { accessToken, userId, vaultUnlocked, vaultKey, currentDeviceId } = useAuthVault();
   const { vaultKey } = useAuthVault();
   const tRef = useRef(t);
   tRef.current = t;
@@ -808,6 +815,50 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       ) : null}
 
       {showPaidUpsell ? <PaidMethodsUpsell t={t} /> : null}
+
+      {accessToken && DeviceApproveInbox ? (
+        <div className="mt-4">
+          <DeviceApproveInbox
+            accessToken={accessToken}
+            t={t}
+            vaultUnlocked={vaultUnlocked}
+            vaultKey={vaultKey}
+            currentDeviceId={currentDeviceId}
+          />
+        </div>
+      ) : null}
+
+      {accessToken && userId && ContactsEnrollPanel && canContacts ? (
+        <div className="mt-4">
+          <ContactsEnrollPanel
+            accessToken={accessToken}
+            userId={userId}
+            t={t}
+            vaultUnlocked={vaultUnlocked}
+            vaultKey={vaultKey}
+            contactsEnabled={contactsEnabled}
+            confirmedContacts={(status?.contacts ?? [])
+              .filter((c) => c.status === "confirmed" && c.contactUserId)
+              .map((c) => ({
+                id: c.id,
+                contactUserId: c.contactUserId!,
+                email: c.email,
+              }))}
+          />
+        </div>
+      ) : null}
+
+      {accessToken && userId && ContactsReleaseInbox ? (
+        <div className="mt-4">
+          <ContactsReleaseInbox
+            accessToken={accessToken}
+            userId={userId}
+            t={t}
+            vaultUnlocked={vaultUnlocked}
+            vaultKey={vaultKey}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

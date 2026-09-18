@@ -1,6 +1,5 @@
 {
   "web.locale.nativeName": "Русский",
-
   "web.shell.language.ariaLabel": "Язык",
   "web.shell.copyright": "Okkey © {year} — ваш надёжный менеджер паролей",
   "web.nav.allItems": "Все записи",
@@ -342,7 +341,6 @@
   "web.shell.monitoringTitle": "Мониторинг",
   "web.shell.toolsTitle": "Инструменты",
   "web.shell.settingsTitle": "Настройки",
-
   "web.tools.breadcrumbsAria": "Навигация по инструментам",
   "web.tools.breadcrumbsRoot": "Инструменты",
   "web.tools.sidebarAria": "Разделы инструментов",
@@ -367,7 +365,6 @@
   "web.tools.generator.passphrase.includeNumber": "Включить цифру",
   "web.tools.generator.username.capitalize": "С заглавной буквы",
   "web.tools.generator.username.includeNumber": "Включить число",
-
   "web.tools.import.intro": "Перенесите данные из других сервисов в Okkey за несколько шагов. Поддерживаются стандартные форматы и импорт из популярных менеджеров паролей.",
   "web.tools.import.learnMore": "Подробнее",
   "web.tools.import.learnMoreUrl": "https://okkey.app/docs/import",
@@ -427,7 +424,6 @@
   "web.tools.export.progress.building": "Сборка файла экспорта…",
   "web.tools.export.errors.generic": "Не удалось выполнить экспорт",
   "web.tools.export.errors.noVaultAccess": "Нет доступа для экспорта из выбранного сейфа",
-
   "web.monitoring.title": "Мониторинг",
   "web.monitoring.description": "Оценка безопасности рассчитывается на основе записей, к которым у вас есть доступ в текущем пространстве. Анализ выполняется локально и не предполагает сбора или передачи статистики о ваших данных.",
   "web.monitoring.breadcrumbsAria": "Навигация: мониторинг",
@@ -470,7 +466,6 @@
   "web.monitoring.vaultScope.all": "Все сейфы",
   "web.monitoring.vaultScope.personal": "Личный",
   "web.monitoring.vaultScope.shared": "Общие",
-
   "web.items.searchPlaceholder": "Поиск...",
   "web.items.createRecord": "Создать запись",
   "web.editItemPopup.title": "Редактировать запись",
@@ -558,7 +553,6 @@
   "web.newItemPopup.categories.wifiRouter": "WIFI роутер",
   "web.newItemPopup.categories.bankAccount": "Банковский счет",
   "web.newItemPopup.categories.cryptoWallet": "Крипто-кошелёк",
-
   "web.keyForm.types.text": "Текст",
   "web.keyForm.types.email": "Email",
   "web.keyForm.types.phone": "Телефон",
@@ -812,7 +806,6 @@
   "web.keyForm.passwordGenerator.crackTime": "Время взлома:",
   "web.keyForm.passwordGenerator.cancel": "Отмена",
   "web.keyForm.passwordGenerator.insert": "Вставить",
-
   "web.items.notificationsTitle": "Уведомления",
   "web.items.notificationsEmpty": "Пока нет уведомлений.",
   "web.items.filter.all": "Все записи",
@@ -1059,7 +1052,6 @@
   "web.items.detail.activity.expand": "Показать все действия",
   "web.items.detail.activity.collapse": "Показать только последнее действие",
   "web.items.detail.activity.showMore": "Показать ещё",
-
   "web.workspaceSettings.title": "Настройки воркспейса",
   "web.workspaceSettings.description": "Общие параметры для всех участников воркспейса.",
   "web.workspaceSettings.breadcrumbsAria": "Навигация по настройкам пространства",
@@ -1292,7 +1284,6 @@
   "web.deleteRoleConfirmPopup.title": "Удалить роль",
   "web.deleteRoleConfirmPopup.description": "Роль будет удалена без возможности восстановления. Все участники с этой ролью будут автоматически переведены на стандартную роль «Пользователь».",
   "web.deleteRoleConfirmPopup.delete": "Удалить",
-
   "web.workspaceSettings.profiles.intro": "Профили необходимы для раздачи доступов к записям в сейфах, полям записей и функциональной части записей.",
   "web.workspaceSettings.profiles.learnMore": "Подробнее",
   "web.workspaceSettings.profiles.learnMoreUrl": "https://okkey.app/docs/workspace-profiles",
@@ -1366,7 +1357,6 @@
   "web.deleteProfileConfirmPopup.title": "Удалить профиль",
   "web.deleteProfileConfirmPopup.description": "Профиль будет удалён без возможности восстановления. Все участники пространства потеряют доступ к сейфам с этим профилем.",
   "web.deleteProfileConfirmPopup.delete": "Удалить",
-
   "auth.email.title": "Добро пожаловать в Okkey",
   "auth.webauthn.title.passkey": "Вход с ключом доступа",
   "auth.webauthn.title.hardware": "Вход с аппаратным ключом",
@@ -1388,7 +1378,6 @@
   "auth.email.legalBeforeLink": "Нажимая «Войти», вы соглашаетесь с ",
   "auth.email.privacyLink": "Политикой конфиденциальности",
   "auth.email.legalAfterLink": ".",
-
   "auth.otp.title": "Добро пожаловать в Okkey",
   "auth.otp.descriptionBeforeEmail": "Введите 6-значный код, отправленный на адрес:",
   "auth.otp.labelConfirmationCode": "Код подтверждения",
@@ -1429,7 +1418,6 @@
   "auth.registration.errorNetwork": "Нет связи с API. Проверь, что сервер запущен и VITE_API_BASE_URL верный.",
   "auth.registration.errorBadResponse": "Ответ сервера не JSON — часто неверный VITE_API_BASE_URL.",
   "auth.registration.errorEmailAfterSuccess": "Аккаунт мог быть создан, но код не отправился. На экране входа введи тот же email.",
-
   "auth.registration.title": "Регистрация в Okkey",
   "auth.registration.descriptionBeforeEmail": "Вы вошли с почтой",
   "auth.registration.firstName": "Имя",
@@ -1453,7 +1441,6 @@
   "auth.registration.recovery.pdfTitle": "Ключ восстановления Okkey",
   "auth.registration.recovery.pdfDescription": "Храните этот ключ офлайн. Любой, у кого есть ключ, сможет восстановить доступ к хранилищу.",
   "auth.registration.recovery.errorEnroll": "Не удалось сохранить ключ. Вы можете настроить его позже в Настройки → Восстановление.",
-
   "unlock.title": "Хранилище закрыто",
   "unlock.description": "Введите мастер-пароль, чтобы разблокировать",
   "unlock.masterPassword": "Мастер-пароль",
@@ -1471,7 +1458,6 @@
   "unlock.errorIncorrectPassword": "Неверный мастер-пароль",
   "unlock.syncingVault": "Загружаем данные хранилища с сервера",
   "unlock.errorNoLocalVault": "В этом браузере нет локальных ключей хранилища. Если вы очистили данные сайта, восстановление с сервера могло не сработать (например, несколько доверенных устройств и новый отпечаток браузера). Откройте Okkey в профиле браузера, где данные ещё сохранены, либо дождитесь отдельного сценария восстановления.",
-
   "account.restore.title": "Забыли мастер-пароль?",
   "account.restore.description": "Восстановите доступ к хранилищу",
   "account.restore.loading": "Загрузка методов восстановления…",
@@ -1505,14 +1491,12 @@
   "account.restore.newKey.pdfTitle": "Ключ восстановления Okkey",
   "account.restore.newKey.pdfDescription": "Храните этот ключ офлайн. Любой, у кого есть ключ, сможет восстановить доступ к хранилищу.",
   "account.restore.backToMasterPassword": "Вернуться к вводу мастер-пароля",
-
   "plan.free": "Бесплатный",
   "plan.premium": "Премиум",
   "plan.family": "Семья",
   "plan.team": "Команда",
   "plan.enterprise": "Предприятие",
   "plan.personal": "Персональный",
-
   "workspaces.title": "Добро пожаловать в Okkey",
   "workspaces.loading": "Загрузка пространств",
   "workspaces.description": "Выберите рабочее пространство",
@@ -1526,7 +1510,6 @@
   "workspaces.shellTitle": "Пространство",
   "workspaces.shellId": "ID: {id}",
   "workspaces.shellPlaceholder": "Здесь появится интерфейс сейфов и записей.",
-
   "web.invite.title": "Приглашение в пространство",
   "web.invite.description": "Вступите в общее рабочее пространство",
   "web.invite.intro": "{inviter} приглашает вас в {workspace}.",
@@ -1543,5 +1526,32 @@
   "web.invite.alreadyAccepted": "Это приглашение уже принято.",
   "web.invite.alreadyMember": "Вы уже участник этого пространства.",
   "web.invite.emailMismatch": "Приглашение отправлено на другой адрес электронной почты.",
-  "web.invite.errorGeneric": "Не удалось обработать приглашение. Попробуйте ещё раз."
+  "web.invite.errorGeneric": "Не удалось обработать приглашение. Попробуйте ещё раз.",
+  "account.restore.enterprise.devices.intro": "Создайте запрос на восстановление, затем подтвердите его на другом доверенном устройстве с разблокированным хранилищем.",
+  "account.restore.enterprise.devices.start": "Запросить восстановление через устройство",
+  "account.restore.enterprise.devices.statusTitle": "Восстановление через устройство",
+  "account.restore.enterprise.devices.waiting": "Ожидание подтверждения на доверенном устройстве…",
+  "account.restore.enterprise.devices.approved": "Подтверждено. Задайте новый мастер-пароль, чтобы завершить.",
+  "account.restore.enterprise.devices.submit": "Восстановить доступ",
+  "account.restore.enterprise.devices.missingEph": "Локальная сессия восстановления потеряна. Создайте запрос заново в этом браузере.",
+  "account.restore.enterprise.devices.inboxTitle": "Ожидают подтверждения восстановления",
+  "account.restore.enterprise.devices.approve": "Подтвердить",
+  "account.restore.enterprise.devices.approveNeedUnlock": "Разблокируйте хранилище на этом устройстве, чтобы подтвердить восстановление.",
+  "account.restore.enterprise.contacts.intro": "Попросите доверенные контакты выдать свои доли, затем задайте новый мастер-пароль.",
+  "account.restore.enterprise.contacts.start": "Запросить помощь контактов",
+  "account.restore.enterprise.contacts.statusTitle": "Восстановление через контакты",
+  "account.restore.enterprise.contacts.waiting": "Ожидание достаточного числа долей от контактов…",
+  "account.restore.enterprise.contacts.progress": "Выдано долей: {count} / {threshold}",
+  "account.restore.enterprise.contacts.submit": "Восстановить доступ",
+  "account.restore.enterprise.contacts.missingEph": "Локальная сессия восстановления потеряна. Создайте запрос заново в этом браузере.",
+  "account.restore.enterprise.contacts.enrollTitle": "Доли восстановления для контактов",
+  "account.restore.enterprise.contacts.enrollHint": "Зарегистрируйте зашифрованные доли, чтобы контакты могли помочь восстановить доступ.",
+  "account.restore.enterprise.contacts.enrolled": "Доли зарегистрированы (поколение {generation}). Перерегистрируйте после смены контактов.",
+  "account.restore.enterprise.contacts.enroll": "Зарегистрировать доли",
+  "account.restore.enterprise.contacts.reenroll": "Перерегистрировать доли",
+  "account.restore.enterprise.contacts.enrollNeedUnlock": "Разблокируйте хранилище, чтобы зарегистрировать доли.",
+  "account.restore.enterprise.contacts.needThree": "Нужно минимум три подтверждённых доверенных контакта.",
+  "account.restore.enterprise.contacts.inboxTitle": "Помочь контакту восстановить доступ",
+  "account.restore.enterprise.contacts.release": "Выдать долю",
+  "account.restore.enterprise.contacts.releaseNeedUnlock": "Разблокируйте хранилище, чтобы выдать долю."
 }

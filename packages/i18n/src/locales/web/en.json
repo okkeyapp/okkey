@@ -1,6 +1,5 @@
 {
   "web.locale.nativeName": "English",
-
   "web.shell.language.ariaLabel": "Language",
   "web.shell.copyright": "Okkey © {year} — your trusted password manager",
   "web.nav.allItems": "All items",
@@ -342,7 +341,6 @@
   "web.shell.monitoringTitle": "Monitoring",
   "web.shell.toolsTitle": "Tools",
   "web.shell.settingsTitle": "Settings",
-
   "web.tools.breadcrumbsAria": "Tools navigation",
   "web.tools.breadcrumbsRoot": "Tools",
   "web.tools.sidebarAria": "Tools sections",
@@ -367,7 +365,6 @@
   "web.tools.generator.passphrase.includeNumber": "Include number",
   "web.tools.generator.username.capitalize": "Capitalize",
   "web.tools.generator.username.includeNumber": "Include number",
-
   "web.tools.import.intro": "Move data from other services into Okkey in a few steps. Standard formats and popular password managers are supported.",
   "web.tools.import.learnMore": "Learn more",
   "web.tools.import.learnMoreUrl": "https://okkey.app/docs/import",
@@ -427,7 +424,6 @@
   "web.tools.export.progress.building": "Building export file…",
   "web.tools.export.errors.generic": "Export failed",
   "web.tools.export.errors.noVaultAccess": "You cannot export from the selected vault",
-
   "web.monitoring.title": "Monitoring",
   "web.monitoring.description": "The security score is calculated from records you can access in the current workspace. Analysis runs locally and does not collect or send statistics about your data.",
   "web.monitoring.breadcrumbsAria": "Monitoring breadcrumb",
@@ -470,7 +466,6 @@
   "web.monitoring.vaultScope.all": "All vaults",
   "web.monitoring.vaultScope.personal": "Personal",
   "web.monitoring.vaultScope.shared": "Shared",
-
   "web.items.searchPlaceholder": "Search…",
   "web.items.createRecord": "Create item",
   "web.editItemPopup.title": "Edit record",
@@ -558,7 +553,6 @@
   "web.newItemPopup.categories.wifiRouter": "Wi‑Fi router",
   "web.newItemPopup.categories.bankAccount": "Bank account",
   "web.newItemPopup.categories.cryptoWallet": "Crypto wallet",
-
   "web.keyForm.types.text": "Text",
   "web.keyForm.types.email": "Email",
   "web.keyForm.types.phone": "Phone",
@@ -812,7 +806,6 @@
   "web.keyForm.passwordGenerator.crackTime": "Crack time:",
   "web.keyForm.passwordGenerator.cancel": "Cancel",
   "web.keyForm.passwordGenerator.insert": "Insert",
-
   "web.items.notificationsTitle": "Notifications",
   "web.items.notificationsEmpty": "No notifications yet.",
   "web.items.filter.all": "All items",
@@ -1059,7 +1052,6 @@
   "web.items.detail.activity.expand": "Show all activity",
   "web.items.detail.activity.collapse": "Show latest activity only",
   "web.items.detail.activity.showMore": "Show more",
-
   "web.workspaceSettings.title": "Workspace settings",
   "web.workspaceSettings.description": "Shared settings for everyone in this workspace.",
   "web.workspaceSettings.breadcrumbsAria": "Workspace settings navigation",
@@ -1292,7 +1284,6 @@
   "web.deleteRoleConfirmPopup.title": "Delete role",
   "web.deleteRoleConfirmPopup.description": "This role will be permanently removed. Members with this role will automatically be moved to the standard User role.",
   "web.deleteRoleConfirmPopup.delete": "Delete",
-
   "web.workspaceSettings.profiles.intro": "Profiles distribute access to vault records, record fields, and record functionality.",
   "web.workspaceSettings.profiles.learnMore": "Learn more",
   "web.workspaceSettings.profiles.learnMoreUrl": "https://okkey.app/docs/workspace-profiles",
@@ -1366,7 +1357,6 @@
   "web.deleteProfileConfirmPopup.title": "Delete profile",
   "web.deleteProfileConfirmPopup.description": "This profile will be permanently removed. All workspace members will lose access to vaults with this profile.",
   "web.deleteProfileConfirmPopup.delete": "Delete",
-
   "auth.email.title": "Welcome to Okkey",
   "auth.webauthn.title.passkey": "Sign in with passkey",
   "auth.webauthn.title.hardware": "Sign in with hardware key",
@@ -1388,7 +1378,6 @@
   "auth.email.legalBeforeLink": "By clicking \"Sign in\", you agree to our ",
   "auth.email.privacyLink": "Privacy policy",
   "auth.email.legalAfterLink": ".",
-
   "auth.otp.title": "Welcome to Okkey",
   "auth.otp.descriptionBeforeEmail": "Enter the 6-digit code sent to:",
   "auth.otp.labelConfirmationCode": "Confirmation code",
@@ -1429,7 +1418,6 @@
   "auth.registration.errorNetwork": "Could not reach the API. Ensure the server is running and VITE_API_BASE_URL is correct.",
   "auth.registration.errorBadResponse": "The server response was not JSON — often a wrong VITE_API_BASE_URL.",
   "auth.registration.errorEmailAfterSuccess": "Your account may have been created, but we could not send the login code. On the sign-in screen, enter the same email.",
-
   "auth.registration.title": "Register with Okkey",
   "auth.registration.descriptionBeforeEmail": "You signed in with",
   "auth.registration.firstName": "First name",
@@ -1453,7 +1441,6 @@
   "auth.registration.recovery.pdfTitle": "Okkey recovery key",
   "auth.registration.recovery.pdfDescription": "Keep this key offline. Anyone with this key can restore access to your vault.",
   "auth.registration.recovery.errorEnroll": "Could not save the recovery key. You can set it up later in Settings → Recovery.",
-
   "unlock.title": "Vault is locked",
   "unlock.description": "Enter your master password to unlock",
   "unlock.masterPassword": "Master password",
@@ -1471,7 +1458,6 @@
   "unlock.errorIncorrectPassword": "Incorrect master password",
   "unlock.syncingVault": "Restoring vault data from the server",
   "unlock.errorNoLocalVault": "This browser has no vault key data. If you cleared site data, we could not restore from the server (e.g. several trusted devices and a new browser fingerprint). Use another browser profile that still has Okkey data, or add recovery in a future release.",
-
   "account.restore.title": "Forgot master password?",
   "account.restore.description": "Restore access to your vault",
   "account.restore.loading": "Loading recovery methods…",
@@ -1505,14 +1491,12 @@
   "account.restore.newKey.pdfTitle": "Okkey recovery key",
   "account.restore.newKey.pdfDescription": "Keep this key offline. Anyone with this key can restore access to your vault.",
   "account.restore.backToMasterPassword": "Back to master password",
-
   "plan.free": "Free",
   "plan.premium": "Premium",
   "plan.family": "Family",
   "plan.team": "Team",
   "plan.enterprise": "Enterprise",
   "plan.personal": "Personal",
-
   "workspaces.title": "Welcome to Okkey",
   "workspaces.loading": "Loading workspaces",
   "workspaces.description": "Choose a workspace",
@@ -1526,7 +1510,6 @@
   "workspaces.shellTitle": "Workspace",
   "workspaces.shellId": "ID: {id}",
   "workspaces.shellPlaceholder": "Vault and records UI will appear here.",
-
   "web.invite.title": "Workspace invitation",
   "web.invite.description": "Join a shared workspace",
   "web.invite.intro": "{inviter} invited you to {workspace}.",
@@ -1543,5 +1526,32 @@
   "web.invite.alreadyAccepted": "This invitation was already accepted.",
   "web.invite.alreadyMember": "You are already a member of this workspace.",
   "web.invite.emailMismatch": "This invitation was sent to a different email address.",
-  "web.invite.errorGeneric": "Could not process this invitation. Try again."
+  "web.invite.errorGeneric": "Could not process this invitation. Try again.",
+  "account.restore.enterprise.devices.intro": "Start a recovery request, then approve it on another trusted device where your vault is unlocked.",
+  "account.restore.enterprise.devices.start": "Request recovery from trusted device",
+  "account.restore.enterprise.devices.statusTitle": "Device recovery",
+  "account.restore.enterprise.devices.waiting": "Waiting for approval on a trusted device…",
+  "account.restore.enterprise.devices.approved": "Approved. Set a new master password to finish.",
+  "account.restore.enterprise.devices.submit": "Restore access",
+  "account.restore.enterprise.devices.missingEph": "Missing local recovery session. Start the request again in this browser.",
+  "account.restore.enterprise.devices.inboxTitle": "Pending device recovery approvals",
+  "account.restore.enterprise.devices.approve": "Approve",
+  "account.restore.enterprise.devices.approveNeedUnlock": "Unlock the vault on this device to approve recovery.",
+  "account.restore.enterprise.contacts.intro": "Ask your trusted contacts to release their recovery shares, then set a new master password.",
+  "account.restore.enterprise.contacts.start": "Request help from trusted contacts",
+  "account.restore.enterprise.contacts.statusTitle": "Contacts recovery",
+  "account.restore.enterprise.contacts.waiting": "Waiting for enough contacts to release their shares…",
+  "account.restore.enterprise.contacts.progress": "Shares released: {count} / {threshold}",
+  "account.restore.enterprise.contacts.submit": "Restore access",
+  "account.restore.enterprise.contacts.missingEph": "Missing local recovery session. Start the request again in this browser.",
+  "account.restore.enterprise.contacts.enrollTitle": "Contact recovery shares",
+  "account.restore.enterprise.contacts.enrollHint": "Enroll encrypted shares so trusted contacts can help you restore access.",
+  "account.restore.enterprise.contacts.enrolled": "Shares enrolled (generation {generation}). Re-enroll after changing contacts.",
+  "account.restore.enterprise.contacts.enroll": "Enroll contact shares",
+  "account.restore.enterprise.contacts.reenroll": "Re-enroll contact shares",
+  "account.restore.enterprise.contacts.enrollNeedUnlock": "Unlock the vault to enroll contact shares.",
+  "account.restore.enterprise.contacts.needThree": "You need at least three confirmed trusted contacts.",
+  "account.restore.enterprise.contacts.inboxTitle": "Help a contact restore access",
+  "account.restore.enterprise.contacts.release": "Release share",
+  "account.restore.enterprise.contacts.releaseNeedUnlock": "Unlock the vault to release your share."
 }

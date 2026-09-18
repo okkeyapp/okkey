@@ -47,12 +47,33 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/enterprise-shared-vaults-stub.ts",
   );
+  const enterpriseAccountRecoveryPath = path.resolve(
+    enterpriseRoot,
+    "web/account-recovery/src/index.ts",
+  );
+  const enterpriseAccountRecoveryStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-account-recovery-stub.ts",
+  );
+  const enterpriseRecoveryCryptoPath = path.resolve(
+    enterpriseRoot,
+    "packages/recovery-crypto/src/index.ts",
+  );
+  const enterpriseRecoveryCryptoWasmPath = path.resolve(
+    enterpriseRoot,
+    "packages/recovery-crypto/dist/okkey_enterprise_recovery_crypto.js",
+  );
 
   return {
     plugins: [react()],
     assetsInclude: ["**/*.wasm"],
     optimizeDeps: {
-      exclude: ["@okkey/crypto", "@okkey/crypto-wasm"],
+      exclude: [
+        "@okkey/crypto",
+        "@okkey/crypto-wasm",
+        "@okkey-enterprise/recovery-crypto",
+        "@okkey-enterprise/recovery-crypto-wasm",
+      ],
     },
     server: {
       port: 5173,
@@ -90,6 +111,11 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/workspace-shared-vaults": enterpriseModules
           ? enterpriseSharedVaultsPath
           : enterpriseSharedVaultsStubPath,
+        "@okkey-enterprise/account-recovery": enterpriseModules
+          ? enterpriseAccountRecoveryPath
+          : enterpriseAccountRecoveryStubPath,
+        "@okkey-enterprise/recovery-crypto": enterpriseRecoveryCryptoPath,
+        "@okkey-enterprise/recovery-crypto-wasm": enterpriseRecoveryCryptoWasmPath,
         "@okkey-enterprise/types": path.resolve(enterpriseRoot, "packages/types/src"),
         "@okkey-enterprise/api": path.resolve(enterpriseRoot, "packages/api/src"),
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),

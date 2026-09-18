@@ -858,6 +858,8 @@ export type TrustedContactStatusDto = "pending" | "confirmed";
 export interface TrustedContactDto {
   id: EntityId;
   email: string;
+  /** Linked Okkey user id when the invite was accepted (confirmed contacts). */
+  contactUserId?: EntityId | null;
   status: TrustedContactStatusDto;
   createdAt: string;
   confirmedAt: string | null;

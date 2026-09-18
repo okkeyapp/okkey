@@ -48,6 +48,7 @@ function isValidEmail(email: string): boolean {
 function mapContact(record: {
   id: string;
   contactEmail: string;
+  contactUserId: string | null;
   status: "pending" | "confirmed";
   createdAt: string;
   confirmedAt: string | null;
@@ -55,6 +56,7 @@ function mapContact(record: {
   return {
     id: record.id,
     email: record.contactEmail,
+    contactUserId: record.contactUserId,
     status: record.status,
     createdAt: record.createdAt,
     confirmedAt: record.confirmedAt,
