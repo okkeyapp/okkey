@@ -194,9 +194,9 @@ describe("App", () => {
 
     renderWithRouter(<App />, [ACCOUNT_RESTORE_PATH]);
     await waitFor(() => {
-      expect(screen.getByText(/^choose a recovery method$/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^choose a recovery method$/i)).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /recovery key/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^choose a recovery method$/i)).toHaveTextContent(/recovery key/i);
     expect(screen.getByLabelText(/^recovery key$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^new master password$/i)).toBeInTheDocument();
     expect(screen.queryByText(/^no recovery methods enabled$/i)).not.toBeInTheDocument();

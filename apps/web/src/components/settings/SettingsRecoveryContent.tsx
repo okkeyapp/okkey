@@ -156,8 +156,12 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const [error, setError] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteRows, setInviteRows] = useState<{ id: string; email: string }[]>([
+    { id: "invite-0", email: "" },
+  ]);
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const settingsMutatingRef = useRef(false);
 
   const refreshStatus = useCallback(async (): Promise<AccountRecoveryStatusResponseDto | null> => {
     if (!core) {
@@ -288,42 +292,60 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   }
 
   async function handleDevicesSwitch(checked: boolean) {
-    if (!core || !status?.entitlements.trustedDevices) {
+    if (!core || !status?.entitlements.trustedDevices || settingsMutatingRef.current) {
       return;
     }
-    setBusy(true);
+    settingsMutatingRef.current = true;
     setStatus((prev) =>
       prev ? { ...prev, settings: { ...prev.settings, devicesEnabled: checked } } : prev,
     );
     try {
       const next = await core.patchAccountRecoverySettings({ devicesEnabled: checked });
-      setStatus(next);
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              settings: next.settings,
+              entitlements: next.entitlements,
+            }
+          : next,
+      );
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
       void refreshStatus();
     } finally {
-      setBusy(false);
+      settingsMutatingRef.current = false;
     }
   }
 
   async function handleContactsSwitch(checked: boolean) {
-    if (!core || !status?.entitlements.trustedContacts) {
+    if (!core || !status?.entitlements.trustedContacts || settingsMutatingRef.current) {
       return;
     }
-    setBusy(true);
+    settingsMutatingRef.current = true;
     setStatus((prev) =>
       prev ? { ...prev, settings: { ...prev.settings, contactsEnabled: checked } } : prev,
     );
     try {
       const next = await core.patchAccountRecoverySettings({ contactsEnabled: checked });
-      setStatus(next);
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              settings: next.settings,
+              entitlements: next.entitlements,
+              confirmedContactCount: next.confirmedContactCount,
+              minConfirmedContacts: next.minConfirmedContacts,
+            }
+          : next,
+      );
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
       void refreshStatus();
     } finally {
-      setBusy(false);
+      settingsMutatingRef.current = false;
     }
   }
 
@@ -373,24 +395,54 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   }
 
   async function handleInvite() {
-    if (!core || !inviteEmail.trim()) {
+    if (!core || inviteSaving) {
       return;
     }
-    setBusy(true);
-    try {
-      const { contact } = await core.inviteTrustedContact({ email: inviteEmail.trim() });
-      setInviteEmail("");
-      setInviteOpen(false);
-      setStatus((prev) =>
-        prev ? { ...prev, contacts: [...prev.contacts, contact] } : prev,
-      );
-      void refreshStatus();
-      notifySaved();
-    } catch (err) {
-      setError(recoveryErrorMessage(err, t));
-    } finally {
-      setBusy(false);
+    const emails = inviteRows
+      .map((row) => row.email.trim())
+      .filter((email) => email.includes("@"));
+    if (emails.length === 0) {
+      return;
     }
+    setInviteSaving(true);
+    setError(null);
+    const added: TrustedContactDto[] = [];
+    let lastError: unknown = null;
+    try {
+      for (const email of emails) {
+        try {
+          const { contact } = await core.inviteTrustedContact({ email });
+          added.push(contact);
+        } catch (err) {
+          lastError = err;
+          break;
+        }
+      }
+      if (added.length > 0) {
+        setStatus((prev) =>
+          prev ? { ...prev, contacts: [...prev.contacts, ...added] } : prev,
+        );
+        void refreshStatus();
+        notifySaved();
+        setInviteOpen(false);
+        setInviteRows([{ id: `invite-${Date.now()}`, email: "" }]);
+      }
+      if (lastError) {
+        setError(recoveryErrorMessage(lastError, t));
+      }
+    } finally {
+      setInviteSaving(false);
+    }
+  }
+
+  function openInviteForm() {
+    setInviteRows([{ id: `invite-${Date.now()}`, email: "" }]);
+    setInviteOpen(true);
+  }
+
+  function closeInviteForm() {
+    setInviteOpen(false);
+    setInviteRows([{ id: `invite-${Date.now()}`, email: "" }]);
   }
 
   async function handleDeleteContact(contact: TrustedContactDto) {
@@ -600,7 +652,6 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               <Switch
                 size="lg"
                 checked={devicesEnabled}
-                disabled={busy}
                 onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
                 aria-label={t("web.settingsPopup.recovery.devices.label")}
               />
@@ -618,10 +669,9 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                   size="lg"
                   checked={contactsEnabled}
                   disabled={
-                    busy ||
-                    (Boolean(status) &&
-                      !contactsEnabled &&
-                      (status?.confirmedContactCount ?? 0) < (status?.minConfirmedContacts ?? 3))
+                    Boolean(status) &&
+                    !contactsEnabled &&
+                    (status?.confirmedContactCount ?? 0) < (status?.minConfirmedContacts ?? 3)
                   }
                   onCheckedChange={(checked) => void handleContactsSwitch(checked)}
                   aria-label={t("web.settingsPopup.recovery.contacts.label")}
@@ -629,11 +679,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               </SettingsRow>
 
               {showContactsPanel ? (
-                <div className="mt-2 flex flex-col rounded-xl bg-secondary px-4">
+                <div className="mt-2 flex flex-col overflow-hidden rounded-xl bg-secondary">
                   {(status?.contacts ?? []).map((contact, index) => (
                     <div
                       key={contact.id}
-                      className={`flex items-center gap-1.5 py-3 ${index > 0 ? "border-t border-border" : ""}`}
+                      className={`flex items-center gap-1.5 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
                     >
                       {contact.status === "confirmed" ? (
                         <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
@@ -647,7 +697,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         size="icon"
                         className="size-6 text-destructive"
                         aria-label={t("web.settingsPopup.recovery.contacts.remove")}
-                        disabled={busy}
+                        disabled={busy || inviteSaving}
                         onClick={() => void handleDeleteContact(contact)}
                       >
                         <Trash2 className="size-4" />
@@ -655,34 +705,86 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                     </div>
                   ))}
                   {inviteOpen ? (
-                    <div className="flex flex-col gap-2 border-t border-border py-3">
-                      <Input
-                        type="email"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
-                        aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
-                      />
-                      <div className="flex gap-2">
+                    <div
+                      className={`flex flex-col gap-3 px-4 py-3 ${
+                        (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
+                      }`}
+                    >
+                      {inviteRows.map((row, index) => (
+                        <div key={row.id} className="flex items-center gap-2">
+                          <span className="w-6 shrink-0 text-sm text-muted-foreground">
+                            {index + 1}.
+                          </span>
+                          <Input
+                            type="email"
+                            value={row.email}
+                            disabled={inviteSaving}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setInviteRows((current) =>
+                                current.map((item) =>
+                                  item.id === row.id ? { ...item, email: value } : item,
+                                ),
+                              );
+                            }}
+                            placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                            aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                            className="min-w-0 flex-1 bg-background"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-9 shrink-0 text-destructive hover:text-destructive"
+                            disabled={inviteSaving || inviteRows.length <= 1}
+                            aria-label={t("web.settingsPopup.recovery.contacts.removeRow")}
+                            onClick={() =>
+                              setInviteRows((current) => current.filter((item) => item.id !== row.id))
+                            }
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-9 w-full gap-1.5 bg-background"
+                        disabled={inviteSaving}
+                        onClick={() =>
+                          setInviteRows((current) => [
+                            ...current,
+                            { id: `invite-${Date.now()}-${current.length}`, email: "" },
+                          ])
+                        }
+                      >
+                        <Plus className="size-4 shrink-0" />
+                        {t("web.settingsPopup.recovery.contacts.addMore")}
+                      </Button>
+                      <div className="flex items-center justify-end gap-2">
                         <Button
                           type="button"
                           variant="outline"
-                          className="h-9 flex-1 bg-background"
-                          disabled={busy}
-                          onClick={() => void handleInvite()}
+                          className="h-9 bg-background"
+                          disabled={inviteSaving}
+                          onClick={closeInviteForm}
                         >
-                          {t("web.settingsPopup.recovery.contacts.sendInvite")}
+                          {t("web.settingsPopup.recovery.contacts.cancel")}
                         </Button>
                         <Button
                           type="button"
-                          variant="ghost"
                           className="h-9"
-                          onClick={() => {
-                            setInviteOpen(false);
-                            setInviteEmail("");
-                          }}
+                          disabled={
+                            inviteSaving ||
+                            inviteRows.every((row) => !row.email.trim().includes("@"))
+                          }
+                          onClick={() => void handleInvite()}
                         >
-                          {t("web.settingsPopup.recovery.contacts.cancel")}
+                          {t("web.settingsPopup.recovery.contacts.sendInvite", {
+                            count: String(
+                              inviteRows.filter((row) => row.email.trim().includes("@")).length,
+                            ),
+                          })}
                         </Button>
                       </div>
                     </div>
@@ -690,9 +792,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-9 w-full gap-2.5 border-t border-border"
-                      disabled={busy}
-                      onClick={() => setInviteOpen(true)}
+                      className={`h-9 w-full gap-2.5 rounded-none ${
+                        (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
+                      }`}
+                      disabled={busy || inviteSaving}
+                      onClick={openInviteForm}
                     >
                       <Plus className="size-4 shrink-0" />
                       {t("web.settingsPopup.recovery.contacts.add")}

@@ -16,6 +16,11 @@ import {
   ControlGroup,
   controlGroupItemGrowClassName,
   Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@okkey/ui";
 import { Copy, Download, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -402,54 +407,40 @@ export default function AccountRestorePage() {
         {!loadingStatus && anyMethod ? (
           <div className="flex w-full flex-col gap-4 rounded-xl border border-border bg-background p-4 shadow-sm">
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-foreground">{t("account.restore.chooseMethod")}</p>
-              <div className="flex flex-col gap-2">
-                {keyAvailable ? (
-                  <Button
-                    type="button"
-                    variant={method === "key" ? "default" : "outline"}
-                    className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
-                    onClick={() => setMethod("key")}
-                  >
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium">{t("account.restore.method.key")}</span>
-                      <span className="text-xs font-normal opacity-80">
-                        {t("account.restore.method.keyHint")}
-                      </span>
-                    </span>
-                  </Button>
-                ) : null}
-                {devicesAvailable ? (
-                  <Button
-                    type="button"
-                    variant={method === "devices" ? "default" : "outline"}
-                    className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
-                    onClick={() => setMethod("devices")}
-                  >
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium">{t("account.restore.method.devices")}</span>
-                      <span className="text-xs font-normal opacity-80">
-                        {t("account.restore.method.devicesHint")}
-                      </span>
-                    </span>
-                  </Button>
-                ) : null}
-                {contactsAvailable ? (
-                  <Button
-                    type="button"
-                    variant={method === "contacts" ? "default" : "outline"}
-                    className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
-                    onClick={() => setMethod("contacts")}
-                  >
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium">{t("account.restore.method.contacts")}</span>
-                      <span className="text-xs font-normal opacity-80">
-                        {t("account.restore.method.contactsHint")}
-                      </span>
-                    </span>
-                  </Button>
-                ) : null}
-              </div>
+              <label htmlFor="restore-method" className="text-sm font-medium text-foreground">
+                {t("account.restore.chooseMethod")}
+              </label>
+              <Select
+                value={method ?? undefined}
+                onValueChange={(value) => setMethod(value as RestoreMethod)}
+              >
+                <SelectTrigger id="restore-method" className="h-auto min-h-10 w-full py-2">
+                  <SelectValue placeholder={t("account.restore.chooseMethod")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {keyAvailable ? (
+                    <SelectItem value="key" description={t("account.restore.method.keyHint")}>
+                      {t("account.restore.method.key")}
+                    </SelectItem>
+                  ) : null}
+                  {devicesAvailable ? (
+                    <SelectItem
+                      value="devices"
+                      description={t("account.restore.method.devicesHint")}
+                    >
+                      {t("account.restore.method.devices")}
+                    </SelectItem>
+                  ) : null}
+                  {contactsAvailable ? (
+                    <SelectItem
+                      value="contacts"
+                      description={t("account.restore.method.contactsHint")}
+                    >
+                      {t("account.restore.method.contacts")}
+                    </SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
             </div>
 
             {method === "key" ? (
