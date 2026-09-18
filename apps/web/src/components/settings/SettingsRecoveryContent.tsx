@@ -781,9 +781,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                           onClick={() => void handleInvite()}
                         >
                           {t("web.settingsPopup.recovery.contacts.sendInvite", {
-                            count: String(
-                              inviteRows.filter((row) => row.email.trim().includes("@")).length,
-                            ),
+                            count: inviteRows.filter((row) => row.email.trim().includes("@")).length,
                           })}
                         </Button>
                       </div>
