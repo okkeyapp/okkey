@@ -36,6 +36,7 @@ import {
   createAccountRecoveryKeyEnrollRoute,
   createAccountRecoveryKeyRotateRoute,
   createAccountRecoveryKeyWrapRoute,
+  createAccountRecoveryIdentityEncryptedKeyRoute,
   createAccountRecoverySettingsPatchRoute,
   createAccountRecoveryStatusRoute,
 } from "./routes/account-recovery.ts";
@@ -604,6 +605,11 @@ export function createApiApp(
       "GET",
       "/account/recovery/key/wrap",
       createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/account/recovery/identity-encrypted-key",
+      createAccountRecoveryIdentityEncryptedKeyRoute(deps.accountRecoveryService, resolveUserId),
     );
     app.route(
       "POST",

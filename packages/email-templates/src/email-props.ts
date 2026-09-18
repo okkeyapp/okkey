@@ -6,10 +6,13 @@ import type { WorkspaceInviteEmailProps } from "./components/WorkspaceInviteEmai
 import { formatUtcWhen } from "./format-utc.js";
 import type {
   AuthEmailCodeVariables,
+  ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
+  DeviceRecoveryApprovalRequestVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "./variables.js";
+import type { RecoveryActionEmailProps } from "./components/RecoveryActionEmail.js";
 
 export function buildAuthSignInCodeEmailProps(
   locale: EmailLocale,
@@ -131,6 +134,45 @@ export function buildTwoFactorBackupRegeneratedEmailProps(
     line2: formatEmailMessage(locale, twoFactorBackupKeys.line2, {}),
     securityUrl,
     ctaLabel: formatEmailMessage(locale, twoFactorBackupKeys.cta, {}),
+  };
+}
+
+export function buildDeviceRecoveryApprovalEmailProps(
+  locale: EmailLocale,
+  variables: DeviceRecoveryApprovalRequestVariables,
+): RecoveryActionEmailProps {
+  return {
+    lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
+    detailLine: formatEmailMessage(locale, "email.device.recovery.detailLine", {
+      when: formatUtcWhen(locale, variables.requestedAtIso),
+    }),
+    expiresLine: formatEmailMessage(locale, "email.device.recovery.expiresLine", {
+      when: formatUtcWhen(locale, variables.expiresAtIso),
+    }),
+    helpUrl: variables.helpUrl.trim(),
+    ctaLabel: formatEmailMessage(locale, "email.device.recovery.cta", {}),
+    noteNoUrl: formatEmailMessage(locale, "email.device.recovery.noteNoUrl", {}),
+    noteIgnore: formatEmailMessage(locale, "email.device.recovery.noteIgnore", {}),
+  };
+}
+
+export function buildContactRecoveryReleaseEmailProps(
+  locale: EmailLocale,
+  variables: ContactRecoveryReleaseRequestVariables,
+): RecoveryActionEmailProps {
+  return {
+    lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
+    detailLine: formatEmailMessage(locale, "email.contacts.recovery.detailLine", {
+      ownerEmail: variables.ownerEmail,
+      when: formatUtcWhen(locale, variables.requestedAtIso),
+    }),
+    expiresLine: formatEmailMessage(locale, "email.contacts.recovery.expiresLine", {
+      when: formatUtcWhen(locale, variables.expiresAtIso),
+    }),
+    helpUrl: variables.helpUrl.trim(),
+    ctaLabel: formatEmailMessage(locale, "email.contacts.recovery.cta", {}),
+    noteNoUrl: formatEmailMessage(locale, "email.contacts.recovery.noteNoUrl", {}),
+    noteIgnore: formatEmailMessage(locale, "email.contacts.recovery.noteIgnore", {}),
   };
 }
 

@@ -1478,7 +1478,7 @@
   "account.restore.repeatPassword": "Повторите новый мастер-пароль",
   "account.restore.submitKey": "Восстановить доступ",
   "account.restore.error.loadStatus": "Не удалось загрузить методы восстановления. Попробуйте ещё раз.",
-  "account.restore.error.noBundle": "В этом браузере нет локальных данных ключа хранилища. Откройте Okkey на устройстве, где вы раньше разблокировали хранилище, или восстановите профиль браузера из резервной копии.",
+  "account.restore.error.noBundle": "В этом браузере нет локальных данных хранилища. Восстановление всё равно возможно: выберите метод, задайте новый мастер-пароль — этот браузер станет новым доверенным устройством.",
   "account.restore.error.invalidKey": "Не удалось восстановить доступ с этим ключом. Проверьте ключ и попробуйте снова.",
   "account.restore.error.keyUnavailable": "Ключ восстановления недоступен для этого аккаунта.",
   "account.restore.error.rotateFailed": "Пароль обновлён, но не удалось выпустить новый ключ восстановления. Войдите новым паролем и настройте ключ в Настройки → Восстановление.",
@@ -1553,5 +1553,6 @@
   "account.restore.enterprise.contacts.needThree": "Нужно минимум три подтверждённых доверенных контакта.",
   "account.restore.enterprise.contacts.inboxTitle": "Помочь контакту восстановить доступ",
   "account.restore.enterprise.contacts.release": "Выдать долю",
-  "account.restore.enterprise.contacts.releaseNeedUnlock": "Разблокируйте хранилище, чтобы выдать долю."
+  "account.restore.enterprise.contacts.releaseNeedUnlock": "Разблокируйте хранилище, чтобы выдать долю.",
+  "account.restore.error.bootstrapFailed": "Не удалось завершить восстановление в этом браузере. Проверьте соединение и попробуйте снова."
 }

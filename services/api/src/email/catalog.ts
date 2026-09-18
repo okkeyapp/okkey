@@ -10,7 +10,9 @@ import type { EmailLocale } from "./locale.ts";
 
 export type {
   AuthEmailCodeVariables,
+  ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
+  DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,

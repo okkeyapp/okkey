@@ -57,6 +57,7 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
 function createService(overrides?: {
   registerOrUpdate?: () => Promise<ReturnType<typeof createDeviceRecord>>;
   reclaimSoleTrusted?: () => Promise<ReturnType<typeof createDeviceRecord> | null>;
+  claimTrustedAfterRecovery?: () => Promise<ReturnType<typeof createDeviceRecord>>;
   isTrustedDevice?: () => Promise<boolean>;
   resolveApproval?: () => Promise<DeviceApprovalState>;
   listByUser?: () => Promise<Array<ReturnType<typeof createDeviceRecord>>>;
@@ -74,6 +75,9 @@ function createService(overrides?: {
         overrides?.registerOrUpdate ??
         (async () => createDeviceRecord() as ReturnType<typeof createDeviceRecord>),
       reclaimSoleTrusted: overrides?.reclaimSoleTrusted ?? (async () => null),
+      claimTrustedAfterRecovery:
+        overrides?.claimTrustedAfterRecovery ??
+        (async () => createDeviceRecord({ status: "trusted", id: "d-claim" })),
       isTrustedDevice: overrides?.isTrustedDevice ?? (async () => true),
       resolveApproval:
         overrides?.resolveApproval ??
@@ -117,12 +121,35 @@ test("registerDevice returns pending_approval for new device", async () => {
   assert.equal(result.deviceId, "d1");
 });
 
+test("registerDevice claimAfterRecovery becomes sole trusted without pending", async () => {
+  let claimed = false;
+  const service = createService({
+    claimTrustedAfterRecovery: async () => {
+      claimed = true;
+      return createDeviceRecord({ id: "d-fresh", status: "trusted" });
+    },
+    registerOrUpdate: async () => {
+      throw new Error("registerOrUpdate must not run for claimAfterRecovery");
+    },
+  });
+
+  const result = await service.registerDevice(
+    "u1",
+    "127.0.0.1",
+    createInput({ claimAfterRecovery: true }),
+  );
+  assert.equal(claimed, true);
+  assert.equal(result.status, "trusted");
+  assert.equal(result.deviceId, "d-fresh");
+});
+
 test("registerDevice sends device_approval_request when pending and email deps configured", async () => {
   const sends: Array<Parameters<EmailTemplateService["sendDeviceApprovalRequest"]>[0]> = [];
   const service = new DeviceService({
     devices: {
       registerOrUpdate: async () => createDeviceRecord(),
       reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
       isTrustedDevice: async () => true,
       resolveApproval: async () => ({
         kind: "approved",

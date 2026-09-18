@@ -1226,6 +1226,11 @@ export interface RegisterCompleteMetadataDto {
    * rebind that row to this fingerprint/public key instead of creating a pending device.
    */
   reclaim_sole_trusted?: boolean;
+  /**
+   * When true on `POST /devices/register` after account recovery: become sole trusted
+   * device with the provided device_share and revoke other trusted devices.
+   */
+  claim_after_recovery?: boolean;
 }
 
 /** `POST /devices/register` request body (snake_case on wire). */

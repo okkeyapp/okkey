@@ -274,7 +274,11 @@ export async function pollDeviceTrust(
 export async function registerCurrentBrowserDevice(
   core: CoreApiClient,
   fingerprint = getOrCreateDeviceFingerprint(),
-  options?: { reclaimSoleTrusted?: boolean; userId?: string },
+  options?: {
+    reclaimSoleTrusted?: boolean;
+    claimAfterRecovery?: boolean;
+    userId?: string;
+  },
 ): Promise<DeviceRegisterResponseDto> {
   await initCrypto();
   const env = parseBrowserEnvironment(
@@ -321,6 +325,7 @@ export async function registerCurrentBrowserDevice(
       metadata: {
         crypto_capable: true,
         reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
+        claim_after_recovery: options?.claimAfterRecovery === true,
       },
     });
   } finally {

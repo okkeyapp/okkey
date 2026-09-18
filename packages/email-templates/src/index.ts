@@ -1,6 +1,8 @@
 export {
   renderAuthEmailCode,
+  renderContactRecoveryReleaseRequest,
   renderDeviceApprovalRequest,
+  renderDeviceRecoveryApprovalRequest,
   renderEmailTemplate,
   renderTwoFactorBackupRegenerated,
   renderTwoFactorEnabled,
@@ -11,7 +13,9 @@ export { EmailRenderError, type EmailRenderErrorCode } from "./errors.js";
 export type { RenderedEmail } from "./rendered.js";
 export type {
   AuthEmailCodeVariables,
+  ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
+  DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,

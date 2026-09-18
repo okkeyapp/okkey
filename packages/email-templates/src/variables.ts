@@ -26,10 +26,27 @@ export interface TwoFactorNoticeVariables {
   securitySettingsUrl: string;
 }
 
+export interface DeviceRecoveryApprovalRequestVariables {
+  helpUrl: string;
+  /** ISO timestamp when the recovery request was created. */
+  requestedAtIso: string;
+  /** ISO timestamp when the request expires. */
+  expiresAtIso: string;
+}
+
+export interface ContactRecoveryReleaseRequestVariables {
+  helpUrl: string;
+  ownerEmail: string;
+  requestedAtIso: string;
+  expiresAtIso: string;
+}
+
 export type EmailTemplateVariablesMap = {
   auth_email_code: AuthEmailCodeVariables;
   device_approval_request: DeviceApprovalRequestVariables;
   workspace_invite: WorkspaceInviteVariables;
   two_factor_enabled: TwoFactorNoticeVariables;
   two_factor_backup_codes_regenerated: TwoFactorNoticeVariables;
+  device_recovery_approval_request: DeviceRecoveryApprovalRequestVariables;
+  contact_recovery_release_request: ContactRecoveryReleaseRequestVariables;
 };

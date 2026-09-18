@@ -133,6 +133,23 @@ function createService(overrides?: {
       findById: async (id: string) => users.find((u) => u.id === id) ?? null,
       findByEmail: async (email: string) =>
         users.find((u) => u.email.toLowerCase() === email.toLowerCase()) ?? null,
+      loadVaultUnlockRow: async (userId: string) => {
+        if (userId !== "u1") {
+          return null;
+        }
+        const blob = {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: Buffer.from("identity-ciphertext").toString("base64"),
+          meta: { entity: "identity_private_key" },
+        };
+        return {
+          encryptedPrivateKey: Uint8Array.from(Buffer.from(JSON.stringify(blob), "utf8")),
+          serverKeyShare: new Uint8Array(32),
+          passwordKdfSalt: new Uint8Array(16),
+          passwordKdfParamsVersion: 2,
+        };
+      },
     },
   });
 }
@@ -180,5 +197,22 @@ test("inviteContact rejects FREE-only account", async () => {
   await assert.rejects(
     () => service.inviteContact("u1", "friend@example.com"),
     (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
+  );
+});
+
+test("getIdentityEncryptedKey returns ciphertext blob for restore bootstrap", async () => {
+  const service = createService();
+  const result = await service.getIdentityEncryptedKey("u1");
+  assert.equal(result.encryptedPrivateKey.crypto_version, 2);
+  assert.equal(result.encryptedPrivateKey.algorithm, "opaque");
+  assert.ok(result.encryptedPrivateKey.payload.length > 0);
+  assert.equal(result.encryptedPrivateKey.meta.entity, "identity_private_key");
+});
+
+test("getIdentityEncryptedKey rejects unknown user", async () => {
+  const service = createService();
+  await assert.rejects(
+    () => service.getIdentityEncryptedKey("missing"),
+    (err: unknown) => err instanceof AccountRecoveryError && err.code === "USER_NOT_FOUND",
   );
 });

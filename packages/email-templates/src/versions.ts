@@ -5,6 +5,8 @@ export const EMAIL_TEMPLATE_VERSIONS = {
   workspace_invite: 3,
   two_factor_enabled: 3,
   two_factor_backup_codes_regenerated: 3,
+  device_recovery_approval_request: 1,
+  contact_recovery_release_request: 1,
 } as const;
 
 export type EmailTemplateId = keyof typeof EMAIL_TEMPLATE_VERSIONS;

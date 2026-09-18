@@ -278,3 +278,44 @@ test("EmailTemplateService sendTwoFactorEnabled and sendTwoFactorBackupCodesRege
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.equal(sent[1].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
 });
+
+test("EmailTemplateService device and contact recovery request emails render CTA url", async () => {
+  const sent: Array<{ subject: string; text: string; html: string }> = [];
+  const sender: EmailSender = {
+    send: async (m) => {
+      sent.push({ subject: m.subject, text: m.text, html: m.html });
+    },
+  };
+  const svc = new EmailTemplateService(sender, {
+    from: "x@y.z",
+    defaultLocale: "en",
+    publicAppBaseUrl: "https://app.example",
+  });
+  const helpUrl = "https://app.example/items?popup=settings|recovery";
+  await svc.sendDeviceRecoveryApprovalRequest({
+    to: "owner@example.com",
+    localeHints: { explicitLocale: "en" },
+    variables: {
+      helpUrl,
+      requestedAtIso: "2026-09-18T10:00:00.000Z",
+      expiresAtIso: "2026-09-18T11:00:00.000Z",
+    },
+  });
+  await svc.sendContactRecoveryReleaseRequest({
+    to: "friend@example.com",
+    localeHints: { explicitLocale: "ru" },
+    variables: {
+      helpUrl,
+      ownerEmail: "owner@example.com",
+      requestedAtIso: "2026-09-18T10:00:00.000Z",
+      expiresAtIso: "2026-09-18T11:00:00.000Z",
+    },
+  });
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].subject, formatEmailMessage("en", "email.device.recovery.subject", {}));
+  assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.equal(sent[0].text.includes("{{"), false);
+  assert.equal(sent[1].subject, formatEmailMessage("ru", "email.contacts.recovery.subject", {}));
+  assert.match(sent[1].text, /owner@example.com/);
+  assert.equal(sent[1].text.includes("{{"), false);
+});

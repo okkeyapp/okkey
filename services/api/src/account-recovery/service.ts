@@ -10,6 +10,7 @@ import {
 } from "@okkey/types";
 
 import { generateEntityId } from "../entity-id.ts";
+import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
 import type { AccountRecoveryRepository } from "../storage/account-recovery.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 
@@ -34,7 +35,7 @@ export class AccountRecoveryError extends Error {
 export interface AccountRecoveryServiceDeps {
   recovery: AccountRecoveryRepository;
   workspaces: Pick<WorkspacesRepository, "listAccessibleByUser">;
-  users: Pick<UsersRepository, "findById" | "findByEmail">;
+  users: Pick<UsersRepository, "findById" | "findByEmail" | "loadVaultUnlockRow">;
 }
 
 function normalizeEmail(email: string): string {
@@ -248,6 +249,26 @@ export class AccountRecoveryService {
       throw new AccountRecoveryError("RECOVERY_KEY_NOT_ENROLLED", 404, "recovery key is not enrolled");
     }
     return { encryptedBlob: wrap.encryptedBlob };
+  }
+
+  /**
+   * Ciphertext-only identity private-key blob for post-recovery local bundle bootstrap.
+   * Server never sees plaintext; required when restoring on a browser without a local vault bundle.
+   */
+  async getIdentityEncryptedKey(userId: string): Promise<{ encryptedPrivateKey: EncryptedBlobDto }> {
+    const row = await this.users.loadVaultUnlockRow(userId);
+    if (!row) {
+      throw new AccountRecoveryError("USER_NOT_FOUND", 404, "user not found");
+    }
+    const encryptedPrivateKey = decodeEncryptedBlobFromStorage(row.encryptedPrivateKey);
+    return {
+      encryptedPrivateKey: {
+        crypto_version: encryptedPrivateKey.crypto_version,
+        algorithm: encryptedPrivateKey.algorithm,
+        payload: encryptedPrivateKey.payload,
+        meta: encryptedPrivateKey.meta,
+      },
+    };
   }
 
   async inviteContact(userId: string, rawEmail: string): Promise<TrustedContactDto> {

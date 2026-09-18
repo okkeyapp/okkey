@@ -1478,7 +1478,7 @@
   "account.restore.repeatPassword": "Repeat new master password",
   "account.restore.submitKey": "Restore access",
   "account.restore.error.loadStatus": "Could not load recovery methods. Try again.",
-  "account.restore.error.noBundle": "This browser has no local vault key data. Open Okkey on a device where you previously unlocked the vault, or restore from a backup of this browser profile.",
+  "account.restore.error.noBundle": "This browser has no local vault key data. You can still restore: continue with a recovery method, then set a new master password — this browser will become your new trusted device.",
   "account.restore.error.invalidKey": "Could not restore with this recovery key. Check the key and try again.",
   "account.restore.error.keyUnavailable": "Recovery key is not available for this account.",
   "account.restore.error.rotateFailed": "Password updated, but a new recovery key could not be issued. Sign in with your new password and set up a key in Settings → Recovery.",
@@ -1553,5 +1553,6 @@
   "account.restore.enterprise.contacts.needThree": "You need at least three confirmed trusted contacts.",
   "account.restore.enterprise.contacts.inboxTitle": "Help a contact restore access",
   "account.restore.enterprise.contacts.release": "Release share",
-  "account.restore.enterprise.contacts.releaseNeedUnlock": "Unlock the vault to release your share."
+  "account.restore.enterprise.contacts.releaseNeedUnlock": "Unlock the vault to release your share.",
+  "account.restore.error.bootstrapFailed": "Could not finish recovery on this browser. Check your connection and try again."
 }

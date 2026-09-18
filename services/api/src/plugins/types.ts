@@ -21,7 +21,12 @@ export type ApiEnterprisePluginContext = {
   };
   redis?: ApiEnterprisePluginRedis;
   publicAppBaseUrl?: string;
-  emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
+  emailTemplates?: Pick<
+    EmailTemplateService,
+    | "sendWorkspaceInvite"
+    | "sendDeviceRecoveryApprovalRequestBestEffort"
+    | "sendContactRecoveryReleaseRequestBestEffort"
+  >;
   repositories: {
     workspaces: Pick<
       WorkspacesRepository,

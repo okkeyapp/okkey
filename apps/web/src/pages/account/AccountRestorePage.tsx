@@ -35,6 +35,8 @@ import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
+import { registerCurrentBrowserDevice } from "../../auth/deviceTrust";
+import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { readVaultBundle, writeVaultBundle } from "../../auth/localVaultBundle";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { useLocale } from "../../locale/LocaleContext";
@@ -177,15 +179,9 @@ export default function AccountRestorePage() {
     if (!accessToken || !userId || !passwordValid) {
       throw new Error("invalid restore state");
     }
-    if (!hasVaultBundle) {
-      setFormError(t("account.restore.error.noBundle"));
-      throw new Error("no bundle");
-    }
-    const bundle = readVaultBundle(userId);
-    if (!bundle) {
-      setFormError(t("account.restore.error.noBundle"));
-      throw new Error("no bundle");
-    }
+
+    const existingBundle = readVaultBundle(userId);
+    const freshBrowser = !existingBundle;
 
     const newPwd = new TextEncoder().encode(newPassword);
     let rebalanced: Awaited<ReturnType<typeof rebalanceServerShareForNewPassword>> | null = null;
@@ -193,16 +189,25 @@ export default function AccountRestorePage() {
     let newSecretBytes: Uint8Array | null = null;
     let passwordChanged = false;
     let ownedVaultKey: Uint8Array | null = vaultKey;
+    let mintedFreshShare = false;
 
     try {
       await initCrypto();
       const core = createAuthenticatedCoreClient(accessToken);
-      deviceB = base64ToBytes(bundle.device_share_b64);
+
+      if (existingBundle) {
+        deviceB = base64ToBytes(existingBundle.device_share_b64);
+      } else {
+        // Fresh browser: mint a new device share B' and claim sole trusted device after MP change.
+        deviceB = crypto.getRandomValues(new Uint8Array(32));
+        mintedFreshShare = true;
+      }
+
       rebalanced = await rebalanceServerShareForNewPassword({
         newMasterPasswordUtf8: newPwd,
         vaultKey: ownedVaultKey,
         deviceShare: deviceB,
-        passwordKdfParamsVersion: bundle.password_kdf_params_version,
+        passwordKdfParamsVersion: existingBundle?.password_kdf_params_version ?? 2,
       });
 
       await core.changeMasterPassword({
@@ -212,15 +217,29 @@ export default function AccountRestorePage() {
       });
       passwordChanged = true;
 
+      let encryptedPrivateKey = existingBundle?.encrypted_private_key ?? null;
+      if (!encryptedPrivateKey) {
+        const identity = await core.getAccountRecoveryIdentityEncryptedKey();
+        encryptedPrivateKey = identity.encrypted_private_key;
+      }
+
       writeVaultBundle(
         {
-          ...bundle,
           server_key_share_b64: bytesToBase64(rebalanced.serverKeyShare),
+          device_share_b64: bytesToBase64(deviceB),
           password_kdf_salt_b64: bytesToBase64(rebalanced.passwordKdfSalt),
           password_kdf_params_version: rebalanced.passwordKdfParamsVersion,
+          encrypted_private_key: encryptedPrivateKey,
         },
         userId,
       );
+
+      if (freshBrowser || mintedFreshShare) {
+        await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {
+          userId,
+          claimAfterRecovery: true,
+        });
+      }
 
       const freshSecret = await generateRecoverySecret();
       newSecretBytes = new TextEncoder().encode(freshSecret);
@@ -245,6 +264,8 @@ export default function AccountRestorePage() {
     } catch (err) {
       if (passwordChanged) {
         setFormError(t("account.restore.error.rotateFailed"));
+      } else if (freshBrowser) {
+        setFormError(t("account.restore.error.bootstrapFailed"));
       }
       throw err;
     } finally {
@@ -269,10 +290,6 @@ export default function AccountRestorePage() {
   async function handleKeyRestore(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!accessToken || !userId || !passwordValid || !recoveryKey.trim()) {
-      return;
-    }
-    if (!hasVaultBundle) {
-      setFormError(t("account.restore.error.noBundle"));
       return;
     }
 

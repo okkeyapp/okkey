@@ -827,6 +827,13 @@ export class CoreApiClient {
     return this.api.get<AccountRecoveryKeyWrapResponseDto>("/account/recovery/key/wrap");
   }
 
+  /** Ciphertext identity key for post-recovery local vault bundle bootstrap. */
+  getAccountRecoveryIdentityEncryptedKey(): Promise<{ encrypted_private_key: EncryptedBlobDto }> {
+    return this.api.get<{ encrypted_private_key: EncryptedBlobDto }>(
+      "/account/recovery/identity-encrypted-key",
+    );
+  }
+
   inviteTrustedContact(
     body: TrustedContactInviteRequestDto,
   ): Promise<TrustedContactInviteResponseDto> {
