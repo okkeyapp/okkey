@@ -17,7 +17,7 @@ import {
   controlGroupItemGrowClassName,
   Input,
 } from "@okkey/ui";
-import { Copy, Download, FileText, TriangleAlert } from "lucide-react";
+import { Copy, Download, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
