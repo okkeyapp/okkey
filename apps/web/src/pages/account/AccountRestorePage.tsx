@@ -331,7 +331,12 @@ export default function AccountRestorePage() {
             </Alert>
           ) : null}
           <div className="rounded-lg bg-secondary p-3">
-            <p className="break-all font-mono text-sm leading-5 text-foreground">{newRecoverySecret}</p>
+            <p
+              className="truncate font-mono text-sm leading-5 text-foreground"
+              title={newRecoverySecret}
+            >
+              {newRecoverySecret}
+            </p>
           </div>
           <ControlGroup aria-label={t("web.settingsPopup.recovery.key.actionsAria")}>
             <Button
