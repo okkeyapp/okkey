@@ -205,7 +205,7 @@
   "web.settingsPopup.recovery.key.sessionHint": "Regenerate the key to copy or download it again. The previous key will stop working.",
   "web.settingsPopup.recovery.key.lastGeneratedPrefix": "Last key generation:",
   "web.settingsPopup.recovery.key.exportedPrefix": "Key copied or downloaded:",
-  "web.settingsPopup.recovery.key.never": "never",
+  "web.settingsPopup.recovery.key.never": "no",
   "web.settingsPopup.recovery.key.generatedToday": "{date}",
   "web.settingsPopup.recovery.key.generatedYesterday": "{date}",
   "web.settingsPopup.recovery.key.generatedAgo": "{date} ({days} days ago)",

@@ -44,6 +44,35 @@ type SettingsRecoveryContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
 };
 
+function RecoveryKeyExportedCheckIcon({ className }: { className?: string }) {
+  const clipId = "recovery-key-exported-check-clip";
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
+    >
+      <g clipPath={`url(#${clipId})`}>
+        <path
+          d="M6.00016 8.00016L7.3335 9.3335L10.0002 6.66683M14.6668 8.00016C14.6668 11.6821 11.6821 14.6668 8.00016 14.6668C4.31826 14.6668 1.3335 11.6821 1.3335 8.00016C1.3335 4.31826 4.31826 1.3335 8.00016 1.3335C11.6821 1.3335 14.6668 4.31826 14.6668 8.00016Z"
+          stroke="#16A34A"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+      <defs>
+        <clipPath id={clipId}>
+          <rect width="16" height="16" fill="white" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
 function recoveryErrorMessage(err: unknown, t: SettingsRecoveryContentProps["t"]): string {
   if (err instanceof ApiRequestError) {
     switch (err.body.error) {
@@ -423,10 +452,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     locale,
     t,
   );
-  const exportedLabel = status?.key.exportedAt
-    ? formatGeneratedAt(status.key.exportedAt, locale, t)
-    : t("web.settingsPopup.recovery.key.never");
-  const exportedNever = !status?.key.exportedAt;
+  const keyExported = Boolean(status?.key.exportedAt);
 
   if (initialLoading) {
     return (
@@ -541,13 +567,17 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               </span>{" "}
               <span className="font-medium text-foreground">{generatedLabel}</span>
             </p>
-            <p>
+            <p className="flex items-center gap-1.5">
               <span className="text-muted-foreground">
                 {t("web.settingsPopup.recovery.key.exportedPrefix")}
               </span>{" "}
-              <span className={exportedNever ? "font-medium text-destructive" : "font-medium text-foreground"}>
-                {exportedLabel}
-              </span>
+              {keyExported ? (
+                <RecoveryKeyExportedCheckIcon className="size-4 shrink-0" />
+              ) : (
+                <span className="font-medium text-destructive">
+                  {t("web.settingsPopup.recovery.key.never")}
+                </span>
+              )}
             </p>
           </div>
           <div className="flex items-start gap-1.5">

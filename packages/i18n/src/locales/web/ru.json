@@ -205,7 +205,7 @@
   "web.settingsPopup.recovery.key.sessionHint": "Перегенерируйте ключ, чтобы снова скопировать или скачать его. Старый ключ перестанет работать.",
   "web.settingsPopup.recovery.key.lastGeneratedPrefix": "Последняя генерация ключа:",
   "web.settingsPopup.recovery.key.exportedPrefix": "Скопирован или скачан ключ:",
-  "web.settingsPopup.recovery.key.never": "никогда",
+  "web.settingsPopup.recovery.key.never": "нет",
   "web.settingsPopup.recovery.key.generatedToday": "{date}",
   "web.settingsPopup.recovery.key.generatedYesterday": "{date}",
   "web.settingsPopup.recovery.key.generatedAgo": "{date} ({days} дн. назад)",
