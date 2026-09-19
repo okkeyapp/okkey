@@ -9,6 +9,8 @@ export interface DeviceApprovalEmailProps {
   deviceLine: string;
   platformLine: string;
   whenLine: string;
+  /** Optional expiry line (device recovery emails). */
+  expiresLine?: string;
   ipLine: string;
   locationLine: string;
   helpUrl: string;
@@ -23,6 +25,7 @@ export function DeviceApprovalEmail({
   deviceLine,
   platformLine,
   whenLine,
+  expiresLine,
   ipLine,
   locationLine,
   helpUrl,
@@ -39,6 +42,7 @@ export function DeviceApprovalEmail({
         <Text style={metaStyle}>{deviceLine}</Text>
         <Text style={metaStyle}>{platformLine}</Text>
         {whenLine ? <Text style={metaStyle}>{whenLine}</Text> : null}
+        {expiresLine ? <Text style={metaStyle}>{expiresLine}</Text> : null}
         <Text style={metaStyle}>{ipLine}</Text>
         {locationLine ? <Text style={metaStyle}>{locationLine}</Text> : null}
       </Section>

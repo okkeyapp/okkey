@@ -12,7 +12,7 @@ import {
   controlGroupItemFixedClassName,
 } from "@okkey/ui";
 import { ChevronDownIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
@@ -57,6 +57,7 @@ export default function DeviceApprovalController() {
   const [pending, setPending] = useState<DeviceListItemDto[]>([]);
   const [resolving, setResolving] = useState(false);
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
+  const dismissedIdsRef = useRef(new Set<string>());
   const current = pending[0];
 
   useEffect(() => {
@@ -68,7 +69,9 @@ export default function DeviceApprovalController() {
       try {
         const result = await core.listDevices(fingerprint);
         if (active) {
-          setPending(result.pending);
+          setPending(
+            result.pending.filter((item) => !dismissedIdsRef.current.has(item.device_id)),
+          );
         }
       } catch {
         // Best-effort polling.
@@ -86,7 +89,15 @@ export default function DeviceApprovalController() {
     return null;
   }
 
+  const dismissDevice = (deviceId: string) => {
+    dismissedIdsRef.current.add(deviceId);
+    setPending((items) => items.filter((item) => item.device_id !== deviceId));
+  };
+
   const resolve = async (decision: "approve" | "reject") => {
+    if (resolving) {
+      return;
+    }
     setResolving(true);
     try {
       if (decision === "approve") {
@@ -96,25 +107,26 @@ export default function DeviceApprovalController() {
         await core.rejectDevice(current.device_id, currentDeviceId, "dismissed by user");
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
       }
-      setPending((items) => items.filter((item) => item.device_id !== current.device_id));
+      dismissDevice(current.device_id);
       emitDevicesChanged();
     } catch {
       toast.error(t("web.settingsPopup.devices.error.generic"));
-    } finally {
       setResolving(false);
     }
   };
 
   const block = async (duration: DeviceBlockDuration) => {
+    if (resolving) {
+      return;
+    }
     setResolving(true);
     try {
       await core.blockDevice(current.device_id, currentDeviceId, { duration });
-      setPending((items) => items.filter((item) => item.device_id !== current.device_id));
+      dismissDevice(current.device_id);
       emitDevicesChanged();
       toast.success(t("web.settingsPopup.devices.toast.blocked"));
     } catch {
       toast.error(t("web.settingsPopup.devices.error.generic"));
-    } finally {
       setResolving(false);
     }
   };
@@ -167,6 +179,7 @@ export default function DeviceApprovalController() {
                   <DropdownMenuItem
                     key={option.duration}
                     className="gap-2"
+                    disabled={resolving}
                     onSelect={() => void block(option.duration)}
                   >
                     {t(option.labelKey)}

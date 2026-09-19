@@ -162,6 +162,7 @@ export interface CreateApiAppOptions {
   emailTemplates?: ApiEnterprisePluginContext["emailTemplates"];
   publicAppBaseUrl?: string;
   redis?: ApiEnterprisePluginContext["redis"];
+  geoIp?: ApiEnterprisePluginContext["geoIp"];
 }
 
 export interface AppDeps {
@@ -731,6 +732,7 @@ export function createApiApp(
         redis: options.redis,
         publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,
         emailTemplates: options.emailTemplates,
+        geoIp: options.geoIp,
         repositories: {
           workspaces: options.workspacesRepository,
           vaults: options.vaultsRepository,

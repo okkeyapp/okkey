@@ -41,7 +41,7 @@
   "email.device.recovery.noteNoUrl": "Откройте Okkey на доверенном разблокированном устройстве → Настройки → Восстановление и подтвердите.",
   "email.device.recovery.noteIgnore": "Если вы не начинали восстановление — проигнорируйте письмо и не разблокируйте хранилище на чужих устройствах.",
   "email.device.recovery.textFooterWithUrl": "Подтвердить: {helpUrl}",
-  "email.device.recovery.plain": "{lead}\n{detailLine}\n{expiresLine}\n{footer}\n{noteIgnore}",
+  "email.device.recovery.plain": "{lead}\n{deviceLine}\n{platformLine}\n{whenLine}\n{expiresLine}\n{ipLine}\n{locationLine}\n{footer}\n{noteBlockIfNotYou}\n{noteIgnoreIfMistake}",
   "email.contacts.recovery.subject": "Помогите восстановить аккаунт Okkey",
   "email.contacts.recovery.lead": "Доверенный контакт просит выдать вашу долю восстановления.",
   "email.contacts.recovery.detailLine": "Аккаунт: {ownerEmail} · Запрос: {when}",

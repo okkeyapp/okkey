@@ -299,6 +299,12 @@ test("EmailTemplateService device and contact recovery request emails render CTA
       helpUrl,
       requestedAtIso: "2026-09-18T10:00:00.000Z",
       expiresAtIso: "2026-09-18T11:00:00.000Z",
+      deviceName: "Web macOS - Chrome",
+      platform: "Web · Chrome",
+      osName: "macOS",
+      requestIp: "203.0.113.9",
+      country: "Singapore",
+      city: "Singapore",
     },
   });
   await svc.sendContactRecoveryReleaseRequest({
@@ -314,6 +320,8 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.equal(sent.length, 2);
   assert.equal(sent[0].subject, formatEmailMessage("en", "email.device.recovery.subject", {}));
   assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.match(sent[0].html, /Web macOS - Chrome/);
+  assert.match(sent[0].text, /203\.0\.113\.9/);
   assert.equal(sent[0].text.includes("{{"), false);
   assert.equal(sent[1].subject, formatEmailMessage("ru", "email.contacts.recovery.subject", {}));
   assert.match(sent[1].text, /owner@example.com/);

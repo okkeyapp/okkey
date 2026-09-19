@@ -888,6 +888,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     if (!accessToken || !userId) {
       return;
     }
+    foreverBlockedRef.current = false;
     setDeviceTrustStatus("checking");
     setDeviceBlockedUntil(null);
     const client = createAuthenticatedCoreClient(accessToken);

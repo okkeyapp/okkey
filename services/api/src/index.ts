@@ -247,6 +247,7 @@ async function main(): Promise<void> {
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
     redis: storage.redis,
+    geoIp,
   });
 
   const server = createServer(app.handler());

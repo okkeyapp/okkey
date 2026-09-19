@@ -140,19 +140,39 @@ export function buildTwoFactorBackupRegeneratedEmailProps(
 export function buildDeviceRecoveryApprovalEmailProps(
   locale: EmailLocale,
   variables: DeviceRecoveryApprovalRequestVariables,
-): RecoveryActionEmailProps {
+): DeviceApprovalEmailProps {
+  const platformOs = `${variables.platform} · ${variables.osName}`;
+  const locationParts = [variables.city, variables.country].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  );
   return {
     lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
-    detailLine: formatEmailMessage(locale, "email.device.recovery.detailLine", {
+    deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
+      deviceName: variables.deviceName,
+    }),
+    platformLine: formatEmailMessage(locale, "email.device.approval.platformLine", {
+      platformOs,
+    }),
+    whenLine: formatEmailMessage(locale, "email.device.approval.whenLine", {
       when: formatUtcWhen(locale, variables.requestedAtIso),
     }),
     expiresLine: formatEmailMessage(locale, "email.device.recovery.expiresLine", {
       when: formatUtcWhen(locale, variables.expiresAtIso),
     }),
+    ipLine: formatEmailMessage(locale, "email.device.approval.ipLine", {
+      ip: variables.requestIp,
+    }),
+    locationLine:
+      locationParts.length > 0
+        ? formatEmailMessage(locale, "email.device.approval.locationLine", {
+            location: locationParts.join(", "),
+          })
+        : "",
     helpUrl: variables.helpUrl.trim(),
     ctaLabel: formatEmailMessage(locale, "email.device.recovery.cta", {}),
     noteNoUrl: formatEmailMessage(locale, "email.device.recovery.noteNoUrl", {}),
-    noteIgnore: formatEmailMessage(locale, "email.device.recovery.noteIgnore", {}),
+    noteBlockIfNotYou: formatEmailMessage(locale, "email.device.approval.noteBlockIfNotYou", {}),
+    noteIgnoreIfMistake: formatEmailMessage(locale, "email.device.recovery.noteIgnore", {}),
   };
 }
 

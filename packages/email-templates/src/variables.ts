@@ -32,6 +32,13 @@ export interface DeviceRecoveryApprovalRequestVariables {
   requestedAtIso: string;
   /** ISO timestamp when the request expires. */
   expiresAtIso: string;
+  /** Same device fields as {@link DeviceApprovalRequestVariables}. */
+  deviceName: string;
+  platform: string;
+  osName: string;
+  requestIp: string;
+  country?: string | null;
+  city?: string | null;
 }
 
 export interface ContactRecoveryReleaseRequestVariables {

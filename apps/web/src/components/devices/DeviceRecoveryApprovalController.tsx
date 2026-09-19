@@ -18,7 +18,7 @@ import {
   controlGroupItemFixedClassName,
 } from "@okkey/ui";
 import { ChevronDownIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
@@ -66,6 +66,8 @@ export default function DeviceRecoveryApprovalController() {
   const { accessToken, currentDeviceId, vaultUnlocked, vaultKey } = useAuthVault();
   const [pending, setPending] = useState<EnterpriseDeviceRecoveryRequestDto[]>([]);
   const [resolving, setResolving] = useState(false);
+  /** Prevent in-flight poll from re-opening a just-resolved request. */
+  const dismissedIdsRef = useRef(new Set<string>());
 
   const client = useMemo(() => {
     if (!accessToken || !enterpriseEnabled) {
@@ -83,7 +85,11 @@ export default function DeviceRecoveryApprovalController() {
       try {
         const result = await client.listDeviceRequests("approver");
         if (active) {
-          setPending(result.requests.filter((r) => r.status === "pending"));
+          setPending(
+            result.requests.filter(
+              (r) => r.status === "pending" && !dismissedIdsRef.current.has(r.id),
+            ),
+          );
         }
       } catch {
         // Best-effort polling.
@@ -110,7 +116,15 @@ export default function DeviceRecoveryApprovalController() {
     user_agent: current.userAgent,
   };
 
+  const dismissRequest = (requestId: string) => {
+    dismissedIdsRef.current.add(requestId);
+    setPending((items) => items.filter((item) => item.id !== requestId));
+  };
+
   const approve = async () => {
+    if (resolving) {
+      return;
+    }
     setResolving(true);
     try {
       const wrapBlob = await wrapVaultKeyForDeviceRequest(
@@ -121,32 +135,35 @@ export default function DeviceRecoveryApprovalController() {
         approvingDeviceId: currentDeviceId,
         wrapBlob,
       });
-      setPending((items) => items.filter((item) => item.id !== current.id));
+      dismissRequest(current.id);
       toast.success(t("account.restore.enterprise.devices.toast.approved"));
     } catch {
       toast.error(t("web.settingsPopup.recovery.error.generic"));
-    } finally {
       setResolving(false);
     }
   };
 
   const reject = async () => {
+    if (resolving) {
+      return;
+    }
     setResolving(true);
     try {
       await client.rejectDeviceRequest(current.id, currentDeviceId);
-      setPending((items) => items.filter((item) => item.id !== current.id));
+      dismissRequest(current.id);
       emitDevicesChanged();
       toast.success(t("account.restore.enterprise.devices.toast.rejected"));
     } catch {
       toast.error(t("web.settingsPopup.recovery.error.generic"));
-    } finally {
       setResolving(false);
     }
   };
 
   const blockForever = async () => {
-    if (!current.requestingDeviceId || !core) {
-      toast.error(t("web.settingsPopup.recovery.error.generic"));
+    if (!current.requestingDeviceId || !core || resolving) {
+      if (!current.requestingDeviceId || !core) {
+        toast.error(t("web.settingsPopup.recovery.error.generic"));
+      }
       return;
     }
     setResolving(true);
@@ -160,12 +177,11 @@ export default function DeviceRecoveryApprovalController() {
         /* Legacy requests may bind trusted id → Core 404; enterprise demotes + blocks. */
       }
       await client.blockDeviceRequest(current.id, currentDeviceId);
-      setPending((items) => items.filter((item) => item.id !== current.id));
+      dismissRequest(current.id);
       emitDevicesChanged();
       toast.success(t("web.settingsPopup.devices.toast.blocked"));
     } catch {
       toast.error(t("web.settingsPopup.recovery.error.generic"));
-    } finally {
       setResolving(false);
     }
   };
@@ -219,7 +235,7 @@ export default function DeviceRecoveryApprovalController() {
               <DropdownMenuContent align="end" className="w-56 p-1">
                 <DropdownMenuItem
                   className="gap-2"
-                  disabled={!current.requestingDeviceId}
+                  disabled={resolving || !current.requestingDeviceId}
                   onSelect={() => void blockForever()}
                 >
                   {t("account.restore.enterprise.devices.popup.blockForever")}
@@ -246,15 +262,23 @@ export default function DeviceRecoveryApprovalController() {
               {formatAbsoluteDate(current.createdAt, locale)}
             </p>
           </div>
-          {current.requestIp ? (
-            <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
-              <p>
-                {t("web.settingsPopup.devices.pending.ip", {
-                  ip: current.requestIp,
-                })}
-              </p>
-            </div>
-          ) : null}
+          <div className="shrink-0 text-right text-[13px] leading-5 text-muted-foreground">
+            <p>
+              {t("web.settingsPopup.devices.pending.ip", {
+                ip: current.requestIp || "unknown",
+              })}
+            </p>
+            <p>
+              {t("web.settingsPopup.devices.pending.country", {
+                country: current.country || t("web.settingsPopup.devices.pending.unknownLocation"),
+              })}
+            </p>
+            <p>
+              {t("web.settingsPopup.devices.pending.city", {
+                city: current.city || t("web.settingsPopup.devices.pending.unknownLocation"),
+              })}
+            </p>
+          </div>
         </div>
       </div>
     </Popup>

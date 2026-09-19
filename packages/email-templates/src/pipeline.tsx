@@ -225,6 +225,10 @@ export async function renderDeviceRecoveryApprovalRequest(
   assertRequired("device_recovery_approval_request", variables as unknown as Record<string, unknown>, [
     "requestedAtIso",
     "expiresAtIso",
+    "deviceName",
+    "platform",
+    "osName",
+    "requestIp",
   ]);
   if (variables.helpUrl === undefined || variables.helpUrl === null) {
     throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: helpUrl", {
@@ -234,18 +238,35 @@ export async function renderDeviceRecoveryApprovalRequest(
   }
   const props = buildDeviceRecoveryApprovalEmailProps(locale, variables);
   const helpUrl = variables.helpUrl.trim();
+  const {
+    lead,
+    deviceLine,
+    platformLine,
+    whenLine,
+    expiresLine,
+    ipLine,
+    locationLine,
+    noteNoUrl,
+    noteBlockIfNotYou,
+    noteIgnoreIfMistake,
+  } = props;
   const footer = helpUrl
     ? formatEmailMessage(locale, "email.device.recovery.textFooterWithUrl", { helpUrl })
-    : props.noteNoUrl;
+    : noteNoUrl;
   const plainText = formatEmailMessage(locale, "email.device.recovery.plain", {
-    lead: props.lead,
-    detailLine: props.detailLine,
-    expiresLine: props.expiresLine,
+    lead,
+    deviceLine,
+    platformLine,
+    whenLine: whenLine || "",
+    expiresLine: expiresLine || "",
+    ipLine,
+    locationLine: locationLine || "",
     footer,
-    noteIgnore: props.noteIgnore,
+    noteBlockIfNotYou,
+    noteIgnoreIfMistake,
   });
   const subject = formatEmailMessage(locale, "email.device.recovery.subject", {});
-  const element = <RecoveryActionEmail {...props} />;
+  const element = <DeviceApprovalEmail {...props} />;
   const html = await render(element);
   const text = await render(element, { plainText: true });
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
