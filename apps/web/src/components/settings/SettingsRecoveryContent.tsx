@@ -40,7 +40,6 @@ import { settingsPath } from "../../routes/paths";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
 import { SettingsRow } from "./SettingsRows";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
-import { useAuthVault } from "../../auth/AuthVaultContext";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
 const DeviceApproveInbox = accountRecoveryModule.DeviceApproveInbox;
