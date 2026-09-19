@@ -303,4 +303,17 @@ export class AccountRecoveryRepository {
     const row = rows[0];
     return row ? mapContact(row) : null;
   }
+
+  /** Invitee declines a pending trusted-contact invitation (removes the pending row). */
+  async rejectInvite(contactUserId: string, inviteId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string | number }>(
+      `
+        DELETE FROM user_trusted_contacts
+        WHERE id = $1::bigint AND contact_user_id = $2::bigint AND status = 'pending'
+        RETURNING id
+      `,
+      [inviteId, contactUserId],
+    );
+    return Boolean(rows[0]);
+  }
 }

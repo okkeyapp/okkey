@@ -98,6 +98,8 @@ export type AuthVaultContextValue = {
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
   updateLocalProfile: (patch: { email?: string; firstName?: string | null; lastName?: string | null }) => void;
   tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean>;
+  /** Re-fetch A+B from server when local vault bundle is missing (trusted device). */
+  ensureVaultBundleForUnlock: () => Promise<boolean>;
   /** Apply unlock material from PIN / biometric unwrap (VaultKey + C already verified). */
   applyUnlockedSecrets: (vaultKey: Uint8Array, passwordShareC: Uint8Array) => void;
   /** Verify master password without changing unlock state (for section re-auth). */
@@ -421,6 +423,24 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [accessToken, userId, deviceTrustStatus]);
+
+  const ensureVaultBundleForUnlock = useCallback(async (): Promise<boolean> => {
+    if (!accessToken || !userId) {
+      return false;
+    }
+    if (readVaultBundle(userId)) {
+      return true;
+    }
+    try {
+      const fp = getOrCreateDeviceFingerprint();
+      const client = createAuthenticatedCoreClient(accessToken);
+      const dto = await client.getVaultUnlockBootstrap(fp);
+      writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [accessToken, userId]);
 
   useEffect(() => {
     if (!accessToken || !userId) {
@@ -946,6 +966,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      ensureVaultBundleForUnlock,
       applyUnlockedSecrets,
       verifyMasterPassword,
       changeMasterPassword,
@@ -984,6 +1005,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      ensureVaultBundleForUnlock,
       applyUnlockedSecrets,
       verifyMasterPassword,
       changeMasterPassword,

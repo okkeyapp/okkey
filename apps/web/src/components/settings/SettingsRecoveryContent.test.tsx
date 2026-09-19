@@ -11,6 +11,7 @@ const coreMocks = vi.hoisted(() => ({
   inviteTrustedContact: vi.fn(),
   deleteTrustedContact: vi.fn(),
   acceptTrustedContactInvite: vi.fn(),
+  rejectTrustedContactInvite: vi.fn(),
 }));
 
 vi.mock("@okkey/crypto", () => ({

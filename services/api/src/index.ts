@@ -176,6 +176,8 @@ async function main(): Promise<void> {
     recovery: storage.repositories.accountRecovery,
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
+    emailTemplates,
+    publicAppBaseUrl: config.publicAppBaseUrl,
   });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();
   const keyFieldFileStorage = keyFieldFileStorageConfig

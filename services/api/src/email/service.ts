@@ -6,6 +6,7 @@ import {
   type ContactRecoveryReleaseRequestVariables,
   type DeviceApprovalRequestVariables,
   type DeviceRecoveryApprovalRequestVariables,
+  type TrustedContactInviteVariables,
   type WorkspaceInviteVariables,
   type TwoFactorNoticeVariables,
 } from "./catalog.ts";
@@ -463,6 +464,34 @@ export class EmailTemplateService {
     } catch (error) {
       const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
       this.logger?.warn("contact_recovery_release_request email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async sendTrustedContactInvite(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: TrustedContactInviteVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate(
+      "trusted_contact_invite",
+      locale,
+      input.variables,
+    );
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  async sendTrustedContactInviteBestEffort(
+    input: Parameters<EmailTemplateService["sendTrustedContactInvite"]>[0],
+  ): Promise<void> {
+    try {
+      await this.sendTrustedContactInvite(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("trusted_contact_invite email skipped", {
         code,
         message: error instanceof Error ? error.message : String(error),
       });

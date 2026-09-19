@@ -30,6 +30,20 @@ export interface VaultUnlockBootstrapDeps {
   devices: Pick<DevicesRepository, "findTrustedDeviceShareForUnlock">;
 }
 
+/**
+ * Same fingerprint rules as device register / findTrustedDeviceShareForUnlock:
+ * legacy hex (32–128) or structured `web_app-chrome-macos-14.5`.
+ */
+export function isUnlockBootstrapFingerprint(value: string): boolean {
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{32,128}$/i.test(trimmed)) {
+    return true;
+  }
+  return /^(web_app|mobile_app|desktop_app|extension)-[a-z0-9]+-[a-z0-9]+-[a-z0-9.]+$/i.test(
+    trimmed,
+  );
+}
+
 export class VaultUnlockBootstrapService {
   private readonly users: VaultUnlockBootstrapDeps["users"];
   private readonly devices: VaultUnlockBootstrapDeps["devices"];
@@ -46,17 +60,17 @@ export class VaultUnlockBootstrapService {
     }
 
     const fp = deviceFingerprint?.trim();
-    if (fp && !/^[0-9a-f]{64}$/i.test(fp)) {
+    if (!fp || !isUnlockBootstrapFingerprint(fp)) {
       throw new VaultUnlockBootstrapError(
         "VAULT_UNLOCK_INVALID_FINGERPRINT",
         400,
-        "device_fingerprint must be 64 hex chars",
+        "device_fingerprint must be hex (32–128) or structured web_app-… id",
       );
     }
 
     const deviceShare = await this.devices.findTrustedDeviceShareForUnlock(
       userId,
-      fp ? fp.toLowerCase() : null,
+      fp.toLowerCase(),
     );
     if (!deviceShare) {
       throw new VaultUnlockBootstrapError(

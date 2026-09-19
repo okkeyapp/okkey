@@ -9,6 +9,7 @@ import type {
   ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
   DeviceRecoveryApprovalRequestVariables,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "./variables.js";
@@ -196,6 +197,25 @@ export function buildContactRecoveryReleaseEmailProps(
   };
 }
 
+export function buildTrustedContactInviteEmailProps(
+  locale: EmailLocale,
+  variables: TrustedContactInviteVariables,
+): RecoveryActionEmailProps {
+  return {
+    lead: formatEmailMessage(locale, "email.contacts.invite.lead", {
+      inviter: variables.inviterDisplayName,
+    }),
+    detailLine: formatEmailMessage(locale, "email.contacts.invite.detailLine", {
+      inviterEmail: variables.inviterEmail,
+    }),
+    expiresLine: formatEmailMessage(locale, "email.contacts.invite.whatToDo", {}),
+    helpUrl: variables.helpUrl.trim(),
+    ctaLabel: formatEmailMessage(locale, "email.contacts.invite.cta", {}),
+    noteNoUrl: formatEmailMessage(locale, "email.contacts.invite.noteNoUrl", {}),
+    noteIgnore: formatEmailMessage(locale, "email.contacts.invite.noteIgnore", {}),
+  };
+}
+
 /** Sample data for React Email dev previews (`yarn dev:email`). */
 export const previewSampleAuthCode: AuthEmailCodeVariables = {
   code: "123456",
@@ -222,4 +242,10 @@ export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
 export const previewSampleTwoFactor: TwoFactorNoticeVariables = {
   occurredAtIso: "2026-01-15T10:00:00.000Z",
   securitySettingsUrl: "https://app.okkey.local/settings/security",
+};
+
+export const previewSampleTrustedContactInvite: TrustedContactInviteVariables = {
+  inviterDisplayName: "Alex Okkey",
+  inviterEmail: "alex@example.com",
+  helpUrl: "https://app.okkey.local/items?popup=settings|recovery",
 };

@@ -853,6 +853,13 @@ export class CoreApiClient {
     );
   }
 
+  rejectTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.post<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/reject`,
+      {},
+    );
+  }
+
   patchDevice(deviceId: string, body: DevicePatchRequestDto): Promise<DevicePatchResponseDto> {
     return this.api.patch<DevicePatchResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}`,

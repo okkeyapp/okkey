@@ -14,6 +14,7 @@ export type {
   DeviceApprovalRequestVariables,
   DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "@okkey/email-templates";

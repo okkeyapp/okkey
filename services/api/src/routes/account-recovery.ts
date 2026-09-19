@@ -303,6 +303,29 @@ export function createAccountRecoveryInviteAcceptRoute(
   };
 }
 
+export function createAccountRecoveryInviteRejectRoute(
+  service: AccountRecoveryService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    try {
+      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      if (!userId) {
+        return;
+      }
+      const inviteId = ctx.params.inviteId?.trim();
+      if (!inviteId) {
+        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "inviteId required", ctx.requestId));
+        return;
+      }
+      const status = await service.rejectInvite(userId, inviteId);
+      json(ctx.res, 200, status);
+    } catch (error) {
+      handleRecoveryError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 /** Unused helper kept for typed header access parity with sibling routes. */
 export function recoveryRequestIdHeader(req: IncomingMessage): string | undefined {
   return getHeader(req, "x-request-id") ?? undefined;

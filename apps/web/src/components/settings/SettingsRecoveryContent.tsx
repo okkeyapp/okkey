@@ -454,7 +454,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           prev ? { ...prev, contacts: [...prev.contacts, ...added] } : prev,
         );
         void refreshStatus();
-        notifySaved();
+        toast.success(t("web.settingsPopup.recovery.contacts.invitesSent"));
         setInviteOpen(false);
         setInviteRows([{ id: `invite-${Date.now()}`, email: "" }]);
       }
@@ -512,7 +512,23 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     try {
       const next = await core.acceptTrustedContactInvite(inviteId);
       setStatus(next);
-      notifySaved();
+      toast.success(t("web.settingsPopup.recovery.invites.toast.accepted"));
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRejectInvite(inviteId: string) {
+    if (!core) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const next = await core.rejectTrustedContactInvite(inviteId);
+      setStatus(next);
+      toast.success(t("web.settingsPopup.recovery.invites.toast.rejected"));
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
     } finally {
@@ -577,6 +593,16 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                 onClick={() => void handleAcceptInvite(invite.id)}
               >
                 {t("web.settingsPopup.recovery.invites.accept")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8"
+                disabled={busy}
+                onClick={() => void handleRejectInvite(invite.id)}
+              >
+                {t("web.settingsPopup.recovery.invites.reject")}
               </Button>
             </div>
           ))}
@@ -725,7 +751,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-6 text-destructive"
+                        className="size-6 text-destructive hover:bg-destructive/15 hover:text-destructive"
                         aria-label={t("web.settingsPopup.recovery.contacts.remove")}
                         disabled={busy || inviteSaving}
                         onClick={() => void handleDeleteContact(contact)}
@@ -775,7 +801,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="size-9 shrink-0 text-destructive hover:text-destructive"
+                            className="size-9 shrink-0 text-destructive hover:bg-destructive/15 hover:text-destructive"
                             disabled={inviteSaving || inviteRows.length <= 1}
                             aria-label={t("web.settingsPopup.recovery.contacts.removeRow")}
                             onClick={() =>
@@ -789,7 +815,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-9 w-full gap-1.5 bg-background"
+                        className="h-9 w-full gap-1.5 bg-background hover:bg-muted"
                         disabled={inviteSaving}
                         onClick={() =>
                           setInviteRows((current) => [
@@ -830,7 +856,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                     <Button
                       type="button"
                       variant="ghost"
-                      className={`h-9 w-full gap-2.5 rounded-none ${
+                      className={`h-9 w-full gap-2.5 rounded-none hover:bg-background/80 ${
                         (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
                       }`}
                       disabled={busy || inviteSaving}

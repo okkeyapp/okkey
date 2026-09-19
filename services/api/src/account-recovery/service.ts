@@ -11,6 +11,7 @@ import {
 
 import { generateEntityId } from "../entity-id.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
+import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
 import type { AccountRecoveryRepository } from "../storage/account-recovery.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 
@@ -35,7 +36,12 @@ export class AccountRecoveryError extends Error {
 export interface AccountRecoveryServiceDeps {
   recovery: AccountRecoveryRepository;
   workspaces: Pick<WorkspacesRepository, "listAccessibleByUser">;
-  users: Pick<UsersRepository, "findById" | "findByEmail" | "loadVaultUnlockRow">;
+  users: Pick<
+    UsersRepository,
+    "findById" | "findByEmail" | "loadVaultUnlockRow" | "loadAccountProfile"
+  >;
+  emailTemplates?: Pick<EmailTemplateService, "sendTrustedContactInviteBestEffort">;
+  publicAppBaseUrl?: string;
 }
 
 function normalizeEmail(email: string): string {
@@ -117,15 +123,31 @@ function defaultSettings(entitlements: AccountRecoveryEntitlements): AccountReco
   };
 }
 
+function formatInviterDisplayName(input: {
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}): string {
+  const name = [input.firstName, input.lastName]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter((part) => part.length > 0)
+    .join(" ");
+  return name || input.email;
+}
+
 export class AccountRecoveryService {
   private readonly recovery: AccountRecoveryServiceDeps["recovery"];
   private readonly workspaces: AccountRecoveryServiceDeps["workspaces"];
   private readonly users: AccountRecoveryServiceDeps["users"];
+  private readonly emailTemplates?: AccountRecoveryServiceDeps["emailTemplates"];
+  private readonly publicAppBaseUrl: string;
 
   constructor(deps: AccountRecoveryServiceDeps) {
     this.recovery = deps.recovery;
     this.workspaces = deps.workspaces;
     this.users = deps.users;
+    this.emailTemplates = deps.emailTemplates;
+    this.publicAppBaseUrl = deps.publicAppBaseUrl ?? "";
   }
 
   async resolveEntitlements(userId: string): Promise<AccountRecoveryEntitlements> {
@@ -346,6 +368,16 @@ export class AccountRecoveryService {
       throw new AccountRecoveryError("USER_NOT_FOUND", 404, "user not found");
     }
     const ownerEmail = normalizeEmail(owner.email);
+    const ownerProfile = await this.users.loadAccountProfile(userId);
+    const inviterDisplayName = formatInviterDisplayName({
+      firstName: ownerProfile?.firstName ?? null,
+      lastName: ownerProfile?.lastName ?? null,
+      email: ownerEmail,
+    });
+    const helpUrl = buildEmailAppPathUrl(
+      this.publicAppBaseUrl,
+      "/items?popup=settings|recovery",
+    );
 
     const created: TrustedContactDto[] = [];
     for (const email of emails) {
@@ -381,6 +413,20 @@ export class AccountRecoveryService {
         contactUserId: contactUser.id,
       });
       created.push(mapContact(row));
+
+      if (this.emailTemplates) {
+        await this.emailTemplates.sendTrustedContactInviteBestEffort({
+          to: email,
+          localeHints: {
+            userLocale: contactUser.locale,
+          },
+          variables: {
+            inviterDisplayName,
+            inviterEmail: ownerEmail,
+            helpUrl,
+          },
+        });
+      }
     }
     return created;
   }
@@ -408,6 +454,14 @@ export class AccountRecoveryService {
   async acceptInvite(contactUserId: string, inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
     const confirmed = await this.recovery.confirmInvite(contactUserId, inviteId);
     if (!confirmed) {
+      throw new AccountRecoveryError("RECOVERY_INVITE_NOT_FOUND", 404, "invite not found");
+    }
+    return this.getStatus(contactUserId);
+  }
+
+  async rejectInvite(contactUserId: string, inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
+    const rejected = await this.recovery.rejectInvite(contactUserId, inviteId);
+    if (!rejected) {
       throw new AccountRecoveryError("RECOVERY_INVITE_NOT_FOUND", 404, "invite not found");
     }
     return this.getStatus(contactUserId);

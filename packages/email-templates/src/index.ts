@@ -4,6 +4,7 @@ export {
   renderDeviceApprovalRequest,
   renderDeviceRecoveryApprovalRequest,
   renderEmailTemplate,
+  renderTrustedContactInvite,
   renderTwoFactorBackupRegenerated,
   renderTwoFactorEnabled,
   renderWorkspaceInvite,
@@ -17,6 +18,7 @@ export type {
   DeviceApprovalRequestVariables,
   DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "./variables.js";

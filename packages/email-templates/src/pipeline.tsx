@@ -11,6 +11,7 @@ import {
   buildContactRecoveryReleaseEmailProps,
   buildDeviceApprovalEmailProps,
   buildDeviceRecoveryApprovalEmailProps,
+  buildTrustedContactInviteEmailProps,
   buildTwoFactorBackupRegeneratedEmailProps,
   buildTwoFactorEnabledEmailProps,
   buildWorkspaceInviteEmailProps,
@@ -23,6 +24,7 @@ import type {
   DeviceApprovalRequestVariables,
   DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "./variables.js";
@@ -306,6 +308,39 @@ export async function renderContactRecoveryReleaseRequest(
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
+export async function renderTrustedContactInvite(
+  locale: EmailLocale,
+  variables: TrustedContactInviteVariables,
+): Promise<RenderedEmail> {
+  assertRequired("trusted_contact_invite", variables as unknown as Record<string, unknown>, [
+    "inviterDisplayName",
+    "inviterEmail",
+  ]);
+  if (variables.helpUrl === undefined || variables.helpUrl === null) {
+    throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: helpUrl", {
+      templateId: "trusted_contact_invite",
+      details: { key: "helpUrl" },
+    });
+  }
+  const props = buildTrustedContactInviteEmailProps(locale, variables);
+  const helpUrl = variables.helpUrl.trim();
+  const footer = helpUrl
+    ? formatEmailMessage(locale, "email.contacts.invite.textFooterWithUrl", { helpUrl })
+    : props.noteNoUrl;
+  const plainText = formatEmailMessage(locale, "email.contacts.invite.plain", {
+    lead: props.lead,
+    detailLine: props.detailLine,
+    whatToDo: props.expiresLine,
+    footer,
+    noteIgnore: props.noteIgnore,
+  });
+  const subject = formatEmailMessage(locale, "email.contacts.invite.subject", {});
+  const element = <RecoveryActionEmail {...props} />;
+  const html = await render(element);
+  const text = await render(element, { plainText: true });
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
+}
+
 export async function renderEmailTemplate<Id extends EmailTemplateId>(
   templateId: Id,
   locale: EmailLocale,
@@ -338,6 +373,11 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
         return await renderContactRecoveryReleaseRequest(
           locale,
           variables as ContactRecoveryReleaseRequestVariables,
+        );
+      case "trusted_contact_invite":
+        return await renderTrustedContactInvite(
+          locale,
+          variables as TrustedContactInviteVariables,
         );
       default:
         throw new EmailRenderError("EMAIL_RENDER_FAILED", `unknown templateId: ${templateId}`, {

@@ -117,6 +117,7 @@ function createService(overrides?: {
     },
     listPendingInvitesForContact: async () => [],
     confirmInvite: async () => null,
+    rejectInvite: async () => false,
     ...overrides?.recovery,
   } as AccountRecoveryRepository;
 
@@ -145,9 +146,51 @@ function createService(overrides?: {
         })),
     },
     users: {
-      findById: async (id: string) => users.find((u) => u.id === id) ?? null,
-      findByEmail: async (email: string) =>
-        users.find((u) => u.email.toLowerCase() === email.toLowerCase()) ?? null,
+      findById: async (id: string) => {
+        const user = users.find((u) => u.id === id);
+        if (!user) {
+          return null;
+        }
+        return {
+          id: user.id,
+          email: user.email,
+          publicKey: "pk",
+          publicPqKey: null,
+          locale: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+      findByEmail: async (email: string) => {
+        const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+        if (!user) {
+          return null;
+        }
+        return {
+          id: user.id,
+          email: user.email,
+          publicKey: "pk",
+          publicPqKey: null,
+          locale: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+      loadAccountProfile: async (userId: string) => {
+        const user = users.find((u) => u.id === userId);
+        if (!user) {
+          return null;
+        }
+        return {
+          email: user.email,
+          firstName: null,
+          lastName: null,
+          locale: null,
+          billingRegion: null,
+          vaultIdleLockSeconds: 0,
+          masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
       loadVaultUnlockRow: async (userId: string) => {
         if (userId !== "u1") {
           return null;
@@ -232,6 +275,47 @@ test("inviteContact rejects FREE-only account", async () => {
     () => service.inviteContact("u1", "friend@example.com"),
     (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_ENTITLEMENT_REQUIRED",
   );
+});
+
+test("rejectInvite removes pending invite for contact user", async () => {
+  const invites: Array<{
+    id: string;
+    userId: string;
+    contactEmail: string;
+    contactUserId: string;
+    ownerEmail: string;
+    createdAt: string;
+  }> = [
+    {
+      id: "inv1",
+      userId: "u1",
+      contactEmail: "friend@example.com",
+      contactUserId: "u2",
+      ownerEmail: "owner@example.com",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+  ];
+  const service = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+    recovery: {
+      listPendingInvitesForContact: async (contactUserId: string) =>
+        invites.filter((invite) => invite.contactUserId === contactUserId),
+      rejectInvite: async (contactUserId: string, inviteId: string) => {
+        const idx = invites.findIndex(
+          (invite) => invite.id === inviteId && invite.contactUserId === contactUserId,
+        );
+        if (idx < 0) {
+          return false;
+        }
+        invites.splice(idx, 1);
+        return true;
+      },
+    },
+  });
+  const before = await service.getStatus("u2");
+  assert.equal(before.pendingInvites.length, 1);
+  const status = await service.rejectInvite("u2", "inv1");
+  assert.equal(status.pendingInvites.length, 0);
 });
 
 test("getIdentityEncryptedKey returns ciphertext blob for restore bootstrap", async () => {

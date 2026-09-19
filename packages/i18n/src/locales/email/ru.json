@@ -50,5 +50,14 @@
   "email.contacts.recovery.noteNoUrl": "Откройте Okkey, разблокируйте хранилище → Настройки → Восстановление и выдайте долю.",
   "email.contacts.recovery.noteIgnore": "Если запрос вам незнаком — проигнорируйте письмо.",
   "email.contacts.recovery.textFooterWithUrl": "Выдать долю: {helpUrl}",
-  "email.contacts.recovery.plain": "{lead}\n{detailLine}\n{expiresLine}\n{footer}\n{noteIgnore}"
+  "email.contacts.recovery.plain": "{lead}\n{detailLine}\n{expiresLine}\n{footer}\n{noteIgnore}",
+  "email.contacts.invite.subject": "Приглашение стать доверенным контактом Okkey",
+  "email.contacts.invite.lead": "{inviter} пригласил вас стать доверенным контактом в Okkey.",
+  "email.contacts.invite.detailLine": "Аккаунт пригласившего: {inviterEmail}. Доверенные контакты помогают восстановить доступ, если владелец потеряет мастер-пароль.",
+  "email.contacts.invite.whatToDo": "Откройте Okkey, разблокируйте хранилище → Настройки → Восстановление, чтобы принять или отклонить.",
+  "email.contacts.invite.cta": "Открыть настройки восстановления",
+  "email.contacts.invite.noteNoUrl": "Откройте Okkey, разблокируйте хранилище → Настройки → Восстановление и ответьте на приглашение.",
+  "email.contacts.invite.noteIgnore": "Если вы не знаете этого человека или не хотите помогать — проигнорируйте письмо или отклоните в приложении.",
+  "email.contacts.invite.textFooterWithUrl": "Ответить: {helpUrl}",
+  "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}"
 }

@@ -48,6 +48,13 @@ export interface ContactRecoveryReleaseRequestVariables {
   expiresAtIso: string;
 }
 
+/** Invite an Okkey user to become a trusted recovery contact. */
+export interface TrustedContactInviteVariables {
+  inviterDisplayName: string;
+  inviterEmail: string;
+  helpUrl: string;
+}
+
 export type EmailTemplateVariablesMap = {
   auth_email_code: AuthEmailCodeVariables;
   device_approval_request: DeviceApprovalRequestVariables;
@@ -56,4 +63,5 @@ export type EmailTemplateVariablesMap = {
   two_factor_backup_codes_regenerated: TwoFactorNoticeVariables;
   device_recovery_approval_request: DeviceRecoveryApprovalRequestVariables;
   contact_recovery_release_request: ContactRecoveryReleaseRequestVariables;
+  trusted_contact_invite: TrustedContactInviteVariables;
 };

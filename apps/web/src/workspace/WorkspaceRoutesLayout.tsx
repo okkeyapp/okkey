@@ -45,6 +45,7 @@ import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
 import DeviceRecoveryApprovalController from "../components/devices/DeviceRecoveryApprovalController";
+import TrustedContactInviteController from "../components/devices/TrustedContactInviteController";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
 import {
   buildPopupQueryValue,
@@ -975,6 +976,7 @@ function WorkspaceShellWithItems({
           <CapsuleApprovalController />
           <DeviceApprovalController />
           <DeviceRecoveryApprovalController />
+          <TrustedContactInviteController />
           <EditItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}

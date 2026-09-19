@@ -53,6 +53,7 @@ export default function UnlockPasswordPage() {
     accessToken,
     userId,
     tryUnlockWithMasterPassword,
+    ensureVaultBundleForUnlock,
     applyUnlockedSecrets,
     hasVaultBundle,
     vaultUnlockBootstrapLoading,
@@ -270,7 +271,11 @@ export default function UnlockPasswordPage() {
     if (vaultUnlockBootstrapLoading || bioBusy) {
       return;
     }
-    if (!hasVaultBundle) {
+    let bundleReady = hasVaultBundle;
+    if (!bundleReady) {
+      bundleReady = await ensureVaultBundleForUnlock();
+    }
+    if (!bundleReady) {
       setNoBundleError(true);
       return;
     }

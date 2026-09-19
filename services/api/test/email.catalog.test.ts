@@ -327,3 +327,32 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.match(sent[1].text, /owner@example.com/);
   assert.equal(sent[1].text.includes("{{"), false);
 });
+
+test("EmailTemplateService sendTrustedContactInvite renders inviter details", async () => {
+  const sent: Array<{ subject: string; text: string; html: string }> = [];
+  const sender: EmailSender = {
+    send: async (m) => {
+      sent.push({ subject: m.subject, text: m.text, html: m.html });
+    },
+  };
+  const svc = new EmailTemplateService(sender, {
+    from: "x@y.z",
+    defaultLocale: "en",
+    publicAppBaseUrl: "https://app.example",
+  });
+  await svc.sendTrustedContactInvite({
+    to: "friend@example.com",
+    localeHints: { explicitLocale: "ru" },
+    variables: {
+      inviterDisplayName: "Alex Okkey",
+      inviterEmail: "alex@example.com",
+      helpUrl: "https://app.example/items?popup=settings|recovery",
+    },
+  });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].subject, formatEmailMessage("ru", "email.contacts.invite.subject", {}));
+  assert.match(sent[0].text, /Alex Okkey/);
+  assert.match(sent[0].text, /alex@example.com/);
+  assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.equal(sent[0].text.includes("{{"), false);
+});

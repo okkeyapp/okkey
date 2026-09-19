@@ -51,5 +51,14 @@
   "email.contacts.recovery.noteNoUrl": "Open Okkey, unlock your vault, then open Settings → Recovery to release your share.",
   "email.contacts.recovery.noteIgnore": "If you do not recognize this request, ignore this email.",
   "email.contacts.recovery.textFooterWithUrl": "Release share: {helpUrl}",
-  "email.contacts.recovery.plain": "{lead}\n{detailLine}\n{expiresLine}\n{footer}\n{noteIgnore}"
+  "email.contacts.recovery.plain": "{lead}\n{detailLine}\n{expiresLine}\n{footer}\n{noteIgnore}",
+  "email.contacts.invite.subject": "Invitation to be a trusted contact on Okkey",
+  "email.contacts.invite.lead": "{inviter} invited you to be their trusted contact on Okkey.",
+  "email.contacts.invite.detailLine": "Inviter account: {inviterEmail}. Trusted contacts can help restore access if the owner loses their master password.",
+  "email.contacts.invite.whatToDo": "Open Okkey, unlock your vault, then open Settings → Recovery to accept or decline.",
+  "email.contacts.invite.cta": "Open recovery settings",
+  "email.contacts.invite.noteNoUrl": "Open Okkey, unlock your vault, then open Settings → Recovery to respond to the invitation.",
+  "email.contacts.invite.noteIgnore": "If you do not know this person or do not want to help, you can ignore this email or decline in the app.",
+  "email.contacts.invite.textFooterWithUrl": "Respond here: {helpUrl}",
+  "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}"
 }
