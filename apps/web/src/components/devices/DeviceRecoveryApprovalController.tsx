@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
-import { useAuthVault } from "../../auth/AuthVaultContext";
+import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
 import {
@@ -62,6 +62,7 @@ function apiBase(): string {
 export default function DeviceRecoveryApprovalController() {
   const enterpriseEnabled = Boolean(accountRecoveryModule.DevicesRestorePanel);
   const { t, locale } = useLocale();
+  const core = useAuthenticatedCoreClient();
   const { accessToken, currentDeviceId, vaultUnlocked, vaultKey } = useAuthVault();
   const [pending, setPending] = useState<EnterpriseDeviceRecoveryRequestDto[]>([]);
   const [resolving, setResolving] = useState(false);
@@ -144,8 +145,16 @@ export default function DeviceRecoveryApprovalController() {
   };
 
   const blockForever = async () => {
+    if (!current.requestingDeviceId || !core) {
+      toast.error(t("web.settingsPopup.recovery.error.generic"));
+      return;
+    }
     setResolving(true);
     try {
+      // Same Phase 1 path as DeviceApprovalController block forever.
+      await core.blockDevice(current.requestingDeviceId, currentDeviceId, {
+        duration: "forever",
+      });
       await client.blockDeviceRequest(current.id, currentDeviceId);
       setPending((items) => items.filter((item) => item.id !== current.id));
       emitDevicesChanged();

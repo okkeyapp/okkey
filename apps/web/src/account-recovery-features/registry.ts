@@ -24,6 +24,7 @@ export type AccountRestorePanelProps = {
   osVersion?: string | null;
   clientType?: string | null;
   userAgent?: string | null;
+  onRequesterDeviceBlocked?: () => void | Promise<void>;
 };
 
 export type ContactsEnrollPanelProps = {

@@ -24,7 +24,7 @@ import {
 } from "@okkey/ui";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import { Copy, Download, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -42,6 +42,7 @@ import { readVaultBundle, writeVaultBundle } from "../../auth/localVaultBundle";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { useLocale } from "../../locale/LocaleContext";
 import {
+  ACCOUNT_DEVICE_PENDING_PATH,
   ACCOUNT_LOCK_PATH,
   AUTH_EMAIL_PATH,
   DEFAULT_AUTHENTICATED_PATH,
@@ -66,6 +67,7 @@ export default function AccountRestorePage() {
     hasVaultBundle,
     applyUnlockedSecrets,
     currentDeviceId,
+    refreshDeviceTrust,
   } = useAuthVault();
 
   const browserEnv = useMemo(
@@ -73,6 +75,11 @@ export default function AccountRestorePage() {
     [],
   );
   const deviceFingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
+
+  const onRequesterDeviceBlocked = useCallback(async () => {
+    await refreshDeviceTrust();
+    navigate(ACCOUNT_DEVICE_PENDING_PATH, { replace: true });
+  }, [navigate, refreshDeviceTrust]);
 
   const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -580,6 +587,7 @@ export default function AccountRestorePage() {
                   osVersion={browserEnv.osVersion}
                   clientType={browserEnv.clientType}
                   userAgent={typeof navigator !== "undefined" ? navigator.userAgent : null}
+                  onRequesterDeviceBlocked={onRequesterDeviceBlocked}
                 />
               ) : (
                 <Alert variant="info">
