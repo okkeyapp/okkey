@@ -15,6 +15,15 @@ export type AccountRestorePanelProps = {
   passwordValid: boolean;
   submitting: boolean;
   setSubmitting: (value: boolean) => void;
+  /** Device remote recovery: requesting browser metadata (optional for contacts panel). */
+  currentDeviceId?: string | null;
+  deviceFingerprint?: string | null;
+  deviceName?: string | null;
+  platform?: string | null;
+  osName?: string | null;
+  osVersion?: string | null;
+  clientType?: string | null;
+  userAgent?: string | null;
 };
 
 export type ContactsEnrollPanelProps = {

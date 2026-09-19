@@ -35,6 +35,7 @@ import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
+import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
 import { registerCurrentBrowserDevice } from "../../auth/deviceTrust";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { readVaultBundle, writeVaultBundle } from "../../auth/localVaultBundle";
@@ -64,7 +65,14 @@ export default function AccountRestorePage() {
     vaultUnlocked,
     hasVaultBundle,
     applyUnlockedSecrets,
+    currentDeviceId,
   } = useAuthVault();
+
+  const browserEnv = useMemo(
+    () => parseBrowserEnvironment(typeof navigator !== "undefined" ? navigator.userAgent : ""),
+    [],
+  );
+  const deviceFingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
 
   const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -564,6 +572,14 @@ export default function AccountRestorePage() {
                   passwordValid={passwordValid}
                   submitting={submitting}
                   setSubmitting={setSubmitting}
+                  currentDeviceId={currentDeviceId}
+                  deviceFingerprint={deviceFingerprint}
+                  deviceName={browserEnv.deviceName}
+                  platform={browserEnv.platform}
+                  osName={browserEnv.osName}
+                  osVersion={browserEnv.osVersion}
+                  clientType={browserEnv.clientType}
+                  userAgent={typeof navigator !== "undefined" ? navigator.userAgent : null}
                 />
               ) : (
                 <Alert variant="info">

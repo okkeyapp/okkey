@@ -42,7 +42,6 @@ import { SettingsRow } from "./SettingsRows";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
-const DeviceApproveInbox = accountRecoveryModule.DeviceApproveInbox;
 const ContactsReleaseInbox = accountRecoveryModule.ContactsReleaseInbox;
 
 type SettingsRecoveryContentProps = {
@@ -152,7 +151,7 @@ function PaidMethodsUpsell({ t }: { t: SettingsRecoveryContentProps["t"] }) {
 export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentProps) {
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
-  const { accessToken, userId, vaultUnlocked, vaultKey, currentDeviceId } = useAuthVault();
+  const { accessToken, userId, vaultUnlocked, vaultKey } = useAuthVault();
   const tRef = useRef(t);
   tRef.current = t;
 
@@ -813,18 +812,6 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       ) : null}
 
       {showPaidUpsell ? <PaidMethodsUpsell t={t} /> : null}
-
-      {accessToken && DeviceApproveInbox ? (
-        <div className="mt-4">
-          <DeviceApproveInbox
-            accessToken={accessToken}
-            t={t}
-            vaultUnlocked={vaultUnlocked}
-            vaultKey={vaultKey}
-            currentDeviceId={currentDeviceId}
-          />
-        </div>
-      ) : null}
 
       {accessToken && userId && ContactsEnrollPanel && canContacts ? (
         <div className="mt-4">
