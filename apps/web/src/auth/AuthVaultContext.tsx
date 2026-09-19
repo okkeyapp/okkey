@@ -358,6 +358,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       }
       if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
         foreverBlockedRef.current = true;
+      } else {
+        foreverBlockedRef.current = false;
       }
       pendingDeviceIdRef.current =
         snapshot.status === "pending" ||
@@ -833,16 +835,12 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const fingerprint = getOrCreateDeviceFingerprint();
       const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
       const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId);
+      // Sticky forever-block is optimistic only; clear when server is no longer blocked
+      // (Settings unblock / re-trust must leave /account/device-pending without reload).
       if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
         foreverBlockedRef.current = true;
-      }
-      if (foreverBlockedRef.current && snapshot.status === "trusted") {
-        setDeviceTrustStatus("blocked");
-        setDeviceBlockedUntil(null);
-        if (vaultUnlockedRef.current) {
-          lockVault();
-        }
-        return;
+      } else {
+        foreverBlockedRef.current = false;
       }
       pendingDeviceIdRef.current =
         snapshot.status === "pending" ||
