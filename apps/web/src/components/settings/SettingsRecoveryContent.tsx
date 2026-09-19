@@ -153,7 +153,6 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
   const { accessToken, userId, vaultUnlocked, vaultKey, currentDeviceId } = useAuthVault();
-  const { vaultKey } = useAuthVault();
   const tRef = useRef(t);
   tRef.current = t;
 
