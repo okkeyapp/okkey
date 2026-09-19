@@ -136,6 +136,8 @@ export default function DeviceRecoveryApprovalController() {
         wrapBlob,
       });
       dismissRequest(current.id);
+      // Requester is trusted by approve — refresh Phase 1 pending poll immediately.
+      emitDevicesChanged();
       toast.success(t("account.restore.enterprise.devices.toast.approved"));
     } catch {
       toast.error(t("web.settingsPopup.recovery.error.generic"));

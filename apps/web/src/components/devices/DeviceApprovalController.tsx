@@ -25,7 +25,7 @@ import {
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
 import { useLocale } from "../../locale/LocaleContext";
-import { emitDevicesChanged } from "./devicesEvents";
+import { emitDevicesChanged, DEVICES_CHANGED_EVENT } from "./devicesEvents";
 
 const BLOCK_OPTIONS: Array<{ duration: DeviceBlockDuration; labelKey: string }> = [
   { duration: "1h", labelKey: "web.settingsPopup.devices.pending.block1h" },
@@ -77,11 +77,16 @@ export default function DeviceApprovalController() {
         // Best-effort polling.
       }
     };
+    const onDevicesChanged = () => {
+      void poll();
+    };
     void poll();
     const timer = window.setInterval(() => void poll(), 5_000);
+    window.addEventListener(DEVICES_CHANGED_EVENT, onDevicesChanged);
     return () => {
       active = false;
       window.clearInterval(timer);
+      window.removeEventListener(DEVICES_CHANGED_EVENT, onDevicesChanged);
     };
   }, [core, currentDeviceId, fingerprint, vaultUnlocked]);
 
