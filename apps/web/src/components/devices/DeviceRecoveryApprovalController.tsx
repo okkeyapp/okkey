@@ -151,10 +151,14 @@ export default function DeviceRecoveryApprovalController() {
     }
     setResolving(true);
     try {
-      // Same Phase 1 path as DeviceApprovalController block forever.
-      await core.blockDevice(current.requestingDeviceId, currentDeviceId, {
-        duration: "forever",
-      });
+      // Phase 1 Core forever-block on the requesting pending device.
+      try {
+        await core.blockDevice(current.requestingDeviceId, currentDeviceId, {
+          duration: "forever",
+        });
+      } catch {
+        /* Legacy requests may bind trusted id → Core 404; enterprise demotes + blocks. */
+      }
       await client.blockDeviceRequest(current.id, currentDeviceId);
       setPending((items) => items.filter((item) => item.id !== current.id));
       emitDevicesChanged();
