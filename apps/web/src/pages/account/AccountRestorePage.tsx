@@ -21,6 +21,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Spinner,
 } from "@okkey/ui";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import { Copy, Download, TriangleAlert } from "lucide-react";
@@ -67,7 +68,9 @@ export default function AccountRestorePage() {
     hasVaultBundle,
     applyUnlockedSecrets,
     currentDeviceId,
+    deviceTrustStatus,
     refreshDeviceTrust,
+    markDeviceBlockedForever,
   } = useAuthVault();
 
   const browserEnv = useMemo(
@@ -78,8 +81,10 @@ export default function AccountRestorePage() {
 
   const onRequesterDeviceBlocked = useCallback(async () => {
     await refreshDeviceTrust();
+    // Recovery forever-block: force blocked UI even if poll still sees a leftover trusted row.
+    markDeviceBlockedForever();
     navigate(ACCOUNT_DEVICE_PENDING_PATH, { replace: true });
-  }, [navigate, refreshDeviceTrust]);
+  }, [markDeviceBlockedForever, navigate, refreshDeviceTrust]);
 
   const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -175,6 +180,28 @@ export default function AccountRestorePage() {
 
   if (!accessToken || !userId) {
     return <Navigate to={AUTH_EMAIL_PATH} replace />;
+  }
+
+  // Forever / timed block: same Phase 1 screen — never unlock MP or recovery entry.
+  if (deviceTrustStatus === "blocked") {
+    return <Navigate to={ACCOUNT_DEVICE_PENDING_PATH} replace />;
+  }
+
+  if (deviceTrustStatus === "checking" || deviceTrustStatus === "idle") {
+    return (
+      <AppShellLayout
+        headerLeft={<OkkeyLogoMark />}
+        headerRight={<AccountUserBar />}
+      >
+        <div
+          className="flex min-h-[50vh] w-full items-center justify-center"
+          role="status"
+          aria-busy="true"
+        >
+          <Spinner />
+        </div>
+      </AppShellLayout>
+    );
   }
 
   const keyAvailable = Boolean(status?.settings.keyEnabled && status.key.enrolled);

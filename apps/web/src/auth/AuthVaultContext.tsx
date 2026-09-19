@@ -124,6 +124,8 @@ export type AuthVaultContextValue = {
   deviceApprovers: DeviceListItemDto[];
   /** Re-check pending/rejected device status (poll helper for wait UI). */
   refreshDeviceTrust: () => Promise<void>;
+  /** Force local blocked state (e.g. recovery closed_reason=blocked before poll catches up). */
+  markDeviceBlockedForever: () => void;
   /** After rejection: register again and wait for a new approval. */
   retryDeviceRegistration: () => Promise<void>;
 };
@@ -284,6 +286,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
   const pendingDeviceIdRef = useRef<string | null>(null);
   const currentDeviceIdRef = useRef<string | null>(null);
+  /** Sticky forever-block so poll cannot bounce back to unlock/restore. */
+  const foreverBlockedRef = useRef(false);
 
   useEffect(() => {
     vaultUnlockedRef.current = vaultUnlocked;
@@ -339,6 +343,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceIdRef.current = null;
       setDeviceApprovers([]);
       pendingDeviceIdRef.current = null;
+      foreverBlockedRef.current = false;
       setVaultUnlockBootstrapLoading(false);
       return;
     }
@@ -351,8 +356,13 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (cancelled) {
         return;
       }
+      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+        foreverBlockedRef.current = true;
+      }
       pendingDeviceIdRef.current =
-        snapshot.status === "pending" || snapshot.status === "rejected"
+        snapshot.status === "pending" ||
+        snapshot.status === "rejected" ||
+        snapshot.status === "blocked"
           ? snapshot.deviceId
           : snapshot.status === "trusted"
             ? null
@@ -514,6 +524,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     currentDeviceIdRef.current = null;
     setDeviceApprovers([]);
     pendingDeviceIdRef.current = null;
+    foreverBlockedRef.current = false;
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
   const lockVault = useCallback(() => {
@@ -822,6 +833,17 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const fingerprint = getOrCreateDeviceFingerprint();
       const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
       const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId);
+      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+        foreverBlockedRef.current = true;
+      }
+      if (foreverBlockedRef.current && snapshot.status === "trusted") {
+        setDeviceTrustStatus("blocked");
+        setDeviceBlockedUntil(null);
+        if (vaultUnlockedRef.current) {
+          lockVault();
+        }
+        return;
+      }
       pendingDeviceIdRef.current =
         snapshot.status === "pending" ||
         snapshot.status === "rejected" ||
@@ -843,6 +865,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       // Best-effort; keep last known trust status on transient network errors.
     }
   }, [accessToken, lockVault, userId]);
+
+  const markDeviceBlockedForever = useCallback(() => {
+    foreverBlockedRef.current = true;
+    setDeviceTrustStatus("blocked");
+    setDeviceBlockedUntil(null);
+    if (vaultUnlockedRef.current) {
+      lockVault();
+    }
+  }, [lockVault]);
 
   // Keep trust live so revoke/block on another device ends access without a full reload.
   useEffect(() => {
@@ -929,6 +960,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceId,
       deviceApprovers,
       refreshDeviceTrust,
+      markDeviceBlockedForever,
       retryDeviceRegistration,
     }),
     [
@@ -966,6 +998,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceId,
       deviceApprovers,
       refreshDeviceTrust,
+      markDeviceBlockedForever,
       retryDeviceRegistration,
     ],
   );

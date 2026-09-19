@@ -294,6 +294,7 @@ export default function UnlockPasswordPage() {
 
   if (
     deviceTrustStatus === "pending" ||
+    deviceTrustStatus === "blocked" ||
     deviceTrustStatus === "rejected" ||
     deviceTrustStatus === "error"
   ) {
