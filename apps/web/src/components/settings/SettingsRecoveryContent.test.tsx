@@ -26,7 +26,13 @@ vi.mock("@okkey/crypto", () => ({
 
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMocks,
-  useAuthVault: () => ({ vaultKey: new Uint8Array(32) }),
+  useAuthVault: () => ({
+    vaultKey: new Uint8Array(32),
+    accessToken: "token",
+    userId: "u1",
+    vaultUnlocked: true,
+    profile: { email: "owner@example.com", firstName: null, lastName: null },
+  }),
 }));
 
 vi.mock("../../locale/LocaleContext", () => ({

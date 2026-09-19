@@ -235,6 +235,8 @@
   "web.settingsPopup.recovery.error.contactsInsufficient": "Сначала добавьте минимум 3 подтверждённых контакта.",
   "web.settingsPopup.recovery.error.contactNotFound": "Контакт должен быть существующим пользователем Okkey.",
   "web.settingsPopup.recovery.error.contactExists": "Этот контакт уже приглашён.",
+  "web.settingsPopup.recovery.error.invalidEmail": "Введите корректный email.",
+  "web.settingsPopup.recovery.error.selfInvite": "Нельзя пригласить свой же аккаунт.",
   "web.settingsPopup.recovery.error.keyNotEnrolled": "Ключ восстановления не настроен.",
   "web.settingsPopup.recovery.error.copyFailed": "Не удалось скопировать в буфер обмена.",
   "web.settingsPopup.recovery.error.vaultLocked": "Разблокируйте хранилище, чтобы управлять ключом восстановления.",

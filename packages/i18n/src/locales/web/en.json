@@ -235,6 +235,8 @@
   "web.settingsPopup.recovery.error.contactsInsufficient": "Add at least 3 confirmed contacts first.",
   "web.settingsPopup.recovery.error.contactNotFound": "Contact must be an existing Okkey user.",
   "web.settingsPopup.recovery.error.contactExists": "This contact is already invited.",
+  "web.settingsPopup.recovery.error.invalidEmail": "Enter a valid email address.",
+  "web.settingsPopup.recovery.error.selfInvite": "You cannot invite your own account.",
   "web.settingsPopup.recovery.error.keyNotEnrolled": "Recovery key is not enrolled.",
   "web.settingsPopup.recovery.error.copyFailed": "Could not copy to clipboard.",
   "web.settingsPopup.recovery.error.vaultLocked": "Unlock your vault to manage the recovery key.",

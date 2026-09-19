@@ -8,6 +8,7 @@ import type {
 import {
   AccountRecoveryError,
   AccountRecoveryService,
+  extractTrustedContactInviteEmails,
 } from "../account-recovery/service.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 
@@ -247,8 +248,9 @@ export function createAccountRecoveryContactInviteRoute(
         json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "invalid json", ctx.requestId));
         return;
       }
-      const contact = await service.inviteContact(userId, body.email ?? "");
-      json(ctx.res, 200, { contact });
+      const emails = extractTrustedContactInviteEmails(body);
+      const contacts = await service.inviteContacts(userId, emails);
+      json(ctx.res, 200, { contact: contacts[0], contacts });
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);
     }

@@ -225,7 +225,7 @@ export class AccountRecoveryRepository {
       `
         SELECT id, user_id, contact_email, contact_user_id, status, created_at, confirmed_at
         FROM user_trusted_contacts
-        WHERE user_id = $1::bigint AND contact_email = $2
+        WHERE user_id = $1::bigint AND lower(contact_email) = lower($2)
       `,
       [userId, email],
     );

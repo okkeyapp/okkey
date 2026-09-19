@@ -123,7 +123,7 @@ export class UsersRepository {
     const rows = await this.db.query<
       BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE email = $1",
+      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE lower(email) = lower($1)",
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;

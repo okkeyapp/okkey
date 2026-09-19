@@ -42,8 +42,53 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Accept plain addresses and common paste/autofill shapes like `Name <a@b.com>`.
+ */
+export function extractEmailAddress(raw: string): string {
+  const trimmed = raw.trim();
+  const angle = trimmed.match(/<([^<>@\s]+@[^<>@\s]+\.[^<>@\s]+)>/);
+  if (angle?.[1]) {
+    return normalizeEmail(angle[1]);
+  }
+  return normalizeEmail(trimmed);
+}
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/** Pull invite emails from `{ email }`, `{ emails }`, or invite-members `{ invitations }`. */
+export function extractTrustedContactInviteEmails(body: {
+  email?: unknown;
+  emails?: unknown;
+  invitations?: unknown;
+}): string[] {
+  const out: string[] = [];
+  const push = (value: unknown) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const email = extractEmailAddress(value);
+    if (email && !out.includes(email)) {
+      out.push(email);
+    }
+  };
+
+  push(body.email);
+  if (Array.isArray(body.emails)) {
+    for (const entry of body.emails) {
+      push(entry);
+    }
+  }
+  if (Array.isArray(body.invitations)) {
+    for (const row of body.invitations) {
+      if (row && typeof row === "object" && "email" in row) {
+        push((row as { email?: unknown }).email);
+      }
+    }
+  }
+  return out;
 }
 
 function mapContact(record: {
@@ -272,6 +317,14 @@ export class AccountRecoveryService {
   }
 
   async inviteContact(userId: string, rawEmail: string): Promise<TrustedContactDto> {
+    const [contact] = await this.inviteContacts(userId, [rawEmail]);
+    if (!contact) {
+      throw new AccountRecoveryError("RECOVERY_EMAIL_INVALID", 400, "invalid email");
+    }
+    return contact;
+  }
+
+  async inviteContacts(userId: string, rawEmails: string[]): Promise<TrustedContactDto[]> {
     const entitlements = await this.resolveEntitlements(userId);
     if (!entitlements.trustedContacts) {
       throw new AccountRecoveryError(
@@ -281,40 +334,55 @@ export class AccountRecoveryService {
       );
     }
 
-    const email = normalizeEmail(rawEmail);
-    if (!isValidEmail(email)) {
-      throw new AccountRecoveryError("RECOVERY_BAD_REQUEST", 400, "invalid email");
+    const emails = rawEmails
+      .map((raw) => extractEmailAddress(raw))
+      .filter((email, index, all) => email.length > 0 && all.indexOf(email) === index);
+    if (emails.length === 0) {
+      throw new AccountRecoveryError("RECOVERY_EMAIL_INVALID", 400, "invalid email");
     }
 
     const owner = await this.users.findById(userId);
     if (!owner) {
-      throw new AccountRecoveryError("RECOVERY_BAD_REQUEST", 404, "user not found");
+      throw new AccountRecoveryError("USER_NOT_FOUND", 404, "user not found");
     }
-    if (normalizeEmail(owner.email) === email) {
-      throw new AccountRecoveryError("RECOVERY_BAD_REQUEST", 400, "cannot invite yourself");
-    }
+    const ownerEmail = normalizeEmail(owner.email);
 
-    const contactUser = await this.users.findByEmail(email);
-    if (!contactUser) {
-      throw new AccountRecoveryError(
-        "RECOVERY_CONTACT_NOT_FOUND",
-        404,
-        "contact must be an existing Okkey user",
-      );
-    }
+    const created: TrustedContactDto[] = [];
+    for (const email of emails) {
+      if (!isValidEmail(email)) {
+        throw new AccountRecoveryError("RECOVERY_EMAIL_INVALID", 400, "invalid email");
+      }
+      if (email === ownerEmail) {
+        throw new AccountRecoveryError(
+          "RECOVERY_SELF_INVITE",
+          400,
+          "cannot invite yourself",
+        );
+      }
 
-    const existing = await this.recovery.findContactByEmail(userId, email);
-    if (existing) {
-      throw new AccountRecoveryError("RECOVERY_CONTACT_EXISTS", 409, "contact already invited");
-    }
+      const contactUser = await this.users.findByEmail(email);
+      if (!contactUser) {
+        throw new AccountRecoveryError(
+          "RECOVERY_CONTACT_NOT_FOUND",
+          404,
+          "contact must be an existing Okkey user",
+        );
+      }
 
-    const created = await this.recovery.insertContact({
-      id: generateEntityId(),
-      userId,
-      contactEmail: email,
-      contactUserId: contactUser.id,
-    });
-    return mapContact(created);
+      const existing = await this.recovery.findContactByEmail(userId, email);
+      if (existing) {
+        throw new AccountRecoveryError("RECOVERY_CONTACT_EXISTS", 409, "contact already invited");
+      }
+
+      const row = await this.recovery.insertContact({
+        id: generateEntityId(),
+        userId,
+        contactEmail: email,
+        contactUserId: contactUser.id,
+      });
+      created.push(mapContact(row));
+    }
+    return created;
   }
 
   async removeContact(userId: string, contactId: string): Promise<AccountRecoveryStatusResponseDto> {

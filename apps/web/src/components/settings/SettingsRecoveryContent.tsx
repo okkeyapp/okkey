@@ -90,11 +90,36 @@ function recoveryErrorMessage(err: unknown, t: SettingsRecoveryContentProps["t"]
         return t("web.settingsPopup.recovery.error.contactExists");
       case "RECOVERY_KEY_NOT_ENROLLED":
         return t("web.settingsPopup.recovery.error.keyNotEnrolled");
+      case "RECOVERY_EMAIL_INVALID":
+        return t("web.settingsPopup.recovery.error.invalidEmail");
+      case "RECOVERY_SELF_INVITE":
+        return t("web.settingsPopup.recovery.error.selfInvite");
+      case "RECOVERY_BAD_REQUEST":
+        if (err.body.message === "cannot invite yourself") {
+          return t("web.settingsPopup.recovery.error.selfInvite");
+        }
+        if (err.body.message === "invalid email") {
+          return t("web.settingsPopup.recovery.error.invalidEmail");
+        }
+        return t("web.settingsPopup.recovery.error.generic");
       default:
         return t("web.settingsPopup.recovery.error.generic");
     }
   }
   return t("web.settingsPopup.recovery.error.generic");
+}
+
+function extractInviteEmail(raw: string): string {
+  const trimmed = raw.trim();
+  const angle = trimmed.match(/<([^<>@\s]+@[^<>@\s]+\.[^<>@\s]+)>/);
+  if (angle?.[1]) {
+    return angle[1].trim().toLowerCase();
+  }
+  return trimmed.toLowerCase();
+}
+
+function isInviteEmailValid(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function formatGeneratedAt(
@@ -151,7 +176,7 @@ function PaidMethodsUpsell({ t }: { t: SettingsRecoveryContentProps["t"] }) {
 export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentProps) {
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
-  const { accessToken, userId, vaultUnlocked, vaultKey } = useAuthVault();
+  const { accessToken, userId, vaultUnlocked, vaultKey, profile } = useAuthVault();
   const tRef = useRef(t);
   tRef.current = t;
 
@@ -402,26 +427,28 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     if (!core || inviteSaving) {
       return;
     }
-    const emails = inviteRows
-      .map((row) => row.email.trim())
-      .filter((email) => email.includes("@"));
-    if (emails.length === 0) {
+    // Same shape as InviteMembersPopup: collect rows, then one API call with invitations[].
+    const invitations = inviteRows
+      .map((row) => ({ email: extractInviteEmail(row.email) }))
+      .filter((row) => isInviteEmailValid(row.email));
+    if (invitations.length === 0) {
+      setError(t("web.settingsPopup.recovery.error.invalidEmail"));
+      return;
+    }
+    const ownerEmail = profile?.email ? extractInviteEmail(profile.email) : null;
+    if (ownerEmail && invitations.some((row) => row.email === ownerEmail)) {
+      setError(t("web.settingsPopup.recovery.error.selfInvite"));
       return;
     }
     setInviteSaving(true);
     setError(null);
-    const added: TrustedContactDto[] = [];
-    let lastError: unknown = null;
     try {
-      for (const email of emails) {
-        try {
-          const { contact } = await core.inviteTrustedContact({ email });
-          added.push(contact);
-        } catch (err) {
-          lastError = err;
-          break;
-        }
-      }
+      const result = await core.inviteTrustedContact({ invitations });
+      const added = result.contacts?.length
+        ? result.contacts
+        : result.contact
+          ? [result.contact]
+          : [];
       if (added.length > 0) {
         setStatus((prev) =>
           prev ? { ...prev, contacts: [...prev.contacts, ...added] } : prev,
@@ -431,9 +458,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         setInviteOpen(false);
         setInviteRows([{ id: `invite-${Date.now()}`, email: "" }]);
       }
-      if (lastError) {
-        setError(recoveryErrorMessage(lastError, t));
-      }
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
     } finally {
       setInviteSaving(false);
     }
@@ -723,8 +749,18 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                             type="email"
                             value={row.email}
                             disabled={inviteSaving}
+                            autoComplete="email"
                             onChange={(e) => {
                               const value = e.target.value;
+                              setInviteRows((current) =>
+                                current.map((item) =>
+                                  item.id === row.id ? { ...item, email: value } : item,
+                                ),
+                              );
+                            }}
+                            onInput={(e) => {
+                              // Safari/Mac autofill often skips React onChange.
+                              const value = (e.target as HTMLInputElement).value;
                               setInviteRows((current) =>
                                 current.map((item) =>
                                   item.id === row.id ? { ...item, email: value } : item,

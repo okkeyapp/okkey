@@ -904,12 +904,21 @@ export interface AccountRecoveryKeyWrapResponseDto {
   encryptedBlob: EncryptedBlobDto;
 }
 
+/**
+ * Invite trusted contact(s). Accepts the single-email DTO or an invite-members-style
+ * batch (`invitations` / `emails`) so the multi-row recovery form stays aligned.
+ */
 export interface TrustedContactInviteRequestDto {
-  email: string;
+  email?: string;
+  emails?: string[];
+  invitations?: Array<{ email?: string }>;
 }
 
 export interface TrustedContactInviteResponseDto {
+  /** First invited contact (single-email clients). */
   contact: TrustedContactDto;
+  /** All contacts created in this request (batch / multi-row). */
+  contacts: TrustedContactDto[];
 }
 
 /** `POST /auth/two-factor/totp/enroll/start` success body. */

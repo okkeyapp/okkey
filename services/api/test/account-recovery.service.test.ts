@@ -1,8 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AccountRecoveryError, AccountRecoveryService } from "../src/account-recovery/service.ts";
+import { AccountRecoveryError, AccountRecoveryService, extractTrustedContactInviteEmails } from "../src/account-recovery/service.ts";
 import type { AccountRecoveryRepository } from "../src/storage/account-recovery.ts";
+
+test("extractTrustedContactInviteEmails accepts email, emails, and invitations", () => {
+  assert.deepEqual(extractTrustedContactInviteEmails({ email: "a@b.co" }), ["a@b.co"]);
+  assert.deepEqual(
+    extractTrustedContactInviteEmails({ emails: ["a@b.co", "c@d.co"] }),
+    ["a@b.co", "c@d.co"],
+  );
+  assert.deepEqual(
+    extractTrustedContactInviteEmails({
+      invitations: [{ email: "Friend <friend@example.com>" }, { email: "other@example.com" }],
+    }),
+    ["friend@example.com", "other@example.com"],
+  );
+  assert.deepEqual(extractTrustedContactInviteEmails({}), []);
+});
 
 function createService(overrides?: {
   workspaces?: { planTier: string; planCustomOverride?: boolean; planFeatureOverrides?: Record<string, boolean> }[];
@@ -190,6 +205,25 @@ test("inviteContact works on PREMIUM membership", async () => {
   const contact = await service.inviteContact("u1", "friend@example.com");
   assert.equal(contact.email, "friend@example.com");
   assert.equal(contact.status, "pending");
+});
+
+test("inviteContacts accepts Name <email> paste and invite-members invitations shape", async () => {
+  const service = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+  });
+  const contacts = await service.inviteContacts("u1", ["Friend <friend@example.com>"]);
+  assert.equal(contacts.length, 1);
+  assert.equal(contacts[0]?.email, "friend@example.com");
+});
+
+test("inviteContact rejects self-invite with RECOVERY_SELF_INVITE", async () => {
+  const service = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+  });
+  await assert.rejects(
+    () => service.inviteContact("u1", "owner@example.com"),
+    (err: unknown) => err instanceof AccountRecoveryError && err.code === "RECOVERY_SELF_INVITE",
+  );
 });
 
 test("inviteContact rejects FREE-only account", async () => {
