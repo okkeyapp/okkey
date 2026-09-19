@@ -21,7 +21,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Spinner,
+  Skeleton,
 } from "@okkey/ui";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import { Copy, Download, TriangleAlert } from "lucide-react";
@@ -185,23 +185,6 @@ export default function AccountRestorePage() {
   // Forever / timed block: same Phase 1 screen — never unlock MP or recovery entry.
   if (deviceTrustStatus === "blocked") {
     return <Navigate to={ACCOUNT_DEVICE_PENDING_PATH} replace />;
-  }
-
-  if (deviceTrustStatus === "checking" || deviceTrustStatus === "idle") {
-    return (
-      <AppShellLayout
-        headerLeft={<OkkeyLogoMark />}
-        headerRight={<AccountUserBar />}
-      >
-        <div
-          className="flex min-h-[50vh] w-full items-center justify-center"
-          role="status"
-          aria-busy="true"
-        >
-          <Spinner />
-        </div>
-      </AppShellLayout>
-    );
   }
 
   const keyAvailable = Boolean(status?.settings.keyEnabled && status.key.enrolled);
@@ -472,10 +455,6 @@ export default function AccountRestorePage() {
       <div className="flex w-full flex-col gap-6">
         <AccountUserBar />
 
-        {loadingStatus ? (
-          <p className="text-sm text-muted-foreground">{t("account.restore.loading")}</p>
-        ) : null}
-
         {statusError ? (
           <Alert variant="error">
             <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
@@ -492,46 +471,58 @@ export default function AccountRestorePage() {
           </Alert>
         ) : null}
 
-        {!loadingStatus && anyMethod ? (
-          <div className="flex w-full flex-col gap-4 rounded-xl border border-border bg-background p-4 shadow-sm">
+        {loadingStatus || anyMethod ? (
+          <div
+            className="flex w-full flex-col gap-4 rounded-xl border border-border bg-background p-4 shadow-sm"
+            aria-busy={loadingStatus || undefined}
+          >
             <div className="flex flex-col gap-2">
               <label htmlFor="restore-method" className="text-sm font-medium text-foreground">
                 {t("account.restore.chooseMethod")}
               </label>
-              <Select
-                value={method ?? undefined}
-                onValueChange={(value) => setMethod(value as RestoreMethod)}
-              >
-                <SelectTrigger id="restore-method" className="h-auto min-h-10 w-full py-2">
-                  <SelectValue placeholder={t("account.restore.chooseMethod")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {keyAvailable ? (
-                    <SelectItem value="key" description={t("account.restore.method.keyHint")}>
-                      {t("account.restore.method.key")}
-                    </SelectItem>
-                  ) : null}
-                  {devicesAvailable ? (
-                    <SelectItem
-                      value="devices"
-                      description={t("account.restore.method.devicesHint")}
-                    >
-                      {t("account.restore.method.devices")}
-                    </SelectItem>
-                  ) : null}
-                  {contactsAvailable ? (
-                    <SelectItem
-                      value="contacts"
-                      description={t("account.restore.method.contactsHint")}
-                    >
-                      {t("account.restore.method.contacts")}
-                    </SelectItem>
-                  ) : null}
-                </SelectContent>
-              </Select>
+              {loadingStatus ? (
+                <Skeleton
+                  id="restore-method"
+                  className="h-10 w-full rounded-md"
+                  role="status"
+                  aria-label={t("account.restore.loading")}
+                />
+              ) : (
+                <Select
+                  value={method ?? undefined}
+                  onValueChange={(value) => setMethod(value as RestoreMethod)}
+                >
+                  <SelectTrigger id="restore-method" className="h-auto min-h-10 w-full py-2">
+                    <SelectValue placeholder={t("account.restore.chooseMethod")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {keyAvailable ? (
+                      <SelectItem value="key" description={t("account.restore.method.keyHint")}>
+                        {t("account.restore.method.key")}
+                      </SelectItem>
+                    ) : null}
+                    {devicesAvailable ? (
+                      <SelectItem
+                        value="devices"
+                        description={t("account.restore.method.devicesHint")}
+                      >
+                        {t("account.restore.method.devices")}
+                      </SelectItem>
+                    ) : null}
+                    {contactsAvailable ? (
+                      <SelectItem
+                        value="contacts"
+                        description={t("account.restore.method.contactsHint")}
+                      >
+                        {t("account.restore.method.contacts")}
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
-            {method === "key" ? (
+            {!loadingStatus && method === "key" ? (
               <form className="flex flex-col gap-4" onSubmit={(e) => void handleKeyRestore(e)} noValidate>
                 {formError ? (
                   <Alert variant="error">
@@ -590,7 +581,7 @@ export default function AccountRestorePage() {
               </form>
             ) : null}
 
-            {method === "devices" ? (
+            {!loadingStatus && method === "devices" ? (
               DevicesRestorePanel ? (
                 <DevicesRestorePanel
                   accessToken={accessToken}
@@ -626,7 +617,7 @@ export default function AccountRestorePage() {
               )
             ) : null}
 
-            {method === "contacts" ? (
+            {!loadingStatus && method === "contacts" ? (
               ContactsRestorePanel ? (
                 <ContactsRestorePanel
                   accessToken={accessToken}
