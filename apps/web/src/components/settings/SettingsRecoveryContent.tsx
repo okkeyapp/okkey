@@ -818,7 +818,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-9 w-full gap-1.5 bg-background"
+                        className="h-9 w-full gap-1.5 bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)] dark:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)]"
                         disabled={inviteSaving}
                         onClick={() =>
                           setInviteRows((current) => [
