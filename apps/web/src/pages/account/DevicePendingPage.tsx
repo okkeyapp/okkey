@@ -43,7 +43,6 @@ export default function DevicePendingPage() {
     deviceApprovers,
     refreshDeviceTrust,
     retryDeviceRegistration,
-    logout,
   } = useAuthVault();
 
   const redirect = useMemo(() => {
@@ -94,59 +93,48 @@ export default function DevicePendingPage() {
     return <Navigate to={target} replace />;
   }
 
-  if (deviceTrustStatus === "idle" || deviceTrustStatus === "checking") {
-    return (
-      <AppShellLayout
-        headerLeft={<OkkeyLogoMark />}
-        headerRight={<AccountUserBar onLogout={() => logout()} />}
-      >
-        <div
-          className="flex min-h-[50vh] w-full items-center justify-center"
-          role="status"
-          aria-busy="true"
-        >
-          <Spinner />
-        </div>
-      </AppShellLayout>
-    );
-  }
-
   const blocked = deviceTrustStatus === "blocked";
   const rejected = deviceTrustStatus === "rejected" || deviceTrustStatus === "error";
+  const checking = deviceTrustStatus === "idle" || deviceTrustStatus === "checking";
+
+  const title = blocked
+    ? t("web.devicePending.blockedTitle")
+    : rejected
+      ? t("web.devicePending.rejectedTitle")
+      : t("web.devicePending.title");
+  const description = blocked
+    ? t("web.devicePending.blockedBody")
+    : rejected
+      ? t("web.devicePending.rejectedBody")
+      : t("web.devicePending.body");
 
   return (
     <AppShellLayout
-      headerLeft={<OkkeyLogoMark />}
-      headerRight={<AccountUserBar onLogout={() => logout()} />}
+      title={title}
+      description={description}
+      logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      contentClassName="max-w-lg"
     >
-      <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-10">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-xl font-semibold text-foreground">
-            {blocked
-              ? t("web.devicePending.blockedTitle")
-              : rejected
-                ? t("web.devicePending.rejectedTitle")
-                : t("web.devicePending.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {blocked
-              ? t("web.devicePending.blockedBody")
-              : rejected
-                ? t("web.devicePending.rejectedBody")
-                : t("web.devicePending.body")}
-          </p>
-          {blocked ? (
-            <p className="text-sm text-muted-foreground">
-              {deviceBlockedUntil
-                ? t("web.devicePending.blockedUntil", {
-                    date: formatAbsoluteDate(deviceBlockedUntil, locale),
-                  })
-                : t("web.devicePending.blockedForever")}
-            </p>
-          ) : null}
-        </div>
+      <div className="flex w-full flex-col gap-6">
+        <AccountUserBar />
 
-        {!rejected && !blocked ? (
+        {checking ? (
+          <div className="flex flex-col items-center gap-3 py-4" role="status" aria-busy="true">
+            <Spinner />
+          </div>
+        ) : null}
+
+        {blocked ? (
+          <p className="text-sm text-muted-foreground">
+            {deviceBlockedUntil
+              ? t("web.devicePending.blockedUntil", {
+                  date: formatAbsoluteDate(deviceBlockedUntil, locale),
+                })
+              : t("web.devicePending.blockedForever")}
+          </p>
+        ) : null}
+
+        {!checking && !rejected && !blocked ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">
               {t("web.devicePending.approversHeading")}
@@ -178,7 +166,9 @@ export default function DevicePendingPage() {
               <span>{t("web.devicePending.waiting")}</span>
             </div>
           </div>
-        ) : rejected ? (
+        ) : null}
+
+        {rejected ? (
           <div className="flex flex-col gap-3">
             <Button type="button" disabled={retrying} onClick={() => void onRetry()}>
               {retrying ? <Spinner data-icon="inline-start" /> : null}
