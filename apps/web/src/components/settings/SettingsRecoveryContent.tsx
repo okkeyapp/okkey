@@ -39,6 +39,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
 import { SettingsRow } from "./SettingsRows";
+import DeleteTrustedContactConfirmPopup from "./DeleteTrustedContactConfirmPopup";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
@@ -190,6 +191,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     { id: "invite-0", email: "" },
   ]);
   const [inviteSaving, setInviteSaving] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<TrustedContactDto | null>(null);
   const settingsMutatingRef = useRef(false);
 
   const refreshStatus = useCallback(async (): Promise<AccountRecoveryStatusResponseDto | null> => {
@@ -495,6 +497,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     try {
       const next = await core.deleteTrustedContact(contact.id);
       setStatus(next);
+      setContactToDelete(null);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -754,7 +757,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         className="size-6 text-destructive hover:text-destructive"
                         aria-label={t("web.settingsPopup.recovery.contacts.remove")}
                         disabled={busy || inviteSaving}
-                        onClick={() => void handleDeleteContact(contact)}
+                        onClick={() => setContactToDelete(contact)}
                       >
                         <Trash2 className="size-4" />
                       </Button>
