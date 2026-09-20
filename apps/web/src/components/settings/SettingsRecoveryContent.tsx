@@ -818,7 +818,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-9 w-full gap-1.5"
+                        className="h-9 w-full gap-1.5 bg-background"
                         disabled={inviteSaving}
                         onClick={() =>
                           setInviteRows((current) => [
@@ -909,6 +909,23 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           />
         </div>
       ) : null}
+
+      <DeleteTrustedContactConfirmPopup
+        open={contactToDelete !== null}
+        contactEmail={contactToDelete?.email ?? ""}
+        deleting={busy}
+        t={t}
+        onClose={() => {
+          if (!busy) {
+            setContactToDelete(null);
+          }
+        }}
+        onConfirm={() => {
+          if (contactToDelete) {
+            void handleDeleteContact(contactToDelete);
+          }
+        }}
+      />
     </div>
   );
 }
