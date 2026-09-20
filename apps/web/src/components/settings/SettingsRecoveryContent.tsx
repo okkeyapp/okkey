@@ -751,7 +751,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-6 text-destructive hover:bg-destructive/15 hover:text-destructive"
+                        className="size-6 text-destructive hover:text-destructive"
                         aria-label={t("web.settingsPopup.recovery.contacts.remove")}
                         disabled={busy || inviteSaving}
                         onClick={() => void handleDeleteContact(contact)}
@@ -801,7 +801,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="size-9 shrink-0 text-destructive hover:bg-destructive/15 hover:text-destructive"
+                            className="size-9 shrink-0 text-destructive hover:text-destructive"
                             disabled={inviteSaving || inviteRows.length <= 1}
                             aria-label={t("web.settingsPopup.recovery.contacts.removeRow")}
                             onClick={() =>
@@ -815,7 +815,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-9 w-full gap-1.5 bg-background hover:bg-muted"
+                        className="h-9 w-full gap-1.5"
                         disabled={inviteSaving}
                         onClick={() =>
                           setInviteRows((current) => [
@@ -855,8 +855,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                   ) : (
                     <Button
                       type="button"
-                      variant="ghost"
-                      className={`h-9 w-full gap-2.5 rounded-none hover:bg-background/80 ${
+                      variant="secondary"
+                      className={`h-9 w-full gap-2.5 rounded-none ${
                         (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
                       }`}
                       disabled={busy || inviteSaving}
