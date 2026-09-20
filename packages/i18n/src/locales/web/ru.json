@@ -221,7 +221,7 @@
   "web.settingsPopup.recovery.contacts.addMore": "Добавить ещё",
   "web.settingsPopup.recovery.contacts.remove": "Удалить контакт",
   "web.settingsPopup.recovery.contacts.removeRow": "Удалить строку",
-  "web.settingsPopup.recovery.contacts.emailPlaceholder": "Введите email контакта…",
+  "web.settingsPopup.recovery.contacts.emailPlaceholder": "Введите email контакта",
   "web.settingsPopup.recovery.contacts.sendInvite": "Отправить приглашение ({count})",
   "web.settingsPopup.recovery.contacts.invitesSent": "Приглашения отправлены",
   "web.settingsPopup.recovery.contacts.cancel": "Отмена",
