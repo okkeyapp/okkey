@@ -20,12 +20,13 @@ import {
   Input,
   Spinner,
 } from "@okkey/ui";
-import { Copy, Download, TriangleAlert } from "lucide-react";
+import { Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
+import { RecoveryInfoTriangleIcon } from "../../components/settings/RecoveryInfoTriangleIcon";
 import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
@@ -344,7 +345,7 @@ export default function AuthRegistrationPage() {
             </Button>
           </ControlGroup>
           <div className="flex items-start gap-1.5">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <RecoveryInfoTriangleIcon className="mt-0.5" />
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               {t("auth.registration.recovery.warning")}
             </p>

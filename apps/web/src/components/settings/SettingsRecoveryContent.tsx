@@ -28,7 +28,6 @@ import {
   Info,
   Plus,
   RefreshCcw,
-  TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -40,6 +39,7 @@ import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { IconDelete16 } from "../items/itemCategoryIcons";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
+import { RecoveryInfoTriangleIcon } from "./RecoveryInfoTriangleIcon";
 import { SettingsRow } from "./SettingsRows";
 import DeleteTrustedContactConfirmPopup from "./DeleteTrustedContactConfirmPopup";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
@@ -753,7 +753,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
             </p>
           </div>
           <div className="flex items-start gap-1.5">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <RecoveryInfoTriangleIcon className="mt-0.5" />
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               {t("web.settingsPopup.recovery.key.regenerateWarning")}
             </p>
@@ -809,7 +809,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         {contact.status === "confirmed" ? (
                           <RecoveryKeyExportedCheckIcon className="size-4 shrink-0" />
                         ) : (
-                          <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
+                          <RecoveryInfoTriangleIcon className="text-amber-500" />
                         )}
                         <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-foreground">
                           {contact.email}
