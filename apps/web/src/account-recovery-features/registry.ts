@@ -35,6 +35,7 @@ export type ContactsEnrollPanelProps = {
   vaultKey: Uint8Array | null;
   contactsEnabled: boolean;
   confirmedContacts: Array<{ id: string; contactUserId: string; email: string }>;
+  minConfirmedContacts?: number;
 };
 
 export type DeviceApproveInboxProps = {
@@ -57,4 +58,6 @@ export type AccountRecoveryEnterpriseModule = {
     vaultUnlocked: boolean;
     vaultKey: Uint8Array | null;
   }> | null;
+  /** Silent auto (re-)enroll controller — mount in workspace shell. */
+  ContactsShareAutoEnrollController: ComponentType | null;
 };

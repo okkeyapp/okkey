@@ -402,6 +402,9 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           : next,
       );
       notifySaved();
+      if (checked) {
+        window.dispatchEvent(new CustomEvent("okkey:trusted-contacts-changed"));
+      }
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
       void refreshStatus();
@@ -486,6 +489,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           prev ? { ...prev, contacts: [...prev.contacts, ...added] } : prev,
         );
         void refreshStatus();
+        window.dispatchEvent(new CustomEvent("okkey:trusted-contacts-changed"));
         toast.success(t("web.settingsPopup.recovery.contacts.invitesSent"));
         setInviteOpen(false);
         setInviteRows([{ id: `invite-${Date.now()}`, email: "" }]);
@@ -528,6 +532,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       const next = await core.deleteTrustedContact(contact.id);
       setStatus(next);
       setContactToDelete(null);
+      window.dispatchEvent(new CustomEvent("okkey:trusted-contacts-changed"));
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -571,6 +576,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     try {
       const next = await core.acceptTrustedContactInvite(inviteId);
       setStatus(next);
+      window.dispatchEvent(new CustomEvent("okkey:trusted-contacts-changed"));
       toast.success(t("web.settingsPopup.recovery.invites.toast.accepted"));
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -984,23 +990,22 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       ) : null}
 
       {accessToken && userId && ContactsEnrollPanel && canContacts ? (
-        <div className="mt-4">
-          <ContactsEnrollPanel
-            accessToken={accessToken}
-            userId={userId}
-            t={t}
-            vaultUnlocked={vaultUnlocked}
-            vaultKey={vaultKey}
-            contactsEnabled={contactsEnabled}
-            confirmedContacts={(status?.contacts ?? [])
-              .filter((c) => c.status === "confirmed" && c.contactUserId)
-              .map((c) => ({
-                id: c.id,
-                contactUserId: c.contactUserId!,
-                email: c.email,
-              }))}
-          />
-        </div>
+        <ContactsEnrollPanel
+          accessToken={accessToken}
+          userId={userId}
+          t={t}
+          vaultUnlocked={vaultUnlocked}
+          vaultKey={vaultKey}
+          contactsEnabled={contactsEnabled}
+          minConfirmedContacts={status?.minConfirmedContacts ?? 3}
+          confirmedContacts={(status?.contacts ?? [])
+            .filter((c) => c.status === "confirmed" && c.contactUserId)
+            .map((c) => ({
+              id: c.id,
+              contactUserId: c.contactUserId!,
+              email: c.email,
+            }))}
+        />
       ) : null}
 
       {accessToken && userId && ContactsReleaseInbox ? (

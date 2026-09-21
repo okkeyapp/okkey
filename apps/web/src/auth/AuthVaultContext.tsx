@@ -818,6 +818,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         persistVaultUnlockSession(userId, vaultKeyRef.current, rebalanced.passwordShareC);
         setMasterPasswordChangedAt(response.master_password_changed_at);
         clearDeviceUnlockSecrets(userId);
+        window.dispatchEvent(new CustomEvent("okkey:master-password-changed"));
 
         wipeBytes(rebalanced.serverKeyShare);
         wipeBytes(rebalanced.passwordKdfSalt);
