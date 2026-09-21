@@ -38,10 +38,7 @@ import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
-import {
-  MemberFavicon,
-  memberDisplayName,
-} from "../workspace/settings/vaults/vaultAccessHelpers";
+import { memberDisplayName } from "../workspace/settings/vaults/vaultAccessHelpers";
 import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
@@ -808,19 +805,16 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                     {(status?.contacts ?? []).map((contact, index) => (
                       <div
                         key={contact.id}
-                        className={`flex items-center gap-3 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
+                        className={`flex items-center gap-1.5 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
                       >
-                        <MemberFavicon email={contact.email} size={40} />
-                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                          {contact.status === "confirmed" ? (
-                            <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
-                          ) : (
-                            <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
-                          )}
-                          <p className="min-w-0 flex-1 truncate text-sm font-bold leading-5 text-foreground">
-                            {contact.email}
-                          </p>
-                        </div>
+                        {contact.status === "confirmed" ? (
+                          <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
+                        ) : (
+                          <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
+                        )}
+                        <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-muted-foreground">
+                          {contact.email}
+                        </p>
                         <Button
                           type="button"
                           variant="ghost"
@@ -983,29 +977,17 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               return (
                 <div
                   key={membership.id}
-                  className={`flex items-center gap-3 px-4 py-3 ${
+                  className={`flex items-center gap-1.5 px-4 py-3 ${
                     index > 0 ? "border-t border-border" : ""
                   }`}
                 >
-                  <MemberFavicon
-                    firstName={membership.ownerFirstName}
-                    lastName={membership.ownerLastName}
-                    email={membership.ownerEmail}
-                    size={40}
-                  />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
                     {showName ? (
                       <p className="truncate text-sm font-bold leading-5 text-foreground">
                         {ownerName}
                       </p>
                     ) : null}
-                    <p
-                      className={
-                        showName
-                          ? "truncate text-sm font-normal leading-5 text-muted-foreground"
-                          : "truncate text-sm font-bold leading-5 text-foreground"
-                      }
-                    >
+                    <p className="truncate text-sm font-normal leading-5 text-muted-foreground">
                       {membership.ownerEmail}
                     </p>
                   </div>
