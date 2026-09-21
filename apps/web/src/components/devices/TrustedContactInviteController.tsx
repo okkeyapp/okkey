@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { useLocale } from "../../locale/LocaleContext";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
+import {
+  MemberFavicon,
+  memberDisplayName,
+} from "../workspace/settings/vaults/vaultAccessHelpers";
 
 function formatAbsoluteDate(iso: string, locale: string): string {
   const date = new Date(iso);
@@ -22,8 +26,8 @@ function formatAbsoluteDate(iso: string, locale: string): string {
 }
 
 /**
- * Popup for pending trusted-contact invitations (Accept / Reject),
- * same UX pattern as DeviceApprovalController.
+ * Popup for pending trusted-contact invitations (Accept / Reject).
+ * Inviter card matches MembersListCard: avatar + name/email left, datetime right.
  */
 export default function TrustedContactInviteController() {
   const { t, locale } = useLocale();
@@ -62,6 +66,13 @@ export default function TrustedContactInviteController() {
   if (!current || !core) {
     return null;
   }
+
+  const ownerName = memberDisplayName({
+    firstName: current.ownerFirstName ?? null,
+    lastName: current.ownerLastName ?? null,
+    email: current.ownerEmail,
+  });
+  const showName = ownerName.trim().length > 0 && ownerName !== current.ownerEmail;
 
   const dismissInvite = (inviteId: string) => {
     dismissedIdsRef.current.add(inviteId);
@@ -122,11 +133,24 @@ export default function TrustedContactInviteController() {
         <p className="text-muted-foreground">
           {t("web.settingsPopup.recovery.invites.popup.body")}
         </p>
-        <div className="flex flex-col gap-1 rounded-xl bg-secondary p-4">
-          <p className="truncate text-sm font-medium text-foreground">{current.ownerEmail}</p>
-          <p className="text-sm text-muted-foreground">
+        <div className="flex items-center gap-4 rounded-xl bg-secondary p-4">
+          <MemberFavicon
+            firstName={current.ownerFirstName}
+            lastName={current.ownerLastName}
+            email={current.ownerEmail}
+            size={40}
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+            {showName ? (
+              <p className="truncate text-sm leading-5 text-muted-foreground">{ownerName}</p>
+            ) : null}
+            <p className="truncate text-sm font-medium leading-5 text-foreground">
+              {current.ownerEmail}
+            </p>
+          </div>
+          <span className="shrink-0 text-sm leading-5 text-muted-foreground">
             {formatAbsoluteDate(current.createdAt, locale)}
-          </p>
+          </span>
         </div>
       </div>
     </Popup>

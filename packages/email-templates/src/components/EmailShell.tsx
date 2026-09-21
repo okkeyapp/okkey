@@ -14,13 +14,20 @@ export const EMAIL_PRIMARY_FOREGROUND = "#ffffff";
 
 type EmailShellProps = {
   preview: string;
-  footer?: string;
+  /**
+   * Footnotes below the separator (auth verification-code pattern).
+   * Pass a string or multiple Text nodes — never put footnotes in the body above the rule.
+   */
+  footer?: React.ReactNode;
   children: React.ReactNode;
 };
 
 /** Shared transactional chrome: canvas, white card, logo header, rule, then body. */
 export function EmailShell({ preview, footer, children }: EmailShellProps) {
-  const trimmedFooter = footer?.trim() ?? "";
+  const hasFooter =
+    footer !== undefined &&
+    footer !== null &&
+    !(typeof footer === "string" && footer.trim().length === 0);
   return (
     <Html>
       <Head />
@@ -47,10 +54,14 @@ export function EmailShell({ preview, footer, children }: EmailShellProps) {
           </Section>
           <hr style={ruleStyle} />
           {children}
-          {trimmedFooter ? (
+          {hasFooter ? (
             <>
               <hr style={ruleStyle} />
-              <Text style={footerStyle}>{trimmedFooter}</Text>
+              {typeof footer === "string" ? (
+                <Text style={footerStyle}>{footer.trim()}</Text>
+              ) : (
+                footer
+              )}
             </>
           ) : null}
         </Container>

@@ -36,6 +36,8 @@ export interface TrustedContactInviteRecord {
   contactEmail: string;
   contactUserId: string;
   ownerEmail: string;
+  ownerFirstName: string | null;
+  ownerLastName: string | null;
   createdAt: string;
 }
 
@@ -269,10 +271,14 @@ export class AccountRecoveryRepository {
       contact_email: string;
       contact_user_id: string | number;
       owner_email: string;
+      owner_first_name: string | null;
+      owner_last_name: string | null;
       created_at: string;
     }>(
       `
-        SELECT c.id, c.user_id, c.contact_email, c.contact_user_id, u.email AS owner_email, c.created_at
+        SELECT c.id, c.user_id, c.contact_email, c.contact_user_id,
+               u.email AS owner_email, u.first_name AS owner_first_name, u.last_name AS owner_last_name,
+               c.created_at
         FROM user_trusted_contacts c
         INNER JOIN users u ON u.id = c.user_id
         WHERE c.contact_user_id = $1::bigint AND c.status = 'pending'
@@ -286,6 +292,8 @@ export class AccountRecoveryRepository {
       contactEmail: row.contact_email,
       contactUserId: entityIdFromDb(row.contact_user_id),
       ownerEmail: row.owner_email,
+      ownerFirstName: row.owner_first_name,
+      ownerLastName: row.owner_last_name,
       createdAt: row.created_at,
     }));
   }

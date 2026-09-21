@@ -36,7 +36,15 @@ export function DeviceApprovalEmail({
 }: DeviceApprovalEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
   return (
-    <EmailShell preview={lead}>
+    <EmailShell
+      preview={lead}
+      footer={
+        <>
+          <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
+          <Text style={footnoteStyleLast}>{noteIgnoreIfMistake}</Text>
+        </>
+      }
+    >
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
         <Text style={metaStyle}>{deviceLine}</Text>
@@ -53,10 +61,6 @@ export function DeviceApprovalEmail({
       ) : (
         <Text style={noteStyle}>{noteNoUrl}</Text>
       )}
-      <Section style={footnotesStyle}>
-        <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
-        <Text style={footnoteStyleLast}>{noteIgnoreIfMistake}</Text>
-      </Section>
     </EmailShell>
   );
 }
@@ -83,16 +87,12 @@ const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 16px",
+  margin: 0,
 };
 
 const ctaWrapStyle: React.CSSProperties = {
   marginTop: "4px",
-  marginBottom: "20px",
-};
-
-const footnotesStyle: React.CSSProperties = {
-  margin: 0,
+  marginBottom: 0,
 };
 
 const footnoteStyle: React.CSSProperties = {

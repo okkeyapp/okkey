@@ -194,6 +194,8 @@ export class AccountRecoveryService {
       pendingInvites: pendingInvites.map((invite) => ({
         id: invite.id,
         ownerEmail: invite.ownerEmail,
+        ownerFirstName: invite.ownerFirstName,
+        ownerLastName: invite.ownerLastName,
         createdAt: invite.createdAt,
       })),
     };

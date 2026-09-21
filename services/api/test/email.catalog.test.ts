@@ -355,4 +355,17 @@ test("EmailTemplateService sendTrustedContactInvite renders inviter details", as
   assert.match(sent[0].text, /alex@example.com/);
   assert.match(sent[0].html, /popup=settings\|recovery/);
   assert.equal(sent[0].text.includes("{{"), false);
+  // Footnotes must appear after the body separator (auth-code pattern).
+  const ignore = formatEmailMessage("ru", "email.contacts.invite.noteIgnore", {});
+  const ignoreIdx = sent[0].html.indexOf(ignore);
+  const lastHr = sent[0].html.lastIndexOf("<hr");
+  assert.ok(ignoreIdx > lastHr && lastHr > 0, "invite footnote must be below separator");
+});
+
+test("device approval footnotes render below EmailShell separator", async () => {
+  const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
+  const note = formatEmailMessage("en", "email.device.approval.noteIgnoreIfMistake", {});
+  const noteIdx = en.html.indexOf(note);
+  const lastHr = en.html.lastIndexOf("<hr");
+  assert.ok(noteIdx > lastHr && lastHr > 0, "device approval footnote must be below separator");
 });

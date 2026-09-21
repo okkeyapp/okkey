@@ -14,7 +14,7 @@ export interface RecoveryActionEmailProps {
   noteIgnore: string;
 }
 
-/** Shared layout for enterprise recovery notify emails (device approve / contact release). */
+/** Shared layout for enterprise recovery notify emails (device approve / contact release / invite). */
 export function RecoveryActionEmail({
   lead,
   detailLine,
@@ -26,7 +26,10 @@ export function RecoveryActionEmail({
 }: RecoveryActionEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
   return (
-    <EmailShell preview={lead}>
+    <EmailShell
+      preview={lead}
+      footer={<Text style={footnoteStyle}>{noteIgnore}</Text>}
+    >
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
         <Text style={metaStyle}>{detailLine}</Text>
@@ -39,7 +42,6 @@ export function RecoveryActionEmail({
       ) : (
         <Text style={noteStyle}>{noteNoUrl}</Text>
       )}
-      <Text style={footnoteStyle}>{noteIgnore}</Text>
     </EmailShell>
   );
 }
@@ -66,12 +68,12 @@ const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 16px",
+  margin: 0,
 };
 
 const ctaWrapStyle: React.CSSProperties = {
   marginTop: "4px",
-  marginBottom: "20px",
+  marginBottom: 0,
 };
 
 const footnoteStyle: React.CSSProperties = {

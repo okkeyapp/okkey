@@ -21,8 +21,10 @@ test("extractTrustedContactInviteEmails accepts email, emails, and invitations",
 
 function createService(overrides?: {
   workspaces?: { planTier: string; planCustomOverride?: boolean; planFeatureOverrides?: Record<string, boolean> }[];
-  users?: { id: string; email: string }[];
+  users?: { id: string; email: string; firstName?: string | null; lastName?: string | null }[];
   recovery?: Partial<AccountRecoveryRepository>;
+  emailTemplates?: ConstructorParameters<typeof AccountRecoveryService>[0]["emailTemplates"];
+  publicAppBaseUrl?: string;
 }) {
   const workspaces = overrides?.workspaces ?? [{ planTier: "FREE" }];
   const users = overrides?.users ?? [
@@ -183,8 +185,8 @@ function createService(overrides?: {
         }
         return {
           email: user.email,
-          firstName: null,
-          lastName: null,
+          firstName: user.firstName ?? null,
+          lastName: user.lastName ?? null,
           locale: null,
           billingRegion: null,
           vaultIdleLockSeconds: 0,
@@ -209,6 +211,8 @@ function createService(overrides?: {
         };
       },
     },
+    emailTemplates: overrides?.emailTemplates,
+    publicAppBaseUrl: overrides?.publicAppBaseUrl,
   });
 }
 
@@ -284,6 +288,8 @@ test("rejectInvite removes pending invite for contact user", async () => {
     contactEmail: string;
     contactUserId: string;
     ownerEmail: string;
+    ownerFirstName: string | null;
+    ownerLastName: string | null;
     createdAt: string;
   }> = [
     {
@@ -292,6 +298,8 @@ test("rejectInvite removes pending invite for contact user", async () => {
       contactEmail: "friend@example.com",
       contactUserId: "u2",
       ownerEmail: "owner@example.com",
+      ownerFirstName: "Alex",
+      ownerLastName: "Okkey",
       createdAt: "2026-01-01T00:00:00.000Z",
     },
   ];
@@ -314,8 +322,36 @@ test("rejectInvite removes pending invite for contact user", async () => {
   });
   const before = await service.getStatus("u2");
   assert.equal(before.pendingInvites.length, 1);
+  assert.equal(before.pendingInvites[0]?.ownerFirstName, "Alex");
   const status = await service.rejectInvite("u2", "inv1");
   assert.equal(status.pendingInvites.length, 0);
+});
+
+test("inviteContacts sends trusted-contact invite email best-effort", async () => {
+  const sends: Array<{ to: string; inviterDisplayName: string; inviterEmail: string }> = [];
+  const service = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+    users: [
+      { id: "u1", email: "owner@example.com", firstName: "Alex", lastName: "Okkey" },
+      { id: "u2", email: "friend@example.com" },
+    ],
+    emailTemplates: {
+      sendTrustedContactInviteBestEffort: async (input) => {
+        sends.push({
+          to: input.to,
+          inviterDisplayName: input.variables.inviterDisplayName,
+          inviterEmail: input.variables.inviterEmail,
+        });
+      },
+    },
+    publicAppBaseUrl: "https://app.example",
+  });
+
+  await service.inviteContacts("u1", ["friend@example.com"]);
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0]?.to, "friend@example.com");
+  assert.equal(sends[0]?.inviterDisplayName, "Alex Okkey");
+  assert.equal(sends[0]?.inviterEmail, "owner@example.com");
 });
 
 test("getIdentityEncryptedKey returns ciphertext blob for restore bootstrap", async () => {

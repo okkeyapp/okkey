@@ -868,6 +868,8 @@ export interface TrustedContactDto {
 export interface TrustedContactInviteDto {
   id: EntityId;
   ownerEmail: string;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
   createdAt: string;
 }
 
