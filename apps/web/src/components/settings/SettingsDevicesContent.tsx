@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
   Input,
   Popup,
+  Skeleton,
   buttonVariants,
   controlGroupItemFixedClassName,
   cn,
@@ -143,7 +144,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   const core = useAuthenticatedCoreClient();
   const { currentDeviceId: sessionDeviceId } = useAuthVault();
   const { locale } = useLocale();
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<DeviceListItemDto[]>([]);
   const [pending, setPending] = useState<DeviceListItemDto[]>([]);
@@ -155,23 +156,25 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
 
   const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!core) {
-      setLoading(false);
+      setInitialLoading(false);
       setError(t("web.settingsPopup.devices.error.generic"));
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (!opts?.quiet) {
+      setError(null);
+    }
     try {
       const result = await core.listDevices(fingerprint);
       setDevices(result.devices);
       setPending(result.pending);
       setBlocked(result.blocked ?? []);
+      setError(null);
     } catch (err) {
       setError(devicesErrorMessage(err, t));
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }, [core, fingerprint, t]);
 
@@ -181,7 +184,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
 
   useEffect(() => {
     const onChanged = () => {
-      void load();
+      void load({ quiet: true });
     };
     window.addEventListener(DEVICES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(DEVICES_CHANGED_EVENT, onChanged);
@@ -351,15 +354,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[420px] items-center justify-center text-sm text-muted-foreground">
-        {t("web.settingsPopup.devices.loading")}
-      </div>
-    );
-  }
-
-  if (error) {
+  if (error && !initialLoading && devices.length === 0 && pending.length === 0) {
     return (
       <div className="flex min-h-[420px] flex-col items-start gap-3">
         <p className="text-sm text-destructive">{error}</p>
@@ -371,9 +366,43 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   }
 
   return (
-    <div className="flex min-h-[420px] flex-col gap-4 pb-1">
+    <div
+      className="flex min-h-[420px] flex-col gap-4 pb-1"
+      aria-busy={initialLoading || undefined}
+      aria-label={t("web.settingsPopup.devices.title")}
+    >
       <p className="text-sm text-muted-foreground">{t("web.settingsPopup.devices.description")}</p>
 
+      {error && !initialLoading ? (
+        <p className="text-sm text-destructive">{error}</p>
+      ) : null}
+
+      {initialLoading ? (
+        <div className="flex flex-col" role="status" aria-label={t("web.settingsPopup.devices.loading")}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <div
+              key={`device-skeleton-${index}`}
+              className={
+                index === 0
+                  ? "flex items-start gap-4 py-4"
+                  : "flex items-start gap-4 border-t border-border py-4"
+              }
+            >
+              <Skeleton className="size-10 shrink-0 rounded-md" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <Skeleton className="h-5 w-40 max-w-[55%]" />
+                <Skeleton className="h-5 w-28 max-w-[40%]" />
+                <div className="space-y-1 pt-1.5">
+                  <Skeleton className="h-4 w-36 max-w-[50%]" />
+                  <Skeleton className="h-4 w-32 max-w-[45%]" />
+                </div>
+              </div>
+              <Skeleton className="size-8 shrink-0 rounded-md" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
       {primaryPending ? (
         <div className="flex flex-col gap-4 rounded-xl bg-secondary p-4">
           <div className="flex flex-col gap-1.5">
@@ -554,7 +583,10 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
           );
         })}
       </div>
+        </>
+      )}
 
+      {!initialLoading ? (
       <div className="flex flex-col gap-2">
         {blocked.length > 0 ? (
           <>
@@ -640,6 +672,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
           </>
         ) : null}
       </div>
+      ) : null}
 
       {renameTarget ? (
         <Popup

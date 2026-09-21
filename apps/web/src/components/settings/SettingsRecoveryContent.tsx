@@ -18,6 +18,7 @@ import {
   ControlGroup,
   controlGroupItemGrowClassName,
   Input,
+  Skeleton,
   Switch,
   cn,
   keyFormAdditionalDividerBorderTClassName,
@@ -616,22 +617,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   );
   const keyExported = Boolean(status?.key.exportedAt);
 
-  if (initialLoading) {
-    return (
-      <div
-        className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col"
-        aria-label={t("web.settingsPopup.recovery.title")}
-        aria-busy="true"
-      >
-        <p className="text-sm text-muted-foreground">{t("web.settingsPopup.recovery.loading")}</p>
-      </div>
-    );
-  }
-
   return (
     <div
       className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col"
       aria-label={t("web.settingsPopup.recovery.title")}
+      aria-busy={initialLoading || undefined}
     >
       {error ? (
         <Alert variant="error" className="mb-2">
@@ -640,6 +630,30 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         </Alert>
       ) : null}
 
+      {initialLoading ? (
+        <div className="flex flex-col" role="status" aria-label={t("web.settingsPopup.recovery.loading")}>
+          <SettingsRow
+            label={t("web.settingsPopup.recovery.key.label")}
+            description={t("web.settingsPopup.recovery.key.description")}
+            border={false}
+            controlClassName="w-[100px]"
+          >
+            <Skeleton className="h-6 w-11 shrink-0 rounded-full" />
+          </SettingsRow>
+          <div className="mb-4 flex flex-col gap-4 rounded-xl bg-secondary p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+              <Skeleton className="h-9 w-36 shrink-0 rounded-md" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-56 max-w-full" />
+              <Skeleton className="h-5 w-48 max-w-full" />
+            </div>
+            <Skeleton className="h-5 w-full max-w-md" />
+          </div>
+        </div>
+      ) : (
+        <>
       {status?.pendingInvites && status.pendingInvites.length > 0 ? (
         <div className="mb-4 flex flex-col gap-2 rounded-xl bg-secondary p-4">
           <p className="text-sm font-medium text-foreground">
@@ -1010,6 +1024,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
             }))}
         />
       ) : null}
+        </>
+      )}
 
       <DeleteTrustedContactConfirmPopup
         open={contactToDelete !== null}

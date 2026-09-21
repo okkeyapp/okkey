@@ -75,6 +75,7 @@ export default function AuthRegistrationPage() {
     applyAccessTokenResponse,
     clearEmailLoginFlow,
     logout,
+    accessToken,
   } = useAuthVault();
 
   const email = profile?.email ?? "";
@@ -89,6 +90,7 @@ export default function AuthRegistrationPage() {
   const [recoverySecret, setRecoverySecret] = useState<string | null>(null);
   const [recoveryExported, setRecoveryExported] = useState(false);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
+  const [postRegAccessToken, setPostRegAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     // After completeRegistration we clear registrationAuthStateId and await enroll.
@@ -188,6 +190,7 @@ export default function AuthRegistrationPage() {
       // Enter post-signup recovery before clearing registrationAuthStateId so the
       // redirect effect cannot race with async enroll and skip the export screen.
       setStep("enrolling");
+      setPostRegAccessToken(reg.access_token);
       applyAccessTokenResponse({
         access_token: reg.access_token,
         expires_at: reg.expires_at,
@@ -251,12 +254,22 @@ export default function AuthRegistrationPage() {
     }
   }
 
+  async function ackRecoveryKeyExport(): Promise<void> {
+    const token = postRegAccessToken ?? accessToken;
+    if (!token) {
+      throw new Error("missing access token for recovery key export ack");
+    }
+    const core = createAuthenticatedCoreClient(token);
+    await core.ackAccountRecoveryKeyExport();
+  }
+
   async function handleRecoveryCopy() {
     if (!recoverySecret) {
       return;
     }
     try {
       await navigator.clipboard.writeText(recoverySecret);
+      await ackRecoveryKeyExport();
       setRecoveryExported(true);
       toast.success(t("web.toast.save.success"));
     } catch {
@@ -274,6 +287,7 @@ export default function AuthRegistrationPage() {
         title: t("auth.registration.recovery.pdfTitle"),
         description: t("auth.registration.recovery.pdfDescription"),
       });
+      await ackRecoveryKeyExport();
       setRecoveryExported(true);
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.generic"));
