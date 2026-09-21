@@ -34,6 +34,7 @@ export interface DeviceServiceDeps {
     DevicesRepository,
     | "registerOrUpdate"
     | "reclaimSoleTrusted"
+    | "claimTrustedAfterRecovery"
     | "isTrustedDevice"
     | "resolveApproval"
     | "listByUser"
@@ -66,6 +67,11 @@ export interface RegisterDeviceInput {
   acceptLanguage?: string;
   /** Rebind sole trusted device instead of creating pending (local vault reclaim). */
   reclaimSoleTrusted?: boolean;
+  /**
+   * After account recovery on a fresh browser: become the sole trusted device
+   * with a newly minted device_share (B), revoking other trusted devices.
+   */
+  claimAfterRecovery?: boolean;
 }
 
 export interface RegisterDeviceResult {
@@ -173,6 +179,28 @@ export class DeviceService {
     }
 
     try {
+      if (input.claimAfterRecovery) {
+        const claimed = await this.devices.claimTrustedAfterRecovery({
+          userId,
+          deviceFingerprint: input.deviceFingerprint.trim().toLowerCase(),
+          deviceName: cleanString(input.deviceName, "Unknown device"),
+          devicePublicKey: input.devicePublicKey.trim(),
+          deviceShare: deviceShareBytes,
+          platform: cleanString(input.platform, "unknown"),
+          osName: cleanString(input.osName, "unknown"),
+          osVersion: cleanString(input.osVersion, "unknown"),
+          appVersion: cleanString(input.appVersion, "unknown"),
+          clientType: cleanString(input.clientType, "unknown"),
+          userAgent: cleanString(input.userAgent, "unknown"),
+          requestIp: cleanString(requestIp, "unknown"),
+          now: this.now().toISOString(),
+        });
+        return {
+          deviceId: claimed.id,
+          status: "trusted",
+        };
+      }
+
       if (input.reclaimSoleTrusted) {
         const reclaimed = await this.devices.reclaimSoleTrusted({
           userId,

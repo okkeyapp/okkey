@@ -108,7 +108,11 @@ export async function resolveDeviceTrust(
   const bundle = readVaultBundle(userId);
   const hasBundle = Boolean(bundle);
 
-  let listed: { devices: DeviceListItemDto[]; pending: DeviceListItemDto[] };
+  let listed: {
+    devices: DeviceListItemDto[];
+    pending: DeviceListItemDto[];
+    blocked?: DeviceListItemDto[];
+  };
   try {
     listed = await core.listDevices(fingerprint);
   } catch (error: unknown) {
@@ -123,24 +127,32 @@ export async function resolveDeviceTrust(
     };
   }
 
+  const blockedMatch = (listed.blocked ?? []).find((device) =>
+    fingerprintMatch(device, fingerprint),
+  );
+  // Same browser fingerprint: active block wins over a leftover trusted row
+  // (e.g. recovery stand-in blocked while an older trusted row still exists).
+  if (blockedMatch) {
+    const untilMs =
+      blockedMatch.blocked_until == null
+        ? null
+        : new Date(blockedMatch.blocked_until).getTime();
+    if (untilMs === null || untilMs > Date.now()) {
+      return {
+        status: "blocked",
+        deviceId: blockedMatch.device_id,
+        approverDevices: listed.devices,
+        blockedUntil: blockedMatch.blocked_until ?? null,
+      };
+    }
+  }
+
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
     return {
       status: "trusted",
       deviceId: trustedMatch.device_id,
       approverDevices: listed.devices,
-    };
-  }
-
-  const blockedMatch = (listed.blocked ?? []).find((device) =>
-    fingerprintMatch(device, fingerprint),
-  );
-  if (blockedMatch) {
-    return {
-      status: "blocked",
-      deviceId: blockedMatch.device_id,
-      approverDevices: listed.devices,
-      blockedUntil: blockedMatch.blocked_until ?? null,
     };
   }
 
@@ -221,24 +233,51 @@ export async function pollDeviceTrust(
   pendingDeviceId: string | null,
 ): Promise<DeviceTrustSnapshot> {
   const listed = await core.listDevices(fingerprint);
-  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
-  if (trustedMatch) {
-    return {
-      status: "trusted",
-      deviceId: trustedMatch.device_id,
-      approverDevices: listed.devices,
-    };
+
+  if (pendingDeviceId) {
+    const blockedById = (listed.blocked ?? []).find(
+      (device) => device.device_id === pendingDeviceId,
+    );
+    if (blockedById) {
+      const untilMs =
+        blockedById.blocked_until == null
+          ? null
+          : new Date(blockedById.blocked_until).getTime();
+      if (untilMs === null || untilMs > Date.now()) {
+        return {
+          status: "blocked",
+          deviceId: blockedById.device_id,
+          approverDevices: listed.devices,
+          blockedUntil: blockedById.blocked_until ?? null,
+        };
+      }
+    }
   }
 
   const blockedMatch = (listed.blocked ?? []).find((device) =>
     fingerprintMatch(device, fingerprint),
   );
   if (blockedMatch) {
+    const untilMs =
+      blockedMatch.blocked_until == null
+        ? null
+        : new Date(blockedMatch.blocked_until).getTime();
+    if (untilMs === null || untilMs > Date.now()) {
+      return {
+        status: "blocked",
+        deviceId: blockedMatch.device_id,
+        approverDevices: listed.devices,
+        blockedUntil: blockedMatch.blocked_until ?? null,
+      };
+    }
+  }
+
+  const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
+  if (trustedMatch) {
     return {
-      status: "blocked",
-      deviceId: blockedMatch.device_id,
+      status: "trusted",
+      deviceId: trustedMatch.device_id,
       approverDevices: listed.devices,
-      blockedUntil: blockedMatch.blocked_until ?? null,
     };
   }
 
@@ -274,7 +313,11 @@ export async function pollDeviceTrust(
 export async function registerCurrentBrowserDevice(
   core: CoreApiClient,
   fingerprint = getOrCreateDeviceFingerprint(),
-  options?: { reclaimSoleTrusted?: boolean; userId?: string },
+  options?: {
+    reclaimSoleTrusted?: boolean;
+    claimAfterRecovery?: boolean;
+    userId?: string;
+  },
 ): Promise<DeviceRegisterResponseDto> {
   await initCrypto();
   const env = parseBrowserEnvironment(
@@ -321,6 +364,7 @@ export async function registerCurrentBrowserDevice(
       metadata: {
         crypto_capable: true,
         reclaim_sole_trusted: options?.reclaimSoleTrusted === true,
+        claim_after_recovery: options?.claimAfterRecovery === true,
       },
     });
   } finally {

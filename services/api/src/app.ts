@@ -29,6 +29,21 @@ import {
   createUnblockDeviceRoute,
 } from "./routes/devices.ts";
 import {
+  createAccountRecoveryContactDeleteRoute,
+  createAccountRecoveryContactInviteRoute,
+  createAccountRecoveryInviteAcceptRoute,
+  createAccountRecoveryInviteRejectRoute,
+  createAccountRecoveryMembershipLeaveRoute,
+  createAccountRecoveryKeyAckExportRoute,
+  createAccountRecoveryKeyEnrollRoute,
+  createAccountRecoveryKeyRotateRoute,
+  createAccountRecoveryKeyWrapRoute,
+  createAccountRecoveryIdentityEncryptedKeyRoute,
+  createAccountRecoverySettingsPatchRoute,
+  createAccountRecoveryStatusRoute,
+} from "./routes/account-recovery.ts";
+import type { AccountRecoveryService } from "./account-recovery/service.ts";
+import {
   createSyncEventsAppendRoute,
   createSyncEventsListRoute,
 } from "./routes/sync.ts";
@@ -149,6 +164,7 @@ export interface CreateApiAppOptions {
   emailTemplates?: ApiEnterprisePluginContext["emailTemplates"];
   publicAppBaseUrl?: string;
   redis?: ApiEnterprisePluginContext["redis"];
+  geoIp?: ApiEnterprisePluginContext["geoIp"];
 }
 
 export interface AppDeps {
@@ -163,6 +179,7 @@ export interface AppDeps {
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
   deviceService?: DeviceService;
+  accountRecoveryService?: AccountRecoveryService;
   sessionService?: SessionService;
   twoFactorService?: TwoFactorService;
   webauthnService?: WebAuthnService;
@@ -561,6 +578,68 @@ export function createApiApp(
       createUnblockDeviceRoute(deps.deviceService, resolveUserId),
     );
   }
+  if (deps.accountRecoveryService) {
+    app.route(
+      "GET",
+      "/account/recovery",
+      createAccountRecoveryStatusRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "PATCH",
+      "/account/recovery/settings",
+      createAccountRecoverySettingsPatchRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/key/enroll",
+      createAccountRecoveryKeyEnrollRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/key/rotate",
+      createAccountRecoveryKeyRotateRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/key/ack-export",
+      createAccountRecoveryKeyAckExportRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/account/recovery/key/wrap",
+      createAccountRecoveryKeyWrapRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "GET",
+      "/account/recovery/identity-encrypted-key",
+      createAccountRecoveryIdentityEncryptedKeyRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/contacts",
+      createAccountRecoveryContactInviteRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/account/recovery/contacts/:contactId",
+      createAccountRecoveryContactDeleteRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/contacts/invites/:inviteId/accept",
+      createAccountRecoveryInviteAcceptRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/account/recovery/contacts/invites/:inviteId/reject",
+      createAccountRecoveryInviteRejectRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/account/recovery/contacts/memberships/:contactId",
+      createAccountRecoveryMembershipLeaveRoute(deps.accountRecoveryService, resolveUserId),
+    );
+  }
   if (deps.capsuleService) {
     app.route(
       "GET",
@@ -665,6 +744,7 @@ export function createApiApp(
         redis: options.redis,
         publicAppBaseUrl: options.publicAppBaseUrl ?? config.publicAppBaseUrl,
         emailTemplates: options.emailTemplates,
+        geoIp: options.geoIp,
         repositories: {
           workspaces: options.workspacesRepository,
           vaults: options.vaultsRepository,

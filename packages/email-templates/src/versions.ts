@@ -1,10 +1,13 @@
 /** Bump when template structure or copy source changes (ops / auditing). */
 export const EMAIL_TEMPLATE_VERSIONS = {
   auth_email_code: 4,
-  device_approval_request: 5,
+  device_approval_request: 6,
   workspace_invite: 3,
   two_factor_enabled: 3,
   two_factor_backup_codes_regenerated: 3,
+  device_recovery_approval_request: 3,
+  contact_recovery_release_request: 2,
+  trusted_contact_invite: 2,
 } as const;
 
 export type EmailTemplateId = keyof typeof EMAIL_TEMPLATE_VERSIONS;

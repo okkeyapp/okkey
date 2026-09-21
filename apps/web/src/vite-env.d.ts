@@ -39,6 +39,15 @@ declare module "@okkey-enterprise/workspace-shared-vaults" {
   export default enterpriseSharedVaultsModule;
 }
 
+declare module "@okkey-enterprise/account-recovery" {
+  import type { AccountRecoveryEnterpriseModule } from "./account-recovery-features/registry";
+  const accountRecoveryModule: AccountRecoveryEnterpriseModule;
+  export default accountRecoveryModule;
+}
+
+declare module "@okkey-enterprise/recovery-crypto";
+declare module "@okkey-enterprise/recovery-crypto-wasm";
+
 interface ImportMetaEnv {
   /** Core API origin, e.g. http://localhost:4000 (must not be the Vite dev URL). */
   readonly VITE_API_BASE_URL?: string;

@@ -4,55 +4,40 @@ import * as React from "react";
 import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
 import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
 
-export interface DeviceApprovalEmailProps {
+export interface RecoveryActionEmailProps {
   lead: string;
-  deviceLine: string;
-  platformLine: string;
-  whenLine: string;
-  /** Optional expiry line (device recovery emails). */
-  expiresLine?: string;
-  ipLine: string;
-  locationLine: string;
+  detailLine: string;
+  /** Optional second meta line (e.g. contact recovery "Requested: …"). */
+  requestLine?: string;
+  expiresLine: string;
   helpUrl: string;
   ctaLabel: string;
   noteNoUrl: string;
-  noteBlockIfNotYou: string;
-  noteIgnoreIfMistake: string;
+  noteIgnore: string;
 }
 
-export function DeviceApprovalEmail({
+/** Shared layout for enterprise recovery notify emails (device approve / contact release / invite). */
+export function RecoveryActionEmail({
   lead,
-  deviceLine,
-  platformLine,
-  whenLine,
+  detailLine,
+  requestLine,
   expiresLine,
-  ipLine,
-  locationLine,
   helpUrl,
   ctaLabel,
   noteNoUrl,
-  noteBlockIfNotYou,
-  noteIgnoreIfMistake,
-}: DeviceApprovalEmailProps) {
+  noteIgnore,
+}: RecoveryActionEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
   return (
     <EmailShell
       preview={lead}
-      footer={
-        <>
-          <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
-          <Text style={footnoteStyleLast}>{noteIgnoreIfMistake}</Text>
-        </>
-      }
+      footer={<Text style={footnoteStyle}>{noteIgnore}</Text>}
     >
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
-        <Text style={metaStyle}>{deviceLine}</Text>
-        <Text style={metaStyle}>{platformLine}</Text>
-        {whenLine ? <Text style={metaStyle}>{whenLine}</Text> : null}
+        <Text style={metaStyle}>{detailLine}</Text>
+        {requestLine ? <Text style={metaStyle}>{requestLine}</Text> : null}
         {expiresLine ? <Text style={metaStyle}>{expiresLine}</Text> : null}
-        <Text style={metaStyle}>{ipLine}</Text>
-        {locationLine ? <Text style={metaStyle}>{locationLine}</Text> : null}
       </Section>
       {hasUrl ? (
         <Section style={ctaWrapStyle}>
@@ -96,13 +81,6 @@ const ctaWrapStyle: React.CSSProperties = {
 };
 
 const footnoteStyle: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
-  color: EMAIL_SECONDARY_TEXT,
-  margin: "0 0 8px",
-};
-
-const footnoteStyleLast: React.CSSProperties = {
   fontSize: "13px",
   lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,

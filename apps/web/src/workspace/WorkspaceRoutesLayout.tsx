@@ -44,6 +44,10 @@ import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
+import DeviceRecoveryApprovalController from "../components/devices/DeviceRecoveryApprovalController";
+import TrustedContactInviteController from "../components/devices/TrustedContactInviteController";
+import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
+import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
 import {
   buildPopupQueryValue,
@@ -166,6 +170,8 @@ function shellTitleKey(pathname: string): string {
       return "workspaces.shellTitle";
   }
 }
+
+const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAutoEnrollController;
 
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
@@ -973,6 +979,10 @@ function WorkspaceShellWithItems({
           />
           <CapsuleApprovalController />
           <DeviceApprovalController />
+          <DeviceRecoveryApprovalController />
+          <TrustedContactInviteController />
+          <ContactsShareReleaseController />
+          {ContactsShareAutoEnrollController ? <ContactsShareAutoEnrollController /> : null}
           <EditItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}

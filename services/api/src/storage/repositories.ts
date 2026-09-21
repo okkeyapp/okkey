@@ -123,7 +123,7 @@ export class UsersRepository {
     const rows = await this.db.query<
       BaseRow & { email: string; public_key: string; public_pq_key: string | null; locale: string | null }
     >(
-      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE email = $1",
+      "SELECT id, email, public_key, public_pq_key, locale, created_at, updated_at FROM users WHERE lower(email) = lower($1)",
       [email],
     );
     return rows[0] ? mapUser(rows[0]) : null;
@@ -1069,6 +1069,189 @@ export class DevicesRepository {
       );
 
       return rows[0] ? mapDevice(rows[0]) : null;
+    });
+  }
+
+  /**
+   * After master-password recovery on a fresh browser: revoke all other trusted
+   * devices and upsert this fingerprint as the sole trusted device with a new B.
+   */
+  async claimTrustedAfterRecovery(input: {
+    userId: string;
+    deviceFingerprint: string;
+    deviceName: string;
+    devicePublicKey: string;
+    deviceShare: Uint8Array;
+    platform: string;
+    osName: string;
+    osVersion: string;
+    appVersion: string;
+    clientType: string;
+    userAgent: string;
+    requestIp: string;
+    now: string;
+  }): Promise<DeviceRecord> {
+    return this.db.transaction(async (tx) => {
+      await tx.query(
+        `
+          UPDATE devices
+          SET
+            status = 'revoked',
+            revoked_at = $2::timestamptz
+          WHERE user_id = $1::bigint
+            AND status = 'trusted'
+            AND device_fingerprint <> $3
+        `,
+        [input.userId, input.now, input.deviceFingerprint],
+      );
+
+      await tx.query(
+        `
+          DELETE FROM devices
+          WHERE user_id = $1::bigint
+            AND device_fingerprint = $2
+            AND status <> 'trusted'
+        `,
+        [input.userId, input.deviceFingerprint],
+      );
+
+      const existing = await tx.query<{ id: string }>(
+        `
+          SELECT id FROM devices
+          WHERE user_id = $1::bigint AND device_fingerprint = $2 AND status = 'trusted'
+          LIMIT 1
+        `,
+        [input.userId, input.deviceFingerprint],
+      );
+
+      if (existing[0]) {
+        const rows = await tx.query<{
+          id: string;
+          user_id: string;
+          device_fingerprint: string;
+          device_name: string;
+          device_public_key: string;
+          device_share: Buffer;
+          platform: string;
+          os_name: string;
+          os_version: string;
+          app_version: string;
+          client_type: string;
+          user_agent: string;
+          ip_first: string;
+          ip_last: string;
+          status: "trusted" | "pending" | "revoked";
+          created_at: string | Date;
+          last_seen_at: string | Date | null;
+          approved_by: string | null;
+          approved_at: string | Date | null;
+          rejected_at: string | Date | null;
+          rejection_reason: string | null;
+          revoked_at: string | Date | null;
+        }>(
+          `
+            UPDATE devices
+            SET
+              device_public_key = $3,
+              device_name = $4,
+              device_share = $5,
+              platform = $6,
+              os_name = $7,
+              os_version = $8,
+              app_version = $9,
+              client_type = $10,
+              user_agent = $11,
+              ip_last = $12,
+              last_seen_at = $13::timestamptz,
+              status = 'trusted',
+              rejected_at = NULL,
+              rejection_reason = NULL,
+              revoked_at = NULL
+            WHERE id = $1 AND user_id = $2::bigint
+            RETURNING
+              id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+              platform, os_name, os_version, app_version, client_type, user_agent,
+              ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+              rejected_at, rejection_reason, revoked_at
+          `,
+          [
+            existing[0].id,
+            input.userId,
+            input.devicePublicKey,
+            input.deviceName,
+            Buffer.from(input.deviceShare),
+            input.platform,
+            input.osName,
+            input.osVersion,
+            input.appVersion,
+            input.clientType,
+            input.userAgent,
+            input.requestIp,
+            input.now,
+          ],
+        );
+        return mapDevice(rows[0]!);
+      }
+
+      const id = (await import("../entity-id.ts")).generateEntityId();
+      const rows = await tx.query<{
+        id: string;
+        user_id: string;
+        device_fingerprint: string;
+        device_name: string;
+        device_public_key: string;
+        device_share: Buffer;
+        platform: string;
+        os_name: string;
+        os_version: string;
+        app_version: string;
+        client_type: string;
+        user_agent: string;
+        ip_first: string;
+        ip_last: string;
+        status: "trusted" | "pending" | "revoked";
+        created_at: string | Date;
+        last_seen_at: string | Date | null;
+        approved_by: string | null;
+        approved_at: string | Date | null;
+        rejected_at: string | Date | null;
+        rejection_reason: string | null;
+        revoked_at: string | Date | null;
+      }>(
+        `
+          INSERT INTO devices (
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_at
+          ) VALUES (
+            $1, $2::bigint, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11, $12,
+            $13, $13, 'trusted', $14::timestamptz, $14::timestamptz, $14::timestamptz
+          )
+          RETURNING
+            id, user_id, device_fingerprint, device_name, device_public_key, device_share,
+            platform, os_name, os_version, app_version, client_type, user_agent,
+            ip_first, ip_last, status, created_at, last_seen_at, approved_by, approved_at,
+            rejected_at, rejection_reason, revoked_at
+        `,
+        [
+          id,
+          input.userId,
+          input.deviceFingerprint,
+          input.deviceName,
+          input.devicePublicKey,
+          Buffer.from(input.deviceShare),
+          input.platform,
+          input.osName,
+          input.osVersion,
+          input.appVersion,
+          input.clientType,
+          input.userAgent,
+          input.requestIp,
+          input.now,
+        ],
+      );
+      return mapDevice(rows[0]!);
     });
   }
 

@@ -148,6 +148,9 @@ export function createRegisterDeviceRoute(
       const reclaimSoleTrusted = Boolean(
         body.metadata?.reclaim_sole_trusted ?? body.reclaim_sole_trusted,
       );
+      const claimAfterRecovery = Boolean(
+        body.metadata?.claim_after_recovery ?? (body as { claim_after_recovery?: boolean }).claim_after_recovery,
+      );
       const requestIp = await getRequestIp(ctx.req, { trustedProxyHops });
       const result = await deviceService.registerDevice(userId, requestIp, {
         deviceFingerprint: body.device_fingerprint,
@@ -162,6 +165,7 @@ export function createRegisterDeviceRoute(
         userAgent: metadata.user_agent ?? getHeader(ctx.req, "user-agent") ?? "unknown",
         acceptLanguage: getHeader(ctx.req, "accept-language"),
         reclaimSoleTrusted,
+        claimAfterRecovery,
       });
 
       json(ctx.res, 200, {

@@ -10,8 +10,11 @@ import type { EmailLocale } from "./locale.ts";
 
 export type {
   AuthEmailCodeVariables,
+  ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
+  DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "@okkey/email-templates";

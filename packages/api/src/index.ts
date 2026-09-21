@@ -50,6 +50,13 @@ import type {
   AccountEmailChangeStartResponseDto,
   AccountLoginMethodsPrimaryPatchDto,
   AccountLoginMethodsResponseDto,
+  AccountRecoveryKeyEnrollRequestDto,
+  AccountRecoveryKeyEnrollResponseDto,
+  AccountRecoveryKeyWrapResponseDto,
+  AccountRecoverySettingsUpdateRequestDto,
+  AccountRecoveryStatusResponseDto,
+  TrustedContactInviteRequestDto,
+  TrustedContactInviteResponseDto,
   WebAuthnAuthenticatorAttachment,
   WebAuthnCeremonyOptionsResponseDto,
   WebAuthnRegisterOptionsRequestDto,
@@ -210,10 +217,14 @@ function parseCoreApiErrorBody(raw: unknown, res: Response): CoreApiErrorBody {
 }
 
 /** API client with `Authorization: Bearer` for Vault, Sync, and Device routes. */
-export function createBearerApiClient(baseUrl: string, accessToken: string): ApiClient {
+export function createBearerApiClient(
+  baseUrl: string,
+  accessToken: string,
+  defaultHeaders?: Record<string, string>,
+): ApiClient {
   return new ApiClient({
     baseUrl,
-    defaultHeaders: { Authorization: `Bearer ${accessToken}` },
+    defaultHeaders: { Authorization: `Bearer ${accessToken}`, ...defaultHeaders },
   });
 }
 
@@ -221,6 +232,8 @@ export function createBearerApiClient(baseUrl: string, accessToken: string): Api
 export interface CoreApiClientOptions {
   cryptoRolloutMode?: CryptoRolloutMode;
   capabilities?: Partial<ClientCryptoCapabilities>;
+  /** Extra default headers (e.g. `Accept-Language` from UI locale). */
+  defaultHeaders?: Record<string, string>;
 }
 
 export class CoreApiClient {
@@ -790,6 +803,76 @@ export class CoreApiClient {
     });
   }
 
+  getAccountRecoveryStatus(): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.get<AccountRecoveryStatusResponseDto>("/account/recovery");
+  }
+
+  patchAccountRecoverySettings(
+    body: AccountRecoverySettingsUpdateRequestDto,
+  ): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.patch<AccountRecoveryStatusResponseDto>("/account/recovery/settings", body);
+  }
+
+  enrollAccountRecoveryKey(
+    body: AccountRecoveryKeyEnrollRequestDto,
+  ): Promise<AccountRecoveryKeyEnrollResponseDto> {
+    return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/enroll", body);
+  }
+
+  rotateAccountRecoveryKey(
+    body: AccountRecoveryKeyEnrollRequestDto,
+  ): Promise<AccountRecoveryKeyEnrollResponseDto> {
+    return this.api.post<AccountRecoveryKeyEnrollResponseDto>("/account/recovery/key/rotate", body);
+  }
+
+  ackAccountRecoveryKeyExport(): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.post<AccountRecoveryStatusResponseDto>("/account/recovery/key/ack-export", {});
+  }
+
+  getAccountRecoveryKeyWrap(): Promise<AccountRecoveryKeyWrapResponseDto> {
+    return this.api.get<AccountRecoveryKeyWrapResponseDto>("/account/recovery/key/wrap");
+  }
+
+  /** Ciphertext identity key for post-recovery local vault bundle bootstrap. */
+  getAccountRecoveryIdentityEncryptedKey(): Promise<{ encrypted_private_key: EncryptedBlobDto }> {
+    return this.api.get<{ encrypted_private_key: EncryptedBlobDto }>(
+      "/account/recovery/identity-encrypted-key",
+    );
+  }
+
+  inviteTrustedContact(
+    body: TrustedContactInviteRequestDto,
+  ): Promise<TrustedContactInviteResponseDto> {
+    return this.api.post<TrustedContactInviteResponseDto>("/account/recovery/contacts", body);
+  }
+
+  deleteTrustedContact(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.delete<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/${encodeURIComponent(contactId)}`,
+    );
+  }
+
+  acceptTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.post<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/accept`,
+      {},
+    );
+  }
+
+  rejectTrustedContactInvite(inviteId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.post<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/invites/${encodeURIComponent(inviteId)}/reject`,
+      {},
+    );
+  }
+
+  /** Leave another owner's trusted-contact list (you are the contact). */
+  leaveTrustedContactMembership(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.delete<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/memberships/${encodeURIComponent(contactId)}`,
+    );
+  }
+
   patchDevice(deviceId: string, body: DevicePatchRequestDto): Promise<DevicePatchResponseDto> {
     return this.api.patch<DevicePatchResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}`,
@@ -866,7 +949,10 @@ export function createCoreApiClient(
   accessToken: string,
   options?: CoreApiClientOptions,
 ): CoreApiClient {
-  return new CoreApiClient(createBearerApiClient(baseUrl, accessToken), options);
+  return new CoreApiClient(
+    createBearerApiClient(baseUrl, accessToken, options?.defaultHeaders),
+    options,
+  );
 }
 
 /** @deprecated Prefer {@link CoreApiClient}; kept for existing app imports. */

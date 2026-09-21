@@ -6,10 +6,14 @@ import type { WorkspaceInviteEmailProps } from "./components/WorkspaceInviteEmai
 import { formatUtcWhen } from "./format-utc.js";
 import type {
   AuthEmailCodeVariables,
+  ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
+  DeviceRecoveryApprovalRequestVariables,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "./variables.js";
+import type { RecoveryActionEmailProps } from "./components/RecoveryActionEmail.js";
 
 export function buildAuthSignInCodeEmailProps(
   locale: EmailLocale,
@@ -134,6 +138,86 @@ export function buildTwoFactorBackupRegeneratedEmailProps(
   };
 }
 
+export function buildDeviceRecoveryApprovalEmailProps(
+  locale: EmailLocale,
+  variables: DeviceRecoveryApprovalRequestVariables,
+): DeviceApprovalEmailProps {
+  const platformOs = `${variables.platform} · ${variables.osName}`;
+  const locationParts = [variables.city, variables.country].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  );
+  return {
+    lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
+    deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
+      deviceName: variables.deviceName,
+    }),
+    platformLine: formatEmailMessage(locale, "email.device.approval.platformLine", {
+      platformOs,
+    }),
+    whenLine: formatEmailMessage(locale, "email.device.approval.whenLine", {
+      when: formatUtcWhen(locale, variables.requestedAtIso),
+    }),
+    expiresLine: formatEmailMessage(locale, "email.device.recovery.expiresLine", {
+      when: formatUtcWhen(locale, variables.expiresAtIso),
+    }),
+    ipLine: formatEmailMessage(locale, "email.device.approval.ipLine", {
+      ip: variables.requestIp,
+    }),
+    locationLine:
+      locationParts.length > 0
+        ? formatEmailMessage(locale, "email.device.approval.locationLine", {
+            location: locationParts.join(", "),
+          })
+        : "",
+    helpUrl: variables.helpUrl.trim(),
+    ctaLabel: formatEmailMessage(locale, "email.device.recovery.cta", {}),
+    noteNoUrl: formatEmailMessage(locale, "email.device.recovery.noteNoUrl", {}),
+    noteBlockIfNotYou: formatEmailMessage(locale, "email.device.approval.noteBlockIfNotYou", {}),
+    noteIgnoreIfMistake: formatEmailMessage(locale, "email.device.recovery.noteIgnore", {}),
+  };
+}
+
+export function buildContactRecoveryReleaseEmailProps(
+  locale: EmailLocale,
+  variables: ContactRecoveryReleaseRequestVariables,
+): RecoveryActionEmailProps {
+  return {
+    lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
+    detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {
+      ownerEmail: variables.ownerEmail,
+    }),
+    requestLine: formatEmailMessage(locale, "email.contacts.recovery.requestLine", {
+      when: formatUtcWhen(locale, variables.requestedAtIso),
+    }),
+    expiresLine: formatEmailMessage(locale, "email.contacts.recovery.expiresLine", {
+      when: formatUtcWhen(locale, variables.expiresAtIso),
+    }),
+    helpUrl: variables.helpUrl.trim(),
+    ctaLabel: formatEmailMessage(locale, "email.contacts.recovery.cta", {}),
+    noteNoUrl: formatEmailMessage(locale, "email.contacts.recovery.noteNoUrl", {}),
+    noteIgnore: formatEmailMessage(locale, "email.contacts.recovery.noteIgnore", {}),
+  };
+}
+
+export function buildTrustedContactInviteEmailProps(
+  locale: EmailLocale,
+  variables: TrustedContactInviteVariables,
+): RecoveryActionEmailProps {
+  return {
+    lead: formatEmailMessage(locale, "email.contacts.invite.lead", {
+      inviter: variables.inviterDisplayName,
+    }),
+    detailLine: formatEmailMessage(locale, "email.contacts.invite.detailLine", {
+      inviterEmail: variables.inviterEmail,
+    }),
+    expiresLine: formatEmailMessage(locale, "email.contacts.invite.whatToDo", {}),
+    helpUrl: variables.helpUrl.trim(),
+    ctaLabel: formatEmailMessage(locale, "email.contacts.invite.cta", {}),
+    noteNoUrl: formatEmailMessage(locale, "email.contacts.invite.noteNoUrl", {}),
+    noteIgnore: formatEmailMessage(locale, "email.contacts.invite.noteIgnore", {}),
+  };
+}
+
 /** Sample data for React Email dev previews (`yarn dev:email`). */
 export const previewSampleAuthCode: AuthEmailCodeVariables = {
   code: "123456",
@@ -160,4 +244,10 @@ export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
 export const previewSampleTwoFactor: TwoFactorNoticeVariables = {
   occurredAtIso: "2026-01-15T10:00:00.000Z",
   securitySettingsUrl: "https://app.okkey.local/settings/security",
+};
+
+export const previewSampleTrustedContactInvite: TrustedContactInviteVariables = {
+  inviterDisplayName: "Alex Okkey",
+  inviterEmail: "alex@example.com",
+  helpUrl: "https://app.okkey.local/items?popup=settings|recovery",
 };

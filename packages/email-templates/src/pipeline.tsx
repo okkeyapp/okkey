@@ -5,9 +5,13 @@ import { AuthSignInCodeEmail } from "./components/AuthSignInCodeEmail.js";
 import { DeviceApprovalEmail } from "./components/DeviceApprovalEmail.js";
 import { TwoFactorNoticeEmail } from "./components/TwoFactorNoticeEmail.js";
 import { WorkspaceInviteEmail } from "./components/WorkspaceInviteEmail.js";
+import { RecoveryActionEmail } from "./components/RecoveryActionEmail.js";
 import {
   buildAuthSignInCodeEmailProps,
+  buildContactRecoveryReleaseEmailProps,
   buildDeviceApprovalEmailProps,
+  buildDeviceRecoveryApprovalEmailProps,
+  buildTrustedContactInviteEmailProps,
   buildTwoFactorBackupRegeneratedEmailProps,
   buildTwoFactorEnabledEmailProps,
   buildWorkspaceInviteEmailProps,
@@ -16,8 +20,11 @@ import { EmailRenderError } from "./errors.js";
 import type { RenderedEmail } from "./rendered.js";
 import type {
   AuthEmailCodeVariables,
+  ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
+  DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
+  TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
 } from "./variables.js";
@@ -213,6 +220,128 @@ export function renderTwoFactorBackupRegenerated(
   });
 }
 
+export async function renderDeviceRecoveryApprovalRequest(
+  locale: EmailLocale,
+  variables: DeviceRecoveryApprovalRequestVariables,
+): Promise<RenderedEmail> {
+  assertRequired("device_recovery_approval_request", variables as unknown as Record<string, unknown>, [
+    "requestedAtIso",
+    "expiresAtIso",
+    "deviceName",
+    "platform",
+    "osName",
+    "requestIp",
+  ]);
+  if (variables.helpUrl === undefined || variables.helpUrl === null) {
+    throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: helpUrl", {
+      templateId: "device_recovery_approval_request",
+      details: { key: "helpUrl" },
+    });
+  }
+  const props = buildDeviceRecoveryApprovalEmailProps(locale, variables);
+  const helpUrl = variables.helpUrl.trim();
+  const {
+    lead,
+    deviceLine,
+    platformLine,
+    whenLine,
+    expiresLine,
+    ipLine,
+    locationLine,
+    noteNoUrl,
+    noteBlockIfNotYou,
+    noteIgnoreIfMistake,
+  } = props;
+  const footer = helpUrl
+    ? formatEmailMessage(locale, "email.device.recovery.textFooterWithUrl", { helpUrl })
+    : noteNoUrl;
+  const plainText = formatEmailMessage(locale, "email.device.recovery.plain", {
+    lead,
+    deviceLine,
+    platformLine,
+    whenLine: whenLine || "",
+    expiresLine: expiresLine || "",
+    ipLine,
+    locationLine: locationLine || "",
+    footer,
+    noteBlockIfNotYou,
+    noteIgnoreIfMistake,
+  });
+  const subject = formatEmailMessage(locale, "email.device.recovery.subject", {});
+  const element = <DeviceApprovalEmail {...props} />;
+  const html = await render(element);
+  const text = await render(element, { plainText: true });
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
+}
+
+export async function renderContactRecoveryReleaseRequest(
+  locale: EmailLocale,
+  variables: ContactRecoveryReleaseRequestVariables,
+): Promise<RenderedEmail> {
+  assertRequired("contact_recovery_release_request", variables as unknown as Record<string, unknown>, [
+    "ownerEmail",
+    "requestedAtIso",
+    "expiresAtIso",
+  ]);
+  if (variables.helpUrl === undefined || variables.helpUrl === null) {
+    throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: helpUrl", {
+      templateId: "contact_recovery_release_request",
+      details: { key: "helpUrl" },
+    });
+  }
+  const props = buildContactRecoveryReleaseEmailProps(locale, variables);
+  const helpUrl = variables.helpUrl.trim();
+  const footer = helpUrl
+    ? formatEmailMessage(locale, "email.contacts.recovery.textFooterWithUrl", { helpUrl })
+    : props.noteNoUrl;
+  const plainText = formatEmailMessage(locale, "email.contacts.recovery.plain", {
+    lead: props.lead,
+    detailLine: props.detailLine,
+    requestLine: props.requestLine ?? "",
+    expiresLine: props.expiresLine,
+    footer,
+    noteIgnore: props.noteIgnore,
+  });
+  const subject = formatEmailMessage(locale, "email.contacts.recovery.subject", {});
+  const element = <RecoveryActionEmail {...props} />;
+  const html = await render(element);
+  const text = await render(element, { plainText: true });
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
+}
+
+export async function renderTrustedContactInvite(
+  locale: EmailLocale,
+  variables: TrustedContactInviteVariables,
+): Promise<RenderedEmail> {
+  assertRequired("trusted_contact_invite", variables as unknown as Record<string, unknown>, [
+    "inviterDisplayName",
+    "inviterEmail",
+  ]);
+  if (variables.helpUrl === undefined || variables.helpUrl === null) {
+    throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: helpUrl", {
+      templateId: "trusted_contact_invite",
+      details: { key: "helpUrl" },
+    });
+  }
+  const props = buildTrustedContactInviteEmailProps(locale, variables);
+  const helpUrl = variables.helpUrl.trim();
+  const footer = helpUrl
+    ? formatEmailMessage(locale, "email.contacts.invite.textFooterWithUrl", { helpUrl })
+    : props.noteNoUrl;
+  const plainText = formatEmailMessage(locale, "email.contacts.invite.plain", {
+    lead: props.lead,
+    detailLine: props.detailLine,
+    whatToDo: props.expiresLine,
+    footer,
+    noteIgnore: props.noteIgnore,
+  });
+  const subject = formatEmailMessage(locale, "email.contacts.invite.subject", {});
+  const element = <RecoveryActionEmail {...props} />;
+  const html = await render(element);
+  const text = await render(element, { plainText: true });
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
+}
+
 export async function renderEmailTemplate<Id extends EmailTemplateId>(
   templateId: Id,
   locale: EmailLocale,
@@ -235,6 +364,21 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
         return await renderTwoFactorBackupRegenerated(
           locale,
           variables as TwoFactorNoticeVariables,
+        );
+      case "device_recovery_approval_request":
+        return await renderDeviceRecoveryApprovalRequest(
+          locale,
+          variables as DeviceRecoveryApprovalRequestVariables,
+        );
+      case "contact_recovery_release_request":
+        return await renderContactRecoveryReleaseRequest(
+          locale,
+          variables as ContactRecoveryReleaseRequestVariables,
+        );
+      case "trusted_contact_invite":
+        return await renderTrustedContactInvite(
+          locale,
+          variables as TrustedContactInviteVariables,
         );
       default:
         throw new EmailRenderError("EMAIL_RENDER_FAILED", `unknown templateId: ${templateId}`, {

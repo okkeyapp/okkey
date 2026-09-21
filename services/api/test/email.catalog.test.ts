@@ -278,3 +278,99 @@ test("EmailTemplateService sendTwoFactorEnabled and sendTwoFactorBackupCodesRege
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.equal(sent[1].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
 });
+
+test("EmailTemplateService device and contact recovery request emails render CTA url", async () => {
+  const sent: Array<{ subject: string; text: string; html: string }> = [];
+  const sender: EmailSender = {
+    send: async (m) => {
+      sent.push({ subject: m.subject, text: m.text, html: m.html });
+    },
+  };
+  const svc = new EmailTemplateService(sender, {
+    from: "x@y.z",
+    defaultLocale: "en",
+    publicAppBaseUrl: "https://app.example",
+  });
+  const deviceHelpUrl = "https://app.example/items?popup=settings|recovery";
+  const contactHelpUrl = "https://app.example/items";
+  await svc.sendDeviceRecoveryApprovalRequest({
+    to: "owner@example.com",
+    localeHints: { explicitLocale: "en" },
+    variables: {
+      helpUrl: deviceHelpUrl,
+      requestedAtIso: "2026-09-18T10:00:00.000Z",
+      expiresAtIso: "2026-09-18T11:00:00.000Z",
+      deviceName: "Web macOS - Chrome",
+      platform: "Web · Chrome",
+      osName: "macOS",
+      requestIp: "203.0.113.9",
+      country: "Singapore",
+      city: "Singapore",
+    },
+  });
+  await svc.sendContactRecoveryReleaseRequest({
+    to: "friend@example.com",
+    localeHints: { explicitLocale: "ru" },
+    variables: {
+      helpUrl: contactHelpUrl,
+      ownerEmail: "owner@example.com",
+      requestedAtIso: "2026-09-18T10:00:00.000Z",
+      expiresAtIso: "2026-09-18T11:00:00.000Z",
+    },
+  });
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].subject, formatEmailMessage("en", "email.device.recovery.subject", {}));
+  assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.match(sent[0].html, /Web macOS - Chrome/);
+  assert.match(sent[0].text, /203\.0\.113\.9/);
+  assert.equal(sent[0].text.includes("{{"), false);
+  assert.equal(sent[1].subject, formatEmailMessage("ru", "email.contacts.recovery.subject", {}));
+  assert.match(sent[1].text, /Аккаунт: owner@example.com/);
+  assert.match(sent[1].text, /Запрос:/);
+  assert.match(sent[1].text, /Истекает:/);
+  assert.match(sent[1].html, /https:\/\/app\.example\/items/);
+  assert.equal(sent[1].html.includes("popup=settings"), false);
+  assert.equal(sent[1].text.includes("{{"), false);
+});
+
+test("EmailTemplateService sendTrustedContactInvite renders inviter details", async () => {
+  const sent: Array<{ subject: string; text: string; html: string }> = [];
+  const sender: EmailSender = {
+    send: async (m) => {
+      sent.push({ subject: m.subject, text: m.text, html: m.html });
+    },
+  };
+  const svc = new EmailTemplateService(sender, {
+    from: "x@y.z",
+    defaultLocale: "en",
+    publicAppBaseUrl: "https://app.example",
+  });
+  await svc.sendTrustedContactInvite({
+    to: "friend@example.com",
+    localeHints: { explicitLocale: "ru" },
+    variables: {
+      inviterDisplayName: "Alex Okkey",
+      inviterEmail: "alex@example.com",
+      helpUrl: "https://app.example/items?popup=settings|recovery",
+    },
+  });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].subject, formatEmailMessage("ru", "email.contacts.invite.subject", {}));
+  assert.match(sent[0].text, /Alex Okkey/);
+  assert.match(sent[0].text, /alex@example.com/);
+  assert.match(sent[0].html, /popup=settings\|recovery/);
+  assert.equal(sent[0].text.includes("{{"), false);
+  // Footnotes must appear after the body separator (auth-code pattern).
+  const ignore = formatEmailMessage("ru", "email.contacts.invite.noteIgnore", {});
+  const ignoreIdx = sent[0].html.indexOf(ignore);
+  const lastHr = sent[0].html.lastIndexOf("<hr");
+  assert.ok(ignoreIdx > lastHr && lastHr > 0, "invite footnote must be below separator");
+});
+
+test("device approval footnotes render below EmailShell separator", async () => {
+  const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
+  const note = formatEmailMessage("en", "email.device.approval.noteIgnoreIfMistake", {});
+  const noteIdx = en.html.indexOf(note);
+  const lastHr = en.html.lastIndexOf("<hr");
+  assert.ok(noteIdx > lastHr && lastHr > 0, "device approval footnote must be below separator");
+});

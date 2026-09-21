@@ -232,7 +232,11 @@ export {
   decryptPersonalVaultMetadataPayload,
 } from "./personal-vault-metadata.js";
 
-export { wrapVaultKeyWithRecoverySecret, unwrapVaultKeyWithRecoverySecret } from "./vault-recovery-key.js";
+export {
+  generateRecoverySecret,
+  wrapVaultKeyWithRecoverySecret,
+  unwrapVaultKeyWithRecoverySecret,
+} from "./vault-recovery-key.js";
 
 export {
   wrapUnlockMaterialWithPin,

@@ -21,7 +21,14 @@ export type ApiEnterprisePluginContext = {
   };
   redis?: ApiEnterprisePluginRedis;
   publicAppBaseUrl?: string;
-  emailTemplates?: Pick<EmailTemplateService, "sendWorkspaceInvite">;
+  emailTemplates?: Pick<
+    EmailTemplateService,
+    | "sendWorkspaceInvite"
+    | "sendDeviceRecoveryApprovalRequestBestEffort"
+    | "sendContactRecoveryReleaseRequestBestEffort"
+  >;
+  /** Same GeoIP pipeline as Phase 1 device approval list/email. */
+  geoIp?: Pick<import("../capsule/geoip.ts").GeoIpLookup, "lookup">;
   repositories: {
     workspaces: Pick<
       WorkspacesRepository,

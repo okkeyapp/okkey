@@ -1,6 +1,8 @@
 import { ApiClient, createCoreApiClient, type CoreApiClient } from "@okkey/api";
 import { AuthClient } from "@okkey/auth";
 
+import { readStoredLocale } from "../locale/localeStorage";
+
 const DEFAULT_API_BASE = "http://localhost:4000";
 
 /**
@@ -45,7 +47,10 @@ export function getApiBaseUrl(): string {
 }
 
 export function createPublicApiClient(): ApiClient {
-  return new ApiClient({ baseUrl: getApiBaseUrl() });
+  return new ApiClient({
+    baseUrl: getApiBaseUrl(),
+    defaultHeaders: { "Accept-Language": readStoredLocale() },
+  });
 }
 
 export function createAuthSdk(api: ApiClient): AuthClient {
@@ -53,5 +58,9 @@ export function createAuthSdk(api: ApiClient): AuthClient {
 }
 
 export function createAuthenticatedCoreClient(accessToken: string): CoreApiClient {
-  return createCoreApiClient(getApiBaseUrl(), accessToken, { cryptoRolloutMode: "compat" });
+  const locale = readStoredLocale();
+  return createCoreApiClient(getApiBaseUrl(), accessToken, {
+    cryptoRolloutMode: "compat",
+    defaultHeaders: { "Accept-Language": locale },
+  });
 }

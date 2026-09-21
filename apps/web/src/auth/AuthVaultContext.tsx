@@ -98,6 +98,8 @@ export type AuthVaultContextValue = {
   saveVaultBundle: (bundle: StoredVaultBundle) => void;
   updateLocalProfile: (patch: { email?: string; firstName?: string | null; lastName?: string | null }) => void;
   tryUnlockWithMasterPassword: (masterPassword: string) => Promise<boolean>;
+  /** Re-fetch A+B from server when local vault bundle is missing (trusted device). */
+  ensureVaultBundleForUnlock: () => Promise<boolean>;
   /** Apply unlock material from PIN / biometric unwrap (VaultKey + C already verified). */
   applyUnlockedSecrets: (vaultKey: Uint8Array, passwordShareC: Uint8Array) => void;
   /** Verify master password without changing unlock state (for section re-auth). */
@@ -124,6 +126,8 @@ export type AuthVaultContextValue = {
   deviceApprovers: DeviceListItemDto[];
   /** Re-check pending/rejected device status (poll helper for wait UI). */
   refreshDeviceTrust: () => Promise<void>;
+  /** Force local blocked state (e.g. recovery closed_reason=blocked before poll catches up). */
+  markDeviceBlockedForever: () => void;
   /** After rejection: register again and wait for a new approval. */
   retryDeviceRegistration: () => Promise<void>;
 };
@@ -284,6 +288,8 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const [deviceApprovers, setDeviceApprovers] = useState<DeviceListItemDto[]>([]);
   const pendingDeviceIdRef = useRef<string | null>(null);
   const currentDeviceIdRef = useRef<string | null>(null);
+  /** Sticky forever-block so poll cannot bounce back to unlock/restore. */
+  const foreverBlockedRef = useRef(false);
 
   useEffect(() => {
     vaultUnlockedRef.current = vaultUnlocked;
@@ -339,6 +345,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceIdRef.current = null;
       setDeviceApprovers([]);
       pendingDeviceIdRef.current = null;
+      foreverBlockedRef.current = false;
       setVaultUnlockBootstrapLoading(false);
       return;
     }
@@ -351,8 +358,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       if (cancelled) {
         return;
       }
+      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+        foreverBlockedRef.current = true;
+      } else {
+        foreverBlockedRef.current = false;
+      }
       pendingDeviceIdRef.current =
-        snapshot.status === "pending" || snapshot.status === "rejected"
+        snapshot.status === "pending" ||
+        snapshot.status === "rejected" ||
+        snapshot.status === "blocked"
           ? snapshot.deviceId
           : snapshot.status === "trusted"
             ? null
@@ -409,6 +423,24 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [accessToken, userId, deviceTrustStatus]);
+
+  const ensureVaultBundleForUnlock = useCallback(async (): Promise<boolean> => {
+    if (!accessToken || !userId) {
+      return false;
+    }
+    if (readVaultBundle(userId)) {
+      return true;
+    }
+    try {
+      const fp = getOrCreateDeviceFingerprint();
+      const client = createAuthenticatedCoreClient(accessToken);
+      const dto = await client.getVaultUnlockBootstrap(fp);
+      writeVaultBundle(mapVaultUnlockBootstrapToStored(dto), userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [accessToken, userId]);
 
   useEffect(() => {
     if (!accessToken || !userId) {
@@ -514,6 +546,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     currentDeviceIdRef.current = null;
     setDeviceApprovers([]);
     pendingDeviceIdRef.current = null;
+    foreverBlockedRef.current = false;
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
   const lockVault = useCallback(() => {
@@ -785,6 +818,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         persistVaultUnlockSession(userId, vaultKeyRef.current, rebalanced.passwordShareC);
         setMasterPasswordChangedAt(response.master_password_changed_at);
         clearDeviceUnlockSecrets(userId);
+        window.dispatchEvent(new CustomEvent("okkey:master-password-changed"));
 
         wipeBytes(rebalanced.serverKeyShare);
         wipeBytes(rebalanced.passwordKdfSalt);
@@ -822,6 +856,13 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       const fingerprint = getOrCreateDeviceFingerprint();
       const knownDeviceId = pendingDeviceIdRef.current ?? currentDeviceIdRef.current;
       const snapshot = await pollDeviceTrust(client, fingerprint, knownDeviceId);
+      // Sticky forever-block is optimistic only; clear when server is no longer blocked
+      // (Settings unblock / re-trust must leave /account/device-pending without reload).
+      if (snapshot.status === "blocked" && snapshot.blockedUntil == null) {
+        foreverBlockedRef.current = true;
+      } else {
+        foreverBlockedRef.current = false;
+      }
       pendingDeviceIdRef.current =
         snapshot.status === "pending" ||
         snapshot.status === "rejected" ||
@@ -844,6 +885,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, lockVault, userId]);
 
+  const markDeviceBlockedForever = useCallback(() => {
+    foreverBlockedRef.current = true;
+    setDeviceTrustStatus("blocked");
+    setDeviceBlockedUntil(null);
+    if (vaultUnlockedRef.current) {
+      lockVault();
+    }
+  }, [lockVault]);
+
   // Keep trust live so revoke/block on another device ends access without a full reload.
   useEffect(() => {
     if (!accessToken || !userId) {
@@ -859,6 +909,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     if (!accessToken || !userId) {
       return;
     }
+    foreverBlockedRef.current = false;
     setDeviceTrustStatus("checking");
     setDeviceBlockedUntil(null);
     const client = createAuthenticatedCoreClient(accessToken);
@@ -916,6 +967,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      ensureVaultBundleForUnlock,
       applyUnlockedSecrets,
       verifyMasterPassword,
       changeMasterPassword,
@@ -929,6 +981,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceId,
       deviceApprovers,
       refreshDeviceTrust,
+      markDeviceBlockedForever,
       retryDeviceRegistration,
     }),
     [
@@ -953,6 +1006,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       saveVaultBundle,
       updateLocalProfile,
       tryUnlockWithMasterPassword,
+      ensureVaultBundleForUnlock,
       applyUnlockedSecrets,
       verifyMasterPassword,
       changeMasterPassword,
@@ -966,6 +1020,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       currentDeviceId,
       deviceApprovers,
       refreshDeviceTrust,
+      markDeviceBlockedForever,
       retryDeviceRegistration,
     ],
   );

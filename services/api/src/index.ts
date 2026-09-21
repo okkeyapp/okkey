@@ -35,6 +35,7 @@ import {
 } from "./storage/key-field-file-storage.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
+import { AccountRecoveryService } from "./account-recovery/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 
 async function main(): Promise<void> {
@@ -171,6 +172,13 @@ async function main(): Promise<void> {
     geoIp,
     log: logger,
   });
+  const accountRecoveryService = new AccountRecoveryService({
+    recovery: storage.repositories.accountRecovery,
+    workspaces: storage.repositories.workspaces,
+    users: storage.repositories.users,
+    emailTemplates,
+    publicAppBaseUrl: config.publicAppBaseUrl,
+  });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();
   const keyFieldFileStorage = keyFieldFileStorageConfig
     ? new KeyFieldFileStorage(keyFieldFileStorageConfig)
@@ -226,6 +234,7 @@ async function main(): Promise<void> {
     syncService,
     workspacePersonalSyncService,
     deviceService,
+    accountRecoveryService,
     sessionService,
     twoFactorService,
     webauthnService,
@@ -240,6 +249,7 @@ async function main(): Promise<void> {
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
     redis: storage.redis,
+    geoIp,
   });
 
   const server = createServer(app.handler());

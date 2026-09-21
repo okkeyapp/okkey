@@ -3,15 +3,29 @@ import { useNavigate } from "react-router-dom";
 import {
   buildRegistrationCryptoArtifacts,
   ed25519Keypair,
+  generateRecoverySecret,
   initCrypto,
   registrationArtifactsToWire,
   wipeBytes,
+  wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
 import type { RegisterCompleteRequestDto } from "@okkey/types";
-import { Alert, AlertDescription, AlertTitle, Button, Input } from "@okkey/ui";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  ControlGroup,
+  controlGroupItemGrowClassName,
+  Input,
+} from "@okkey/ui";
+import { Copy, Download, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
+import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
+import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
 import { bytesToBase64 } from "../../auth/base64";
@@ -24,6 +38,8 @@ import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
 import { registrationErrorI18nKey } from "./registrationErrors";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
+
+type RegistrationStep = "form" | "recoveryKey";
 
 function RequirementCheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -65,12 +81,19 @@ export default function AuthRegistrationPage() {
   const [repeatMasterPassword, setRepeatMasterPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [step, setStep] = useState<RegistrationStep>("form");
+  const [recoverySecret, setRecoverySecret] = useState<string | null>(null);
+  const [recoveryExported, setRecoveryExported] = useState(false);
+  const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
 
   useEffect(() => {
+    if (step === "recoveryKey") {
+      return;
+    }
     if (!registrationAuthStateId || !email) {
       navigate(AUTH_EMAIL_PATH, { replace: true });
     }
-  }, [registrationAuthStateId, email, navigate]);
+  }, [registrationAuthStateId, email, navigate, step]);
 
   const { isFormValid, allFieldsFilled, passwordLongEnough, passwordsMatch } = useMemo(() => {
     const trimmedFirst = firstName.trim();
@@ -167,18 +190,37 @@ export default function AuthRegistrationPage() {
         lastName: lastName.trim(),
       });
 
+      const pendingInvite = readPendingInviteToken();
+      const nextPath = pendingInvite
+        ? accountLockWithRedirectQuery(encodeURIComponent(invitePath(pendingInvite)))
+        : ACCOUNT_LOCK_PATH;
+      setPostRegRedirect(nextPath);
+
+      let secretForStep: string | null = null;
+      try {
+        const secret = await generateRecoverySecret();
+        const secretBytes = new TextEncoder().encode(secret);
+        const encryptedBlob = await wrapVaultKeyWithRecoverySecret(material.vaultKey, secretBytes);
+        const core = createAuthenticatedCoreClient(reg.access_token);
+        await core.enrollAccountRecoveryKey({ encryptedBlob });
+        secretForStep = secret;
+      } catch (enrollErr) {
+        if (import.meta.env.DEV) {
+          console.error("[auth/register/recovery-enroll]", enrollErr);
+        }
+        setFormError(t("auth.registration.recovery.errorEnroll"));
+      }
+
       wipeBytes(material.vaultKey);
       wipeBytes(pwd);
       wipeBytes(material.serverKeyShare);
       wipeBytes(material.deviceShare);
 
-      const pendingInvite = readPendingInviteToken();
-      if (pendingInvite) {
-        navigate(accountLockWithRedirectQuery(encodeURIComponent(invitePath(pendingInvite))), {
-          replace: true,
-        });
+      if (secretForStep) {
+        setRecoverySecret(secretForStep);
+        setStep("recoveryKey");
       } else {
-        navigate(ACCOUNT_LOCK_PATH, { replace: true });
+        navigate(nextPath, { replace: true });
       }
     } catch (err) {
       wipeBytes(pwd);
@@ -193,6 +235,94 @@ export default function AuthRegistrationPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleRecoveryCopy() {
+    if (!recoverySecret) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(recoverySecret);
+      setRecoveryExported(true);
+      toast.success(t("web.toast.save.success"));
+    } catch {
+      setFormError(t("web.settingsPopup.recovery.error.copyFailed"));
+    }
+  }
+
+  async function handleRecoveryDownload() {
+    if (!recoverySecret) {
+      return;
+    }
+    const toastId = toast.loading(t("web.settingsPopup.recovery.key.creatingPdf"));
+    try {
+      await downloadRecoveryKeyPdf(recoverySecret, {
+        title: t("auth.registration.recovery.pdfTitle"),
+        description: t("auth.registration.recovery.pdfDescription"),
+      });
+      setRecoveryExported(true);
+    } catch {
+      setFormError(t("web.settingsPopup.recovery.error.generic"));
+    } finally {
+      toast.dismiss(toastId);
+    }
+  }
+
+  function finishRegistration() {
+    const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
+    setRecoverySecret(null);
+    navigate(target, { replace: true });
+  }
+
+  if (step === "recoveryKey" && recoverySecret) {
+    return (
+      <AppShellLayout
+        title={t("auth.registration.recovery.title")}
+        description={t("auth.registration.recovery.description")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex w-full flex-col gap-6 rounded-xl border border-border bg-background p-4 shadow-sm">
+          {formError ? (
+            <Alert variant="error">
+              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="rounded-lg bg-secondary p-3">
+            <p className="break-all font-mono text-sm leading-5 text-foreground">{recoverySecret}</p>
+          </div>
+          <ControlGroup aria-label={t("web.settingsPopup.recovery.key.actionsAria")}>
+            <Button
+              type="button"
+              variant="outline"
+              className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
+              onClick={() => void handleRecoveryCopy()}
+            >
+              <Copy className="size-4 shrink-0" />
+              {t("auth.registration.recovery.copy")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
+              onClick={() => void handleRecoveryDownload()}
+            >
+              <Download className="size-4 shrink-0" />
+              {t("auth.registration.recovery.downloadPdf")}
+            </Button>
+          </ControlGroup>
+          <div className="flex items-start gap-1.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
+              {t("auth.registration.recovery.warning")}
+            </p>
+          </div>
+          <Button type="button" className="w-full" onClick={finishRegistration} disabled={!recoveryExported}>
+            {t("auth.registration.recovery.next")}
+          </Button>
+        </div>
+      </AppShellLayout>
+    );
   }
 
   return (

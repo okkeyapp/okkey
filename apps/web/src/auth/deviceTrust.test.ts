@@ -103,6 +103,34 @@ describe("resolveDeviceTrust", () => {
     expect(snapshot.deviceId).toBe("d-me");
   });
 
+  it("prefers active blocked over trusted for the same fingerprint", async () => {
+    listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d-trusted",
+          device_fingerprint: fingerprint,
+          status: "trusted",
+        },
+      ],
+      pending: [],
+      blocked: [
+        {
+          device_id: "d-blocked",
+          device_fingerprint: fingerprint,
+          status: "blocked",
+          blocked_until: null,
+        },
+      ],
+    });
+
+    const snapshot = await resolveDeviceTrust(coreClient(), "u1");
+
+    expect(registerDevice).not.toHaveBeenCalled();
+    expect(snapshot.status).toBe("blocked");
+    expect(snapshot.deviceId).toBe("d-blocked");
+    expect(snapshot.blockedUntil).toBeNull();
+  });
+
   it("reclaims sole trusted device when vault bundle exists", async () => {
     readVaultBundle.mockReturnValue(vaultBundle());
     listDevices
