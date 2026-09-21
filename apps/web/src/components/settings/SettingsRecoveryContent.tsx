@@ -38,7 +38,6 @@ import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
-import { memberDisplayName } from "../workspace/settings/vaults/vaultAccessHelpers";
 import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
@@ -966,45 +965,29 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
             <span className="sr-only" />
           </SettingsRow>
           <div className="mb-2 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
-            {(status?.servingAsContact ?? []).map((membership, index) => {
-              const ownerName = memberDisplayName({
-                firstName: membership.ownerFirstName ?? null,
-                lastName: membership.ownerLastName ?? null,
-                email: membership.ownerEmail,
-              });
-              const showName =
-                ownerName.trim().length > 0 && ownerName !== membership.ownerEmail;
-              return (
-                <div
-                  key={membership.id}
-                  className={`flex items-center gap-1.5 px-4 py-3 ${
-                    index > 0 ? "border-t border-border" : ""
-                  }`}
+            {(status?.servingAsContact ?? []).map((membership, index) => (
+              <div
+                key={membership.id}
+                className={`flex items-center gap-1.5 px-4 py-3 ${
+                  index > 0 ? "border-t border-border" : ""
+                }`}
+              >
+                <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-muted-foreground">
+                  {membership.ownerEmail}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="iconSm"
+                  className={contactsTrashButtonClassName}
+                  aria-label={t("web.settingsPopup.recovery.servingAs.remove")}
+                  disabled={busy}
+                  onClick={() => setMembershipToLeave(membership)}
                 >
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-                    {showName ? (
-                      <p className="truncate text-sm font-bold leading-5 text-foreground">
-                        {ownerName}
-                      </p>
-                    ) : null}
-                    <p className="truncate text-sm font-normal leading-5 text-muted-foreground">
-                      {membership.ownerEmail}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="iconSm"
-                    className={contactsTrashButtonClassName}
-                    aria-label={t("web.settingsPopup.recovery.servingAs.remove")}
-                    disabled={busy}
-                    onClick={() => setMembershipToLeave(membership)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              );
-            })}
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
           </div>
         </>
       ) : null}
