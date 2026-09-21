@@ -20,6 +20,7 @@ import {
   Input,
   Switch,
   cn,
+  keyFormAdditionalDividerBorderTClassName,
 } from "@okkey/ui";
 import {
   CircleCheck,
@@ -50,6 +51,14 @@ const ContactsReleaseInbox = accountRecoveryModule.ContactsReleaseInbox;
 /** Same contrast steps as «Добавить ещё» on secondary panel (resting → hover → active). */
 const contactsPanelActionSurfaceClassName =
   "bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] active:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)] dark:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:active:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)]";
+
+/** Matches KeySection «+ Add field» in gray (`additional`) sections — `/dev/ui/key-form`. */
+const contactsAddFooterButtonClassName = cn(
+  "-mt-px h-8 w-full gap-2.5 rounded-b-xl rounded-t-none border border-x-transparent border-b-transparent bg-secondary px-3 font-medium text-foreground shadow-none",
+  keyFormAdditionalDividerBorderTClassName,
+  "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
+  "focus:border-accent focus-visible:border-accent",
+);
 
 type SettingsRecoveryContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -897,12 +906,19 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         </Button>
                       </div>
                     </div>
-                  ) : (
-                    <div
-                      className={`p-1 ${
-                        (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
-                      }`}
+                  ) : (status?.contacts ?? []).length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className={contactsAddFooterButtonClassName}
+                      disabled={busy || inviteSaving}
+                      onClick={openInviteForm}
                     >
+                      <Plus className="size-4 shrink-0" />
+                      {t("web.settingsPopup.recovery.contacts.add")}
+                    </Button>
+                  ) : (
+                    <div className="p-1">
                       <Button
                         type="button"
                         variant="secondary"
