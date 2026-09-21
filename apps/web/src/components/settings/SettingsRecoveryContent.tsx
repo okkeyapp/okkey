@@ -60,7 +60,7 @@ const contactsTrashButtonClassName =
 
 /** Matches KeyForm «+ Add section with field» — standalone empty-state CTA. */
 const contactsAddSectionButtonClassName =
-  "mt-2 mb-4 h-9 w-full gap-2.5 rounded-lg bg-secondary px-4 font-medium text-foreground shadow-none";
+  "mb-4 h-9 w-full gap-2.5 rounded-lg bg-secondary px-4 font-medium text-foreground shadow-none";
 
 /** Matches KeySection «+ Add field» in gray (`additional`) sections — `/dev/ui/key-form`. */
 const contactsAddFooterButtonClassName = cn(
