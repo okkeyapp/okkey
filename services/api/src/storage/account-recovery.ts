@@ -41,6 +41,16 @@ export interface TrustedContactInviteRecord {
   createdAt: string;
 }
 
+export interface TrustedContactMembershipRecord {
+  id: string;
+  userId: string;
+  ownerEmail: string;
+  ownerFirstName: string | null;
+  ownerLastName: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+}
+
 type WrapRow = {
   user_id: string | number;
   encrypted_blob: unknown;
@@ -323,5 +333,59 @@ export class AccountRecoveryRepository {
       [inviteId, contactUserId],
     );
     return Boolean(rows[0]);
+  }
+
+  /** Confirmed memberships where `contactUserId` is someone else's trusted contact. */
+  async listMembershipsForContact(
+    contactUserId: string,
+  ): Promise<TrustedContactMembershipRecord[]> {
+    const rows = await this.db.query<{
+      id: string | number;
+      user_id: string | number;
+      owner_email: string;
+      owner_first_name: string | null;
+      owner_last_name: string | null;
+      created_at: string;
+      confirmed_at: string | null;
+    }>(
+      `
+        SELECT c.id, c.user_id,
+               u.email AS owner_email, u.first_name AS owner_first_name, u.last_name AS owner_last_name,
+               c.created_at, c.confirmed_at
+        FROM user_trusted_contacts c
+        INNER JOIN users u ON u.id = c.user_id
+        WHERE c.contact_user_id = $1::bigint AND c.status = 'confirmed'
+        ORDER BY c.confirmed_at ASC NULLS LAST, c.created_at ASC
+      `,
+      [contactUserId],
+    );
+    return rows.map((row) => ({
+      id: entityIdFromDb(row.id),
+      userId: entityIdFromDb(row.user_id),
+      ownerEmail: row.owner_email,
+      ownerFirstName: row.owner_first_name,
+      ownerLastName: row.owner_last_name,
+      createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+    }));
+  }
+
+  /** Contact leaves an owner's trusted-contact list (confirmed or pending). */
+  async deleteMembershipAsContact(contactUserId: string, contactId: string): Promise<{
+    ownerUserId: string;
+  } | null> {
+    const rows = await this.db.query<{ id: string | number; user_id: string | number }>(
+      `
+        DELETE FROM user_trusted_contacts
+        WHERE id = $1::bigint AND contact_user_id = $2::bigint
+        RETURNING id, user_id
+      `,
+      [contactId, contactUserId],
+    );
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return { ownerUserId: entityIdFromDb(row.user_id) };
   }
 }

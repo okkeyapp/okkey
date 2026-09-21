@@ -134,6 +134,7 @@ describe("App", () => {
             confirmedContactCount: 0,
             minConfirmedContacts: 3,
             pendingInvites: [],
+            servingAsContact: [],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -181,6 +182,7 @@ describe("App", () => {
             confirmedContactCount: 0,
             minConfirmedContacts: 3,
             pendingInvites: [],
+            servingAsContact: [],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );

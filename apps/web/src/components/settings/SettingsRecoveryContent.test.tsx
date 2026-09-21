@@ -70,6 +70,7 @@ function freeStatus(overrides?: Record<string, unknown>) {
     confirmedContactCount: 0,
     minConfirmedContacts: 3,
     pendingInvites: [],
+    servingAsContact: [],
     ...overrides,
   };
 }
@@ -152,5 +153,41 @@ describe("SettingsRecoveryContent", () => {
     });
     expect(screen.getByText("b@example.com")).toBeTruthy();
     expect(screen.getByText("web.settingsPopup.recovery.contacts.add")).toBeTruthy();
+  });
+
+  it("lists accounts where the current user serves as a trusted contact", async () => {
+    coreMocks.getAccountRecoveryStatus.mockResolvedValue(
+      freeStatus({
+        entitlements: {
+          recoveryKey: true,
+          trustedDevices: false,
+          trustedContacts: false,
+        },
+        servingAsContact: [
+          {
+            id: "m1",
+            ownerEmail: "owner@example.com",
+            ownerFirstName: "Alex",
+            ownerLastName: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            confirmedAt: "2026-01-02T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("web.settingsPopup.recovery.servingAs.label")).toBeTruthy();
+    });
+    expect(screen.getByText("owner@example.com")).toBeTruthy();
+    expect(
+      screen.getByLabelText("web.settingsPopup.recovery.servingAs.remove"),
+    ).toBeTruthy();
   });
 });

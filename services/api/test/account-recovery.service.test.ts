@@ -120,6 +120,8 @@ function createService(overrides?: {
     listPendingInvitesForContact: async () => [],
     confirmInvite: async () => null,
     rejectInvite: async () => false,
+    listMembershipsForContact: async () => [],
+    deleteMembershipAsContact: async () => null,
     ...overrides?.recovery,
   } as AccountRecoveryRepository;
 
@@ -325,6 +327,91 @@ test("rejectInvite removes pending invite for contact user", async () => {
   assert.equal(before.pendingInvites[0]?.ownerFirstName, "Alex");
   const status = await service.rejectInvite("u2", "inv1");
   assert.equal(status.pendingInvites.length, 0);
+});
+
+test("leaveAsContact removes membership and disables owner contacts below minimum", async () => {
+  const memberships: Array<{
+    id: string;
+    userId: string;
+    ownerEmail: string;
+    ownerFirstName: string | null;
+    ownerLastName: string | null;
+    createdAt: string;
+    confirmedAt: string | null;
+  }> = [
+    {
+      id: "c1",
+      userId: "u1",
+      ownerEmail: "owner@example.com",
+      ownerFirstName: "Alex",
+      ownerLastName: "Okkey",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      confirmedAt: "2026-01-02T00:00:00.000Z",
+    },
+  ];
+  const ownerContacts: Array<{
+    id: string;
+    userId: string;
+    contactEmail: string;
+    contactUserId: string | null;
+    status: "pending" | "confirmed";
+    createdAt: string;
+    confirmedAt: string | null;
+  }> = [
+    {
+      id: "c1",
+      userId: "u1",
+      contactEmail: "friend@example.com",
+      contactUserId: "u2",
+      status: "confirmed",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      confirmedAt: "2026-01-02T00:00:00.000Z",
+    },
+  ];
+  let ownerSettings = {
+    userId: "u1",
+    keyEnabled: false,
+    devicesEnabled: false,
+    contactsEnabled: true,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+
+  const service = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+    recovery: {
+      getSettings: async (userId: string) => (userId === "u1" ? ownerSettings : null),
+      upsertSettings: async (userId, input) => {
+        ownerSettings = { userId, ...input, updatedAt: "2026-01-03T00:00:00.000Z" };
+        return ownerSettings;
+      },
+      listContacts: async (userId: string) => ownerContacts.filter((c) => c.userId === userId),
+      listMembershipsForContact: async (contactUserId: string) =>
+        contactUserId === "u2" ? memberships : [],
+      deleteMembershipAsContact: async (contactUserId: string, contactId: string) => {
+        if (contactUserId !== "u2") {
+          return null;
+        }
+        const idx = memberships.findIndex((row) => row.id === contactId);
+        if (idx < 0) {
+          return null;
+        }
+        const [removed] = memberships.splice(idx, 1);
+        const ownerIdx = ownerContacts.findIndex((c) => c.id === contactId);
+        if (ownerIdx >= 0) {
+          ownerContacts.splice(ownerIdx, 1);
+        }
+        return { ownerUserId: removed.userId };
+      },
+    },
+  });
+
+  const before = await service.getStatus("u2");
+  assert.equal(before.servingAsContact.length, 1);
+  assert.equal(before.servingAsContact[0]?.ownerEmail, "owner@example.com");
+
+  const after = await service.leaveAsContact("u2", "c1");
+  assert.equal(after.servingAsContact.length, 0);
+  assert.equal(ownerSettings.contactsEnabled, false);
 });
 
 test("inviteContacts sends trusted-contact invite email best-effort", async () => {

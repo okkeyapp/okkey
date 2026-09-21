@@ -157,11 +157,12 @@ export class AccountRecoveryService {
 
   async getStatus(userId: string): Promise<AccountRecoveryStatusResponseDto> {
     const entitlements = await this.resolveEntitlements(userId);
-    const [wrap, settingsRow, contacts, pendingInvites] = await Promise.all([
+    const [wrap, settingsRow, contacts, pendingInvites, servingAsContact] = await Promise.all([
       this.recovery.getWrap(userId),
       this.recovery.getSettings(userId),
       this.recovery.listContacts(userId),
       this.recovery.listPendingInvitesForContact(userId),
+      this.recovery.listMembershipsForContact(userId),
     ]);
 
     const defaults = defaultSettings(entitlements);
@@ -197,6 +198,14 @@ export class AccountRecoveryService {
         ownerFirstName: invite.ownerFirstName,
         ownerLastName: invite.ownerLastName,
         createdAt: invite.createdAt,
+      })),
+      servingAsContact: servingAsContact.map((row) => ({
+        id: row.id,
+        ownerEmail: row.ownerEmail,
+        ownerFirstName: row.ownerFirstName,
+        ownerLastName: row.ownerLastName,
+        createdAt: row.createdAt,
+        confirmedAt: row.confirmedAt,
       })),
     };
   }
@@ -466,6 +475,33 @@ export class AccountRecoveryService {
     if (!rejected) {
       throw new AccountRecoveryError("RECOVERY_INVITE_NOT_FOUND", 404, "invite not found");
     }
+    return this.getStatus(contactUserId);
+  }
+
+  /**
+   * Current user leaves another owner's trusted-contact list.
+   * If the owner drops below the confirmed minimum, contacts recovery is disabled for them.
+   */
+  async leaveAsContact(
+    contactUserId: string,
+    contactId: string,
+  ): Promise<AccountRecoveryStatusResponseDto> {
+    const removed = await this.recovery.deleteMembershipAsContact(contactUserId, contactId);
+    if (!removed) {
+      throw new AccountRecoveryError("RECOVERY_CONTACT_NOT_FOUND", 404, "membership not found");
+    }
+
+    const ownerStatus = await this.getStatus(removed.ownerUserId);
+    if (
+      ownerStatus.settings.contactsEnabled &&
+      ownerStatus.confirmedContactCount < MIN_TRUSTED_CONTACTS_CONFIRMED
+    ) {
+      await this.recovery.upsertSettings(removed.ownerUserId, {
+        ...ownerStatus.settings,
+        contactsEnabled: false,
+      });
+    }
+
     return this.getStatus(contactUserId);
   }
 

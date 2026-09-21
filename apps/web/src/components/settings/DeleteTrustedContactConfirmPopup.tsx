@@ -5,6 +5,10 @@ type DeleteTrustedContactConfirmPopupProps = {
   open: boolean;
   contactEmail: string;
   deleting?: boolean;
+  /** Override copy for leave-as-contact flow. */
+  titleKey?: string;
+  descriptionKey?: string;
+  deleteLabelKey?: string;
   t: (messageKey: string, values?: WebMessageValues) => string;
   onClose: () => void;
   onConfirm: () => void;
@@ -14,6 +18,9 @@ export default function DeleteTrustedContactConfirmPopup({
   open,
   contactEmail,
   deleting = false,
+  titleKey = "web.settingsPopup.recovery.contacts.deleteConfirm.title",
+  descriptionKey = "web.settingsPopup.recovery.contacts.deleteConfirm.description",
+  deleteLabelKey = "web.settingsPopup.recovery.contacts.deleteConfirm.delete",
   t,
   onClose,
   onConfirm,
@@ -33,7 +40,7 @@ export default function DeleteTrustedContactConfirmPopup({
     <Popup
       className="z-[60]"
       width={420}
-      header={t("web.settingsPopup.recovery.contacts.deleteConfirm.title")}
+      header={t(titleKey)}
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
       closeDisabled={deleting}
@@ -45,15 +52,13 @@ export default function DeleteTrustedContactConfirmPopup({
             {t("web.settingsPopup.recovery.contacts.cancel")}
           </Button>
           <Button type="button" variant="destructive" onClick={onConfirm} disabled={deleting}>
-            {t("web.settingsPopup.recovery.contacts.deleteConfirm.delete")}
+            {t(deleteLabelKey)}
           </Button>
         </>
       }
     >
       <p className="w-full text-sm leading-5 text-muted-foreground">
-        {t("web.settingsPopup.recovery.contacts.deleteConfirm.description", {
-          email: contactEmail,
-        })}
+        {t(descriptionKey, { email: contactEmail })}
       </p>
     </Popup>
   );

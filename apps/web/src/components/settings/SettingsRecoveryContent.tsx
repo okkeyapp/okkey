@@ -8,6 +8,7 @@ import type { WebMessageValues } from "@okkey/i18n";
 import type {
   AccountRecoveryStatusResponseDto,
   TrustedContactDto,
+  TrustedContactMembershipDto,
 } from "@okkey/types";
 import {
   Alert,
@@ -18,6 +19,7 @@ import {
   controlGroupItemGrowClassName,
   Input,
   Switch,
+  cn,
 } from "@okkey/ui";
 import {
   CircleCheck,
@@ -44,6 +46,10 @@ import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
 const ContactsReleaseInbox = accountRecoveryModule.ContactsReleaseInbox;
+
+/** Same contrast steps as «Добавить ещё» on secondary panel (resting → hover → active). */
+const contactsPanelActionSurfaceClassName =
+  "bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] active:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)] dark:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:active:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)]";
 
 type SettingsRecoveryContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -192,6 +198,9 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   ]);
   const [inviteSaving, setInviteSaving] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<TrustedContactDto | null>(null);
+  const [membershipToLeave, setMembershipToLeave] = useState<TrustedContactMembershipDto | null>(
+    null,
+  );
   const settingsMutatingRef = useRef(false);
 
   const refreshStatus = useCallback(async (): Promise<AccountRecoveryStatusResponseDto | null> => {
@@ -273,6 +282,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               confirmedContactCount: 0,
               minConfirmedContacts: 3,
               pendingInvites: [],
+              servingAsContact: [],
             },
       );
       void refreshStatus();
@@ -498,6 +508,32 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       const next = await core.deleteTrustedContact(contact.id);
       setStatus(next);
       setContactToDelete(null);
+      notifySaved();
+    } catch (err) {
+      setError(recoveryErrorMessage(err, t));
+      void refreshStatus();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLeaveMembership(membership: TrustedContactMembershipDto) {
+    if (!core) {
+      return;
+    }
+    setBusy(true);
+    setStatus((prev) =>
+      prev
+        ? {
+            ...prev,
+            servingAsContact: prev.servingAsContact.filter((item) => item.id !== membership.id),
+          }
+        : prev,
+    );
+    try {
+      const next = await core.leaveTrustedContactMembership(membership.id);
+      setStatus(next);
+      setMembershipToLeave(null);
       notifySaved();
     } catch (err) {
       setError(recoveryErrorMessage(err, t));
@@ -738,7 +774,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               </SettingsRow>
 
               {showContactsPanel ? (
-                <div className="mt-2 flex flex-col overflow-hidden rounded-xl bg-secondary">
+                <div className="mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
                   {(status?.contacts ?? []).map((contact, index) => (
                     <div
                       key={contact.id}
@@ -754,7 +790,10 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-6 text-destructive hover:text-destructive"
+                        className={cn(
+                          "size-6 text-destructive hover:text-destructive",
+                          contactsPanelActionSurfaceClassName,
+                        )}
                         aria-label={t("web.settingsPopup.recovery.contacts.remove")}
                         disabled={busy || inviteSaving}
                         onClick={() => setContactToDelete(contact)}
@@ -804,7 +843,10 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="size-9 shrink-0 text-destructive hover:text-destructive"
+                            className={cn(
+                              "size-9 shrink-0 text-destructive hover:text-destructive",
+                              contactsPanelActionSurfaceClassName,
+                            )}
                             disabled={inviteSaving || inviteRows.length <= 1}
                             aria-label={t("web.settingsPopup.recovery.contacts.removeRow")}
                             onClick={() =>
@@ -818,7 +860,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-9 w-full gap-1.5 bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]"
+                        className={cn("h-9 w-full gap-1.5", contactsPanelActionSurfaceClassName)}
                         disabled={inviteSaving}
                         onClick={() =>
                           setInviteRows((current) => [
@@ -856,18 +898,22 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                       </div>
                     </div>
                   ) : (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className={`h-9 w-full gap-2.5 rounded-none ${
+                    <div
+                      className={`p-1 ${
                         (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
                       }`}
-                      disabled={busy || inviteSaving}
-                      onClick={openInviteForm}
                     >
-                      <Plus className="size-4 shrink-0" />
-                      {t("web.settingsPopup.recovery.contacts.add")}
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className={cn("h-9 w-full gap-2.5", contactsPanelActionSurfaceClassName)}
+                        disabled={busy || inviteSaving}
+                        onClick={openInviteForm}
+                      >
+                        <Plus className="size-4 shrink-0" />
+                        {t("web.settingsPopup.recovery.contacts.add")}
+                      </Button>
+                    </div>
                   )}
                 </div>
               ) : null}
@@ -877,6 +923,45 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       ) : null}
 
       {showPaidUpsell ? <PaidMethodsUpsell t={t} /> : null}
+
+      {(status?.servingAsContact?.length ?? 0) > 0 ? (
+        <>
+          <SettingsRow
+            label={t("web.settingsPopup.recovery.servingAs.label")}
+            description={t("web.settingsPopup.recovery.servingAs.description")}
+            controlClassName="hidden w-0"
+          >
+            <span className="sr-only" />
+          </SettingsRow>
+          <div className="mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+            {(status?.servingAsContact ?? []).map((membership, index) => (
+              <div
+                key={membership.id}
+                className={`flex items-center gap-1.5 px-4 py-3 ${
+                  index > 0 ? "border-t border-border" : ""
+                }`}
+              >
+                <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
+                <p className="min-w-0 flex-1 text-sm text-foreground">{membership.ownerEmail}</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "size-6 text-destructive hover:text-destructive",
+                    contactsPanelActionSurfaceClassName,
+                  )}
+                  aria-label={t("web.settingsPopup.recovery.servingAs.remove")}
+                  disabled={busy}
+                  onClick={() => setMembershipToLeave(membership)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {accessToken && userId && ContactsEnrollPanel && canContacts ? (
         <div className="mt-4">
@@ -923,6 +1008,26 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         onConfirm={() => {
           if (contactToDelete) {
             void handleDeleteContact(contactToDelete);
+          }
+        }}
+      />
+
+      <DeleteTrustedContactConfirmPopup
+        open={membershipToLeave !== null}
+        contactEmail={membershipToLeave?.ownerEmail ?? ""}
+        deleting={busy}
+        titleKey="web.settingsPopup.recovery.servingAs.deleteConfirm.title"
+        descriptionKey="web.settingsPopup.recovery.servingAs.deleteConfirm.description"
+        deleteLabelKey="web.settingsPopup.recovery.servingAs.deleteConfirm.delete"
+        t={t}
+        onClose={() => {
+          if (!busy) {
+            setMembershipToLeave(null);
+          }
+        }}
+        onConfirm={() => {
+          if (membershipToLeave) {
+            void handleLeaveMembership(membershipToLeave);
           }
         }}
       />

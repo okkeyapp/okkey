@@ -326,6 +326,30 @@ export function createAccountRecoveryInviteRejectRoute(
   };
 }
 
+/** Contact leaves an owner's trusted-contact list (`DELETE …/memberships/:contactId`). */
+export function createAccountRecoveryMembershipLeaveRoute(
+  service: AccountRecoveryService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    try {
+      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      if (!userId) {
+        return;
+      }
+      const contactId = ctx.params.contactId?.trim();
+      if (!contactId) {
+        json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "contactId required", ctx.requestId));
+        return;
+      }
+      const status = await service.leaveAsContact(userId, contactId);
+      json(ctx.res, 200, status);
+    } catch (error) {
+      handleRecoveryError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
 /** Unused helper kept for typed header access parity with sibling routes. */
 export function recoveryRequestIdHeader(req: IncomingMessage): string | undefined {
   return getHeader(req, "x-request-id") ?? undefined;

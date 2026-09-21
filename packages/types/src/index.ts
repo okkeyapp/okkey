@@ -873,6 +873,19 @@ export interface TrustedContactInviteDto {
   createdAt: string;
 }
 
+/**
+ * Accounts where the current user is a confirmed trusted contact
+ * (other owners listed you for recovery help).
+ */
+export interface TrustedContactMembershipDto {
+  id: EntityId;
+  ownerEmail: string;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+}
+
 /** `GET /account/recovery` aggregate status. */
 export interface AccountRecoveryStatusResponseDto {
   entitlements: AccountRecoveryEntitlementsDto;
@@ -882,6 +895,8 @@ export interface AccountRecoveryStatusResponseDto {
   confirmedContactCount: number;
   minConfirmedContacts: number;
   pendingInvites: TrustedContactInviteDto[];
+  /** Confirmed rows where the current user is someone else's trusted contact. */
+  servingAsContact: TrustedContactMembershipDto[];
 }
 
 /** `PATCH /account/recovery/settings` request. */

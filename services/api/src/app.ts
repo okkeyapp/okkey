@@ -33,6 +33,7 @@ import {
   createAccountRecoveryContactInviteRoute,
   createAccountRecoveryInviteAcceptRoute,
   createAccountRecoveryInviteRejectRoute,
+  createAccountRecoveryMembershipLeaveRoute,
   createAccountRecoveryKeyAckExportRoute,
   createAccountRecoveryKeyEnrollRoute,
   createAccountRecoveryKeyRotateRoute,
@@ -632,6 +633,11 @@ export function createApiApp(
       "POST",
       "/account/recovery/contacts/invites/:inviteId/reject",
       createAccountRecoveryInviteRejectRoute(deps.accountRecoveryService, resolveUserId),
+    );
+    app.route(
+      "DELETE",
+      "/account/recovery/contacts/memberships/:contactId",
+      createAccountRecoveryMembershipLeaveRoute(deps.accountRecoveryService, resolveUserId),
     );
   }
   if (deps.capsuleService) {

@@ -860,6 +860,13 @@ export class CoreApiClient {
     );
   }
 
+  /** Leave another owner's trusted-contact list (you are the contact). */
+  leaveTrustedContactMembership(contactId: string): Promise<AccountRecoveryStatusResponseDto> {
+    return this.api.delete<AccountRecoveryStatusResponseDto>(
+      `/account/recovery/contacts/memberships/${encodeURIComponent(contactId)}`,
+    );
+  }
+
   patchDevice(deviceId: string, body: DevicePatchRequestDto): Promise<DevicePatchResponseDto> {
     return this.api.patch<DevicePatchResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}`,
