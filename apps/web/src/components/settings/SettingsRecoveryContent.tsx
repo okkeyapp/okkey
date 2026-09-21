@@ -811,7 +811,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         ) : (
                           <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
                         )}
-                        <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-muted-foreground">
+                        <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-foreground">
                           {contact.email}
                         </p>
                         <Button
@@ -972,7 +972,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                   index > 0 ? "border-t border-border" : ""
                 }`}
               >
-                <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-muted-foreground">
+                <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-foreground">
                   {membership.ownerEmail}
                 </p>
                 <Button
