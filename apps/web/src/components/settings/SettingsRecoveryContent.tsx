@@ -800,7 +800,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
 
               {showContactsPanel ? (
                 (status?.contacts ?? []).length > 0 || inviteOpen ? (
-                  <div className="mb-4 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+                  <div className="mb-4 flex flex-col overflow-visible rounded-xl bg-secondary">
                     {(status?.contacts ?? []).map((contact, index) => (
                       <div
                         key={contact.id}
@@ -964,7 +964,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           >
             <span className="sr-only" />
           </SettingsRow>
-          <div className="mb-4 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+          <div className="mb-4 flex flex-col overflow-visible rounded-xl bg-secondary">
             {(status?.servingAsContact ?? []).map((membership, index) => (
               <div
                 key={membership.id}
