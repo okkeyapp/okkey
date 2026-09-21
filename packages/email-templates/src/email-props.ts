@@ -183,8 +183,10 @@ export function buildContactRecoveryReleaseEmailProps(
 ): RecoveryActionEmailProps {
   return {
     lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
-    detailLine: formatEmailMessage(locale, "email.contacts.recovery.detailLine", {
+    detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {
       ownerEmail: variables.ownerEmail,
+    }),
+    requestLine: formatEmailMessage(locale, "email.contacts.recovery.requestLine", {
       when: formatUtcWhen(locale, variables.requestedAtIso),
     }),
     expiresLine: formatEmailMessage(locale, "email.contacts.recovery.expiresLine", {

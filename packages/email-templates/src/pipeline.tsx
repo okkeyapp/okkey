@@ -297,6 +297,7 @@ export async function renderContactRecoveryReleaseRequest(
   const plainText = formatEmailMessage(locale, "email.contacts.recovery.plain", {
     lead: props.lead,
     detailLine: props.detailLine,
+    requestLine: props.requestLine ?? "",
     expiresLine: props.expiresLine,
     footer,
     noteIgnore: props.noteIgnore,

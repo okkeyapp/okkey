@@ -1576,6 +1576,7 @@
   "account.restore.enterprise.contacts.start": "Запросить помощь контактов",
   "account.restore.enterprise.contacts.statusTitle": "Восстановление через контакты",
   "account.restore.enterprise.contacts.waiting": "Ожидание достаточного числа долей от контактов…",
+  "account.restore.enterprise.contacts.waitingSpinner": "Ожидание долей…",
   "account.restore.enterprise.contacts.progress": "Выдано долей: {count} / {threshold}",
   "account.restore.enterprise.contacts.submit": "Восстановить доступ",
   "account.restore.enterprise.contacts.missingEph": "Локальная сессия восстановления потеряна. Создайте запрос заново в этом браузере.",
@@ -1586,5 +1587,8 @@
   "account.restore.enterprise.contacts.inboxTitle": "Помочь контакту восстановить доступ",
   "account.restore.enterprise.contacts.release": "Выдать долю",
   "account.restore.enterprise.contacts.releaseNeedUnlock": "Разблокируйте хранилище, чтобы выдать долю.",
+  "account.restore.enterprise.contacts.popup.title": "Помочь контакту восстановить доступ",
+  "account.restore.enterprise.contacts.popup.body": "Доверенный контакт просит выдать вашу долю восстановления, чтобы сбросить мастер-пароль. Подтверждайте только если узнаёте этого человека.",
+  "account.restore.enterprise.contacts.toast.released": "Доля выдана",
   "account.restore.error.bootstrapFailed": "Не удалось завершить восстановление в этом браузере. Проверьте соединение и попробуйте снова."
 }

@@ -46,7 +46,6 @@ import DeleteTrustedContactConfirmPopup from "./DeleteTrustedContactConfirmPopup
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
-const ContactsReleaseInbox = accountRecoveryModule.ContactsReleaseInbox;
 
 /** Same contrast steps as «Добавить ещё» on secondary panel (resting → hover → active). */
 const contactsPanelActionSurfaceClassName =
@@ -1006,18 +1005,6 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               email: c.email,
             }))}
         />
-      ) : null}
-
-      {accessToken && userId && ContactsReleaseInbox ? (
-        <div className="mt-4">
-          <ContactsReleaseInbox
-            accessToken={accessToken}
-            userId={userId}
-            t={t}
-            vaultUnlocked={vaultUnlocked}
-            vaultKey={vaultKey}
-          />
-        </div>
       ) : null}
 
       <DeleteTrustedContactConfirmPopup

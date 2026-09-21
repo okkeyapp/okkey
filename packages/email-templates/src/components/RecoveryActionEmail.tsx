@@ -7,6 +7,8 @@ import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShe
 export interface RecoveryActionEmailProps {
   lead: string;
   detailLine: string;
+  /** Optional second meta line (e.g. contact recovery "Requested: …"). */
+  requestLine?: string;
   expiresLine: string;
   helpUrl: string;
   ctaLabel: string;
@@ -18,6 +20,7 @@ export interface RecoveryActionEmailProps {
 export function RecoveryActionEmail({
   lead,
   detailLine,
+  requestLine,
   expiresLine,
   helpUrl,
   ctaLabel,
@@ -33,6 +36,7 @@ export function RecoveryActionEmail({
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
         <Text style={metaStyle}>{detailLine}</Text>
+        {requestLine ? <Text style={metaStyle}>{requestLine}</Text> : null}
         {expiresLine ? <Text style={metaStyle}>{expiresLine}</Text> : null}
       </Section>
       {hasUrl ? (

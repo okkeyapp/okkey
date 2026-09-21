@@ -1576,6 +1576,7 @@
   "account.restore.enterprise.contacts.start": "Request help from trusted contacts",
   "account.restore.enterprise.contacts.statusTitle": "Contacts recovery",
   "account.restore.enterprise.contacts.waiting": "Waiting for enough contacts to release their shares…",
+  "account.restore.enterprise.contacts.waitingSpinner": "Waiting for shares…",
   "account.restore.enterprise.contacts.progress": "Shares released: {count} / {threshold}",
   "account.restore.enterprise.contacts.submit": "Restore access",
   "account.restore.enterprise.contacts.missingEph": "Missing local recovery session. Start the request again in this browser.",
@@ -1586,5 +1587,8 @@
   "account.restore.enterprise.contacts.inboxTitle": "Help a contact restore access",
   "account.restore.enterprise.contacts.release": "Release share",
   "account.restore.enterprise.contacts.releaseNeedUnlock": "Unlock the vault to release your share.",
+  "account.restore.enterprise.contacts.popup.title": "Help a contact restore access",
+  "account.restore.enterprise.contacts.popup.body": "A trusted contact asked you to release your recovery share so they can reset their master password. Confirm only if you recognize this person.",
+  "account.restore.enterprise.contacts.toast.released": "Share released",
   "account.restore.error.bootstrapFailed": "Could not finish recovery on this browser. Check your connection and try again."
 }

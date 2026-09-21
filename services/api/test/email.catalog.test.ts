@@ -291,12 +291,13 @@ test("EmailTemplateService device and contact recovery request emails render CTA
     defaultLocale: "en",
     publicAppBaseUrl: "https://app.example",
   });
-  const helpUrl = "https://app.example/items?popup=settings|recovery";
+  const deviceHelpUrl = "https://app.example/items?popup=settings|recovery";
+  const contactHelpUrl = "https://app.example/items";
   await svc.sendDeviceRecoveryApprovalRequest({
     to: "owner@example.com",
     localeHints: { explicitLocale: "en" },
     variables: {
-      helpUrl,
+      helpUrl: deviceHelpUrl,
       requestedAtIso: "2026-09-18T10:00:00.000Z",
       expiresAtIso: "2026-09-18T11:00:00.000Z",
       deviceName: "Web macOS - Chrome",
@@ -311,7 +312,7 @@ test("EmailTemplateService device and contact recovery request emails render CTA
     to: "friend@example.com",
     localeHints: { explicitLocale: "ru" },
     variables: {
-      helpUrl,
+      helpUrl: contactHelpUrl,
       ownerEmail: "owner@example.com",
       requestedAtIso: "2026-09-18T10:00:00.000Z",
       expiresAtIso: "2026-09-18T11:00:00.000Z",
@@ -324,7 +325,11 @@ test("EmailTemplateService device and contact recovery request emails render CTA
   assert.match(sent[0].text, /203\.0\.113\.9/);
   assert.equal(sent[0].text.includes("{{"), false);
   assert.equal(sent[1].subject, formatEmailMessage("ru", "email.contacts.recovery.subject", {}));
-  assert.match(sent[1].text, /owner@example.com/);
+  assert.match(sent[1].text, /Аккаунт: owner@example.com/);
+  assert.match(sent[1].text, /Запрос:/);
+  assert.match(sent[1].text, /Истекает:/);
+  assert.match(sent[1].html, /https:\/\/app\.example\/items/);
+  assert.equal(sent[1].html.includes("popup=settings"), false);
   assert.equal(sent[1].text.includes("{{"), false);
 });
 
