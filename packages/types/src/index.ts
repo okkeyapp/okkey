@@ -929,6 +929,11 @@ export interface TrustedContactInviteRequestDto {
   email?: string;
   emails?: string[];
   invitations?: Array<{ email?: string }>;
+  /**
+   * Inviter UI locale (same pattern as auth email codes).
+   * Used when the recipient has no saved `users.locale`.
+   */
+  locale?: string;
 }
 
 export interface TrustedContactInviteResponseDto {

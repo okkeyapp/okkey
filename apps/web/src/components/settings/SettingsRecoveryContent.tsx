@@ -455,7 +455,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     setInviteSaving(true);
     setError(null);
     try {
-      const result = await core.inviteTrustedContact({ invitations });
+      const result = await core.inviteTrustedContact({ invitations, locale });
       const added = result.contacts?.length
         ? result.contacts
         : result.contact

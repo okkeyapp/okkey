@@ -357,7 +357,15 @@ export class AccountRecoveryService {
     return contact;
   }
 
-  async inviteContacts(userId: string, rawEmails: string[]): Promise<TrustedContactDto[]> {
+  async inviteContacts(
+    userId: string,
+    rawEmails: string[],
+    localeHints?: {
+      /** Inviter UI / request locale (auth-code pattern). */
+      explicitLocale?: string | null;
+      acceptLanguage?: string | null;
+    },
+  ): Promise<TrustedContactDto[]> {
     const entitlements = await this.resolveEntitlements(userId);
     if (!entitlements.trustedContacts) {
       throw new AccountRecoveryError(
@@ -389,6 +397,9 @@ export class AccountRecoveryService {
       this.publicAppBaseUrl,
       "/items?popup=settings|recovery",
     );
+    // Recipient profile → inviter UI/body locale → inviter saved locale → Accept-Language → instance default.
+    const inviterLocale =
+      localeHints?.explicitLocale ?? owner.locale ?? ownerProfile?.locale ?? null;
 
     const created: TrustedContactDto[] = [];
     for (const email of emails) {
@@ -430,6 +441,8 @@ export class AccountRecoveryService {
           to: email,
           localeHints: {
             userLocale: contactUser.locale,
+            explicitLocale: inviterLocale,
+            acceptLanguage: localeHints?.acceptLanguage ?? null,
           },
           variables: {
             inviterDisplayName,

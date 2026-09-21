@@ -249,7 +249,14 @@ export function createAccountRecoveryContactInviteRoute(
         return;
       }
       const emails = extractTrustedContactInviteEmails(body);
-      const contacts = await service.inviteContacts(userId, emails);
+      const locale =
+        typeof body.locale === "string" && body.locale.trim().length > 0
+          ? body.locale.trim()
+          : null;
+      const contacts = await service.inviteContacts(userId, emails, {
+        explicitLocale: locale,
+        acceptLanguage: getHeader(ctx.req, "accept-language"),
+      });
       json(ctx.res, 200, { contact: contacts[0], contacts });
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);

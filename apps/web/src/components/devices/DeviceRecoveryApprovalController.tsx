@@ -1,4 +1,5 @@
 import { createBearerApiClient } from "@okkey/api";
+import { readStoredLocale } from "../../locale/localeStorage";
 import type { EnterpriseDeviceRecoveryRequestDto } from "@okkey-enterprise/types";
 import { EnterpriseAccountRecoveryClient } from "@okkey-enterprise/api";
 import {
@@ -73,7 +74,11 @@ export default function DeviceRecoveryApprovalController() {
     if (!accessToken || !enterpriseEnabled) {
       return null;
     }
-    return new EnterpriseAccountRecoveryClient(createBearerApiClient(apiBase(), accessToken));
+    return new EnterpriseAccountRecoveryClient(
+      createBearerApiClient(apiBase(), accessToken, {
+        "Accept-Language": readStoredLocale(),
+      }),
+    );
   }, [accessToken, enterpriseEnabled]);
 
   useEffect(() => {

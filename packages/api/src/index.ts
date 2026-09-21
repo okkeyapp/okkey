@@ -217,10 +217,14 @@ function parseCoreApiErrorBody(raw: unknown, res: Response): CoreApiErrorBody {
 }
 
 /** API client with `Authorization: Bearer` for Vault, Sync, and Device routes. */
-export function createBearerApiClient(baseUrl: string, accessToken: string): ApiClient {
+export function createBearerApiClient(
+  baseUrl: string,
+  accessToken: string,
+  defaultHeaders?: Record<string, string>,
+): ApiClient {
   return new ApiClient({
     baseUrl,
-    defaultHeaders: { Authorization: `Bearer ${accessToken}` },
+    defaultHeaders: { Authorization: `Bearer ${accessToken}`, ...defaultHeaders },
   });
 }
 
@@ -228,6 +232,8 @@ export function createBearerApiClient(baseUrl: string, accessToken: string): Api
 export interface CoreApiClientOptions {
   cryptoRolloutMode?: CryptoRolloutMode;
   capabilities?: Partial<ClientCryptoCapabilities>;
+  /** Extra default headers (e.g. `Accept-Language` from UI locale). */
+  defaultHeaders?: Record<string, string>;
 }
 
 export class CoreApiClient {
@@ -943,7 +949,10 @@ export function createCoreApiClient(
   accessToken: string,
   options?: CoreApiClientOptions,
 ): CoreApiClient {
-  return new CoreApiClient(createBearerApiClient(baseUrl, accessToken), options);
+  return new CoreApiClient(
+    createBearerApiClient(baseUrl, accessToken, options?.defaultHeaders),
+    options,
+  );
 }
 
 /** @deprecated Prefer {@link CoreApiClient}; kept for existing app imports. */

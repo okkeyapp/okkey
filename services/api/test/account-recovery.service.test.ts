@@ -21,7 +21,13 @@ test("extractTrustedContactInviteEmails accepts email, emails, and invitations",
 
 function createService(overrides?: {
   workspaces?: { planTier: string; planCustomOverride?: boolean; planFeatureOverrides?: Record<string, boolean> }[];
-  users?: { id: string; email: string; firstName?: string | null; lastName?: string | null }[];
+  users?: {
+    id: string;
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    locale?: string | null;
+  }[];
   recovery?: Partial<AccountRecoveryRepository>;
   emailTemplates?: ConstructorParameters<typeof AccountRecoveryService>[0]["emailTemplates"];
   publicAppBaseUrl?: string;
@@ -160,7 +166,7 @@ function createService(overrides?: {
           email: user.email,
           publicKey: "pk",
           publicPqKey: null,
-          locale: null,
+          locale: user.locale ?? null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         };
@@ -175,7 +181,7 @@ function createService(overrides?: {
           email: user.email,
           publicKey: "pk",
           publicPqKey: null,
-          locale: null,
+          locale: user.locale ?? null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         };
@@ -189,7 +195,7 @@ function createService(overrides?: {
           email: user.email,
           firstName: user.firstName ?? null,
           lastName: user.lastName ?? null,
-          locale: null,
+          locale: user.locale ?? null,
           billingRegion: null,
           vaultIdleLockSeconds: 0,
           masterPasswordChangedAt: "2026-01-01T00:00:00.000Z",
@@ -439,6 +445,86 @@ test("inviteContacts sends trusted-contact invite email best-effort", async () =
   assert.equal(sends[0]?.to, "friend@example.com");
   assert.equal(sends[0]?.inviterDisplayName, "Alex Okkey");
   assert.equal(sends[0]?.inviterEmail, "owner@example.com");
+});
+
+test("inviteContacts email locale: recipient → inviter UI → inviter profile", async () => {
+  const sends: Array<{
+    userLocale: string | null | undefined;
+    explicitLocale: string | null | undefined;
+    acceptLanguage: string | null | undefined;
+  }> = [];
+
+  const serviceRecipient = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+    users: [
+      { id: "u1", email: "owner@example.com", locale: "en" },
+      { id: "u2", email: "friend@example.com", locale: "ru" },
+    ],
+    emailTemplates: {
+      sendTrustedContactInviteBestEffort: async (input) => {
+        sends.push({
+          userLocale: input.localeHints.userLocale,
+          explicitLocale: input.localeHints.explicitLocale,
+          acceptLanguage: input.localeHints.acceptLanguage,
+        });
+      },
+    },
+    publicAppBaseUrl: "https://app.example",
+  });
+  await serviceRecipient.inviteContacts("u1", ["friend@example.com"], {
+    explicitLocale: "en",
+    acceptLanguage: "en-US",
+  });
+  assert.equal(sends[0]?.userLocale, "ru");
+  assert.equal(sends[0]?.explicitLocale, "en");
+
+  sends.length = 0;
+  const serviceInviterUi = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+    users: [
+      { id: "u1", email: "owner@example.com", locale: null },
+      { id: "u2", email: "friend@example.com", locale: null },
+    ],
+    emailTemplates: {
+      sendTrustedContactInviteBestEffort: async (input) => {
+        sends.push({
+          userLocale: input.localeHints.userLocale,
+          explicitLocale: input.localeHints.explicitLocale,
+          acceptLanguage: input.localeHints.acceptLanguage,
+        });
+      },
+    },
+    publicAppBaseUrl: "https://app.example",
+  });
+  await serviceInviterUi.inviteContacts("u1", ["friend@example.com"], {
+    explicitLocale: "ru",
+    acceptLanguage: "en-US,en;q=0.9",
+  });
+  assert.equal(sends[0]?.userLocale, null);
+  assert.equal(sends[0]?.explicitLocale, "ru");
+  assert.equal(sends[0]?.acceptLanguage, "en-US,en;q=0.9");
+
+  sends.length = 0;
+  const serviceInviterProfile = createService({
+    workspaces: [{ planTier: "PREMIUM" }],
+    users: [
+      { id: "u1", email: "owner@example.com", locale: "ru" },
+      { id: "u2", email: "friend@example.com", locale: null },
+    ],
+    emailTemplates: {
+      sendTrustedContactInviteBestEffort: async (input) => {
+        sends.push({
+          userLocale: input.localeHints.userLocale,
+          explicitLocale: input.localeHints.explicitLocale,
+          acceptLanguage: input.localeHints.acceptLanguage,
+        });
+      },
+    },
+    publicAppBaseUrl: "https://app.example",
+  });
+  await serviceInviterProfile.inviteContacts("u1", ["friend@example.com"]);
+  assert.equal(sends[0]?.userLocale, null);
+  assert.equal(sends[0]?.explicitLocale, "ru");
 });
 
 test("getIdentityEncryptedKey returns ciphertext blob for restore bootstrap", async () => {
