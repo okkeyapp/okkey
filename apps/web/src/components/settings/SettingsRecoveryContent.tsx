@@ -60,7 +60,7 @@ const contactsTrashButtonClassName =
 
 /** Matches KeyForm «+ Add section with field» — standalone empty-state CTA. */
 const contactsAddSectionButtonClassName =
-  "mt-2 mb-2 h-9 w-full gap-2.5 rounded-lg bg-secondary px-4 font-medium text-foreground shadow-none";
+  "mt-2 mb-4 h-9 w-full gap-2.5 rounded-lg bg-secondary px-4 font-medium text-foreground shadow-none";
 
 /** Matches KeySection «+ Add field» in gray (`additional`) sections — `/dev/ui/key-form`. */
 const contactsAddFooterButtonClassName = cn(
@@ -689,7 +689,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       </SettingsRow>
 
       {showKeyPanel ? (
-        <div className="mb-2 flex flex-col gap-4 rounded-xl bg-secondary p-4">
+        <div className="mb-4 flex flex-col gap-4 rounded-xl bg-secondary p-4">
           <div className="flex flex-wrap items-center gap-3">
             {sessionKey ? (
               <ControlGroup
@@ -800,7 +800,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
 
               {showContactsPanel ? (
                 (status?.contacts ?? []).length > 0 || inviteOpen ? (
-                  <div className="mb-2 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+                  <div className="mb-4 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
                     {(status?.contacts ?? []).map((contact, index) => (
                       <div
                         key={contact.id}
@@ -964,7 +964,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           >
             <span className="sr-only" />
           </SettingsRow>
-          <div className="mb-2 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+          <div className="mb-4 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
             {(status?.servingAsContact ?? []).map((membership, index) => (
               <div
                 key={membership.id}
