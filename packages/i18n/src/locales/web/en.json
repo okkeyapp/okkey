@@ -228,7 +228,7 @@
   "web.settingsPopup.recovery.contacts.deleteConfirm.title": "Remove trusted contact?",
   "web.settingsPopup.recovery.contacts.deleteConfirm.description": "Remove {email} from your trusted contacts? They will no longer be able to help restore your account.",
   "web.settingsPopup.recovery.contacts.deleteConfirm.delete": "Remove",
-  "web.settingsPopup.recovery.servingAs.label": "You are a trusted contact",
+  "web.settingsPopup.recovery.servingAs.label": "I am a trusted contact",
   "web.settingsPopup.recovery.servingAs.description": "Accounts that listed you to help restore access if they lose their master password",
   "web.settingsPopup.recovery.servingAs.remove": "Remove yourself from this account",
   "web.settingsPopup.recovery.servingAs.deleteConfirm.title": "Leave trusted contacts?",

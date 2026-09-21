@@ -52,6 +52,17 @@ const ContactsReleaseInbox = accountRecoveryModule.ContactsReleaseInbox;
 const contactsPanelActionSurfaceClassName =
   "bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] active:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)] dark:bg-[color-mix(in_hsl,hsl(var(--secondary))_97%,hsl(var(--foreground))_3%)] dark:hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)] dark:active:bg-[color-mix(in_hsl,hsl(var(--secondary))_90%,hsl(var(--foreground))_10%)]";
 
+/**
+ * Destructive trash in gray panels — same as KeyFormEditor `ActionButton`
+ * with `sectionVariant="additional"` (`/dev/ui/key-form`).
+ */
+const contactsTrashButtonClassName =
+  "size-8 min-h-8 min-w-8 text-destructive hover:text-destructive hover:!bg-card";
+
+/** Matches KeyForm «+ Add section with field» — standalone empty-state CTA. */
+const contactsAddSectionButtonClassName =
+  "mt-2 mb-2 h-9 w-full gap-2.5 rounded-lg bg-secondary px-4 font-medium text-foreground shadow-none";
+
 /** Matches KeySection «+ Add field» in gray (`additional`) sections — `/dev/ui/key-form`. */
 const contactsAddFooterButtonClassName = cn(
   "-mt-px h-8 w-full gap-2.5 rounded-b-xl rounded-t-none border border-x-transparent border-b-transparent bg-secondary px-3 font-medium text-foreground shadow-none",
@@ -783,155 +794,152 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               </SettingsRow>
 
               {showContactsPanel ? (
-                <div className="mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
-                  {(status?.contacts ?? []).map((contact, index) => (
-                    <div
-                      key={contact.id}
-                      className={`flex items-center gap-1.5 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
-                    >
-                      {contact.status === "confirmed" ? (
-                        <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
-                      ) : (
-                        <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
-                      )}
-                      <p className="min-w-0 flex-1 text-sm text-foreground">{contact.email}</p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "size-6 text-destructive hover:text-destructive",
-                          contactsPanelActionSurfaceClassName,
+                (status?.contacts ?? []).length > 0 || inviteOpen ? (
+                  <div className="mb-2 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+                    {(status?.contacts ?? []).map((contact, index) => (
+                      <div
+                        key={contact.id}
+                        className={`flex items-center gap-1.5 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
+                      >
+                        {contact.status === "confirmed" ? (
+                          <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
+                        ) : (
+                          <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
                         )}
-                        aria-label={t("web.settingsPopup.recovery.contacts.remove")}
-                        disabled={busy || inviteSaving}
-                        onClick={() => setContactToDelete(contact)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  {inviteOpen ? (
-                    <div
-                      className={`flex flex-col gap-3 px-4 py-3 ${
-                        (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
-                      }`}
-                    >
-                      {inviteRows.map((row, index) => (
-                        <div key={row.id} className="flex items-center gap-2">
-                          <span className="w-6 shrink-0 text-sm text-muted-foreground">
-                            {index + 1}.
-                          </span>
-                          <Input
-                            type="email"
-                            value={row.email}
-                            disabled={inviteSaving}
-                            autoComplete="email"
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setInviteRows((current) =>
-                                current.map((item) =>
-                                  item.id === row.id ? { ...item, email: value } : item,
-                                ),
-                              );
-                            }}
-                            onInput={(e) => {
-                              // Safari/Mac autofill often skips React onChange.
-                              const value = (e.target as HTMLInputElement).value;
-                              setInviteRows((current) =>
-                                current.map((item) =>
-                                  item.id === row.id ? { ...item, email: value } : item,
-                                ),
-                              );
-                            }}
-                            placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
-                            aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
-                            className="min-w-0 flex-1 bg-background"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className={cn(
-                              "size-9 shrink-0 text-destructive hover:text-destructive",
-                              contactsPanelActionSurfaceClassName,
-                            )}
-                            disabled={inviteSaving || inviteRows.length <= 1}
-                            aria-label={t("web.settingsPopup.recovery.contacts.removeRow")}
-                            onClick={() =>
-                              setInviteRows((current) => current.filter((item) => item.id !== row.id))
-                            }
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className={cn("h-9 w-full gap-1.5", contactsPanelActionSurfaceClassName)}
-                        disabled={inviteSaving}
-                        onClick={() =>
-                          setInviteRows((current) => [
-                            ...current,
-                            { id: `invite-${Date.now()}-${current.length}`, email: "" },
-                          ])
-                        }
-                      >
-                        <Plus className="size-4 shrink-0" />
-                        {t("web.settingsPopup.recovery.contacts.addMore")}
-                      </Button>
-                      <div className="flex items-center justify-end gap-2">
+                        <p className="min-w-0 flex-1 text-sm text-foreground">{contact.email}</p>
                         <Button
                           type="button"
-                          variant="outline"
-                          className="h-9 bg-background"
-                          disabled={inviteSaving}
-                          onClick={closeInviteForm}
+                          variant="ghost"
+                          size="iconSm"
+                          className={contactsTrashButtonClassName}
+                          aria-label={t("web.settingsPopup.recovery.contacts.remove")}
+                          disabled={busy || inviteSaving}
+                          onClick={() => setContactToDelete(contact)}
                         >
-                          {t("web.settingsPopup.recovery.contacts.cancel")}
-                        </Button>
-                        <Button
-                          type="button"
-                          className="h-9"
-                          disabled={
-                            inviteSaving ||
-                            inviteRows.every((row) => !row.email.trim().includes("@"))
-                          }
-                          onClick={() => void handleInvite()}
-                        >
-                          {t("web.settingsPopup.recovery.contacts.sendInvite", {
-                            count: inviteRows.filter((row) => row.email.trim().includes("@")).length,
-                          })}
+                          <Trash2 className="size-4" />
                         </Button>
                       </div>
-                    </div>
-                  ) : (status?.contacts ?? []).length > 0 ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className={contactsAddFooterButtonClassName}
-                      disabled={busy || inviteSaving}
-                      onClick={openInviteForm}
-                    >
-                      <Plus className="size-4 shrink-0" />
-                      {t("web.settingsPopup.recovery.contacts.add")}
-                    </Button>
-                  ) : (
-                    <div className="p-1">
+                    ))}
+                    {inviteOpen ? (
+                      <div
+                        className={`flex flex-col gap-3 px-4 py-3 ${
+                          (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
+                        }`}
+                      >
+                        {inviteRows.map((row, index) => (
+                          <div key={row.id} className="flex items-center gap-2">
+                            <span className="w-6 shrink-0 text-sm text-muted-foreground">
+                              {index + 1}.
+                            </span>
+                            <Input
+                              type="email"
+                              value={row.email}
+                              disabled={inviteSaving}
+                              autoComplete="email"
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setInviteRows((current) =>
+                                  current.map((item) =>
+                                    item.id === row.id ? { ...item, email: value } : item,
+                                  ),
+                                );
+                              }}
+                              onInput={(e) => {
+                                // Safari/Mac autofill often skips React onChange.
+                                const value = (e.target as HTMLInputElement).value;
+                                setInviteRows((current) =>
+                                  current.map((item) =>
+                                    item.id === row.id ? { ...item, email: value } : item,
+                                  ),
+                                );
+                              }}
+                              placeholder={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                              aria-label={t("web.settingsPopup.recovery.contacts.emailPlaceholder")}
+                              className="min-w-0 flex-1 bg-background"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="iconSm"
+                              className={contactsTrashButtonClassName}
+                              disabled={inviteSaving || inviteRows.length <= 1}
+                              aria-label={t("web.settingsPopup.recovery.contacts.removeRow")}
+                              onClick={() =>
+                                setInviteRows((current) =>
+                                  current.filter((item) => item.id !== row.id),
+                                )
+                              }
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className={cn("h-9 w-full gap-1.5", contactsPanelActionSurfaceClassName)}
+                          disabled={inviteSaving}
+                          onClick={() =>
+                            setInviteRows((current) => [
+                              ...current,
+                              { id: `invite-${Date.now()}-${current.length}`, email: "" },
+                            ])
+                          }
+                        >
+                          <Plus className="size-4 shrink-0" />
+                          {t("web.settingsPopup.recovery.contacts.addMore")}
+                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 bg-background"
+                            disabled={inviteSaving}
+                            onClick={closeInviteForm}
+                          >
+                            {t("web.settingsPopup.recovery.contacts.cancel")}
+                          </Button>
+                          <Button
+                            type="button"
+                            className="h-9"
+                            disabled={
+                              inviteSaving ||
+                              inviteRows.every((row) => !row.email.trim().includes("@"))
+                            }
+                            onClick={() => void handleInvite()}
+                          >
+                            {t("web.settingsPopup.recovery.contacts.sendInvite", {
+                              count: inviteRows.filter((row) => row.email.trim().includes("@"))
+                                .length,
+                            })}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
                       <Button
                         type="button"
                         variant="secondary"
-                        className={cn("h-9 w-full gap-2.5", contactsPanelActionSurfaceClassName)}
+                        className={contactsAddFooterButtonClassName}
                         disabled={busy || inviteSaving}
                         onClick={openInviteForm}
                       >
                         <Plus className="size-4 shrink-0" />
                         {t("web.settingsPopup.recovery.contacts.add")}
                       </Button>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={contactsAddSectionButtonClassName}
+                    disabled={busy || inviteSaving}
+                    onClick={openInviteForm}
+                  >
+                    <Plus className="size-4 shrink-0" />
+                    {t("web.settingsPopup.recovery.contacts.add")}
+                  </Button>
+                )
               ) : null}
             </>
           ) : null}
@@ -945,11 +953,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
           <SettingsRow
             label={t("web.settingsPopup.recovery.servingAs.label")}
             description={t("web.settingsPopup.recovery.servingAs.description")}
-            controlClassName="hidden w-0"
+            controlClassName="hidden w-0 min-h-0"
           >
             <span className="sr-only" />
           </SettingsRow>
-          <div className="mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
+          <div className="mb-2 mt-2 flex flex-col overflow-visible rounded-xl bg-secondary">
             {(status?.servingAsContact ?? []).map((membership, index) => (
               <div
                 key={membership.id}
@@ -957,16 +965,12 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                   index > 0 ? "border-t border-border" : ""
                 }`}
               >
-                <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
                 <p className="min-w-0 flex-1 text-sm text-foreground">{membership.ownerEmail}</p>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "size-6 text-destructive hover:text-destructive",
-                    contactsPanelActionSurfaceClassName,
-                  )}
+                  size="iconSm"
+                  className={contactsTrashButtonClassName}
                   aria-label={t("web.settingsPopup.recovery.servingAs.remove")}
                   disabled={busy}
                   onClick={() => setMembershipToLeave(membership)}

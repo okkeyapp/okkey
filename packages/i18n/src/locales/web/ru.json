@@ -228,7 +228,7 @@
   "web.settingsPopup.recovery.contacts.deleteConfirm.title": "Удалить доверенный контакт?",
   "web.settingsPopup.recovery.contacts.deleteConfirm.description": "Удалить {email} из доверенных контактов? Этот человек больше не сможет помочь восстановить доступ к аккаунту.",
   "web.settingsPopup.recovery.contacts.deleteConfirm.delete": "Удалить",
-  "web.settingsPopup.recovery.servingAs.label": "Вы — доверенный контакт",
+  "web.settingsPopup.recovery.servingAs.label": "Я доверенный контакт",
   "web.settingsPopup.recovery.servingAs.description": "Аккаунты, для которых вы можете помочь восстановить доступ при потере мастер-пароля",
   "web.settingsPopup.recovery.servingAs.remove": "Удалить себя из контактов этого аккаунта",
   "web.settingsPopup.recovery.servingAs.deleteConfirm.title": "Удалить себя из доверенных контактов?",
