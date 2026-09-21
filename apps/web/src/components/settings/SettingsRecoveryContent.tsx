@@ -23,16 +23,14 @@ import {
   keyFormAdditionalDividerBorderTClassName,
 } from "@okkey/ui";
 import {
-  CircleCheck,
   Copy,
   Download,
   Info,
   Plus,
   RefreshCcw,
-  Trash2,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -40,6 +38,7 @@ import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultCo
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
+import { IconDelete16 } from "../items/itemCategoryIcons";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
 import { SettingsRow } from "./SettingsRows";
 import DeleteTrustedContactConfirmPopup from "./DeleteTrustedContactConfirmPopup";
@@ -75,7 +74,8 @@ type SettingsRecoveryContentProps = {
 };
 
 function RecoveryKeyExportedCheckIcon({ className }: { className?: string }) {
-  const clipId = "recovery-key-exported-check-clip";
+  const reactId = useId();
+  const clipId = `recovery-key-exported-check-clip-${reactId.replace(/:/g, "")}`;
   return (
     <svg
       width="16"
@@ -807,7 +807,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         className={`flex items-center gap-1.5 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
                       >
                         {contact.status === "confirmed" ? (
-                          <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden />
+                          <RecoveryKeyExportedCheckIcon className="size-4 shrink-0" />
                         ) : (
                           <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
                         )}
@@ -823,7 +823,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                           disabled={busy || inviteSaving}
                           onClick={() => setContactToDelete(contact)}
                         >
-                          <Trash2 className="size-4" />
+                          <IconDelete16 className="size-4" />
                         </Button>
                       </div>
                     ))}
@@ -877,8 +877,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                                 )
                               }
                             >
-                              <Trash2 className="size-4" />
-                            </Button>
+                          <IconDelete16 className="size-4" />
+                        </Button>
                           </div>
                         ))}
                         <Button
@@ -984,7 +984,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                   disabled={busy}
                   onClick={() => setMembershipToLeave(membership)}
                 >
-                  <Trash2 className="size-4" />
+                  <IconDelete16 className="size-4" />
                 </Button>
               </div>
             ))}
