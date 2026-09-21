@@ -39,13 +39,27 @@ function isExpired(expiresAt: string): boolean {
   return Number.isNaN(ms) || ms <= Date.now();
 }
 
+function formatAbsoluteDate(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 /**
  * Popup for pending contact share-release requests
  * (owner card matches TrustedContactInviteController / MembersListCard).
  */
 export default function ContactsShareReleaseController() {
   const enterpriseEnabled = Boolean(accountRecoveryModule.ContactsRestorePanel);
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { accessToken, userId, vaultUnlocked, vaultKey } = useAuthVault();
   const [pending, setPending] = useState<EnterpriseContactRecoveryRequestDto[]>([]);
   const [resolving, setResolving] = useState(false);
@@ -178,18 +192,40 @@ export default function ContactsShareReleaseController() {
         <p className="text-muted-foreground">
           {t("account.restore.enterprise.contacts.popup.body")}
         </p>
-        <div className="flex items-center gap-4 rounded-xl bg-secondary p-4">
-          <MemberFavicon
-            firstName={current.ownerFirstName}
-            lastName={current.ownerLastName}
-            email={ownerEmail}
-            size={40}
-          />
-          <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-            {showName ? (
-              <p className="truncate text-sm leading-5 text-muted-foreground">{ownerName}</p>
-            ) : null}
-            <p className="truncate text-sm font-medium leading-5 text-foreground">{ownerEmail}</p>
+        <div className="flex flex-col gap-3 rounded-xl bg-secondary p-4">
+          <div className="flex items-center gap-4">
+            <MemberFavicon
+              firstName={current.ownerFirstName}
+              lastName={current.ownerLastName}
+              email={ownerEmail}
+              size={40}
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+              {showName ? (
+                <p className="truncate text-sm font-bold leading-5 text-foreground">{ownerName}</p>
+              ) : null}
+              <p
+                className={
+                  showName
+                    ? "truncate text-sm font-normal leading-5 text-muted-foreground"
+                    : "truncate text-sm font-bold leading-5 text-foreground"
+                }
+              >
+                {ownerEmail}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-0.5 text-sm leading-5 text-muted-foreground">
+            <p>
+              {t("account.restore.enterprise.contacts.popup.requested", {
+                when: formatAbsoluteDate(current.createdAt, locale),
+              })}
+            </p>
+            <p>
+              {t("account.restore.enterprise.contacts.popup.expires", {
+                when: formatAbsoluteDate(current.expiresAt, locale),
+              })}
+            </p>
           </div>
         </div>
       </div>

@@ -142,9 +142,15 @@ export default function TrustedContactInviteController() {
           />
           <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
             {showName ? (
-              <p className="truncate text-sm leading-5 text-muted-foreground">{ownerName}</p>
+              <p className="truncate text-sm font-bold leading-5 text-foreground">{ownerName}</p>
             ) : null}
-            <p className="truncate text-sm font-medium leading-5 text-foreground">
+            <p
+              className={
+                showName
+                  ? "truncate text-sm font-normal leading-5 text-muted-foreground"
+                  : "truncate text-sm font-bold leading-5 text-foreground"
+              }
+            >
               {current.ownerEmail}
             </p>
           </div>

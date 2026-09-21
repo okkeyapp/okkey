@@ -103,7 +103,7 @@ export default function MembersListCard({
               <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
                 <div className="flex min-w-0 items-center gap-2">
                   {showName ? (
-                    <p className="truncate text-sm leading-5 text-muted-foreground">{name}</p>
+                    <p className="truncate text-sm font-bold leading-5 text-foreground">{name}</p>
                   ) : null}
                   {member.status === "pending" ? (
                     <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-foreground px-2 text-xs font-normal leading-none text-background">
@@ -111,7 +111,14 @@ export default function MembersListCard({
                     </span>
                   ) : null}
                 </div>
-                <p className="truncate text-sm font-medium leading-5 text-foreground">{member.email}</p>
+                <p
+                  className={cn(
+                    "truncate text-sm leading-5",
+                    showName ? "font-normal text-muted-foreground" : "font-bold text-foreground",
+                  )}
+                >
+                  {member.email}
+                </p>
               </div>
               <span className="shrink-0 text-sm leading-5 text-muted-foreground">
                 {roleLabel(member, t)}
