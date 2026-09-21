@@ -18,6 +18,7 @@ import {
   ControlGroup,
   controlGroupItemGrowClassName,
   Input,
+  Spinner,
 } from "@okkey/ui";
 import { Copy, Download, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -36,10 +37,12 @@ import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
 import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
 import { registrationErrorI18nKey } from "./registrationErrors";
+import {
+  shouldRedirectAwayFromRegistrationForm,
+  type RegistrationStep,
+} from "./registrationRecoveryStep";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
-
-type RegistrationStep = "form" | "recoveryKey";
 
 function RequirementCheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -87,12 +90,19 @@ export default function AuthRegistrationPage() {
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
 
   useEffect(() => {
-    if (step === "recoveryKey") {
+    // After completeRegistration we clear registrationAuthStateId and await enroll.
+    // Guard must keep `enrolling` / `recoveryKey` on this page — otherwise the user
+    // is bounced to /auth/email → GuestAuthOnly → lock and never sees the key.
+    if (
+      !shouldRedirectAwayFromRegistrationForm({
+        step,
+        registrationAuthStateId,
+        email,
+      })
+    ) {
       return;
     }
-    if (!registrationAuthStateId || !email) {
-      navigate(AUTH_EMAIL_PATH, { replace: true });
-    }
+    navigate(AUTH_EMAIL_PATH, { replace: true });
   }, [registrationAuthStateId, email, navigate, step]);
 
   const { isFormValid, allFieldsFilled, passwordLongEnough, passwordsMatch } = useMemo(() => {
@@ -174,6 +184,9 @@ export default function AuthRegistrationPage() {
       };
 
       const reg = await authClient.completeRegistration(body);
+      // Enter post-signup recovery before clearing registrationAuthStateId so the
+      // redirect effect cannot race with async enroll and skip the export screen.
+      setStep("enrolling");
       applyAccessTokenResponse({
         access_token: reg.access_token,
         expires_at: reg.expires_at,
@@ -272,6 +285,20 @@ export default function AuthRegistrationPage() {
     const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
     setRecoverySecret(null);
     navigate(target, { replace: true });
+  }
+
+  if (step === "enrolling") {
+    return (
+      <AppShellLayout
+        title={t("auth.registration.recovery.title")}
+        description={t("auth.registration.recovery.preparing")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-border bg-background p-8 shadow-sm">
+          <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+        </div>
+      </AppShellLayout>
+    );
   }
 
   if (step === "recoveryKey" && recoverySecret) {

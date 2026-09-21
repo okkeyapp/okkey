@@ -1453,6 +1453,7 @@
   "auth.registration.personalWorkspaceName": "Личный",
   "auth.registration.recovery.title": "Сохраните ключ восстановления",
   "auth.registration.recovery.description": "Скачайте или скопируйте этот ключ и храните его офлайн. Он понадобится, если вы забудете мастер-пароль.",
+  "auth.registration.recovery.preparing": "Готовим ключ восстановления…",
   "auth.registration.recovery.copy": "Скопировать",
   "auth.registration.recovery.downloadPdf": "Скачать PDF",
   "auth.registration.recovery.next": "Далее",
