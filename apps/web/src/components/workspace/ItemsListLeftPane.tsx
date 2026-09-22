@@ -26,6 +26,9 @@ import { useLocale } from "../../locale/LocaleContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { findWorkspaceFolderPathById } from "../../folders/workspaceFolderTree";
 import { useRadixScrollAreaScrolled, useRadixScrollAreaScrollEdges } from "../../hooks/useRadixScrollAreaScrolled";
+import ListScrollSentinel from "../../lists/ListScrollSentinel";
+import { useListWindow } from "../../lists/useListWindow";
+import { windowListSections } from "../../lists/windowListSections";
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
@@ -1255,6 +1258,25 @@ export default function ItemsListLeftPane({
   ]);
 
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
+  /** Scope/filter/sort/search only — never active item (Q1: no deep-link list expand). */
+  const listWindowResetKey = [
+    workspaceId,
+    filter,
+    sort,
+    searchQ,
+    vaultQ,
+    vaultKind ?? "",
+    folderQ,
+    categoryQ,
+  ].join("|");
+  const { visibleCount, hasMore: listHasMore, loadMore: loadMoreListRows } = useListWindow({
+    total: totalRows,
+    resetKey: listWindowResetKey,
+  });
+  const visibleSections = useMemo(
+    () => windowListSections(sections, visibleCount),
+    [sections, visibleCount],
+  );
   const listLoading =
     !itemsListRecordsLoaded ||
     Boolean(vaultKind && !itemsListVaultsLoaded) ||
@@ -1861,7 +1883,7 @@ export default function ItemsListLeftPane({
           </div>
         ) : (
           <div className="pt-2">
-            {sections.map((section) => (
+            {visibleSections.map((section) => (
               <section key={section.key} className="pb-2">
                 <h2 className="okkey-body px-5 py-2 text-sm font-medium text-foreground">{section.label}</h2>
                 <ul className="flex flex-col gap-0 px-2" role="list">
@@ -2050,6 +2072,12 @@ export default function ItemsListLeftPane({
                 </ul>
               </section>
             ))}
+            {listHasMore ? (
+              <ListScrollSentinel
+                scrollAreaRef={listScrollRef}
+                onVisible={loadMoreListRows}
+              />
+            ) : null}
           </div>
         )}
       </ScrollArea>

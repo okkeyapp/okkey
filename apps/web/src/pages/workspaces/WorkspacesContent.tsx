@@ -1,5 +1,5 @@
-import type { ReactNode, SVGProps } from "react";
-import { useEffect, useState } from "react";
+import type { ReactNode, RefObject, SVGProps } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiRequestError } from "@okkey/api";
 import type { Workspace } from "@okkey/types";
@@ -8,6 +8,8 @@ import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { writeStoredCurrentWorkspaceId } from "../../auth/workspaceStorage";
+import ListScrollSentinel from "../../lists/ListScrollSentinel";
+import { useListWindow } from "../../lists/useListWindow";
 import { ITEMS_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import WorkspacesListTile from "./WorkspacesListTile";
@@ -56,9 +58,18 @@ function planDescriptionKey(planTier: string): string {
   }
 }
 
-function WorkspacesListChrome({ children }: { children: ReactNode }) {
+function WorkspacesListChrome({
+  children,
+  scrollRef,
+}: {
+  children: ReactNode;
+  scrollRef?: RefObject<HTMLDivElement | null>;
+}) {
   return (
-    <div className="flex w-full flex-nowrap items-start justify-center gap-4 overflow-x-auto px-1 py-3">
+    <div
+      ref={scrollRef}
+      className="flex w-full flex-nowrap items-start justify-center gap-4 overflow-x-auto px-1 py-3"
+    >
       {children}
     </div>
   );
@@ -94,6 +105,17 @@ export default function WorkspacesContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const canCreateWorkspace = workspaceTenancyModule.canCreateWorkspace;
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const workspaceList = workspaces ?? [];
+  const {
+    visibleCount,
+    hasMore: workspacesHasMore,
+    loadMore: loadMoreWorkspaces,
+  } = useListWindow({
+    total: workspaceList.length,
+    resetKey: "workspaces-home",
+  });
+  const visibleWorkspaces = workspaceList.slice(0, visibleCount);
 
   useEffect(() => {
     if (!core) {
@@ -164,8 +186,8 @@ export default function WorkspacesContent() {
   }
 
   return (
-    <WorkspacesListChrome>
-      {workspaces.map((ws) => (
+    <WorkspacesListChrome scrollRef={listScrollRef}>
+      {visibleWorkspaces.map((ws) => (
         <WorkspacesListTile
           key={ws.id}
           workspace={ws}
@@ -178,6 +200,14 @@ export default function WorkspacesContent() {
           }}
         />
       ))}
+
+      {workspacesHasMore ? (
+        <ListScrollSentinel
+          rootRef={listScrollRef}
+          onVisible={loadMoreWorkspaces}
+          className="h-full w-px shrink-0 self-stretch"
+        />
+      ) : null}
 
       {canCreateWorkspace ? (
         <button

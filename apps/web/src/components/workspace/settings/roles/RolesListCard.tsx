@@ -3,6 +3,9 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { Button, cn } from "@okkey/ui";
 import { useState, type ReactNode } from "react";
 
+import ListScrollSentinel from "../../../../lists/ListScrollSentinel";
+import { useListWindow } from "../../../../lists/useListWindow";
+
 type RolesListCardProps = {
   roles: readonly WorkspaceRoleSummary[];
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -14,6 +17,8 @@ type RolesListCardProps = {
     disabled?: boolean;
   };
   renderTrailing?: (role: WorkspaceRoleSummary) => ReactNode;
+  /** Resets the infinite-scroll window (custom lists). Built-in tiny lists stay under one page. */
+  listWindowResetKey?: string;
   className?: string;
 };
 
@@ -48,20 +53,26 @@ export default function RolesListCard({
   onRoleClick,
   footerAction,
   renderTrailing,
+  listWindowResetKey = "",
   className,
 }: RolesListCardProps) {
   const [focusedRoleId, setFocusedRoleId] = useState<string | null>(null);
+  const { visibleCount, hasMore, loadMore } = useListWindow({
+    total: roles.length,
+    resetKey: listWindowResetKey,
+  });
+  const visibleRoles = roles.slice(0, visibleCount);
 
   if (roles.length === 0) {
     return null;
   }
 
-  const lastIndex = roles.length - 1;
+  const lastIndex = visibleRoles.length - 1;
 
   return (
     <div className={cn("flex flex-col gap-4 px-px", className)}>
       <div>
-        {roles.map((role, index) => {
+        {visibleRoles.map((role, index) => {
           const content = (
             <>
               <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
@@ -116,6 +127,7 @@ export default function RolesListCard({
             </div>
           );
         })}
+        {hasMore ? <ListScrollSentinel onVisible={loadMore} /> : null}
       </div>
 
       {footerAction ? (

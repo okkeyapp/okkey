@@ -36,6 +36,8 @@ import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
+import ListScrollSentinel from "../../lists/ListScrollSentinel";
+import { useListWindow } from "../../lists/useListWindow";
 import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { IconDelete16 } from "../items/itemCategoryIcons";
@@ -618,6 +620,26 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const showPaidUpsell = Boolean(status) && !canDevices && !canContacts;
   const showKeyPanel = keyEnabled;
   const showContactsPanel = canContacts;
+  const recoveryContacts = status?.contacts ?? [];
+  const {
+    visibleCount: visibleContactsCount,
+    hasMore: contactsHasMore,
+    loadMore: loadMoreContacts,
+  } = useListWindow({
+    total: recoveryContacts.length,
+    resetKey: "recovery-contacts",
+  });
+  const visibleContacts = recoveryContacts.slice(0, visibleContactsCount);
+  const servingAsContact = status?.servingAsContact ?? [];
+  const {
+    visibleCount: visibleServingCount,
+    hasMore: servingHasMore,
+    loadMore: loadMoreServing,
+  } = useListWindow({
+    total: servingAsContact.length,
+    resetKey: "recovery-serving",
+  });
+  const visibleServing = servingAsContact.slice(0, visibleServingCount);
   const generatedLabel = formatGeneratedAt(
     status?.key.rotatedAt ?? status?.key.createdAt,
     locale,
@@ -821,9 +843,9 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
               </SettingsRow>
 
               {showContactsPanel ? (
-                (status?.contacts ?? []).length > 0 || inviteOpen ? (
+                recoveryContacts.length > 0 || inviteOpen ? (
                   <div className="mb-4 flex flex-col overflow-visible rounded-xl bg-secondary">
-                    {(status?.contacts ?? []).map((contact, index) => (
+                    {visibleContacts.map((contact, index) => (
                       <div
                         key={contact.id}
                         className={`flex items-center gap-1.5 px-4 py-3 ${index > 0 ? "border-t border-border" : ""}`}
@@ -849,10 +871,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         </Button>
                       </div>
                     ))}
+                    {contactsHasMore ? <ListScrollSentinel onVisible={loadMoreContacts} /> : null}
                     {inviteOpen ? (
                       <div
                         className={`flex flex-col gap-3 px-4 py-3 ${
-                          (status?.contacts ?? []).length > 0 ? "border-t border-border" : ""
+                          recoveryContacts.length > 0 ? "border-t border-border" : ""
                         }`}
                       >
                         {inviteRows.map((row, index) => (
@@ -977,7 +1000,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
 
       {showPaidUpsell ? <PaidMethodsUpsell t={t} /> : null}
 
-      {(status?.servingAsContact?.length ?? 0) > 0 ? (
+      {servingAsContact.length > 0 ? (
         <>
           <SettingsRow
             label={t("web.settingsPopup.recovery.servingAs.label")}
@@ -987,7 +1010,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
             <span className="sr-only" />
           </SettingsRow>
           <div className="mb-4 flex flex-col overflow-visible rounded-xl bg-secondary">
-            {(status?.servingAsContact ?? []).map((membership, index) => (
+            {visibleServing.map((membership, index) => (
               <div
                 key={membership.id}
                 className={`flex items-center gap-1.5 px-4 py-3 ${
@@ -1010,6 +1033,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                 </Button>
               </div>
             ))}
+            {servingHasMore ? <ListScrollSentinel onVisible={loadMoreServing} /> : null}
           </div>
         </>
       ) : null}

@@ -1,3 +1,5 @@
+import { LIST_PAGE_SIZE } from "../../lists/listPageSize";
+
 export const CAPSULE_TABLE_COLUMNS_STORAGE_KEY = "okkey.capsules.visibleColumns";
 
 export const CAPSULE_TABLE_COLUMN_IDS = [
@@ -31,8 +33,8 @@ export function capsuleTableColumnLabel(
   return t(CAPSULE_TABLE_COLUMN_MESSAGE_KEYS[columnId]);
 }
 
-/** Page size for the capsules owner list. */
-export const CAPSULE_TABLE_PAGE_SIZE = 30;
+/** Page size for the capsules owner list (aligned with shared LIST_PAGE_SIZE). */
+export const CAPSULE_TABLE_PAGE_SIZE = LIST_PAGE_SIZE;
 
 /** Skeleton rows before the first successful list response (total still unknown). */
 export const CAPSULE_TABLE_INITIAL_SKELETON_ROWS = 5;
