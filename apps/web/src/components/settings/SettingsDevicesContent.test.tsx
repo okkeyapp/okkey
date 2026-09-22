@@ -35,6 +35,7 @@ vi.mock("./DeviceTypeIcon", () => ({
 }));
 
 import SettingsDevicesContent, { parseOsFromDeviceName } from "./SettingsDevicesContent";
+import { clearSettingsPopupCache } from "./settingsPopupCache";
 
 const t = (key: string, values?: Record<string, string | number>) => {
   if (!values) {
@@ -109,6 +110,7 @@ describe("parseOsFromDeviceName", () => {
 describe("SettingsDevicesContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSettingsPopupCache();
     coreMocks.listDevices.mockResolvedValue({
       devices: [trustedDevice()],
       pending: [pendingDevice()],

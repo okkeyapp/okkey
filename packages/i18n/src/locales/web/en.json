@@ -1453,6 +1453,7 @@
   "auth.registration.personalWorkspaceName": "Personal",
   "auth.registration.recovery.title": "Save your recovery key",
   "auth.registration.recovery.description": "Download or copy this key and store it offline. You will need it if you forget your master password.",
+  "auth.registration.recovery.preparing": "Preparing your recovery key…",
   "auth.registration.recovery.copy": "Copy",
   "auth.registration.recovery.downloadPdf": "Download PDF",
   "auth.registration.recovery.next": "Continue",

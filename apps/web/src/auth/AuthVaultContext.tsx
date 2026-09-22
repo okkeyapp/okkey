@@ -22,6 +22,7 @@ import {
 } from "@okkey/crypto";
 
 import { createAuthSdk, createAuthenticatedCoreClient, createPublicApiClient } from "../api/client";
+import { clearSettingsPopupCache } from "../components/settings/settingsPopupCache";
 import { migratePersonalFoldersAfterPasswordChange } from "../folders/migratePersonalFoldersAfterPasswordChange";
 import { accountLockWithRedirectQuery } from "../routes/paths";
 import { base64ToBytes, bytesToBase64 } from "./base64";
@@ -547,6 +548,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     setDeviceApprovers([]);
     pendingDeviceIdRef.current = null;
     foreverBlockedRef.current = false;
+    clearSettingsPopupCache();
   }, [clearPasswordShareSecrets, clearVaultKeySecret]);
 
   const lockVault = useCallback(() => {
@@ -555,6 +557,7 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     clearPasswordShareSecrets();
     vaultUnlockedRef.current = false;
     setVaultUnlocked(false);
+    clearSettingsPopupCache();
   }, [clearPasswordShareSecrets]);
 
   const touchActivity = useCallback(() => {

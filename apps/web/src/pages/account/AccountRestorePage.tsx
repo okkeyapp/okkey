@@ -24,7 +24,7 @@ import {
   Skeleton,
 } from "@okkey/ui";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
-import { Copy, Download, TriangleAlert } from "lucide-react";
+import { Copy, Download } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -34,6 +34,7 @@ import AccountUserBar from "../../components/account/AccountUserBar";
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
+import { RecoveryInfoTriangleIcon } from "../../components/settings/RecoveryInfoTriangleIcon";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { base64ToBytes, bytesToBase64 } from "../../auth/base64";
 import { parseBrowserEnvironment } from "../../auth/browserEnvironment";
@@ -433,7 +434,7 @@ export default function AccountRestorePage() {
             </Button>
           </ControlGroup>
           <div className="flex items-start gap-1.5">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <RecoveryInfoTriangleIcon className="mt-0.5" />
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               {t("account.restore.newKey.warning")}
             </p>

@@ -18,13 +18,15 @@ import {
   ControlGroup,
   controlGroupItemGrowClassName,
   Input,
+  Spinner,
 } from "@okkey/ui";
-import { Copy, Download, TriangleAlert } from "lucide-react";
+import { Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { downloadRecoveryKeyPdf } from "../../components/settings/recoveryKeyPdf";
+import { RecoveryInfoTriangleIcon } from "../../components/settings/RecoveryInfoTriangleIcon";
 import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { finalizePendingVaultBundle } from "../../auth/localVaultBundle";
@@ -36,10 +38,12 @@ import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
 import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
 import { registrationErrorI18nKey } from "./registrationErrors";
+import {
+  shouldRedirectAwayFromRegistrationForm,
+  type RegistrationStep,
+} from "./registrationRecoveryStep";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
-
-type RegistrationStep = "form" | "recoveryKey";
 
 function RequirementCheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -71,6 +75,7 @@ export default function AuthRegistrationPage() {
     applyAccessTokenResponse,
     clearEmailLoginFlow,
     logout,
+    accessToken,
   } = useAuthVault();
 
   const email = profile?.email ?? "";
@@ -85,14 +90,22 @@ export default function AuthRegistrationPage() {
   const [recoverySecret, setRecoverySecret] = useState<string | null>(null);
   const [recoveryExported, setRecoveryExported] = useState(false);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
+  const [postRegAccessToken, setPostRegAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (step === "recoveryKey") {
+    // After completeRegistration we clear registrationAuthStateId and await enroll.
+    // Guard must keep `enrolling` / `recoveryKey` on this page — otherwise the user
+    // is bounced to /auth/email → GuestAuthOnly → lock and never sees the key.
+    if (
+      !shouldRedirectAwayFromRegistrationForm({
+        step,
+        registrationAuthStateId,
+        email,
+      })
+    ) {
       return;
     }
-    if (!registrationAuthStateId || !email) {
-      navigate(AUTH_EMAIL_PATH, { replace: true });
-    }
+    navigate(AUTH_EMAIL_PATH, { replace: true });
   }, [registrationAuthStateId, email, navigate, step]);
 
   const { isFormValid, allFieldsFilled, passwordLongEnough, passwordsMatch } = useMemo(() => {
@@ -174,6 +187,10 @@ export default function AuthRegistrationPage() {
       };
 
       const reg = await authClient.completeRegistration(body);
+      // Enter post-signup recovery before clearing registrationAuthStateId so the
+      // redirect effect cannot race with async enroll and skip the export screen.
+      setStep("enrolling");
+      setPostRegAccessToken(reg.access_token);
       applyAccessTokenResponse({
         access_token: reg.access_token,
         expires_at: reg.expires_at,
@@ -237,12 +254,22 @@ export default function AuthRegistrationPage() {
     }
   }
 
+  async function ackRecoveryKeyExport(): Promise<void> {
+    const token = postRegAccessToken ?? accessToken;
+    if (!token) {
+      throw new Error("missing access token for recovery key export ack");
+    }
+    const core = createAuthenticatedCoreClient(token);
+    await core.ackAccountRecoveryKeyExport();
+  }
+
   async function handleRecoveryCopy() {
     if (!recoverySecret) {
       return;
     }
     try {
       await navigator.clipboard.writeText(recoverySecret);
+      await ackRecoveryKeyExport();
       setRecoveryExported(true);
       toast.success(t("web.toast.save.success"));
     } catch {
@@ -260,6 +287,7 @@ export default function AuthRegistrationPage() {
         title: t("auth.registration.recovery.pdfTitle"),
         description: t("auth.registration.recovery.pdfDescription"),
       });
+      await ackRecoveryKeyExport();
       setRecoveryExported(true);
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.generic"));
@@ -272,6 +300,20 @@ export default function AuthRegistrationPage() {
     const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
     setRecoverySecret(null);
     navigate(target, { replace: true });
+  }
+
+  if (step === "enrolling") {
+    return (
+      <AppShellLayout
+        title={t("auth.registration.recovery.title")}
+        description={t("auth.registration.recovery.preparing")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-border bg-background p-8 shadow-sm">
+          <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+        </div>
+      </AppShellLayout>
+    );
   }
 
   if (step === "recoveryKey" && recoverySecret) {
@@ -289,7 +331,12 @@ export default function AuthRegistrationPage() {
             </Alert>
           ) : null}
           <div className="rounded-lg bg-secondary p-3">
-            <p className="break-all font-mono text-sm leading-5 text-foreground">{recoverySecret}</p>
+            <p
+              className="truncate font-mono text-sm leading-5 text-foreground"
+              title={recoverySecret}
+            >
+              {recoverySecret}
+            </p>
           </div>
           <ControlGroup aria-label={t("web.settingsPopup.recovery.key.actionsAria")}>
             <Button
@@ -312,7 +359,7 @@ export default function AuthRegistrationPage() {
             </Button>
           </ControlGroup>
           <div className="flex items-start gap-1.5">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <RecoveryInfoTriangleIcon className="mt-0.5" />
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               {t("auth.registration.recovery.warning")}
             </p>

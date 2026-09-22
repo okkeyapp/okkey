@@ -18,6 +18,7 @@ import {
   ControlGroup,
   controlGroupItemGrowClassName,
   Input,
+  Skeleton,
   Switch,
   cn,
   keyFormAdditionalDividerBorderTClassName,
@@ -28,7 +29,6 @@ import {
   Info,
   Plus,
   RefreshCcw,
-  TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -40,8 +40,11 @@ import { useLocale } from "../../locale/LocaleContext";
 import { settingsPath } from "../../routes/paths";
 import { IconDelete16 } from "../items/itemCategoryIcons";
 import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
+import { RecoveryInfoTriangleIcon } from "./RecoveryInfoTriangleIcon";
 import { SettingsRow } from "./SettingsRows";
 import DeleteTrustedContactConfirmPopup from "./DeleteTrustedContactConfirmPopup";
+import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
+import { getSettingsPopupCacheState } from "./settingsPopupCache";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
@@ -206,8 +209,24 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const tRef = useRef(t);
   tRef.current = t;
 
-  const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const mapRecoveryError = useCallback(
+    (err: unknown) => recoveryErrorMessage(err, tRef.current),
+    [],
+  );
+  const ensureRecovery = useCallback(async () => {
+    if (!core) {
+      throw new Error("no core client");
+    }
+    return core.getAccountRecoveryStatus();
+  }, [core]);
+  const {
+    data: status,
+    error: cacheError,
+    needsSkeleton: initialLoading,
+    setData: setStatusCache,
+    refresh,
+  } = useSettingsPopupCacheEntry("recovery", ensureRecovery, mapRecoveryError);
+
   const [error, setError] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -222,49 +241,39 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   );
   const settingsMutatingRef = useRef(false);
 
+  useEffect(() => {
+    if (cacheError) {
+      setError(cacheError);
+    }
+  }, [cacheError]);
+
+  const setStatus = useCallback(
+    (
+      next:
+        | AccountRecoveryStatusResponseDto
+        | null
+        | ((prev: AccountRecoveryStatusResponseDto | null) => AccountRecoveryStatusResponseDto | null),
+    ) => {
+      const prev = getSettingsPopupCacheState().recovery.data;
+      const resolved = typeof next === "function" ? next(prev) : next;
+      setStatusCache(resolved);
+    },
+    [setStatusCache],
+  );
+
   const refreshStatus = useCallback(async (): Promise<AccountRecoveryStatusResponseDto | null> => {
     if (!core) {
       return null;
     }
     try {
-      const next = await core.getAccountRecoveryStatus();
-      setStatus(next);
+      const next = await refresh({ quiet: true });
       setError(null);
       return next;
     } catch (err) {
       setError(recoveryErrorMessage(err, tRef.current));
       return null;
     }
-  }, [core]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadInitial() {
-      if (!core) {
-        setInitialLoading(false);
-        return;
-      }
-      try {
-        const next = await core.getAccountRecoveryStatus();
-        if (!cancelled) {
-          setStatus(next);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(recoveryErrorMessage(err, tRef.current));
-        }
-      } finally {
-        if (!cancelled) {
-          setInitialLoading(false);
-        }
-      }
-    }
-    void loadInitial();
-    return () => {
-      cancelled = true;
-    };
-  }, [core]);
+  }, [core, refresh]);
 
   const notifySaved = useCallback(() => {
     toast.success(tRef.current("web.toast.save.success"));
@@ -616,22 +625,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   );
   const keyExported = Boolean(status?.key.exportedAt);
 
-  if (initialLoading) {
-    return (
-      <div
-        className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col"
-        aria-label={t("web.settingsPopup.recovery.title")}
-        aria-busy="true"
-      >
-        <p className="text-sm text-muted-foreground">{t("web.settingsPopup.recovery.loading")}</p>
-      </div>
-    );
-  }
-
   return (
     <div
       className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col"
       aria-label={t("web.settingsPopup.recovery.title")}
+      aria-busy={initialLoading || undefined}
     >
       {error ? (
         <Alert variant="error" className="mb-2">
@@ -640,6 +638,30 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         </Alert>
       ) : null}
 
+      {initialLoading ? (
+        <div className="flex flex-col" role="status" aria-label={t("web.settingsPopup.recovery.loading")}>
+          <SettingsRow
+            label={t("web.settingsPopup.recovery.key.label")}
+            description={t("web.settingsPopup.recovery.key.description")}
+            border={false}
+            controlClassName="w-[100px]"
+          >
+            <Skeleton className="h-6 w-11 shrink-0 rounded-full" />
+          </SettingsRow>
+          <div className="mb-4 flex flex-col gap-4 rounded-xl bg-secondary p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Skeleton className="h-9 min-w-0 flex-1 rounded-md" />
+              <Skeleton className="h-9 w-36 shrink-0 rounded-md" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-56 max-w-full" />
+              <Skeleton className="h-5 w-48 max-w-full" />
+            </div>
+            <Skeleton className="h-5 w-full max-w-md" />
+          </div>
+        </div>
+      ) : (
+        <>
       {status?.pendingInvites && status.pendingInvites.length > 0 ? (
         <div className="mb-4 flex flex-col gap-2 rounded-xl bg-secondary p-4">
           <p className="text-sm font-medium text-foreground">
@@ -753,7 +775,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
             </p>
           </div>
           <div className="flex items-start gap-1.5">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <RecoveryInfoTriangleIcon className="mt-0.5" />
             <p className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">
               {t("web.settingsPopup.recovery.key.regenerateWarning")}
             </p>
@@ -809,7 +831,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
                         {contact.status === "confirmed" ? (
                           <RecoveryKeyExportedCheckIcon className="size-4 shrink-0" />
                         ) : (
-                          <TriangleAlert className="size-4 shrink-0 text-amber-500" aria-hidden />
+                          <RecoveryInfoTriangleIcon className="text-amber-500" />
                         )}
                         <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-foreground">
                           {contact.email}
@@ -1010,6 +1032,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
             }))}
         />
       ) : null}
+        </>
+      )}
 
       <DeleteTrustedContactConfirmPopup
         open={contactToDelete !== null}

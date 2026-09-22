@@ -14,6 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   Switch,
 } from "@okkey/ui";
 import {
@@ -35,6 +36,7 @@ import {
 } from "../../auth/accountWebAuthnCapability";
 import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { SettingsRow } from "./SettingsRows";
+import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
 
 type SettingsLoginContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -105,8 +107,20 @@ function capabilityBlockedCode(cap: AccountWebAuthnCapability | null): AccountWe
 
 export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
   const core = useAuthenticatedCoreClient();
-  const [methods, setMethods] = useState<AccountLoginMethodsResponseDto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const mapLoginError = useCallback(() => t("web.settingsLogin.error.load"), [t]);
+  const ensureLogin = useCallback(async () => {
+    if (!core) {
+      throw new Error("no core client");
+    }
+    return core.getLoginMethods();
+  }, [core]);
+  const {
+    data: methods,
+    error: cacheError,
+    needsSkeleton: loading,
+    setData: setMethods,
+  } = useSettingsPopupCacheEntry("login", ensureLogin, mapLoginError);
+
   const [busy, setBusy] = useState(false);
   const [busyAttachment, setBusyAttachment] = useState<WebAuthnAuthenticatorAttachment | null>(
     null,
@@ -123,27 +137,11 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
     [t],
   );
 
-  const load = useCallback(async () => {
-    if (!core) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setErrorAttachment(null);
-    try {
-      const next = await core.getLoginMethods();
-      setMethods(next);
-    } catch {
-      setError(t("web.settingsLogin.error.load"));
-    } finally {
-      setLoading(false);
-    }
-  }, [core, t]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (cacheError) {
+      setError(cacheError);
+    }
+  }, [cacheError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -308,13 +306,26 @@ export default function SettingsLoginContent({ t }: SettingsLoginContentProps) {
     );
   }
 
-  if (loading && !methods) {
+  if (loading) {
     return (
       <div
-        className="min-h-[min(420px,calc(100dvh-32px))]"
+        className="flex min-h-[min(420px,calc(100dvh-32px))] flex-col gap-4"
         aria-busy
         aria-label={t("web.settingsPopup.login.title")}
-      />
+        role="status"
+      >
+        <div className="flex items-center justify-between gap-3 py-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Skeleton className="h-5 w-40 max-w-full" />
+            <Skeleton className="h-5 w-full max-w-md" />
+          </div>
+          <Skeleton className="h-9 w-[150px] shrink-0 rounded-md" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-12 w-full rounded-xl" />
+          <Skeleton className="h-12 w-full rounded-xl" />
+        </div>
+      </div>
     );
   }
 
