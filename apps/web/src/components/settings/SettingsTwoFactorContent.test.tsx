@@ -42,6 +42,7 @@ vi.mock("qrcode", () => ({
 }));
 
 import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
+import { clearSettingsPopupCache } from "./settingsPopupCache";
 
 const t = (key: string, values?: Record<string, string | number>) => {
   if (!values) {
@@ -56,6 +57,7 @@ const t = (key: string, values?: Record<string, string | number>) => {
 describe("SettingsTwoFactorContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSettingsPopupCache();
     authMocks.getTwoFactorStatus.mockResolvedValue({
       enabled: false,
       backupCodesRemaining: 0,

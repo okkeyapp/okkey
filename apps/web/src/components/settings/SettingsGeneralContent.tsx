@@ -14,7 +14,7 @@ import {
   Switch,
 } from "@okkey/ui";
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale, type WebMessageValues } from "@okkey/i18n";
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
 import { toast } from "sonner";
 
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
@@ -27,6 +27,7 @@ import {
   REGION_CODES,
   type RegionCode,
 } from "../../regions/regions";
+import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
 import {
   readAccentTintEnabled,
   writeAccentTintEnabled,
@@ -171,35 +172,36 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
   const firstNameDirtyRef = useRef(false);
   const lastNameDirtyRef = useRef(false);
 
+  const ensureProfile = useCallback(async () => {
+    if (!core) {
+      throw new Error("no core client");
+    }
+    const wire = normalizeAccountProfileWire(await core.getAccountProfile());
+    if (!wire) {
+      throw new Error("invalid account profile");
+    }
+    return wire;
+  }, [core]);
+  const { data: cachedProfile, setData: setCachedProfile } = useSettingsPopupCacheEntry(
+    "profile",
+    ensureProfile,
+  );
+
   useEffect(() => {
     setFirstName(profile?.firstName ?? "");
     setLastName(profile?.lastName ?? "");
   }, [profile?.firstName, profile?.lastName]);
 
   useEffect(() => {
-    if (!core) {
+    if (!cachedProfile) {
       return;
     }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const dto = normalizeAccountProfileWire(await core.getAccountProfile());
-        if (!dto || cancelled) {
-          return;
-        }
-        const savedRegion = normalizeRegionCode(dto.billing_region);
-        setRegion(savedRegion ?? detectBrowserRegion());
-        if (dto.locale === "en" || dto.locale === "ru") {
-          setLocale(dto.locale);
-        }
-      } catch {
-        /* Keep local defaults when profile preferences are unavailable. */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [core, setLocale]);
+    const savedRegion = normalizeRegionCode(cachedProfile.billing_region);
+    setRegion(savedRegion ?? detectBrowserRegion());
+    if (cachedProfile.locale === "en" || cachedProfile.locale === "ru") {
+      setLocale(cachedProfile.locale);
+    }
+  }, [cachedProfile, setLocale]);
 
   useEffect(() => {
     if (!core || (!firstNameDirtyRef.current && !lastNameDirtyRef.current)) {
@@ -263,6 +265,9 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
     void (async () => {
       try {
         await core?.updateAccountProfile({ locale: nextLocale });
+        if (cachedProfile) {
+          setCachedProfile({ ...cachedProfile, locale: nextLocale });
+        }
         toast.success(t("web.toast.save.success"));
       } catch {
         /* Keep local locale; user can retry. */
@@ -279,6 +284,9 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
     void (async () => {
       try {
         await core?.updateAccountProfile({ billing_region: normalized });
+        if (cachedProfile) {
+          setCachedProfile({ ...cachedProfile, billing_region: normalized });
+        }
         toast.success(t("web.toast.save.success"));
       } catch {
         /* Keep local region; user can retry. */

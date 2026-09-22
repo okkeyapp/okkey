@@ -45,6 +45,7 @@ vi.mock("sonner", () => ({
 }));
 
 import SettingsRecoveryContent from "./SettingsRecoveryContent";
+import { clearSettingsPopupCache } from "./settingsPopupCache";
 
 const t = (key: string) => key;
 
@@ -78,6 +79,7 @@ function freeStatus(overrides?: Record<string, unknown>) {
 describe("SettingsRecoveryContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSettingsPopupCache();
     coreMocks.getAccountRecoveryStatus.mockResolvedValue(freeStatus());
   });
 

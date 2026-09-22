@@ -39,6 +39,7 @@ import {
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,
 } from "./DeviceTypeIcon";
+import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
 
 type SettingsDevicesContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -144,43 +145,42 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   const core = useAuthenticatedCoreClient();
   const { currentDeviceId: sessionDeviceId } = useAuthVault();
   const { locale } = useLocale();
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [devices, setDevices] = useState<DeviceListItemDto[]>([]);
-  const [pending, setPending] = useState<DeviceListItemDto[]>([]);
-  const [blocked, setBlocked] = useState<DeviceListItemDto[]>([]);
+  const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
+  const mapDevicesError = useCallback((err: unknown) => devicesErrorMessage(err, t), [t]);
+  const ensureDevices = useCallback(async () => {
+    if (!core) {
+      throw new Error("no core client");
+    }
+    const result = await core.listDevices(fingerprint);
+    return {
+      devices: result.devices,
+      pending: result.pending,
+      blocked: result.blocked ?? [],
+    };
+  }, [core, fingerprint]);
+  const {
+    data: devicesCache,
+    error,
+    needsSkeleton: initialLoading,
+    setData: setDevicesCache,
+    refresh,
+  } = useSettingsPopupCacheEntry("devices", ensureDevices, mapDevicesError);
+
+  const devices = devicesCache?.devices ?? [];
+  const pending = devicesCache?.pending ?? [];
+  const blocked = devicesCache?.blocked ?? [];
+
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<DeviceListItemDto | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
-
-  const load = useCallback(async (opts?: { quiet?: boolean }) => {
-    if (!core) {
-      setInitialLoading(false);
-      setError(t("web.settingsPopup.devices.error.generic"));
-      return;
-    }
-    if (!opts?.quiet) {
-      setError(null);
-    }
-    try {
-      const result = await core.listDevices(fingerprint);
-      setDevices(result.devices);
-      setPending(result.pending);
-      setBlocked(result.blocked ?? []);
-      setError(null);
-    } catch (err) {
-      setError(devicesErrorMessage(err, t));
-    } finally {
-      setInitialLoading(false);
-    }
-  }, [core, fingerprint, t]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const load = useCallback(
+    async (opts?: { quiet?: boolean }) => {
+      await refresh({ quiet: opts?.quiet });
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     const onChanged = () => {
@@ -189,6 +189,21 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     window.addEventListener(DEVICES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(DEVICES_CHANGED_EVENT, onChanged);
   }, [load]);
+
+  const patchDevicesCache = useCallback(
+    (patch: {
+      devices?: DeviceListItemDto[];
+      pending?: DeviceListItemDto[];
+      blocked?: DeviceListItemDto[];
+    }) => {
+      setDevicesCache({
+        devices: patch.devices ?? devices,
+        pending: patch.pending ?? pending,
+        blocked: patch.blocked ?? blocked,
+      });
+    },
+    [blocked, devices, pending, setDevicesCache],
+  );
 
   const isCurrentDevice = useCallback(
     (device: DeviceListItemDto) => {
@@ -222,17 +237,19 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         } else {
           await core.revokeDevice(deviceId, reason);
         }
-        setPending((items) => items.filter((item) => item.device_id !== deviceId));
+        patchDevicesCache({
+          pending: pending.filter((item) => item.device_id !== deviceId),
+        });
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
         emitDevicesChanged();
-        await load();
+        await load({ quiet: true });
       } catch (err) {
         toast.error(devicesErrorMessage(err, t));
       } finally {
         setBusyId(null);
       }
     },
-    [busyId, core, currentDeviceId, load, t],
+    [busyId, core, currentDeviceId, load, patchDevicesCache, pending, t],
   );
 
   const blockPending = useCallback(
@@ -246,26 +263,28 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
         const result = await core.blockDevice(device.device_id, currentDeviceId, {
           duration,
         });
-        setPending((items) => items.filter((item) => item.device_id !== device.device_id));
-        setBlocked((items) => [
-          {
-            ...device,
-            status: "blocked",
-            blocked_until: result.blocked_until,
-            approval_expires_at: null,
-          },
-          ...items.filter((item) => item.device_id !== device.device_id),
-        ]);
+        patchDevicesCache({
+          pending: pending.filter((item) => item.device_id !== device.device_id),
+          blocked: [
+            {
+              ...device,
+              status: "blocked",
+              blocked_until: result.blocked_until,
+              approval_expires_at: null,
+            },
+            ...blocked.filter((item) => item.device_id !== device.device_id),
+          ],
+        });
         toast.success(t("web.settingsPopup.devices.toast.blocked"));
         emitDevicesChanged();
-        await load();
+        await load({ quiet: true });
       } catch (err) {
         toast.error(devicesErrorMessage(err, t));
       } finally {
         setBusyId(null);
       }
     },
-    [busyId, core, currentDeviceId, load, t],
+    [blocked, busyId, core, currentDeviceId, load, patchDevicesCache, pending, t],
   );
 
   const trustPending = async (device: DeviceListItemDto) => {
@@ -275,19 +294,21 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     }
     setBusyId(device.device_id);
     // Optimistic: move into trusted list immediately.
-    setPending((items) => items.filter((item) => item.device_id !== device.device_id));
-    setDevices((items) => [
-      { ...device, status: "trusted", is_current: false, approval_expires_at: null },
-      ...items.filter((item) => item.device_id !== device.device_id),
-    ]);
+    patchDevicesCache({
+      pending: pending.filter((item) => item.device_id !== device.device_id),
+      devices: [
+        { ...device, status: "trusted", is_current: false, approval_expires_at: null },
+        ...devices.filter((item) => item.device_id !== device.device_id),
+      ],
+    });
     try {
       await core.approveDevice(device.device_id, currentDeviceId);
       toast.success(t("web.settingsPopup.devices.toast.trusted"));
       emitDevicesChanged();
-      await load();
+      await load({ quiet: true });
     } catch (err) {
       toast.error(devicesErrorMessage(err, t));
-      await load();
+      await load({ quiet: true });
     } finally {
       setBusyId(null);
     }
@@ -300,10 +321,12 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     setBusyId(deviceId);
     try {
       await core.revokeDevice(deviceId, "revoked from settings");
-      setDevices((items) => items.filter((item) => item.device_id !== deviceId));
+      patchDevicesCache({
+        devices: devices.filter((item) => item.device_id !== deviceId),
+      });
       toast.success(t("web.settingsPopup.devices.toast.revoked"));
       emitDevicesChanged();
-      await load();
+      await load({ quiet: true });
     } catch (err) {
       toast.error(devicesErrorMessage(err, t));
     } finally {
@@ -318,14 +341,16 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     setBusyId(deviceId);
     try {
       const result = await core.unblockDevice(deviceId, { trust });
-      setBlocked((items) => items.filter((item) => item.device_id !== deviceId));
+      patchDevicesCache({
+        blocked: blocked.filter((item) => item.device_id !== deviceId),
+      });
       if (result.status === "trusted") {
         toast.success(t("web.settingsPopup.devices.toast.trusted"));
       } else {
         toast.success(t("web.settingsPopup.devices.toast.unblocked"));
       }
       emitDevicesChanged();
-      await load();
+      await load({ quiet: true });
     } catch (err) {
       toast.error(devicesErrorMessage(err, t));
     } finally {
@@ -346,7 +371,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
       await core.patchDevice(renameTarget.device_id, { device_name: nextName });
       toast.success(t("web.settingsPopup.devices.toast.renamed"));
       setRenameTarget(null);
-      await load();
+      await load({ quiet: true });
     } catch (err) {
       toast.error(devicesErrorMessage(err, t));
     } finally {

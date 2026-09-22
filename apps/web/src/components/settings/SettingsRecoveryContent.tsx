@@ -43,6 +43,8 @@ import { downloadRecoveryKeyPdf } from "./recoveryKeyPdf";
 import { RecoveryInfoTriangleIcon } from "./RecoveryInfoTriangleIcon";
 import { SettingsRow } from "./SettingsRows";
 import DeleteTrustedContactConfirmPopup from "./DeleteTrustedContactConfirmPopup";
+import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
+import { getSettingsPopupCacheState } from "./settingsPopupCache";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 
 const ContactsEnrollPanel = accountRecoveryModule.ContactsEnrollPanel;
@@ -207,8 +209,24 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const tRef = useRef(t);
   tRef.current = t;
 
-  const [status, setStatus] = useState<AccountRecoveryStatusResponseDto | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const mapRecoveryError = useCallback(
+    (err: unknown) => recoveryErrorMessage(err, tRef.current),
+    [],
+  );
+  const ensureRecovery = useCallback(async () => {
+    if (!core) {
+      throw new Error("no core client");
+    }
+    return core.getAccountRecoveryStatus();
+  }, [core]);
+  const {
+    data: status,
+    error: cacheError,
+    needsSkeleton: initialLoading,
+    setData: setStatusCache,
+    refresh,
+  } = useSettingsPopupCacheEntry("recovery", ensureRecovery, mapRecoveryError);
+
   const [error, setError] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -223,49 +241,39 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   );
   const settingsMutatingRef = useRef(false);
 
+  useEffect(() => {
+    if (cacheError) {
+      setError(cacheError);
+    }
+  }, [cacheError]);
+
+  const setStatus = useCallback(
+    (
+      next:
+        | AccountRecoveryStatusResponseDto
+        | null
+        | ((prev: AccountRecoveryStatusResponseDto | null) => AccountRecoveryStatusResponseDto | null),
+    ) => {
+      const prev = getSettingsPopupCacheState().recovery.data;
+      const resolved = typeof next === "function" ? next(prev) : next;
+      setStatusCache(resolved);
+    },
+    [setStatusCache],
+  );
+
   const refreshStatus = useCallback(async (): Promise<AccountRecoveryStatusResponseDto | null> => {
     if (!core) {
       return null;
     }
     try {
-      const next = await core.getAccountRecoveryStatus();
-      setStatus(next);
+      const next = await refresh({ quiet: true });
       setError(null);
       return next;
     } catch (err) {
       setError(recoveryErrorMessage(err, tRef.current));
       return null;
     }
-  }, [core]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadInitial() {
-      if (!core) {
-        setInitialLoading(false);
-        return;
-      }
-      try {
-        const next = await core.getAccountRecoveryStatus();
-        if (!cancelled) {
-          setStatus(next);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(recoveryErrorMessage(err, tRef.current));
-        }
-      } finally {
-        if (!cancelled) {
-          setInitialLoading(false);
-        }
-      }
-    }
-    void loadInitial();
-    return () => {
-      cancelled = true;
-    };
-  }, [core]);
+  }, [core, refresh]);
 
   const notifySaved = useCallback(() => {
     toast.success(tRef.current("web.toast.save.success"));

@@ -1,11 +1,15 @@
 import { Popup, type PopupMenu } from "@okkey/ui";
 import type { ReactNode, SVGProps } from "react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { WebMessageValues } from "@okkey/i18n";
+import { createAuthenticatedCoreClient } from "../../api/client";
+import { useAuthVault } from "../../auth/AuthVaultContext";
 import { useSectionReauth } from "../../auth/SectionReauthContext";
 import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
+import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
+import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
 import {
   POPUP_QUERY_PARAM,
   SETTINGS_POPUP_ID,
@@ -19,7 +23,7 @@ import SettingsLoginContent from "./SettingsLoginContent";
 import SettingsRecoveryContent from "./SettingsRecoveryContent";
 import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
 import SettingsVaultContent from "./SettingsVaultContent";
-import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
+import { clearSettingsPopupCache, prefetchSettingsPopupCache } from "./settingsPopupCache";
 
 export type SettingsPopupItemId = "main" | "vault" | "login" | "twoFactor" | "recovery" | "devices";
 
@@ -155,6 +159,7 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { accessToken } = useAuthVault();
   const { clearZoneUnlocked } = useSectionReauth();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const open = activePopup?.popupId === SETTINGS_POPUP_ID;
@@ -220,6 +225,23 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
       clearZoneUnlocked("personalSettings");
     }
   }, [open, clearZoneUnlocked]);
+
+  useLayoutEffect(() => {
+    if (!settingsContentOpen) {
+      clearSettingsPopupCache();
+      return;
+    }
+    if (!accessToken) {
+      return;
+    }
+    const core = createAuthenticatedCoreClient(accessToken);
+    void prefetchSettingsPopupCache({
+      core,
+      fingerprint: getOrCreateDeviceFingerprint(),
+      includeLogin: ACCOUNT_LOGIN_METHODS_UI_ENABLED,
+      mapLoginError: () => t("web.settingsLogin.error.load"),
+    });
+  }, [settingsContentOpen, accessToken, t]);
 
   const menuItems = [
     { id: "main", label: t("web.settingsPopup.main.label"), icon: <SettingsIcon className="size-4" /> },

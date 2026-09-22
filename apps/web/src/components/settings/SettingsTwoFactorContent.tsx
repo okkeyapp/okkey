@@ -25,6 +25,8 @@ import {
 import { SettingsRow, SettingsSectionDivider, SettingsSectionHeading } from "./SettingsRows";
 import TotpCodeConfirmPopup from "./TotpCodeConfirmPopup";
 import TotpEnrollPopup from "./TotpEnrollPopup";
+import { useSettingsPopupCacheEntry } from "./useSettingsPopupCache";
+import { getSettingsPopupCacheState } from "./settingsPopupCache";
 
 type SettingsTwoFactorContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -93,8 +95,34 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
     [core],
   );
 
-  const [status, setStatus] = useState<TwoFactorStatusResponseDto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const mapTwoFactorError = useCallback((err: unknown) => twoFactorErrorMessage(err, t), [t]);
+  const ensureTwoFactor = useCallback(async () => {
+    if (!auth) {
+      throw new Error("no auth client");
+    }
+    return auth.getTwoFactorStatus();
+  }, [auth]);
+  const {
+    data: status,
+    error: cacheError,
+    needsSkeleton: loading,
+    setData: setStatusCache,
+  } = useSettingsPopupCacheEntry("twoFactor", ensureTwoFactor, mapTwoFactorError);
+
+  const setStatus = useCallback(
+    (
+      next:
+        | TwoFactorStatusResponseDto
+        | null
+        | ((prev: TwoFactorStatusResponseDto | null) => TwoFactorStatusResponseDto | null),
+    ) => {
+      const prev = getSettingsPopupCacheState().twoFactor.data;
+      const resolved = typeof next === "function" ? next(prev) : next;
+      setStatusCache(resolved);
+    },
+    [setStatusCache],
+  );
+
   const [error, setError] = useState<string | null>(null);
   const [sessionBackupCodes, setSessionBackupCodes] = useState<string[] | null>(null);
 
@@ -107,30 +135,17 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
 
   const enabled = Boolean(status?.enabled);
 
-  const loadStatus = useCallback(async () => {
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await auth.getTwoFactorStatus();
-      setStatus(next);
-    } catch (err) {
-      setError(twoFactorErrorMessage(err, t));
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, t]);
-
   useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
+    if (cacheError) {
+      setError(cacheError);
+    }
+  }, [cacheError]);
 
   const notifySaved = useCallback(() => {
     toast.success(t("web.toast.save.success"));
   }, [t]);
+
+  // Mutations update cache via setStatus; no separate reload needed.
 
   const startEnrollment = useCallback(async () => {
     if (!auth) {
