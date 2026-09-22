@@ -49,6 +49,24 @@ export {
   resolveAccountRecoveryEntitlements,
 } from "./account-recovery-entitlements.js";
 
+export type {
+  AccountSecurityColorBand,
+  AccountSecurityFactorId,
+  AccountSecurityLevel,
+  AccountSecurityRecommendation,
+  AccountSecurityRecommendationId,
+  AccountSecurityRecommendationTarget,
+  AccountSecurityScoreInput,
+  AccountSecurityScoreResult,
+} from "./account-security-score.js";
+export {
+  ACCOUNT_SECURITY_BACKUP_CODES_LOW_THRESHOLD,
+  ACCOUNT_SECURITY_EXPORT_FRESH_DAYS,
+  ACCOUNT_SECURITY_EXPORT_STALE_DAYS,
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS,
+  computeAccountSecurityScore,
+} from "./account-security-score.js";
+
 export interface User {
   id: EntityId;
   email: string;
@@ -830,6 +848,11 @@ export interface TwoFactorStatusResponseDto {
   backupCodesRemaining: number;
   /** ISO-8601 timestamp of the latest backup-code batch, or null if none. */
   backupCodesGeneratedAt: string | null;
+  /**
+   * ISO-8601 timestamp of the latest backup-codes copy/PDF download ack,
+   * or null if never exported (factor B for account security score).
+   */
+  backupCodesExportedAt: string | null;
 }
 
 /** Account-level recovery entitlements (always includes recovery key). */

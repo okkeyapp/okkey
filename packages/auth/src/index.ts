@@ -85,6 +85,13 @@ export class AuthClient {
     return this.api.get<TwoFactorStatusResponseDto>("/auth/two-factor/status");
   }
 
+  async ackBackupCodesExport(): Promise<TwoFactorStatusResponseDto> {
+    return this.api.post<TwoFactorStatusResponseDto>(
+      "/auth/two-factor/backup-codes/ack-export",
+      {},
+    );
+  }
+
   async startTotpEnrollment(): Promise<TotpEnrollStartResponseDto> {
     return this.api.post<TotpEnrollStartResponseDto>(
       "/auth/two-factor/totp/enroll/start",

@@ -2841,7 +2841,48 @@ export class TwoFactorRepository {
     await this.db.transaction(async (tx) => {
       await this.deleteBackupCodesForUser(userId, tx);
       await this.insertBackupCodes(userId, backupHashes, tx);
+      await tx.query(
+        `
+          UPDATE user_totp_credentials
+          SET backup_codes_exported_at = NULL
+          WHERE user_id = $1
+        `,
+        [userId],
+      );
     });
+  }
+
+  async getBackupCodesExportedAt(userId: string): Promise<Date | null> {
+    const rows = await this.db.query<{ backup_codes_exported_at: Date | string | null }>(
+      `
+        SELECT backup_codes_exported_at
+        FROM user_totp_credentials
+        WHERE user_id = $1
+      `,
+      [userId],
+    );
+    const value = rows[0]?.backup_codes_exported_at;
+    if (!value) {
+      return null;
+    }
+    return value instanceof Date ? value : new Date(value);
+  }
+
+  async ackBackupCodesExport(userId: string): Promise<Date | null> {
+    const rows = await this.db.query<{ backup_codes_exported_at: Date | string | null }>(
+      `
+        UPDATE user_totp_credentials
+        SET backup_codes_exported_at = now()
+        WHERE user_id = $1
+        RETURNING backup_codes_exported_at
+      `,
+      [userId],
+    );
+    const value = rows[0]?.backup_codes_exported_at;
+    if (!value) {
+      return null;
+    }
+    return value instanceof Date ? value : new Date(value);
   }
 }
 

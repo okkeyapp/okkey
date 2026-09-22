@@ -81,6 +81,7 @@ describe("settingsPopupCache", () => {
           enabled: false,
           backupCodesRemaining: 0,
           backupCodesGeneratedAt: null,
+          backupCodesExportedAt: null,
         })),
       })),
     };

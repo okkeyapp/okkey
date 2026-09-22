@@ -48,6 +48,7 @@ import {
   createSyncEventsListRoute,
 } from "./routes/sync.ts";
 import {
+  createBackupCodesAckExportRoute,
   createBackupCodesRegenerateRoute,
   createTotpEnrollConfirmRoute,
   createTotpEnrollStartRoute,
@@ -266,6 +267,11 @@ export function createApiApp(
       "POST",
       "/auth/two-factor/backup-codes/regenerate",
       createBackupCodesRegenerateRoute(deps.twoFactorService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/auth/two-factor/backup-codes/ack-export",
+      createBackupCodesAckExportRoute(deps.twoFactorService, resolveUserId),
     );
     app.route(
       "POST",

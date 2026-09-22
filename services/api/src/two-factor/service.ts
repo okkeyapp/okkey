@@ -286,20 +286,52 @@ export class TwoFactorService {
     enabled: boolean;
     backupCodesRemaining: number;
     backupCodesGeneratedAt: string | null;
+    backupCodesExportedAt: string | null;
   }> {
     const enabled = await this.users.isTwoFactorEnabled(userId);
     if (!enabled) {
-      return { enabled: false, backupCodesRemaining: 0, backupCodesGeneratedAt: null };
+      return {
+        enabled: false,
+        backupCodesRemaining: 0,
+        backupCodesGeneratedAt: null,
+        backupCodesExportedAt: null,
+      };
     }
-    const [backupCodesRemaining, generatedAt] = await Promise.all([
+    const [backupCodesRemaining, generatedAt, exportedAt] = await Promise.all([
       this.twoFactorRepo.countUnusedBackupCodes(userId),
       this.twoFactorRepo.getLatestBackupCodesCreatedAt(userId),
+      this.twoFactorRepo.getBackupCodesExportedAt(userId),
     ]);
     return {
       enabled: true,
       backupCodesRemaining,
       backupCodesGeneratedAt: generatedAt ? generatedAt.toISOString() : null,
+      backupCodesExportedAt: exportedAt ? exportedAt.toISOString() : null,
     };
+  }
+
+  async ackBackupCodesExport(userId: string): Promise<{
+    enabled: boolean;
+    backupCodesRemaining: number;
+    backupCodesGeneratedAt: string | null;
+    backupCodesExportedAt: string | null;
+  }> {
+    if (!(await this.users.isTwoFactorEnabled(userId))) {
+      throw new TwoFactorError("TWO_FACTOR_NOT_ENABLED", 400, "two-factor not enabled");
+    }
+    const unused = await this.twoFactorRepo.countUnusedBackupCodes(userId);
+    if (unused <= 0) {
+      throw new TwoFactorError(
+        "TWO_FACTOR_BACKUP_DEPLETED",
+        400,
+        "no backup codes remaining",
+      );
+    }
+    const exportedAt = await this.twoFactorRepo.ackBackupCodesExport(userId);
+    if (!exportedAt) {
+      throw new TwoFactorError("TWO_FACTOR_NOT_ENABLED", 400, "two-factor not enabled");
+    }
+    return this.getStatus(userId);
   }
 
   async enrollTotpStart(userId: string): Promise<{

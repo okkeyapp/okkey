@@ -202,6 +202,7 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
         enabled: true,
         backupCodesRemaining: result.backupCodes.length,
         backupCodesGeneratedAt: new Date().toISOString(),
+        backupCodesExportedAt: null,
       });
       closeEnroll();
       notifySaved();
@@ -220,6 +221,7 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
         enabled: false,
         backupCodesRemaining: 0,
         backupCodesGeneratedAt: null,
+        backupCodesExportedAt: null,
       });
       setSessionBackupCodes(null);
       setConfirmMode(null);
@@ -243,18 +245,22 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
               ...prev,
               backupCodesRemaining: result.backupCodes.length,
               backupCodesGeneratedAt: generatedAt,
+              backupCodesExportedAt: null,
             }
           : {
               enabled: true,
               backupCodesRemaining: result.backupCodes.length,
               backupCodesGeneratedAt: generatedAt,
+              backupCodesExportedAt: null,
             },
       );
       setConfirmMode(null);
       try {
         await navigator.clipboard.writeText(formatBackupCodesForClipboard(result.backupCodes));
+        const ack = await auth.ackBackupCodesExport();
+        setStatus(ack);
       } catch {
-        /* copy is best-effort after regenerate */
+        /* copy/ack is best-effort after regenerate */
       }
       toast.success(t("web.settingsPopup.twoFactor.backup.regeneratedToast"));
     } catch (err) {
@@ -263,11 +269,13 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
   }
 
   async function handleCopyCodes() {
-    if (!sessionBackupCodes?.length) {
+    if (!sessionBackupCodes?.length || !auth) {
       return;
     }
     try {
       await navigator.clipboard.writeText(formatBackupCodesForClipboard(sessionBackupCodes));
+      const ack = await auth.ackBackupCodesExport();
+      setStatus(ack);
       notifySaved();
     } catch {
       setError(t("web.settingsPopup.twoFactor.error.copyFailed"));
@@ -275,7 +283,7 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
   }
 
   async function handleDownloadPdf() {
-    if (!sessionBackupCodes?.length) {
+    if (!sessionBackupCodes?.length || !auth) {
       return;
     }
     const toastId = toast.loading(t("web.settingsPopup.twoFactor.backup.creatingPdf"), {
@@ -286,6 +294,9 @@ export default function SettingsTwoFactorContent({ t }: SettingsTwoFactorContent
         title: t("web.settingsPopup.twoFactor.backup.pdfTitle"),
         description: t("web.settingsPopup.twoFactor.backup.pdfDescription"),
       });
+      const ack = await auth.ackBackupCodesExport();
+      setStatus(ack);
+      notifySaved();
     } catch {
       setError(t("web.settingsPopup.twoFactor.error.generic"));
     } finally {
