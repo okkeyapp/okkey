@@ -5,7 +5,6 @@ import type {
   AccountSecurityRecommendationId,
 } from "@okkey/types";
 import { Alert, AlertDescription, Button, cn } from "@okkey/ui";
-import { ChevronRight } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -25,6 +24,13 @@ type Translate = (messageKey: string, values?: WebMessageValues) => string;
 type AccountSecurityScoreBlockProps = {
   t: Translate;
 };
+
+/** Matches KeySection «+ Add field» in gray (`additional`) sections — `/dev/ui/key-form`. */
+const recommendationButtonClassName = cn(
+  "h-8 w-full justify-start gap-2.5 rounded-lg bg-secondary px-3 text-left font-medium text-foreground shadow-none",
+  "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
+  "focus:border-accent focus-visible:border-accent",
+);
 
 const LEVEL_MESSAGE: Record<AccountSecurityLevel, string> = {
   excellent: "web.settingsPopup.securityScore.level.excellent",
@@ -134,19 +140,18 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
           {t("web.settingsPopup.securityScore.allGood")}
         </p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-1">
+        <ul className="mt-3 flex flex-col items-stretch gap-1.5">
           {recommendations.map((rec) => (
-            <li key={rec.id}>
+            <li key={rec.id} className="w-full">
               <Button
                 type="button"
-                variant="ghost"
-                className="h-auto w-full justify-between gap-2 px-2 py-2 text-left font-normal hover:bg-background/80"
+                variant="secondary"
+                className={recommendationButtonClassName}
                 onClick={() => goToSettingsItem(rec.target)}
               >
-                <span className="min-w-0 flex-1 text-sm leading-5 text-foreground">
+                <span className="min-w-0 flex-1 truncate text-left text-sm leading-5">
                   {t(RECOMMENDATION_MESSAGE[rec.id])}
                 </span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               </Button>
             </li>
           ))}

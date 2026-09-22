@@ -17,11 +17,15 @@ export const ACCOUNT_SECURITY_FACTOR_WEIGHTS = {
   recoveryKeyEnrolled: 15,
   /** D — recovery key exported (copy/PDF), freshness-aware */
   recoveryKeyExported: 10,
-  /** E — trusted devices recovery method (paid) */
+  /** E — trusted devices recovery method enabled (paid; devices presence is G) */
   trustedDevicesRecovery: 15,
   /** F — trusted contacts recovery (paid) */
   trustedContacts: 10,
-  /** G — at least one trusted device */
+  /**
+   * G — at least one trusted device.
+   * Included only when device recovery is entitled **and** the method is enabled
+   * (same renormalization gate as E).
+   */
   trustedDevicesPresent: 5,
   /** H — passkey / hardware login method */
   loginMethods: 5,
@@ -258,16 +262,13 @@ function buildRecommendations(input: AccountSecurityScoreInput, nowMs: number): 
   if (recovery.entitlements.trustedDevices) {
     if (!recovery.settings.devicesEnabled) {
       push("enableTrustedDevicesRecovery", "recovery");
-    }
-    if (devices.trustedCount < 1) {
+    } else if (devices.trustedCount < 1) {
       push("addTrustedDevice", "devices");
     } else if (devices.pendingCount > 0) {
       push("confirmPendingDevices", "devices");
     }
   } else if (devices.pendingCount > 0) {
     push("confirmPendingDevices", "devices");
-  } else if (devices.trustedCount < 1) {
-    push("addTrustedDevice", "devices");
   }
 
   if (recovery.entitlements.trustedContacts) {
@@ -296,6 +297,8 @@ export function computeAccountSecurityScore(
   const includeE = input.recovery.entitlements.trustedDevices;
   const includeF = input.recovery.entitlements.trustedContacts;
   const includeH = Boolean(input.loginMethods?.available);
+  /** G counts only when device recovery is available and the method is on. */
+  const includeG = includeE && input.recovery.settings.devicesEnabled;
 
   const factorPoints: Record<AccountSecurityFactorId, number> = {
     twoFactorEnabled: input.twoFactor.enabled
@@ -307,10 +310,9 @@ export function computeAccountSecurityScore(
         ? ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyEnrolled
         : 0,
     recoveryKeyExported: scoreRecoveryKeyExport(input.recovery.key, nowMs),
+    /** Method toggle only — trusted-device count is factor G. */
     trustedDevicesRecovery:
-      includeE &&
-      input.recovery.settings.devicesEnabled &&
-      input.devices.trustedCount >= 1
+      includeE && input.recovery.settings.devicesEnabled
         ? ACCOUNT_SECURITY_FACTOR_WEIGHTS.trustedDevicesRecovery
         : 0,
     trustedContacts:
@@ -320,7 +322,7 @@ export function computeAccountSecurityScore(
         ? ACCOUNT_SECURITY_FACTOR_WEIGHTS.trustedContacts
         : 0,
     trustedDevicesPresent:
-      input.devices.trustedCount >= 1
+      includeG && input.devices.trustedCount >= 1
         ? ACCOUNT_SECURITY_FACTOR_WEIGHTS.trustedDevicesPresent
         : 0,
     loginMethods:
@@ -334,10 +336,12 @@ export function computeAccountSecurityScore(
     "backupCodes",
     "recoveryKeyEnrolled",
     "recoveryKeyExported",
-    "trustedDevicesPresent",
   ];
   if (includeE) {
     includedFactors.push("trustedDevicesRecovery");
+  }
+  if (includeG) {
+    includedFactors.push("trustedDevicesPresent");
   }
   if (includeF) {
     includedFactors.push("trustedContacts");

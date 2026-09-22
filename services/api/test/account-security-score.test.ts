@@ -31,17 +31,24 @@ function baseInput(overrides: Partial<AccountSecurityScoreInput> = {}): AccountS
   };
 }
 
+const FREE_BASE_MAX =
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.twoFactorEnabled +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.backupCodes +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyEnrolled +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyExported;
+
 test("empty FREE account scores 0 and recommends 2FA first", () => {
   const result = computeAccountSecurityScore(baseInput());
   assert.equal(result.score, 0);
   assert.equal(result.colorBand, "critical");
   assert.equal(result.recommendations[0]?.id, "enableTwoFactor");
   assert.ok(!result.includedFactors.includes("trustedDevicesRecovery"));
+  assert.ok(!result.includedFactors.includes("trustedDevicesPresent"));
   assert.ok(!result.includedFactors.includes("trustedContacts"));
   assert.ok(!result.includedFactors.includes("loginMethods"));
 });
 
-test("FREE renormalization: 100 reachable without paid E/F", () => {
+test("FREE renormalization: 100 reachable without paid E/F/G", () => {
   const result = computeAccountSecurityScore(
     baseInput({
       twoFactor: {
@@ -60,17 +67,12 @@ test("FREE renormalization: 100 reachable without paid E/F", () => {
       devices: { trustedCount: 1, pendingCount: 0 },
     }),
   );
-  const expectedMax =
-    ACCOUNT_SECURITY_FACTOR_WEIGHTS.twoFactorEnabled +
-    ACCOUNT_SECURITY_FACTOR_WEIGHTS.backupCodes +
-    ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyEnrolled +
-    ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyExported +
-    ACCOUNT_SECURITY_FACTOR_WEIGHTS.trustedDevicesPresent;
-  assert.equal(result.availableMax, expectedMax);
-  assert.equal(result.rawPoints, expectedMax);
+  assert.equal(result.availableMax, FREE_BASE_MAX);
+  assert.equal(result.rawPoints, FREE_BASE_MAX);
   assert.equal(result.score, 100);
   assert.equal(result.colorBand, "good");
   assert.equal(result.recommendations.length, 0);
+  assert.equal(result.factorPoints.trustedDevicesPresent, 0);
 });
 
 test("factor B: without exportedAt is 0 even if codes remain", () => {
@@ -106,7 +108,7 @@ test("factor D: enrolled without export awards partial 5", () => {
   assert.equal(result.factorPoints.recoveryKeyExported, 5);
 });
 
-test("paid E/F included when entitled; incomplete earns 0", () => {
+test("paid E/F included when entitled; method on without devices earns E but not G", () => {
   const result = computeAccountSecurityScore(
     baseInput({
       recovery: {
@@ -120,16 +122,52 @@ test("paid E/F included when entitled; incomplete earns 0", () => {
     }),
   );
   assert.ok(result.includedFactors.includes("trustedDevicesRecovery"));
+  assert.ok(result.includedFactors.includes("trustedDevicesPresent"));
   assert.ok(result.includedFactors.includes("trustedContacts"));
-  assert.equal(result.factorPoints.trustedDevicesRecovery, 0);
+  assert.equal(result.factorPoints.trustedDevicesRecovery, 15);
+  assert.equal(result.factorPoints.trustedDevicesPresent, 0);
   assert.equal(result.factorPoints.trustedContacts, 0);
   assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
   assert.ok(result.recommendations.some((r) => r.id === "confirmTrustedContacts"));
 });
 
+test("G awards ≥1 trusted device only when device recovery method is enabled", () => {
+  const methodOff = computeAccountSecurityScore(
+    baseInput({
+      recovery: {
+        entitlements: { trustedDevices: true, trustedContacts: false },
+        settings: { keyEnabled: false, devicesEnabled: false, contactsEnabled: false },
+        key: { enrolled: false, exportedAt: null },
+        confirmedContactCount: 0,
+        minConfirmedContacts: 3,
+      },
+      devices: { trustedCount: 2, pendingCount: 0 },
+    }),
+  );
+  assert.ok(methodOff.includedFactors.includes("trustedDevicesRecovery"));
+  assert.ok(!methodOff.includedFactors.includes("trustedDevicesPresent"));
+  assert.equal(methodOff.factorPoints.trustedDevicesPresent, 0);
+  assert.equal(methodOff.factorPoints.trustedDevicesRecovery, 0);
+
+  const methodOn = computeAccountSecurityScore(
+    baseInput({
+      recovery: {
+        entitlements: { trustedDevices: true, trustedContacts: false },
+        settings: { keyEnabled: false, devicesEnabled: true, contactsEnabled: false },
+        key: { enrolled: false, exportedAt: null },
+        confirmedContactCount: 0,
+        minConfirmedContacts: 3,
+      },
+      devices: { trustedCount: 2, pendingCount: 0 },
+    }),
+  );
+  assert.ok(methodOn.includedFactors.includes("trustedDevicesPresent"));
+  assert.equal(methodOn.factorPoints.trustedDevicesRecovery, 15);
+  assert.equal(methodOn.factorPoints.trustedDevicesPresent, 5);
+});
+
 test("color bands follow approved thresholds", () => {
-  // Force score via known fraction: only A available in a stripped set —
-  // use full FREE set with only 2FA on → 25/70 ≈ 36 → weak
+  // FREE base without G: only 2FA on → 25/65 ≈ 38 → weak
   const only2fa = computeAccountSecurityScore(
     baseInput({
       twoFactor: {
@@ -140,7 +178,7 @@ test("color bands follow approved thresholds", () => {
       },
     }),
   );
-  assert.equal(only2fa.score, Math.round((25 / 70) * 100));
+  assert.equal(only2fa.score, Math.round((25 / FREE_BASE_MAX) * 100));
   assert.equal(only2fa.colorBand, "weak");
 });
 
@@ -165,6 +203,9 @@ test("login methods factor renormalized when available", () => {
     }),
   );
   assert.ok(without.includedFactors.includes("loginMethods"));
-  assert.equal(without.score, Math.round((70 / 75) * 100));
+  assert.equal(
+    without.score,
+    Math.round((FREE_BASE_MAX / (FREE_BASE_MAX + ACCOUNT_SECURITY_FACTOR_WEIGHTS.loginMethods)) * 100),
+  );
   assert.ok(without.recommendations.some((r) => r.id === "addLoginMethod"));
 });
