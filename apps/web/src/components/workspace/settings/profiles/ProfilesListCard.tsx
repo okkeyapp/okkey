@@ -3,6 +3,9 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { Button, cn } from "@okkey/ui";
 import { useState, type ReactNode } from "react";
 
+import ListScrollSentinel from "../../../../lists/ListScrollSentinel";
+import { useListWindow } from "../../../../lists/useListWindow";
+
 type ProfilesListCardProps = {
   profiles: readonly WorkspaceProfileSummary[];
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -14,6 +17,8 @@ type ProfilesListCardProps = {
     disabled?: boolean;
   };
   renderTrailing?: (profile: WorkspaceProfileSummary) => ReactNode;
+  /** Resets the infinite-scroll window (custom lists). Built-in tiny lists stay under one page. */
+  listWindowResetKey?: string;
   className?: string;
 };
 
@@ -49,20 +54,26 @@ export default function ProfilesListCard({
   onProfileClick,
   footerAction,
   renderTrailing,
+  listWindowResetKey = "",
   className,
 }: ProfilesListCardProps) {
   const [focusedProfileId, setFocusedProfileId] = useState<string | null>(null);
+  const { visibleCount, hasMore, loadMore } = useListWindow({
+    total: profiles.length,
+    resetKey: listWindowResetKey,
+  });
+  const visibleProfiles = profiles.slice(0, visibleCount);
 
   if (profiles.length === 0) {
     return null;
   }
 
-  const lastIndex = profiles.length - 1;
+  const lastIndex = visibleProfiles.length - 1;
 
   return (
     <div className={cn("flex flex-col gap-4 px-px", className)}>
       <div>
-        {profiles.map((profile, index) => {
+        {visibleProfiles.map((profile, index) => {
           const content = (
             <>
               <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
@@ -119,6 +130,7 @@ export default function ProfilesListCard({
             </div>
           );
         })}
+        {hasMore ? <ListScrollSentinel onVisible={loadMore} /> : null}
       </div>
 
       {footerAction ? (

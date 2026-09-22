@@ -97,6 +97,10 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   const [deleting, setDeleting] = useState(false);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0);
+  /** Cached search filter results so page clicks only slice — never sentinel/append. */
+  const searchPoolRef = useRef<{ query: string; workspaceId: string; rows: DecryptedCapsule[] } | null>(
+    null,
+  );
 
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const editingCapsuleId =
@@ -134,7 +138,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     });
   }, []);
 
-  const load = useCallback(async (options?: { silent?: boolean }) => {
+  const load = useCallback(async (options?: { silent?: boolean; refreshSearchPool?: boolean }) => {
     if (!core || !vaultKey) return;
     if (!options?.silent) {
       setLoading(true);
@@ -143,26 +147,37 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
     try {
       const query = search.trim().toLocaleLowerCase();
       if (query) {
-        const all: CapsuleOwnerListEntryDto[] = [];
-        let cursorPage = 1;
-        while (true) {
-          const response = await core.listCapsules(workspaceId, cursorPage);
-          all.push(...response.capsules);
-          if (!response.hasMore) break;
-          cursorPage += 1;
+        const cached = searchPoolRef.current;
+        const cacheHit =
+          !options?.refreshSearchPool &&
+          cached &&
+          cached.query === query &&
+          cached.workspaceId === workspaceId;
+        let pool = cacheHit ? cached.rows : null;
+        if (!pool) {
+          const all: CapsuleOwnerListEntryDto[] = [];
+          let cursorPage = 1;
+          while (true) {
+            const response = await core.listCapsules(workspaceId, cursorPage);
+            all.push(...response.capsules);
+            if (!response.hasMore) break;
+            cursorPage += 1;
+          }
+          const decrypted = await decryptPage(all);
+          pool = decrypted.filter((capsule) =>
+            capsule.ownerMetadata.name.toLocaleLowerCase().includes(query),
+          );
+          searchPoolRef.current = { query, workspaceId, rows: pool };
         }
-        const decrypted = await decryptPage(all);
-        const filtered = decrypted.filter((capsule) =>
-          capsule.ownerMetadata.name.toLocaleLowerCase().includes(query),
-        );
-        const pageCapsules = filtered.slice(
+        const pageCapsules = pool.slice(
           (page - 1) * CAPSULE_TABLE_PAGE_SIZE,
           page * CAPSULE_TABLE_PAGE_SIZE,
         );
         setCapsules(pageCapsules);
-        setTotal(filtered.length);
-        syncSelectedCapsules(filtered);
+        setTotal(pool.length);
+        syncSelectedCapsules(pool);
       } else {
+        searchPoolRef.current = null;
         const response = await core.listCapsules(workspaceId, page);
         const decrypted = await decryptPage(response.capsules);
         setCapsules(decrypted);
@@ -181,7 +196,7 @@ export default function CapsulesPage({ workspaceId, workspaceName, canCreate }: 
   }, [load]);
 
   useEffect(() => subscribeCapsulesListRefresh(() => {
-    void load({ silent: true });
+    void load({ silent: true, refreshSearchPool: true });
   }), [load]);
 
   const pageCount = Math.max(1, Math.ceil(total / CAPSULE_TABLE_PAGE_SIZE));

@@ -3,6 +3,8 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { Button, cn } from "@okkey/ui";
 import { useState } from "react";
 
+import ListScrollSentinel from "../../../../lists/ListScrollSentinel";
+import { useListWindow } from "../../../../lists/useListWindow";
 import { localizedRoleLabel } from "../localizedWorkspaceLabels";
 import { MemberFavicon, memberDisplayName } from "../vaults/vaultAccessHelpers";
 
@@ -16,6 +18,11 @@ type MembersListCardProps = {
     onClick: () => void;
     disabled?: boolean;
   };
+  /**
+   * Resets the infinite-scroll window (e.g. members search query).
+   * Omit for tiny owner-only lists — window still applies but stays under one page.
+   */
+  listWindowResetKey?: string;
   className?: string;
 };
 
@@ -55,20 +62,26 @@ export default function MembersListCard({
   t,
   onMemberClick,
   footerAction,
+  listWindowResetKey = "",
   className,
 }: MembersListCardProps) {
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const { visibleCount, hasMore, loadMore } = useListWindow({
+    total: members.length,
+    resetKey: listWindowResetKey,
+  });
+  const visibleMembers = members.slice(0, visibleCount);
 
   if (members.length === 0) {
     return null;
   }
 
-  const lastIndex = members.length - 1;
+  const lastIndex = visibleMembers.length - 1;
 
   return (
     <div className={cn("flex flex-col gap-4 px-px", className)}>
       <div>
-        {members.map((member, index) => {
+        {visibleMembers.map((member, index) => {
           const rowKey = member.userId ?? member.invitationId ?? member.email;
           const isFirst = index === 0;
           const isLast = index === lastIndex;
@@ -147,6 +160,7 @@ export default function MembersListCard({
             </div>
           );
         })}
+        {hasMore ? <ListScrollSentinel onVisible={loadMore} /> : null}
       </div>
 
       {footerAction ? (

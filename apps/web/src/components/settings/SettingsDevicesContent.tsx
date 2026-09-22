@@ -23,6 +23,8 @@ import { toast } from "sonner";
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
+import ListScrollSentinel from "../../lists/ListScrollSentinel";
+import { useListWindow } from "../../lists/useListWindow";
 import {
   IconActions16,
   IconCheck16,
@@ -224,6 +226,26 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
   );
 
   const primaryPending = pending[0] ?? null;
+
+  const {
+    visibleCount: visibleDevicesCount,
+    hasMore: devicesHasMore,
+    loadMore: loadMoreDevices,
+  } = useListWindow({
+    total: devices.length,
+    resetKey: "devices-trusted",
+  });
+  const visibleDevices = devices.slice(0, visibleDevicesCount);
+
+  const {
+    visibleCount: visibleBlockedCount,
+    hasMore: blockedHasMore,
+    loadMore: loadMoreBlocked,
+  } = useListWindow({
+    total: blocked.length,
+    resetKey: blockedOpen ? "devices-blocked-open" : "devices-blocked-closed",
+  });
+  const visibleBlocked = blocked.slice(0, visibleBlockedCount);
 
   const dismissPending = useCallback(
     async (deviceId: string, reason: string) => {
@@ -534,7 +556,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             {t("web.settingsPopup.devices.empty")}
           </p>
         ) : null}
-        {devices.map((device, index) => {
+        {visibleDevices.map((device, index) => {
           const form = resolveDeviceFormIcon(device);
           const brand = resolveDeviceBrandIcon(device);
           const current = isCurrentDevice(device);
@@ -607,6 +629,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             </div>
           );
         })}
+        {devicesHasMore ? <ListScrollSentinel onVisible={loadMoreDevices} /> : null}
       </div>
         </>
       )}
@@ -632,7 +655,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
             </Button>
             {blockedOpen ? (
               <div className="overflow-hidden rounded-xl bg-secondary">
-                {blocked.map((device, index) => (
+                {visibleBlocked.map((device, index) => (
                   <div
                     key={device.device_id}
                     className={
@@ -692,6 +715,7 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
                     </div>
                   </div>
                 ))}
+                {blockedHasMore ? <ListScrollSentinel onVisible={loadMoreBlocked} /> : null}
               </div>
             ) : null}
           </>
