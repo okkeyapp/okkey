@@ -3,9 +3,18 @@ import { cn } from "@okkey/ui";
 type GaugeChartProps = {
   score: number;
   className?: string;
+  /** Progress arc stroke (default: Monitoring lime). */
+  progressClassName?: string;
+  /** Track / empty ring stroke (default: muted). */
+  trackClassName?: string;
 };
 
-export function MonitoringGaugeChart({ score, className }: GaugeChartProps) {
+export function MonitoringGaugeChart({
+  score,
+  className,
+  progressClassName = "stroke-lime-500",
+  trackClassName = "stroke-muted",
+}: GaugeChartProps) {
   const clamped = Math.max(0, Math.min(100, score));
   const radius = 78;
   const stroke = 16;
@@ -19,7 +28,7 @@ export function MonitoringGaugeChart({ score, className }: GaugeChartProps) {
         cy="96"
         r={radius}
         fill="none"
-        className="stroke-muted"
+        className={trackClassName}
         strokeWidth={stroke}
       />
       <circle
@@ -27,7 +36,7 @@ export function MonitoringGaugeChart({ score, className }: GaugeChartProps) {
         cy="96"
         r={radius}
         fill="none"
-        className="stroke-lime-500"
+        className={progressClassName}
         strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={`${progress} ${circumference}`}

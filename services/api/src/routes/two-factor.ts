@@ -105,6 +105,31 @@ export function createTwoFactorStatusRoute(
         enabled: status.enabled,
         backupCodesRemaining: status.backupCodesRemaining,
         backupCodesGeneratedAt: status.backupCodesGeneratedAt,
+        backupCodesExportedAt: status.backupCodesExportedAt,
+      });
+    } catch (error) {
+      handleTwoFactorError(ctx.requestId, ctx.res, error);
+    }
+  };
+}
+
+export function createBackupCodesAckExportRoute(
+  twoFactorService: TwoFactorService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    try {
+      const userId = await resolveUserId(ctx.req);
+      if (!userId) {
+        json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+        return;
+      }
+      const status = await twoFactorService.ackBackupCodesExport(userId);
+      json(ctx.res, 200, {
+        enabled: status.enabled,
+        backupCodesRemaining: status.backupCodesRemaining,
+        backupCodesGeneratedAt: status.backupCodesGeneratedAt,
+        backupCodesExportedAt: status.backupCodesExportedAt,
       });
     } catch (error) {
       handleTwoFactorError(ctx.requestId, ctx.res, error);

@@ -12,6 +12,7 @@ const coreMocks = vi.hoisted(() => ({
   deleteTrustedContact: vi.fn(),
   acceptTrustedContactInvite: vi.fn(),
   rejectTrustedContactInvite: vi.fn(),
+  listDevices: vi.fn(),
 }));
 
 vi.mock("@okkey/crypto", () => ({
@@ -81,6 +82,7 @@ describe("SettingsRecoveryContent", () => {
     vi.clearAllMocks();
     clearSettingsPopupCache();
     coreMocks.getAccountRecoveryStatus.mockResolvedValue(freeStatus());
+    coreMocks.listDevices.mockResolvedValue({ devices: [], pending: [], blocked: [] });
   });
 
   it("shows recovery key and a single paid upsell when devices/contacts are unavailable", async () => {
@@ -191,5 +193,60 @@ describe("SettingsRecoveryContent", () => {
     expect(
       screen.getByLabelText("web.settingsPopup.recovery.servingAs.remove"),
     ).toBeTruthy();
+  });
+
+  it("blocks enabling trusted-devices recovery until ≥2 trusted devices incl. current", async () => {
+    coreMocks.getAccountRecoveryStatus.mockResolvedValue(
+      freeStatus({
+        entitlements: {
+          recoveryKey: true,
+          trustedDevices: true,
+          trustedContacts: false,
+        },
+        settings: {
+          keyEnabled: true,
+          devicesEnabled: false,
+          contactsEnabled: false,
+        },
+      }),
+    );
+    coreMocks.listDevices.mockResolvedValue({
+      devices: [
+        {
+          device_id: "d1",
+          device_name: "This",
+          device_fingerprint: "fp1",
+          platform: "web",
+          os_name: "macOS",
+          os_version: "14",
+          app_version: "1",
+          client_type: "web",
+          ip_address: null,
+          country: null,
+          city: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+          last_seen_at: null,
+          approved_at: null,
+          status: "trusted",
+          is_current: true,
+          approval_expires_at: null,
+        },
+      ],
+      pending: [],
+      blocked: [],
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsRecoveryContent t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("web.settingsPopup.recovery.devices.label")).toBeTruthy();
+    });
+    const toggle = screen.getByLabelText("web.settingsPopup.recovery.devices.label");
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText("web.settingsPopup.recovery.devices.needAnother")).toBeTruthy();
   });
 });

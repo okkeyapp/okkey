@@ -10,6 +10,7 @@ import type {
   TrustedContactDto,
   TrustedContactMembershipDto,
 } from "@okkey/types";
+import { canEnableTrustedDevicesRecovery } from "@okkey/types";
 import {
   Alert,
   AlertDescription,
@@ -30,11 +31,12 @@ import {
   Plus,
   RefreshCcw,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { getOrCreateDeviceFingerprint } from "../../auth/deviceFingerprint";
 import { calendarDaysBetween } from "../../lib/calendarDaysBetween";
 import ListScrollSentinel from "../../lists/ListScrollSentinel";
 import { useListWindow } from "../../lists/useListWindow";
@@ -229,6 +231,25 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
     refresh,
   } = useSettingsPopupCacheEntry("recovery", ensureRecovery, mapRecoveryError);
 
+  const fingerprint = useMemo(() => getOrCreateDeviceFingerprint(), []);
+  const ensureDevices = useCallback(async () => {
+    if (!core) {
+      throw new Error("no core client");
+    }
+    const result = await core.listDevices(fingerprint);
+    return {
+      devices: result.devices,
+      pending: result.pending,
+      blocked: result.blocked ?? [],
+    };
+  }, [core, fingerprint]);
+  const { data: devicesCache } = useSettingsPopupCacheEntry(
+    "devices",
+    ensureDevices,
+    () => "devices",
+  );
+  const canEnableDevicesMethod = canEnableTrustedDevicesRecovery(devicesCache?.devices);
+
   const [error, setError] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -364,6 +385,10 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
 
   async function handleDevicesSwitch(checked: boolean) {
     if (!core || !status?.entitlements.trustedDevices || settingsMutatingRef.current) {
+      return;
+    }
+    // Gate enable only — leave an already-on method alone if device count drops.
+    if (checked && !canEnableTrustedDevicesRecovery(devicesCache?.devices)) {
       return;
     }
     settingsMutatingRef.current = true;
@@ -616,6 +641,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
   const contactsEnabled = Boolean(status?.settings.contactsEnabled);
   const canDevices = Boolean(status?.entitlements.trustedDevices);
   const canContacts = Boolean(status?.entitlements.trustedContacts);
+  const devicesEnableBlocked = !devicesEnabled && !canEnableDevicesMethod;
   const showPaidMethods = canDevices || canContacts;
   const showPaidUpsell = Boolean(status) && !canDevices && !canContacts;
   const showKeyPanel = keyEnabled;
@@ -808,18 +834,26 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       {showPaidMethods ? (
         <>
           {canDevices ? (
-            <SettingsRow
-              label={t("web.settingsPopup.recovery.devices.label")}
-              description={t("web.settingsPopup.recovery.devices.description")}
-              controlClassName="w-[100px]"
-            >
-              <Switch
-                size="lg"
-                checked={devicesEnabled}
-                onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
-                aria-label={t("web.settingsPopup.recovery.devices.label")}
-              />
-            </SettingsRow>
+            <>
+              <SettingsRow
+                label={t("web.settingsPopup.recovery.devices.label")}
+                description={t("web.settingsPopup.recovery.devices.description")}
+                controlClassName="w-[100px]"
+              >
+                <Switch
+                  size="lg"
+                  checked={devicesEnabled}
+                  disabled={devicesEnableBlocked}
+                  onCheckedChange={(checked) => void handleDevicesSwitch(checked)}
+                  aria-label={t("web.settingsPopup.recovery.devices.label")}
+                />
+              </SettingsRow>
+              {devicesEnableBlocked ? (
+                <p className="-mt-2 mb-4 text-sm leading-5 text-muted-foreground">
+                  {t("web.settingsPopup.recovery.devices.needAnother")}
+                </p>
+              ) : null}
+            </>
           ) : null}
 
           {canContacts ? (

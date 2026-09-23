@@ -137,7 +137,7 @@ components:
 
     TwoFactorStatusResponse:
       type: object
-      required: [enabled, backupCodesRemaining, backupCodesGeneratedAt]
+      required: [enabled, backupCodesRemaining, backupCodesGeneratedAt, backupCodesExportedAt]
       properties:
         enabled:
           type: boolean
@@ -148,6 +148,11 @@ components:
           format: date-time
           nullable: true
           description: ISO-8601 time of the latest backup-code generation batch.
+        backupCodesExportedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 time of the latest backup-codes copy or PDF download acknowledgement.
 
     TotpEnrollStartResponse:
       type: object
@@ -1420,6 +1425,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BackupCodesResponse"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /auth/two-factor/backup-codes/ack-export:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HeaderUserId"
+      summary: Acknowledge backup codes copy or PDF download
+      description: >
+        Sets `backupCodesExportedAt` on the current TOTP credential row.
+        Used by the account security score (factor B). Regenerating codes clears the timestamp.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TwoFactorStatusResponse"
         "400":
           content:
             application/json:

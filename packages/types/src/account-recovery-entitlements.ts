@@ -34,6 +34,36 @@ export type AccountRecoveryEntitlements = {
 export const MIN_TRUSTED_CONTACTS_CONFIRMED = 3 as const;
 
 /**
+ * Minimum trusted devices (current + at least one more) before the user may
+ * enable the trusted-devices recovery method in settings.
+ */
+export const MIN_TRUSTED_DEVICES_FOR_RECOVERY = 2 as const;
+
+/** Shape needed to gate enabling trusted-devices recovery. */
+export type TrustedDeviceGateItem = {
+  status: "trusted" | "pending_approval" | "blocked" | string;
+  is_current: boolean;
+};
+
+/**
+ * True when the devices list has ≥ {@link MIN_TRUSTED_DEVICES_FOR_RECOVERY}
+ * rows with `status === "trusted"` and at least one of them is `is_current`.
+ * Pending / blocked rows do not count.
+ */
+export function canEnableTrustedDevicesRecovery(
+  devices: readonly TrustedDeviceGateItem[] | null | undefined,
+): boolean {
+  if (!devices?.length) {
+    return false;
+  }
+  const trusted = devices.filter((d) => d.status === "trusted");
+  if (trusted.length < MIN_TRUSTED_DEVICES_FOR_RECOVERY) {
+    return false;
+  }
+  return trusted.some((d) => d.is_current);
+}
+
+/**
  * Resolve account-level recovery method entitlements from the user's
  * accessible workspaces (owner or member). Empty list → FREE-only (key only).
  */

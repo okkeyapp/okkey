@@ -1,4 +1,4 @@
-import { createBearerApiClient } from "@okkey/api";
+import { ApiRequestError, createBearerApiClient } from "@okkey/api";
 import { readStoredLocale } from "../../locale/localeStorage";
 import type { EnterpriseDeviceRecoveryRequestDto } from "@okkey-enterprise/types";
 import { EnterpriseAccountRecoveryClient } from "@okkey-enterprise/api";
@@ -19,7 +19,7 @@ import {
   controlGroupItemFixedClassName,
 } from "@okkey/ui";
 import { ChevronDownIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
@@ -31,6 +31,10 @@ import {
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,
 } from "../settings/DeviceTypeIcon";
+import {
+  getSettingsPopupCacheState,
+  subscribeSettingsPopupCache,
+} from "../settings/settingsPopupCache";
 import { useLocale } from "../../locale/LocaleContext";
 import { emitDevicesChanged } from "./devicesEvents";
 
@@ -56,9 +60,16 @@ function apiBase(): string {
   return "http://localhost:4000";
 }
 
+function isForbiddenRecoveryError(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.status === 403;
+}
+
 /**
  * Trusted-device popup for pending remote device-recovery requests
  * (same UX pattern as DeviceApprovalController).
+ *
+ * Polling stops when device recovery is disabled / not entitled, or the
+ * approver list endpoint returns 403 — avoids spamming the API.
  */
 export default function DeviceRecoveryApprovalController() {
   const enterpriseEnabled = Boolean(accountRecoveryModule.DevicesRestorePanel);
@@ -67,8 +78,26 @@ export default function DeviceRecoveryApprovalController() {
   const { accessToken, currentDeviceId, vaultUnlocked, vaultKey } = useAuthVault();
   const [pending, setPending] = useState<EnterpriseDeviceRecoveryRequestDto[]>([]);
   const [resolving, setResolving] = useState(false);
+  /** Sticky stop after 403 until recovery method is enabled again. */
+  const [pollBlocked, setPollBlocked] = useState(false);
   /** Prevent in-flight poll from re-opening a just-resolved request. */
   const dismissedIdsRef = useRef(new Set<string>());
+  /** True after we confirmed devices recovery is on (avoids re-fetching status every tick). */
+  const devicesRecoveryConfirmedRef = useRef(false);
+
+  const recoveryCache = useSyncExternalStore(
+    subscribeSettingsPopupCache,
+    () => getSettingsPopupCacheState().recovery,
+    () => getSettingsPopupCacheState().recovery,
+  );
+
+  const devicesRecoveryActiveFromCache =
+    recoveryCache.data == null
+      ? null
+      : Boolean(
+          recoveryCache.data.entitlements.trustedDevices &&
+            recoveryCache.data.settings.devicesEnabled,
+        );
 
   const client = useMemo(() => {
     if (!accessToken || !enterpriseEnabled) {
@@ -81,13 +110,58 @@ export default function DeviceRecoveryApprovalController() {
     );
   }, [accessToken, enterpriseEnabled]);
 
+  // Re-enable polling when the user turns device recovery back on (cache update).
   useEffect(() => {
-    if (!client || !vaultUnlocked || !currentDeviceId) {
+    if (devicesRecoveryActiveFromCache === true) {
+      devicesRecoveryConfirmedRef.current = true;
+      setPollBlocked(false);
+    } else if (devicesRecoveryActiveFromCache === false) {
+      devicesRecoveryConfirmedRef.current = false;
+      setPending([]);
+    }
+  }, [devicesRecoveryActiveFromCache]);
+
+  useEffect(() => {
+    if (!client || !vaultUnlocked || !currentDeviceId || pollBlocked) {
       return;
     }
+    if (devicesRecoveryActiveFromCache === false) {
+      setPending([]);
+      return;
+    }
+
     let active = true;
+    let timer: number | undefined;
+
+    const stopPolling = () => {
+      devicesRecoveryConfirmedRef.current = false;
+      setPollBlocked(true);
+      setPending([]);
+      if (timer != null) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+
     const poll = async () => {
       try {
+        if (
+          devicesRecoveryActiveFromCache !== true &&
+          !devicesRecoveryConfirmedRef.current
+        ) {
+          if (!core) {
+            return;
+          }
+          const status = await core.getAccountRecoveryStatus();
+          if (!active) {
+            return;
+          }
+          if (!status.entitlements.trustedDevices || !status.settings.devicesEnabled) {
+            stopPolling();
+            return;
+          }
+          devicesRecoveryConfirmedRef.current = true;
+        }
         const result = await client.listDeviceRequests("approver");
         if (active) {
           setPending(
@@ -96,17 +170,26 @@ export default function DeviceRecoveryApprovalController() {
             ),
           );
         }
-      } catch {
-        // Best-effort polling.
+      } catch (err) {
+        if (!active) {
+          return;
+        }
+        if (isForbiddenRecoveryError(err)) {
+          stopPolling();
+        }
+        // Other errors: best-effort — keep interval, try again later.
       }
     };
+
     void poll();
-    const timer = window.setInterval(() => void poll(), 5_000);
+    timer = window.setInterval(() => void poll(), 5_000);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      if (timer != null) {
+        window.clearInterval(timer);
+      }
     };
-  }, [client, currentDeviceId, vaultUnlocked]);
+  }, [client, core, currentDeviceId, devicesRecoveryActiveFromCache, pollBlocked, vaultUnlocked]);
 
   const current = pending[0];
   if (!enterpriseEnabled || !current || !client || !currentDeviceId || !vaultKey) {

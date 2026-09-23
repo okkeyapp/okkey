@@ -269,6 +269,21 @@ Completes login when `nextStep` from email confirm was `"two_factor"`. Accepts *
 | `enabled` | boolean |
 | `backupCodesRemaining` | number |
 | `backupCodesGeneratedAt` | string \| null (ISO-8601) |
+| `backupCodesExportedAt` | string \| null (ISO-8601) — last copy/PDF download ack; null if never exported |
+
+### `POST /auth/two-factor/backup-codes/ack-export`
+
+Records that the authenticated user copied or downloaded the current backup-code batch (account security score factor B). Does **not** return plaintext codes.
+
+**Auth:** Bearer / `X-User-Id`.
+
+**Request body:** empty object `{}` (optional).
+
+**Response `200`:** same shape as `GET /auth/two-factor/status` (includes updated `backupCodesExportedAt`).
+
+**Errors:** `TWO_FACTOR_NOT_ENABLED`, `TWO_FACTOR_BACKUP_DEPLETED` (no unused codes), `AUTH_REQUIRED`.
+
+Regenerating backup codes clears `backupCodesExportedAt` until the user acks again.
 
 ### `POST /auth/two-factor/totp/enroll/start`
 

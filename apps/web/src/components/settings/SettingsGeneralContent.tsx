@@ -38,6 +38,7 @@ import {
   type ThemePreference,
 } from "../../theme/applyTheme";
 import { PAGE_BACKGROUND_GRADIENT_LIGHT } from "../../theme/pageBackgroundGradients";
+import AccountSecurityScoreBlock from "./AccountSecurityScoreBlock";
 import SettingsEmailChangePopup from "./SettingsEmailChangePopup";
 
 const ACCENT_OPTIONS = [
@@ -337,6 +338,8 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
 
   return (
     <div className="min-h-[420px] pb-1">
+      <AccountSecurityScoreBlock t={t} />
+
       <section>
         <Row label={t("web.settingsPopup.general.firstName")} description={t("web.settingsPopup.general.firstNameHint")} border={false}>
           <Input

@@ -6,6 +6,7 @@ const authMocks = vi.hoisted(() => ({
   startTotpEnrollment: vi.fn(),
   confirmTotpEnrollment: vi.fn(),
   regenerateBackupCodes: vi.fn(),
+  ackBackupCodesExport: vi.fn(),
   disableTwoFactor: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock("@okkey/auth", () => ({
     startTotpEnrollment = authMocks.startTotpEnrollment;
     confirmTotpEnrollment = authMocks.confirmTotpEnrollment;
     regenerateBackupCodes = authMocks.regenerateBackupCodes;
+    ackBackupCodesExport = authMocks.ackBackupCodesExport;
     disableTwoFactor = authMocks.disableTwoFactor;
   },
 }));
@@ -62,6 +64,7 @@ describe("SettingsTwoFactorContent", () => {
       enabled: false,
       backupCodesRemaining: 0,
       backupCodesGeneratedAt: null,
+      backupCodesExportedAt: null,
     });
   });
 
@@ -100,6 +103,7 @@ describe("SettingsTwoFactorContent", () => {
       enabled: true,
       backupCodesRemaining: 8,
       backupCodesGeneratedAt: "2026-03-02T18:59:00.000Z",
+      backupCodesExportedAt: null,
     });
 
     render(<SettingsTwoFactorContent t={t} />);
