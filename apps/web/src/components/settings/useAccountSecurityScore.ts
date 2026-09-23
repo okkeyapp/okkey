@@ -3,6 +3,7 @@ import {
   type AccountSecurityScoreInput,
   type AccountSecurityScoreResult,
 } from "@okkey/types";
+import type { DeviceListItemDto } from "@okkey/types";
 import { useMemo, useSyncExternalStore } from "react";
 
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
@@ -10,6 +11,7 @@ import {
   getSettingsPopupCacheState,
   settingsPopupSliceNeedsSkeleton,
   subscribeSettingsPopupCache,
+  type SettingsDevicesListCache,
   type SettingsPopupCacheState,
 } from "./settingsPopupCache";
 
@@ -19,12 +21,33 @@ export type UseAccountSecurityScoreState = {
   result: AccountSecurityScoreResult | null;
 };
 
+/** Count trusted rows from the devices list slice (status-aware). */
+export function countTrustedDevicesFromCache(
+  devices: readonly DeviceListItemDto[] | null | undefined,
+): number {
+  if (!devices?.length) {
+    return 0;
+  }
+  return devices.filter((d) => d.status === "trusted").length;
+}
+
+export function countPendingDevicesFromCache(
+  pending: readonly DeviceListItemDto[] | null | undefined,
+): number {
+  return pending?.length ?? 0;
+}
+
 /** Stable-ish fingerprint so useSyncExternalStore re-renders when slices change. */
 function cacheFingerprint(cache: SettingsPopupCacheState): string {
   const tf = cache.twoFactor;
   const rec = cache.recovery;
   const dev = cache.devices;
   const login = cache.login;
+  const trustedIds =
+    dev.data?.devices
+      .filter((d) => d.status === "trusted")
+      .map((d) => d.device_id)
+      .join(",") ?? "";
   return [
     tf.status,
     tf.error ?? "",
@@ -45,13 +68,18 @@ function cacheFingerprint(cache: SettingsPopupCacheState): string {
     rec.data?.minConfirmedContacts,
     dev.status,
     dev.error ?? "",
-    dev.data?.devices.length,
+    trustedIds,
     dev.data?.pending.length,
     login.status,
     login.error ?? "",
     login.data?.passkeys.length,
     login.data?.hardware_keys.length,
   ].join("|");
+}
+
+function devicesSliceUsable(devices: SettingsPopupCacheState["devices"]): boolean {
+  // Ready with data, or settled error (score with trustedCount=0 + partialError).
+  return devices.data != null || devices.status === "error" || devices.status === "ready";
 }
 
 function buildInputFromCache(cache: SettingsPopupCacheState): {
@@ -74,12 +102,18 @@ function buildInputFromCache(cache: SettingsPopupCacheState): {
     Boolean(twoFactor.error || recovery.error || devices.error) ||
     (ACCOUNT_LOGIN_METHODS_UI_ENABLED && Boolean(login.error));
 
-  if (!twoFactor.data || !recovery.data) {
-    return { input: null, loading, partialError };
+  // Devices list must be settled — otherwise G / addTrustedDevice silently use count=0.
+  if (!twoFactor.data || !recovery.data || !devicesSliceUsable(devices)) {
+    return { input: null, loading: loading || !devicesSliceUsable(devices), partialError };
   }
 
-  const trustedCount = devices.data?.devices.length ?? 0;
-  const pendingCount = devices.data?.pending.length ?? 0;
+  const list: SettingsDevicesListCache = devices.data ?? {
+    devices: [],
+    pending: [],
+    blocked: [],
+  };
+  const trustedCount = countTrustedDevicesFromCache(list.devices);
+  const pendingCount = countPendingDevicesFromCache(list.pending);
 
   const loginAvailable = ACCOUNT_LOGIN_METHODS_UI_ENABLED && login.data != null;
   const hasPasskeyOrHardware = Boolean(

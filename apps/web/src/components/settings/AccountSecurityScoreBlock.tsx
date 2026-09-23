@@ -1,21 +1,17 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type {
-  AccountSecurityColorBand,
   AccountSecurityLevel,
   AccountSecurityRecommendationId,
 } from "@okkey/types";
 import { Alert, AlertDescription, Button, cn } from "@okkey/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { MonitoringGaugeChart } from "../../monitoring/MonitoringCharts";
 import {
   buildPopupQueryValue,
   popupQuerySearch,
   SETTINGS_POPUP_ID,
 } from "../../routes/popupQuery";
-import {
-  AccountSecurityShield,
-  AccountSecurityShieldSkeleton,
-} from "./AccountSecurityShield";
 import type { SettingsPopupItemId } from "./SettingsPopup";
 import { useAccountSecurityScore } from "./useAccountSecurityScore";
 
@@ -24,13 +20,6 @@ type Translate = (messageKey: string, values?: WebMessageValues) => string;
 type AccountSecurityScoreBlockProps = {
   t: Translate;
 };
-
-/** Matches KeySection «+ Add field» in gray (`additional`) sections — `/dev/ui/key-form`. */
-const recommendationButtonClassName = cn(
-  "h-8 w-full justify-start gap-2.5 rounded-lg bg-secondary px-3 text-left font-medium text-foreground shadow-none",
-  "hover:bg-[color-mix(in_hsl,hsl(var(--secondary))_94%,hsl(var(--foreground))_6%)]",
-  "focus:border-accent focus-visible:border-accent",
-);
 
 const LEVEL_MESSAGE: Record<AccountSecurityLevel, string> = {
   excellent: "web.settingsPopup.securityScore.level.excellent",
@@ -54,21 +43,6 @@ const RECOMMENDATION_MESSAGE: Record<AccountSecurityRecommendationId, string> = 
   confirmTrustedContacts: "web.settingsPopup.securityScore.rec.confirmTrustedContacts",
   addLoginMethod: "web.settingsPopup.securityScore.rec.addLoginMethod",
 };
-
-function bandLabelClass(band: AccountSecurityColorBand): string {
-  switch (band) {
-    case "good":
-      return "text-green-700 dark:text-green-400";
-    case "almost":
-      return "text-lime-700 dark:text-lime-400";
-    case "medium":
-      return "text-yellow-700 dark:text-yellow-400";
-    case "weak":
-      return "text-orange-600 dark:text-orange-400";
-    case "critical":
-      return "text-red-700 dark:text-red-400";
-  }
-}
 
 export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlockProps) {
   const { loading, partialError, result } = useAccountSecurityScore();
@@ -96,11 +70,10 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
         aria-busy="true"
         aria-label={t("web.settingsPopup.securityScore.title")}
       >
-        <div className="flex items-start gap-3">
-          <AccountSecurityShieldSkeleton />
-          <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+        <div className="flex items-center gap-4">
+          <div className="size-24 shrink-0 animate-pulse rounded-full bg-muted" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-2">
             <div className="h-4 w-40 animate-pulse rounded bg-muted" />
-            <div className="h-8 w-24 animate-pulse rounded bg-muted" />
             <div className="h-4 w-56 max-w-full animate-pulse rounded bg-muted" />
           </div>
         </div>
@@ -108,24 +81,28 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
     );
   }
 
-  const { score, level, colorBand, recommendations } = result;
+  const { score, level, recommendations } = result;
 
   return (
     <section
       className="mb-2 rounded-xl bg-secondary/70 p-4"
       aria-label={t("web.settingsPopup.securityScore.title")}
     >
-      <div className="flex items-start gap-3">
-        <AccountSecurityShield colorBand={colorBand} />
+      <div className="flex items-center gap-4">
+        <div className="relative size-24 shrink-0">
+          <MonitoringGaugeChart score={score} className="size-24" />
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+            <p className="text-base font-bold leading-5 text-foreground tabular-nums">
+              {score}
+              <span className="text-muted-foreground">/100</span>
+            </p>
+          </div>
+        </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-5 text-muted-foreground">
+          <p className="text-sm font-medium leading-5 text-foreground">
             {t("web.settingsPopup.securityScore.title")}
           </p>
-          <p className={cn("mt-0.5 text-3xl font-semibold leading-9 tracking-tight", bandLabelClass(colorBand))}>
-            <span className="tabular-nums">{score}</span>
-            <span className="text-lg font-medium text-muted-foreground">/100</span>
-          </p>
-          <p className="mt-1 text-sm leading-5 text-foreground">{t(LEVEL_MESSAGE[level])}</p>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t(LEVEL_MESSAGE[level])}</p>
         </div>
       </div>
 
@@ -140,18 +117,20 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
           {t("web.settingsPopup.securityScore.allGood")}
         </p>
       ) : (
-        <ul className="mt-3 flex flex-col items-stretch gap-1.5">
+        <ul className="mt-3 flex flex-col items-start gap-1">
           {recommendations.map((rec) => (
-            <li key={rec.id} className="w-full">
+            <li key={rec.id}>
               <Button
                 type="button"
-                variant="secondary"
-                className={recommendationButtonClassName}
+                variant="link"
+                size="sm"
+                className={cn(
+                  "h-auto px-0 py-0 text-left text-sm font-normal leading-5",
+                  "justify-start underline-offset-4",
+                )}
                 onClick={() => goToSettingsItem(rec.target)}
               >
-                <span className="min-w-0 flex-1 truncate text-left text-sm leading-5">
-                  {t(RECOMMENDATION_MESSAGE[rec.id])}
-                </span>
+                {t(RECOMMENDATION_MESSAGE[rec.id])}
               </Button>
             </li>
           ))}

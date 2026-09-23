@@ -166,6 +166,60 @@ test("G awards ≥1 trusted device only when device recovery method is enabled",
   assert.equal(methodOn.factorPoints.trustedDevicesPresent, 5);
 });
 
+test("method on + zero trusted devices: G in denominator at 0 and recommends addTrustedDevice", () => {
+  const result = computeAccountSecurityScore(
+    baseInput({
+      twoFactor: {
+        enabled: true,
+        backupCodesRemaining: 8,
+        backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
+        backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
+      },
+      recovery: {
+        entitlements: { trustedDevices: true, trustedContacts: false },
+        settings: { keyEnabled: true, devicesEnabled: true, contactsEnabled: false },
+        key: { enrolled: true, exportedAt: "2026-09-10T00:00:00.000Z" },
+        confirmedContactCount: 0,
+        minConfirmedContacts: 3,
+      },
+      devices: { trustedCount: 0, pendingCount: 0 },
+    }),
+  );
+  assert.ok(result.includedFactors.includes("trustedDevicesPresent"));
+  assert.equal(result.factorPoints.trustedDevicesPresent, 0);
+  assert.equal(result.factorPoints.trustedDevicesRecovery, 15);
+  assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
+  assert.equal(
+    result.recommendations.find((r) => r.id === "addTrustedDevice")?.target,
+    "devices",
+  );
+  // Score is below 100 because G is missing from raw points.
+  assert.ok(result.score < 100);
+});
+
+test("addTrustedDevice recommendation stays in top-4 even with other gaps", () => {
+  const result = computeAccountSecurityScore(
+    baseInput({
+      twoFactor: {
+        enabled: false,
+        backupCodesRemaining: 0,
+        backupCodesGeneratedAt: null,
+        backupCodesExportedAt: null,
+      },
+      recovery: {
+        entitlements: { trustedDevices: true, trustedContacts: false },
+        settings: { keyEnabled: false, devicesEnabled: true, contactsEnabled: false },
+        key: { enrolled: false, exportedAt: null },
+        confirmedContactCount: 0,
+        minConfirmedContacts: 3,
+      },
+      devices: { trustedCount: 0, pendingCount: 0 },
+    }),
+  );
+  assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
+  assert.ok(result.recommendations.length <= 4);
+});
+
 test("color bands follow approved thresholds", () => {
   // FREE base without G: only 2FA on → 25/65 ≈ 38 → weak
   const only2fa = computeAccountSecurityScore(

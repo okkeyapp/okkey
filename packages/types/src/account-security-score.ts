@@ -248,6 +248,16 @@ function buildRecommendations(input: AccountSecurityScoreInput, nowMs: number): 
     }
   }
 
+  // Device recovery: surface trusted-device gap early when the method is on
+  // (must not be dropped by the recommendation cap).
+  if (recovery.entitlements.trustedDevices && recovery.settings.devicesEnabled) {
+    if (devices.trustedCount < 1) {
+      push("addTrustedDevice", "devices");
+    } else if (devices.pendingCount > 0) {
+      push("confirmPendingDevices", "devices");
+    }
+  }
+
   if (!recovery.key.enrolled || !recovery.settings.keyEnabled) {
     push("enrollRecoveryKey", "recovery");
   } else if (!recovery.key.exportedAt) {
@@ -259,15 +269,11 @@ function buildRecommendations(input: AccountSecurityScoreInput, nowMs: number): 
     }
   }
 
-  if (recovery.entitlements.trustedDevices) {
-    if (!recovery.settings.devicesEnabled) {
-      push("enableTrustedDevicesRecovery", "recovery");
-    } else if (devices.trustedCount < 1) {
-      push("addTrustedDevice", "devices");
-    } else if (devices.pendingCount > 0) {
-      push("confirmPendingDevices", "devices");
-    }
-  } else if (devices.pendingCount > 0) {
+  if (recovery.entitlements.trustedDevices && !recovery.settings.devicesEnabled) {
+    push("enableTrustedDevicesRecovery", "recovery");
+  }
+
+  if (!recovery.entitlements.trustedDevices && devices.pendingCount > 0) {
     push("confirmPendingDevices", "devices");
   }
 
