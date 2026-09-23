@@ -147,6 +147,11 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
                 className={cn(
                   "h-auto px-0 py-0 text-left text-sm font-normal leading-5",
                   "justify-start underline-offset-4",
+                  "focus:shadow-none focus-visible:shadow-none",
+                  "focus:hover:shadow-none focus-visible:hover:shadow-none",
+                  "dark:focus:shadow-none dark:focus-visible:shadow-none",
+                  "dark:focus:hover:shadow-none dark:focus-visible:hover:shadow-none",
+                  "active:shadow-none",
                 )}
                 onClick={() => goToSettingsItem(rec.target)}
               >
