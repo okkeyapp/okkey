@@ -4,7 +4,7 @@ import type {
   AccountSecurityLevel,
   AccountSecurityRecommendationId,
 } from "@okkey/types";
-import { Alert, AlertDescription, Button, cn } from "@okkey/ui";
+import { Alert, AlertDescription, cn } from "@okkey/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { MonitoringGaugeChart } from "../../monitoring/MonitoringCharts";
@@ -140,23 +140,19 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
         <ul className="mt-3 flex flex-col items-start gap-1">
           {recommendations.map((rec) => (
             <li key={rec.id}>
-              <Button
+              <button
                 type="button"
-                variant="link"
-                size="sm"
                 className={cn(
-                  "h-auto px-0 py-0 text-left text-sm font-normal leading-5",
-                  "justify-start underline-offset-4",
-                  "focus:shadow-none focus-visible:shadow-none",
-                  "focus:hover:shadow-none focus-visible:hover:shadow-none",
+                  "h-auto max-w-full px-0 py-0 text-left text-sm font-normal leading-5",
+                  "text-primary underline-offset-4 hover:underline",
+                  "focus:outline-none focus-visible:outline-none",
+                  "focus:shadow-none focus-visible:shadow-none active:shadow-none",
                   "dark:focus:shadow-none dark:focus-visible:shadow-none",
-                  "dark:focus:hover:shadow-none dark:focus-visible:hover:shadow-none",
-                  "active:shadow-none",
                 )}
                 onClick={() => goToSettingsItem(rec.target)}
               >
                 {t(RECOMMENDATION_MESSAGE[rec.id])}
-              </Button>
+              </button>
             </li>
           ))}
         </ul>
