@@ -131,7 +131,7 @@ test("paid E/F included when entitled; method on without devices earns E but not
   assert.ok(result.recommendations.some((r) => r.id === "confirmTrustedContacts"));
 });
 
-test("G awards ≥1 trusted device only when device recovery method is enabled", () => {
+test("G awards ≥2 trusted devices only when device recovery method is enabled", () => {
   const methodOff = computeAccountSecurityScore(
     baseInput({
       recovery: {
@@ -149,6 +149,23 @@ test("G awards ≥1 trusted device only when device recovery method is enabled",
   assert.equal(methodOff.factorPoints.trustedDevicesPresent, 0);
   assert.equal(methodOff.factorPoints.trustedDevicesRecovery, 0);
 
+  const methodOnOneDevice = computeAccountSecurityScore(
+    baseInput({
+      recovery: {
+        entitlements: { trustedDevices: true, trustedContacts: false },
+        settings: { keyEnabled: false, devicesEnabled: true, contactsEnabled: false },
+        key: { enrolled: false, exportedAt: null },
+        confirmedContactCount: 0,
+        minConfirmedContacts: 3,
+      },
+      devices: { trustedCount: 1, pendingCount: 0 },
+    }),
+  );
+  assert.ok(methodOnOneDevice.includedFactors.includes("trustedDevicesPresent"));
+  assert.equal(methodOnOneDevice.factorPoints.trustedDevicesRecovery, 15);
+  assert.equal(methodOnOneDevice.factorPoints.trustedDevicesPresent, 0);
+  assert.ok(methodOnOneDevice.recommendations.some((r) => r.id === "addTrustedDevice"));
+
   const methodOn = computeAccountSecurityScore(
     baseInput({
       recovery: {
@@ -164,37 +181,40 @@ test("G awards ≥1 trusted device only when device recovery method is enabled",
   assert.ok(methodOn.includedFactors.includes("trustedDevicesPresent"));
   assert.equal(methodOn.factorPoints.trustedDevicesRecovery, 15);
   assert.equal(methodOn.factorPoints.trustedDevicesPresent, 5);
+  assert.ok(!methodOn.recommendations.some((r) => r.id === "addTrustedDevice"));
 });
 
-test("method on + zero trusted devices: G in denominator at 0 and recommends addTrustedDevice", () => {
-  const result = computeAccountSecurityScore(
-    baseInput({
-      twoFactor: {
-        enabled: true,
-        backupCodesRemaining: 8,
-        backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
-        backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
-      },
-      recovery: {
-        entitlements: { trustedDevices: true, trustedContacts: false },
-        settings: { keyEnabled: true, devicesEnabled: true, contactsEnabled: false },
-        key: { enrolled: true, exportedAt: "2026-09-10T00:00:00.000Z" },
-        confirmedContactCount: 0,
-        minConfirmedContacts: 3,
-      },
-      devices: { trustedCount: 0, pendingCount: 0 },
-    }),
-  );
-  assert.ok(result.includedFactors.includes("trustedDevicesPresent"));
-  assert.equal(result.factorPoints.trustedDevicesPresent, 0);
-  assert.equal(result.factorPoints.trustedDevicesRecovery, 15);
-  assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
-  assert.equal(
-    result.recommendations.find((r) => r.id === "addTrustedDevice")?.target,
-    "devices",
-  );
-  // Score is below 100 because G is missing from raw points.
-  assert.ok(result.score < 100);
+test("method on + fewer than 2 trusted devices: G in denominator at 0 and recommends addTrustedDevice", () => {
+  for (const trustedCount of [0, 1]) {
+    const result = computeAccountSecurityScore(
+      baseInput({
+        twoFactor: {
+          enabled: true,
+          backupCodesRemaining: 8,
+          backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
+          backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
+        },
+        recovery: {
+          entitlements: { trustedDevices: true, trustedContacts: false },
+          settings: { keyEnabled: true, devicesEnabled: true, contactsEnabled: false },
+          key: { enrolled: true, exportedAt: "2026-09-10T00:00:00.000Z" },
+          confirmedContactCount: 0,
+          minConfirmedContacts: 3,
+        },
+        devices: { trustedCount, pendingCount: 0 },
+      }),
+    );
+    assert.ok(result.includedFactors.includes("trustedDevicesPresent"));
+    assert.equal(result.factorPoints.trustedDevicesPresent, 0);
+    assert.equal(result.factorPoints.trustedDevicesRecovery, 15);
+    assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
+    assert.equal(
+      result.recommendations.find((r) => r.id === "addTrustedDevice")?.target,
+      "devices",
+    );
+    // Score is below 100 because G is missing from raw points.
+    assert.ok(result.score < 100);
+  }
 });
 
 test("addTrustedDevice recommendation stays in top-4 even with other gaps", () => {
@@ -213,7 +233,7 @@ test("addTrustedDevice recommendation stays in top-4 even with other gaps", () =
         confirmedContactCount: 0,
         minConfirmedContacts: 3,
       },
-      devices: { trustedCount: 0, pendingCount: 0 },
+      devices: { trustedCount: 1, pendingCount: 0 },
     }),
   );
   assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));

@@ -334,7 +334,7 @@
   "web.settingsPopup.securityScore.rec.exportRecoveryKey": "Save your recovery key (copy or PDF)",
   "web.settingsPopup.securityScore.rec.refreshRecoveryKeyExport": "Refresh your saved recovery key copy",
   "web.settingsPopup.securityScore.rec.enableTrustedDevicesRecovery": "Enable recovery via trusted devices",
-  "web.settingsPopup.securityScore.rec.addTrustedDevice": "Add a trusted device",
+  "web.settingsPopup.securityScore.rec.addTrustedDevice": "Add another trusted device",
   "web.settingsPopup.securityScore.rec.confirmPendingDevices": "Approve pending devices",
   "web.settingsPopup.securityScore.rec.enableTrustedContacts": "Enable recovery via trusted contacts",
   "web.settingsPopup.securityScore.rec.confirmTrustedContacts": "Confirm trusted contacts (at least 3)",

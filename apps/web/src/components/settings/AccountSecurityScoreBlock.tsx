@@ -1,5 +1,6 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import type {
+  AccountSecurityColorBand,
   AccountSecurityLevel,
   AccountSecurityRecommendationId,
 } from "@okkey/types";
@@ -19,6 +20,15 @@ type Translate = (messageKey: string, values?: WebMessageValues) => string;
 
 type AccountSecurityScoreBlockProps = {
   t: Translate;
+};
+
+/** Progress stroke by score band (same thresholds as the former shield). */
+const GAUGE_PROGRESS_CLASS: Record<AccountSecurityColorBand, string> = {
+  good: "stroke-green-600 dark:stroke-green-400",
+  almost: "stroke-lime-600 dark:stroke-lime-400",
+  medium: "stroke-yellow-500 dark:stroke-yellow-400",
+  weak: "stroke-orange-500 dark:stroke-orange-400",
+  critical: "stroke-red-600 dark:stroke-red-400",
 };
 
 const LEVEL_MESSAGE: Record<AccountSecurityLevel, string> = {
@@ -81,7 +91,7 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
     );
   }
 
-  const { score, level, recommendations } = result;
+  const { score, level, colorBand, recommendations } = result;
 
   return (
     <section
@@ -90,7 +100,12 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
     >
       <div className="flex items-center gap-4">
         <div className="relative size-24 shrink-0">
-          <MonitoringGaugeChart score={score} className="size-24" />
+          <MonitoringGaugeChart
+            score={score}
+            className="size-24"
+            trackClassName="stroke-white"
+            progressClassName={GAUGE_PROGRESS_CLASS[colorBand]}
+          />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
             <p className="text-base font-bold leading-5 text-foreground tabular-nums">
               {score}

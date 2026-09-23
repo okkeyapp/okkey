@@ -79,7 +79,10 @@ describe("useAccountSecurityScore devices plumbing", () => {
     expect(result.current.loading).toBe(true);
 
     setSettingsPopupCacheData("devices", {
-      devices: [device({ device_id: "d1", status: "trusted", is_current: true })],
+      devices: [
+        device({ device_id: "d1", status: "trusted", is_current: true }),
+        device({ device_id: "d2", status: "trusted", is_current: false }),
+      ],
       pending: [],
       blocked: [],
     });
@@ -91,7 +94,7 @@ describe("useAccountSecurityScore devices plumbing", () => {
     expect(result.current.result?.includedFactors).toContain("trustedDevicesPresent");
   });
 
-  it("recommends addTrustedDevice when method on and trusted count is 0", () => {
+  it("recommends addTrustedDevice when method on and only one trusted device", () => {
     setSettingsPopupCacheData("twoFactor", {
       enabled: true,
       backupCodesRemaining: 8,
@@ -109,7 +112,7 @@ describe("useAccountSecurityScore devices plumbing", () => {
       servingAsContact: [],
     });
     setSettingsPopupCacheData("devices", {
-      devices: [],
+      devices: [device({ device_id: "d1", status: "trusted", is_current: true })],
       pending: [],
       blocked: [],
     });

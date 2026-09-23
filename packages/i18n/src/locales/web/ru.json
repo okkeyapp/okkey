@@ -334,7 +334,7 @@
   "web.settingsPopup.securityScore.rec.exportRecoveryKey": "Сохраните ключ восстановления (копия или PDF)",
   "web.settingsPopup.securityScore.rec.refreshRecoveryKeyExport": "Обновите сохранённую копию ключа восстановления",
   "web.settingsPopup.securityScore.rec.enableTrustedDevicesRecovery": "Включите восстановление через доверенные устройства",
-  "web.settingsPopup.securityScore.rec.addTrustedDevice": "Добавьте доверенное устройство",
+  "web.settingsPopup.securityScore.rec.addTrustedDevice": "Добавьте ещё одно доверенное устройство",
   "web.settingsPopup.securityScore.rec.confirmPendingDevices": "Подтвердите ожидающие устройства",
   "web.settingsPopup.securityScore.rec.enableTrustedContacts": "Включите восстановление через доверенные контакты",
   "web.settingsPopup.securityScore.rec.confirmTrustedContacts": "Подтвердите доверенные контакты (нужно минимум 3)",

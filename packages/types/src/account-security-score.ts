@@ -22,9 +22,9 @@ export const ACCOUNT_SECURITY_FACTOR_WEIGHTS = {
   /** F — trusted contacts recovery (paid) */
   trustedContacts: 10,
   /**
-   * G — at least one trusted device.
-   * Included only when device recovery is entitled **and** the method is enabled
-   * (same renormalization gate as E).
+   * G — at least {@link ACCOUNT_SECURITY_MIN_TRUSTED_DEVICES} trusted devices
+   * (current device + one more). Included only when device recovery is entitled
+   * **and** the method is enabled (same renormalization gate as E).
    */
   trustedDevicesPresent: 5,
   /** H — passkey / hardware login method */
@@ -78,6 +78,10 @@ export const ACCOUNT_SECURITY_EXPORT_FRESH_DAYS = 90;
 export const ACCOUNT_SECURITY_EXPORT_STALE_DAYS = 180;
 /** Remaining backup codes below this are treated as low stock. */
 export const ACCOUNT_SECURITY_BACKUP_CODES_LOW_THRESHOLD = 3;
+/**
+ * Factor G: need current device + at least one additional trusted device.
+ */
+export const ACCOUNT_SECURITY_MIN_TRUSTED_DEVICES = 2;
 
 export type AccountSecurityScoreInput = {
   /** Override clock for tests (ms since epoch). */
@@ -251,7 +255,7 @@ function buildRecommendations(input: AccountSecurityScoreInput, nowMs: number): 
   // Device recovery: surface trusted-device gap early when the method is on
   // (must not be dropped by the recommendation cap).
   if (recovery.entitlements.trustedDevices && recovery.settings.devicesEnabled) {
-    if (devices.trustedCount < 1) {
+    if (devices.trustedCount < ACCOUNT_SECURITY_MIN_TRUSTED_DEVICES) {
       push("addTrustedDevice", "devices");
     } else if (devices.pendingCount > 0) {
       push("confirmPendingDevices", "devices");
@@ -328,7 +332,7 @@ export function computeAccountSecurityScore(
         ? ACCOUNT_SECURITY_FACTOR_WEIGHTS.trustedContacts
         : 0,
     trustedDevicesPresent:
-      includeG && input.devices.trustedCount >= 1
+      includeG && input.devices.trustedCount >= ACCOUNT_SECURITY_MIN_TRUSTED_DEVICES
         ? ACCOUNT_SECURITY_FACTOR_WEIGHTS.trustedDevicesPresent
         : 0,
     loginMethods:
