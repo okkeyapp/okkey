@@ -47,11 +47,16 @@ const RECOMMENDATION_MESSAGE: Record<AccountSecurityRecommendationId, string> = 
   exportRecoveryKey: "web.settingsPopup.securityScore.rec.exportRecoveryKey",
   refreshRecoveryKeyExport: "web.settingsPopup.securityScore.rec.refreshRecoveryKeyExport",
   enableTrustedDevicesRecovery: "web.settingsPopup.securityScore.rec.enableTrustedDevicesRecovery",
-  addTrustedDevice: "web.settingsPopup.securityScore.rec.addTrustedDevice",
   confirmPendingDevices: "web.settingsPopup.securityScore.rec.confirmPendingDevices",
   enableTrustedContacts: "web.settingsPopup.securityScore.rec.enableTrustedContacts",
   confirmTrustedContacts: "web.settingsPopup.securityScore.rec.confirmTrustedContacts",
   addLoginMethod: "web.settingsPopup.securityScore.rec.addLoginMethod",
+  shortenVaultIdleLock: "web.settingsPopup.securityScore.rec.shortenVaultIdleLock",
+  enableVaultLockOnSleep: "web.settingsPopup.securityScore.rec.enableVaultLockOnSleep",
+  shortenClipboardClear: "web.settingsPopup.securityScore.rec.shortenClipboardClear",
+  refreshMasterPassword: "web.settingsPopup.securityScore.rec.refreshMasterPassword",
+  requireReauthOnDeletion: "web.settingsPopup.securityScore.rec.requireReauthOnDeletion",
+  enableBiometricOrPin: "web.settingsPopup.securityScore.rec.enableBiometricOrPin",
 };
 
 export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlockProps) {

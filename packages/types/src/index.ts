@@ -43,9 +43,12 @@ export {
 export type {
   AccountRecoveryEntitlements,
   AccountRecoveryWorkspaceLike,
+  TrustedDeviceGateItem,
 } from "./account-recovery-entitlements.js";
 export {
+  canEnableTrustedDevicesRecovery,
   MIN_TRUSTED_CONTACTS_CONFIRMED,
+  MIN_TRUSTED_DEVICES_FOR_RECOVERY,
   resolveAccountRecoveryEntitlements,
 } from "./account-recovery-entitlements.js";
 
@@ -64,7 +67,10 @@ export {
   ACCOUNT_SECURITY_EXPORT_FRESH_DAYS,
   ACCOUNT_SECURITY_EXPORT_STALE_DAYS,
   ACCOUNT_SECURITY_FACTOR_WEIGHTS,
-  ACCOUNT_SECURITY_MIN_TRUSTED_DEVICES,
+  ACCOUNT_SECURITY_MASTER_PASSWORD_MAX_AGE_DAYS,
+  ACCOUNT_SECURITY_MAX_RECOMMENDATIONS,
+  ACCOUNT_SECURITY_VAULT_CLIPBOARD_MAX_SECONDS,
+  ACCOUNT_SECURITY_VAULT_IDLE_MAX_SECONDS,
   computeAccountSecurityScore,
 } from "./account-security-score.js";
 

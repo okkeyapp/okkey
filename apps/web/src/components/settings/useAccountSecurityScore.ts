@@ -7,6 +7,8 @@ import type { DeviceListItemDto } from "@okkey/types";
 import { useMemo, useSyncExternalStore } from "react";
 
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
+import { useAuthVault } from "../../auth/AuthVaultContext";
+import { readVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
 import {
   getSettingsPopupCacheState,
   settingsPopupSliceNeedsSkeleton,
@@ -37,17 +39,31 @@ export function countPendingDevicesFromCache(
   return pending?.length ?? 0;
 }
 
+function subscribeVaultDevicePrefs(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+  window.addEventListener("okkey:vault-device-prefs", onStoreChange);
+  return () => window.removeEventListener("okkey:vault-device-prefs", onStoreChange);
+}
+
+function vaultPrefsFingerprint(userId: string | null): string {
+  const prefs = readVaultDevicePrefs(userId);
+  return [
+    prefs.lockOnDeviceSleep,
+    prefs.clipboardClearSeconds,
+    prefs.requireReauthZones.join(","),
+    prefs.pinEnabled,
+    prefs.biometricEnabled,
+  ].join("|");
+}
+
 /** Stable-ish fingerprint so useSyncExternalStore re-renders when slices change. */
 function cacheFingerprint(cache: SettingsPopupCacheState): string {
   const tf = cache.twoFactor;
   const rec = cache.recovery;
   const dev = cache.devices;
   const login = cache.login;
-  const trustedIds =
-    dev.data?.devices
-      .filter((d) => d.status === "trusted")
-      .map((d) => d.device_id)
-      .join(",") ?? "";
   return [
     tf.status,
     tf.error ?? "",
@@ -68,7 +84,6 @@ function cacheFingerprint(cache: SettingsPopupCacheState): string {
     rec.data?.minConfirmedContacts,
     dev.status,
     dev.error ?? "",
-    trustedIds,
     dev.data?.pending.length,
     login.status,
     login.error ?? "",
@@ -78,11 +93,19 @@ function cacheFingerprint(cache: SettingsPopupCacheState): string {
 }
 
 function devicesSliceUsable(devices: SettingsPopupCacheState["devices"]): boolean {
-  // Ready with data, or settled error (score with trustedCount=0 + partialError).
   return devices.data != null || devices.status === "error" || devices.status === "ready";
 }
 
-function buildInputFromCache(cache: SettingsPopupCacheState): {
+export type AccountSecurityVaultSnapshot = {
+  idleLockSeconds: number;
+  masterPasswordChangedAt: string | null;
+  userId: string | null;
+};
+
+function buildInputFromCache(
+  cache: SettingsPopupCacheState,
+  vaultSnap: AccountSecurityVaultSnapshot,
+): {
   input: AccountSecurityScoreInput | null;
   loading: boolean;
   partialError: boolean;
@@ -102,7 +125,7 @@ function buildInputFromCache(cache: SettingsPopupCacheState): {
     Boolean(twoFactor.error || recovery.error || devices.error) ||
     (ACCOUNT_LOGIN_METHODS_UI_ENABLED && Boolean(login.error));
 
-  // Devices list must be settled — otherwise G / addTrustedDevice silently use count=0.
+  // Devices list must be settled — otherwise pending recommendations silently use count=0.
   if (!twoFactor.data || !recovery.data || !devicesSliceUsable(devices)) {
     return { input: null, loading: loading || !devicesSliceUsable(devices), partialError };
   }
@@ -112,8 +135,8 @@ function buildInputFromCache(cache: SettingsPopupCacheState): {
     pending: [],
     blocked: [],
   };
-  const trustedCount = countTrustedDevicesFromCache(list.devices);
   const pendingCount = countPendingDevicesFromCache(list.pending);
+  const prefs = readVaultDevicePrefs(vaultSnap.userId);
 
   const loginAvailable = ACCOUNT_LOGIN_METHODS_UI_ENABLED && login.data != null;
   const hasPasskeyOrHardware = Boolean(
@@ -146,8 +169,16 @@ function buildInputFromCache(cache: SettingsPopupCacheState): {
       minConfirmedContacts: recovery.data.minConfirmedContacts,
     },
     devices: {
-      trustedCount,
       pendingCount,
+    },
+    vault: {
+      idleLockSeconds: vaultSnap.idleLockSeconds,
+      lockOnDeviceSleep: prefs.lockOnDeviceSleep,
+      clipboardClearSeconds: prefs.clipboardClearSeconds,
+      masterPasswordChangedAt: vaultSnap.masterPasswordChangedAt,
+      requireReauthOnDeletion: prefs.requireReauthZones.includes("deletion"),
+      biometricEnabled: prefs.biometricEnabled,
+      pinEnabled: prefs.pinEnabled,
     },
     loginMethods: {
       available: loginAvailable,
@@ -160,18 +191,34 @@ function buildInputFromCache(cache: SettingsPopupCacheState): {
 
 /**
  * Derives account security score from the Personal Settings popup warm cache
- * (two-factor, recovery, devices, optional login methods).
+ * plus vault device prefs / idle lock / master-password age.
  */
 export function useAccountSecurityScore(): UseAccountSecurityScoreState {
-  const fingerprint = useSyncExternalStore(
+  const { userId, vaultIdleLockMs, masterPasswordChangedAt } = useAuthVault();
+
+  const cacheFp = useSyncExternalStore(
     subscribeSettingsPopupCache,
     () => cacheFingerprint(getSettingsPopupCacheState()),
     () => cacheFingerprint(getSettingsPopupCacheState()),
   );
+  const prefsFp = useSyncExternalStore(
+    subscribeVaultDevicePrefs,
+    () => vaultPrefsFingerprint(userId),
+    () => vaultPrefsFingerprint(userId),
+  );
 
   return useMemo(() => {
-    void fingerprint;
-    const { input, loading, partialError } = buildInputFromCache(getSettingsPopupCacheState());
+    void cacheFp;
+    void prefsFp;
+    const vaultSnap: AccountSecurityVaultSnapshot = {
+      userId,
+      idleLockSeconds: Math.max(0, Math.round(vaultIdleLockMs / 1000)),
+      masterPasswordChangedAt,
+    };
+    const { input, loading, partialError } = buildInputFromCache(
+      getSettingsPopupCacheState(),
+      vaultSnap,
+    );
     if (!input) {
       return { loading, partialError, result: null };
     }
@@ -180,5 +227,5 @@ export function useAccountSecurityScore(): UseAccountSecurityScoreState {
       partialError,
       result: computeAccountSecurityScore(input),
     };
-  }, [fingerprint]);
+  }, [cacheFp, prefsFp, userId, vaultIdleLockMs, masterPasswordChangedAt]);
 }

@@ -2,12 +2,40 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canEnableTrustedDevicesRecovery,
   MIN_TRUSTED_CONTACTS_CONFIRMED,
+  MIN_TRUSTED_DEVICES_FOR_RECOVERY,
   resolveAccountRecoveryEntitlements,
 } from "../../../packages/types/dist/account-recovery-entitlements.js";
 
 test("MIN_TRUSTED_CONTACTS_CONFIRMED is 3", () => {
   assert.equal(MIN_TRUSTED_CONTACTS_CONFIRMED, 3);
+});
+
+test("MIN_TRUSTED_DEVICES_FOR_RECOVERY is 2", () => {
+  assert.equal(MIN_TRUSTED_DEVICES_FOR_RECOVERY, 2);
+});
+
+test("canEnableTrustedDevicesRecovery requires ≥2 trusted including current", () => {
+  assert.equal(canEnableTrustedDevicesRecovery([]), false);
+  assert.equal(
+    canEnableTrustedDevicesRecovery([{ status: "trusted", is_current: true }]),
+    false,
+  );
+  assert.equal(
+    canEnableTrustedDevicesRecovery([
+      { status: "trusted", is_current: true },
+      { status: "pending_approval", is_current: false },
+    ]),
+    false,
+  );
+  assert.equal(
+    canEnableTrustedDevicesRecovery([
+      { status: "trusted", is_current: true },
+      { status: "trusted", is_current: false },
+    ]),
+    true,
+  );
 });
 
 test("resolveAccountRecoveryEntitlements: empty workspaces → key only", () => {

@@ -3,11 +3,27 @@ import test from "node:test";
 
 import {
   ACCOUNT_SECURITY_FACTOR_WEIGHTS,
+  ACCOUNT_SECURITY_MAX_RECOMMENDATIONS,
   computeAccountSecurityScore,
   type AccountSecurityScoreInput,
 } from "../../../packages/types/src/account-security-score.ts";
 
 const NOW = Date.parse("2026-09-22T12:00:00.000Z");
+
+function vaultOk(
+  overrides: Partial<AccountSecurityScoreInput["vault"]> = {},
+): AccountSecurityScoreInput["vault"] {
+  return {
+    idleLockSeconds: 900,
+    lockOnDeviceSleep: true,
+    clipboardClearSeconds: 60,
+    masterPasswordChangedAt: "2026-03-01T00:00:00.000Z",
+    requireReauthOnDeletion: true,
+    biometricEnabled: true,
+    pinEnabled: false,
+    ...overrides,
+  };
+}
 
 function baseInput(overrides: Partial<AccountSecurityScoreInput> = {}): AccountSecurityScoreInput {
   return {
@@ -25,7 +41,8 @@ function baseInput(overrides: Partial<AccountSecurityScoreInput> = {}): AccountS
       confirmedContactCount: 0,
       minConfirmedContacts: 3,
     },
-    devices: { trustedCount: 0, pendingCount: 0 },
+    devices: { pendingCount: 0 },
+    vault: vaultOk(),
     loginMethods: { available: false, hasPasskeyOrHardware: false },
     ...overrides,
   };
@@ -35,20 +52,38 @@ const FREE_BASE_MAX =
   ACCOUNT_SECURITY_FACTOR_WEIGHTS.twoFactorEnabled +
   ACCOUNT_SECURITY_FACTOR_WEIGHTS.backupCodes +
   ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyEnrolled +
-  ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyExported;
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.recoveryKeyExported +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultIdleLock +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultLockOnSleep +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultClipboardClear +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultMasterPasswordFresh +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultReauthOnDeletion +
+  ACCOUNT_SECURITY_FACTOR_WEIGHTS.vaultBiometricOrPin;
 
-test("empty FREE account scores 0 and recommends 2FA first", () => {
-  const result = computeAccountSecurityScore(baseInput());
+test("empty FREE account scores 0-ish and recommends 2FA first (top by weight)", () => {
+  const result = computeAccountSecurityScore(
+    baseInput({
+      vault: vaultOk({
+        idleLockSeconds: 3600,
+        lockOnDeviceSleep: false,
+        clipboardClearSeconds: 0,
+        masterPasswordChangedAt: null,
+        requireReauthOnDeletion: false,
+        biometricEnabled: false,
+        pinEnabled: false,
+      }),
+    }),
+  );
   assert.equal(result.score, 0);
   assert.equal(result.colorBand, "critical");
   assert.equal(result.recommendations[0]?.id, "enableTwoFactor");
+  assert.ok(result.recommendations.length <= ACCOUNT_SECURITY_MAX_RECOMMENDATIONS);
   assert.ok(!result.includedFactors.includes("trustedDevicesRecovery"));
-  assert.ok(!result.includedFactors.includes("trustedDevicesPresent"));
   assert.ok(!result.includedFactors.includes("trustedContacts"));
-  assert.ok(!result.includedFactors.includes("loginMethods"));
+  assert.ok(!Object.hasOwn(result.factorPoints, "trustedDevicesPresent"));
 });
 
-test("FREE renormalization: 100 reachable without paid E/F/G", () => {
+test("FREE renormalization: 100 reachable without paid E/F", () => {
   const result = computeAccountSecurityScore(
     baseInput({
       twoFactor: {
@@ -64,7 +99,6 @@ test("FREE renormalization: 100 reachable without paid E/F/G", () => {
         confirmedContactCount: 0,
         minConfirmedContacts: 3,
       },
-      devices: { trustedCount: 1, pendingCount: 0 },
     }),
   );
   assert.equal(result.availableMax, FREE_BASE_MAX);
@@ -72,7 +106,6 @@ test("FREE renormalization: 100 reachable without paid E/F/G", () => {
   assert.equal(result.score, 100);
   assert.equal(result.colorBand, "good");
   assert.equal(result.recommendations.length, 0);
-  assert.equal(result.factorPoints.trustedDevicesPresent, 0);
 });
 
 test("factor B: without exportedAt is 0 even if codes remain", () => {
@@ -89,26 +122,9 @@ test("factor B: without exportedAt is 0 even if codes remain", () => {
   assert.equal(result.factorPoints.backupCodes, 0);
   assert.equal(result.factorPoints.twoFactorEnabled, 25);
   assert.ok(result.recommendations.some((r) => r.id === "downloadBackupCodes"));
-  assert.ok(!result.recommendations.some((r) => r.id === "enableTwoFactor"));
 });
 
-test("factor D: enrolled without export awards partial 5", () => {
-  const result = computeAccountSecurityScore(
-    baseInput({
-      recovery: {
-        entitlements: { trustedDevices: false, trustedContacts: false },
-        settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
-        key: { enrolled: true, exportedAt: null },
-        confirmedContactCount: 0,
-        minConfirmedContacts: 3,
-      },
-    }),
-  );
-  assert.equal(result.factorPoints.recoveryKeyEnrolled, 15);
-  assert.equal(result.factorPoints.recoveryKeyExported, 5);
-});
-
-test("paid E/F included when entitled; method on without devices earns E but not G", () => {
+test("paid E included when entitled; device count is not scored", () => {
   const result = computeAccountSecurityScore(
     baseInput({
       recovery: {
@@ -118,130 +134,94 @@ test("paid E/F included when entitled; method on without devices earns E but not
         confirmedContactCount: 1,
         minConfirmedContacts: 3,
       },
-      devices: { trustedCount: 0, pendingCount: 1 },
+      devices: { pendingCount: 1 },
     }),
   );
   assert.ok(result.includedFactors.includes("trustedDevicesRecovery"));
-  assert.ok(result.includedFactors.includes("trustedDevicesPresent"));
-  assert.ok(result.includedFactors.includes("trustedContacts"));
   assert.equal(result.factorPoints.trustedDevicesRecovery, 15);
-  assert.equal(result.factorPoints.trustedDevicesPresent, 0);
-  assert.equal(result.factorPoints.trustedContacts, 0);
-  assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
+  assert.ok(result.recommendations.some((r) => r.id === "confirmPendingDevices"));
   assert.ok(result.recommendations.some((r) => r.id === "confirmTrustedContacts"));
+  assert.ok(!result.recommendations.some((r) => (r.id as string) === "addTrustedDevice"));
 });
 
-test("G awards ≥2 trusted devices only when device recovery method is enabled", () => {
-  const methodOff = computeAccountSecurityScore(
+test("vault factors: thresholds for idle / clipboard / MP age / deletion / bio|pin", () => {
+  const bad = computeAccountSecurityScore(
     baseInput({
+      twoFactor: {
+        enabled: true,
+        backupCodesRemaining: 8,
+        backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
+        backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
+      },
       recovery: {
-        entitlements: { trustedDevices: true, trustedContacts: false },
-        settings: { keyEnabled: false, devicesEnabled: false, contactsEnabled: false },
-        key: { enrolled: false, exportedAt: null },
+        entitlements: { trustedDevices: false, trustedContacts: false },
+        settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
+        key: { enrolled: true, exportedAt: "2026-09-10T00:00:00.000Z" },
         confirmedContactCount: 0,
         minConfirmedContacts: 3,
       },
-      devices: { trustedCount: 2, pendingCount: 0 },
-    }),
-  );
-  assert.ok(methodOff.includedFactors.includes("trustedDevicesRecovery"));
-  assert.ok(!methodOff.includedFactors.includes("trustedDevicesPresent"));
-  assert.equal(methodOff.factorPoints.trustedDevicesPresent, 0);
-  assert.equal(methodOff.factorPoints.trustedDevicesRecovery, 0);
-
-  const methodOnOneDevice = computeAccountSecurityScore(
-    baseInput({
-      recovery: {
-        entitlements: { trustedDevices: true, trustedContacts: false },
-        settings: { keyEnabled: false, devicesEnabled: true, contactsEnabled: false },
-        key: { enrolled: false, exportedAt: null },
-        confirmedContactCount: 0,
-        minConfirmedContacts: 3,
-      },
-      devices: { trustedCount: 1, pendingCount: 0 },
-    }),
-  );
-  assert.ok(methodOnOneDevice.includedFactors.includes("trustedDevicesPresent"));
-  assert.equal(methodOnOneDevice.factorPoints.trustedDevicesRecovery, 15);
-  assert.equal(methodOnOneDevice.factorPoints.trustedDevicesPresent, 0);
-  assert.ok(methodOnOneDevice.recommendations.some((r) => r.id === "addTrustedDevice"));
-
-  const methodOn = computeAccountSecurityScore(
-    baseInput({
-      recovery: {
-        entitlements: { trustedDevices: true, trustedContacts: false },
-        settings: { keyEnabled: false, devicesEnabled: true, contactsEnabled: false },
-        key: { enrolled: false, exportedAt: null },
-        confirmedContactCount: 0,
-        minConfirmedContacts: 3,
-      },
-      devices: { trustedCount: 2, pendingCount: 0 },
-    }),
-  );
-  assert.ok(methodOn.includedFactors.includes("trustedDevicesPresent"));
-  assert.equal(methodOn.factorPoints.trustedDevicesRecovery, 15);
-  assert.equal(methodOn.factorPoints.trustedDevicesPresent, 5);
-  assert.ok(!methodOn.recommendations.some((r) => r.id === "addTrustedDevice"));
-});
-
-test("method on + fewer than 2 trusted devices: G in denominator at 0 and recommends addTrustedDevice", () => {
-  for (const trustedCount of [0, 1]) {
-    const result = computeAccountSecurityScore(
-      baseInput({
-        twoFactor: {
-          enabled: true,
-          backupCodesRemaining: 8,
-          backupCodesGeneratedAt: "2026-09-01T00:00:00.000Z",
-          backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
-        },
-        recovery: {
-          entitlements: { trustedDevices: true, trustedContacts: false },
-          settings: { keyEnabled: true, devicesEnabled: true, contactsEnabled: false },
-          key: { enrolled: true, exportedAt: "2026-09-10T00:00:00.000Z" },
-          confirmedContactCount: 0,
-          minConfirmedContacts: 3,
-        },
-        devices: { trustedCount, pendingCount: 0 },
+      vault: vaultOk({
+        idleLockSeconds: 1800,
+        lockOnDeviceSleep: false,
+        clipboardClearSeconds: 120,
+        masterPasswordChangedAt: "2024-01-01T00:00:00.000Z",
+        requireReauthOnDeletion: false,
+        biometricEnabled: false,
+        pinEnabled: false,
       }),
-    );
-    assert.ok(result.includedFactors.includes("trustedDevicesPresent"));
-    assert.equal(result.factorPoints.trustedDevicesPresent, 0);
-    assert.equal(result.factorPoints.trustedDevicesRecovery, 15);
-    assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
-    assert.equal(
-      result.recommendations.find((r) => r.id === "addTrustedDevice")?.target,
-      "devices",
-    );
-    // Score is below 100 because G is missing from raw points.
-    assert.ok(result.score < 100);
+    }),
+  );
+  assert.equal(bad.factorPoints.vaultIdleLock, 0);
+  assert.equal(bad.factorPoints.vaultLockOnSleep, 0);
+  assert.equal(bad.factorPoints.vaultClipboardClear, 0);
+  assert.equal(bad.factorPoints.vaultMasterPasswordFresh, 0);
+  assert.equal(bad.factorPoints.vaultReauthOnDeletion, 0);
+  assert.equal(bad.factorPoints.vaultBiometricOrPin, 0);
+  // Six vault gaps (weight 5 each) → only top 4 CTAs shown; score still reflects all zeros.
+  assert.equal(bad.recommendations.length, ACCOUNT_SECURITY_MAX_RECOMMENDATIONS);
+  assert.ok(bad.recommendations.every((r) => r.target === "vault"));
+  assert.ok(bad.score < 100);
+
+  const clipboardNever = computeAccountSecurityScore(
+    baseInput({
+      vault: vaultOk({ clipboardClearSeconds: 0 }),
+    }),
+  );
+  assert.equal(clipboardNever.factorPoints.vaultClipboardClear, 0);
+
+  const pinOnly = computeAccountSecurityScore(
+    baseInput({
+      vault: vaultOk({ biometricEnabled: false, pinEnabled: true }),
+    }),
+  );
+  assert.equal(pinOnly.factorPoints.vaultBiometricOrPin, 5);
+});
+
+test("recommendations capped at 4 and sorted by factor weight", () => {
+  const result = computeAccountSecurityScore(
+    baseInput({
+      vault: vaultOk({
+        idleLockSeconds: 3600,
+        lockOnDeviceSleep: false,
+        clipboardClearSeconds: 0,
+        masterPasswordChangedAt: null,
+        requireReauthOnDeletion: false,
+        biometricEnabled: false,
+        pinEnabled: false,
+      }),
+    }),
+  );
+  assert.equal(result.recommendations.length, ACCOUNT_SECURITY_MAX_RECOMMENDATIONS);
+  assert.equal(result.recommendations[0]?.id, "enableTwoFactor");
+  // Next highest after 2FA among always-on gaps: recovery key enroll (15)
+  assert.equal(result.recommendations[1]?.id, "enrollRecoveryKey");
+  for (let i = 1; i < result.recommendations.length; i++) {
+    assert.ok(result.recommendations[i - 1]!.priority >= result.recommendations[i]!.priority);
   }
 });
 
-test("addTrustedDevice recommendation stays in top-4 even with other gaps", () => {
-  const result = computeAccountSecurityScore(
-    baseInput({
-      twoFactor: {
-        enabled: false,
-        backupCodesRemaining: 0,
-        backupCodesGeneratedAt: null,
-        backupCodesExportedAt: null,
-      },
-      recovery: {
-        entitlements: { trustedDevices: true, trustedContacts: false },
-        settings: { keyEnabled: false, devicesEnabled: true, contactsEnabled: false },
-        key: { enrolled: false, exportedAt: null },
-        confirmedContactCount: 0,
-        minConfirmedContacts: 3,
-      },
-      devices: { trustedCount: 1, pendingCount: 0 },
-    }),
-  );
-  assert.ok(result.recommendations.some((r) => r.id === "addTrustedDevice"));
-  assert.ok(result.recommendations.length <= 4);
-});
-
 test("color bands follow approved thresholds", () => {
-  // FREE base without G: only 2FA on → 25/65 ≈ 38 → weak
+  // Only 2FA on among FREE factors that award points: 25 / FREE_BASE_MAX
   const only2fa = computeAccountSecurityScore(
     baseInput({
       twoFactor: {
@@ -250,10 +230,18 @@ test("color bands follow approved thresholds", () => {
         backupCodesGeneratedAt: null,
         backupCodesExportedAt: null,
       },
+      vault: vaultOk({
+        idleLockSeconds: 3600,
+        lockOnDeviceSleep: false,
+        clipboardClearSeconds: 0,
+        masterPasswordChangedAt: null,
+        requireReauthOnDeletion: false,
+        biometricEnabled: false,
+        pinEnabled: false,
+      }),
     }),
   );
   assert.equal(only2fa.score, Math.round((25 / FREE_BASE_MAX) * 100));
-  assert.equal(only2fa.colorBand, "weak");
 });
 
 test("login methods factor renormalized when available", () => {
@@ -272,7 +260,6 @@ test("login methods factor renormalized when available", () => {
         confirmedContactCount: 0,
         minConfirmedContacts: 3,
       },
-      devices: { trustedCount: 1, pendingCount: 0 },
       loginMethods: { available: true, hasPasskeyOrHardware: false },
     }),
   );

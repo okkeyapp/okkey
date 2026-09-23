@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DeviceListItemDto } from "@okkey/types";
+import {
+  canEnableTrustedDevicesRecovery,
+  MIN_TRUSTED_DEVICES_FOR_RECOVERY,
+  type DeviceListItemDto,
+} from "@okkey/types";
 
 import {
   clearSettingsPopupCache,
@@ -10,7 +14,22 @@ import {
   countTrustedDevicesFromCache,
   useAccountSecurityScore,
 } from "./useAccountSecurityScore";
+import { writeVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
 import { renderHook } from "@testing-library/react";
+
+const authVaultState = vi.hoisted(() => ({
+  userId: "user-1" as string | null,
+  vaultIdleLockMs: 900_000,
+  masterPasswordChangedAt: "2026-03-01T00:00:00.000Z" as string | null,
+}));
+
+vi.mock("../../auth/AuthVaultContext", () => ({
+  useAuthVault: () => ({
+    userId: authVaultState.userId,
+    vaultIdleLockMs: authVaultState.vaultIdleLockMs,
+    masterPasswordChangedAt: authVaultState.masterPasswordChangedAt,
+  }),
+}));
 
 function device(partial: Partial<DeviceListItemDto> & Pick<DeviceListItemDto, "device_id" | "status">): DeviceListItemDto {
   return {
@@ -33,6 +52,16 @@ function device(partial: Partial<DeviceListItemDto> & Pick<DeviceListItemDto, "d
   };
 }
 
+function seedSecureVaultPrefs() {
+  writeVaultDevicePrefs("user-1", {
+    lockOnDeviceSleep: true,
+    clipboardClearSeconds: 60,
+    requireReauthZones: ["deletion"],
+    pinEnabled: false,
+    biometricEnabled: true,
+  });
+}
+
 describe("countTrustedDevicesFromCache", () => {
   it("counts only status=trusted", () => {
     expect(
@@ -51,9 +80,42 @@ describe("countTrustedDevicesFromCache", () => {
   });
 });
 
-describe("useAccountSecurityScore devices plumbing", () => {
+describe("canEnableTrustedDevicesRecovery", () => {
+  it(`requires ≥${MIN_TRUSTED_DEVICES_FOR_RECOVERY} trusted including current`, () => {
+    expect(canEnableTrustedDevicesRecovery([])).toBe(false);
+    expect(
+      canEnableTrustedDevicesRecovery([
+        device({ device_id: "1", status: "trusted", is_current: true }),
+      ]),
+    ).toBe(false);
+    expect(
+      canEnableTrustedDevicesRecovery([
+        device({ device_id: "1", status: "trusted", is_current: true }),
+        device({ device_id: "2", status: "pending_approval", is_current: false }),
+      ]),
+    ).toBe(false);
+    expect(
+      canEnableTrustedDevicesRecovery([
+        device({ device_id: "1", status: "trusted", is_current: false }),
+        device({ device_id: "2", status: "trusted", is_current: false }),
+      ]),
+    ).toBe(false);
+    expect(
+      canEnableTrustedDevicesRecovery([
+        device({ device_id: "1", status: "trusted", is_current: true }),
+        device({ device_id: "2", status: "trusted", is_current: false }),
+      ]),
+    ).toBe(true);
+  });
+});
+
+describe("useAccountSecurityScore devices + vault plumbing", () => {
   beforeEach(() => {
     clearSettingsPopupCache();
+    authVaultState.userId = "user-1";
+    authVaultState.vaultIdleLockMs = 900_000;
+    authVaultState.masterPasswordChangedAt = "2026-03-01T00:00:00.000Z";
+    seedSecureVaultPrefs();
   });
 
   it("waits for devices slice before scoring when recovery+2FA are ready", () => {
@@ -79,10 +141,7 @@ describe("useAccountSecurityScore devices plumbing", () => {
     expect(result.current.loading).toBe(true);
 
     setSettingsPopupCacheData("devices", {
-      devices: [
-        device({ device_id: "d1", status: "trusted", is_current: true }),
-        device({ device_id: "d2", status: "trusted", is_current: false }),
-      ],
+      devices: [device({ device_id: "d1", status: "trusted", is_current: true })],
       pending: [],
       blocked: [],
     });
@@ -90,11 +149,22 @@ describe("useAccountSecurityScore devices plumbing", () => {
 
     expect(result.current.loading).toBe(false);
     expect(result.current.result).not.toBeNull();
-    expect(result.current.result?.factorPoints.trustedDevicesPresent).toBe(5);
-    expect(result.current.result?.includedFactors).toContain("trustedDevicesPresent");
+    expect(result.current.result?.factorPoints.trustedDevicesRecovery).toBe(15);
+    expect(result.current.result?.factorPoints.vaultIdleLock).toBe(5);
+    expect(result.current.result?.includedFactors).not.toContain("trustedDevicesPresent");
   });
 
-  it("recommends addTrustedDevice when method on and only one trusted device", () => {
+  it("scores vault gaps and keeps at most 4 recommendations", () => {
+    writeVaultDevicePrefs("user-1", {
+      lockOnDeviceSleep: false,
+      clipboardClearSeconds: 0,
+      requireReauthZones: [],
+      pinEnabled: false,
+      biometricEnabled: false,
+    });
+    authVaultState.vaultIdleLockMs = 3600_000;
+    authVaultState.masterPasswordChangedAt = "2020-01-01T00:00:00.000Z";
+
     setSettingsPopupCacheData("twoFactor", {
       enabled: true,
       backupCodesRemaining: 8,
@@ -102,8 +172,8 @@ describe("useAccountSecurityScore devices plumbing", () => {
       backupCodesExportedAt: "2026-09-01T00:00:00.000Z",
     });
     setSettingsPopupCacheData("recovery", {
-      entitlements: { recoveryKey: true, trustedDevices: true, trustedContacts: false },
-      settings: { keyEnabled: true, devicesEnabled: true, contactsEnabled: false },
+      entitlements: { recoveryKey: true, trustedDevices: false, trustedContacts: false },
+      settings: { keyEnabled: true, devicesEnabled: false, contactsEnabled: false },
       key: { enrolled: true, createdAt: null, rotatedAt: null, exportedAt: "2026-09-10T00:00:00.000Z" },
       contacts: [],
       confirmedContactCount: 0,
@@ -112,15 +182,17 @@ describe("useAccountSecurityScore devices plumbing", () => {
       servingAsContact: [],
     });
     setSettingsPopupCacheData("devices", {
-      devices: [device({ device_id: "d1", status: "trusted", is_current: true })],
+      devices: [],
       pending: [],
       blocked: [],
     });
 
     const { result } = renderHook(() => useAccountSecurityScore());
-    expect(result.current.result?.factorPoints.trustedDevicesPresent).toBe(0);
-    expect(result.current.result?.recommendations.some((r) => r.id === "addTrustedDevice")).toBe(
-      true,
-    );
+    expect(result.current.result?.factorPoints.vaultIdleLock).toBe(0);
+    expect(result.current.result?.factorPoints.vaultBiometricOrPin).toBe(0);
+    expect(result.current.result!.recommendations.length).toBeLessThanOrEqual(4);
+    expect(
+      result.current.result?.recommendations.every((r) => r.target === "vault"),
+    ).toBe(true);
   });
 });
