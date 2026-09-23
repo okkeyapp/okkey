@@ -155,14 +155,6 @@
 }
 
 @layer components {
-  /* Account security score recommendation CTAs — no focus ring/box-shadow. */
-  button.account-security-score-rec:focus,
-  button.account-security-score-rec:focus-visible,
-  button.account-security-score-rec:active {
-    box-shadow: none !important;
-    outline: none !important;
-  }
-
   .okkey-popup-overlay {
     animation: okkey-popup-overlay-in 240ms ease-out;
     -webkit-backdrop-filter: blur(2px);

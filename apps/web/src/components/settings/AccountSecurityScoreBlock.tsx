@@ -4,7 +4,7 @@ import type {
   AccountSecurityLevel,
   AccountSecurityRecommendationId,
 } from "@okkey/types";
-import { Alert, AlertDescription, cn } from "@okkey/ui";
+import { Alert, AlertDescription } from "@okkey/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { MonitoringGaugeChart } from "../../monitoring/MonitoringCharts";
@@ -142,17 +142,8 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
             <li key={rec.id}>
               <button
                 type="button"
-                className={cn(
-                  "account-security-score-rec",
-                  "h-auto max-w-full px-0 py-0 text-left text-sm font-normal leading-5",
-                  "bg-transparent text-primary underline-offset-4 hover:underline",
-                  "outline-none focus:outline-none focus-visible:outline-none",
-                  "shadow-none !shadow-none",
-                  "focus:!shadow-none focus-visible:!shadow-none active:!shadow-none",
-                  "dark:focus:!shadow-none dark:focus-visible:!shadow-none",
-                  "focus:!ring-0 focus-visible:!ring-0",
-                )}
-                style={{ boxShadow: "none" }}
+                data-security-score-rec={rec.id}
+                className="max-w-full bg-transparent p-0 text-left text-sm font-normal leading-5 text-primary underline-offset-4 hover:underline focus:outline-none focus-visible:outline-none"
                 onClick={() => goToSettingsItem(rec.target)}
               >
                 {t(RECOMMENDATION_MESSAGE[rec.id])}
