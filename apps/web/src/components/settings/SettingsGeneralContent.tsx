@@ -456,6 +456,8 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
           <div className="flex w-full items-center justify-end gap-1.5 max-md:justify-start">
             {ACCENT_OPTIONS.map((option) => {
               const color = accentColor(option);
+              /** a1 is near-white in dark mode — white check is invisible on that swatch. */
+              const checkOnLightAccent = option.id === "a1";
               return (
                 <Button
                   key={option.id}
@@ -463,14 +465,21 @@ export default function SettingsGeneralContent({ t }: SettingsGeneralContentProp
                   size="icon"
                   variant="ghost"
                   className={cn(
-                    "group size-9 rounded-full p-0 text-white shadow-none hover:shadow-none",
+                    "group size-9 rounded-full p-0 shadow-none hover:shadow-none",
                     "focus-visible:shadow-[0_0_0_3px_hsl(var(--accent)_/_0.35)]",
+                    checkOnLightAccent ? "text-white dark:text-[#0A0A0A]" : "text-white",
                   )}
                   style={{ backgroundColor: color }}
                   aria-label={t("web.settingsPopup.general.accentAria", { id: option.id })}
                   onClick={() => updateAccent(option.id)}
                 >
-                  <CheckIcon className={cn("size-4 opacity-0 transition-opacity", accent === option.id && "opacity-100", "group-hover:opacity-100")} />
+                  <CheckIcon
+                    className={cn(
+                      "size-4 opacity-0 transition-opacity",
+                      accent === option.id && "opacity-100",
+                      "group-hover:opacity-100",
+                    )}
+                  />
                 </Button>
               );
             })}
