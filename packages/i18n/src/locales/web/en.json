@@ -1552,6 +1552,7 @@
   "workspaces.createNamePrompt": "Workspace name",
   "workspaces.createDefaultName": "New workspace",
   "workspaces.createError": "Could not create workspace",
+  "workspaces.createPopup.toastCreated": "Workspace \"{name}\" created",
   "workspaces.backToList": "All workspaces",
   "workspaces.shellTitle": "Workspace",
   "workspaces.shellId": "ID: {id}",

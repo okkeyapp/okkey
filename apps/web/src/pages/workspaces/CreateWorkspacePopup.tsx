@@ -1,6 +1,6 @@
 import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle, Button, Input, Popup } from "@okkey/ui";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 type CreateWorkspacePopupProps = {
   open: boolean;
@@ -25,13 +25,16 @@ export default function CreateWorkspacePopup({
 }: CreateWorkspacePopupProps) {
   const formId = useId();
   const [name, setName] = useState("");
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setName(t("workspaces.createDefaultName"));
-    } else {
+    }
+    if (!open) {
       setName("");
     }
+    wasOpenRef.current = open;
   }, [open, t]);
 
   if (!open) {
@@ -73,6 +76,7 @@ export default function CreateWorkspacePopup({
         className="flex w-full flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           if (submitting || !trimmed) {
             return;
           }

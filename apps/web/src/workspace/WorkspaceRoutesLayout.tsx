@@ -40,6 +40,7 @@ import SettingsPopup from "../components/settings/SettingsPopup";
 import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthContext";
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
 import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
+import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspaces/createWorkspaceFlow";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
@@ -206,6 +207,7 @@ export default function WorkspaceRoutesLayout() {
   const [workspacePermissionsReady, setWorkspacePermissionsReady] = useState(false);
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
   const [createWorkspaceSubmitting, setCreateWorkspaceSubmitting] = useState(false);
+  const [createWorkspaceError, setCreateWorkspaceError] = useState<string | null>(null);
   const navigateRef = useRef(navigate);
   const setSearchParamsRef = useRef(setSearchParams);
 
@@ -710,7 +712,10 @@ export default function WorkspaceRoutesLayout() {
           {workspaceTenancyModule.canCreateWorkspace ? (
             <DropdownMenuItem
               className="cursor-pointer justify-center gap-2"
-              onClick={() => setCreateWorkspaceOpen(true)}
+              onClick={() => {
+                setCreateWorkspaceError(null);
+                setCreateWorkspaceOpen(true);
+              }}
             >
               <span className="text-sm">+</span>
               <span>{t("workspaces.createLine1")}</span>
@@ -758,10 +763,12 @@ export default function WorkspaceRoutesLayout() {
       <CreateWorkspacePopup
         open={createWorkspaceOpen}
         submitting={createWorkspaceSubmitting}
+        errorMessage={createWorkspaceError}
         t={t}
         onClose={() => {
           if (!createWorkspaceSubmitting) {
             setCreateWorkspaceOpen(false);
+            setCreateWorkspaceError(null);
           }
         }}
         onSubmit={(name) => {
@@ -770,18 +777,20 @@ export default function WorkspaceRoutesLayout() {
               return;
             }
             setCreateWorkspaceSubmitting(true);
+            setCreateWorkspaceError(null);
             try {
-              const created = await core.createWorkspace({ name });
+              const created = await createWorkspaceRequest(core, name);
               if (userId) {
                 writeStoredCurrentWorkspaceId(userId, created.id);
               }
               await refreshWorkspaces();
               setResolvedWorkspaceId(created.id);
               setPhase("ready");
+              toastWorkspaceCreated(t("workspaces.createPopup.toastCreated", { name: created.name }));
               setCreateWorkspaceOpen(false);
               navigate(ITEMS_PATH);
             } catch {
-              // Keep switcher UX quiet; home page surfaces create errors.
+              setCreateWorkspaceError(t("workspaces.createError"));
             } finally {
               setCreateWorkspaceSubmitting(false);
             }

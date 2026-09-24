@@ -13,6 +13,7 @@ import { useListWindow } from "../../lists/useListWindow";
 import { ITEMS_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import CreateWorkspacePopup from "./CreateWorkspacePopup";
+import { createWorkspaceRequest, toastWorkspaceCreated } from "./createWorkspaceFlow";
 import WorkspacesListTile from "./WorkspacesListTile";
 
 /** Matches `WorkspaceTile` / create-workspace button (`workspace-tile.tsx`). */
@@ -154,10 +155,11 @@ export default function WorkspacesContent() {
     setCreateError(null);
     setLoadError(null);
     try {
-      const created = await core.createWorkspace({ name });
+      const created = await createWorkspaceRequest(core, name);
       if (userId) {
         writeStoredCurrentWorkspaceId(userId, created.id);
       }
+      toastWorkspaceCreated(t("workspaces.createPopup.toastCreated", { name: created.name }));
       setCreateOpen(false);
       navigate(ITEMS_PATH);
     } catch {
