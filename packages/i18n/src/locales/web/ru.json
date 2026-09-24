@@ -1552,7 +1552,7 @@
   "workspaces.createNamePrompt": "Название пространства",
   "workspaces.createDefaultName": "Новое пространство",
   "workspaces.createError": "Не удалось создать пространство",
-  "workspaces.createPopup.toastCreated": "Пространство «{name}» создано",
+  "workspaces.createPopup.toastCreated": "Пространство \"{name}\" создано",
   "workspaces.backToList": "Все пространства",
   "workspaces.shellTitle": "Пространство",
   "workspaces.shellId": "ID: {id}",
