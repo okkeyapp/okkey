@@ -90,15 +90,13 @@ Client-visible variables must use the `VITE_` prefix. See `.env.example`.
 
 ### FREE vs Enterprise web modules
 
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads enterprise web modules (`workspace-roles`, `workspace-profiles`, `workspace-tenancy`, `workspace-members`, `workspace-shared-vaults`, `legal`, …) from sibling `okkey-enterprise/` |
+Open-core builds ship OSS stubs for enterprise UI surfaces. Enabling the private enterprise web overlay (and SaaS / legal operator env) is documented only in **`okkey-enterprise/web/.env.example`** — not in Core committed examples.
 
 **FREE (open-source only)**
 
 ```sh
 cd okkey
-cp apps/web/.env.example apps/web/.env   # VITE_ENTERPRISE_MODULES=false
+cp apps/web/.env.example apps/web/.env
 yarn dev:api    # terminal 1
 yarn dev:web    # terminal 2 → http://localhost:5173
 ```
@@ -111,9 +109,8 @@ Workspaces page: no additional-workspace create tile (self-hosted OSS = 1 worksp
 ```sh
 # repositories/okkey and repositories/okkey-enterprise as siblings
 cd okkey
-echo 'VITE_ENTERPRISE_MODULES=true' >> apps/web/.env
+# Web overlay + SaaS/legal env: copy from okkey-enterprise/web/.env.example into apps/web/.env
 echo 'ENTERPRISE_MODULES=true' >> services/api/.env
-# SaaS / legal operator env: copy from okkey-enterprise/web/.env.example into apps/web/.env
 yarn dev:web
 ```
 
