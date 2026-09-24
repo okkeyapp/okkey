@@ -42,8 +42,9 @@ function readEnvDir(mode: string, envDir: string): Record<string, string> {
 }
 
 /**
- * Load `VITE_*` from okkey-enterprise/web (SaaS / legal / deployment mode).
+ * Load `VITE_*` from okkey-enterprise/web (deployment mode / SaaS flags).
  * Skips bootstrap keys so Core remains the switch for enabling the overlay.
+ * Privacy operator copy is static HTML in enterprise legal content — not env.
  */
 export function loadEnterpriseWebViteEnv(
   mode: string,

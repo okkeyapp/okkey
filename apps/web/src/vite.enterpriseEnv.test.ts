@@ -18,7 +18,7 @@ describe("loadEnterpriseWebViteEnv", () => {
     expect(loadEnterpriseWebViteEnv("development", "/tmp/okkey-enterprise-web-env-missing")).toEqual({});
   });
 
-  it("loads SaaS and legal keys from enterprise web/.env and skips bootstrap flag", () => {
+  it("loads SaaS deployment mode from enterprise web/.env and skips bootstrap flag", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "okkey-ent-web-env-"));
     tempDirs.push(dir);
     fs.writeFileSync(
@@ -26,8 +26,6 @@ describe("loadEnterpriseWebViteEnv", () => {
       [
         "VITE_ENTERPRISE_MODULES=false",
         "VITE_DEPLOYMENT_MODE=saas",
-        "VITE_LEGAL_ENTITY_NAME_EN=Example LLC",
-        "VITE_LEGAL_PRIVACY_EMAIL=privacy@example.com",
         "NOT_VITE=ignored",
         "",
       ].join("\n"),
@@ -37,8 +35,6 @@ describe("loadEnterpriseWebViteEnv", () => {
     const overlay = loadEnterpriseWebViteEnv("development", dir);
     expect(overlay).toEqual({
       VITE_DEPLOYMENT_MODE: "saas",
-      VITE_LEGAL_ENTITY_NAME_EN: "Example LLC",
-      VITE_LEGAL_PRIVACY_EMAIL: "privacy@example.com",
     });
     expect(overlay.VITE_ENTERPRISE_MODULES).toBeUndefined();
   });
@@ -47,11 +43,9 @@ describe("loadEnterpriseWebViteEnv", () => {
     expect(
       enterpriseWebViteEnvDefines({
         VITE_DEPLOYMENT_MODE: "saas",
-        VITE_LEGAL_PRIVACY_EMAIL: "privacy@example.com",
       }),
     ).toEqual({
       "import.meta.env.VITE_DEPLOYMENT_MODE": JSON.stringify("saas"),
-      "import.meta.env.VITE_LEGAL_PRIVACY_EMAIL": JSON.stringify("privacy@example.com"),
     });
   });
 });

@@ -39,6 +39,7 @@ import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthContext";
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
+import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
@@ -203,6 +204,8 @@ export default function WorkspaceRoutesLayout() {
     null,
   );
   const [workspacePermissionsReady, setWorkspacePermissionsReady] = useState(false);
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [createWorkspaceSubmitting, setCreateWorkspaceSubmitting] = useState(false);
   const navigateRef = useRef(navigate);
   const setSearchParamsRef = useRef(setSearchParams);
 
@@ -707,36 +710,7 @@ export default function WorkspaceRoutesLayout() {
           {workspaceTenancyModule.canCreateWorkspace ? (
             <DropdownMenuItem
               className="cursor-pointer justify-center gap-2"
-              onClick={() => {
-                void (async () => {
-                  if (!core) {
-                    return;
-                  }
-                  const rawName = window.prompt(
-                    t("workspaces.createNamePrompt"),
-                    t("workspaces.createDefaultName"),
-                  );
-                  if (rawName === null) {
-                    return;
-                  }
-                  const name = rawName.trim();
-                  if (!name) {
-                    return;
-                  }
-                  try {
-                    const created = await core.createWorkspace({ name });
-                    if (userId) {
-                      writeStoredCurrentWorkspaceId(userId, created.id);
-                    }
-                    await refreshWorkspaces();
-                    setResolvedWorkspaceId(created.id);
-                    setPhase("ready");
-                    navigate(ITEMS_PATH);
-                  } catch {
-                    // Keep dropdown UX minimal; list page surfaces create errors.
-                  }
-                })();
-              }}
+              onClick={() => setCreateWorkspaceOpen(true)}
             >
               <span className="text-sm">+</span>
               <span>{t("workspaces.createLine1")}</span>
@@ -756,10 +730,8 @@ export default function WorkspaceRoutesLayout() {
     userId,
     navigate,
     t,
-    core,
     setResolvedWorkspaceId,
     setPhase,
-    refreshWorkspaces,
     isMultiWorkspaceUi,
   ]);
 
@@ -965,6 +937,39 @@ function WorkspaceShellWithItems({
       <ItemCategoryPreferencesProvider workspaceId={resolvedWorkspaceId}>
         <WorkspaceVaultProfilesProvider value={workspaceVaultProfilesState}>
         <WorkspaceItemsProvider value={workspaceItemsState}>
+          <CreateWorkspacePopup
+            open={createWorkspaceOpen}
+            submitting={createWorkspaceSubmitting}
+            t={t}
+            onClose={() => {
+              if (!createWorkspaceSubmitting) {
+                setCreateWorkspaceOpen(false);
+              }
+            }}
+            onSubmit={(name) => {
+              void (async () => {
+                if (!core || createWorkspaceSubmitting) {
+                  return;
+                }
+                setCreateWorkspaceSubmitting(true);
+                try {
+                  const created = await core.createWorkspace({ name });
+                  if (userId) {
+                    writeStoredCurrentWorkspaceId(userId, created.id);
+                  }
+                  await refreshWorkspaces();
+                  setResolvedWorkspaceId(created.id);
+                  setPhase("ready");
+                  setCreateWorkspaceOpen(false);
+                  navigate(ITEMS_PATH);
+                } catch {
+                  // Keep switcher UX quiet; home page surfaces create errors.
+                } finally {
+                  setCreateWorkspaceSubmitting(false);
+                }
+              })();
+            }}
+          />
           <NewItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}

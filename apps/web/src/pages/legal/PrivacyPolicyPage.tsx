@@ -5,30 +5,17 @@ import AppShellLayout from "../../components/app-shell/AppShellLayout";
 import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { useLocale } from "../../locale/LocaleContext";
 import { ROOT_PATH } from "../../routes/paths";
-import PrivacyPolicyBody, { type PrivacyPolicySection } from "./PrivacyPolicyBody";
-
-const SECTION_IDS = [
-  "about",
-  "operator",
-  "data",
-  "vault",
-  "purposes",
-  "retention",
-  "rights",
-  "contact",
-] as const;
+import { selfHostedPrivacyHtmlEn } from "./content/selfHosted.en";
+import { selfHostedPrivacyHtmlRu } from "./content/selfHosted.ru";
+import PrivacyPolicyHtml from "./PrivacyPolicyHtml";
 
 /**
- * Short self-hosted / OSS privacy policy (no operator legal-entity fields).
+ * Short self-hosted / OSS privacy policy (no company legal-entity fields).
  * Enterprise builds may replace this page via `@okkey-enterprise/legal`.
  */
 export default function PrivacyPolicyPage() {
-  const { t } = useLocale();
-
-  const sections: PrivacyPolicySection[] = SECTION_IDS.map((id) => ({
-    title: t(`legal.privacy.selfHosted.${id}.title`),
-    paragraphs: [t(`legal.privacy.selfHosted.${id}.body`)],
-  }));
+  const { t, locale } = useLocale();
+  const html = locale === "ru" ? selfHostedPrivacyHtmlRu : selfHostedPrivacyHtmlEn;
 
   return (
     <AppShellLayout
@@ -47,7 +34,7 @@ export default function PrivacyPolicyPage() {
       headerClassName="gap-3"
       childrenClassName="pt-2"
     >
-      <PrivacyPolicyBody sections={sections} />
+      <PrivacyPolicyHtml html={html} />
     </AppShellLayout>
   );
 }

@@ -1,7 +1,7 @@
 import { Skeleton, cn } from "@okkey/ui";
 
 type WorkspaceSettingsGeneralSkeletonProps = {
-  /** Owner-only danger zone block. */
+  /** SaaS owner-only danger zone placeholder (enterprise overlay). */
   showDangerZone?: boolean;
   /** Accessible loading label for screen readers. */
   label?: string;
@@ -9,10 +9,10 @@ type WorkspaceSettingsGeneralSkeletonProps = {
 };
 
 /**
- * Loading placeholder for General settings: logo / name / danger zone.
+ * Loading placeholder for General settings: logo / name / optional danger zone.
  */
 export default function WorkspaceSettingsGeneralSkeleton({
-  showDangerZone = true,
+  showDangerZone = false,
   label,
   className,
 }: WorkspaceSettingsGeneralSkeletonProps) {

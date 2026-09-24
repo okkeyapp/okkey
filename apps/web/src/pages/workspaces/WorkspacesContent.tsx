@@ -12,6 +12,7 @@ import ListScrollSentinel from "../../lists/ListScrollSentinel";
 import { useListWindow } from "../../lists/useListWindow";
 import { ITEMS_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
+import CreateWorkspacePopup from "./CreateWorkspacePopup";
 import WorkspacesListTile from "./WorkspacesListTile";
 
 /** Matches `WorkspaceTile` / create-workspace button (`workspace-tile.tsx`). */
@@ -104,6 +105,8 @@ export default function WorkspacesContent() {
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const canCreateWorkspace = workspaceTenancyModule.canCreateWorkspace;
   const listScrollRef = useRef<HTMLDivElement>(null);
   const workspaceList = workspaces ?? [];
@@ -143,31 +146,22 @@ export default function WorkspacesContent() {
     };
   }, [core, t]);
 
-  async function handleCreateWorkspace() {
+  async function handleCreateWorkspace(name: string) {
     if (!core || !canCreateWorkspace || creating) {
       return;
     }
-    const rawName = window.prompt(
-      t("workspaces.createNamePrompt"),
-      t("workspaces.createDefaultName"),
-    );
-    if (rawName === null) {
-      return;
-    }
-    const name = rawName.trim();
-    if (!name) {
-      return;
-    }
     setCreating(true);
+    setCreateError(null);
     setLoadError(null);
     try {
       const created = await core.createWorkspace({ name });
       if (userId) {
         writeStoredCurrentWorkspaceId(userId, created.id);
       }
+      setCreateOpen(false);
       navigate(ITEMS_PATH);
     } catch {
-      setLoadError(t("workspaces.createError"));
+      setCreateError(t("workspaces.createError"));
     } finally {
       setCreating(false);
     }
@@ -214,7 +208,10 @@ export default function WorkspacesContent() {
           type="button"
           aria-label={t("workspaces.createWorkspaceAria")}
           disabled={creating}
-          onClick={() => void handleCreateWorkspace()}
+          onClick={() => {
+            setCreateError(null);
+            setCreateOpen(true);
+          }}
           className={`flex ${WORKSPACE_TILE_BOX_CLASS} flex-col items-center justify-center gap-3 p-6 ${dashedTileChrome} transition-[transform,box-shadow] hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50`}
         >
           <p className="okkey-body-strong text-center text-copy-primary">
@@ -225,6 +222,19 @@ export default function WorkspacesContent() {
           <CreateWorkspaceMark className="shrink-0 text-copy-primary" />
         </button>
       ) : null}
+      <CreateWorkspacePopup
+        open={createOpen}
+        submitting={creating}
+        errorMessage={createError}
+        t={t}
+        onClose={() => {
+          if (!creating) {
+            setCreateOpen(false);
+            setCreateError(null);
+          }
+        }}
+        onSubmit={(name) => void handleCreateWorkspace(name)}
+      />
     </WorkspacesListChrome>
   );
 }
