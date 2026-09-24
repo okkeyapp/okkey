@@ -354,7 +354,6 @@ export default function EditItemPopup({
                 saving={saving}
                 disabled={!canSave}
                 saveLabel={t("web.newItemPopup.save")}
-                savingLabel={t("web.newItemPopup.saving")}
                 onClick={() => void handleSave()}
               />
             </div>

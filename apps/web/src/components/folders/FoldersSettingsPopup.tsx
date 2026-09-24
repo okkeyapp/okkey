@@ -567,7 +567,6 @@ export default function FoldersSettingsPopup({ t }: FoldersSettingsPopupProps) {
           <PopupSaveButton
             saving={saving}
             saveLabel={t("web.foldersPopup.save")}
-            savingLabel={t("web.newItemPopup.saving")}
             className="h-9 rounded-lg px-4"
             onClick={() => void handleSave()}
           />

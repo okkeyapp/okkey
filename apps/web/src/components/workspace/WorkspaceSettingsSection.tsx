@@ -108,7 +108,7 @@ export default function WorkspaceSettingsSection({
         ) : null}
         {isOwner ? (
           <Button type="button" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? t("web.workspaceSettings.saving") : t("web.workspaceSettings.save")}
+            {t("web.workspaceSettings.save")}
           </Button>
         ) : null}
       </div>

@@ -851,6 +851,11 @@ export type OkkeyAppSidebarProps = {
   footerPlainLinkLabels?: { documentation: string; help: string };
   /** `aria-label` + tooltip for the vaults section “+” (expanded + collapsed dropdown). Default: gallery English. */
   vaultHeaderPlusAriaLabel?: string;
+  /**
+   * When false, hide the vaults section “+” (plan / permission gate).
+   * Default true for gallery; host apps should pass false when shared vault create is unavailable.
+   */
+  showVaultHeaderPlus?: boolean;
   /** Opens create-vault flow when the vaults section “+” is pressed. */
   onVaultHeaderPlusPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   /** `aria-label` + tooltip for the folders section header action (expanded + collapsed dropdown). Default: gallery English. */
@@ -1089,6 +1094,7 @@ function OkkeyAppSidebarInner({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
+  showVaultHeaderPlus = true,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel: _mobileNavCloseLabel = "Close menu",
@@ -1113,6 +1119,7 @@ function OkkeyAppSidebarInner({
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "showVaultHeaderPlus"
   | "onVaultHeaderPlusPointerDown"
   | "onFolderHeaderActionClick"
   | "mobileNavCloseLabel"
@@ -1279,7 +1286,7 @@ function OkkeyAppSidebarInner({
                         sectionTitle={vaultTitle}
                         collapsibleGroupName="vaults-dd"
                         items={vaultData}
-                        showHeaderPlus
+                        showHeaderPlus={showVaultHeaderPlus}
                         headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                         onHeaderPlusPointerDown={handleVaultHeaderPlusPointerDown}
                         linkComponent={vaultNavLink}
@@ -1347,7 +1354,7 @@ function OkkeyAppSidebarInner({
                     open={safesOpen}
                     onOpenChange={setSafesOpen}
                     items={vaultData}
-                    showHeaderPlus
+                    showHeaderPlus={showVaultHeaderPlus}
                     headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     onHeaderPlusPointerDown={handleVaultHeaderPlusPointerDown}
                     linkComponent={vaultNavLink}
@@ -1511,6 +1518,7 @@ export function OkkeyAppSidebar({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  showVaultHeaderPlus,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel,
@@ -1581,6 +1589,7 @@ export function OkkeyAppSidebar({
                   footerPlainLinkLabels={footerPlainLinkLabels}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                  showVaultHeaderPlus={showVaultHeaderPlus}
                   onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                   onFolderHeaderActionClick={onFolderHeaderActionClick}
                   mobileNavCloseLabel={mobileNavCloseLabel}
@@ -1615,6 +1624,7 @@ export function OkkeyAppSidebar({
                     footerPlainLinkLabels={footerPlainLinkLabels}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                    showVaultHeaderPlus={showVaultHeaderPlus}
                     onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                     onFolderHeaderActionClick={onFolderHeaderActionClick}
                     mobileNavCloseLabel={mobileNavCloseLabel}

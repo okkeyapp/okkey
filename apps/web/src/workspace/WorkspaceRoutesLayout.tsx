@@ -1,6 +1,10 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
-import { normalizeWorkspacePermissionsMatrix } from "@okkey/types";
+import {
+  hasPlanFeature,
+  normalizeWorkspacePermissionsMatrix,
+  permissionAllowsPost,
+} from "@okkey/types";
 import {
   DEFAULT_ALLOWED_FILE_EXTENSIONS,
   DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
@@ -51,6 +55,7 @@ import TrustedContactInviteController from "../components/devices/TrustedContact
 import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
+import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
@@ -67,7 +72,10 @@ import {
 import WorkspaceSidebarLayout from "../components/workspace/WorkspaceSidebarLayout";
 import WorkspaceTileAvatar from "../components/workspace/WorkspaceTileAvatar";
 import { vaultDisplayIcon } from "../components/workspace/settings/vaults/vaultIcons";
-import { firstAllowedSettingsSection } from "../components/workspace/settings/settingsPermissions";
+import {
+  firstAllowedSettingsSection,
+  settingsSectionPermissionCell,
+} from "../components/workspace/settings/settingsPermissions";
 import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
@@ -944,6 +952,16 @@ function WorkspaceShellWithItems({
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const { isContentBlocked, requestAccess } = useSectionReauth();
+  const canShowVaultHeaderPlus = useMemo(() => {
+    if (!hasPlanFeature(currentWorkspace?.planTier, "sharedVaults")) {
+      return false;
+    }
+    if (!enterpriseSharedVaultsModule.SharedVaultCardPopup) {
+      return false;
+    }
+    const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
+    return permissionAllowsPost(vaultPermissions?.post ?? 0);
+  }, [currentWorkspace?.planTier, workspacePermissions]);
   const workspaceItemsState = useWorkspaceItemsState({
     userId,
     workspaceId: resolvedWorkspaceId,
@@ -1045,7 +1063,8 @@ function WorkspaceShellWithItems({
             footerPlainLinkLabels={footerPlainLinkLabels}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
             folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
-            onVaultHeaderPlusPointerDown={openNewVaultPopup}
+            showVaultHeaderPlus={canShowVaultHeaderPlus}
+            onVaultHeaderPlusPointerDown={canShowVaultHeaderPlus ? openNewVaultPopup : undefined}
             onFolderHeaderActionClick={openFoldersSettingsPopup}
             itemsListVaults={vaults}
             itemsListVaultsLoaded={vaultsListReady}

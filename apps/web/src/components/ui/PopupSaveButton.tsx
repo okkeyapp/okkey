@@ -1,32 +1,26 @@
-import { Button, Spinner } from "@okkey/ui";
+import { Button } from "@okkey/ui";
 
 type PopupSaveButtonProps = {
   saving: boolean;
   saveLabel: string;
-  savingLabel: string;
   onClick: () => void;
   disabled?: boolean;
   className?: string;
 };
 
+/**
+ * Shared Save control for popups: label stays fixed; only `disabled` while saving.
+ */
 export default function PopupSaveButton({
   saving,
   saveLabel,
-  savingLabel,
   onClick,
   disabled = false,
   className,
 }: PopupSaveButtonProps) {
   return (
     <Button type="button" className={className} onClick={onClick} disabled={saving || disabled}>
-      {saving ? (
-        <>
-          <Spinner size="small" className="size-4" />
-          {savingLabel}
-        </>
-      ) : (
-        saveLabel
-      )}
+      {saveLabel}
     </Button>
   );
 }

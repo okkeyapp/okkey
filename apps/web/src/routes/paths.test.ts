@@ -4,8 +4,10 @@ import {
   DEFAULT_TOOLS_SECTION,
   TOOLS_GENERATOR_PATH,
   TOOLS_PATH,
+  applyWorkspaceSearchToParams,
   isToolsPathname,
   isWorkspaceAppShellPathname,
+  SEARCH_QUERY_PARAM,
   toolsPath,
   toolsSectionFromPathname,
   toolsSectionFromSlug,
@@ -34,5 +36,13 @@ describe("tools paths", () => {
     expect(isToolsPathname("/tools/generator")).toBe(true);
     expect(isToolsPathname("/settings")).toBe(false);
     expect(isWorkspaceAppShellPathname("/tools/import")).toBe(true);
+  });
+});
+
+describe("applyWorkspaceSearchToParams", () => {
+  it("encodes search with spaces as + in query string", () => {
+    const next = applyWorkspaceSearchToParams(new URLSearchParams("workspace=w1"), "foo bar");
+    expect(next.get(SEARCH_QUERY_PARAM)).toBe("foo bar");
+    expect(next.toString()).toBe("workspace=w1&search=foo+bar");
   });
 });

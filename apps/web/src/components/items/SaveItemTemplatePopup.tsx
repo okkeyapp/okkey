@@ -99,7 +99,6 @@ export default function SaveItemTemplatePopup({
           <PopupSaveButton
             saving={saving}
             saveLabel={t("web.newItemPopup.save")}
-            savingLabel={t("web.newItemPopup.saving")}
             onClick={handleSave}
           />
         </>
