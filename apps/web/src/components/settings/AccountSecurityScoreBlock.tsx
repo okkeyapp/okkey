@@ -108,7 +108,7 @@ export default function AccountSecurityScoreBlock({ t }: AccountSecurityScoreBlo
           <MonitoringGaugeChart
             score={score}
             className="size-24"
-            trackClassName="stroke-white"
+            trackClassName="stroke-[hsl(var(--background))]"
             progressClassName={GAUGE_PROGRESS_CLASS[colorBand]}
           />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
