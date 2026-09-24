@@ -20,8 +20,7 @@ const SECTION_IDS = [
 
 /**
  * Short self-hosted / OSS privacy policy (no operator legal-entity fields).
- * SaaS builds replace this page via `@okkey-enterprise/legal` when enterprise modules are on
- * and `VITE_DEPLOYMENT_MODE=saas`.
+ * Enterprise builds may replace this page via `@okkey-enterprise/legal`.
  */
 export default function PrivacyPolicyPage() {
   const { t } = useLocale();

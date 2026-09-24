@@ -61,21 +61,6 @@ interface ImportMetaEnv {
   readonly VITE_SHOW_DEV_LINKS?: string;
   /** Load enterprise web modules from okkey-enterprise (default: false). */
   readonly VITE_ENTERPRISE_MODULES?: string;
-  /** Deployment mode for UI gates: self_hosted (default) | saas. */
-  readonly VITE_DEPLOYMENT_MODE?: string;
-  /**
-   * SaaS legal entity — Russian display name (ИП / ООО).
-   * Used only when enterprise modules + `VITE_DEPLOYMENT_MODE=saas`.
-   */
-  readonly VITE_LEGAL_ENTITY_NAME_RU?: string;
-  /** SaaS legal entity — English display name. */
-  readonly VITE_LEGAL_ENTITY_NAME_EN?: string;
-  /** SaaS registered address (Russian). */
-  readonly VITE_LEGAL_ENTITY_ADDRESS_RU?: string;
-  /** SaaS registered address (English). */
-  readonly VITE_LEGAL_ENTITY_ADDRESS_EN?: string;
-  /** Email for personal-data / privacy requests (shared across locales). */
-  readonly VITE_LEGAL_PRIVACY_EMAIL?: string;
   /** GitHub repo slug for domain capabilities catalog (default: okkeyapp/domain-capabilities). */
   readonly VITE_DOMAIN_CAPABILITIES_REPO?: string;
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;

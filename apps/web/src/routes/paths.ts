@@ -436,7 +436,7 @@ export function isInvitePathname(pathname: string): boolean {
   return pathname === "/invite" || pathname.startsWith("/invite/");
 }
 
-/** Public privacy policy (short self-hosted in Core; full SaaS via enterprise legal module). */
+/** Public privacy policy (short self-hosted in Core; enterprise may replace via legal module). */
 export const PRIVACY_POLICY_PATH = "/legal/privacy-policy";
 
 /** @deprecated Old login link; router redirects to {@link PRIVACY_POLICY_PATH} */

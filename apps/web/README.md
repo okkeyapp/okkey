@@ -92,8 +92,7 @@ Client-visible variables must use the `VITE_` prefix. See `.env.example`.
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads enterprise web modules (`workspace-roles`, `workspace-profiles`, `workspace-tenancy`, `workspace-members`, `workspace-shared-vaults`) from sibling `okkey-enterprise/` |
-| `VITE_DEPLOYMENT_MODE` | `self_hosted` | `saas` enables multi-workspace create UI (requires enterprise modules) |
+| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads enterprise web modules (`workspace-roles`, `workspace-profiles`, `workspace-tenancy`, `workspace-members`, `workspace-shared-vaults`, `legal`, …) from sibling `okkey-enterprise/` |
 
 **FREE (open-source only)**
 
@@ -114,9 +113,7 @@ Workspaces page: no additional-workspace create tile (self-hosted OSS = 1 worksp
 cd okkey
 echo 'VITE_ENTERPRISE_MODULES=true' >> apps/web/.env
 echo 'ENTERPRISE_MODULES=true' >> services/api/.env
-# Optional SaaS multi-workspace:
-# echo 'VITE_DEPLOYMENT_MODE=saas' >> apps/web/.env
-# echo 'OKKEY_DEPLOYMENT_MODE=saas' >> services/api/.env
+# SaaS / legal operator env: copy from okkey-enterprise/web/.env.example into apps/web/.env
 yarn dev:web
 ```
 
@@ -131,7 +128,7 @@ Start the API with `ENTERPRISE_MODULES=true` so custom role/profile CRUD, member
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
 Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.  
-SaaS create UI gates via `okkey-enterprise/web/workspace-tenancy/` (`canCreateWorkspace` when `VITE_DEPLOYMENT_MODE=saas`).
+SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.
 
 Plan entitlements use `hasPlanFeature` over catalog tiers `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE` (plus optional `plan_custom_override`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
 
