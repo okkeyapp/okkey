@@ -10,6 +10,10 @@ import {
   type DeployEnv,
 } from "./crypto/policy-matrix.ts";
 import type { PlanTier } from "@okkey/types";
+import {
+  applyEnterpriseBackendEnvToProcess,
+  loadEnterpriseBackendEnv,
+} from "./enterpriseEnv.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -270,6 +274,14 @@ export function loadConfig(): ApiConfig {
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
   const enterpriseModulesEnabled = parseBoolean(process.env.ENTERPRISE_MODULES, false);
+  const enterpriseModulesPath = resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH);
+
+  // SaaS deployment mode lives in okkey-enterprise/backend/.env (not public Core examples).
+  if (enterpriseModulesEnabled) {
+    const enterpriseBackendEnvDir = path.join(enterpriseModulesPath, "backend");
+    applyEnterpriseBackendEnvToProcess(loadEnterpriseBackendEnv(enterpriseBackendEnvDir));
+  }
+
   const deploymentMode = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
   const defaultWorkspacePlanTier = enterpriseModulesEnabled ? "ENTERPRISE" : "FREE";
   const allowedCryptoProfileVersions = parseProfileVersions(
@@ -373,7 +385,7 @@ export function loadConfig(): ApiConfig {
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
     enterpriseModulesEnabled,
-    enterpriseModulesPath: resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH),
+    enterpriseModulesPath,
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",

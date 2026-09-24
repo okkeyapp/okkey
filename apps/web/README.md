@@ -109,10 +109,12 @@ Workspaces page: no additional-workspace create tile (self-hosted OSS = 1 worksp
 ```sh
 # repositories/okkey and repositories/okkey-enterprise as siblings
 cd okkey
-# Web: Core apps/web/.env → VITE_ENTERPRISE_MODULES=true
-#      okkey-enterprise/web/.env → VITE_DEPLOYMENT_MODE=saas (see that repo’s .env.example)
+# Web: Core apps/web/.env → VITE_ENTERPRISE_MODULES=true (bootstrap only)
+#      okkey-enterprise/web/.env → VITE_DEPLOYMENT_MODE=saas
+# API: Core services/api/.env → ENTERPRISE_MODULES=true (bootstrap only)
+#      okkey-enterprise/backend/.env → OKKEY_DEPLOYMENT_MODE=saas
+#      (API loads that file when modules are on — see okkey-enterprise/backend/.env.example)
 echo 'ENTERPRISE_MODULES=true' >> services/api/.env
-echo 'OKKEY_DEPLOYMENT_MODE=saas' >> services/api/.env   # required for POST /workspaces
 yarn dev:api
 yarn dev:web
 ```
@@ -123,12 +125,13 @@ With `ENTERPRISE_MODULES=true` (self_hosted), new workspaces from registration s
 UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE plan_tier IN ('FREE','TEAM','PREMIUM','FAMILY');
 ```
 
-Start the API with `ENTERPRISE_MODULES=true` **and** `OKKEY_DEPLOYMENT_MODE=saas` so custom role/profile CRUD, member invites, shared-vault create/share, and `POST /workspaces` register from `okkey-enterprise/backend/`. Without `OKKEY_DEPLOYMENT_MODE=saas`, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
+Start the API with `ENTERPRISE_MODULES=true`. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
 Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.  
-SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.
+SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
+SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
 Plan entitlements use `hasPlanFeature` over catalog tiers `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE` (plus optional `plan_custom_override`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
 

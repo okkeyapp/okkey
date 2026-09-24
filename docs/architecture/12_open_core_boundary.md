@@ -80,12 +80,14 @@ WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
 
 ## Deployment mode (Core)
 
-`OKKEY_DEPLOYMENT_MODE` / `VITE_DEPLOYMENT_MODE`:
+Runtime keys `OKKEY_DEPLOYMENT_MODE` (API) / `VITE_DEPLOYMENT_MODE` (web):
 
 | Mode | Default | Workspace policy |
 |---|---|---|
 | `self_hosted` | yes | Owner may have **at most one** workspace (API-enforced) |
 | `saas` | no | Multi-workspace **create** only via private enterprise tenancy plugin |
+
+**Open-core committed examples do not document SaaS env.** When `ENTERPRISE_MODULES=true`, the API loads `OKKEY_DEPLOYMENT_MODE` from `okkey-enterprise/backend/.env`; Vite loads `VITE_DEPLOYMENT_MODE` from `okkey-enterprise/web/.env`. See those repos’ `.env.example` files.
 
 List / switch / delete stay in Core. **`POST /workspaces` is not a Core route.**
 
@@ -139,7 +141,7 @@ Private SaaS / paid surfaces (examples):
 - `workspace-profiles` — custom profiles CRUD
 - `workspace-members` — invite / manage additional members + vault-access orchestration, including public invite preview (`GET /invitations/:token`), accept (`POST /invitations/:token/accept`), and pending VaultKey wraps (Core keeps `GET …/members` + list loaders)
 - `workspace-shared-vaults` — shared vault create/delete/access/shares orchestration + UI popups (Core keeps list/get/patch personal + `GET …/key`; wrap/rotate crypto in Core `VaultSharingService`)
-- `workspace-tenancy` — `POST /workspaces` when `OKKEY_DEPLOYMENT_MODE=saas`
+- `workspace-tenancy` — `POST /workspaces` when deployment mode is `saas`
 
 ---
 
@@ -178,7 +180,7 @@ Enterprise / SaaS build:
 
 - includes enterprise plugins
 - ships as `okkey-enterprise/*` images
-- SaaS: `OKKEY_DEPLOYMENT_MODE=saas` + `ENTERPRISE_MODULES=true`
+- SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true`
 - Self-hosted enterprise: `self_hosted` + enterprise modules (1 workspace, ENTERPRISE plan features)
 
 ---
