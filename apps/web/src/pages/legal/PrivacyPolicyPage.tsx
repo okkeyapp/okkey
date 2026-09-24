@@ -1,3 +1,4 @@
+import { Button } from "@okkey/ui";
 import { Link } from "react-router-dom";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -36,13 +37,11 @@ export default function PrivacyPolicyPage() {
       description={t("legal.privacy.selfHosted.lead")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       topLeft={
-        <Link
-          to={ROOT_PATH}
-          className="okkey-small inline-flex font-medium text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
-          aria-label={t("legal.privacy.backAria")}
-        >
-          ← {t("legal.privacy.back")}
-        </Link>
+        <Button asChild variant="secondary">
+          <Link to={ROOT_PATH} aria-label={t("legal.privacy.backAria")}>
+            ← {t("legal.privacy.back")}
+          </Link>
+        </Button>
       }
       contentClassName="max-w-[640px]"
       frameClassName="px-4 md:px-10"
