@@ -47,6 +47,11 @@ export default defineConfig(({ mode }) => {
     __dirname,
     "./src/workspace-features/stubs/enterprise-shared-vaults-stub.ts",
   );
+  const enterpriseLegalPath = path.resolve(enterpriseRoot, "web/legal/src/index.ts");
+  const enterpriseLegalStubPath = path.resolve(
+    __dirname,
+    "./src/workspace-features/stubs/enterprise-legal-stub.ts",
+  );
   const enterpriseAccountRecoveryPath = path.resolve(
     enterpriseRoot,
     "web/account-recovery/src/index.ts",
@@ -111,6 +116,7 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/workspace-shared-vaults": enterpriseModules
           ? enterpriseSharedVaultsPath
           : enterpriseSharedVaultsStubPath,
+        "@okkey-enterprise/legal": enterpriseModules ? enterpriseLegalPath : enterpriseLegalStubPath,
         "@okkey-enterprise/account-recovery": enterpriseModules
           ? enterpriseAccountRecoveryPath
           : enterpriseAccountRecoveryStubPath,

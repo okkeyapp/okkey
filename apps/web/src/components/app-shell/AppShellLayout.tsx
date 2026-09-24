@@ -7,10 +7,12 @@ import { BodyGradient } from "../BodyGradient";
 
 export type AppShellLayoutProps = {
   title: string;
-  description: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
   /** Logo mark above the title */
   logo?: ReactNode;
+  /** Absolute top-left chrome (e.g. back link on legal pages). */
+  topLeft?: ReactNode;
   /** Footer line; default uses i18n `web.shell.copyright` */
   copyright?: string;
   /** Max width for header + main column (e.g. wide row of cards). */
@@ -28,6 +30,7 @@ export default function AppShellLayout({
   description,
   children,
   logo,
+  topLeft,
   copyright,
   contentClassName,
   frameClassName,
@@ -42,6 +45,8 @@ export default function AppShellLayout({
   return (
     <div className="relative isolate min-h-screen overflow-x-hidden bg-background text-foreground">
       <BodyGradient />
+
+      {topLeft != null ? <div className="absolute left-10 top-10 z-10">{topLeft}</div> : null}
 
       <div className="absolute right-10 top-10 z-10">
         <Select value={locale} onValueChange={(v) => setLocale(v as WebLocale)} variant="inline">
@@ -74,7 +79,9 @@ export default function AppShellLayout({
                 <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
                   {title}
                 </h1>
-                <p className="okkey-body text-center text-copy-secondary">{description}</p>
+                {description != null && description !== "" ? (
+                  <p className="okkey-body text-center text-copy-secondary">{description}</p>
+                ) : null}
               </header>
 
               <div className={cn("w-full", childrenClassName)}>{children}</div>

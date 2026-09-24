@@ -1620,5 +1620,26 @@
   "account.restore.enterprise.contacts.popup.requested": "Requested: {when}",
   "account.restore.enterprise.contacts.popup.expires": "Expires: {when}",
   "account.restore.enterprise.contacts.toast.released": "Share released",
-  "account.restore.error.bootstrapFailed": "Could not finish recovery on this browser. Check your connection and try again."
+  "account.restore.error.bootstrapFailed": "Could not finish recovery on this browser. Check your connection and try again.",
+
+  "legal.privacy.title": "Privacy Policy",
+  "legal.privacy.back": "Back",
+  "legal.privacy.backAria": "Back to home",
+  "legal.privacy.selfHosted.lead": "This short notice applies to self-hosted Okkey deployments. The operator of your instance is responsible for how the service is run.",
+  "legal.privacy.selfHosted.about.title": "About this notice",
+  "legal.privacy.selfHosted.about.body": "Okkey is end-to-end encrypted password management software. This page describes privacy expectations for self-hosted (non-SaaS) deployments of the open-source Core. It is not a substitute for your organisation’s own privacy policy if you process personal data of others.",
+  "legal.privacy.selfHosted.operator.title": "Who is the operator",
+  "legal.privacy.selfHosted.operator.body": "In a self-hosted deployment, the organisation or person that installs and runs Okkey is the service operator. They decide hosting location, access controls, retention, and how to respond to privacy requests. Okkey software authors are not the controller of data on your instance.",
+  "legal.privacy.selfHosted.data.title": "What may be processed",
+  "legal.privacy.selfHosted.data.body": "Depending on how the operator configures the instance, the service may process account identifiers (such as email), authentication and device metadata, encrypted vault payloads, and operational logs. Exact categories depend on enabled features and your deployment.",
+  "legal.privacy.selfHosted.vault.title": "Vault contents and encryption",
+  "legal.privacy.selfHosted.vault.body": "Vault item plaintext is encrypted on the client before sync. The server is designed to store ciphertext and related metadata, not your master password or decrypted vault secrets. Anyone with server access still sees encrypted blobs and account metadata — protect the host accordingly.",
+  "legal.privacy.selfHosted.purposes.title": "Purposes",
+  "legal.privacy.selfHosted.purposes.body": "Typical purposes are providing authentication, syncing encrypted vault data across devices, security features (such as device approval or monitoring), and keeping the service reliable. The operator sets the lawful basis and retention for their users.",
+  "legal.privacy.selfHosted.retention.title": "Retention and deletion",
+  "legal.privacy.selfHosted.retention.body": "Retention is controlled by the operator’s infrastructure and product settings (for example backups and account deletion flows). Ask your operator how long logs and account data are kept and how to request deletion.",
+  "legal.privacy.selfHosted.rights.title": "Your rights",
+  "legal.privacy.selfHosted.rights.body": "Depending on applicable law, you may have rights to access, correct, export, or delete personal data, or to object to certain processing. For a self-hosted instance, exercise those rights with the operator who runs your deployment.",
+  "legal.privacy.selfHosted.contact.title": "Contact",
+  "legal.privacy.selfHosted.contact.body": "Contact the administrator of your Okkey deployment for privacy questions. This self-hosted build does not publish a separate company legal entity or privacy inbox for the software authors."
 }

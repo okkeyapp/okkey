@@ -436,6 +436,16 @@ export function isInvitePathname(pathname: string): boolean {
   return pathname === "/invite" || pathname.startsWith("/invite/");
 }
 
+/** Public privacy policy (short self-hosted in Core; full SaaS via enterprise legal module). */
+export const PRIVACY_POLICY_PATH = "/legal/privacy-policy";
+
+/** @deprecated Old login link; router redirects to {@link PRIVACY_POLICY_PATH} */
+export const PRIVACY_POLICY_LEGACY_PATH = "/privacy";
+
+export function isPrivacyPolicyPathname(pathname: string): boolean {
+  return pathname === PRIVACY_POLICY_PATH || pathname === PRIVACY_POLICY_LEGACY_PATH;
+}
+
 /** Default post-login / post-unlock target when no explicit ?redirect= */
 export const DEFAULT_AUTHENTICATED_PATH = WORKSPACES_PATH;
 
