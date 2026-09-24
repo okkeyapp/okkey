@@ -242,7 +242,7 @@ export default function SectionReauthPopup({ zone, onUnlocked, onCancel }: Secti
 
   return (
     <Popup
-      className="z-[70]"
+      className="z-popup-nested-high"
       width={420}
       header={t("web.settingsPopup.vault.reauth.title")}
       closeLabel={t("web.settingsPopup.close")}

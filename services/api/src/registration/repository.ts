@@ -4,6 +4,7 @@ import type { QueryExecutor } from "../storage/postgres.ts";
 import { serializeEncryptedBlobToStorage, type EncryptedBlob } from "../crypto/encrypted-blob.ts";
 import { ensureDefaultWorkspaceRoles } from "../workspace-roles/seed.ts";
 import { ensureDefaultWorkspaceProfiles } from "../workspace-profiles/seed.ts";
+import { DEFAULT_PERSONAL_VAULT_NAME } from "@okkey/types";
 
 export interface RegistrationBundleInput {
   email: string;
@@ -25,8 +26,13 @@ export interface RegistrationBundleInput {
   userAgent: string;
   requestIp: string;
   nowIso: string;
-  /** Default personal workspace + vault label; server default is "Personal". */
+  /** Default personal workspace label; server default is "Personal". */
   personalWorkspaceName?: string;
+  /**
+   * Personal vault label (independent of workspace name).
+   * Server default is {@link DEFAULT_PERSONAL_VAULT_NAME} (`Personal vault`).
+   */
+  personalVaultName?: string;
   /** Optional display name fields (stored server-side for UX after client storage loss). */
   firstName?: string | null;
   lastName?: string | null;
@@ -84,6 +90,7 @@ export async function insertRegistrationBundle(
   }
 
   const workspaceLabel = input.personalWorkspaceName?.trim() || "Personal";
+  const vaultLabel = input.personalVaultName?.trim() || DEFAULT_PERSONAL_VAULT_NAME;
   const workspaceId = generateEntityId();
 
   const workspaceRows = await tx.query<{ id: string }>(
@@ -109,7 +116,7 @@ export async function insertRegistrationBundle(
       VALUES ($1, $2, $3, true, $4, $5)
       RETURNING id
     `,
-    [vaultId, insertedWorkspaceId, workspaceLabel, insertedUserId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
+    [vaultId, insertedWorkspaceId, vaultLabel, insertedUserId, DEFAULT_NEW_VAULT_CRYPTO_VERSION],
   );
   const insertedVaultId = vaultRows[0]?.id;
   if (!insertedVaultId) {

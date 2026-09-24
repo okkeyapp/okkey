@@ -299,7 +299,7 @@ function KeyFormSelectField({
         align="start"
         side="bottom"
         collisionPadding={16}
-        className="z-[100] w-max min-w-[12rem] max-w-[min(24rem,calc(100vw-2rem))] p-1"
+        className="z-floating w-max min-w-[12rem] max-w-[min(24rem,calc(100vw-2rem))] p-1"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
         }}

@@ -11,7 +11,7 @@ import {
   writePendingLoginDiscover,
 } from "../../auth/loginMethodStorage";
 import { ACCOUNT_LOGIN_METHODS_UI_ENABLED } from "../../auth/accountLoginMethodsFeature";
-import { AUTH_OTP_PATH, AUTH_WEBAUTHN_PATH } from "../../routes/paths";
+import { AUTH_OTP_PATH, AUTH_WEBAUTHN_PATH, PRIVACY_POLICY_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
 import { emailStartErrorI18nKey } from "./emailStartErrors";
 
@@ -126,7 +126,7 @@ export default function AuthEmailPage() {
         <p className="text-center text-xs leading-4 text-copy-secondary">
           {t("auth.email.legalBeforeLink")}
           <Link
-            to="/privacy"
+            to={PRIVACY_POLICY_PATH}
             className="text-copy-secondary underline decoration-solid underline-offset-2 hover:text-copy-primary"
           >
             {t("auth.email.privacyLink")}

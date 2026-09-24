@@ -110,6 +110,9 @@ function BellIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Feature-off: shell notifications UI (keep markup below for a future enable). */
+const WORKSPACE_SHELL_NOTIFICATIONS_ENABLED = false;
+
 /**
  * Workspace shell top bar (search, notifications, create) — same row as {@link OkkeyAppSidebarToolbar}.
  */
@@ -140,6 +143,26 @@ export default function ItemsShellTopBar() {
       },
       { replace: false },
     );
+  }
+
+  function submitWorkspaceSearch(rawInput: string) {
+    const raw = rawInput.trim();
+    if (isItemsRoute) {
+      setSearchParams(
+        (prev) =>
+          applyWorkspaceSearchToParams(prev, raw, {
+            clearItem: isItemsMobileListView,
+          }),
+        { replace: true },
+      );
+      return;
+    }
+    if (!raw) {
+      return;
+    }
+    const next = applyWorkspaceSearchToParams(searchParams, raw, { clearItem: true });
+    const qs = next.toString();
+    navigate({ pathname: ITEMS_PATH, search: qs ? `?${qs}` : "" });
   }
 
   useEffect(() => {
@@ -207,18 +230,11 @@ export default function ItemsShellTopBar() {
             autoComplete="off"
             data-testid="items-shell-search"
             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
-              if (e.key !== "Enter" || !isItemsRoute) {
+              if (e.key !== "Enter") {
                 return;
               }
               e.preventDefault();
-              const raw = e.currentTarget.value.trim();
-              setSearchParams(
-                (prev) =>
-                  applyWorkspaceSearchToParams(prev, raw, {
-                    clearItem: isItemsMobileListView,
-                  }),
-                { replace: true },
-              );
+              submitWorkspaceSearch(e.currentTarget.value);
             }}
             className={cn(
               "min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm leading-5 text-foreground outline-none",
@@ -245,34 +261,36 @@ export default function ItemsShellTopBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="relative size-9 min-h-9 min-w-9 shrink-0 rounded-lg bg-background"
-              aria-label={notificationsLabel}
-            >
-              <BellIcon />
-              <span
-                className="pointer-events-none absolute top-px right-px size-2.5 rounded-full bg-red-500 ring-2 ring-background"
-                aria-hidden
-              />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={6} className="w-72 p-0">
-            <div className="border-b border-border px-3 py-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {notificationsLabel}
-              </p>
-            </div>
-            <DropdownMenuSeparator className="m-0" />
-            <div className="px-3 py-4">
-              <p className="okkey-small text-center text-muted-foreground">{t("web.items.notificationsEmpty")}</p>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {WORKSPACE_SHELL_NOTIFICATIONS_ENABLED ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="relative size-9 min-h-9 min-w-9 shrink-0 rounded-lg bg-background"
+                aria-label={notificationsLabel}
+              >
+                <BellIcon />
+                <span
+                  className="pointer-events-none absolute top-px right-px size-2.5 rounded-full bg-red-500 ring-2 ring-background"
+                  aria-hidden
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="w-72 p-0">
+              <div className="border-b border-border px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {notificationsLabel}
+                </p>
+              </div>
+              <DropdownMenuSeparator className="m-0" />
+              <div className="px-3 py-4">
+                <p className="okkey-small text-center text-muted-foreground">{t("web.items.notificationsEmpty")}</p>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
 
         <Button
           type="button"

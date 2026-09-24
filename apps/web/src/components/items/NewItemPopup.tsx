@@ -623,7 +623,6 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
                 saving={saving}
                 disabled={!canSave}
                 saveLabel={t("web.newItemPopup.save")}
-                savingLabel={t("web.newItemPopup.saving")}
                 onClick={() => void handleSave()}
               />
             </div>

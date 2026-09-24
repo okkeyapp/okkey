@@ -11,6 +11,7 @@ const config: Config = {
     "../../../okkey-enterprise/web/workspace-tenancy/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-members/src/**/*.{ts,tsx,js,jsx}",
     "../../../okkey-enterprise/web/workspace-shared-vaults/src/**/*.{ts,tsx,js,jsx}",
+    "../../../okkey-enterprise/web/legal/src/**/*.{ts,tsx,js,jsx}",
   ],
   theme: {
     extend: {
@@ -73,6 +74,21 @@ const config: Config = {
         md: "8px",
         /** OKKEY: `rounded-sm` / tighter controls */
         sm: "6px",
+      },
+      /**
+       * Stacking scale — keep in sync with `packages/ui/src/lib/z-index.ts`
+       * and `:root` `--okkey-z-*` in `src/index.css`.
+       */
+      zIndex: {
+        sticky: "40",
+        "sidebar-overlay": "50",
+        sidebar: "60",
+        popup: "70",
+        "popup-nested": "80",
+        "popup-nested-high": "90",
+        floating: "100",
+        tooltip: "110",
+        lightbox: "120",
       },
       keyframes: {
         "category-wiggle": {

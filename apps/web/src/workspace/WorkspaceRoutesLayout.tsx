@@ -1,6 +1,10 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
-import { normalizeWorkspacePermissionsMatrix } from "@okkey/types";
+import {
+  hasPlanFeature,
+  normalizeWorkspacePermissionsMatrix,
+  permissionAllowsPost,
+} from "@okkey/types";
 import {
   DEFAULT_ALLOWED_FILE_EXTENSIONS,
   DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
@@ -39,6 +43,8 @@ import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
 import SettingsPopup from "../components/settings/SettingsPopup";
 import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthContext";
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
+import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
+import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspaces/createWorkspaceFlow";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
@@ -49,6 +55,7 @@ import TrustedContactInviteController from "../components/devices/TrustedContact
 import ContactsShareReleaseController from "../components/devices/ContactsShareReleaseController";
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
 import NewVaultPopup from "../components/workspace/settings/vaults/NewVaultPopup";
+import enterpriseSharedVaultsModule from "@okkey-enterprise/workspace-shared-vaults";
 import {
   buildPopupQueryValue,
   FOLDERS_POPUP_ID,
@@ -65,7 +72,10 @@ import {
 import WorkspaceSidebarLayout from "../components/workspace/WorkspaceSidebarLayout";
 import WorkspaceTileAvatar from "../components/workspace/WorkspaceTileAvatar";
 import { vaultDisplayIcon } from "../components/workspace/settings/vaults/vaultIcons";
-import { firstAllowedSettingsSection } from "../components/workspace/settings/settingsPermissions";
+import {
+  firstAllowedSettingsSection,
+  settingsSectionPermissionCell,
+} from "../components/workspace/settings/settingsPermissions";
 import { useItemsMobileListView } from "../hooks/useItemsMobileListView";
 import { useLocale } from "../locale/LocaleContext";
 import {
@@ -203,6 +213,9 @@ export default function WorkspaceRoutesLayout() {
     null,
   );
   const [workspacePermissionsReady, setWorkspacePermissionsReady] = useState(false);
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [createWorkspaceSubmitting, setCreateWorkspaceSubmitting] = useState(false);
+  const [createWorkspaceError, setCreateWorkspaceError] = useState<string | null>(null);
   const navigateRef = useRef(navigate);
   const setSearchParamsRef = useRef(setSearchParams);
 
@@ -708,34 +721,8 @@ export default function WorkspaceRoutesLayout() {
             <DropdownMenuItem
               className="cursor-pointer justify-center gap-2"
               onClick={() => {
-                void (async () => {
-                  if (!core) {
-                    return;
-                  }
-                  const rawName = window.prompt(
-                    t("workspaces.createNamePrompt"),
-                    t("workspaces.createDefaultName"),
-                  );
-                  if (rawName === null) {
-                    return;
-                  }
-                  const name = rawName.trim();
-                  if (!name) {
-                    return;
-                  }
-                  try {
-                    const created = await core.createWorkspace({ name });
-                    if (userId) {
-                      writeStoredCurrentWorkspaceId(userId, created.id);
-                    }
-                    await refreshWorkspaces();
-                    setResolvedWorkspaceId(created.id);
-                    setPhase("ready");
-                    navigate(ITEMS_PATH);
-                  } catch {
-                    // Keep dropdown UX minimal; list page surfaces create errors.
-                  }
-                })();
+                setCreateWorkspaceError(null);
+                setCreateWorkspaceOpen(true);
               }}
             >
               <span className="text-sm">+</span>
@@ -756,10 +743,8 @@ export default function WorkspaceRoutesLayout() {
     userId,
     navigate,
     t,
-    core,
     setResolvedWorkspaceId,
     setPhase,
-    refreshWorkspaces,
     isMultiWorkspaceUi,
   ]);
 
@@ -783,70 +768,111 @@ export default function WorkspaceRoutesLayout() {
 
   return (
     <SectionReauthProvider>
-    <SettingsPopup t={t} workspaceIds={workspaceList.map((workspace) => workspace.id)}>
-      {({ openSettingsPopup }) => {
-        const email = profile?.email?.trim();
-        const accountMenu: OkkeyAppSidebarAccountMenu | undefined = email
-          ? {
-              firstName: profile?.firstName,
-              lastName: profile?.lastName,
-              email,
-              settingsLabel: t("web.accountMenu.settings"),
-              logoutLabel: t("web.accountMenu.logout"),
-              onSettings: openSettingsPopup,
-              onLogout: logout,
+      <CreateWorkspacePopup
+        open={createWorkspaceOpen}
+        submitting={createWorkspaceSubmitting}
+        errorMessage={createWorkspaceError}
+        t={t}
+        onClose={() => {
+          if (!createWorkspaceSubmitting) {
+            setCreateWorkspaceOpen(false);
+            setCreateWorkspaceError(null);
+          }
+        }}
+        onSubmit={(name) => {
+          void (async () => {
+            if (!core || createWorkspaceSubmitting) {
+              return;
             }
-          : undefined;
+            setCreateWorkspaceSubmitting(true);
+            setCreateWorkspaceError(null);
+            try {
+              const created = await createWorkspaceRequest(
+                core,
+                name,
+                t("web.workspaceSettings.vaults.personal.title"),
+              );
+              if (userId) {
+                writeStoredCurrentWorkspaceId(userId, created.id);
+              }
+              await refreshWorkspaces();
+              setResolvedWorkspaceId(created.id);
+              setPhase("ready");
+              toastWorkspaceCreated(t("workspaces.createPopup.toastCreated", { name: created.name }));
+              setCreateWorkspaceOpen(false);
+              navigate(ITEMS_PATH);
+            } catch {
+              setCreateWorkspaceError(t("workspaces.createError"));
+            } finally {
+              setCreateWorkspaceSubmitting(false);
+            }
+          })();
+        }}
+      />
+      <SettingsPopup t={t} workspaceIds={workspaceList.map((workspace) => workspace.id)}>
+        {({ openSettingsPopup }) => {
+          const email = profile?.email?.trim();
+          const accountMenu: OkkeyAppSidebarAccountMenu | undefined = email
+            ? {
+                firstName: profile?.firstName,
+                lastName: profile?.lastName,
+                email,
+                settingsLabel: t("web.accountMenu.settings"),
+                logoutLabel: t("web.accountMenu.logout"),
+                onSettings: openSettingsPopup,
+                onLogout: logout,
+              }
+            : undefined;
 
-        return (
-          <WorkspaceFoldersProvider value={workspaceFoldersState}>
-            <WorkspaceShellWithItems
-              isShellNotFound={isShellNotFound}
-              t={t}
-              title={title}
-              description={description}
-              pathname={pathname}
-              resolvedWorkspaceId={resolvedWorkspaceId}
-              currentWorkspaceName={currentWorkspace?.name ?? ""}
-              deletedItemsRetentionDays={
-                currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
-              }
-              allowedFileExtensions={
-                currentWorkspace?.allowedFileExtensions ?? DEFAULT_ALLOWED_FILE_EXTENSIONS
-              }
-              maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
-              filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
-              currentWorkspace={currentWorkspace}
-              vaults={vaults}
-              vaultsListReady={vaultsListReady}
-              workspaceNavItems={workspaceNavItems}
-              workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-              workspaceSwitcherDropdown={isMultiWorkspaceUi ? workspaceSwitcherDropdown : undefined}
-              workspaceSwitcherTo={isMultiWorkspaceUi ? undefined : ITEMS_PATH}
-              vaultSidebarItems={vaultSidebarItems}
-              folderTreeForItems={folderTreeForItems}
-              accountMenu={accountMenu}
-              footerPlainLinkLabels={{
-                documentation: t("web.nav.documentation"),
-                help: t("web.nav.help"),
-              }}
-              openFoldersSettingsPopup={openFoldersSettingsPopup}
-              openNewVaultPopup={openNewVaultPopup}
-              core={core}
-              userId={userId ?? ""}
-              vaultKey={vaultKey}
-              vaultUnlocked={vaultUnlocked}
-              workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
-              refreshWorkspaces={refreshWorkspaces}
-              patchWorkspace={patchWorkspace}
-              refreshVaults={refreshVaults}
-              workspacePermissions={workspacePermissions}
-              workspacePermissionsReady={workspacePermissionsReady}
-            />
-          </WorkspaceFoldersProvider>
-        );
-      }}
-    </SettingsPopup>
+          return (
+            <WorkspaceFoldersProvider value={workspaceFoldersState}>
+              <WorkspaceShellWithItems
+                isShellNotFound={isShellNotFound}
+                t={t}
+                title={title}
+                description={description}
+                pathname={pathname}
+                resolvedWorkspaceId={resolvedWorkspaceId}
+                currentWorkspaceName={currentWorkspace?.name ?? ""}
+                deletedItemsRetentionDays={
+                  currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
+                }
+                allowedFileExtensions={
+                  currentWorkspace?.allowedFileExtensions ?? DEFAULT_ALLOWED_FILE_EXTENSIONS
+                }
+                maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
+                filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
+                currentWorkspace={currentWorkspace}
+                vaults={vaults}
+                vaultsListReady={vaultsListReady}
+                workspaceNavItems={workspaceNavItems}
+                workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+                workspaceSwitcherDropdown={isMultiWorkspaceUi ? workspaceSwitcherDropdown : undefined}
+                workspaceSwitcherTo={isMultiWorkspaceUi ? undefined : ITEMS_PATH}
+                vaultSidebarItems={vaultSidebarItems}
+                folderTreeForItems={folderTreeForItems}
+                accountMenu={accountMenu}
+                footerPlainLinkLabels={{
+                  documentation: t("web.nav.documentation"),
+                  help: t("web.nav.help"),
+                }}
+                openFoldersSettingsPopup={openFoldersSettingsPopup}
+                openNewVaultPopup={openNewVaultPopup}
+                core={core}
+                userId={userId ?? ""}
+                vaultKey={vaultKey}
+                vaultUnlocked={vaultUnlocked}
+                workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
+                refreshWorkspaces={refreshWorkspaces}
+                patchWorkspace={patchWorkspace}
+                refreshVaults={refreshVaults}
+                workspacePermissions={workspacePermissions}
+                workspacePermissionsReady={workspacePermissionsReady}
+              />
+            </WorkspaceFoldersProvider>
+          );
+        }}
+      </SettingsPopup>
     </SectionReauthProvider>
   );
 }
@@ -926,6 +952,16 @@ function WorkspaceShellWithItems({
 }: WorkspaceShellWithItemsProps) {
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const { isContentBlocked, requestAccess } = useSectionReauth();
+  const canShowVaultHeaderPlus = useMemo(() => {
+    if (!hasPlanFeature(currentWorkspace?.planTier, "sharedVaults")) {
+      return false;
+    }
+    if (!enterpriseSharedVaultsModule.SharedVaultCardPopup) {
+      return false;
+    }
+    const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
+    return permissionAllowsPost(vaultPermissions?.post ?? 0);
+  }, [currentWorkspace?.planTier, workspacePermissions]);
   const workspaceItemsState = useWorkspaceItemsState({
     userId,
     workspaceId: resolvedWorkspaceId,
@@ -1027,7 +1063,8 @@ function WorkspaceShellWithItems({
             footerPlainLinkLabels={footerPlainLinkLabels}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
             folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
-            onVaultHeaderPlusPointerDown={openNewVaultPopup}
+            showVaultHeaderPlus={canShowVaultHeaderPlus}
+            onVaultHeaderPlusPointerDown={canShowVaultHeaderPlus ? openNewVaultPopup : undefined}
             onFolderHeaderActionClick={openFoldersSettingsPopup}
             itemsListVaults={vaults}
             itemsListVaultsLoaded={vaultsListReady}

@@ -36,7 +36,7 @@ export default function ImportExportPasswordPopup({
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={420}
       header={t("web.tools.import.exportPassword.title")}
       closeLabel={t("web.settingsPopup.close")}

@@ -160,6 +160,7 @@ export default function AuthRegistrationPage() {
       }
 
       const personalWorkspaceName = t("auth.registration.personalWorkspaceName");
+      const personalVaultName = t("web.workspaceSettings.vaults.personal.title");
       const browserEnv = parseBrowserEnvironment(navigator.userAgent ?? "");
 
       const body: RegisterCompleteRequestDto = {
@@ -175,6 +176,7 @@ export default function AuthRegistrationPage() {
         device_fingerprint: getOrCreateDeviceFingerprint(),
         device_name: browserEnv.deviceName,
         personal_workspace_name: personalWorkspaceName,
+        personal_vault_name: personalVaultName,
         first_name: trimmedFirst,
         last_name: trimmedLast,
         platform: browserEnv.platform,

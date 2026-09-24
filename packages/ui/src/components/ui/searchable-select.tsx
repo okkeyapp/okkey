@@ -239,7 +239,7 @@ const SearchableSelectContent = React.forwardRef<
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "relative z-50 flex max-h-[min(380px,var(--radix-popover-content-available-height,100dvh))] flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
+          "relative z-floating flex max-h-[min(380px,var(--radix-popover-content-available-height,100dvh))] flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
           ctx.variant === "inline"
             ? "min-w-[180px] w-max"
             : "w-[var(--radix-popover-trigger-width)] min-w-[max(var(--radix-popover-trigger-width),180px)]",

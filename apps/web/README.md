@@ -90,16 +90,13 @@ Client-visible variables must use the `VITE_` prefix. See `.env.example`.
 
 ### FREE vs Enterprise web modules
 
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `VITE_ENTERPRISE_MODULES` | `false` | When `true`, loads enterprise web modules (`workspace-roles`, `workspace-profiles`, `workspace-tenancy`, `workspace-members`, `workspace-shared-vaults`) from sibling `okkey-enterprise/` |
-| `VITE_DEPLOYMENT_MODE` | `self_hosted` | `saas` enables multi-workspace create UI (requires enterprise modules) |
+Open-core builds ship OSS stubs for enterprise UI surfaces. Enabling the private enterprise web overlay (and SaaS / legal operator env) is documented only in **`okkey-enterprise/web/.env.example`** — not in Core committed examples.
 
 **FREE (open-source only)**
 
 ```sh
 cd okkey
-cp apps/web/.env.example apps/web/.env   # VITE_ENTERPRISE_MODULES=false
+cp apps/web/.env.example apps/web/.env
 yarn dev:api    # terminal 1
 yarn dev:web    # terminal 2 → http://localhost:5173
 ```
@@ -112,26 +109,29 @@ Workspaces page: no additional-workspace create tile (self-hosted OSS = 1 worksp
 ```sh
 # repositories/okkey and repositories/okkey-enterprise as siblings
 cd okkey
-echo 'VITE_ENTERPRISE_MODULES=true' >> apps/web/.env
+# Web: Core apps/web/.env → VITE_ENTERPRISE_MODULES=true (bootstrap only)
+#      okkey-enterprise/web/.env → VITE_DEPLOYMENT_MODE=saas
+# API: Core services/api/.env → ENTERPRISE_MODULES=true (bootstrap only)
+#      okkey-enterprise/backend/.env → OKKEY_DEPLOYMENT_MODE=saas
+#      (API loads that file when modules are on — see okkey-enterprise/backend/.env.example)
 echo 'ENTERPRISE_MODULES=true' >> services/api/.env
-# Optional SaaS multi-workspace:
-# echo 'VITE_DEPLOYMENT_MODE=saas' >> apps/web/.env
-# echo 'OKKEY_DEPLOYMENT_MODE=saas' >> services/api/.env
+yarn dev:api
 yarn dev:web
 ```
 
-With `ENTERPRISE_MODULES=true`, new workspaces get `plan_tier=ENTERPRISE`. Upgrade existing local rows:
+With `ENTERPRISE_MODULES=true` (self_hosted), new workspaces from registration still get `plan_tier=ENTERPRISE`. SaaS `POST /workspaces` always creates **FREE**. Upgrade existing local rows:
 
 ```sql
 UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE plan_tier IN ('FREE','TEAM','PREMIUM','FAMILY');
 ```
 
-Start the API with `ENTERPRISE_MODULES=true` so custom role/profile CRUD, member invites, shared-vault create/share, and (when SaaS) `POST /workspaces` register from `okkey-enterprise/backend/`.
+Start the API with `ENTERPRISE_MODULES=true`. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
 Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.  
-SaaS create UI gates via `okkey-enterprise/web/workspace-tenancy/` (`canCreateWorkspace` when `VITE_DEPLOYMENT_MODE=saas`).
+SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
+SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
 Plan entitlements use `hasPlanFeature` over catalog tiers `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE` (plus optional `plan_custom_override`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
 

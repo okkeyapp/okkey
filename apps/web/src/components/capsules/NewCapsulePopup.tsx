@@ -1018,7 +1018,7 @@ export default function NewCapsulePopup({
                 {t("web.newItemPopup.cancel")}
               </Button>
               <Button disabled={!canSave || saving} onClick={() => void save()}>
-                {saving ? t("web.newItemPopup.saving") : t("web.newItemPopup.save")}
+                {t("web.newItemPopup.save")}
               </Button>
             </div>
           </div>

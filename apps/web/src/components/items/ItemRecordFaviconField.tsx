@@ -83,7 +83,7 @@ export function ItemRecordFaviconUploadControl({
             <FolderDropdownChevronIcon className="text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="bottom" className="z-[100] min-w-[200px] p-1" collisionPadding={16}>
+        <DropdownMenuContent align="start" side="bottom" className="z-floating min-w-[200px] p-1" collisionPadding={16}>
           <DropdownMenuItem className="gap-2" onSelect={() => fileInputRef.current?.click()}>
             <UploadIconGlyph className="size-4 shrink-0 text-foreground" />
             {uploadLabel}

@@ -99,7 +99,7 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
     <KeyFieldPortaledOverlayContext.Provider value={contextValue}>
       <div
         ref={panelRef}
-        className="fixed z-[100]"
+        className="fixed z-floating"
         style={{
           top: coords?.top ?? -9999,
           left: coords?.left ?? -9999,

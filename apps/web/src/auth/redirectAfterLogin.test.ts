@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@okkey-enterprise/workspace-tenancy", () => ({
-  default: { canCreateWorkspace: true },
+  default: { canCreateWorkspace: true, DangerZoneSection: null },
 }));
 
 import { navigateAfterSession } from "./redirectAfterLogin";

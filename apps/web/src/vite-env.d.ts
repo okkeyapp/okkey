@@ -39,6 +39,12 @@ declare module "@okkey-enterprise/workspace-shared-vaults" {
   export default enterpriseSharedVaultsModule;
 }
 
+declare module "@okkey-enterprise/legal" {
+  import type { LegalModule } from "./workspace-features/legal-registry";
+  const legalModule: LegalModule;
+  export default legalModule;
+}
+
 declare module "@okkey-enterprise/account-recovery" {
   import type { AccountRecoveryEnterpriseModule } from "./account-recovery-features/registry";
   const accountRecoveryModule: AccountRecoveryEnterpriseModule;
@@ -55,8 +61,6 @@ interface ImportMetaEnv {
   readonly VITE_SHOW_DEV_LINKS?: string;
   /** Load enterprise web modules from okkey-enterprise (default: false). */
   readonly VITE_ENTERPRISE_MODULES?: string;
-  /** Deployment mode for UI gates: self_hosted (default) | saas. */
-  readonly VITE_DEPLOYMENT_MODE?: string;
   /** GitHub repo slug for domain capabilities catalog (default: okkeyapp/domain-capabilities). */
   readonly VITE_DOMAIN_CAPABILITIES_REPO?: string;
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;

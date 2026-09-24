@@ -74,7 +74,7 @@ export default function TotpCodeConfirmPopup({
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={440}
       header={header}
       closeLabel={t("web.settingsPopup.close")}

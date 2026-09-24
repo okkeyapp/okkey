@@ -851,6 +851,11 @@ export type OkkeyAppSidebarProps = {
   footerPlainLinkLabels?: { documentation: string; help: string };
   /** `aria-label` + tooltip for the vaults section “+” (expanded + collapsed dropdown). Default: gallery English. */
   vaultHeaderPlusAriaLabel?: string;
+  /**
+   * When false, hide the vaults section “+” (plan / permission gate).
+   * Default true for gallery; host apps should pass false when shared vault create is unavailable.
+   */
+  showVaultHeaderPlus?: boolean;
   /** Opens create-vault flow when the vaults section “+” is pressed. */
   onVaultHeaderPlusPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   /** `aria-label` + tooltip for the folders section header action (expanded + collapsed dropdown). Default: gallery English. */
@@ -1089,6 +1094,7 @@ function OkkeyAppSidebarInner({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
+  showVaultHeaderPlus = true,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel: _mobileNavCloseLabel = "Close menu",
@@ -1113,6 +1119,7 @@ function OkkeyAppSidebarInner({
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "showVaultHeaderPlus"
   | "onVaultHeaderPlusPointerDown"
   | "onFolderHeaderActionClick"
   | "mobileNavCloseLabel"
@@ -1279,7 +1286,7 @@ function OkkeyAppSidebarInner({
                         sectionTitle={vaultTitle}
                         collapsibleGroupName="vaults-dd"
                         items={vaultData}
-                        showHeaderPlus
+                        showHeaderPlus={showVaultHeaderPlus}
                         headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                         onHeaderPlusPointerDown={handleVaultHeaderPlusPointerDown}
                         linkComponent={vaultNavLink}
@@ -1347,7 +1354,7 @@ function OkkeyAppSidebarInner({
                     open={safesOpen}
                     onOpenChange={setSafesOpen}
                     items={vaultData}
-                    showHeaderPlus
+                    showHeaderPlus={showVaultHeaderPlus}
                     headerPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     onHeaderPlusPointerDown={handleVaultHeaderPlusPointerDown}
                     linkComponent={vaultNavLink}
@@ -1511,6 +1518,7 @@ export function OkkeyAppSidebar({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  showVaultHeaderPlus,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel,
@@ -1554,7 +1562,7 @@ export function OkkeyAppSidebar({
             {isMobile && mobileDrawerOpen ? (
               <button
                 type="button"
-                className="fixed inset-0 z-[90] cursor-default border-0 bg-black/40 p-0"
+                className="fixed inset-0 z-sidebar-overlay cursor-default border-0 bg-black/40 p-0"
                 aria-label={mobileNavCloseLabel ?? "Close menu"}
                 onClick={() => setMobileDrawerOpen(false)}
               />
@@ -1581,6 +1589,7 @@ export function OkkeyAppSidebar({
                   footerPlainLinkLabels={footerPlainLinkLabels}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                  showVaultHeaderPlus={showVaultHeaderPlus}
                   onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                   onFolderHeaderActionClick={onFolderHeaderActionClick}
                   mobileNavCloseLabel={mobileNavCloseLabel}
@@ -1589,7 +1598,7 @@ export function OkkeyAppSidebar({
             ) : (
               <div
                 className={cn(
-                  "fixed inset-y-0 left-0 z-[100] flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
+                  "fixed inset-y-0 left-0 z-sidebar flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
                   !mobileDrawerOpen && "-translate-x-full pointer-events-none",
                   mobileDrawerOpen && "translate-x-0 pointer-events-auto",
                 )}
@@ -1615,6 +1624,7 @@ export function OkkeyAppSidebar({
                     footerPlainLinkLabels={footerPlainLinkLabels}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+                    showVaultHeaderPlus={showVaultHeaderPlus}
                     onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                     onFolderHeaderActionClick={onFolderHeaderActionClick}
                     mobileNavCloseLabel={mobileNavCloseLabel}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { isAllowedPathWithoutBearerSession } from "./guestEntryPaths";
-import { INVITE_PATH_PATTERN, invitePath } from "./paths";
+import { INVITE_PATH_PATTERN, invitePath, PRIVACY_POLICY_PATH } from "./paths";
 
 const guest = {
   inOtpFlow: false,
@@ -23,6 +23,11 @@ describe("isAllowedPathWithoutBearerSession", () => {
 
   it("allows auth webauthn without a Bearer session", () => {
     expect(isAllowedPathWithoutBearerSession("/auth/webauthn", guest)).toBe(true);
+  });
+
+  it("allows privacy policy without a Bearer session", () => {
+    expect(isAllowedPathWithoutBearerSession(PRIVACY_POLICY_PATH, guest)).toBe(true);
+    expect(isAllowedPathWithoutBearerSession("/privacy", guest)).toBe(true);
   });
 
   it("rejects protected shell paths without a session", () => {

@@ -30,19 +30,17 @@ import {
   Switch,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+
+import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
 import {
   deleteKeyFieldFileAttachment,
   uploadKeyFieldFileAttachment,
 } from "../../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
-import { useSectionReauth } from "../../../auth/SectionReauthContext";
 import { useWorkspaceLogoUrl } from "../../../hooks/useWorkspaceLogoUrl";
 import { runSaveWithToast } from "../../../lib/saveWithToast";
-import { WORKSPACES_PATH } from "../../../routes/paths";
 import WorkspaceLogoTile from "../WorkspaceLogoTile";
-import DeleteWorkspaceConfirmPopup from "./DeleteWorkspaceConfirmPopup";
 import FileExtensionTagsInput from "./FileExtensionTagsInput";
 import WorkspaceSettingsCapsulesSkeleton from "./WorkspaceSettingsCapsulesSkeleton";
 import WorkspaceSettingsGeneralSkeleton from "./WorkspaceSettingsGeneralSkeleton";
@@ -100,9 +98,7 @@ export default function WorkspaceSettingsGeneralSection({
   canPut,
 }: WorkspaceSettingsGeneralSectionProps) {
   const core = useAuthenticatedCoreClient();
-  const navigate = useNavigate();
   const { userId, accessToken, vaultKey } = useAuthVault();
-  const { requestZoneUnlock } = useSectionReauth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [initialLoading, setInitialLoading] = useState(true);
@@ -123,11 +119,11 @@ export default function WorkspaceSettingsGeneralSection({
   const [forceMaxViewsInput, setForceMaxViewsInput] = useState("0");
   const [passwordAttemptLimitInput, setPasswordAttemptLimitInput] = useState("0");
   const [directoryMembers, setDirectoryMembers] = useState<WorkspaceMemberDirectoryEntryDto[]>([]);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
 
   const isOwner = Boolean(workspace && userId && workspace.ownerId === userId);
   const canEdit = canPut ?? isOwner;
+  const DangerZoneSection = workspaceTenancyModule.DangerZoneSection;
+  const showDangerZone = Boolean(isOwner && DangerZoneSection);
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal), [vaults]);
   const hasCustomLogo = Boolean(logoVaultId && logoAttachmentId);
   const logoUrl = useWorkspaceLogoUrl({
@@ -432,32 +428,6 @@ export default function WorkspaceSettingsGeneralSection({
     }
   }
 
-  async function handleDeleteWorkspace() {
-    if (!core || !isOwner) {
-      return;
-    }
-    setDeleteConfirmOpen(false);
-    if (!(await requestZoneUnlock("deletion", { force: true, persist: false }))) {
-      return;
-    }
-    setDeletingWorkspace(true);
-    try {
-      await runSaveWithToast(
-        {
-          loading: t("web.workspaceSettings.deleteConfirm.deleting"),
-          success: t("web.workspaceSettings.deleteConfirm.success"),
-          error: t("web.workspaceSettings.deleteConfirm.error"),
-        },
-        async () => core.deleteWorkspace(workspaceId, { confirmation_name: workspaceName.trim() }),
-      );
-      navigate(WORKSPACES_PATH, { replace: true });
-    } catch {
-      /* toast handles error */
-    } finally {
-      setDeletingWorkspace(false);
-    }
-  }
-
   if (initialLoading) {
     if (panel === "items") {
       return <WorkspaceSettingsItemsSkeleton label={t("web.workspaceSettings.general.loading")} />;
@@ -467,7 +437,7 @@ export default function WorkspaceSettingsGeneralSection({
     }
     return (
       <WorkspaceSettingsGeneralSkeleton
-        showDangerZone={isOwner}
+        showDangerZone={showDangerZone}
         label={t("web.workspaceSettings.general.loading")}
       />
     );
@@ -904,32 +874,12 @@ export default function WorkspaceSettingsGeneralSection({
         </div>
         ) : null}
 
-        {panel === "general" && isOwner ? (
-          <div className="flex flex-col gap-6">
-            <h3 className="text-lg font-semibold text-destructive">{t("web.workspaceSettings.general.dangerZone")}</h3>
-            <div className="flex flex-col gap-4 rounded-lg bg-red-50 p-4 dark:bg-red-950/40 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-medium text-destructive">{t("web.workspaceSettings.general.deleteTitle")}</p>
-                <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.general.deleteDescription")}</p>
-              </div>
-              <Button type="button" variant="destructive" className="shrink-0" onClick={() => setDeleteConfirmOpen(true)}>
-                {t("web.workspaceSettings.general.deleteAction")}
-              </Button>
-            </div>
-          </div>
+        {panel === "general" && showDangerZone && DangerZoneSection ? (
+          <DangerZoneSection workspaceId={workspaceId} workspaceName={workspaceName.trim()} t={t} />
         ) : null}
 
         {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
       </div>
-
-      <DeleteWorkspaceConfirmPopup
-        open={deleteConfirmOpen}
-        workspaceName={workspaceName.trim()}
-        deleting={deletingWorkspace}
-        t={t}
-        onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={() => void handleDeleteWorkspace()}
-      />
     </>
   );
 }

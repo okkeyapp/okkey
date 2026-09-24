@@ -1552,6 +1552,7 @@
   "workspaces.createNamePrompt": "Workspace name",
   "workspaces.createDefaultName": "New workspace",
   "workspaces.createError": "Could not create workspace",
+  "workspaces.createPopup.toastCreated": "Workspace \"{name}\" created",
   "workspaces.backToList": "All workspaces",
   "workspaces.shellTitle": "Workspace",
   "workspaces.shellId": "ID: {id}",
@@ -1620,5 +1621,14 @@
   "account.restore.enterprise.contacts.popup.requested": "Requested: {when}",
   "account.restore.enterprise.contacts.popup.expires": "Expires: {when}",
   "account.restore.enterprise.contacts.toast.released": "Share released",
-  "account.restore.error.bootstrapFailed": "Could not finish recovery on this browser. Check your connection and try again."
+  "account.restore.error.bootstrapFailed": "Could not finish recovery on this browser. Check your connection and try again.",
+  "legal.privacy.title": "Privacy Policy",
+  "legal.privacy.back": "Back",
+  "legal.privacy.backAria": "Back to home",
+  "legal.privacy.selfHosted.lead": "This short notice applies to self-hosted Okkey deployments. The operator of your instance is responsible for how the service is run.",
+  "workspaces.createPopup.title": "Create workspace",
+  "workspaces.createPopup.description": "Choose a name for the new workspace.",
+  "workspaces.createPopup.nameLabel": "Workspace name",
+  "workspaces.createPopup.submit": "Create",
+  "workspaces.createPopup.creating": "Creating…"
 }

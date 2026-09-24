@@ -70,8 +70,10 @@ export interface RegisterCompleteInput {
   userAgent: string;
   requestIp: string;
   deviceCryptoCapable?: boolean;
-  /** When set, used as workspace and personal vault name instead of default "Personal". */
+  /** When set, used as the default workspace name instead of "Personal". */
   personalWorkspaceName?: string;
+  /** When set, used as the personal vault name instead of {@link DEFAULT_PERSONAL_VAULT_NAME}. */
+  personalVaultName?: string;
   firstName?: string | null;
   lastName?: string | null;
 }
@@ -253,6 +255,7 @@ export class RegistrationService {
           requestIp: input.requestIp,
           nowIso,
           personalWorkspaceName: input.personalWorkspaceName,
+          personalVaultName: input.personalVaultName,
           firstName: input.firstName ?? null,
           lastName: input.lastName ?? null,
           planTier: this.config.defaultWorkspacePlanTier,

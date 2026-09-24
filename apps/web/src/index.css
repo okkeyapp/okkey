@@ -37,6 +37,17 @@
     --sidebar-accent-foreground: 222.2 47.4% 11.2%;
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
+
+    /* Stacking scale (see packages/ui/src/lib/z-index.ts) */
+    --okkey-z-sticky: 40;
+    --okkey-z-sidebar-overlay: 50;
+    --okkey-z-sidebar: 60;
+    --okkey-z-popup: 70;
+    --okkey-z-popup-nested: 80;
+    --okkey-z-popup-nested-high: 90;
+    --okkey-z-floating: 100;
+    --okkey-z-tooltip: 110;
+    --okkey-z-lightbox: 120;
   }
 
   .dark {

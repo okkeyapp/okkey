@@ -1,5 +1,6 @@
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import workspaceMembersModule from "@okkey-enterprise/workspace-members";
+import legalModule from "@okkey-enterprise/legal";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
@@ -56,6 +57,8 @@ import {
   ITEMS_PATH,
   LEGACY_WORKSPACE_DETAIL_PATH_PATTERN,
   MONITORING_PATH,
+  PRIVACY_POLICY_LEGACY_PATH,
+  PRIVACY_POLICY_PATH,
   ROOT_PATH,
   SETTINGS_DEVICES_PATH,
   SETTINGS_PATH,
@@ -147,6 +150,8 @@ export default function AppRoutes() {
       <Route path={ACCOUNT_DEVICE_PENDING_PATH} element={<DevicePendingPage />} />
       <Route path={ACCOUNT_RESTORE_PATH} element={<AccountRestorePage />} />
       <Route path={INVITE_PATH_PATTERN} element={<workspaceMembersModule.InviteLandingPage />} />
+      <Route path={PRIVACY_POLICY_PATH} element={<legalModule.PrivacyPolicyPage />} />
+      <Route path={PRIVACY_POLICY_LEGACY_PATH} element={<LegacyNavigate to={PRIVACY_POLICY_PATH} />} />
       <Route path={CAPSULE_PUBLIC_PATH_PATTERN} element={<PublicCapsulePage />} />
       <Route element={<ProtectedVaultLayout />}>
         <Route

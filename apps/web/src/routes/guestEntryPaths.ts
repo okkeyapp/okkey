@@ -11,6 +11,7 @@ import {
   isCapsulePublicPathname,
   isDevUiPathname,
   isInvitePathname,
+  isPrivacyPolicyPathname,
   UNLOCK_PASSWORD_LEGACY_PATH,
 } from "./paths";
 
@@ -56,6 +57,9 @@ export function isAllowedPathWithoutBearerSession(pathname: string, ctx: GuestEn
     return true;
   }
   if (isInvitePathname(pathname)) {
+    return true;
+  }
+  if (isPrivacyPolicyPathname(pathname)) {
     return true;
   }
   return false;

@@ -64,6 +64,7 @@ export type WorkspaceSidebarLayoutProps = {
   | "footerPlainLinkLabels"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
+  | "showVaultHeaderPlus"
   | "onVaultHeaderPlusPointerDown"
   | "onFolderHeaderActionClick"
 > & {
@@ -158,6 +159,7 @@ export default function WorkspaceSidebarLayout({
   footerPlainLinkLabels,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
+  showVaultHeaderPlus,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   itemsListVaults,
@@ -201,6 +203,7 @@ export default function WorkspaceSidebarLayout({
           footerPlainLinkLabels={footerPlainLinkLabels}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
+          showVaultHeaderPlus={showVaultHeaderPlus}
           onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
           onFolderHeaderActionClick={onFolderHeaderActionClick}
         >
