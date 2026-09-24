@@ -12,8 +12,8 @@ type CreateWorkspacePopupProps = {
 };
 
 /**
- * SaaS multi-workspace create dialog (shared UI `Popup`, product-sized chrome).
- * New workspaces are created as FREE on the server.
+ * SaaS multi-workspace create dialog (same chrome size as delete-workspace confirm).
+ * Server always creates FREE workspaces; UI does not mention plan tier.
  */
 export default function CreateWorkspacePopup({
   open,
@@ -50,13 +50,13 @@ export default function CreateWorkspacePopup({
   return (
     <Popup
       className="z-[60]"
-      width={560}
+      width={420}
       header={t("workspaces.createPopup.title")}
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
       closeDisabled={submitting}
       panelClassName="min-h-0"
-      contentClassName="pt-0 pb-1"
+      contentClassName="pt-0"
       footer={
         <>
           <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
@@ -70,7 +70,7 @@ export default function CreateWorkspacePopup({
     >
       <form
         id={formId}
-        className="flex w-full flex-col gap-6"
+        className="flex w-full flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           if (submitting || !trimmed) {
@@ -88,7 +88,7 @@ export default function CreateWorkspacePopup({
             <AlertDescription>{errorMessage}</AlertDescription>
           </Alert>
         ) : null}
-        <label className="flex w-full flex-col gap-3 text-sm font-medium text-foreground">
+        <label className="flex w-full flex-col gap-2 text-sm font-medium text-foreground">
           {t("workspaces.createPopup.nameLabel")}
           <Input
             type="text"

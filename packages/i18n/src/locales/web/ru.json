@@ -1626,7 +1626,7 @@
   "legal.privacy.backAria": "На главную",
   "legal.privacy.selfHosted.lead": "Это краткое уведомление для self-hosted развёртываний Okkey. За то, как работает ваш экземпляр, отвечает оператор инсталляции.",
   "workspaces.createPopup.title": "Создать пространство",
-  "workspaces.createPopup.description": "Укажите название нового пространства. Оно создаётся на тарифе Free.",
+  "workspaces.createPopup.description": "Укажите название нового пространства.",
   "workspaces.createPopup.nameLabel": "Название пространства",
   "workspaces.createPopup.submit": "Создать",
   "workspaces.createPopup.creating": "Создание…"

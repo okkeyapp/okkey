@@ -1626,7 +1626,7 @@
   "legal.privacy.backAria": "Back to home",
   "legal.privacy.selfHosted.lead": "This short notice applies to self-hosted Okkey deployments. The operator of your instance is responsible for how the service is run.",
   "workspaces.createPopup.title": "Create workspace",
-  "workspaces.createPopup.description": "Choose a name for the new workspace. It starts on the Free plan.",
+  "workspaces.createPopup.description": "Choose a name for the new workspace.",
   "workspaces.createPopup.nameLabel": "Workspace name",
   "workspaces.createPopup.submit": "Create",
   "workspaces.createPopup.creating": "Creating…"
