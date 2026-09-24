@@ -1,4 +1,10 @@
-import type { Vault, Workspace, WorkspaceResourcePermissionDto } from "@okkey/types";
+import type {
+  Vault,
+  Workspace,
+  WorkspaceMemberDto,
+  WorkspaceProfileSummary,
+  WorkspaceResourcePermissionDto,
+} from "@okkey/types";
 import { hasPlanFeature, permissionAllowsMutate } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useMemo } from "react";
@@ -21,6 +27,10 @@ import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
 import SettingsListCardSkeleton from "../SettingsListCardSkeleton";
 import { DEFAULT_PERSONAL_VAULT_ICON, normalizeVaultIcon } from "./vaultIcons";
+
+const EMPTY_MEMBERS: readonly WorkspaceMemberDto[] = [];
+const EMPTY_PROFILES: readonly WorkspaceProfileSummary[] = [];
+const EMPTY_ACCESS_BY_USER_ID: Record<string, string | null> = {};
 
 type WorkspaceSettingsVaultsSectionProps = {
   workspaceId: string;
@@ -51,9 +61,8 @@ export default function WorkspaceSettingsVaultsSection({
   const SharedVaultsSection = enterpriseSharedVaultsModule.SharedVaultsSection;
   const PersonalVaultCardPopup = enterpriseSharedVaultsModule.PersonalVaultCardPopup;
   const showEnterpriseShared = Boolean(canManageSharedPlan && SharedVaultsSection);
-  /** Personal vault card opens when shared-vaults plan feature + enterprise module are present. */
-  const canOpenPersonalVault =
-    hasPlanFeature(workspace?.planTier, "sharedVaults") && Boolean(PersonalVaultCardPopup);
+  /** Personal vault rename/edit needs the enterprise popup module only — not `sharedVaults` plan. */
+  const canOpenPersonalVault = Boolean(PersonalVaultCardPopup);
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
   const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);
@@ -151,9 +160,9 @@ export default function WorkspaceSettingsVaultsSection({
           core={core}
           userId={userId}
           accountVaultKey={vaultKey}
-          members={[]}
-          profiles={[]}
-          initialAccessByUserId={{}}
+          members={EMPTY_MEMBERS}
+          profiles={EMPTY_PROFILES}
+          initialAccessByUserId={EMPTY_ACCESS_BY_USER_ID}
           t={t}
           readOnly={!canPutPersonal}
           canDelete={false}

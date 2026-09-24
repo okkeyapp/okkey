@@ -111,7 +111,7 @@ The open-source Core provides the FREE plan baseline:
 - Workspace settings: roles view-only for default roles (custom roles require a plan with `customWorkspaceRoles` + enterprise module).
 - Workspace settings: profiles view-only for default profiles.
 - Workspace settings: members — owner only in OSS; inviting additional members requires enterprise `workspace-members` plugin **and** `additionalWorkspaceMembers` plan feature.
-- Workspace settings: vaults — personal vault metadata editable when `sharedVaults` plan feature **and** `workspace-shared-vaults` module (popup inject); shared vaults require the same plugin **and** `sharedVaults` plan feature.
+- Workspace settings: vaults — personal vault metadata editable when `workspace-shared-vaults` module is injected (popup); default name is set only at create/register. Shared vaults require the same plugin **and** `sharedVaults` plan feature.
 - Files in items require `filesInItems` plan feature (and workspace toggle).
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
