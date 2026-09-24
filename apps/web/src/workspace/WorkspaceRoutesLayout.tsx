@@ -755,70 +755,103 @@ export default function WorkspaceRoutesLayout() {
 
   return (
     <SectionReauthProvider>
-    <SettingsPopup t={t} workspaceIds={workspaceList.map((workspace) => workspace.id)}>
-      {({ openSettingsPopup }) => {
-        const email = profile?.email?.trim();
-        const accountMenu: OkkeyAppSidebarAccountMenu | undefined = email
-          ? {
-              firstName: profile?.firstName,
-              lastName: profile?.lastName,
-              email,
-              settingsLabel: t("web.accountMenu.settings"),
-              logoutLabel: t("web.accountMenu.logout"),
-              onSettings: openSettingsPopup,
-              onLogout: logout,
+      <CreateWorkspacePopup
+        open={createWorkspaceOpen}
+        submitting={createWorkspaceSubmitting}
+        t={t}
+        onClose={() => {
+          if (!createWorkspaceSubmitting) {
+            setCreateWorkspaceOpen(false);
+          }
+        }}
+        onSubmit={(name) => {
+          void (async () => {
+            if (!core || createWorkspaceSubmitting) {
+              return;
             }
-          : undefined;
+            setCreateWorkspaceSubmitting(true);
+            try {
+              const created = await core.createWorkspace({ name });
+              if (userId) {
+                writeStoredCurrentWorkspaceId(userId, created.id);
+              }
+              await refreshWorkspaces();
+              setResolvedWorkspaceId(created.id);
+              setPhase("ready");
+              setCreateWorkspaceOpen(false);
+              navigate(ITEMS_PATH);
+            } catch {
+              // Keep switcher UX quiet; home page surfaces create errors.
+            } finally {
+              setCreateWorkspaceSubmitting(false);
+            }
+          })();
+        }}
+      />
+      <SettingsPopup t={t} workspaceIds={workspaceList.map((workspace) => workspace.id)}>
+        {({ openSettingsPopup }) => {
+          const email = profile?.email?.trim();
+          const accountMenu: OkkeyAppSidebarAccountMenu | undefined = email
+            ? {
+                firstName: profile?.firstName,
+                lastName: profile?.lastName,
+                email,
+                settingsLabel: t("web.accountMenu.settings"),
+                logoutLabel: t("web.accountMenu.logout"),
+                onSettings: openSettingsPopup,
+                onLogout: logout,
+              }
+            : undefined;
 
-        return (
-          <WorkspaceFoldersProvider value={workspaceFoldersState}>
-            <WorkspaceShellWithItems
-              isShellNotFound={isShellNotFound}
-              t={t}
-              title={title}
-              description={description}
-              pathname={pathname}
-              resolvedWorkspaceId={resolvedWorkspaceId}
-              currentWorkspaceName={currentWorkspace?.name ?? ""}
-              deletedItemsRetentionDays={
-                currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
-              }
-              allowedFileExtensions={
-                currentWorkspace?.allowedFileExtensions ?? DEFAULT_ALLOWED_FILE_EXTENSIONS
-              }
-              maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
-              filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
-              currentWorkspace={currentWorkspace}
-              vaults={vaults}
-              vaultsListReady={vaultsListReady}
-              workspaceNavItems={workspaceNavItems}
-              workspaceSwitcherTrigger={workspaceSwitcherTrigger}
-              workspaceSwitcherDropdown={isMultiWorkspaceUi ? workspaceSwitcherDropdown : undefined}
-              workspaceSwitcherTo={isMultiWorkspaceUi ? undefined : ITEMS_PATH}
-              vaultSidebarItems={vaultSidebarItems}
-              folderTreeForItems={folderTreeForItems}
-              accountMenu={accountMenu}
-              footerPlainLinkLabels={{
-                documentation: t("web.nav.documentation"),
-                help: t("web.nav.help"),
-              }}
-              openFoldersSettingsPopup={openFoldersSettingsPopup}
-              openNewVaultPopup={openNewVaultPopup}
-              core={core}
-              userId={userId ?? ""}
-              vaultKey={vaultKey}
-              vaultUnlocked={vaultUnlocked}
-              workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
-              refreshWorkspaces={refreshWorkspaces}
-              patchWorkspace={patchWorkspace}
-              refreshVaults={refreshVaults}
-              workspacePermissions={workspacePermissions}
-              workspacePermissionsReady={workspacePermissionsReady}
-            />
-          </WorkspaceFoldersProvider>
-        );
-      }}
-    </SettingsPopup>
+          return (
+            <WorkspaceFoldersProvider value={workspaceFoldersState}>
+              <WorkspaceShellWithItems
+                isShellNotFound={isShellNotFound}
+                t={t}
+                title={title}
+                description={description}
+                pathname={pathname}
+                resolvedWorkspaceId={resolvedWorkspaceId}
+                currentWorkspaceName={currentWorkspace?.name ?? ""}
+                deletedItemsRetentionDays={
+                  currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
+                }
+                allowedFileExtensions={
+                  currentWorkspace?.allowedFileExtensions ?? DEFAULT_ALLOWED_FILE_EXTENSIONS
+                }
+                maxFileSizeMb={currentWorkspace?.maxFileSizeMb ?? DEFAULT_MAX_FILE_SIZE_MB}
+                filesInItemsEnabled={currentWorkspace?.filesInItemsEnabled ?? true}
+                currentWorkspace={currentWorkspace}
+                vaults={vaults}
+                vaultsListReady={vaultsListReady}
+                workspaceNavItems={workspaceNavItems}
+                workspaceSwitcherTrigger={workspaceSwitcherTrigger}
+                workspaceSwitcherDropdown={isMultiWorkspaceUi ? workspaceSwitcherDropdown : undefined}
+                workspaceSwitcherTo={isMultiWorkspaceUi ? undefined : ITEMS_PATH}
+                vaultSidebarItems={vaultSidebarItems}
+                folderTreeForItems={folderTreeForItems}
+                accountMenu={accountMenu}
+                footerPlainLinkLabels={{
+                  documentation: t("web.nav.documentation"),
+                  help: t("web.nav.help"),
+                }}
+                openFoldersSettingsPopup={openFoldersSettingsPopup}
+                openNewVaultPopup={openNewVaultPopup}
+                core={core}
+                userId={userId ?? ""}
+                vaultKey={vaultKey}
+                vaultUnlocked={vaultUnlocked}
+                workspaceFoldersBootstrapped={workspaceFoldersState.bootstrapped}
+                refreshWorkspaces={refreshWorkspaces}
+                patchWorkspace={patchWorkspace}
+                refreshVaults={refreshVaults}
+                workspacePermissions={workspacePermissions}
+                workspacePermissionsReady={workspacePermissionsReady}
+              />
+            </WorkspaceFoldersProvider>
+          );
+        }}
+      </SettingsPopup>
     </SectionReauthProvider>
   );
 }
@@ -937,39 +970,6 @@ function WorkspaceShellWithItems({
       <ItemCategoryPreferencesProvider workspaceId={resolvedWorkspaceId}>
         <WorkspaceVaultProfilesProvider value={workspaceVaultProfilesState}>
         <WorkspaceItemsProvider value={workspaceItemsState}>
-          <CreateWorkspacePopup
-            open={createWorkspaceOpen}
-            submitting={createWorkspaceSubmitting}
-            t={t}
-            onClose={() => {
-              if (!createWorkspaceSubmitting) {
-                setCreateWorkspaceOpen(false);
-              }
-            }}
-            onSubmit={(name) => {
-              void (async () => {
-                if (!core || createWorkspaceSubmitting) {
-                  return;
-                }
-                setCreateWorkspaceSubmitting(true);
-                try {
-                  const created = await core.createWorkspace({ name });
-                  if (userId) {
-                    writeStoredCurrentWorkspaceId(userId, created.id);
-                  }
-                  await refreshWorkspaces();
-                  setResolvedWorkspaceId(created.id);
-                  setPhase("ready");
-                  setCreateWorkspaceOpen(false);
-                  navigate(ITEMS_PATH);
-                } catch {
-                  // Keep switcher UX quiet; home page surfaces create errors.
-                } finally {
-                  setCreateWorkspaceSubmitting(false);
-                }
-              })();
-            }}
-          />
           <NewItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}
