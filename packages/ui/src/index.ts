@@ -1,5 +1,10 @@
 export { cn } from "./lib/utils.js";
 export {
+  OKKEY_Z_INDEX,
+  OKKEY_Z_INDEX_CLASS,
+  type OkkeyZIndexLayer,
+} from "./lib/z-index.js";
+export {
   detectCardBrand,
   formatCardNumber,
   formatCardNumberInput,

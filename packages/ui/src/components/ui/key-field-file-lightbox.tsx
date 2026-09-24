@@ -55,7 +55,7 @@ export function KeyFieldFileLightbox({ file, onClose }: KeyFieldFileLightboxProp
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-label={file.name}>
+    <div className="fixed inset-0 z-lightbox flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" aria-label={file.name}>
       <div className="absolute right-4 top-4 flex items-center gap-2">
         <Button
           type="button"

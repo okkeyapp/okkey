@@ -129,7 +129,7 @@ export default function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPo
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={420}
       header={t("web.settingsPopup.vault.pin.setupTitle")}
       closeLabel={t("web.settingsPopup.close")}

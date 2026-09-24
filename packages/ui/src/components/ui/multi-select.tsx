@@ -397,7 +397,7 @@ const MultiSelectContent = React.forwardRef<
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "relative z-50 flex max-h-96 flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
+          "relative z-floating flex max-h-96 flex-col overflow-hidden rounded-md border border-input bg-popover text-popover-foreground shadow-md",
           ctx.variant === "inline"
             ? "min-w-[180px] w-max"
             : "w-[var(--radix-popover-trigger-width)] min-w-[max(var(--radix-popover-trigger-width),180px)]",

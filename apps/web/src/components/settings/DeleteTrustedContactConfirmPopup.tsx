@@ -38,7 +38,7 @@ export default function DeleteTrustedContactConfirmPopup({
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={420}
       header={t(titleKey)}
       closeLabel={t("web.settingsPopup.close")}

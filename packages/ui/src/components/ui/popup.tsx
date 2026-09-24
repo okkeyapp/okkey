@@ -507,7 +507,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
         aria-modal={role === "dialog" ? true : undefined}
         data-state={isClosing ? "closing" : "open"}
         className={cn(
-          "okkey-popup-overlay fixed inset-0 z-50 !m-0 flex items-center justify-center overflow-hidden bg-black/30 p-4 text-foreground",
+          "okkey-popup-overlay fixed inset-0 z-popup !m-0 flex items-center justify-center overflow-hidden bg-black/30 p-4 text-foreground",
           "max-md:items-end max-md:p-0",
           className,
         )}

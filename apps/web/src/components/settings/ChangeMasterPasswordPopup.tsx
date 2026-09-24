@@ -48,7 +48,7 @@ export default function ChangeMasterPasswordPopup({
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={420}
       header={t("web.settingsPopup.vault.changePassword.title")}
       closeLabel={t("web.settingsPopup.close")}

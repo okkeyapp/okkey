@@ -20,7 +20,7 @@ export default function ExitNewItemFormConfirmPopup({
 
   return (
     <Popup
-      className="z-[70]"
+      className="z-popup-nested-high"
       width={420}
       header={t("web.exitNewItemFormConfirmPopup.title")}
       closeLabel={t("web.settingsPopup.close")}

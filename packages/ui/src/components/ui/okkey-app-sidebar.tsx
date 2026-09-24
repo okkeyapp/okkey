@@ -1554,7 +1554,7 @@ export function OkkeyAppSidebar({
             {isMobile && mobileDrawerOpen ? (
               <button
                 type="button"
-                className="fixed inset-0 z-[90] cursor-default border-0 bg-black/40 p-0"
+                className="fixed inset-0 z-sidebar-overlay cursor-default border-0 bg-black/40 p-0"
                 aria-label={mobileNavCloseLabel ?? "Close menu"}
                 onClick={() => setMobileDrawerOpen(false)}
               />
@@ -1589,7 +1589,7 @@ export function OkkeyAppSidebar({
             ) : (
               <div
                 className={cn(
-                  "fixed inset-y-0 left-0 z-[100] flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
+                  "fixed inset-y-0 left-0 z-sidebar flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
                   !mobileDrawerOpen && "-translate-x-full pointer-events-none",
                   mobileDrawerOpen && "translate-x-0 pointer-events-auto",
                 )}

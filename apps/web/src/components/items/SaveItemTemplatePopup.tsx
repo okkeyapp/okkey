@@ -79,7 +79,7 @@ export default function SaveItemTemplatePopup({
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={420}
       header={t(isUpdateMode ? "web.updateItemTemplatePopup.title" : "web.saveItemTemplatePopup.title")}
       description={

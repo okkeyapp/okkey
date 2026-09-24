@@ -33,7 +33,7 @@ export default function DeleteItemsConfirmPopup({
 
   return (
     <Popup
-      className="z-[60]"
+      className="z-popup-nested"
       width={420}
       header={t(multiple ? "web.deleteItemsConfirmPopup.titleMultiple" : "web.deleteItemsConfirmPopup.titleSingle")}
       closeLabel={t("web.settingsPopup.close")}

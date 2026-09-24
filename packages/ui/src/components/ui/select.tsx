@@ -253,7 +253,7 @@ const SelectContent = React.forwardRef<
       <SelectPrimitive.Content
         ref={setContentRef}
         className={cn(
-          "relative z-[100] overflow-hidden rounded-md border border-input bg-popover p-0 text-popover-foreground shadow-md",
+          "relative z-floating overflow-hidden rounded-md border border-input bg-popover p-0 text-popover-foreground shadow-md",
           triggerVariant === "inline"
             ? "min-w-[180px] w-max"
             : "w-[var(--radix-select-trigger-width)] min-w-[max(var(--radix-select-trigger-width),180px)]",

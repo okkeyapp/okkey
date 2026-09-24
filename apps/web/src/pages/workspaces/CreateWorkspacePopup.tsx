@@ -52,7 +52,6 @@ export default function CreateWorkspacePopup({
 
   return (
     <Popup
-      className="z-[60]"
       width={420}
       header={t("workspaces.createPopup.title")}
       closeLabel={t("web.settingsPopup.close")}
