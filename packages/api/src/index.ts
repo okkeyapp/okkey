@@ -255,7 +255,11 @@ export class CoreApiClient {
   }
 
   /** Requires enterprise SaaS tenancy plugin (`POST /workspaces`). OSS API returns 404. */
-  createWorkspace(body: { name: string }): Promise<{
+  createWorkspace(body: {
+    name: string;
+    /** Localized personal vault label; server default is `Personal vault`. */
+    personal_vault_name?: string;
+  }): Promise<{
     id: string;
     name: string;
     ownerId: string;

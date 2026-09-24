@@ -151,6 +151,8 @@ export interface Vault {
   updatedAt: string;
 }
 
+export { DEFAULT_PERSONAL_VAULT_NAME } from "./vault-defaults.js";
+
 /** `POST /workspaces/:workspaceId/vaults` request body. */
 export interface VaultCreateRequestDto {
   name: string;
@@ -1413,8 +1415,13 @@ export interface RegisterCompleteRequestDto {
   device_share: string;
   device_fingerprint: string;
   device_name: string;
-  /** Optional label for default workspace + personal vault; server default is `Personal`. */
+  /** Optional label for the default personal workspace only; server default is `Personal`. */
   personal_workspace_name?: string;
+  /**
+   * Optional label for the personal vault created at registration.
+   * Independent of workspace name; server default is `Personal vault`.
+   */
+  personal_vault_name?: string;
   platform?: string;
   os_name?: string;
   os_version?: string;

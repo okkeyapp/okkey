@@ -155,7 +155,11 @@ export default function WorkspacesContent() {
     setCreateError(null);
     setLoadError(null);
     try {
-      const created = await createWorkspaceRequest(core, name);
+      const created = await createWorkspaceRequest(
+        core,
+        name,
+        t("web.workspaceSettings.vaults.personal.title"),
+      );
       if (userId) {
         writeStoredCurrentWorkspaceId(userId, created.id);
       }

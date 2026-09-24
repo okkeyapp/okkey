@@ -9,7 +9,10 @@ type CreateWorkspaceResult = {
 };
 
 type CreateWorkspaceClient = {
-  createWorkspace(body: { name: string }): Promise<CreateWorkspaceResult>;
+  createWorkspace(body: {
+    name: string;
+    personal_vault_name?: string;
+  }): Promise<CreateWorkspaceResult>;
 };
 
 /**
@@ -19,8 +22,12 @@ type CreateWorkspaceClient = {
 export async function createWorkspaceRequest(
   core: CreateWorkspaceClient,
   name: string,
+  personalVaultName: string,
 ): Promise<CreateWorkspaceResult> {
-  return core.createWorkspace({ name: name.trim() });
+  return core.createWorkspace({
+    name: name.trim(),
+    personal_vault_name: personalVaultName.trim() || undefined,
+  });
 }
 
 export function toastWorkspaceCreated(message: string): void {

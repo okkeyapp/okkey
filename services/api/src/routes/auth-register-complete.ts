@@ -20,8 +20,10 @@ interface RegisterCompleteBody {
   app_version?: string;
   client_type?: string;
   user_agent?: string;
-  /** Optional display name for the default personal workspace and personal vault (client-localized label). */
+  /** Optional display name for the default personal workspace (client-localized label). */
   personal_workspace_name?: string;
+  /** Optional display name for the personal vault (client-localized; independent of workspace). */
+  personal_vault_name?: string;
   /** Optional; persisted for UI when client storage is cleared. */
   first_name?: string;
   last_name?: string;
@@ -213,6 +215,24 @@ export function createRegisterCompleteRoute(
       return;
     }
 
+    const personalVaultName = parsePersonalWorkspaceName(body.personal_vault_name);
+    if (
+      body.personal_vault_name !== undefined &&
+      body.personal_vault_name.trim() !== "" &&
+      personalVaultName === null
+    ) {
+      json(
+        ctx.res,
+        400,
+        errorPayload(
+          "REGISTRATION_BAD_REQUEST",
+          "personal_vault_name is invalid (length, control characters)",
+          ctx.requestId,
+        ),
+      );
+      return;
+    }
+
     const firstNameForDb = parseOptionalProfileName(body.first_name);
     if (
       body.first_name !== undefined &&
@@ -292,6 +312,7 @@ export function createRegisterCompleteRoute(
         requestIp: getRequestIp(ctx.req),
         deviceCryptoCapable: meta.deviceCryptoCapable,
         personalWorkspaceName: personalWorkspaceName ?? undefined,
+        personalVaultName: personalVaultName ?? undefined,
         firstName: firstNameForDb,
         lastName: lastNameForDb,
       });
