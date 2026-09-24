@@ -174,7 +174,7 @@ Open-source build:
 
 - uses only core modules
 - ships as `okkey/*` images
-- `OKKEY_DEPLOYMENT_MODE=self_hosted`, `ENTERPRISE_MODULES=false`
+- default deployment mode `self_hosted`, `ENTERPRISE_MODULES=false`
 
 Enterprise / SaaS build:
 

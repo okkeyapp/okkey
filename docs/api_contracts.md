@@ -432,7 +432,7 @@ Lists workspaces the authenticated user may access (owner or `workspace_members`
 
 ### `POST /workspaces`
 
-**Enterprise SaaS only** (`workspace-tenancy` plugin when `OKKEY_DEPLOYMENT_MODE=saas`). Not registered on OSS / self-hosted Core.
+**Enterprise SaaS only** (`workspace-tenancy` plugin when deployment mode is `saas`). Not registered on OSS / self-hosted Core. SaaS mode is supplied from `okkey-enterprise` when enterprise modules are loaded.
 
 **Body:** `{ "name": string }`
 
