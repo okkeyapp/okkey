@@ -3,10 +3,26 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
+import {
+  applyEnterpriseWebViteEnvToProcess,
+  enterpriseWebViteEnvDefines,
+  loadEnterpriseWebViteEnv,
+} from "./vite.enterpriseEnv";
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
   const enterpriseModules = env.VITE_ENTERPRISE_MODULES === "true";
   const enterpriseRoot = path.resolve(__dirname, "../../../okkey-enterprise");
+  const enterpriseWebEnvDir = path.resolve(enterpriseRoot, "web");
+
+  /** SaaS / legal env lives in okkey-enterprise/web/.env — not in public Core examples. */
+  const enterpriseWebEnvOverlay = enterpriseModules
+    ? loadEnterpriseWebViteEnv(mode, enterpriseWebEnvDir)
+    : {};
+  if (enterpriseModules) {
+    applyEnterpriseWebViteEnvToProcess(enterpriseWebEnvOverlay);
+  }
+
   const enterpriseRolesPath = path.resolve(
     enterpriseRoot,
     "web/workspace-roles/src/index.ts",
@@ -71,6 +87,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: enterpriseWebViteEnvDefines(enterpriseWebEnvOverlay),
     assetsInclude: ["**/*.wasm"],
     optimizeDeps: {
       exclude: [
