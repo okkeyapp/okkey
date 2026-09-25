@@ -6,7 +6,10 @@ import type {
 import { normalizeWorkspacePermissionsMatrix, permissionAllowsGet } from "@okkey/types";
 
 import type { WorkspaceSettingsSectionId } from "./workspaceSettingsCatalog";
-import { WORKSPACE_SETTINGS_SECTIONS } from "./workspaceSettingsMenu";
+import {
+  isWorkspaceSettingsSectionVisible,
+  WORKSPACE_SETTINGS_SECTIONS,
+} from "./workspaceSettingsMenu";
 
 /** UI section → role matrix resource (plan shares billing). */
 export function settingsSectionPermissionResource(
@@ -58,7 +61,10 @@ export function allowedSettingsSections(
   if (!matrix) {
     return [];
   }
-  return WORKSPACE_SETTINGS_SECTIONS.filter((section) => canGetSettingsSection(matrix, section));
+  return WORKSPACE_SETTINGS_SECTIONS.filter(
+    (section) =>
+      isWorkspaceSettingsSectionVisible(section) && canGetSettingsSection(matrix, section),
+  );
 }
 
 export function firstAllowedSettingsSection(

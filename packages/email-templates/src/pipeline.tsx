@@ -5,6 +5,7 @@ import { AuthSignInCodeEmail } from "./components/AuthSignInCodeEmail.js";
 import { DeviceApprovalEmail } from "./components/DeviceApprovalEmail.js";
 import { TwoFactorNoticeEmail } from "./components/TwoFactorNoticeEmail.js";
 import { WorkspaceInviteEmail } from "./components/WorkspaceInviteEmail.js";
+import { PlanChangeRequestEmail } from "./components/PlanChangeRequestEmail.js";
 import { RecoveryActionEmail } from "./components/RecoveryActionEmail.js";
 import {
   buildAuthSignInCodeEmailProps,
@@ -24,6 +25,7 @@ import type {
   DeviceApprovalRequestVariables,
   DeviceRecoveryApprovalRequestVariables,
   EmailTemplateVariablesMap,
+  PlanChangeRequestVariables,
   TrustedContactInviteVariables,
   TwoFactorNoticeVariables,
   WorkspaceInviteVariables,
@@ -342,6 +344,58 @@ export async function renderTrustedContactInvite(
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
+export async function renderPlanChangeRequest(
+  locale: EmailLocale,
+  variables: PlanChangeRequestVariables,
+): Promise<RenderedEmail> {
+  assertRequired("plan_change_request", variables as unknown as Record<string, unknown>, [
+    "workspaceId",
+    "workspaceName",
+    "currentPlanTier",
+    "requestedPlanTier",
+    "contactEmail",
+    "accountEmail",
+    "locale",
+    "actorUserId",
+  ]);
+  const subject = formatEmailMessage(locale, "email.planChangeRequest.subject", {
+    plan: variables.requestedPlanTier,
+    workspaceName: variables.workspaceName,
+  });
+  const lead = formatEmailMessage(locale, "email.planChangeRequest.lead", {});
+  const lines = [
+    formatEmailMessage(locale, "email.planChangeRequest.workspace", {
+      workspaceName: variables.workspaceName,
+      workspaceId: variables.workspaceId,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.currentPlan", {
+      plan: variables.currentPlanTier,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.requestedPlan", {
+      plan: variables.requestedPlanTier,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.contactEmail", {
+      email: variables.contactEmail,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.accountEmail", {
+      email: variables.accountEmail,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.locale", {
+      locale: variables.locale,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.region", {
+      region: variables.region.trim() || "—",
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.actor", {
+      userId: variables.actorUserId,
+    }),
+  ];
+  const plainText = [lead, ...lines].join("\n");
+  const element = <PlanChangeRequestEmail lead={lead} lines={lines} />;
+  const html = await render(element);
+  return { subject, html, text: plainText };
+}
+
 export async function renderEmailTemplate<Id extends EmailTemplateId>(
   templateId: Id,
   locale: EmailLocale,
@@ -380,6 +434,8 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
           locale,
           variables as TrustedContactInviteVariables,
         );
+      case "plan_change_request":
+        return await renderPlanChangeRequest(locale, variables as PlanChangeRequestVariables);
       default:
         throw new EmailRenderError("EMAIL_RENDER_FAILED", `unknown templateId: ${templateId}`, {
           templateId,

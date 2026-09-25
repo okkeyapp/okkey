@@ -18,6 +18,7 @@ import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-car
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
 
 export type {
+  PlanCatalogGroup,
   PlanCustomOverride,
   PlanEntitlementOptions,
   PlanFeature,
@@ -26,16 +27,23 @@ export type {
   PlanTier,
 } from "./plan-features.js";
 export {
+  PLAN_CATALOG_BUSINESS,
+  PLAN_CATALOG_PERSONAL,
   PLAN_FEATURES,
   PLAN_FEATURE_MATRIX,
   PLAN_QUOTA_LIMITS,
+  PLAN_TIER_RANK,
   PLAN_TIERS,
+  canRequestPlanUpgrade,
+  comparePlanTiers,
   emptyPlanFeatureOverrides,
   getPlanQuotaLimits,
   hasPlanFeature,
   isPlanTier,
   normalizePlanTier,
+  planCatalogGroupForTier,
   planEntitlementOptionsFromWorkspace,
+  planTiersForCatalogGroup,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
 } from "./plan-features.js";
@@ -1172,6 +1180,23 @@ export interface WorkspaceSettingsUpdateRequestDto {
 /** `DELETE /workspaces/:workspaceId/settings` request body. */
 export interface WorkspaceDeleteRequestDto {
   confirmation_name: string;
+}
+
+/** `POST /workspaces/:workspaceId/plan-change-requests` request body. */
+export interface WorkspacePlanChangeRequestDto {
+  /** Catalog tier the operator wants to upgrade to (must be above current). */
+  requested_plan_tier: PlanTier;
+  /** Contact email for sales follow-up (defaults to account email when omitted). */
+  contact_email: string;
+  /** UI locale (`en` | `ru`). */
+  locale: string;
+  /** Billing region ISO 3166-1 alpha-2, or empty when unset. */
+  region: string | null;
+}
+
+/** `POST /workspaces/:workspaceId/plan-change-requests` success body. */
+export interface WorkspacePlanChangeRequestResponseDto {
+  submitted: true;
 }
 
 /** @deprecated Use WorkspaceBuiltInRoleDto */

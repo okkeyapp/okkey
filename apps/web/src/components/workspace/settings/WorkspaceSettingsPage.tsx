@@ -10,7 +10,7 @@ import {
   BreadcrumbSeparator,
 } from "@okkey/ui";
 import { useRef } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useScrollAncestorScrolled } from "../../../hooks/useRadixScrollAreaScrolled";
 import { useLocale } from "../../../locale/LocaleContext";
@@ -28,6 +28,7 @@ import WorkspaceSettingsRolesSection from "./roles/WorkspaceSettingsRolesSection
 import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfilesSection";
 import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
 import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
+import WorkspaceSettingsPlanSection from "./plan/WorkspaceSettingsPlanSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import type { workspacePatchFromSettingsResponse } from "./workspaceSettingsCatalog";
@@ -36,6 +37,7 @@ import {
   canGetSettingsSection,
   settingsSectionPermissionCell,
 } from "./settingsPermissions";
+import { isWorkspaceSettingsSectionVisible } from "./workspaceSettingsMenu";
 
 type WorkspaceSettingsPageProps = {
   workspaceId: string;
@@ -88,6 +90,10 @@ export default function WorkspaceSettingsPage({
   const sectionHref = (section: WorkspaceSettingsSectionId) => settingsPath(section);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useScrollAncestorScrolled(pageRootRef, 0, activeSection);
+
+  if (!isWorkspaceSettingsSectionVisible(requestedSection)) {
+    return <Navigate to={settingsPath("plan")} replace />;
+  }
 
   if (workspacePermissionsReady && !sectionAllowed) {
     return <WorkspaceForbiddenPage />;
@@ -187,6 +193,13 @@ export default function WorkspaceSettingsPage({
                 workspace={workspace}
                 t={t}
                 resourcePermissions={sectionPermissions}
+              />
+            ) : activeSection === "plan" ? (
+              <WorkspaceSettingsPlanSection
+                workspaceId={workspaceId}
+                planTier={workspace?.planTier}
+                t={t}
+                canRequest={Boolean(sectionPermissions && sectionPermissions.put >= 1)}
               />
             ) : (
               <WorkspaceSettingsPlaceholderSection section={activeSection} t={t} />

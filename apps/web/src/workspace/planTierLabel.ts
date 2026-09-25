@@ -1,6 +1,8 @@
+import { normalizePlanTier } from "@okkey/types";
+
 /** Web copy for `Workspace.planTier` (aligned with i18n `plan.*`). */
 export function planTierLabel(planTier: string, t: (key: string) => string): string {
-  switch (planTier) {
+  switch (normalizePlanTier(planTier)) {
     case "PREMIUM":
       return t("plan.premium");
     case "FAMILY":

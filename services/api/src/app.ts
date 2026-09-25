@@ -94,6 +94,7 @@ import {
   createWorkspaceItemTemplatesUpdateRoute,
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
+import { createWorkspacePlanChangeRequestRoute } from "./routes/workspace-plan-change-request.ts";
 import { createWorkspaceBuiltInRolesListRoute } from "./routes/workspace-built-in-roles.ts";
 import { createWorkspaceBuiltInProfilesListRoute } from "./routes/workspace-built-in-profiles.ts";
 import type { ApiEnterprisePlugin, ApiEnterprisePluginContext } from "./plugins/types.ts";
@@ -141,6 +142,7 @@ import type { ItemCategoryPreferencesService } from "./item-category-preferences
 import type { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import type { ItemTemplatesService } from "./item-templates/service.ts";
 import type { WorkspaceSettingsService } from "./workspace-settings/service.ts";
+import type { PlanChangeRequestService } from "./plan-change-request/service.ts";
 import type { VaultUnlockBootstrapService } from "./account/vault-unlock-bootstrap.ts";
 import type { UsersRepository } from "./storage/repositories.ts";
 import type { AttachmentService } from "./attachments/service.ts";
@@ -189,6 +191,7 @@ export interface AppDeps {
   capsuleDefaultsService?: CapsuleDefaultsService;
   itemTemplatesService?: ItemTemplatesService;
   workspaceSettingsService?: WorkspaceSettingsService;
+  planChangeRequestService?: PlanChangeRequestService;
   workspaceBuiltInRolesService?: WorkspaceBuiltInRolesService;
   workspaceBuiltInProfilesService?: WorkspaceBuiltInProfilesService;
   workspaceMeVaultProfilesService?: WorkspaceMeVaultProfilesService;
@@ -476,6 +479,13 @@ export function createApiApp(
         "DELETE",
         "/workspaces/:workspaceId/settings",
         createWorkspaceSettingsRoute(deps.workspaceSettingsService, resolveUserId),
+      );
+    }
+    if (deps.planChangeRequestService) {
+      app.route(
+        "POST",
+        "/workspaces/:workspaceId/plan-change-requests",
+        createWorkspacePlanChangeRequestRoute(deps.planChangeRequestService, resolveUserId),
       );
     }
     const hasEnterpriseWorkspaceRoles = enterprisePlugins.some(

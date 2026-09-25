@@ -358,6 +358,16 @@ export class EmailTemplateService {
     await this.dispatchRendered(input.to, rendered);
   }
 
+  async sendPlanChangeRequest(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: import("@okkey/email-templates").PlanChangeRequestVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("plan_change_request", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
   async sendTwoFactorEnabled(input: {
     to: string;
     localeHints: EmailLocaleHints;

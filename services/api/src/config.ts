@@ -66,6 +66,11 @@ export interface ApiConfig {
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
   emailFrom: string;
+  /**
+   * Sales inbox for workspace plan-change requests (manual fulfillment).
+   * Override with `OKKEY_SALES_EMAIL`. Defaults: local/dev → aleksandr-zoryn@ya.ru; else hello@okkey.io.
+   */
+  salesEmail: string;
   emailProvider: EmailProvider;
   smtpHost: string;
   smtpPort: number;
@@ -266,6 +271,18 @@ function parseDeploymentMode(value: string | undefined): DeploymentMode {
   throw new Error(`OKKEY_DEPLOYMENT_MODE must be "self_hosted" or "saas", got: ${value}`);
 }
 
+/** Sales inbox for plan-change request emails (`OKKEY_SALES_EMAIL`). */
+function resolveSalesEmail(nodeEnv: NodeEnv, raw: string | undefined): string {
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed) {
+    return trimmed;
+  }
+  if (nodeEnv === "development" || nodeEnv === "test") {
+    return "aleksandr-zoryn@ya.ru";
+  }
+  return "hello@okkey.io";
+}
+
 export function loadConfig(): ApiConfig {
   loadEnvFile(".env");
   loadEnvFile(".env.local");
@@ -389,6 +406,7 @@ export function loadConfig(): ApiConfig {
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
+    salesEmail: resolveSalesEmail(nodeEnv, process.env.OKKEY_SALES_EMAIL),
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
     smtpHost: process.env.EMAIL_SMTP_HOST ?? "localhost",
     smtpPort: parsePositiveInt(process.env.EMAIL_SMTP_PORT, 1025),

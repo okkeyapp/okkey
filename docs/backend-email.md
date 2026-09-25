@@ -14,6 +14,7 @@ Transactional email uses:
 | `EMAIL_DEFAULT_LOCALE` | Instance default when user/header/body do not specify a language (`en` or `ru`) |
 | `EMAIL_PROVIDER` | `logger` \| `smtp` \| `ses` \| `http-api` |
 | `PUBLIC_APP_URL` | Base URL for invite and other CTA links (required to send workspace invites) |
+| `OKKEY_SALES_EMAIL` | Sales inbox for `POST /workspaces/:id/plan-change-requests` (manual plan upgrades). Default: `aleksandr-zoryn@ya.ru` in development/test, `hello@okkey.io` otherwise. SaaS operators typically set this in `okkey-enterprise/backend/.env`. |
 
 See `services/api/.env.example` for SMTP, SES, and HTTP API variables and commented presets (Yandex / Mail.ru / Gmail SMTP, AWS SES, Yandex Cloud Postbox).
 
@@ -69,6 +70,7 @@ Transactional mail is sent from `EmailTemplateService` when the corresponding AP
 | `POST /auth/two-factor/totp/enroll/confirm` (success) | `two_factor_enabled` | Best-effort (`sendTwoFactorEnabledBestEffort`). |
 | `POST /auth/two-factor/backup-codes/regenerate` (success) | `two_factor_backup_codes_regenerated` | Best-effort (`sendTwoFactorBackupCodesRegeneratedBestEffort`). |
 | Enterprise `POST /workspaces/:workspaceId/invitations` | `workspace_invite` | Requires `PUBLIC_APP_URL` and a real transport; missing config → `EMAIL_NOT_CONFIGURED` (503). Send failure deletes the pending row → `EMAIL_SEND_FAILED` (503). CTA is `{PUBLIC_APP_URL}/invite/:token`. |
+| `POST /workspaces/:workspaceId/plan-change-requests` | `plan_change_request` | Sent to `OKKEY_SALES_EMAIL` (not the requester). Manual fulfillment only; does not change `plan_tier`. |
 
 `POST /auth/register/complete` does **not** send email by itself; the user already proved email ownership via the challenge tied to `auth_state_id`.
 

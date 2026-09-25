@@ -247,3 +247,48 @@ export function planEntitlementOptionsFromWorkspace(workspace: {
     featureOverrides: workspace.planFeatureOverrides ?? {},
   };
 }
+
+/**
+ * Catalog rank for upgrade-only plan changes (higher = more capable).
+ * Personal: FREE < PREMIUM < FAMILY; business: FREE < TEAM < ENTERPRISE.
+ * Cross-group upgrades use the same ladder (e.g. PREMIUM → TEAM is allowed).
+ */
+export const PLAN_TIER_RANK: Record<PlanTier, number> = {
+  FREE: 0,
+  PREMIUM: 1,
+  FAMILY: 2,
+  TEAM: 3,
+  ENTERPRISE: 4,
+};
+
+export type PlanCatalogGroup = "personal" | "business";
+
+/** Personal SaaS/self-hosted cards (FREE is also shown on the business tab). */
+export const PLAN_CATALOG_PERSONAL: readonly PlanTier[] = ["FREE", "PREMIUM", "FAMILY"] as const;
+
+/** Business cards; FREE is duplicated from personal per product UX. */
+export const PLAN_CATALOG_BUSINESS: readonly PlanTier[] = ["FREE", "TEAM", "ENTERPRISE"] as const;
+
+export function planCatalogGroupForTier(planTier: string | null | undefined): PlanCatalogGroup {
+  const tier = normalizePlanTier(planTier);
+  return tier === "TEAM" || tier === "ENTERPRISE" ? "business" : "personal";
+}
+
+export function planTiersForCatalogGroup(group: PlanCatalogGroup): readonly PlanTier[] {
+  return group === "business" ? PLAN_CATALOG_BUSINESS : PLAN_CATALOG_PERSONAL;
+}
+
+export function comparePlanTiers(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
+  return PLAN_TIER_RANK[normalizePlanTier(a)] - PLAN_TIER_RANK[normalizePlanTier(b)];
+}
+
+/** True when `target` is strictly above `current` on the catalog ladder. */
+export function canRequestPlanUpgrade(
+  current: string | null | undefined,
+  target: string | null | undefined,
+): boolean {
+  return comparePlanTiers(target, current) > 0;
+}

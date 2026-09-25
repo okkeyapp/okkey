@@ -71,6 +71,8 @@ import type {
   WorkspaceSettingsResponseDto,
   WorkspaceSettingsUpdateRequestDto,
   WorkspaceDeleteRequestDto,
+  WorkspacePlanChangeRequestDto,
+  WorkspacePlanChangeRequestResponseDto,
   WorkspaceRolesListResponseDto,
   WorkspaceBuiltInProfilesListResponseDto,
   VaultCreateRequestDto,
@@ -574,6 +576,16 @@ export class CoreApiClient {
   deleteWorkspace(workspaceId: string, body: WorkspaceDeleteRequestDto): Promise<{ ok: true }> {
     return this.api.delete<{ ok: true }>(
       `/workspaces/${encodeURIComponent(workspaceId)}/settings`,
+      body,
+    );
+  }
+
+  requestWorkspacePlanChange(
+    workspaceId: string,
+    body: WorkspacePlanChangeRequestDto,
+  ): Promise<WorkspacePlanChangeRequestResponseDto> {
+    return this.api.post<WorkspacePlanChangeRequestResponseDto>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/plan-change-requests`,
       body,
     );
   }
