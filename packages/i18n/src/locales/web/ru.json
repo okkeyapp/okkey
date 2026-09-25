@@ -1646,10 +1646,10 @@
   "web.workspaceSettings.plan.prices.premium.yearly": "₽1500 / год",
   "web.workspaceSettings.plan.prices.family.monthly": "₽299 / мес",
   "web.workspaceSettings.plan.prices.family.yearly": "₽3588 / год",
-  "web.workspaceSettings.plan.prices.team.monthly": "₽599 / мес",
-  "web.workspaceSettings.plan.prices.team.yearly": "₽7188 / год",
-  "web.workspaceSettings.plan.prices.enterprise.monthly": "По запросу",
-  "web.workspaceSettings.plan.prices.enterprise.yearly": "индивидуально",
+  "web.workspaceSettings.plan.prices.team.monthly": "₽299 / участник",
+  "web.workspaceSettings.plan.prices.team.yearly": "оплата в год",
+  "web.workspaceSettings.plan.prices.enterprise.monthly": "₽499 / участник",
+  "web.workspaceSettings.plan.prices.enterprise.yearly": "оплата в год",
   "web.workspaceSettings.plan.blurb.free": "Для личного использования с простыми настройками",
   "web.workspaceSettings.plan.blurb.premium": "Премиум функции для личного использования",
   "web.workspaceSettings.plan.blurb.family": "Премиум для 6 человек и неограниченные сейфы",
@@ -1673,6 +1673,7 @@
   "web.workspaceSettings.plan.features.builtInRoles": "Встроенные роли",
   "web.workspaceSettings.plan.features.builtInProfiles": "Встроенные профили",
   "web.workspaceSettings.plan.features.everythingInFamily": "Всё что в семье +",
+  "web.workspaceSettings.plan.features.fullFunctionality": "Доступен весь функционал +",
   "web.workspaceSettings.plan.features.upTo25Members": "До 25 участников",
   "web.workspaceSettings.plan.features.sharedVaults50": "До 50 общих сейфов",
   "web.workspaceSettings.plan.features.storage100gb": "100ГБ хранилища",
@@ -1720,5 +1721,6 @@
   "web.workspaceSettings.plan.featureHints.everythingInFree": "Включает все возможности бесплатного тарифа.",
   "web.workspaceSettings.plan.featureHints.everythingInPremium": "Включает все возможности тарифа Премиум.",
   "web.workspaceSettings.plan.featureHints.everythingInFamily": "Включает все возможности тарифа Семья.",
-  "web.workspaceSettings.plan.featureHints.everythingInTeam": "Включает все возможности тарифа Команда."
+  "web.workspaceSettings.plan.featureHints.everythingInTeam": "Включает все возможности тарифа Команда.",
+  "web.workspaceSettings.plan.featureHints.fullFunctionality": "Включает весь доступный функционал продукта."
 }

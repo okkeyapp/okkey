@@ -21,6 +21,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import {
   formatRegionName,
+  detectBrowserRegion,
   normalizeRegionCode,
   REGION_CODES,
   type RegionCode,
@@ -61,7 +62,7 @@ export default function PlanChangeRequestPopup({
   const formId = useId();
   const [locale, setLocale] = useState<WebLocale>(initialLocale);
   const [region, setRegion] = useState<RegionCode | null>(
-    normalizeRegionCode(initialRegion),
+    () => normalizeRegionCode(initialRegion) ?? detectBrowserRegion(),
   );
   const [email, setEmail] = useState(initialEmail);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export default function PlanChangeRequestPopup({
       return;
     }
     setLocale(initialLocale);
-    setRegion(normalizeRegionCode(initialRegion));
+    setRegion(normalizeRegionCode(initialRegion) ?? detectBrowserRegion());
     setEmail(initialEmail);
     setLocalError(null);
   }, [open, initialLocale, initialRegion, initialEmail]);

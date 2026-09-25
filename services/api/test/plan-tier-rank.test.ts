@@ -25,9 +25,9 @@ test("canRequestPlanUpgrade only allows higher tiers", () => {
   assert.equal(canRequestPlanUpgrade("FREE", "FREE"), false);
 });
 
-test("catalog groups list FREE on both tabs", () => {
+test("catalog groups keep FREE on personal only", () => {
   assert.deepEqual([...planTiersForCatalogGroup("personal")], ["FREE", "PREMIUM", "FAMILY"]);
-  assert.deepEqual([...planTiersForCatalogGroup("business")], ["FREE", "TEAM", "ENTERPRISE"]);
+  assert.deepEqual([...planTiersForCatalogGroup("business")], ["TEAM", "ENTERPRISE"]);
   assert.equal(planCatalogGroupForTier("TEAM"), "business");
   assert.equal(planCatalogGroupForTier("PREMIUM"), "personal");
   assert.ok(comparePlanTiers("ENTERPRISE", "FREE") > 0);

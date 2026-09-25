@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@okkey/ui";
+import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { CircleHelp, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ApiRequestError } from "@okkey/api";
@@ -21,7 +22,12 @@ import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import { normalizeAccountProfileWire } from "../../../../auth/normalizeAccountProfileWire";
 import { useLocale } from "../../../../locale/LocaleContext";
 import { planTierLabel } from "../../../../workspace/planTierLabel";
-import type { RegionCode } from "../../../../regions/regions";
+import {
+  detectBrowserRegion,
+  normalizeRegionCode,
+  type RegionCode,
+} from "../../../../regions/regions";
+import { getSettingsPopupCacheState } from "../../../settings/settingsPopupCache";
 import PlanChangeRequestPopup from "./PlanChangeRequestPopup";
 import {
   defaultPlanCatalogGroup,
@@ -62,12 +68,11 @@ function PlanFeatureRow({
   t: (messageKey: string, values?: WebMessageValues) => string;
 }) {
   const label = t(featureLabelKey(featureId));
-  // Header-style rows ("Everything in X +") have no tooltip in the Figma design.
+  // Header-style rows ("Everything in X +" / full functionality) have no tooltip in the Figma design.
   const isInclusionHeader =
     featureId === "everythingInFree" ||
     featureId === "everythingInPremium" ||
-    featureId === "everythingInFamily" ||
-    featureId === "everythingInTeam";
+    featureId === "fullFunctionality";
 
   if (isInclusionHeader) {
     return (
@@ -171,34 +176,37 @@ function PlanCard({
         "border-b last:border-b-0 md:border-b-0",
       )}
     >
-      <h3 className="text-center text-sm font-medium leading-5 text-foreground">
-        {planTierLabel(card.tier, t)}
-      </h3>
+      {/* Equal-height intro so CTAs line up across cards despite blurb wrap. */}
+      <div className="flex flex-col gap-6 md:min-h-[11.5rem]">
+        <h3 className="text-center text-sm font-medium leading-5 text-foreground">
+          {planTierLabel(card.tier, t)}
+        </h3>
 
-      <div className="flex flex-col items-center gap-2 text-center">
-        <p className="text-xl font-medium leading-5 text-foreground">
-          {t(priceMonthlyKey(card.tier))}
+        <div className="flex flex-col items-center gap-2 text-center">
+          <p className="text-xl font-medium leading-5 text-foreground">
+            {t(priceMonthlyKey(card.tier))}
+          </p>
+          <p className="w-full text-sm leading-5 text-muted-foreground">
+            {card.priceHint === "forever"
+              ? t("web.workspaceSettings.plan.priceHints.forever")
+              : card.priceHint === "onRequest"
+                ? t("web.workspaceSettings.plan.priceHints.onRequest")
+                : t(priceYearlyKey(card.tier))}
+          </p>
+        </div>
+
+        <p className="flex-1 text-center text-sm leading-5 text-muted-foreground">
+          {t(`web.workspaceSettings.plan.blurb.${card.tier.toLowerCase()}`)}
         </p>
-        <p className="w-full text-sm leading-5 text-muted-foreground">
-          {card.priceHint === "forever"
-            ? t("web.workspaceSettings.plan.priceHints.forever")
-            : card.priceHint === "onRequest"
-              ? t("web.workspaceSettings.plan.priceHints.onRequest")
-              : t(priceYearlyKey(card.tier))}
-        </p>
+
+        <PlanCardCta
+          card={card}
+          currentTier={currentTier}
+          canRequest={canRequest}
+          t={t}
+          onConnect={onConnect}
+        />
       </div>
-
-      <p className="text-center text-sm leading-5 text-muted-foreground">
-        {t(`web.workspaceSettings.plan.blurb.${card.tier.toLowerCase()}`)}
-      </p>
-
-      <PlanCardCta
-        card={card}
-        currentTier={currentTier}
-        canRequest={canRequest}
-        t={t}
-        onConnect={onConnect}
-      />
 
       <div className="flex flex-1 flex-col gap-3">
         {card.featureRows.map((featureId) => (
@@ -215,6 +223,10 @@ function PlanCard({
   );
 }
 
+function resolvePrefillRegion(billingRegion: string | null | undefined): RegionCode {
+  return normalizeRegionCode(billingRegion) ?? detectBrowserRegion();
+}
+
 export default function WorkspaceSettingsPlanSection({
   workspaceId,
   planTier,
@@ -224,26 +236,41 @@ export default function WorkspaceSettingsPlanSection({
   const { locale } = useLocale();
   const core = useAuthenticatedCoreClient();
   const currentTier = normalizePlanTier(planTier);
+  // SaaS (enterprise tenancy overlay) shows personal+business tabs; self-hosted is business-only.
+  const showPersonalTab = workspaceTenancyModule.canCreateWorkspace;
   const [group, setGroup] = useState<PlanCatalogGroup>(() =>
-    defaultPlanCatalogGroup(planTier),
+    showPersonalTab ? defaultPlanCatalogGroup(planTier) : "business",
   );
   const cards = useMemo(() => planCatalogCardsForGroup(group), [group]);
 
   const [requestTier, setRequestTier] = useState<PlanTier | null>(null);
   const [profileEmail, setProfileEmail] = useState("");
-  const [profileRegion, setProfileRegion] = useState<string | null>(null);
+  const [profileRegion, setProfileRegion] = useState<RegionCode>(() => detectBrowserRegion());
   const [profileLocale, setProfileLocale] = useState<WebLocale>(locale);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
+    if (!showPersonalTab) {
+      setGroup("business");
+      return;
+    }
     setGroup(defaultPlanCatalogGroup(planTier));
-  }, [planTier]);
+  }, [planTier, showPersonalTab]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const cachedProfile = getSettingsPopupCacheState().profile.data;
+      if (cachedProfile && !cancelled) {
+        setProfileEmail(cachedProfile.email);
+        setProfileRegion(resolvePrefillRegion(cachedProfile.billing_region));
+        if (cachedProfile.locale === "en" || cachedProfile.locale === "ru") {
+          setProfileLocale(cachedProfile.locale);
+        }
+      }
+
       if (!core) {
         return;
       }
@@ -254,15 +281,19 @@ export default function WorkspaceSettingsPlanSection({
         }
         const normalized = normalizeAccountProfileWire(dto);
         if (!normalized) {
+          setProfileRegion((prev) => prev ?? detectBrowserRegion());
           return;
         }
         setProfileEmail(normalized.email);
-        setProfileRegion(normalized.billing_region);
+        setProfileRegion(resolvePrefillRegion(normalized.billing_region));
         if (normalized.locale === "en" || normalized.locale === "ru") {
           setProfileLocale(normalized.locale);
         }
       } catch {
         /* profile autofill is best-effort; form still works */
+        if (!cancelled) {
+          setProfileRegion((prev) => prev ?? detectBrowserRegion());
+        }
       }
     })();
     return () => {
@@ -302,33 +333,35 @@ export default function WorkspaceSettingsPlanSection({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col gap-6">
-        <div className="flex w-full min-w-0 items-center justify-center">
-          <div
-            className="relative flex w-fit max-w-full min-w-0 rounded-lg bg-secondary p-1"
-            role="tablist"
-            aria-label={t("web.workspaceSettings.plan.tabsAria")}
-          >
-            {(["personal", "business"] as const).map((value) => {
-              const active = group === value;
-              return (
-                <Button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  size="sm"
-                  variant={active ? "outline" : "ghost"}
-                  className={settingsSegmentedTabClassName(active)}
-                  onClick={() => setGroup(value)}
-                >
-                  <span className="min-w-0 truncate">
-                    {t(`web.workspaceSettings.plan.tabs.${value}`)}
-                  </span>
-                </Button>
-              );
-            })}
+        {showPersonalTab ? (
+          <div className="flex w-full min-w-0 items-center justify-center">
+            <div
+              className="relative flex w-fit max-w-full min-w-0 rounded-lg bg-secondary p-1"
+              role="tablist"
+              aria-label={t("web.workspaceSettings.plan.tabsAria")}
+            >
+              {(["personal", "business"] as const).map((value) => {
+                const active = group === value;
+                return (
+                  <Button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    size="sm"
+                    variant={active ? "outline" : "ghost"}
+                    className={settingsSegmentedTabClassName(active)}
+                    onClick={() => setGroup(value)}
+                  >
+                    <span className="min-w-0 truncate">
+                      {t(`web.workspaceSettings.plan.tabs.${value}`)}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="flex w-full flex-col overflow-hidden rounded-lg border border-border md:flex-row">
           {cards.map((card) => (

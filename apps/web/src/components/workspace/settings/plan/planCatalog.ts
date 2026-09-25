@@ -24,13 +24,12 @@ export type PlanFeatureRowId =
   | "unlimitedVaults"
   | "builtInRoles"
   | "builtInProfiles"
-  | "everythingInFamily"
+  | "fullFunctionality"
   | "upTo25Members"
   | "sharedVaults50"
   | "storage100gb"
   | "customRoles"
   | "customProfiles"
-  | "everythingInTeam"
   | "unlimitedMembers"
   | "unlimitedSharedVaults"
   | "unlimitedStorage"
@@ -88,23 +87,11 @@ const PERSONAL_CARDS: readonly PlanCatalogCard[] = [
 
 const BUSINESS_CARDS: readonly PlanCatalogCard[] = [
   {
-    tier: "FREE",
-    priceHint: "forever",
-    yearlyFootnote: false,
-    featureRows: [
-      "unlimitedItems",
-      "itemCategories",
-      "personalVaultOnly",
-      "textItemsOnly",
-      "totpImportExport",
-    ],
-  },
-  {
     tier: "TEAM",
     priceHint: "yearly",
     yearlyFootnote: true,
     featureRows: [
-      "everythingInFamily",
+      "fullFunctionality",
       "upTo25Members",
       "sharedVaults50",
       "storage100gb",
@@ -114,10 +101,10 @@ const BUSINESS_CARDS: readonly PlanCatalogCard[] = [
   },
   {
     tier: "ENTERPRISE",
-    priceHint: "onRequest",
-    yearlyFootnote: false,
+    priceHint: "yearly",
+    yearlyFootnote: true,
     featureRows: [
-      "everythingInTeam",
+      "fullFunctionality",
       "unlimitedMembers",
       "unlimitedSharedVaults",
       "unlimitedStorage",

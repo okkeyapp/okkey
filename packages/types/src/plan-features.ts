@@ -250,7 +250,7 @@ export function planEntitlementOptionsFromWorkspace(workspace: {
 
 /**
  * Catalog rank for upgrade-only plan changes (higher = more capable).
- * Personal: FREE < PREMIUM < FAMILY; business: FREE < TEAM < ENTERPRISE.
+ * Personal: FREE < PREMIUM < FAMILY; business: TEAM < ENTERPRISE.
  * Cross-group upgrades use the same ladder (e.g. PREMIUM → TEAM is allowed).
  */
 export const PLAN_TIER_RANK: Record<PlanTier, number> = {
@@ -263,11 +263,11 @@ export const PLAN_TIER_RANK: Record<PlanTier, number> = {
 
 export type PlanCatalogGroup = "personal" | "business";
 
-/** Personal SaaS/self-hosted cards (FREE is also shown on the business tab). */
+/** Personal SaaS cards (shown only when multi-workspace / SaaS UI is enabled). */
 export const PLAN_CATALOG_PERSONAL: readonly PlanTier[] = ["FREE", "PREMIUM", "FAMILY"] as const;
 
-/** Business cards; FREE is duplicated from personal per product UX. */
-export const PLAN_CATALOG_BUSINESS: readonly PlanTier[] = ["FREE", "TEAM", "ENTERPRISE"] as const;
+/** Business cards (Team + Enterprise). Free stays on the personal tab only. */
+export const PLAN_CATALOG_BUSINESS: readonly PlanTier[] = ["TEAM", "ENTERPRISE"] as const;
 
 export function planCatalogGroupForTier(planTier: string | null | undefined): PlanCatalogGroup {
   const tier = normalizePlanTier(planTier);

@@ -6,8 +6,7 @@ import { planCatalogCardsForGroup, type PlanFeatureRowId } from "./planCatalog";
 const INCLUSION_HEADERS = new Set<PlanFeatureRowId>([
   "everythingInFree",
   "everythingInPremium",
-  "everythingInFamily",
-  "everythingInTeam",
+  "fullFunctionality",
 ]);
 
 function catalogFeatureIds(): PlanFeatureRowId[] {

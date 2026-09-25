@@ -1646,10 +1646,10 @@
   "web.workspaceSettings.plan.prices.premium.yearly": "₽1500 / year",
   "web.workspaceSettings.plan.prices.family.monthly": "₽299 / mo",
   "web.workspaceSettings.plan.prices.family.yearly": "₽3588 / year",
-  "web.workspaceSettings.plan.prices.team.monthly": "₽599 / mo",
-  "web.workspaceSettings.plan.prices.team.yearly": "₽7188 / year",
-  "web.workspaceSettings.plan.prices.enterprise.monthly": "On request",
-  "web.workspaceSettings.plan.prices.enterprise.yearly": "custom",
+  "web.workspaceSettings.plan.prices.team.monthly": "₽299 / member",
+  "web.workspaceSettings.plan.prices.team.yearly": "billed yearly",
+  "web.workspaceSettings.plan.prices.enterprise.monthly": "₽499 / member",
+  "web.workspaceSettings.plan.prices.enterprise.yearly": "billed yearly",
   "web.workspaceSettings.plan.blurb.free": "For personal use with simple settings",
   "web.workspaceSettings.plan.blurb.premium": "Premium features for personal use",
   "web.workspaceSettings.plan.blurb.family": "Premium for 6 people and unlimited vaults",
@@ -1673,6 +1673,7 @@
   "web.workspaceSettings.plan.features.builtInRoles": "Built-in roles",
   "web.workspaceSettings.plan.features.builtInProfiles": "Built-in profiles",
   "web.workspaceSettings.plan.features.everythingInFamily": "Everything in Family +",
+  "web.workspaceSettings.plan.features.fullFunctionality": "Full functionality available +",
   "web.workspaceSettings.plan.features.upTo25Members": "Up to 25 members",
   "web.workspaceSettings.plan.features.sharedVaults50": "Up to 50 shared vaults",
   "web.workspaceSettings.plan.features.storage100gb": "100GB storage",
@@ -1720,5 +1721,6 @@
   "web.workspaceSettings.plan.featureHints.everythingInFree": "Includes all Free plan capabilities.",
   "web.workspaceSettings.plan.featureHints.everythingInPremium": "Includes all Premium plan capabilities.",
   "web.workspaceSettings.plan.featureHints.everythingInFamily": "Includes all Family plan capabilities.",
-  "web.workspaceSettings.plan.featureHints.everythingInTeam": "Includes all Team plan capabilities."
+  "web.workspaceSettings.plan.featureHints.everythingInTeam": "Includes all Team plan capabilities.",
+  "web.workspaceSettings.plan.featureHints.fullFunctionality": "Includes the full available product functionality."
 }
