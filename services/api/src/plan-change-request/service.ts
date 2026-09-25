@@ -5,6 +5,7 @@ import {
   type PlanTier,
 } from "@okkey/types";
 
+import type { DeploymentMode } from "../config.ts";
 import { assertWorkspacePermission } from "../workspace-roles/permissions.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
@@ -47,12 +48,18 @@ export type PlanChangeRequestInput = {
   region: string | null;
 };
 
+/** Sales-facing label: `saas` | `self-hosted`. */
+export function salesDeploymentLabel(mode: DeploymentMode): "saas" | "self-hosted" {
+  return mode === "saas" ? "saas" : "self-hosted";
+}
+
 export class PlanChangeRequestService {
   private readonly db: QueryExecutor;
   private readonly workspaces: Pick<WorkspacesRepository, "findById">;
   private readonly users: Pick<UsersRepository, "loadAccountProfile">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
   private readonly salesEmail: string;
+  private readonly deploymentMode: DeploymentMode;
 
   constructor(deps: {
     db: QueryExecutor;
@@ -60,12 +67,14 @@ export class PlanChangeRequestService {
     users: Pick<UsersRepository, "loadAccountProfile">;
     emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
     salesEmail: string;
+    deploymentMode: DeploymentMode;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.salesEmail = deps.salesEmail.trim();
+    this.deploymentMode = deps.deploymentMode;
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
@@ -148,6 +157,7 @@ export class PlanChangeRequestService {
           accountEmail: profile?.email ?? contactEmail,
           locale,
           region: region ?? "",
+          deploymentMode: salesDeploymentLabel(this.deploymentMode),
           actorUserId: input.actorUserId,
         },
       });

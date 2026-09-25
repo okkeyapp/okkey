@@ -122,6 +122,7 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     salesEmail: config.salesEmail,
+    deploymentMode: config.deploymentMode,
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,

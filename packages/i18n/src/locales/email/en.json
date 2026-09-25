@@ -65,6 +65,7 @@
   "email.planChangeRequest.subject": "Plan request {plan} — {workspaceName}",
   "email.planChangeRequest.lead": "New Okkey plan change request.",
   "email.planChangeRequest.workspace": "Workspace: {workspaceName} ({workspaceId})",
+  "email.planChangeRequest.deploymentMode": "Deployment: {mode}",
   "email.planChangeRequest.currentPlan": "Current plan: {plan}",
   "email.planChangeRequest.requestedPlan": "Requested plan: {plan}",
   "email.planChangeRequest.contactEmail": "Contact email: {email}",

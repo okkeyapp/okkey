@@ -65,6 +65,8 @@ export interface PlanChangeRequestVariables {
   accountEmail: string;
   locale: string;
   region: string;
+  /** Deployment label for sales: `saas` or `self-hosted`. */
+  deploymentMode: string;
   actorUserId: string;
 }
 

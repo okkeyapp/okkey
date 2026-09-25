@@ -64,6 +64,7 @@
   "email.planChangeRequest.subject": "Заявка на тариф {plan} — {workspaceName}",
   "email.planChangeRequest.lead": "Новая заявка на смену тарифа Okkey.",
   "email.planChangeRequest.workspace": "Пространство: {workspaceName} ({workspaceId})",
+  "email.planChangeRequest.deploymentMode": "Тип развёртывания: {mode}",
   "email.planChangeRequest.currentPlan": "Текущий тариф: {plan}",
   "email.planChangeRequest.requestedPlan": "Запрошенный тариф: {plan}",
   "email.planChangeRequest.contactEmail": "Email для связи: {email}",

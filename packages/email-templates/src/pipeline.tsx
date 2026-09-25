@@ -356,6 +356,7 @@ export async function renderPlanChangeRequest(
     "contactEmail",
     "accountEmail",
     "locale",
+    "deploymentMode",
     "actorUserId",
   ]);
   const subject = formatEmailMessage(locale, "email.planChangeRequest.subject", {
@@ -367,6 +368,9 @@ export async function renderPlanChangeRequest(
     formatEmailMessage(locale, "email.planChangeRequest.workspace", {
       workspaceName: variables.workspaceName,
       workspaceId: variables.workspaceId,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.deploymentMode", {
+      mode: variables.deploymentMode,
     }),
     formatEmailMessage(locale, "email.planChangeRequest.currentPlan", {
       plan: variables.currentPlanTier,

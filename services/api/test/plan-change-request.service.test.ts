@@ -15,6 +15,7 @@ function makeService(overrides?: {
   const sent: unknown[] = [];
   const service = new PlanChangeRequestService({
     salesEmail: overrides?.salesEmail ?? "sales@example.com",
+    deploymentMode: "self_hosted",
     db: {
       query: async () => {
         // resolveWorkspacePermissions path is stubbed via assertWorkspacePermission → needs real query
