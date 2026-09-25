@@ -1,15 +1,15 @@
 import type { WebLocale } from "@okkey/i18n";
 import { useEffect, useState } from "react";
 
-import { useAuthenticatedCoreClient } from "../../../auth/AuthVaultContext";
-import { normalizeAccountProfileWire } from "../../../auth/normalizeAccountProfileWire";
-import { useLocale } from "../../../locale/LocaleContext";
+import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
+import { normalizeAccountProfileWire } from "../../../../auth/normalizeAccountProfileWire";
+import { useLocale } from "../../../../locale/LocaleContext";
 import {
   detectBrowserRegion,
   normalizeRegionCode,
   type RegionCode,
-} from "../../../regions/regions";
-import { getSettingsPopupCacheState } from "../../settings/settingsPopupCache";
+} from "../../../../regions/regions";
+import { getSettingsPopupCacheState } from "../../../settings/settingsPopupCache";
 
 function resolvePrefillRegion(billingRegion: string | null | undefined): RegionCode {
   return normalizeRegionCode(billingRegion) ?? detectBrowserRegion();
