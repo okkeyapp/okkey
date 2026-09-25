@@ -70,9 +70,11 @@ export class AttachmentService {
   async upload(input: AttachmentUploadInput): Promise<AttachmentUploadResult> {
     await this.assertVaultAccess(input.vaultId, input.userId);
 
-    const uploadLimits = await this.resolveUploadLimits(input.vaultId);
+    const uploadLimits = await this.resolveUploadLimits(input.vaultId, input.itemId);
 
-    if (!uploadLimits.filesInItemsEnabled) {
+    // Workspace branding logo uses workspaceId as a synthetic item id; that path must
+    // stay available when "files in items" is disabled for regular vault item uploads.
+    if (!uploadLimits.filesInItemsEnabled && !uploadLimits.isWorkspaceSystemAttachment) {
       throw new AttachmentServiceError(
         "FILES_IN_ITEMS_DISABLED",
         403,
@@ -204,10 +206,14 @@ export class AttachmentService {
     }
   }
 
-  private async resolveUploadLimits(vaultId: string): Promise<{
+  private async resolveUploadLimits(
+    vaultId: string,
+    itemId: string,
+  ): Promise<{
     allowedExtensions: string[];
     maxSizeBytes: number;
     filesInItemsEnabled: boolean;
+    isWorkspaceSystemAttachment: boolean;
   }> {
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
@@ -215,8 +221,12 @@ export class AttachmentService {
         allowedExtensions: [],
         maxSizeBytes: maxFileSizeBytesFromMb(DEFAULT_MAX_FILE_SIZE_MB),
         filesInItemsEnabled: true,
+        isWorkspaceSystemAttachment: false,
       };
     }
+
+    // Workspace branding logo uses the workspace id as a synthetic item id.
+    const isWorkspaceSystemAttachment = vault.workspaceId === itemId;
 
     const workspace = await this.workspaces.findById(vault.workspaceId);
     if (!workspace) {
@@ -224,11 +234,15 @@ export class AttachmentService {
         allowedExtensions: [],
         maxSizeBytes: maxFileSizeBytesFromMb(DEFAULT_MAX_FILE_SIZE_MB),
         filesInItemsEnabled: true,
+        isWorkspaceSystemAttachment,
       };
     }
 
     return {
-      allowedExtensions: workspace.allowedFileExtensions,
+      // Logo upload UI accepts images only; do not bind it to the item-file extension list.
+      allowedExtensions: isWorkspaceSystemAttachment
+        ? [...WORKSPACE_LOGO_ALLOWED_EXTENSIONS]
+        : workspace.allowedFileExtensions,
       maxSizeBytes: maxFileSizeBytesFromMb(workspace.maxFileSizeMb),
       filesInItemsEnabled:
         workspace.filesInItemsEnabled &&
@@ -237,9 +251,13 @@ export class AttachmentService {
           "filesInItems",
           planEntitlementOptionsFromWorkspace(workspace),
         ),
+      isWorkspaceSystemAttachment,
     };
   }
 }
+
+/** Image types accepted by workspace branding logo upload UI. */
+const WORKSPACE_LOGO_ALLOWED_EXTENSIONS = ["png", "jpg", "webp", "gif"] as const;
 
 function attachmentExtensionFromFileName(fileName: string): string {
   const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();
