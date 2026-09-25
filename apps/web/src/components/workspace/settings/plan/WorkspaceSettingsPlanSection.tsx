@@ -62,27 +62,39 @@ function PlanFeatureRow({
   t: (messageKey: string, values?: WebMessageValues) => string;
 }) {
   const label = t(featureLabelKey(featureId));
+  // Header-style rows ("Everything in X +") have no tooltip in the Figma design.
+  const isInclusionHeader =
+    featureId === "everythingInFree" ||
+    featureId === "everythingInPremium" ||
+    featureId === "everythingInFamily" ||
+    featureId === "everythingInTeam";
+
+  if (isInclusionHeader) {
+    return (
+      <div className="flex w-full items-center gap-1">
+        <p className="min-w-0 flex-1 text-sm leading-5 text-foreground">{label}</p>
+      </div>
+    );
+  }
+
   const hintKey = featureHintKey(featureId);
   const hint = t(hintKey);
-  const showHint = hint !== hintKey && hint.trim().length > 0;
 
   return (
     <div className="flex w-full items-center gap-1">
       <p className="min-w-0 flex-1 text-sm leading-5 text-foreground">{label}</p>
-      {showHint ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-              aria-label={hint}
-            >
-              <CircleHelp className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs">{hint}</TooltipContent>
-        </Tooltip>
-      ) : null}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+            aria-label={hint}
+          >
+            <CircleHelp className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

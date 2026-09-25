@@ -1716,5 +1716,9 @@
   "web.workspaceSettings.plan.request.errorGeneric": "Не удалось отправить заявку. Попробуйте позже.",
   "web.workspaceSettings.plan.request.successTitle": "Заявка отправлена",
   "web.workspaceSettings.plan.request.successBody": "Форма отправлена — ожидайте ответа на указанный email.",
-  "web.workspaceSettings.plan.request.successClose": "Закрыть"
+  "web.workspaceSettings.plan.request.successClose": "Закрыть",
+  "web.workspaceSettings.plan.featureHints.everythingInFree": "Включает все возможности бесплатного тарифа.",
+  "web.workspaceSettings.plan.featureHints.everythingInPremium": "Включает все возможности тарифа Премиум.",
+  "web.workspaceSettings.plan.featureHints.everythingInFamily": "Включает все возможности тарифа Семья.",
+  "web.workspaceSettings.plan.featureHints.everythingInTeam": "Включает все возможности тарифа Команда."
 }

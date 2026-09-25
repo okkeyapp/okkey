@@ -1716,5 +1716,9 @@
   "web.workspaceSettings.plan.request.errorGeneric": "Could not send the request. Try again later.",
   "web.workspaceSettings.plan.request.successTitle": "Request sent",
   "web.workspaceSettings.plan.request.successBody": "The form was submitted — wait for a reply at the email you provided.",
-  "web.workspaceSettings.plan.request.successClose": "Close"
+  "web.workspaceSettings.plan.request.successClose": "Close",
+  "web.workspaceSettings.plan.featureHints.everythingInFree": "Includes all Free plan capabilities.",
+  "web.workspaceSettings.plan.featureHints.everythingInPremium": "Includes all Premium plan capabilities.",
+  "web.workspaceSettings.plan.featureHints.everythingInFamily": "Includes all Family plan capabilities.",
+  "web.workspaceSettings.plan.featureHints.everythingInTeam": "Includes all Team plan capabilities."
 }
