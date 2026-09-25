@@ -1,4 +1,4 @@
-import type { WebMessageValues } from "@okkey/i18n";
+import type { WebLocale, WebMessageValues } from "@okkey/i18n";
 import {
   Alert,
   AlertDescription,
@@ -10,27 +10,19 @@ import {
   SearchableSelectContent,
   SearchableSelectItem,
   SearchableSelectTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from "@okkey/ui";
-import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import {
-  formatRegionName,
   detectBrowserRegion,
+  formatRegionName,
   normalizeRegionCode,
   REGION_CODES,
   type RegionCode,
 } from "../../../../regions/regions";
-import { planTierLabel } from "../../../../workspace/planTierLabel";
 
-type PlanChangeRequestPopupProps = {
+type SelfHostedSalesRequestPopupProps = {
   open: boolean;
-  requestedPlanTier: string;
   initialLocale: WebLocale;
   initialRegion: string | null;
   initialEmail: string;
@@ -46,9 +38,9 @@ type PlanChangeRequestPopupProps = {
   }) => void;
 };
 
-export default function PlanChangeRequestPopup({
+/** Self-hosted FREE sales contact: region + email only (locale sent silently). */
+export default function SelfHostedSalesRequestPopup({
   open,
-  requestedPlanTier,
   initialLocale,
   initialRegion,
   initialEmail,
@@ -58,9 +50,8 @@ export default function PlanChangeRequestPopup({
   t,
   onClose,
   onSubmit,
-}: PlanChangeRequestPopupProps) {
+}: SelfHostedSalesRequestPopupProps) {
   const formId = useId();
-  const [locale, setLocale] = useState<WebLocale>(initialLocale);
   const [region, setRegion] = useState<RegionCode | null>(
     () => normalizeRegionCode(initialRegion) ?? detectBrowserRegion(),
   );
@@ -71,19 +62,18 @@ export default function PlanChangeRequestPopup({
     if (!open) {
       return;
     }
-    setLocale(initialLocale);
     setRegion(normalizeRegionCode(initialRegion) ?? detectBrowserRegion());
     setEmail(initialEmail);
     setLocalError(null);
-  }, [open, initialLocale, initialRegion, initialEmail]);
+  }, [open, initialRegion, initialEmail]);
 
   const regionOptions = useMemo(
     () =>
       REGION_CODES.map((code) => ({
         code,
-        label: formatRegionName(code, locale),
+        label: formatRegionName(code, initialLocale),
       })),
-    [locale],
+    [initialLocale],
   );
 
   if (!open) {
@@ -104,13 +94,7 @@ export default function PlanChangeRequestPopup({
     <Popup
       className="z-popup-nested"
       width={440}
-      header={
-        success
-          ? t("web.workspaceSettings.plan.request.successTitle")
-          : t("web.workspaceSettings.plan.request.title", {
-              plan: planTierLabel(requestedPlanTier, t),
-            })
-      }
+      header={t("web.workspaceSettings.plan.selfHosted.requestTitle")}
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
       closeDisabled={submitting}
@@ -127,7 +111,7 @@ export default function PlanChangeRequestPopup({
               {t("web.newItemPopup.cancel")}
             </Button>
             <Button type="submit" form={formId} disabled={!canSubmit}>
-              {t("web.workspaceSettings.plan.request.submit")}
+              {t("web.workspaceSettings.plan.selfHosted.requestSubmit")}
             </Button>
           </>
         )
@@ -151,11 +135,15 @@ export default function PlanChangeRequestPopup({
               return;
             }
             setLocalError(null);
-            onSubmit({ contactEmail: emailTrimmed, locale, region });
+            onSubmit({
+              contactEmail: emailTrimmed,
+              locale: initialLocale,
+              region,
+            });
           }}
         >
           <p className="text-sm leading-5 text-muted-foreground">
-            {t("web.workspaceSettings.plan.request.description")}
+            {t("web.workspaceSettings.plan.selfHosted.requestDescription")}
           </p>
 
           {(localError || errorMessage) && (
@@ -166,31 +154,13 @@ export default function PlanChangeRequestPopup({
           )}
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-locale`}>
-              {t("web.settingsPopup.general.language")}
-            </label>
-            <Select value={locale} onValueChange={(value) => setLocale(value as WebLocale)}>
-              <SelectTrigger id={`${formId}-locale`} className="h-9 w-full font-normal">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WEB_LOCALES.map((code) => (
-                  <SelectItem key={code} value={code}>
-                    {getWebLocaleNativeName(code)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">
               {t("web.settingsPopup.general.region")}
             </span>
             <SearchableSelect
               value={region ?? ""}
               onValueChange={(value) => setRegion(normalizeRegionCode(value))}
-              selectedLabel={region ? formatRegionName(region, locale) : undefined}
+              selectedLabel={region ? formatRegionName(region, initialLocale) : undefined}
               placeholder={t("web.settingsPopup.general.regionHint")}
               searchPlaceholder={t("web.settingsPopup.general.regionSearch")}
               searchEmptyMessage={t("web.settingsPopup.general.regionEmpty")}

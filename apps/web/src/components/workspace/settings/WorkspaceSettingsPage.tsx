@@ -28,7 +28,8 @@ import WorkspaceSettingsRolesSection from "./roles/WorkspaceSettingsRolesSection
 import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfilesSection";
 import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
 import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
-import WorkspaceSettingsPlanSection from "./plan/WorkspaceSettingsPlanSection";
+import workspacePlanModule from "@okkey-enterprise/workspace-plan";
+import SelfHostedFreePlanSection from "./plan/SelfHostedFreePlanSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
 import type { workspacePatchFromSettingsResponse } from "./workspaceSettingsCatalog";
@@ -84,6 +85,7 @@ export default function WorkspaceSettingsPage({
   const sectionAllowed = canGetSettingsSection(workspacePermissions, requestedSection);
   const activeSection = requestedSection;
   const sectionPermissions = settingsSectionPermissionCell(workspacePermissions, activeSection);
+  const PlanSection = workspacePlanModule.PlanSection ?? SelfHostedFreePlanSection;
 
   const workspaceName = workspace?.name ?? "…";
   const itemsHref = itemsPathAllWorkspaceMerged(searchParams);
@@ -195,7 +197,7 @@ export default function WorkspaceSettingsPage({
                 resourcePermissions={sectionPermissions}
               />
             ) : activeSection === "plan" ? (
-              <WorkspaceSettingsPlanSection
+              <PlanSection
                 workspaceId={workspaceId}
                 planTier={workspace?.planTier}
                 t={t}
