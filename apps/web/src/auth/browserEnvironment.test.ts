@@ -59,6 +59,18 @@ describe("parseBrowserEnvironment", () => {
     expect(env.clientType).toBe("safari");
     expect(env.fingerprint).toBe("mobile_app-safari-ios-17.0");
   });
+
+  it("accepts an Extension channel override for fingerprint prefix", () => {
+    const env = parseBrowserEnvironment(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      { channel: "Extension" },
+    );
+    expect(env.channel).toBe("Extension");
+    expect(env.clientType).toBe("chrome");
+    expect(env.deviceName).toBe("Extension macOS - Chrome");
+    expect(env.platformOsLabel).toBe("Extension · Chrome · macOS");
+    expect(env.fingerprint).toBe("extension-chrome-macos-10.15.7");
+  });
 });
 
 describe("formatClientLabelFromType", () => {

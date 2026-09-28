@@ -45,15 +45,27 @@ const CLIENT_LABELS: Record<BrowserClientId, string> = {
   web: "Web",
 };
 
+export type ParseBrowserEnvironmentOptions = {
+  /**
+   * Force device channel. UA alone cannot distinguish an extension from web —
+   * callers in the extension must pass `channel: "Extension"` so fingerprints
+   * use the `extension-…` prefix instead of `web_app-…`.
+   */
+  channel?: DeviceChannel;
+};
+
 /**
  * Parse browser + OS from a User-Agent string for device registration metadata.
  * Order matters: Edge/Opera/Yandex identify as Chrome-compatible.
  */
-export function parseBrowserEnvironment(userAgent = ""): ParsedBrowserEnvironment {
+export function parseBrowserEnvironment(
+  userAgent = "",
+  options: ParseBrowserEnvironmentOptions = {},
+): ParsedBrowserEnvironment {
   const ua = userAgent.trim();
   const browserId = detectBrowserClient(ua);
   const { platform, osName, osVersion, hardwareLabel } = detectHardware(ua);
-  const channel = detectChannel(platform, browserId);
+  const channel = options.channel ?? detectChannel(platform, browserId);
   const clientLabel =
     channel === "Web" || channel === "Extension" || channel === "Mobile"
       ? CLIENT_LABELS[browserId]

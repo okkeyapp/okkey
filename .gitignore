@@ -110,6 +110,8 @@ apps/desktop/**/*.msi
 # ============================================
 apps/extension/dist/
 apps/extension/build/
+apps/extension/.output/
+apps/extension/.wxt/
 apps/extension/*.pem
 apps/extension/*.crx
 
