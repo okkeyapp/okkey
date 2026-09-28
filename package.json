@@ -24,11 +24,12 @@
   },
   "packageManager": "yarn@1.22.22",
   "resolutions": {
-    "vite": "6.1.0"
+    "vite": "6.3.5"
   },
   "workspaces": [
     "packages/*",
-    "apps/web"
+    "apps/web",
+    "apps/extension"
   ],
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
@@ -75,6 +76,12 @@
     "dev:web": "yarn --cwd apps/web dev",
     "build:web": "yarn --cwd apps/web build",
     "test:web": "yarn --cwd apps/web test",
+    "dev:extension": "yarn --cwd apps/extension dev",
+    "build:extension": "yarn --cwd apps/extension build",
+    "build:extension:chromium": "yarn --cwd apps/extension build:chromium",
+    "build:extension:firefox": "yarn --cwd apps/extension build:firefox",
+    "zip:extension:chromium": "yarn --cwd apps/extension zip:chromium",
+    "zip:extension:firefox": "yarn --cwd apps/extension zip:firefox",
     "dev:worker": "echo 'TODO: add worker dev command' && exit 1",
     "infra:down": "./scripts/infra.sh down",
     "infra:logs": "./scripts/infra.sh logs",
