@@ -51,11 +51,19 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
    - Preset SaaS `https://app.okkey.io`, or
    - Manual Base URL for local: `http://localhost:5173` (API resolves to `http://localhost:4000`).
 4. **Sign in via browser** → web `/auth/extension/start` → email / passkey / 2FA (session only).
-5. Web redirects to the extension callback with a one-time `auth_code` (PKCE). Vault unlock on web is **not** required.
+5. Web redirects to the extension callback (`auth-callback.html`, listed in `web_accessible_resources`) with a one-time `auth_code` (PKCE). Vault unlock on web is **not** required.
 6. Popup continues → device register `channel=Extension` / fingerprint `extension-…` → pending approval on a trusted device (same as web).
 7. After approve → **Unlock** screen (master password stub in E1; real vault unlock in E2).
 
 Changing Base URL wipes the local profile (logout + clear session/device cache).
+
+### After rebuilding
+
+1. `chrome://extensions` → find Okkey → **Reload**.
+2. If Load unpacked is missing: **Load unpacked** → `apps/extension/output/chrome-mv3`.
+3. Open popup → Base URL `http://localhost:5173` → Sign in.
+4. After web login the tab must land on `chrome-extension://<real-id>/auth-callback.html?code=…&state=…` (not `chrome-extension://invalid/`).
+5. Close the tab, open the popup again → pending device / unlock stub.
 
 ## Scope
 

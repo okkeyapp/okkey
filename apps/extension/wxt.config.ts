@@ -21,6 +21,15 @@ export default defineConfig({
     // E1: session + device API calls to configured Base URL / localhost API.
     // Autofill host access expands in E4.
     host_permissions: ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
+    // Required so web (localhost / self-host) can redirect into the PKCE callback
+    // page. Without this, Chrome rewrites the navigation to chrome-extension://invalid/
+    // and shows ERR_BLOCKED_BY_CLIENT.
+    web_accessible_resources: [
+      {
+        resources: ["auth-callback.html"],
+        matches: ["http://*/*", "https://*/*"],
+      },
+    ],
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {

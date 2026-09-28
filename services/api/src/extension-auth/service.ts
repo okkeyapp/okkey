@@ -60,7 +60,13 @@ export function isAllowedExtensionRedirectUri(uri: string): boolean {
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol === "chrome-extension:" || parsed.protocol === "moz-extension:") {
-      return Boolean(parsed.hostname);
+      // Unpacked Chromium ids change per install path — allow any real id.
+      // Reject Chrome's sentinel host used when web_accessible_resources blocks navigation.
+      const host = parsed.hostname.trim().toLowerCase();
+      if (!host || host === "invalid") {
+        return false;
+      }
+      return /(?:^|\/)auth-callback\.html$/u.test(parsed.pathname);
     }
     if (parsed.protocol === "https:" && parsed.hostname.endsWith(".chromiumapp.org")) {
       return true;

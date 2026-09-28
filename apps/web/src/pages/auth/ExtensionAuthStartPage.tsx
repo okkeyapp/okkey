@@ -18,7 +18,14 @@ function isExtensionRedirectUri(uri: string): boolean {
   try {
     const parsed = new URL(uri);
     if (parsed.protocol === "chrome-extension:" || parsed.protocol === "moz-extension:") {
-      return Boolean(parsed.hostname);
+      // Chrome uses the literal host "invalid" when a non-accessible / broken
+      // extension URL is blocked — never treat that as a real callback.
+      const host = parsed.hostname.trim().toLowerCase();
+      if (!host || host === "invalid") {
+        return false;
+      }
+      // Dev / unpacked: accept any real extension id; path must be the callback page.
+      return /(?:^|\/)auth-callback\.html$/u.test(parsed.pathname);
     }
     if (parsed.protocol === "https:" && parsed.hostname.endsWith(".chromiumapp.org")) {
       return true;

@@ -48,6 +48,22 @@ export function buildExtensionAuthStartUrl(input: {
   return url.toString();
 }
 
+/** Extension PKCE callback page (must be listed in web_accessible_resources). */
+export const EXTENSION_AUTH_CALLBACK_PATH = "auth-callback.html";
+
+/**
+ * Absolute chrome-extension:// / moz-extension:// callback URL for this install.
+ * Unpacked Chromium IDs change per load path — always derive via runtime.getURL,
+ * never hardcode an extension id.
+ */
 export function getExtensionCallbackUrl(): string {
-  return browser.runtime.getURL("/auth-callback.html");
+  // Path must be relative to the extension root (no leading slash) so getURL
+  // resolves against the real extension id, not chrome-extension://invalid/.
+  const url = browser.runtime.getURL(EXTENSION_AUTH_CALLBACK_PATH);
+  if (!url || url.includes("://invalid")) {
+    throw new Error(
+      "Could not resolve extension callback URL (invalid extension id). Reload the unpacked extension and try again.",
+    );
+  }
+  return url;
 }

@@ -51,6 +51,14 @@ test("isAllowedExtensionRedirectUri accepts extension schemes", () => {
   );
   assert.equal(isAllowedExtensionRedirectUri("https://evil.example/callback"), false);
   assert.equal(isAllowedExtensionRedirectUri("http://localhost:5173/callback"), false);
+  assert.equal(
+    isAllowedExtensionRedirectUri("chrome-extension://invalid/auth-callback.html"),
+    false,
+  );
+  assert.equal(
+    isAllowedExtensionRedirectUri("chrome-extension://abcdefghijklmnop/other.html"),
+    false,
+  );
 });
 
 test("issue + exchange auth code with PKCE S256", async () => {
