@@ -7,7 +7,7 @@ const repoRoot = path.resolve(__dirname, "../..");
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   srcDir: "src",
-  outDir: ".output",
+  outDir: "output",
   imports: false,
   manifestVersion: 3,
   suppressWarnings: {

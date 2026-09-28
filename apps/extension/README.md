@@ -28,20 +28,20 @@ Run API + web locally in another terminal (`yarn dev` from repo root) so extensi
 ## Build (load unpacked)
 
 ```bash
-yarn build:extension:chromium   # → apps/extension/.output/chrome-mv3
-yarn build:extension:firefox    # → apps/extension/.output/firefox-mv3
+yarn build:extension:chromium   # → apps/extension/output/chrome-mv3
+yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 ```
 
 ### Chrome / Edge / Chromium
 
 1. Open `chrome://extensions` (or `edge://extensions`).
 2. Enable **Developer mode**.
-3. **Load unpacked** → select `apps/extension/.output/chrome-mv3`.
+3. **Load unpacked** → select `apps/extension/output/chrome-mv3`.
 
 ### Firefox
 
 1. Open `about:debugging#/runtime/this-firefox`.
-2. **Load Temporary Add-on…** → select `apps/extension/.output/firefox-mv3/manifest.json`.
+2. **Load Temporary Add-on…** → select `apps/extension/output/firefox-mv3/manifest.json`.
 
 ## E1 — Server URL + session auth + device
 
