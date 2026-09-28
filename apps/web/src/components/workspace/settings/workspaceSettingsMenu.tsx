@@ -28,9 +28,26 @@ export const WORKSPACE_SETTINGS_SECTIONS: WorkspaceSettingsSectionId[] = [
   "billing",
 ];
 
+/**
+ * Billing & invoices UI is temporarily hidden (nav + routes redirect).
+ * Keep `billing` in {@link WORKSPACE_SETTINGS_SECTIONS} / types so RBAC and deep links stay intact.
+ */
+export const WORKSPACE_SETTINGS_HIDDEN_SECTIONS: readonly WorkspaceSettingsSectionId[] = [
+  "billing",
+];
+
+export function isWorkspaceSettingsSectionVisible(
+  section: WorkspaceSettingsSectionId,
+): boolean {
+  return !WORKSPACE_SETTINGS_HIDDEN_SECTIONS.includes(section);
+}
+
 /** Top-level sidebar entries (general subsections are nested under general). */
 export const WORKSPACE_SETTINGS_TOP_LEVEL_SECTIONS: WorkspaceSettingsSectionId[] =
-  WORKSPACE_SETTINGS_SECTIONS.filter((section) => !isWorkspaceSettingsGeneralSubsection(section));
+  WORKSPACE_SETTINGS_SECTIONS.filter(
+    (section) =>
+      !isWorkspaceSettingsGeneralSubsection(section) && isWorkspaceSettingsSectionVisible(section),
+  );
 
 export { WORKSPACE_SETTINGS_GENERAL_SUBSECTIONS, isWorkspaceSettingsGeneralSubsection };
 

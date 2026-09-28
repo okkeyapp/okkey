@@ -45,6 +45,12 @@ declare module "@okkey-enterprise/legal" {
   export default legalModule;
 }
 
+declare module "@okkey-enterprise/workspace-plan" {
+  import type { WorkspaceSettingsPlanModule } from "./workspace-features/plan-registry";
+  const workspacePlanModule: WorkspaceSettingsPlanModule;
+  export default workspacePlanModule;
+}
+
 declare module "@okkey-enterprise/account-recovery" {
   import type { AccountRecoveryEnterpriseModule } from "./account-recovery-features/registry";
   const accountRecoveryModule: AccountRecoveryEnterpriseModule;

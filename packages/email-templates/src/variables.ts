@@ -55,6 +55,21 @@ export interface TrustedContactInviteVariables {
   helpUrl: string;
 }
 
+/** Internal sales notification for a workspace plan upgrade request. */
+export interface PlanChangeRequestVariables {
+  workspaceId: string;
+  workspaceName: string;
+  currentPlanTier: string;
+  requestedPlanTier: string;
+  contactEmail: string;
+  accountEmail: string;
+  locale: string;
+  region: string;
+  /** Deployment label for sales: `saas` or `self-hosted`. */
+  deploymentMode: string;
+  actorUserId: string;
+}
+
 export type EmailTemplateVariablesMap = {
   auth_email_code: AuthEmailCodeVariables;
   device_approval_request: DeviceApprovalRequestVariables;
@@ -64,4 +79,5 @@ export type EmailTemplateVariablesMap = {
   device_recovery_approval_request: DeviceRecoveryApprovalRequestVariables;
   contact_recovery_release_request: ContactRecoveryReleaseRequestVariables;
   trusted_contact_invite: TrustedContactInviteVariables;
+  plan_change_request: PlanChangeRequestVariables;
 };

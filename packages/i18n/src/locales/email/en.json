@@ -61,5 +61,16 @@
   "email.contacts.invite.noteNoUrl": "Open Okkey, unlock your vault, then open Settings → Recovery to respond to the invitation.",
   "email.contacts.invite.noteIgnore": "If you do not know this person or do not want to help, you can ignore this email or decline in the app.",
   "email.contacts.invite.textFooterWithUrl": "Respond here: {helpUrl}",
-  "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}"
+  "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}",
+  "email.planChangeRequest.subject": "Plan request {plan} — {workspaceName}",
+  "email.planChangeRequest.lead": "New Okkey plan change request.",
+  "email.planChangeRequest.workspace": "Workspace: {workspaceName} ({workspaceId})",
+  "email.planChangeRequest.deploymentMode": "Deployment: {mode}",
+  "email.planChangeRequest.currentPlan": "Current plan: {plan}",
+  "email.planChangeRequest.requestedPlan": "Requested plan: {plan}",
+  "email.planChangeRequest.contactEmail": "Contact email: {email}",
+  "email.planChangeRequest.accountEmail": "Account email: {email}",
+  "email.planChangeRequest.locale": "Locale: {locale}",
+  "email.planChangeRequest.region": "Region: {region}",
+  "email.planChangeRequest.actor": "User: {userId}"
 }

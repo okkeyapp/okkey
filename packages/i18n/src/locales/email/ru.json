@@ -60,5 +60,16 @@
   "email.contacts.invite.noteNoUrl": "Откройте Okkey, разблокируйте хранилище → Настройки → Восстановление и ответьте на приглашение.",
   "email.contacts.invite.noteIgnore": "Если вы не знаете этого человека или не хотите помогать — проигнорируйте письмо или отклоните в приложении.",
   "email.contacts.invite.textFooterWithUrl": "Ответить: {helpUrl}",
-  "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}"
+  "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}",
+  "email.planChangeRequest.subject": "Заявка на тариф {plan} — {workspaceName}",
+  "email.planChangeRequest.lead": "Новая заявка на смену тарифа Okkey.",
+  "email.planChangeRequest.workspace": "Пространство: {workspaceName} ({workspaceId})",
+  "email.planChangeRequest.deploymentMode": "Тип развёртывания: {mode}",
+  "email.planChangeRequest.currentPlan": "Текущий тариф: {plan}",
+  "email.planChangeRequest.requestedPlan": "Запрошенный тариф: {plan}",
+  "email.planChangeRequest.contactEmail": "Email для связи: {email}",
+  "email.planChangeRequest.accountEmail": "Email аккаунта: {email}",
+  "email.planChangeRequest.locale": "Язык: {locale}",
+  "email.planChangeRequest.region": "Регион: {region}",
+  "email.planChangeRequest.actor": "Пользователь: {userId}"
 }

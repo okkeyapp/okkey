@@ -24,6 +24,7 @@ import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
+import { PlanChangeRequestService } from "./plan-change-request/service.ts";
 import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
 import { WorkspaceBuiltInProfilesService } from "./workspace-profiles/list-service.ts";
 import { WorkspaceMeVaultProfilesService } from "./routes/workspace-me-vault-profiles.ts";
@@ -114,6 +115,14 @@ async function main(): Promise<void> {
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
     db: storage.postgres,
+  });
+  const planChangeRequestService = new PlanChangeRequestService({
+    db: storage.postgres,
+    workspaces: storage.repositories.workspaces,
+    users: storage.repositories.users,
+    emailTemplates,
+    salesEmail: config.salesEmail,
+    deploymentMode: config.deploymentMode,
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,
@@ -225,6 +234,7 @@ async function main(): Promise<void> {
     capsuleDefaultsService,
     itemTemplatesService,
     workspaceSettingsService,
+    planChangeRequestService,
     workspaceBuiltInRolesService,
     workspaceBuiltInProfilesService,
     workspaceMeVaultProfilesService,

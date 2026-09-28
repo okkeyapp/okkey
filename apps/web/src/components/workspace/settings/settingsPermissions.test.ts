@@ -35,11 +35,12 @@ describe("settingsPermissions", () => {
     matrix.vaults.get = 1;
     matrix.billing.get = 1;
     matrix.members.get = 2;
-    expect(allowedSettingsSections(matrix)).toEqual(["members", "vaults", "plan", "billing"]);
+    expect(allowedSettingsSections(matrix)).toEqual(["members", "vaults", "plan"]);
     expect(firstAllowedSettingsSection(matrix)).toBe("members");
     expect(canGetSettingsSection(matrix, "general")).toBe(false);
     expect(canGetSettingsSection(matrix, "items")).toBe(false);
     expect(canGetSettingsSection(matrix, "plan")).toBe(true);
+    expect(canGetSettingsSection(matrix, "billing")).toBe(true);
   });
 
   it("includes general subsections only when their resources allow GET", () => {
