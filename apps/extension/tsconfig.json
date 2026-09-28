@@ -9,7 +9,11 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@okkey/ui": ["../../packages/ui/src/index.ts"]
+      "@okkey/ui": ["../../packages/ui/src/index.ts"],
+      "@okkey/api": ["../../packages/api/src/index.ts"],
+      "@okkey/auth": ["../../packages/auth/src/index.ts"],
+      "@okkey/types": ["../../packages/types/src/index.ts"],
+      "@okkey/id": ["../../packages/id/src/index.ts"]
     }
   },
   "include": ["src", "wxt.config.ts"]

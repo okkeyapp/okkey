@@ -859,6 +859,28 @@ export interface AccessTokenResponseDto {
   token_type: "Bearer";
 }
 
+/** `POST /auth/extension/code` — short-lived PKCE auth code for browser extension session handoff. */
+export interface ExtensionAuthCodeIssueRequestDto {
+  client_id: string;
+  redirect_uri: string;
+  code_challenge: string;
+  code_challenge_method?: "S256";
+}
+
+export interface ExtensionAuthCodeIssueResponseDto {
+  code: string;
+  expires_at: string;
+  expires_in: number;
+}
+
+/** `POST /auth/extension/token` — exchange auth_code + PKCE verifier for Bearer session. */
+export interface ExtensionAuthTokenRequestDto {
+  client_id: string;
+  redirect_uri: string;
+  code: string;
+  code_verifier: string;
+}
+
 /** `GET /auth/two-factor/status` success body. */
 export interface TwoFactorStatusResponseDto {
   enabled: boolean;

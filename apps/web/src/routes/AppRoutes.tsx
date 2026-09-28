@@ -12,6 +12,7 @@ import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
 import AuthWebAuthnPage from "../pages/auth/AuthWebAuthnPage";
+import ExtensionAuthStartPage from "../pages/auth/ExtensionAuthStartPage";
 import DevUIAlertPage from "../pages/dev-ui/DevUIAlertPage";
 import DevUIBreadcrumbPage from "../pages/dev-ui/DevUIBreadcrumbPage";
 import DevUITooltipPage from "../pages/dev-ui/DevUITooltipPage";
@@ -45,6 +46,7 @@ import {
   ACCOUNT_NEW_PATH,
   ACCOUNT_RESTORE_PATH,
   AUTH_EMAIL_PATH,
+  AUTH_EXTENSION_START_PATH,
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
@@ -119,6 +121,7 @@ export default function AppRoutes() {
           </GuestAuthOnly>
         }
       />
+      <Route path={AUTH_EXTENSION_START_PATH} element={<ExtensionAuthStartPage />} />
       <Route
         path={AUTH_WEBAUTHN_PATH}
         element={

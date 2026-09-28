@@ -9,7 +9,6 @@ export default defineConfig({
   srcDir: "src",
   outDir: ".output",
   imports: false,
-  // Plan: MV3 only (Chromium service worker + Firefox event background).
   manifestVersion: 3,
   suppressWarnings: {
     firefoxDataCollection: true,
@@ -17,10 +16,11 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: "Okkey",
     description: "Okkey password manager extension",
-    // Product slice version without `v` — keep in sync with root package version at release.
     version: "0.0.1",
-    permissions: ["storage"],
-    // Narrow permissions for E0 shell; host access lands with autofill (E4).
+    permissions: ["storage", "tabs"],
+    // E1: session + device API calls to configured Base URL / localhost API.
+    // Autofill host access expands in E4.
+    host_permissions: ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {
@@ -37,6 +37,10 @@ export default defineConfig({
       alias: {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/ui": path.resolve(repoRoot, "packages/ui/src"),
+        "@okkey/api": path.resolve(repoRoot, "packages/api/src"),
+        "@okkey/auth": path.resolve(repoRoot, "packages/auth/src"),
+        "@okkey/types": path.resolve(repoRoot, "packages/types/src"),
+        "@okkey/id": path.resolve(repoRoot, "packages/id/src"),
       },
     },
   }),

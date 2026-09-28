@@ -1487,7 +1487,7 @@
 "@okkey/api@file:packages/api":
   version "0.0.1"
   dependencies:
-    "@okkey/types" "file:../../../home/ubuntu/.cache/yarn/v6/npm-@okkey-api-0.0.1-25465208-8aec-4c51-8359-5d570f900d9c-1790594678021/node_modules/@okkey/types"
+    "@okkey/types" "file:../../../home/ubuntu/.cache/yarn/v6/npm-@okkey-api-0.0.1-4f824c62-5fc4-445b-bd4f-996091a4f2ae-1790608716646/node_modules/@okkey/types"
 
 "@okkey/crypto-wasm@link:./packages/crypto/dist":
   version "0.0.0"
@@ -6797,7 +6797,7 @@ vite-node@3.2.4:
     pathe "^2.0.3"
     vite "^8.0.0"
 
-vite@6.1.0, vite@6.3.5, "vite@^5.0.0 || ^6.0.0 || ^7.0.0-0", "vite@^5.4.19 || ^6.3.4 || ^7.0.0 || ^8.0.0-0", vite@^8.0.0:
+vite@6.3.5, "vite@^5.0.0 || ^6.0.0 || ^7.0.0-0", "vite@^5.4.19 || ^6.3.4 || ^7.0.0 || ^8.0.0-0", vite@^8.0.0:
   version "6.3.5"
   resolved "https://registry.yarnpkg.com/vite/-/vite-6.3.5.tgz#fec73879013c9c0128c8d284504c6d19410d12a3"
   integrity sha512-cZn6NDFE7wdTpINgs++ZJ4N49W2vRp8LCKrn3Ob1kYNtOo21vfDoaV5GzBfLU4MovSAB8uNRm4jgzVQZ+mBzPQ==

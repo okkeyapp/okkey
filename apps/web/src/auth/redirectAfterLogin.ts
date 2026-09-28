@@ -3,6 +3,7 @@ import type { NavigateFunction } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 
 import { DEFAULT_AUTHENTICATED_PATH, invitePath, ITEMS_PATH, WORKSPACES_PATH } from "../routes/paths";
+import { completeExtensionAuthHandoffIfPending } from "./completeExtensionAuthHandoff";
 import { readPendingInviteToken } from "./pendingInviteStorage";
 import { readStoredSession } from "./sessionAuthStorage";
 import { writeStoredCurrentWorkspaceId } from "./workspaceStorage";
@@ -12,6 +13,11 @@ export async function navigateAfterSession(
   navigate: NavigateFunction,
   fallback = DEFAULT_AUTHENTICATED_PATH,
 ): Promise<void> {
+  // Extension PKCE: finish session handoff and leave web (no vault unlock required).
+  if (await completeExtensionAuthHandoffIfPending()) {
+    return;
+  }
+
   const pendingInvite = readPendingInviteToken();
   if (pendingInvite) {
     navigate(invitePath(pendingInvite), { replace: true });

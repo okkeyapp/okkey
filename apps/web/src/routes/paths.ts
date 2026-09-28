@@ -13,6 +13,9 @@ export const AUTH_OTP_PATH = "/auth/otp";
 export const AUTH_TWO_FACTOR_PATH = "/auth/two-factor";
 export const AUTH_WEBAUTHN_PATH = "/auth/webauthn";
 
+/** Browser extension PKCE session start (web half of extension login). */
+export const AUTH_EXTENSION_START_PATH = "/auth/extension/start";
+
 /** @deprecated Old URL; router redirects to {@link ACCOUNT_NEW_PATH} */
 export const AUTH_REGISTRATION_LEGACY_PATH = "/auth/registration";
 

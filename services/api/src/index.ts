@@ -10,6 +10,7 @@ import { DeviceService } from "./device/service.ts";
 import { createEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
+import { ExtensionAuthService } from "./extension-auth/service.ts";
 import { createStorageLayer } from "./storage/index.ts";
 import { SyncService } from "./sync/service.ts";
 import { WorkspacePersonalSyncService } from "./workspace-personal-sync/service.ts";
@@ -66,6 +67,10 @@ async function main(): Promise<void> {
   const sessionService = new SessionService({
     sessions: storage.repositories.sessions,
     config,
+  });
+  const extensionAuthService = new ExtensionAuthService({
+    redis: storage.redis,
+    sessionService,
   });
   const twoFactorService = new TwoFactorService({
     redis: storage.redis,
@@ -246,6 +251,7 @@ async function main(): Promise<void> {
     deviceService,
     accountRecoveryService,
     sessionService,
+    extensionAuthService,
     twoFactorService,
     webauthnService,
     capsuleService,
