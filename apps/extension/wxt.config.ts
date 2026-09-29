@@ -33,6 +33,10 @@ export default defineConfig({
       },
     },
     permissions: ["storage", "tabs"],
+    // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
     // E1: session + device API calls to configured Base URL / localhost API.
     // Autofill host access expands in E4.
     host_permissions: ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
