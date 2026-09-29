@@ -380,7 +380,21 @@ export function PopupApp() {
                       ? "bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground",
                   )}
-                  onClick={() => setHostMode("self-hosted")}
+                  onClick={() => {
+                    setHostMode("self-hosted");
+                    void (async () => {
+                      const last = await readLastServer();
+                      if (
+                        last?.hostMode === "self-hosted" &&
+                        last.webBaseUrl &&
+                        (baseUrlInput === OKKEY_SAAS_WEB_BASE_URL || !baseUrlInput.trim())
+                      ) {
+                        setBaseUrlInput(last.webBaseUrl);
+                      } else if (baseUrlInput === OKKEY_SAAS_WEB_BASE_URL) {
+                        setBaseUrlInput("");
+                      }
+                    })();
+                  }}
                 >
                   Self-hosted
                 </button>
