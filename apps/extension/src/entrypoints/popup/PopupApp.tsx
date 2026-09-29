@@ -26,6 +26,8 @@ import {
 } from "@okkey/i18n";
 import { toast } from "sonner";
 
+import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
+
 import { Toaster } from "../../components/toaster";
 import { createCoreClient } from "../../lib/api";
 import {
@@ -43,6 +45,10 @@ import {
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
 import {
+  unlockExtensionVault,
+  wipeUnlockSecrets,
+} from "../../lib/extensionUnlock";
+import {
   clearSession,
   normalizeWebBaseUrl,
   readDeviceId,
@@ -58,6 +64,8 @@ import {
   type ExtensionProfile,
   type ExtensionSession,
 } from "../../lib/storage";
+import { readExtensionVaultBundle } from "../../lib/vaultStorage";
+import { VaultPopup } from "./VaultPopup";
 
 type Screen =
   | "loading"
@@ -67,6 +75,7 @@ type Screen =
   | "blocked"
   | "rejected"
   | "unlock"
+  | "vault"
   | "error";
 
 type AccountIdentity = {
@@ -131,7 +140,11 @@ export function PopupApp() {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockSecrets, setUnlockSecrets] = useState<UnlockWithMasterPasswordResult | null>(null);
+  const [encryptedPrivateKeyPayload, setEncryptedPrivateKeyPayload] = useState<string | null>(null);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
+  const unlockSecretsRef = useRef<UnlockWithMasterPasswordResult | null>(null);
 
   const t = useCallback(
     (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
@@ -329,7 +342,20 @@ export function PopupApp() {
     }
   };
 
+  const lockVault = useCallback(() => {
+    wipeUnlockSecrets(unlockSecretsRef.current);
+    unlockSecretsRef.current = null;
+    setUnlockSecrets(null);
+    setEncryptedPrivateKeyPayload(null);
+    setMasterPassword("");
+    setScreen("unlock");
+  }, []);
+
   const onLogout = async () => {
+    wipeUnlockSecrets(unlockSecretsRef.current);
+    unlockSecretsRef.current = null;
+    setUnlockSecrets(null);
+    setEncryptedPrivateKeyPayload(null);
     if (profile && session) {
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
       await revokeExtensionDeviceBestEffort(core, trust?.deviceId ?? (await readDeviceId()));
@@ -373,15 +399,48 @@ export function PopupApp() {
 
   const onUnlockSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (!profile || !session || unlockBusy) {
+      return;
+    }
     if (!masterPassword.trim()) {
       toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
       return;
     }
-    // E1: session trusted; full vault unlock (crypto) lands in E2.
-    toast.message("E1 unlock stub", {
-      description:
-        "Session trusted. Vault unlock (master password / PIN) lands in E2 — password was not sent anywhere.",
-    });
+    setUnlockBusy(true);
+    void (async () => {
+      try {
+        const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+        const secrets = await unlockExtensionVault({
+          core,
+          userId: session.user_id,
+          masterPassword,
+        });
+        if (!secrets) {
+          toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
+          return;
+        }
+        const bundle = await readExtensionVaultBundle(session.user_id);
+        if (!bundle?.encrypted_private_key?.payload) {
+          wipeUnlockSecrets(secrets);
+          toast.error(t("unlock.errorTitle"), { description: t("unlock.errorNoLocalVault") });
+          return;
+        }
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = secrets;
+        setUnlockSecrets(secrets);
+        setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+        setMasterPassword("");
+        setScreen("vault");
+        void core.recordVaultUnlock().catch(() => {
+          /* best-effort */
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(t("unlock.errorTitle"), { description: message });
+      } finally {
+        setUnlockBusy(false);
+      }
+    })();
   };
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
@@ -636,6 +695,26 @@ export function PopupApp() {
     );
   }
 
+  if (screen === "vault" && profile && session && unlockSecrets && encryptedPrivateKeyPayload) {
+    return (
+      <PopupFrame>
+        <VaultPopup
+          core={createCoreClient(profile.apiBaseUrl, session.access_token)}
+          userId={session.user_id}
+          webBaseUrl={profile.webBaseUrl}
+          secrets={unlockSecrets}
+          encryptedPrivateKeyPayload={encryptedPrivateKeyPayload}
+          identity={identity}
+          localeSelect={languageSelect}
+          signOutLabel={t("unlock.signOut")}
+          onSignOut={() => void onLogout()}
+          onLock={lockVault}
+          t={t}
+        />
+      </PopupFrame>
+    );
+  }
+
   return (
     <PopupFrame>
       <AuthShell compact logo={shellLogo} title={t("unlock.title")} topRight={languageSelect}>
@@ -656,11 +735,17 @@ export function PopupApp() {
               autoComplete="current-password"
               value={masterPassword}
               onChange={(e) => setMasterPassword(e.target.value)}
+              disabled={unlockBusy}
             />
           </div>
 
-          <Button type="submit" variant="default" className="w-full" disabled={masterPassword.length === 0}>
-            {t("unlock.submit")}
+          <Button
+            type="submit"
+            variant="default"
+            className="w-full"
+            disabled={masterPassword.length === 0 || unlockBusy}
+          >
+            {unlockBusy ? <Spinner className="size-4" /> : t("unlock.submit")}
           </Button>
         </form>
       </AuthShell>

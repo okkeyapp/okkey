@@ -20,9 +20,12 @@
   "dependencies": {
     "@okkey/api": "0.0.1",
     "@okkey/auth": "0.0.1",
+    "@okkey/crypto": "0.0.1",
     "@okkey/i18n": "0.0.1",
+    "@okkey/sync": "0.0.1",
     "@okkey/types": "0.0.1",
     "@okkey/ui": "0.0.1",
+    "@okkey/vault": "0.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sonner": "^2.0.7"
