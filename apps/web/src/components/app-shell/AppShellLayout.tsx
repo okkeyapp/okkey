@@ -1,9 +1,15 @@
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
-import { cn, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@okkey/ui";
+import {
+  AuthShell,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@okkey/ui";
 import type { ReactNode } from "react";
 
 import { useLocale } from "../../locale/LocaleContext";
-import { BodyGradient } from "../BodyGradient";
 
 export type AppShellLayoutProps = {
   title: string;
@@ -43,12 +49,12 @@ export default function AppShellLayout({
     copyright ?? t("web.shell.copyright", { year: new Date().getFullYear() });
 
   return (
-    <div className="relative isolate min-h-screen overflow-x-hidden bg-background text-foreground">
-      <BodyGradient />
-
-      {topLeft != null ? <div className="absolute left-10 top-10 z-10">{topLeft}</div> : null}
-
-      <div className="absolute right-10 top-10 z-10">
+    <AuthShell
+      title={title}
+      description={description}
+      logo={logo}
+      topLeft={topLeft}
+      topRight={
         <Select value={locale} onValueChange={(v) => setLocale(v as WebLocale)} variant="inline">
           <SelectTrigger aria-label={t("web.shell.language.ariaLabel")} className="text-sm font-medium text-foreground">
             <SelectValue />
@@ -61,43 +67,14 @@ export default function AppShellLayout({
             ))}
           </SelectContent>
         </Select>
-      </div>
-
-      <div className="relative flex min-h-screen flex-col py-10">
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div
-            className={cn(
-              "flex min-h-0 flex-1 flex-col items-center justify-center py-6",
-              frameClassName ?? "px-10",
-            )}
-          >
-            <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
-              <header
-                className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
-              >
-                {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
-                <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
-                  {title}
-                </h1>
-                {description != null && description !== "" ? (
-                  <p className="okkey-body text-center text-copy-secondary">{description}</p>
-                ) : null}
-              </header>
-
-              <div className={cn("w-full", childrenClassName)}>{children}</div>
-            </div>
-          </div>
-        </div>
-
-        <footer className="okkey-body mt-8 shrink-0 px-10 text-center text-copy-secondary">
-          {resolvedCopyright}
-        </footer>
-      </div>
-
-      <div
-        className="pointer-events-none absolute inset-0 shadow-[inset_0px_0px_0px_1px_rgba(0,0,0,0.1)] dark:shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)]"
-        aria-hidden
-      />
-    </div>
+      }
+      copyright={resolvedCopyright}
+      contentClassName={contentClassName}
+      frameClassName={frameClassName}
+      headerClassName={headerClassName}
+      childrenClassName={childrenClassName}
+    >
+      {children}
+    </AuthShell>
   );
 }

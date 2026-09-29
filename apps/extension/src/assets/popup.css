@@ -57,8 +57,11 @@
   body,
   #root {
     margin: 0;
-    min-width: 320px;
-    min-height: 420px;
+    width: 600px;
+    height: 450px;
+    min-width: 600px;
+    min-height: 450px;
+    overflow: hidden;
   }
 
   body {

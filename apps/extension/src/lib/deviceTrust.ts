@@ -78,6 +78,22 @@ export async function registerExtensionDevice(
   return result;
 }
 
+/** Best-effort revoke so web pending "New device" popup disappears on extension sign-out. */
+export async function revokeExtensionDeviceBestEffort(
+  core: CoreApiClient,
+  deviceId: string | null | undefined,
+): Promise<void> {
+  const id = deviceId?.trim();
+  if (!id) {
+    return;
+  }
+  try {
+    await core.revokeDevice(id, "signed out from extension");
+  } catch {
+    // Ignore — local wipe still proceeds.
+  }
+}
+
 export async function resolveExtensionDeviceTrust(
   core: CoreApiClient,
 ): Promise<DeviceTrustSnapshot> {

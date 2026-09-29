@@ -1,5 +1,31 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Alert, AlertDescription, AlertTitle, Button, Input, Spinner } from "@okkey/ui";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  AuthShell,
+  Button,
+  DevicePendingView,
+  formatDeviceClientOs,
+  formatDeviceTitle,
+  Input,
+  OkkeyLogoMark,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+  cn,
+  type DevicePendingApprover,
+} from "@okkey/ui";
+import {
+  formatWebMessage,
+  getWebLocaleNativeName,
+  WEB_LOCALES,
+  type WebLocale,
+  type WebMessageValues,
+} from "@okkey/i18n";
 
 import { createCoreClient } from "../../lib/api";
 import {
@@ -12,10 +38,12 @@ import {
   type DeviceTrustSnapshot,
   pollExtensionDeviceTrust,
   resolveExtensionDeviceTrust,
+  revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
 import {
   clearSession,
   normalizeWebBaseUrl,
+  readDeviceId,
   readProfile,
   readSession,
   resolveApiBaseFromWebBase,
@@ -27,17 +55,66 @@ import {
 } from "../../lib/storage";
 
 type Screen = "loading" | "server" | "signing-in" | "pending" | "blocked" | "unlock" | "error";
+type HostMode = "saas" | "self-hosted";
+
+const LOCALE_STORAGE_KEY = "okkey.extension.locale";
+
+function readStoredLocale(): WebLocale {
+  try {
+    const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (raw && (WEB_LOCALES as string[]).includes(raw)) {
+      return raw as WebLocale;
+    }
+  } catch {
+    // ignore
+  }
+  return "ru";
+}
 
 export function PopupApp() {
   const [screen, setScreen] = useState<Screen>("loading");
+  const [locale, setLocale] = useState<WebLocale>(() => readStoredLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
+  const [hostMode, setHostMode] = useState<HostMode>("saas");
   const [baseUrlInput, setBaseUrlInput] = useState(OKKEY_SAAS_WEB_BASE_URL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
   const [unlockNote, setUnlockNote] = useState<string | null>(null);
+
+  const t = useCallback(
+    (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
+    [locale],
+  );
+
+  const onLocaleChange = (next: WebLocale) => {
+    setLocale(next);
+    try {
+      localStorage.setItem(LOCALE_STORAGE_KEY, next);
+    } catch {
+      // ignore
+    }
+  };
+
+  const languageSelect = (
+    <Select value={locale} onValueChange={(v) => onLocaleChange(v as WebLocale)} variant="inline">
+      <SelectTrigger
+        aria-label={t("web.shell.language.ariaLabel")}
+        className="text-sm font-medium text-foreground"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {WEB_LOCALES.map((code) => (
+          <SelectItem key={code} value={code}>
+            {getWebLocaleNativeName(code)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   const refreshTrust = useCallback(async (apiBaseUrl: string, accessToken: string) => {
     const core = createCoreClient(apiBaseUrl, accessToken);
@@ -66,6 +143,9 @@ export function PopupApp() {
       if (existingProfile) {
         setProfile(existingProfile);
         setBaseUrlInput(existingProfile.webBaseUrl);
+        setHostMode(
+          existingProfile.webBaseUrl === OKKEY_SAAS_WEB_BASE_URL ? "saas" : "self-hosted",
+        );
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
@@ -105,11 +185,15 @@ export function PopupApp() {
     setBusy(true);
     setError(null);
     try {
-      const webBaseUrl = normalizeWebBaseUrl(baseUrlInput);
+      const rawUrl = hostMode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : baseUrlInput;
+      const webBaseUrl = normalizeWebBaseUrl(rawUrl);
       const apiBaseUrl = resolveApiBaseFromWebBase(webBaseUrl);
       const previous = await readProfile();
       if (previous && previous.webBaseUrl !== webBaseUrl) {
-        // Plan: changing URL → logout + wipe
+        if (session) {
+          const core = createCoreClient(previous.apiBaseUrl, session.access_token);
+          await revokeExtensionDeviceBestEffort(core, trust?.deviceId ?? (await readDeviceId()));
+        }
         await wipeAllExtensionData();
       }
       const nextProfile: ExtensionProfile = {
@@ -147,17 +231,18 @@ export function PopupApp() {
     }
   };
 
-  const onUseSaasPreset = () => {
-    setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
-  };
-
   const onLogout = async () => {
+    if (profile && session) {
+      const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+      await revokeExtensionDeviceBestEffort(core, trust?.deviceId ?? (await readDeviceId()));
+    }
     await wipeAllExtensionData();
     setProfile(null);
     setSession(null);
     setTrust(null);
     setMasterPassword("");
     setUnlockNote(null);
+    setHostMode("saas");
     setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
     setScreen("server");
   };
@@ -168,216 +253,279 @@ export function PopupApp() {
       setUnlockNote("Enter your master password.");
       return;
     }
-    // E1: unlock UI only — real MP/PIN crypto arrives in E2.
     setUnlockNote(
       "Session trusted. Vault unlock (master password / PIN) lands in E2 — password was not sent anywhere.",
     );
   };
 
+  const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
+  const copyright = t("web.shell.copyright", { year: new Date().getFullYear() });
+
   if (screen === "loading") {
     return (
-      <Shell>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4" />
-          Loading…
-        </div>
-      </Shell>
+      <PopupFrame>
+        <AuthShell
+          compact
+          hideHeader
+          topRight={languageSelect}
+          copyright={copyright}
+          className="min-h-[450px]"
+        >
+          <div className="flex min-h-[280px] items-center justify-center" role="status" aria-busy="true">
+            <Spinner />
+          </div>
+        </AuthShell>
+      </PopupFrame>
     );
   }
 
   if (screen === "server") {
     return (
-      <Shell>
-        <header className="flex flex-col gap-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Okkey</p>
-          <h1 className="text-lg font-semibold text-foreground">Server</h1>
-          <p className="text-sm text-muted-foreground">
-            One Base URL for your Okkey instance. Sign-in opens in the browser; unlock stays here.
-          </p>
-        </header>
+      <PopupFrame>
+        <AuthShell
+          compact
+          logo={shellLogo}
+          topRight={languageSelect}
+          copyright={copyright}
+          className="min-h-[450px]"
+        >
+          <div className="flex w-full flex-col gap-4">
+            <div
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-secondary/60 p-1"
+              role="tablist"
+              aria-label="Host"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={hostMode === "saas"}
+                className={cn(
+                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  hostMode === "saas"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => {
+                  setHostMode("saas");
+                  setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
+                }}
+              >
+                SaaS
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={hostMode === "self-hosted"}
+                className={cn(
+                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  hostMode === "self-hosted"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setHostMode("self-hosted")}
+              >
+                Self-hosted
+              </button>
+            </div>
 
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="base-url">
-            Base URL
-          </label>
-          <Input
-            id="base-url"
-            value={baseUrlInput}
-            onChange={(e) => setBaseUrlInput(e.target.value)}
-            placeholder="https://app.okkey.io"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <Button type="button" variant="outline" size="sm" onClick={onUseSaasPreset}>
-            Use SaaS ({OKKEY_SAAS_WEB_BASE_URL})
-          </Button>
-        </div>
+            {hostMode === "self-hosted" ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="base-url">
+                  URL
+                </label>
+                <Input
+                  id="base-url"
+                  value={baseUrlInput}
+                  onChange={(e) => setBaseUrlInput(e.target.value)}
+                  placeholder="https://okkey.example.com"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            ) : null}
 
-        {error ? (
-          <Alert variant="destructive">
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
+            {error ? (
+              <Alert variant="error">
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
 
-        <div className="mt-auto">
-          <Button type="button" className="w-full" disabled={busy} onClick={() => void onSaveServerAndLogin()}>
-            {busy ? "Opening…" : "Sign in via browser"}
-          </Button>
-        </div>
-      </Shell>
+            <Button
+              type="button"
+              className="w-full"
+              disabled={busy}
+              onClick={() => void onSaveServerAndLogin()}
+            >
+              {busy ? <Spinner className="size-4" /> : t("auth.email.submit")}
+            </Button>
+          </div>
+        </AuthShell>
+      </PopupFrame>
     );
   }
 
   if (screen === "signing-in") {
     return (
-      <Shell>
-        <header className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold">Sign in</h1>
-          <p className="text-sm text-muted-foreground">
-            Complete login in the browser tab. This popup will continue after the callback — vault stays locked
-            until you unlock here.
-          </p>
-        </header>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4" />
-          Waiting for browser callback…
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-auto"
-          onClick={() => {
-            void (async () => {
-              const nextSession = await readSession();
-              const nextProfile = await readProfile();
-              if (nextSession && nextProfile) {
-                setSession(nextSession);
-                setProfile(nextProfile);
-                await refreshTrust(nextProfile.apiBaseUrl, nextSession.access_token);
-              }
-            })();
-          }}
+      <PopupFrame>
+        <AuthShell
+          compact
+          hideHeader
+          topRight={languageSelect}
+          copyright={copyright}
+          className="min-h-[450px]"
         >
-          I finished sign-in — continue
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => setScreen("server")}>
-          Change server
-        </Button>
-      </Shell>
+          <div className="flex min-h-[280px] items-center justify-center" role="status" aria-busy="true">
+            <Spinner />
+          </div>
+          <div className="mt-4 flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                void (async () => {
+                  const nextSession = await readSession();
+                  const nextProfile = await readProfile();
+                  if (nextSession && nextProfile) {
+                    setSession(nextSession);
+                    setProfile(nextProfile);
+                    await refreshTrust(nextProfile.apiBaseUrl, nextSession.access_token);
+                  }
+                })();
+              }}
+            >
+              Continue
+            </Button>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => setScreen("server")}>
+              Back
+            </Button>
+          </div>
+        </AuthShell>
+      </PopupFrame>
     );
   }
 
-  if (screen === "pending") {
-    return (
-      <Shell>
-        <header className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold">Approve this extension</h1>
-          <p className="text-sm text-muted-foreground">
-            This device is pending approval. Open Okkey on a trusted device and approve{" "}
-            <span className="font-medium">Extension</span> — same flow as a new web browser.
-          </p>
-        </header>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4" />
-          Waiting for approval…
-        </div>
-        {trust?.approverDevices?.length ? (
-          <ul className="space-y-1 text-xs text-muted-foreground">
-            {trust.approverDevices.slice(0, 5).map((d) => (
-              <li key={d.device_id}>{d.device_name ?? d.device_id}</li>
-            ))}
-          </ul>
-        ) : null}
-        <Button type="button" variant="ghost" className="mt-auto" onClick={() => void onLogout()}>
-          Sign out
-        </Button>
-      </Shell>
-    );
-  }
+  if (screen === "pending" || screen === "blocked") {
+    const blocked = screen === "blocked";
+    const approvers: DevicePendingApprover[] = (trust?.approverDevices ?? []).map((device) => ({
+      ...device,
+      title: formatDeviceTitle(device),
+      subtitle: formatDeviceClientOs(device),
+    }));
 
-  if (screen === "blocked") {
     return (
-      <Shell>
-        <Alert variant="destructive">
-          <AlertTitle>Device blocked</AlertTitle>
-          <AlertDescription>
-            {trust?.blockedUntil
-              ? `Blocked until ${trust.blockedUntil}.`
-              : "This extension device is blocked."}
-          </AlertDescription>
-        </Alert>
-        <Button type="button" variant="outline" className="mt-auto" onClick={() => void onLogout()}>
-          Sign out
-        </Button>
-      </Shell>
+      <PopupFrame>
+        <AuthShell
+          compact
+          logo={shellLogo}
+          title={
+            blocked ? t("web.devicePending.blockedTitle") : t("web.devicePending.title")
+          }
+          description={
+            blocked ? t("web.devicePending.blockedBody") : t("web.devicePending.body")
+          }
+          topRight={languageSelect}
+          copyright={copyright}
+          contentClassName="max-w-md"
+          className="min-h-[450px]"
+        >
+          <DevicePendingView
+            mode={blocked ? "blocked" : "pending"}
+            approversHeading={t("web.devicePending.approversHeading")}
+            approversEmpty={t("web.devicePending.approversEmpty")}
+            waitingLabel={t("web.devicePending.waiting")}
+            blockedDetail={
+              blocked
+                ? trust?.blockedUntil
+                  ? t("web.devicePending.blockedUntil", { date: trust.blockedUntil })
+                  : t("web.devicePending.blockedForever")
+                : undefined
+            }
+            approvers={approvers}
+            footer={
+              <Button type="button" variant="ghost" className="w-full" onClick={() => void onLogout()}>
+                {t("web.accountMenu.logout")}
+              </Button>
+            }
+          />
+        </AuthShell>
+      </PopupFrame>
     );
   }
 
   if (screen === "error") {
     return (
-      <Shell>
-        <Alert variant="destructive">
-          <AlertTitle>Something went wrong</AlertTitle>
-          <AlertDescription>{error ?? "Unknown error"}</AlertDescription>
-        </Alert>
-        <Button
-          type="button"
-          className="mt-auto"
-          onClick={() => {
-            void clearSession();
-            setScreen("server");
-          }}
+      <PopupFrame>
+        <AuthShell
+          compact
+          logo={shellLogo}
+          topRight={languageSelect}
+          copyright={copyright}
+          className="min-h-[450px]"
         >
-          Back to server
-        </Button>
-      </Shell>
+          <Alert variant="error">
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription>{error ?? "Unknown error"}</AlertDescription>
+          </Alert>
+          <Button
+            type="button"
+            className="mt-4 w-full"
+            onClick={() => {
+              void clearSession();
+              setScreen("server");
+            }}
+          >
+            Back
+          </Button>
+        </AuthShell>
+      </PopupFrame>
     );
   }
 
-  // unlock
   return (
-    <Shell>
-      <header className="flex flex-col gap-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Okkey</p>
-        <h1 className="text-lg font-semibold">Unlock</h1>
-        <p className="text-sm text-muted-foreground">
-          Enter your master password in the extension. Web login does not unlock the vault here.
-        </p>
-      </header>
-      <form className="flex flex-col gap-3" onSubmit={onUnlockSubmit}>
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="mp">
-            Master password
-          </label>
-          <Input
-            id="mp"
-            type="password"
-            value={masterPassword}
-            onChange={(e) => setMasterPassword(e.target.value)}
-            autoComplete="current-password"
-          />
-        </div>
-        {unlockNote ? (
-          <Alert>
-            <AlertTitle>E1 unlock stub</AlertTitle>
-            <AlertDescription>{unlockNote}</AlertDescription>
-          </Alert>
-        ) : null}
-        <Button type="submit" className="w-full">
-          Unlock
+    <PopupFrame>
+      <AuthShell
+        compact
+        logo={shellLogo}
+        title="Unlock"
+        description="Enter your master password in the extension. Web login does not unlock the vault here."
+        topRight={languageSelect}
+        copyright={copyright}
+        className="min-h-[450px]"
+      >
+        <form className="flex flex-col gap-3" onSubmit={onUnlockSubmit}>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-muted-foreground" htmlFor="mp">
+              Master password
+            </label>
+            <Input
+              id="mp"
+              type="password"
+              value={masterPassword}
+              onChange={(e) => setMasterPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          {unlockNote ? (
+            <Alert>
+              <AlertTitle>E1 unlock stub</AlertTitle>
+              <AlertDescription>{unlockNote}</AlertDescription>
+            </Alert>
+          ) : null}
+          <Button type="submit" className="w-full">
+            Unlock
+          </Button>
+        </form>
+        <p className="mt-3 text-xs text-muted-foreground">Profile: {profile?.webBaseUrl ?? "—"}</p>
+        <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => void onLogout()}>
+          {t("web.accountMenu.logout")}
         </Button>
-      </form>
-      <p className="text-xs text-muted-foreground">
-        Profile: {profile?.webBaseUrl ?? "—"}
-      </p>
-      <Button type="button" variant="ghost" size="sm" onClick={() => void onLogout()}>
-        Sign out / change server
-      </Button>
-    </Shell>
+      </AuthShell>
+    </PopupFrame>
   );
 }
 
-function Shell({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-[420px] w-[320px] flex-col gap-4 p-4">{children}</div>;
+function PopupFrame({ children }: { children: React.ReactNode }) {
+  return <div className="h-[450px] w-[600px] overflow-hidden">{children}</div>;
 }

@@ -48,6 +48,7 @@ export default defineConfig({
         "@okkey/ui": path.resolve(repoRoot, "packages/ui/src"),
         "@okkey/api": path.resolve(repoRoot, "packages/api/src"),
         "@okkey/auth": path.resolve(repoRoot, "packages/auth/src"),
+        "@okkey/i18n": path.resolve(repoRoot, "packages/i18n/src"),
         "@okkey/types": path.resolve(repoRoot, "packages/types/src"),
         "@okkey/id": path.resolve(repoRoot, "packages/id/src"),
       },
