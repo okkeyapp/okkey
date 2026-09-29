@@ -27,6 +27,7 @@
   "web.nav.help": "Помощь",
   "web.accountMenu.settings": "Мои настройки",
   "web.accountMenu.logout": "Выйти",
+  "web.accountMenu.changeServer": "Сменить сервер",
   "web.settingsPopup.close": "Закрыть",
   "web.settingsPopup.menuLabel": "Мои настройки",
   "web.settingsPopup.main.label": "Основное",
@@ -1673,5 +1674,8 @@
   "extension.vault.copyGuardTitle": "Незнакомый URL",
   "extension.vault.copyGuardBody": "Сайт не совпадает с URL записи. Всё равно скопировать?",
   "extension.vault.copyGuardCancel": "Отмена",
-  "extension.vault.copyGuardConfirm": "Скопировать"
+  "extension.vault.copyGuardConfirm": "Скопировать",
+  "extension.vault.changeServer": "Сменить сервер",
+  "extension.vault.createRecord": "Создать запись",
+  "extension.vault.openInWeb": "Открыть в web"
 }

@@ -49,22 +49,21 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 2. Load the unpacked Chromium build (`apps/extension/output/chrome-mv3`).
 3. Complete E1 flow: Server URL → web PKCE login → device approve on a trusted device.
 4. On **Unlock**, enter the master password (same as web).
-5. After unlock the popup shows vault UI (not a stub):
-   - Workspace switcher
-   - Search + Active / All / Archived filters
-   - Item list → select an item → read card with copy
-   - Copy-guard confirm when the active tab URL does not match item website URLs
-   - **Edit in web** / Capsules / Devices / Open web → deep links via `browser.tabs.create`
-6. **Lock** returns to Unlock; **Sign out** wipes extension session/device/vault cache (keeps last server URL).
+5. After unlock the popup shows vault UI (web-mobile parity shell):
+   - Header: burger · search (live on-type) · Lock · «+» (opens web `/items?popup=newItem`)
+   - Burger drawer: workspace switcher, vaults (no «+»), folders (no folder settings), profile (Logout + Change server; no My settings). No Workspace nav / Documentation / Help.
+   - Left **250px** list: filter dropdown + sort like web, row layout like web
+   - Right: item card toolbar like web mobile (no back) — edit/capsule/favorite/archive deep-link to web; field copy with copy-guard
+6. **Lock** returns to Unlock; **Sign out** / **Change server** wipe extension session/device/vault cache (keeps last server URL preference) and return to the server screen.
 
 ### After rebuilding
 
 1. `chrome://extensions` → Okkey → **Reload**.
-2. Open popup → unlock → verify list/card/search/workspace switch.
+2. Open popup → unlock → verify list/card/search/burger/lock/+.
 
 ## Scope
 
 - **E0:** popup shell + background SW, Chromium/Firefox builds.
 - **E1:** Server URL, web+PKCE session, device pending/approve.
-- **E2 (this phase):** Local MP unlock, sync read, workspace switch, search/filter, item read/copy + copy-guard, web deep links.
-- **Not yet (E3+):** delete/favorite mutations, PIN setup UI, autofill / content scripts.
+- **E2 (this phase):** Local MP unlock, sync read, workspace switch, search/filter, item read/copy + copy-guard, web deep links, vault UI parity with web mobile shell.
+- **Not yet (E3+):** delete/favorite mutations in-extension, PIN setup UI, autofill / content scripts.

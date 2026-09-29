@@ -708,6 +708,7 @@ export function PopupApp() {
           localeSelect={languageSelect}
           signOutLabel={t("unlock.signOut")}
           onSignOut={() => void onLogout()}
+          onChangeServer={() => void onLogout()}
           onLock={lockVault}
           t={t}
         />

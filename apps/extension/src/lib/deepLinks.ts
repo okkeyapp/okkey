@@ -10,6 +10,8 @@ export function buildItemsDeepLink(input: {
   webBaseUrl: string;
   workspaceId?: string;
   itemId?: string;
+  vaultId?: string;
+  popup?: string;
 }): string {
   const params = new URLSearchParams();
   if (input.workspaceId) {
@@ -18,8 +20,25 @@ export function buildItemsDeepLink(input: {
   if (input.itemId) {
     params.set("item", input.itemId);
   }
+  if (input.vaultId) {
+    params.set("vault", input.vaultId);
+  }
+  if (input.popup) {
+    params.set("popup", input.popup);
+  }
   const qs = params.toString();
   return joinWebPath(input.webBaseUrl, qs ? `/items?${qs}` : "/items");
+}
+
+export function buildNewItemDeepLink(input: {
+  webBaseUrl: string;
+  workspaceId?: string;
+}): string {
+  return buildItemsDeepLink({
+    webBaseUrl: input.webBaseUrl,
+    workspaceId: input.workspaceId,
+    popup: "newItem",
+  });
 }
 
 export function buildEditItemDeepLink(input: {
@@ -32,6 +51,21 @@ export function buildEditItemDeepLink(input: {
     item: input.itemId,
     popup: "editItem",
   });
+  return joinWebPath(input.webBaseUrl, `/items?${params.toString()}`);
+}
+
+export function buildNewCapsuleDeepLink(input: {
+  webBaseUrl: string;
+  workspaceId?: string;
+  itemId: string;
+}): string {
+  const params = new URLSearchParams({
+    popup: "newCapsule",
+    capsuleFromItemId: input.itemId,
+  });
+  if (input.workspaceId) {
+    params.set("workspace", input.workspaceId);
+  }
   return joinWebPath(input.webBaseUrl, `/items?${params.toString()}`);
 }
 

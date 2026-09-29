@@ -27,6 +27,7 @@
   "web.nav.help": "Help",
   "web.accountMenu.settings": "My settings",
   "web.accountMenu.logout": "Log out",
+  "web.accountMenu.changeServer": "Change server",
   "web.settingsPopup.close": "Close",
   "web.settingsPopup.menuLabel": "My settings",
   "web.settingsPopup.main.label": "General",
@@ -1673,5 +1674,8 @@
   "extension.vault.copyGuardTitle": "Unfamiliar URL",
   "extension.vault.copyGuardBody": "This site does not match the item URLs. Copy anyway?",
   "extension.vault.copyGuardCancel": "Cancel",
-  "extension.vault.copyGuardConfirm": "Copy"
+  "extension.vault.copyGuardConfirm": "Copy",
+  "extension.vault.changeServer": "Change server",
+  "extension.vault.createRecord": "Create item",
+  "extension.vault.openInWeb": "Open in web"
 }

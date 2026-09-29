@@ -229,6 +229,10 @@ export default function ItemsShellTopBar() {
             aria-label={searchFieldLabel}
             autoComplete="off"
             data-testid="items-shell-search"
+            defaultValue={searchFromUrl}
+            onChange={(e) => {
+              submitWorkspaceSearch(e.currentTarget.value);
+            }}
             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
               if (e.key !== "Enter") {
                 return;
