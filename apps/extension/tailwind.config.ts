@@ -42,6 +42,10 @@ const config: Config = {
           DEFAULT: "hsl(var(--popover) / <alpha-value>)",
           foreground: "hsl(var(--popover-foreground) / <alpha-value>)",
         },
+        copy: {
+          primary: "hsl(var(--foreground) / <alpha-value>)",
+          secondary: "hsl(var(--muted-foreground) / <alpha-value>)",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -68,8 +68,10 @@ export default function WorkspacesListTile({ workspace, description, onClick }: 
           </div>
         ) : null}
       </div>
-      <div className="flex w-full flex-col items-center gap-0.5 text-center">
-        <p className="w-full text-base font-semibold leading-relaxed text-foreground">{workspace.name}</p>
+      <div className="flex min-w-0 w-full flex-col items-center gap-0.5 text-center">
+        <p className="w-full min-w-0 truncate text-base font-semibold leading-relaxed text-foreground">
+          {workspace.name}
+        </p>
         <p className="w-full text-sm font-normal leading-5 text-muted-foreground">{description}</p>
       </div>
     </button>

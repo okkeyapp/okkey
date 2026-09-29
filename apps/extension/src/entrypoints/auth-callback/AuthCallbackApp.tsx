@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { Alert, AlertDescription, AlertTitle, Spinner } from "@okkey/ui";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  AuthShell,
+  OkkeyLogoMark,
+  Spinner,
+} from "@okkey/ui";
+import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 
 import { exchangeExtensionAuthCode } from "../../lib/api";
 import {
@@ -9,12 +17,30 @@ import {
   writeSession,
 } from "../../lib/storage";
 
+const LOCALE_STORAGE_KEY = "okkey.extension.locale";
+
+function readStoredLocale(): WebLocale {
+  try {
+    const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (raw === "en" || raw === "ru") {
+      return raw;
+    }
+  } catch {
+    // ignore
+  }
+  return "ru";
+}
+
 /**
  * Receives `?code=&state=` from web after PKCE login and exchanges for a Bearer session.
  */
 export function AuthCallbackApp() {
   const [status, setStatus] = useState<"working" | "ok" | "error">("working");
   const [message, setMessage] = useState("Completing sign-in…");
+  const locale = readStoredLocale();
+  const copyright = formatWebMessage(locale, "web.shell.copyright", {
+    year: new Date().getFullYear(),
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -66,12 +92,16 @@ export function AuthCallbackApp() {
   }, []);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Okkey extension</h1>
+    <AuthShell
+      logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      title="Okkey extension"
+      description={status === "working" ? message : undefined}
+      copyright={copyright}
+      contentClassName="max-w-md"
+    >
       {status === "working" ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4" />
-          {message}
+        <div className="flex flex-col items-center gap-3 py-4" role="status" aria-busy="true">
+          <Spinner />
         </div>
       ) : null}
       {status === "ok" ? (
@@ -81,11 +111,11 @@ export function AuthCallbackApp() {
         </Alert>
       ) : null}
       {status === "error" ? (
-        <Alert variant="destructive">
+        <Alert variant="error">
           <AlertTitle>Sign-in failed</AlertTitle>
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       ) : null}
-    </div>
+    </AuthShell>
   );
 }

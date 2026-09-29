@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  AccountUserBar,
   Alert,
   AlertDescription,
   AlertTitle,
@@ -40,8 +41,10 @@ import {
 import { OKKEY_SAAS_WEB_BASE_URL } from "../../lib/deviceChannel";
 import {
   type DeviceTrustSnapshot,
+  markExtensionDeviceDeferred,
   pollExtensionDeviceTrust,
   resolveExtensionDeviceTrust,
+  retryExtensionDeviceRegistration,
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
 import {
@@ -61,7 +64,21 @@ import {
   type ExtensionSession,
 } from "../../lib/storage";
 
-type Screen = "loading" | "server" | "signing-in" | "pending" | "blocked" | "unlock" | "error";
+type Screen =
+  | "loading"
+  | "server"
+  | "signing-in"
+  | "pending"
+  | "blocked"
+  | "rejected"
+  | "unlock"
+  | "error";
+
+type AccountIdentity = {
+  email: string;
+  firstName: string;
+  lastName: string;
+};
 
 const LOCALE_STORAGE_KEY = "okkey.extension.locale";
 
@@ -75,6 +92,20 @@ function readStoredLocale(): WebLocale {
     // ignore
   }
   return "ru";
+}
+
+function formatAbsoluteDate(iso: string, locale: WebLocale): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function ServerUrlHelpIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -98,12 +129,15 @@ export function PopupApp() {
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
+  const [identity, setIdentity] = useState<AccountIdentity | null>(null);
   const [hostMode, setHostMode] = useState<ExtensionHostMode>("saas");
   const [baseUrlInput, setBaseUrlInput] = useState(OKKEY_SAAS_WEB_BASE_URL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
   const [unlockNote, setUnlockNote] = useState<string | null>(null);
+  const [showUnlockError, setShowUnlockError] = useState(false);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
 
   const t = useCallback(
@@ -138,14 +172,28 @@ export function PopupApp() {
     </Select>
   );
 
-  const refreshTrust = useCallback(async (apiBaseUrl: string, accessToken: string) => {
-    const core = createCoreClient(apiBaseUrl, accessToken);
-    const snapshot = await resolveExtensionDeviceTrust(core);
+  const loadIdentity = useCallback(async (apiBaseUrl: string, accessToken: string) => {
+    try {
+      const core = createCoreClient(apiBaseUrl, accessToken);
+      const account = await core.getAccountProfile();
+      setIdentity({
+        email: account.email ?? "",
+        firstName: account.first_name ?? "",
+        lastName: account.last_name ?? "",
+      });
+    } catch {
+      setIdentity(null);
+    }
+  }, []);
+
+  const applyTrustSnapshot = useCallback((snapshot: DeviceTrustSnapshot) => {
     setTrust(snapshot);
     if (snapshot.status === "trusted") {
       setScreen("unlock");
     } else if (snapshot.status === "blocked") {
       setScreen("blocked");
+    } else if (snapshot.status === "rejected") {
+      setScreen("rejected");
     } else if (snapshot.status === "pending" || snapshot.status === "checking") {
       setScreen("pending");
     } else if (snapshot.status === "error") {
@@ -155,6 +203,16 @@ export function PopupApp() {
       setScreen("pending");
     }
   }, []);
+
+  const refreshTrust = useCallback(
+    async (apiBaseUrl: string, accessToken: string) => {
+      const core = createCoreClient(apiBaseUrl, accessToken);
+      const snapshot = await resolveExtensionDeviceTrust(core);
+      applyTrustSnapshot(snapshot);
+      void loadIdentity(apiBaseUrl, accessToken);
+    },
+    [applyTrustSnapshot, loadIdentity],
+  );
 
   const applyServerPreference = useCallback((mode: ExtensionHostMode, webBaseUrl: string) => {
     setHostMode(mode);
@@ -204,25 +262,20 @@ export function PopupApp() {
   }, [screen, hostMode]);
 
   useEffect(() => {
-    if (screen !== "pending" || !profile || !session) {
+    if ((screen !== "pending" && screen !== "blocked") || !profile || !session) {
       return;
     }
     const core = createCoreClient(profile.apiBaseUrl, session.access_token);
     const timer = window.setInterval(() => {
-      void pollExtensionDeviceTrust(core, trust?.deviceId ?? null).then((snapshot) => {
-        setTrust(snapshot);
-        if (snapshot.status === "trusted") {
-          setScreen("unlock");
-        } else if (snapshot.status === "blocked") {
-          setScreen("blocked");
-        } else if (snapshot.status === "rejected") {
-          setError("Device was rejected. Sign in again.");
-          setScreen("error");
+      void pollExtensionDeviceTrust(core, trust?.deviceId ?? null).then(async (snapshot) => {
+        if (snapshot.status === "rejected") {
+          await markExtensionDeviceDeferred(snapshot.deviceId);
         }
+        applyTrustSnapshot(snapshot);
       });
     }, 4_000);
     return () => window.clearInterval(timer);
-  }, [screen, profile, session, trust?.deviceId]);
+  }, [screen, profile, session, trust?.deviceId, applyTrustSnapshot]);
 
   const onSaveServerAndLogin = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -288,8 +341,10 @@ export function PopupApp() {
     setProfile(null);
     setSession(null);
     setTrust(null);
+    setIdentity(null);
     setMasterPassword("");
     setUnlockNote(null);
+    setShowUnlockError(false);
     const lastServer = await readLastServer();
     if (lastServer) {
       applyServerPreference(
@@ -302,12 +357,31 @@ export function PopupApp() {
     setScreen("server");
   };
 
-  const onUnlockSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!masterPassword.trim()) {
-      setUnlockNote("Enter your master password.");
+  const onRetryRegistration = async () => {
+    if (!profile || !session || retrying) {
       return;
     }
+    setRetrying(true);
+    try {
+      const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+      const snapshot = await retryExtensionDeviceRegistration(core);
+      applyTrustSnapshot(snapshot);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+      setScreen("error");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const onUnlockSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    setShowUnlockError(false);
+    if (!masterPassword.trim()) {
+      setShowUnlockError(true);
+      return;
+    }
+    // E1: session trusted; full vault unlock (crypto) lands in E2.
     setUnlockNote(
       "Session trusted. Vault unlock (master password / PIN) lands in E2 — password was not sent anywhere.",
     );
@@ -315,6 +389,17 @@ export function PopupApp() {
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
   const copyright = t("web.shell.copyright", { year: new Date().getFullYear() });
+
+  const identityBar =
+    identity || session ? (
+      <AccountUserBar
+        email={identity?.email ?? ""}
+        firstName={identity?.firstName ?? ""}
+        lastName={identity?.lastName ?? ""}
+        signOutLabel={t("unlock.signOut")}
+        onSignOut={() => void onLogout()}
+      />
+    ) : null;
 
   if (screen === "loading") {
     return (
@@ -491,8 +576,20 @@ export function PopupApp() {
     );
   }
 
-  if (screen === "pending" || screen === "blocked") {
+  if (screen === "pending" || screen === "blocked" || screen === "rejected") {
     const blocked = screen === "blocked";
+    const rejected = screen === "rejected";
+    const title = blocked
+      ? t("web.devicePending.blockedTitle")
+      : rejected
+        ? t("web.devicePending.rejectedTitle")
+        : t("web.devicePending.title");
+    const description = blocked
+      ? t("web.devicePending.blockedBody")
+      : rejected
+        ? t("web.devicePending.rejectedBody")
+        : t("web.devicePending.body");
+    const mode = blocked ? "blocked" : rejected ? "rejected" : "pending";
     const approvers: DevicePendingApprover[] = (trust?.approverDevices ?? []).map((device) => ({
       ...device,
       title: formatDeviceTitle(device),
@@ -504,36 +601,40 @@ export function PopupApp() {
         <AuthShell
           compact
           logo={shellLogo}
-          title={
-            blocked ? t("web.devicePending.blockedTitle") : t("web.devicePending.title")
-          }
-          description={
-            blocked ? t("web.devicePending.blockedBody") : t("web.devicePending.body")
-          }
+          title={title}
+          description={description}
           topRight={languageSelect}
           copyright={copyright}
           contentClassName="max-w-md"
           className="min-h-[450px]"
         >
-          <DevicePendingView
-            mode={blocked ? "blocked" : "pending"}
-            approversHeading={t("web.devicePending.approversHeading")}
-            approversEmpty={t("web.devicePending.approversEmpty")}
-            waitingLabel={t("web.devicePending.waiting")}
-            blockedDetail={
-              blocked
-                ? trust?.blockedUntil
-                  ? t("web.devicePending.blockedUntil", { date: trust.blockedUntil })
-                  : t("web.devicePending.blockedForever")
-                : undefined
-            }
-            approvers={approvers}
-            footer={
-              <Button type="button" variant="ghost" className="w-full" onClick={() => void onLogout()}>
-                {t("web.accountMenu.logout")}
-              </Button>
-            }
-          />
+          <div className="flex w-full flex-col gap-6">
+            {identityBar}
+            <DevicePendingView
+              mode={mode}
+              approversHeading={t("web.devicePending.approversHeading")}
+              approversEmpty={t("web.devicePending.approversEmpty")}
+              waitingLabel={t("web.devicePending.waiting")}
+              blockedDetail={
+                blocked
+                  ? trust?.blockedUntil
+                    ? t("web.devicePending.blockedUntil", {
+                        date: formatAbsoluteDate(trust.blockedUntil, locale),
+                      })
+                    : t("web.devicePending.blockedForever")
+                  : undefined
+              }
+              approvers={approvers}
+              actions={
+                rejected ? (
+                  <Button type="button" disabled={retrying} onClick={() => void onRetryRegistration()}>
+                    {retrying ? <Spinner className="size-4" /> : null}
+                    {t("web.devicePending.retry")}
+                  </Button>
+                ) : null
+              }
+            />
+          </div>
         </AuthShell>
       </PopupFrame>
     );
@@ -573,39 +674,54 @@ export function PopupApp() {
       <AuthShell
         compact
         logo={shellLogo}
-        title="Unlock"
-        description="Enter your master password in the extension. Web login does not unlock the vault here."
+        title={t("unlock.title")}
+        description={t("unlock.description")}
         topRight={languageSelect}
         copyright={copyright}
         className="min-h-[450px]"
       >
-        <form className="flex flex-col gap-3" onSubmit={onUnlockSubmit}>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="mp">
-              Master password
+        <form onSubmit={onUnlockSubmit} className="flex w-full flex-col gap-6" noValidate>
+          {identityBar}
+
+          <div className="flex w-full flex-col gap-3">
+            <label
+              htmlFor="unlock-master-password"
+              className="min-w-0 flex-1 okkey-small font-medium text-copy-primary"
+            >
+              {t("unlock.masterPassword")}
             </label>
             <Input
-              id="mp"
+              id="unlock-master-password"
+              name="password"
               type="password"
-              value={masterPassword}
-              onChange={(e) => setMasterPassword(e.target.value)}
               autoComplete="current-password"
+              value={masterPassword}
+              onChange={(e) => {
+                setMasterPassword(e.target.value);
+                setShowUnlockError(false);
+                setUnlockNote(null);
+              }}
             />
           </div>
+
+          {showUnlockError ? (
+            <Alert variant="error">
+              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+              <AlertDescription>{t("unlock.errorIncorrectPassword")}</AlertDescription>
+            </Alert>
+          ) : null}
+
           {unlockNote ? (
             <Alert>
               <AlertTitle>E1 unlock stub</AlertTitle>
               <AlertDescription>{unlockNote}</AlertDescription>
             </Alert>
           ) : null}
-          <Button type="submit" className="w-full">
-            Unlock
+
+          <Button type="submit" variant="default" className="w-full" disabled={masterPassword.length === 0}>
+            {t("unlock.submit")}
           </Button>
         </form>
-        <p className="mt-3 text-xs text-muted-foreground">Profile: {profile?.webBaseUrl ?? "—"}</p>
-        <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => void onLogout()}>
-          {t("web.accountMenu.logout")}
-        </Button>
       </AuthShell>
     </PopupFrame>
   );

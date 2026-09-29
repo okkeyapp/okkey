@@ -320,6 +320,10 @@ export { BodyGradient } from "./components/auth/body-gradient.js";
 export { OkkeyLogoMark } from "./components/auth/okkey-logo-mark.js";
 export { AuthShell, type AuthShellLocaleOption, type AuthShellProps } from "./components/auth/auth-shell.js";
 export {
+  AccountUserBar,
+  type AccountUserBarProps,
+} from "./components/account/account-user-bar.js";
+export {
   DeviceTypeIcon,
   resolveDeviceBrandIcon,
   resolveDeviceFormIcon,

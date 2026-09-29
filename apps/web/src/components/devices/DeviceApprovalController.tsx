@@ -11,6 +11,7 @@ import {
   cn,
   controlGroupItemFixedClassName,
 } from "@okkey/ui";
+import { ApiRequestError } from "@okkey/api";
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -45,6 +46,20 @@ function formatAbsoluteDate(iso: string, locale: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+/** Stale id / already-resolved races: treat as success so first click does not toast an error. */
+function isBenignApprovalRace(err: unknown): boolean {
+  if (!(err instanceof ApiRequestError)) {
+    return false;
+  }
+  const code = err.body.error;
+  return (
+    code === "DEVICE_APPROVAL_NOT_FOUND" ||
+    code === "DEVICE_NOT_FOUND" ||
+    code === "DEVICE_APPROVAL_ALREADY_RESOLVED" ||
+    code === "DEVICE_APPROVAL_EXPIRED"
+  );
 }
 
 /**
@@ -103,19 +118,32 @@ export default function DeviceApprovalController() {
     if (resolving) {
       return;
     }
+    const targetDeviceId = current.device_id;
+    const approverId = currentDeviceId;
     setResolving(true);
     try {
       if (decision === "approve") {
-        await core.approveDevice(current.device_id, currentDeviceId);
+        await core.approveDevice(targetDeviceId, approverId);
         toast.success(t("web.settingsPopup.devices.toast.trusted"));
       } else {
-        await core.rejectDevice(current.device_id, currentDeviceId, "dismissed by user");
+        await core.rejectDevice(targetDeviceId, approverId, "dismissed by user");
         toast.success(t("web.settingsPopup.devices.toast.revoked"));
       }
-      dismissDevice(current.device_id);
+      dismissDevice(targetDeviceId);
       emitDevicesChanged();
-    } catch {
-      toast.error(t("web.settingsPopup.devices.error.generic"));
+    } catch (err) {
+      if (isBenignApprovalRace(err)) {
+        dismissDevice(targetDeviceId);
+        emitDevicesChanged();
+        toast.success(
+          decision === "approve"
+            ? t("web.settingsPopup.devices.toast.trusted")
+            : t("web.settingsPopup.devices.toast.revoked"),
+        );
+      } else {
+        toast.error(t("web.settingsPopup.devices.error.generic"));
+      }
+    } finally {
       setResolving(false);
     }
   };
@@ -124,14 +152,23 @@ export default function DeviceApprovalController() {
     if (resolving) {
       return;
     }
+    const targetDeviceId = current.device_id;
+    const approverId = currentDeviceId;
     setResolving(true);
     try {
-      await core.blockDevice(current.device_id, currentDeviceId, { duration });
-      dismissDevice(current.device_id);
+      await core.blockDevice(targetDeviceId, approverId, { duration });
+      dismissDevice(targetDeviceId);
       emitDevicesChanged();
       toast.success(t("web.settingsPopup.devices.toast.blocked"));
-    } catch {
-      toast.error(t("web.settingsPopup.devices.error.generic"));
+    } catch (err) {
+      if (isBenignApprovalRace(err)) {
+        dismissDevice(targetDeviceId);
+        emitDevicesChanged();
+        toast.success(t("web.settingsPopup.devices.toast.blocked"));
+      } else {
+        toast.error(t("web.settingsPopup.devices.error.generic"));
+      }
+    } finally {
       setResolving(false);
     }
   };

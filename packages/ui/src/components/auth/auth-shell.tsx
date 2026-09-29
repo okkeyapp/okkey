@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils.js";
+import { ScrollArea } from "../ui/scroll-area.js";
 import { BodyGradient } from "./body-gradient.js";
 
 export type AuthShellLocaleOption = {
@@ -62,11 +63,16 @@ export function AuthShell({
       {topLeft != null ? <div className="absolute left-4 top-4 z-10 sm:left-10 sm:top-10">{topLeft}</div> : null}
       {topRight != null ? <div className="absolute right-4 top-4 z-10 sm:right-10 sm:top-10">{topRight}</div> : null}
 
-      <div className={cn("relative flex flex-col py-6", compact ? "min-h-0 flex-1" : "min-h-screen py-10")}>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-col py-6",
+          compact ? "flex-1" : "min-h-screen py-10",
+        )}
+      >
+        <ScrollArea className="min-h-0 w-full flex-1">
           <div
             className={cn(
-              "flex min-h-0 flex-1 flex-col items-center justify-center py-4",
+              "flex min-h-0 flex-col items-center justify-center py-4",
               frameClassName ?? (compact ? "px-6" : "px-10"),
             )}
           >
@@ -90,7 +96,7 @@ export function AuthShell({
               {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
             </div>
           </div>
-        </div>
+        </ScrollArea>
 
         {copyright ? (
           <footer className="okkey-body mt-4 shrink-0 px-6 text-center text-xs text-muted-foreground sm:px-10">

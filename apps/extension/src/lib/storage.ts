@@ -7,6 +7,11 @@ export const STORAGE_KEYS = {
   devicePublicKey: "okkey.extension.devicePublicKey",
   deviceFingerprint: "okkey.extension.deviceFingerprint",
   deviceId: "okkey.extension.deviceId",
+  /**
+   * After trusted device dismisses ("Не сейчас"), stay deferred until explicit retry.
+   * Prevents auto re-register → pending popup loop.
+   */
+  deviceDeferred: "okkey.extension.deviceDeferred",
   /** Survives logout / wipe — last chosen SaaS vs self-hosted server URL. */
   lastServer: "okkey.extension.lastServer",
 } as const;
@@ -129,6 +134,35 @@ export async function writeDeviceId(deviceId: string): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.deviceId]: deviceId });
 }
 
+export type ExtensionDeviceDeferred = {
+  deviceId: string | null;
+  deferredAt: number;
+};
+
+export async function readDeviceDeferred(): Promise<ExtensionDeviceDeferred | null> {
+  const result = await storageArea().get(STORAGE_KEYS.deviceDeferred);
+  const raw = result[STORAGE_KEYS.deviceDeferred] as ExtensionDeviceDeferred | undefined;
+  if (!raw || typeof raw.deferredAt !== "number") {
+    return null;
+  }
+  return {
+    deviceId: typeof raw.deviceId === "string" && raw.deviceId.trim() ? raw.deviceId.trim() : null,
+    deferredAt: raw.deferredAt,
+  };
+}
+
+export async function writeDeviceDeferred(deviceId: string | null): Promise<void> {
+  const next: ExtensionDeviceDeferred = {
+    deviceId: deviceId?.trim() || null,
+    deferredAt: Date.now(),
+  };
+  await storageArea().set({ [STORAGE_KEYS.deviceDeferred]: next });
+}
+
+export async function clearDeviceDeferred(): Promise<void> {
+  await storageArea().remove(STORAGE_KEYS.deviceDeferred);
+}
+
 export async function readLastServer(): Promise<ExtensionLastServer | null> {
   const result = await storageArea().get(STORAGE_KEYS.lastServer);
   const raw = result[STORAGE_KEYS.lastServer] as ExtensionLastServer | undefined;
@@ -163,6 +197,7 @@ export async function wipeAllExtensionData(): Promise<void> {
     STORAGE_KEYS.devicePublicKey,
     STORAGE_KEYS.deviceFingerprint,
     STORAGE_KEYS.deviceId,
+    STORAGE_KEYS.deviceDeferred,
   ]);
 }
 

@@ -4,8 +4,11 @@ import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types"
 import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./api";
 import { parseBrowserEnvironment } from "./browserEnvironment";
 import {
+  clearDeviceDeferred,
+  readDeviceDeferred,
   readDeviceFingerprint,
   readDevicePublicKey,
+  writeDeviceDeferred,
   writeDeviceFingerprint,
   writeDeviceId,
   writeDevicePublicKey,
@@ -75,6 +78,7 @@ export async function registerExtensionDevice(
     },
   });
   await writeDeviceId(result.device_id);
+  await clearDeviceDeferred();
   return result;
 }
 
@@ -94,10 +98,22 @@ export async function revokeExtensionDeviceBestEffort(
   }
 }
 
+export async function markExtensionDeviceDeferred(deviceId: string | null): Promise<void> {
+  await writeDeviceDeferred(deviceId);
+}
+
+/**
+ * Resolve whether this extension install is trusted; register as pending when new.
+ *
+ * After a trusted device dismisses ("Не сейчас"), we keep a deferred flag and do **not**
+ * auto-register again — mirrors web rejected UX until explicit retry.
+ */
 export async function resolveExtensionDeviceTrust(
   core: CoreApiClient,
+  options?: { forceRegister?: boolean },
 ): Promise<DeviceTrustSnapshot> {
   const fingerprint = await ensureFingerprint();
+  const deferred = options?.forceRegister ? null : await readDeviceDeferred();
 
   let listed: {
     devices: DeviceListItemDto[];
@@ -122,6 +138,7 @@ export async function resolveExtensionDeviceTrust(
     const untilMs =
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
+      await clearDeviceDeferred();
       return {
         status: "blocked",
         deviceId: blockedMatch.device_id,
@@ -134,6 +151,7 @@ export async function resolveExtensionDeviceTrust(
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
     await writeDeviceId(trustedMatch.device_id);
+    await clearDeviceDeferred();
     return {
       status: "trusted",
       deviceId: trustedMatch.device_id,
@@ -144,9 +162,19 @@ export async function resolveExtensionDeviceTrust(
   const pendingMatch = listed.pending.find((device) => fingerprintMatch(device, fingerprint));
   if (pendingMatch) {
     await writeDeviceId(pendingMatch.device_id);
+    await clearDeviceDeferred();
     return {
       status: "pending",
       deviceId: pendingMatch.device_id,
+      approverDevices: listed.devices,
+    };
+  }
+
+  // Dismissed on a trusted device — stay deferred until the user requests again.
+  if (deferred) {
+    return {
+      status: "rejected",
+      deviceId: deferred.deviceId,
       approverDevices: listed.devices,
     };
   }
@@ -184,6 +212,14 @@ export async function resolveExtensionDeviceTrust(
   }
 }
 
+/** Explicit re-request after deferred / rejected — same as web retryDeviceRegistration. */
+export async function retryExtensionDeviceRegistration(
+  core: CoreApiClient,
+): Promise<DeviceTrustSnapshot> {
+  await clearDeviceDeferred();
+  return resolveExtensionDeviceTrust(core, { forceRegister: true });
+}
+
 export async function pollExtensionDeviceTrust(
   core: CoreApiClient,
   pendingDeviceId: string | null,
@@ -201,6 +237,7 @@ export async function pollExtensionDeviceTrust(
     const untilMs =
       blockedMatch.blocked_until == null ? null : new Date(blockedMatch.blocked_until).getTime();
     if (untilMs === null || untilMs > Date.now()) {
+      await clearDeviceDeferred();
       return {
         status: "blocked",
         deviceId: blockedMatch.device_id,
@@ -213,6 +250,7 @@ export async function pollExtensionDeviceTrust(
   const trustedMatch = listed.devices.find((device) => fingerprintMatch(device, fingerprint));
   if (trustedMatch) {
     await writeDeviceId(trustedMatch.device_id);
+    await clearDeviceDeferred();
     return {
       status: "trusted",
       deviceId: trustedMatch.device_id,
@@ -227,6 +265,7 @@ export async function pollExtensionDeviceTrust(
       : undefined);
 
   if (pendingMatch) {
+    await clearDeviceDeferred();
     return {
       status: "pending",
       deviceId: pendingMatch.device_id,
@@ -234,9 +273,15 @@ export async function pollExtensionDeviceTrust(
     };
   }
 
+  const deferred = await readDeviceDeferred();
+  const rejectedId = pendingDeviceId ?? deferred?.deviceId ?? null;
+  if (rejectedId && !deferred) {
+    await writeDeviceDeferred(rejectedId);
+  }
+
   return {
     status: "rejected",
-    deviceId: pendingDeviceId,
+    deviceId: rejectedId,
     approverDevices: listed.devices,
   };
 }

@@ -54,6 +54,16 @@ export function DevicePendingView({
 
       {mode === "pending" ? (
         <div className="flex flex-col gap-3">
+          {waitingLabel ? (
+            <div
+              className="flex items-center justify-center gap-2 py-1 text-sm text-muted-foreground"
+              role="status"
+              aria-busy="true"
+            >
+              <Spinner className="size-4" />
+              <span>{waitingLabel}</span>
+            </div>
+          ) : null}
           {approversHeading ? (
             <p className="text-sm font-medium text-foreground">{approversHeading}</p>
           ) : null}
@@ -77,12 +87,6 @@ export function DevicePendingView({
               ))}
             </ul>
           )}
-          {waitingLabel ? (
-            <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground">
-              <Spinner className="size-4" />
-              <span>{waitingLabel}</span>
-            </div>
-          ) : null}
         </div>
       ) : null}
 
