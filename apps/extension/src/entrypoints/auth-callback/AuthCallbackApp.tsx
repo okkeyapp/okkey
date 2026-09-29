@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  AuthShell,
-  OkkeyLogoMark,
-  Spinner,
-} from "@okkey/ui";
+import { AuthShell, OkkeyLogoMark, Spinner } from "@okkey/ui";
 import { formatWebMessage, type WebLocale } from "@okkey/i18n";
+import { toast } from "sonner";
 
+import { Toaster } from "../../components/toaster";
 import { exchangeExtensionAuthCode } from "../../lib/api";
 import {
   clearPkcePending,
@@ -77,11 +72,16 @@ export function AuthCallbackApp() {
         if (!cancelled) {
           setStatus("ok");
           setMessage("Signed in. You can close this tab and open the Okkey extension popup.");
+          toast.success("Session ready", {
+            description: "Signed in. You can close this tab and open the Okkey extension popup.",
+          });
         }
       } catch (err: unknown) {
         if (!cancelled) {
+          const text = err instanceof Error ? err.message : String(err);
           setStatus("error");
-          setMessage(err instanceof Error ? err.message : String(err));
+          setMessage(text);
+          toast.error("Sign-in failed", { description: text });
         }
       }
     }
@@ -92,30 +92,24 @@ export function AuthCallbackApp() {
   }, []);
 
   return (
-    <AuthShell
-      logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      title="Okkey extension"
-      description={status === "working" ? message : undefined}
-      copyright={copyright}
-      contentClassName="max-w-md"
-    >
-      {status === "working" ? (
-        <div className="flex flex-col items-center gap-3 py-4" role="status" aria-busy="true">
-          <Spinner />
-        </div>
-      ) : null}
-      {status === "ok" ? (
-        <Alert>
-          <AlertTitle>Session ready</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      ) : null}
-      {status === "error" ? (
-        <Alert variant="error">
-          <AlertTitle>Sign-in failed</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      ) : null}
-    </AuthShell>
+    <>
+      <Toaster />
+      <AuthShell
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+        title="Okkey extension"
+        description={status === "working" ? message : status === "ok" ? message : undefined}
+        copyright={copyright}
+        contentClassName="max-w-[340px]"
+      >
+        {status === "working" ? (
+          <div className="flex flex-col items-center gap-3 py-4" role="status" aria-busy="true">
+            <Spinner />
+          </div>
+        ) : null}
+        {status === "error" ? (
+          <p className="okkey-body text-center text-sm text-muted-foreground">{message}</p>
+        ) : null}
+      </AuthShell>
+    </>
   );
 }

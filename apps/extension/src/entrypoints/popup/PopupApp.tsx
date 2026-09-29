@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AccountUserBar,
-  Alert,
-  AlertDescription,
-  AlertTitle,
   AuthShell,
   Button,
-  DevicePendingView,
-  formatDeviceClientOs,
-  formatDeviceTitle,
   Input,
   OkkeyLogoMark,
   Select,
@@ -22,7 +16,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-  type DevicePendingApprover,
 } from "@okkey/ui";
 import {
   formatWebMessage,
@@ -31,7 +24,9 @@ import {
   type WebLocale,
   type WebMessageValues,
 } from "@okkey/i18n";
+import { toast } from "sonner";
 
+import { Toaster } from "../../components/toaster";
 import { createCoreClient } from "../../lib/api";
 import {
   buildExtensionAuthStartUrl,
@@ -136,8 +131,6 @@ export function PopupApp() {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
-  const [unlockNote, setUnlockNote] = useState<string | null>(null);
-  const [showUnlockError, setShowUnlockError] = useState(false);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
 
   const t = useCallback(
@@ -197,7 +190,9 @@ export function PopupApp() {
     } else if (snapshot.status === "pending" || snapshot.status === "checking") {
       setScreen("pending");
     } else if (snapshot.status === "error") {
-      setError(snapshot.errorMessage ?? "Device registration failed");
+      const message = snapshot.errorMessage ?? "Device registration failed";
+      setError(message);
+      toast.error(message);
       setScreen("error");
     } else {
       setScreen("pending");
@@ -325,7 +320,9 @@ export function PopupApp() {
       await browser.tabs.create({ url: startUrl });
       setScreen("signing-in");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      toast.error(message);
       setScreen("server");
     } finally {
       setBusy(false);
@@ -343,8 +340,6 @@ export function PopupApp() {
     setTrust(null);
     setIdentity(null);
     setMasterPassword("");
-    setUnlockNote(null);
-    setShowUnlockError(false);
     const lastServer = await readLastServer();
     if (lastServer) {
       applyServerPreference(
@@ -367,7 +362,9 @@ export function PopupApp() {
       const snapshot = await retryExtensionDeviceRegistration(core);
       applyTrustSnapshot(snapshot);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      toast.error(message);
       setScreen("error");
     } finally {
       setRetrying(false);
@@ -376,15 +373,15 @@ export function PopupApp() {
 
   const onUnlockSubmit = (event: FormEvent) => {
     event.preventDefault();
-    setShowUnlockError(false);
     if (!masterPassword.trim()) {
-      setShowUnlockError(true);
+      toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
       return;
     }
     // E1: session trusted; full vault unlock (crypto) lands in E2.
-    setUnlockNote(
-      "Session trusted. Vault unlock (master password / PIN) lands in E2 — password was not sent anywhere.",
-    );
+    toast.message("E1 unlock stub", {
+      description:
+        "Session trusted. Vault unlock (master password / PIN) lands in E2 — password was not sent anywhere.",
+    });
   };
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
@@ -404,14 +401,8 @@ export function PopupApp() {
   if (screen === "loading") {
     return (
       <PopupFrame>
-        <AuthShell
-          compact
-          hideHeader
-          topRight={languageSelect}
-          copyright={copyright}
-          className="min-h-[450px]"
-        >
-          <div className="flex min-h-[280px] items-center justify-center" role="status" aria-busy="true">
+        <AuthShell compact hideHeader topRight={languageSelect} copyright={copyright}>
+          <div className="flex min-h-[200px] items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
         </AuthShell>
@@ -430,7 +421,6 @@ export function PopupApp() {
             description={t("auth.extension.description")}
             topRight={languageSelect}
             copyright={copyright}
-            className="min-h-[450px]"
           >
             <form className="flex w-full flex-col gap-4" onSubmit={(e) => void onSaveServerAndLogin(e)}>
               <div
@@ -518,13 +508,6 @@ export function PopupApp() {
                 </div>
               ) : null}
 
-              {error ? (
-                <Alert variant="error">
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              ) : null}
-
               <Button type="submit" className="w-full" disabled={busy}>
                 {busy ? <Spinner className="size-4" /> : t("auth.email.submit")}
               </Button>
@@ -538,14 +521,8 @@ export function PopupApp() {
   if (screen === "signing-in") {
     return (
       <PopupFrame>
-        <AuthShell
-          compact
-          hideHeader
-          topRight={languageSelect}
-          copyright={copyright}
-          className="min-h-[450px]"
-        >
-          <div className="flex min-h-[280px] items-center justify-center" role="status" aria-busy="true">
+        <AuthShell compact hideHeader topRight={languageSelect} copyright={copyright}>
+          <div className="flex min-h-[200px] items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
           <div className="mt-4 flex flex-col gap-2">
@@ -588,13 +565,7 @@ export function PopupApp() {
       ? t("web.devicePending.blockedBody")
       : rejected
         ? t("web.devicePending.rejectedBody")
-        : t("web.devicePending.body");
-    const mode = blocked ? "blocked" : rejected ? "rejected" : "pending";
-    const approvers: DevicePendingApprover[] = (trust?.approverDevices ?? []).map((device) => ({
-      ...device,
-      title: formatDeviceTitle(device),
-      subtitle: formatDeviceClientOs(device),
-    }));
+        : undefined;
 
     return (
       <PopupFrame>
@@ -605,35 +576,42 @@ export function PopupApp() {
           description={description}
           topRight={languageSelect}
           copyright={copyright}
-          contentClassName="max-w-md"
-          className="min-h-[450px]"
         >
           <div className="flex w-full flex-col gap-6">
             {identityBar}
-            <DevicePendingView
-              mode={mode}
-              approversHeading={t("web.devicePending.approversHeading")}
-              approversEmpty={t("web.devicePending.approversEmpty")}
-              waitingLabel={t("web.devicePending.waiting")}
-              blockedDetail={
-                blocked
-                  ? trust?.blockedUntil
-                    ? t("web.devicePending.blockedUntil", {
-                        date: formatAbsoluteDate(trust.blockedUntil, locale),
-                      })
-                    : t("web.devicePending.blockedForever")
-                  : undefined
-              }
-              approvers={approvers}
-              actions={
-                rejected ? (
-                  <Button type="button" disabled={retrying} onClick={() => void onRetryRegistration()}>
-                    {retrying ? <Spinner className="size-4" /> : null}
-                    {t("web.devicePending.retry")}
-                  </Button>
-                ) : null
-              }
-            />
+
+            {screen === "pending" ? (
+              <div className="flex w-full flex-col items-center gap-6">
+                <div
+                  className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                  aria-busy="true"
+                >
+                  <Spinner className="size-4" />
+                  <span>{t("web.devicePending.waiting")}</span>
+                </div>
+                <p className="okkey-body text-center text-sm text-muted-foreground">
+                  {t("web.devicePending.bodyCompact")}
+                </p>
+              </div>
+            ) : null}
+
+            {blocked ? (
+              <p className="text-center text-sm text-muted-foreground">
+                {trust?.blockedUntil
+                  ? t("web.devicePending.blockedUntil", {
+                      date: formatAbsoluteDate(trust.blockedUntil, locale),
+                    })
+                  : t("web.devicePending.blockedForever")}
+              </p>
+            ) : null}
+
+            {rejected ? (
+              <Button type="button" disabled={retrying} onClick={() => void onRetryRegistration()}>
+                {retrying ? <Spinner className="size-4" /> : null}
+                {t("web.devicePending.retry")}
+              </Button>
+            ) : null}
           </div>
         </AuthShell>
       </PopupFrame>
@@ -643,22 +621,13 @@ export function PopupApp() {
   if (screen === "error") {
     return (
       <PopupFrame>
-        <AuthShell
-          compact
-          logo={shellLogo}
-          topRight={languageSelect}
-          copyright={copyright}
-          className="min-h-[450px]"
-        >
-          <Alert variant="error">
-            <AlertTitle>Something went wrong</AlertTitle>
-            <AlertDescription>{error ?? "Unknown error"}</AlertDescription>
-          </Alert>
+        <AuthShell compact logo={shellLogo} topRight={languageSelect} copyright={copyright}>
           <Button
             type="button"
-            className="mt-4 w-full"
+            className="w-full"
             onClick={() => {
               void clearSession();
+              setError(null);
               setScreen("server");
             }}
           >
@@ -671,15 +640,7 @@ export function PopupApp() {
 
   return (
     <PopupFrame>
-      <AuthShell
-        compact
-        logo={shellLogo}
-        title={t("unlock.title")}
-        description={t("unlock.description")}
-        topRight={languageSelect}
-        copyright={copyright}
-        className="min-h-[450px]"
-      >
+      <AuthShell compact logo={shellLogo} title={t("unlock.title")} topRight={languageSelect} copyright={copyright}>
         <form onSubmit={onUnlockSubmit} className="flex w-full flex-col gap-6" noValidate>
           {identityBar}
 
@@ -696,27 +657,9 @@ export function PopupApp() {
               type="password"
               autoComplete="current-password"
               value={masterPassword}
-              onChange={(e) => {
-                setMasterPassword(e.target.value);
-                setShowUnlockError(false);
-                setUnlockNote(null);
-              }}
+              onChange={(e) => setMasterPassword(e.target.value)}
             />
           </div>
-
-          {showUnlockError ? (
-            <Alert variant="error">
-              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
-              <AlertDescription>{t("unlock.errorIncorrectPassword")}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          {unlockNote ? (
-            <Alert>
-              <AlertTitle>E1 unlock stub</AlertTitle>
-              <AlertDescription>{unlockNote}</AlertDescription>
-            </Alert>
-          ) : null}
 
           <Button type="submit" variant="default" className="w-full" disabled={masterPassword.length === 0}>
             {t("unlock.submit")}
@@ -728,5 +671,10 @@ export function PopupApp() {
 }
 
 function PopupFrame({ children }: { children: React.ReactNode }) {
-  return <div className="h-[450px] w-[600px] overflow-hidden">{children}</div>;
+  return (
+    <div className="relative h-[450px] w-[600px] overflow-hidden">
+      <Toaster />
+      {children}
+    </div>
+  );
 }
