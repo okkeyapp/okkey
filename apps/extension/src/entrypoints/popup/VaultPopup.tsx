@@ -3,6 +3,7 @@ import type { CoreApiClient } from "@okkey/api";
 import type { ItemPlaintextV2, Vault, Workspace } from "@okkey/types";
 import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
 import {
+  copyTextWithVaultClipboardPolicy,
   createWorkspaceVaultItemsReadController,
   itemPlaintextToExtensionListRecord,
   itemUrlsMatchTab,
@@ -15,6 +16,7 @@ import {
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
   Popup,
+  WorkspaceSearchField,
   cn,
   useOkkeyAppShellLayout,
   type OkkeySidebarVaultItem,
@@ -40,6 +42,10 @@ import {
   readActiveTabUrl,
 } from "../../lib/deepLinks";
 import {
+  readExtensionDevicePrefs,
+  touchExtensionUnlockSession,
+} from "../../lib/extensionVaultSession";
+import {
   readStoredCurrentWorkspaceId,
   writeStoredCurrentWorkspaceId,
 } from "../../lib/vaultStorage";
@@ -56,6 +62,10 @@ type VaultPopupProps = {
   onSignOut: () => void;
   onChangeServer: () => void;
   onLock: () => void;
+  /** Optional idle lock interval (ms); activity is tracked via session storage. */
+  idleLockMs?: number;
+  /** Optional activity callback (parent idle timer); session touch runs regardless. */
+  onActivity?: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
 
@@ -69,21 +79,6 @@ function PlusIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
-      <path
-        d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -141,6 +136,16 @@ function filterRows(
       return rows.filter((r) => !r.deleted && r.archived);
     case "recently_deleted":
       return rows.filter((r) => r.deleted);
+    case "reused":
+    case "strong":
+    case "medium":
+    case "weak":
+    case "stale":
+    case "compromised":
+    case "2fa-gap":
+    case "passkey-gap":
+      // Monitoring analytics not available in extension yet.
+      return [];
     default: {
       const _ex: never = filter;
       return _ex;
@@ -223,6 +228,7 @@ export function VaultPopup(props: VaultPopupProps) {
     onSignOut,
     onChangeServer,
     onLock,
+    onActivity,
     t,
   } = props;
 
@@ -241,6 +247,11 @@ export function VaultPopup(props: VaultPopupProps) {
   const [copyConfirm, setCopyConfirm] = useState<{ value: string; label: string } | null>(null);
   const disposeRef = useRef<(() => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const noteActivity = useCallback(() => {
+    void touchExtensionUnlockSession(userId);
+    onActivity?.();
+  }, [onActivity, userId]);
 
   useEffect(() => {
     void readActiveTabUrl().then(setTabUrl);
@@ -336,10 +347,25 @@ export function VaultPopup(props: VaultPopupProps) {
     [items, selectedId],
   );
 
+  const selectedVault = useMemo(
+    () => (selectedItem ? vaults.find((v) => v.id === selectedItem.vaultId) : undefined),
+    [selectedItem, vaults],
+  );
+
   const onSelectWorkspace = async (id: string) => {
     setSelectedId(null);
     setWorkspaceId(id);
     await writeStoredCurrentWorkspaceId(userId, id);
+  };
+
+  const performCopy = async (value: string, label: string) => {
+    noteActivity();
+    const prefs = await readExtensionDevicePrefs(userId);
+    await copyTextWithVaultClipboardPolicy({
+      clipboardClearSeconds: prefs.clipboardClearSeconds,
+      text: value,
+    });
+    toast.message(t("extension.vault.copied"), { description: label });
   };
 
   const copyWithGuard = async (value: string, label: string, itemUrls: readonly string[]) => {
@@ -348,14 +374,12 @@ export function VaultPopup(props: VaultPopupProps) {
       setCopyConfirm({ value, label });
       return;
     }
-    await navigator.clipboard.writeText(value);
-    toast.message(t("extension.vault.copied"), { description: label });
+    await performCopy(value, label);
   };
 
   const confirmCopy = async () => {
     if (!copyConfirm) return;
-    await navigator.clipboard.writeText(copyConfirm.value);
-    toast.message(t("extension.vault.copied"), { description: copyConfirm.label });
+    await performCopy(copyConfirm.value, copyConfirm.label);
     setCopyConfirm(null);
   };
 
@@ -392,6 +416,12 @@ export function VaultPopup(props: VaultPopupProps) {
     isActive: vaultFilterId === vault.id,
   }));
 
+  const vaultOptions = vaults.map((vault) => ({
+    id: vault.id,
+    name: vault.name,
+    emoji: vaultEmoji(vault),
+  }));
+
   const VaultNavLink = useMemo(() => {
     const onPickVault = (id: string) => {
       setVaultFilterId(id);
@@ -415,6 +445,17 @@ export function VaultPopup(props: VaultPopupProps) {
   const onPickWorkspace = async (id: string) => {
     await onSelectWorkspace(id);
   };
+
+  const onSearchChange = (value: string) => {
+    setSearch(value);
+    noteActivity();
+  };
+
+  const onSelectItem = (id: string) => {
+    setSelectedId(id);
+    noteActivity();
+  };
+
   return (
     <OkkeyAppSidebar
       workspaceNavItems={[]}
@@ -470,52 +511,30 @@ export function VaultPopup(props: VaultPopupProps) {
       }
     >
       <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
-        <header className="flex shrink-0 items-center gap-2 border-b border-border px-1 pb-2 pt-0">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 bg-[hsl(var(--extension-shell-header))] p-2">
           <OkkeyAppSidebarToolbar
             openMobileNavLabel={t("web.nav.openMobileNav")}
             className="!p-0"
           />
-          <div className="flex min-w-0 flex-1 justify-center px-0">
-            <div
-              className={cn(
-                "flex h-9 w-full max-w-[420px] shrink-0 items-stretch rounded-md border border-transparent",
-                "bg-[rgba(0,0,0,0.05)] text-sm text-foreground shadow-none transition-[color,box-shadow,border-color,background-color]",
-                "dark:bg-white/[0.06]",
-                "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)]",
-                "focus-within:border-accent focus-within:bg-background focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-              )}
-            >
-              <div className="flex shrink-0 items-center ps-3 pe-2 py-1.5 text-muted-foreground">
-                <SearchIcon />
-              </div>
-              <input
-                ref={searchInputRef}
-                type="text"
-                role="searchbox"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("web.items.searchPlaceholder")}
-                aria-label={t("web.items.searchPlaceholder")}
-                autoComplete="off"
-                spellCheck={false}
-                className={cn(
-                  "min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm leading-5 text-foreground outline-none",
-                  "placeholder:text-muted-foreground",
-                  "focus-visible:outline-none",
-                )}
-              />
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 pe-2">
+          <WorkspaceSearchField
+            value={search}
+            onChange={onSearchChange}
+            placeholder={t("web.items.searchPlaceholder")}
+            inputRef={searchInputRef}
+            clearAriaLabel={t("web.items.searchClear")}
+            showShortcutKbd={false}
+            wrapClassName="px-0 sm:px-0"
+          />
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
               variant="outline"
-              size="icon"
-              className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg"
+              className="h-9 shrink-0 gap-1.5 rounded-lg px-3"
               aria-label={t("extension.vault.lock")}
               onClick={onLock}
             >
               <LockIcon />
+              <span className="text-sm font-medium">{t("extension.vault.lock")}</span>
             </Button>
             <Button
               type="button"
@@ -539,10 +558,15 @@ export function VaultPopup(props: VaultPopupProps) {
               sort={sort}
               selectedId={selectedId}
               vaultScopeLabel={vaultScopeMeta?.name ?? null}
+              vaultOptions={vaultOptions}
               onFilterChange={setFilter}
               onSortChange={setSort}
-              onSelect={setSelectedId}
+              onSelect={onSelectItem}
               onClearVaultScope={() => setVaultFilterId(null)}
+              onPickVault={(id) => {
+                setVaultFilterId(id);
+                setSelectedId(null);
+              }}
               t={t}
             />
           </aside>
@@ -557,6 +581,7 @@ export function VaultPopup(props: VaultPopupProps) {
             ) : (
               <ExtensionItemDetailPane
                 item={selectedItem}
+                vault={selectedVault}
                 emptyLabel={t("extension.vault.noFields")}
                 onCopy={(value, label) =>
                   void copyWithGuard(value, label, itemPlaintextToExtensionListRecord(selectedItem).urls)
@@ -565,6 +590,7 @@ export function VaultPopup(props: VaultPopupProps) {
                 onCreateCapsule={() => openItemInWeb(selectedItem.itemId, { popup: "newCapsule" })}
                 onFavoriteInWeb={() => openItemInWeb(selectedItem.itemId)}
                 onArchiveInWeb={() => openItemInWeb(selectedItem.itemId)}
+                onDeleteInWeb={() => openItemInWeb(selectedItem.itemId)}
                 onOpenInWeb={() => openItemInWeb(selectedItem.itemId)}
                 t={t}
               />

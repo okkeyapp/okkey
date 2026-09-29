@@ -32,7 +32,7 @@ export default defineConfig({
         128: "icon-128.png",
       },
     },
-    permissions: ["storage", "tabs"],
+    permissions: ["storage", "tabs", "idle"],
     // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",

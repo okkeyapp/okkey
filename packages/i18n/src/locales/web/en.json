@@ -514,6 +514,7 @@
   "web.monitoring.vaultScope.personal": "Personal",
   "web.monitoring.vaultScope.shared": "Shared",
   "web.items.searchPlaceholder": "Search…",
+  "web.items.searchClear": "Clear search",
   "web.items.createRecord": "Create item",
   "web.editItemPopup.title": "Edit record",
   "web.editItemPopup.saveErrorGeneric": "Could not save changes. Try again.",

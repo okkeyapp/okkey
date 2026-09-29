@@ -44,6 +44,41 @@ export {
   createWorkspaceVaultItemsReadController,
   type WorkspaceVaultItemsReadController,
 } from "./workspace-vault-items-read.js";
+export {
+  DEFAULT_VAULT_IDLE_LOCK_MS,
+  vaultIdleLockMsFromServerSeconds,
+} from "./vault-idle-lock-ms.js";
+export {
+  CLIPBOARD_CLEAR_OPTIONS_SECONDS,
+  DEFAULT_VAULT_DEVICE_PREFS,
+  IDLE_LOCK_OPTIONS_SECONDS,
+  SECTION_REAUTH_ZONE_IDS,
+  parseVaultDevicePrefs,
+  patchVaultDevicePrefsAsync,
+  readVaultDevicePrefsAsync,
+  serializeVaultDevicePrefs,
+  vaultDevicePrefsKey,
+  writeVaultDevicePrefsAsync,
+  type SectionReauthZoneId,
+  type VaultDevicePrefs,
+  type VaultDevicePrefsStorage,
+} from "./vault-device-prefs.js";
+export {
+  _resetVaultClipboardClearForTests,
+  copyTextWithVaultClipboardPolicy,
+  scheduleClipboardClearAfterCopy,
+} from "./vault-clipboard-clear.js";
+export {
+  VAULT_UNLOCK_SESSION_STORAGE_KEY,
+  clearVaultUnlockSession,
+  persistVaultUnlockSession,
+  readVaultUnlockSessionIfFresh,
+  touchVaultUnlockSession,
+  vaultUnlockSessionExceededIdle,
+  type VaultUnlockSessionFreshResult,
+  type VaultUnlockSessionRecord,
+  type VaultUnlockSessionStorage,
+} from "./vault-unlock-session.js";
 
 export interface VaultStore {
   listVaults(): Promise<Vault[]>;

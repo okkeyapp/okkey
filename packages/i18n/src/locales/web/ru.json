@@ -514,6 +514,7 @@
   "web.monitoring.vaultScope.personal": "Личный",
   "web.monitoring.vaultScope.shared": "Общие",
   "web.items.searchPlaceholder": "Поиск...",
+  "web.items.searchClear": "Очистить поиск",
   "web.items.createRecord": "Создать запись",
   "web.editItemPopup.title": "Редактировать запись",
   "web.editItemPopup.saveErrorGeneric": "Не удалось сохранить изменения. Попробуйте ещё раз.",

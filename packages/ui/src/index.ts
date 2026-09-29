@@ -233,6 +233,48 @@ export {
   urlsForRemoteFavicon,
   type FaviconProps,
 } from "./components/ui/favicon.js";
+export {
+  ChevronDownGlyph,
+  FilterIconAllRecords,
+  FilterIconArchived,
+  FilterIconDeleted,
+  FilterIconFavorites,
+  FilterIconFrame,
+  FilterIconMonitoring,
+  FolderClosedGlyph,
+  SearchGlyph,
+  SortIconAlphaAsc,
+  SortIconAlphaDesc,
+  SortIconNewestFirst,
+  SortIconOldestFirst,
+  sortIconForValue,
+  type ItemsListSortValue,
+} from "./components/items/items-list-filter-icons.js";
+export {
+  ItemDetailActionsBar,
+  type ItemDetailActionsBarProps,
+  type ItemDetailActionsBarTranslate,
+} from "./components/items/item-detail-actions-bar.js";
+export {
+  WorkspaceSearchField,
+  type WorkspaceSearchFieldProps,
+} from "./components/ui/workspace-search-field.js";
+export {
+  ACCENT_TINT_STORAGE_KEY,
+  applySemanticAccentTint,
+  clearSemanticAccentTintInline,
+  readAccentTintEnabled,
+  writeAccentTintEnabled,
+} from "./theme/accent-semantic-tint.js";
+export {
+  applyStoredTheme,
+  DEFAULT_ACCENT_ID,
+  DEFAULT_THEME_PREFERENCE,
+  normalizeThemePreference,
+  readStoredThemePreference,
+  type ThemeMode,
+  type ThemePreference,
+} from "./theme/apply-theme.js";
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
 export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
 export { CalendarMonthYearCaption } from "./components/ui/calendar-month-year-caption.js";

@@ -25,6 +25,30 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
+
+    /* shadcn-style sidebar (matches web) */
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: 210 38% 96%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--accent);
+
+    /* Stacking scale (see packages/ui/src/lib/z-index.ts) */
+    --okkey-z-sticky: 40;
+    --okkey-z-sidebar-overlay: 50;
+    --okkey-z-sidebar: 60;
+    --okkey-z-popup: 70;
+    --okkey-z-popup-nested: 80;
+    --okkey-z-popup-nested-high: 90;
+    --okkey-z-floating: 100;
+    --okkey-z-tooltip: 110;
+    --okkey-z-lightbox: 120;
+
+    /* Extension vault shell header */
+    --extension-shell-header: 216 28% 90%;
   }
 
   .dark {
@@ -47,6 +71,79 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    --sidebar-background: 222.2 84% 6%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: 217.2 32.6% 20%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--accent);
+
+    /* #0a101e */
+    --extension-shell-header: 222 50% 8%;
+  }
+
+  /* Accent overrides (7 variants) — keep in sync with apps/web/src/index.css */
+  :root[data-accent="a1"] {
+    --primary: 215 5.0% 9.0%;
+    --accent: 215 5.0% 9.0%;
+  }
+  :root[data-accent="a2"] {
+    --primary: 217.2 93.2% 59.8%;
+    --accent: 217.2 93.2% 59.8%;
+  }
+  :root[data-accent="a3"] {
+    --primary: 188.7 96.2% 42.7%;
+    --accent: 188.7 96.2% 42.7%;
+  }
+  :root[data-accent="a4"] {
+    --primary: 159.8 83.5% 41.0%;
+    --accent: 159.8 83.5% 41.0%;
+  }
+  :root[data-accent="a5"] {
+    --primary: 24.6 97.0% 53.1%;
+    --accent: 24.6 97.0% 53.1%;
+  }
+  :root[data-accent="a6"] {
+    --primary: 331.0 82.5% 60.4%;
+    --accent: 331.0 82.5% 60.4%;
+  }
+  :root[data-accent="a7"] {
+    --primary: 258.6 90.5% 67.1%;
+    --accent: 258.6 90.5% 67.1%;
+  }
+
+  .dark[data-accent="a1"] {
+    --primary: 215 4.0% 98%;
+    --primary-foreground: 215 5.0% 9%;
+    --accent: 215 4.0% 98%;
+    --accent-foreground: 215 5.0% 9%;
+  }
+  .dark[data-accent="a2"] {
+    --primary: 217.2 93.2% 59.8%;
+    --accent: 217.2 93.2% 59.8%;
+  }
+  .dark[data-accent="a3"] {
+    --primary: 188.7 96.2% 42.7%;
+    --accent: 188.7 96.2% 42.7%;
+  }
+  .dark[data-accent="a4"] {
+    --primary: 159.8 83.5% 41.0%;
+    --accent: 159.8 83.5% 41.0%;
+  }
+  .dark[data-accent="a5"] {
+    --primary: 24.6 97.0% 53.1%;
+    --accent: 24.6 97.0% 53.1%;
+  }
+  .dark[data-accent="a6"] {
+    --primary: 331.0 82.5% 60.4%;
+    --accent: 331.0 82.5% 60.4%;
+  }
+  .dark[data-accent="a7"] {
+    --primary: 258.6 90.5% 67.1%;
+    --accent: 258.6 90.5% 67.1%;
   }
 
   * {
@@ -56,6 +153,11 @@
   body {
     @apply bg-background text-foreground antialiased;
     margin: 0;
+  }
+
+  button {
+    appearance: none;
+    -webkit-appearance: none;
   }
 }
 
