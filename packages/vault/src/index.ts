@@ -1,10 +1,49 @@
-import type { Item, Vault } from "../../types/src/index.js";
+import type { Item, Vault } from "@okkey/types";
 import type {
   CapsuleCreateRequestDto,
   EncryptedBlobDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
-} from "../../types/src/index.js";
+} from "@okkey/types";
+
+export { bytesToBase64, base64ToBytes } from "./base64.js";
+export {
+  mapVaultUnlockBootstrapToStored,
+  parseStoredVaultBundle,
+  type StoredVaultBundle,
+} from "./vault-bundle.js";
+export {
+  unlockWithMasterPassword,
+  type UnlockWithMasterPasswordResult,
+} from "./unlock-with-master-password.js";
+export {
+  formatTagSearchQuery,
+  itemRecordMatchesTagSearch,
+  parseTagSearchNeedle,
+  scoreItemsListRecordSearch,
+  type ItemsListSearchableRecord,
+} from "./workspace-item-search.js";
+export {
+  collectItemUrls,
+  extractReadableItemFields,
+  itemPlaintextToExtensionListRecord,
+  readFirstNonSecretFilledFieldDescription,
+  type ExtensionItemListRecord,
+  type ReadableItemField,
+} from "./item-field-extract.js";
+export {
+  itemUrlMatchesTab,
+  itemUrlsMatchTab,
+  type UrlAutofillScope,
+} from "./item-url-match.js";
+export {
+  resolveVaultItemEncryptionKey,
+  type VaultIdentityKeys,
+} from "./resolve-vault-item-key.js";
+export {
+  createWorkspaceVaultItemsReadController,
+  type WorkspaceVaultItemsReadController,
+} from "./workspace-vault-items-read.js";
 
 export interface VaultStore {
   listVaults(): Promise<Vault[]>;
