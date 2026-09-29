@@ -385,8 +385,6 @@ export function PopupApp() {
   };
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
-  const copyright = t("web.shell.copyright", { year: new Date().getFullYear() });
-
   const identityBar =
     identity || session ? (
       <AccountUserBar
@@ -401,7 +399,7 @@ export function PopupApp() {
   if (screen === "loading") {
     return (
       <PopupFrame>
-        <AuthShell compact hideHeader topRight={languageSelect} copyright={copyright}>
+        <AuthShell compact hideHeader topRight={languageSelect}>
           <div className="flex min-h-[200px] items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
@@ -420,7 +418,7 @@ export function PopupApp() {
             title={t("auth.email.title")}
             description={t("auth.extension.description")}
             topRight={languageSelect}
-            copyright={copyright}
+           
           >
             <form className="flex w-full flex-col gap-4" onSubmit={(e) => void onSaveServerAndLogin(e)}>
               <div
@@ -521,7 +519,7 @@ export function PopupApp() {
   if (screen === "signing-in") {
     return (
       <PopupFrame>
-        <AuthShell compact hideHeader topRight={languageSelect} copyright={copyright}>
+        <AuthShell compact hideHeader topRight={languageSelect}>
           <div className="flex min-h-[200px] items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
@@ -575,7 +573,7 @@ export function PopupApp() {
           title={title}
           description={description}
           topRight={languageSelect}
-          copyright={copyright}
+         
         >
           <div className="flex w-full flex-col gap-6">
             {identityBar}
@@ -621,7 +619,7 @@ export function PopupApp() {
   if (screen === "error") {
     return (
       <PopupFrame>
-        <AuthShell compact logo={shellLogo} topRight={languageSelect} copyright={copyright}>
+        <AuthShell compact logo={shellLogo} topRight={languageSelect}>
           <Button
             type="button"
             className="w-full"
@@ -640,7 +638,7 @@ export function PopupApp() {
 
   return (
     <PopupFrame>
-      <AuthShell compact logo={shellLogo} title={t("unlock.title")} topRight={languageSelect} copyright={copyright}>
+      <AuthShell compact logo={shellLogo} title={t("unlock.title")} topRight={languageSelect}>
         <form onSubmit={onUnlockSubmit} className="flex w-full flex-col gap-6" noValidate>
           {identityBar}
 

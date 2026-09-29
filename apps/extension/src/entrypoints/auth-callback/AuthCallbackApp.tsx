@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { AuthShell, OkkeyLogoMark, Spinner } from "@okkey/ui";
-import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 import { toast } from "sonner";
 
 import { Toaster } from "../../components/toaster";
@@ -12,30 +11,12 @@ import {
   writeSession,
 } from "../../lib/storage";
 
-const LOCALE_STORAGE_KEY = "okkey.extension.locale";
-
-function readStoredLocale(): WebLocale {
-  try {
-    const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (raw === "en" || raw === "ru") {
-      return raw;
-    }
-  } catch {
-    // ignore
-  }
-  return "ru";
-}
-
 /**
  * Receives `?code=&state=` from web after PKCE login and exchanges for a Bearer session.
  */
 export function AuthCallbackApp() {
   const [status, setStatus] = useState<"working" | "ok" | "error">("working");
   const [message, setMessage] = useState("Completing sign-in…");
-  const locale = readStoredLocale();
-  const copyright = formatWebMessage(locale, "web.shell.copyright", {
-    year: new Date().getFullYear(),
-  });
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +79,6 @@ export function AuthCallbackApp() {
         logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
         title="Okkey extension"
         description={status === "working" ? message : status === "ok" ? message : undefined}
-        copyright={copyright}
         contentClassName="max-w-[340px]"
       >
         {status === "working" ? (
