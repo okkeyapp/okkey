@@ -182,6 +182,34 @@ const ExtensionVaultFilterLink = forwardRef(function ExtensionVaultFilterLink(
   );
 });
 
+function WorkspaceSwitcherPanel(props: {
+  workspaces: readonly Workspace[];
+  workspaceId: string | null;
+  localeSelect: React.ReactNode;
+  onPick: (id: string) => void;
+}) {
+  const shell = useOkkeyAppShellLayout();
+  return (
+    <div className="p-1">
+      {props.workspaces.map((ws) => (
+        <DropdownMenuItem
+          key={ws.id}
+          className={cn("cursor-pointer gap-2", ws.id === props.workspaceId && "bg-muted/80")}
+          onSelect={() => {
+            props.onPick(ws.id);
+            shell.setMobileDrawerOpen(false);
+          }}
+        >
+          <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+          {ws.id === props.workspaceId ? <WorkspaceCheckIcon className="size-4 shrink-0" /> : null}
+        </DropdownMenuItem>
+      ))}
+      <div className="mx-1 my-1 h-px bg-border" role="separator" />
+      <div className="px-2 py-1">{props.localeSelect}</div>
+    </div>
+  );
+}
+
 export function VaultPopup(props: VaultPopupProps) {
   const {
     core,
@@ -420,20 +448,12 @@ export function VaultPopup(props: VaultPopupProps) {
         </>
       )}
       workspaceSwitcherDropdown={
-        <div className="p-1">
-          {workspaces.map((ws) => (
-            <DropdownMenuItem
-              key={ws.id}
-              className={cn("cursor-pointer gap-2", ws.id === workspaceId && "bg-muted/80")}
-              onSelect={() => void onPickWorkspace(ws.id)}
-            >
-              <span className="min-w-0 flex-1 truncate">{ws.name}</span>
-              {ws.id === workspaceId ? <WorkspaceCheckIcon className="size-4 shrink-0" /> : null}
-            </DropdownMenuItem>
-          ))}
-          <div className="mx-1 my-1 h-px bg-border" role="separator" />
-          <div className="px-2 py-1">{localeSelect}</div>
-        </div>
+        <WorkspaceSwitcherPanel
+          workspaces={workspaces}
+          workspaceId={workspaceId}
+          localeSelect={localeSelect}
+          onPick={(id) => void onPickWorkspace(id)}
+        />
       }
       accountMenu={
         identity
