@@ -13,7 +13,10 @@
       "@okkey/api": ["../../packages/api/src/index.ts"],
       "@okkey/auth": ["../../packages/auth/src/index.ts"],
       "@okkey/types": ["../../packages/types/src/index.ts"],
-      "@okkey/id": ["../../packages/id/src/index.ts"]
+      "@okkey/id": ["../../packages/id/src/index.ts"],
+      "@okkey/crypto": ["../../packages/crypto/src/index.ts"],
+      "@okkey/vault": ["../../packages/vault/src/index.ts"],
+      "@okkey/sync": ["../../packages/sync/src/index.ts"]
     }
   },
   "include": ["src", "wxt.config.ts"]

@@ -43,30 +43,28 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 1. Open `about:debugging#/runtime/this-firefox`.
 2. **Load Temporary Add-on…** → select `apps/extension/output/firefox-mv3/manifest.json`.
 
-## E1 — Server URL + session auth + device
+## E2 — Vault unlock + read MVP
 
 1. Start Core API + web (`yarn dev` from repo root).
-2. Load the unpacked Chromium build.
-3. Open the popup → **Server**:
-   - Preset SaaS `https://okkey.app`, or
-   - Manual Base URL for local: `http://localhost:5173` (API resolves to `http://localhost:4000`).
-4. **Sign in via browser** → web `/auth/extension/start` → email / passkey / 2FA (session only).
-5. Web redirects to the extension callback (`auth-callback.html`, listed in `web_accessible_resources`) with a one-time `auth_code` (PKCE). Vault unlock on web is **not** required.
-6. Popup continues → device register `channel=Extension` / fingerprint `extension-…` → pending approval on a trusted device (same as web).
-7. After approve → **Unlock** screen (master password stub in E1; real vault unlock in E2).
-
-Changing Base URL wipes the local profile (logout + clear session/device cache).
+2. Load the unpacked Chromium build (`apps/extension/output/chrome-mv3`).
+3. Complete E1 flow: Server URL → web PKCE login → device approve on a trusted device.
+4. On **Unlock**, enter the master password (same as web).
+5. After unlock the popup shows vault UI (not a stub):
+   - Workspace switcher
+   - Search + Active / All / Archived filters
+   - Item list → select an item → read card with copy
+   - Copy-guard confirm when the active tab URL does not match item website URLs
+   - **Edit in web** / Capsules / Devices / Open web → deep links via `browser.tabs.create`
+6. **Lock** returns to Unlock; **Sign out** wipes extension session/device/vault cache (keeps last server URL).
 
 ### After rebuilding
 
-1. `chrome://extensions` → find Okkey → **Reload**.
-2. If Load unpacked is missing: **Load unpacked** → `apps/extension/output/chrome-mv3`.
-3. Open popup → Base URL `http://localhost:5173` → Sign in.
-4. After web login the tab must land on `chrome-extension://<real-id>/auth-callback.html?code=…&state=…` (not `chrome-extension://invalid/`).
-5. Close the tab, open the popup again → pending device / unlock stub.
+1. `chrome://extensions` → Okkey → **Reload**.
+2. Open popup → unlock → verify list/card/search/workspace switch.
 
 ## Scope
 
 - **E0:** popup shell + background SW, Chromium/Firefox builds.
-- **E1 (this phase):** Server URL, web+PKCE session, device pending/approve, Unlock stub.
-- **Not yet:** vault plaintext, autofill, content scripts.
+- **E1:** Server URL, web+PKCE session, device pending/approve.
+- **E2 (this phase):** Local MP unlock, sync read, workspace switch, search/filter, item read/copy + copy-guard, web deep links.
+- **Not yet (E3+):** delete/favorite mutations, PIN setup UI, autofill / content scripts.
