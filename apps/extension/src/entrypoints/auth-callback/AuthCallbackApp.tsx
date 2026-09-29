@@ -73,16 +73,17 @@ export function AuthCallbackApp() {
   }, []);
 
   return (
-    <>
+    <div className="relative h-full w-full">
       <Toaster />
       <AuthShell
+        compact
         logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
         title="Okkey extension"
         description={status === "working" ? message : status === "ok" ? message : undefined}
         contentClassName="max-w-[340px]"
       >
         {status === "working" ? (
-          <div className="flex flex-col items-center gap-3 py-4" role="status" aria-busy="true">
+          <div className="flex flex-col items-center" role="status" aria-busy="true">
             <Spinner />
           </div>
         ) : null}
@@ -90,6 +91,6 @@ export function AuthCallbackApp() {
           <p className="okkey-body text-center text-sm text-muted-foreground">{message}</p>
         ) : null}
       </AuthShell>
-    </>
+    </div>
   );
 }

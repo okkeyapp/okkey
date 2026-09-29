@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils.js";
-import { ScrollArea } from "../ui/scroll-area.js";
 import { BodyGradient } from "./body-gradient.js";
 
 export type AuthShellLocaleOption = {
@@ -24,7 +23,7 @@ export type AuthShellProps = {
   headerClassName?: string;
   childrenClassName?: string;
   /**
-   * Extension popup layout: ScrollArea fills host; paddings + content + footer scroll together.
+   * Extension popup layout: fill host and vertically center content (scroll only if overflow).
    * Web auth uses `AppShellLayout` instead — do not change default (`false`) behavior for web.
    */
   compact?: boolean;
@@ -134,7 +133,7 @@ export function AuthShell({
     );
   }
 
-  // Compact (extension popup): full-height ScrollArea; only language chrome floats; footer in-flow.
+  // Compact (extension): fill host, vertically center content (same flex pattern as web AppShellLayout).
   return (
     <div
       className={cn(
@@ -147,16 +146,14 @@ export function AuthShell({
       {topLeft != null ? <div className="absolute left-4 top-4 z-10">{topLeft}</div> : null}
       {topRight != null ? <div className="absolute right-4 top-4 z-10">{topRight}</div> : null}
 
-      <ScrollArea
-        className={cn(
-          "relative min-h-0 h-full w-full flex-1",
-          "[&>[data-radix-scroll-area-viewport]]:h-full",
-          "[&>[data-radix-scroll-area-viewport]>div]:!min-h-full",
-          "[&>[data-radix-scroll-area-viewport]>div]:!block",
-        )}
-      >
-        <div className={cn("flex min-h-full flex-col items-center", frameClassName ?? "px-6 py-6")}>
-          <div className="flex w-full flex-1 flex-col items-center justify-center py-4">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div
+            className={cn(
+              "flex min-h-full flex-1 flex-col items-center justify-center",
+              frameClassName ?? "px-6 py-6",
+            )}
+          >
             <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-[340px]")}>
               <AuthHeader
                 title={title}
@@ -166,16 +163,13 @@ export function AuthShell({
                 headerClassName={headerClassName}
               />
               {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
+              {copyright ? (
+                <footer className="okkey-body w-full text-center text-xs text-muted-foreground">{copyright}</footer>
+              ) : null}
             </div>
           </div>
-
-          {copyright ? (
-            <footer className="okkey-body mt-4 w-full shrink-0 text-center text-xs text-muted-foreground">
-              {copyright}
-            </footer>
-          ) : null}
         </div>
-      </ScrollArea>
+      </div>
 
       <div
         className="pointer-events-none absolute inset-0 shadow-[inset_0px_0px_0px_1px_rgba(0,0,0,0.1)] dark:shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)]"

@@ -400,7 +400,7 @@ export function PopupApp() {
     return (
       <PopupFrame>
         <AuthShell compact hideHeader topRight={languageSelect}>
-          <div className="flex min-h-[200px] items-center justify-center" role="status" aria-busy="true">
+          <div className="flex items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
         </AuthShell>
@@ -418,7 +418,6 @@ export function PopupApp() {
             title={t("auth.email.title")}
             description={t("auth.extension.description")}
             topRight={languageSelect}
-           
           >
             <form className="flex w-full flex-col gap-4" onSubmit={(e) => void onSaveServerAndLogin(e)}>
               <div
@@ -520,10 +519,11 @@ export function PopupApp() {
     return (
       <PopupFrame>
         <AuthShell compact hideHeader topRight={languageSelect}>
-          <div className="flex min-h-[200px] items-center justify-center" role="status" aria-busy="true">
+          <div className="flex flex-col items-center gap-4">
+          <div className="flex items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
-          <div className="mt-4 flex flex-col gap-2">
+          <div className="flex w-full flex-col gap-2">
             <Button
               type="button"
               variant="outline"
@@ -545,6 +545,7 @@ export function PopupApp() {
             <Button type="button" variant="ghost" className="w-full" onClick={() => setScreen("server")}>
               Back
             </Button>
+          </div>
           </div>
         </AuthShell>
       </PopupFrame>
@@ -573,7 +574,6 @@ export function PopupApp() {
           title={title}
           description={description}
           topRight={languageSelect}
-         
         >
           <div className="flex w-full flex-col gap-6">
             {identityBar}
