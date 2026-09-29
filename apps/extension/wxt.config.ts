@@ -57,6 +57,8 @@ export default defineConfig({
       : {}),
   }),
   vite: () => ({
+    // Same as apps/web: emit `.wasm` as build assets (required for crypto unlock).
+    assetsInclude: ["**/*.wasm"],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

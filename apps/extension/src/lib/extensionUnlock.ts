@@ -1,4 +1,4 @@
-import { initCrypto, wipeBytes } from "@okkey/crypto";
+import { wipeBytes } from "@okkey/crypto";
 import type { CoreApiClient } from "@okkey/api";
 import {
   unlockWithMasterPassword,
@@ -6,6 +6,7 @@ import {
   type UnlockWithMasterPasswordResult,
 } from "@okkey/vault";
 
+import { initExtensionCrypto } from "./initExtensionCrypto";
 import { readDeviceFingerprint } from "./storage";
 import {
   mapVaultUnlockBootstrapToStored,
@@ -40,7 +41,7 @@ export async function unlockExtensionVault(input: {
   userId: string;
   masterPassword: string;
 }): Promise<UnlockWithMasterPasswordResult | null> {
-  await initCrypto();
+  await initExtensionCrypto();
   const bundle = await ensureExtensionVaultBundle({
     core: input.core,
     userId: input.userId,
