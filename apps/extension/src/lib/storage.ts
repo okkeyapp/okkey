@@ -188,23 +188,17 @@ export async function writeLastServer(value: Omit<ExtensionLastServer, "updatedA
   await storageArea().set({ [STORAGE_KEYS.lastServer]: next });
 }
 
-/** Logout + wipe local profile cache (session, PKCE, device keys, vault bundle). Keeps lastServer preference. */
+/** Logout + wipe local profile cache (session, PKCE, device keys). Keeps lastServer preference. */
 export async function wipeAllExtensionData(): Promise<void> {
-  const all = await storageArea().get(null);
-  const keysToRemove = Object.keys(all).filter((key) => {
-    if (key === STORAGE_KEYS.lastServer) {
-      return false;
-    }
-    return (
-      key.startsWith("okkey.extension.") ||
-      key === STORAGE_KEYS.profile ||
-      key === STORAGE_KEYS.session ||
-      key === STORAGE_KEYS.pkce
-    );
-  });
-  if (keysToRemove.length > 0) {
-    await storageArea().remove(keysToRemove);
-  }
+  await storageArea().remove([
+    STORAGE_KEYS.profile,
+    STORAGE_KEYS.session,
+    STORAGE_KEYS.pkce,
+    STORAGE_KEYS.devicePublicKey,
+    STORAGE_KEYS.deviceFingerprint,
+    STORAGE_KEYS.deviceId,
+    STORAGE_KEYS.deviceDeferred,
+  ]);
 }
 
 /**

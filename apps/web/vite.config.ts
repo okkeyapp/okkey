@@ -125,8 +125,6 @@ export default defineConfig(({ mode }) => {
         "@okkey/auth": path.resolve(__dirname, "../../packages/auth/src"),
         "@okkey/crypto": path.resolve(__dirname, "../../packages/crypto/src"),
         "@okkey/crypto-wasm": path.resolve(__dirname, "../../packages/crypto/dist/okkey_crypto_engine.js"),
-        "@okkey/vault": path.resolve(__dirname, "../../packages/vault/src"),
-        "@okkey/sync": path.resolve(__dirname, "../../packages/sync/src"),
         "@okkey-enterprise/workspace-roles": enterpriseModules ? enterpriseRolesPath : enterpriseRolesStubPath,
         "@okkey-enterprise/workspace-profiles": enterpriseModules
           ? enterpriseProfilesPath
