@@ -25,6 +25,10 @@ describe("isAllowedPathWithoutBearerSession", () => {
     expect(isAllowedPathWithoutBearerSession("/auth/webauthn", guest)).toBe(true);
   });
 
+  it("allows extension auth start without a Bearer session", () => {
+    expect(isAllowedPathWithoutBearerSession("/auth/extension/start", guest)).toBe(true);
+  });
+
   it("allows privacy policy without a Bearer session", () => {
     expect(isAllowedPathWithoutBearerSession(PRIVACY_POLICY_PATH, guest)).toBe(true);
     expect(isAllowedPathWithoutBearerSession("/privacy", guest)).toBe(true);

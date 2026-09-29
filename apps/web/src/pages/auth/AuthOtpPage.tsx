@@ -18,6 +18,7 @@ import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { consumeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
+import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { writeLastLoginMethodHint } from "../../auth/loginMethodStorage";
 import { useLocale } from "../../locale/LocaleContext";
@@ -179,6 +180,9 @@ export default function AuthOtpPage() {
         writeLastLoginMethodHint({ email, primary: "email" });
       }
       clearPendingVaultBundle();
+      if (await completeExtensionAuthHandoffIfPending()) {
+        return;
+      }
       const capsuleReturnUrl = consumeCapsuleReturnUrl();
       if (capsuleReturnUrl) {
         navigate(capsuleReturnUrl, { replace: true });

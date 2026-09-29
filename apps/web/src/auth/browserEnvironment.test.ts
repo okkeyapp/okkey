@@ -2,18 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatClientLabelFromType,
+  formatDeviceChannel,
   formatDeviceClientOs,
   formatDeviceTitle,
   parseBrowserEnvironment,
 } from "./browserEnvironment";
 
 describe("parseBrowserEnvironment", () => {
-  it("builds Web macOS - Safari title for Safari on macOS", () => {
+  it("builds Web Chrome title for Safari on macOS", () => {
     const env = parseBrowserEnvironment(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
     );
     expect(env.clientType).toBe("safari");
-    expect(env.deviceName).toBe("Web macOS - Safari");
+    expect(env.deviceName).toBe("Web Safari");
     expect(env.platformOsLabel).toBe("Web · Safari · macOS");
     expect(env.hardwareLabel).toBe("macOS");
     expect(env.fingerprint).toBe("web_app-safari-macos-10.15.7");
@@ -24,7 +25,7 @@ describe("parseBrowserEnvironment", () => {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 YaBrowser/24.1.0.0 Safari/537.36",
     );
     expect(env.clientType).toBe("yandex");
-    expect(env.deviceName).toBe("Web macOS - Yandex");
+    expect(env.deviceName).toBe("Web Yandex");
     expect(env.fingerprint).toBe("web_app-yandex-macos-10.15.7");
   });
 
@@ -33,7 +34,7 @@ describe("parseBrowserEnvironment", () => {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     );
     expect(env.clientType).toBe("chrome");
-    expect(env.deviceName).toBe("Web macOS - Chrome");
+    expect(env.deviceName).toBe("Web Chrome");
     expect(env.fingerprint).toBe("web_app-chrome-macos-10.15.7");
   });
 
@@ -42,7 +43,7 @@ describe("parseBrowserEnvironment", () => {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
     );
     expect(env.clientType).toBe("firefox");
-    expect(env.deviceName).toBe("Web macOS - Firefox");
+    expect(env.deviceName).toBe("Web Firefox");
     expect(env.fingerprint).toBe("web_app-firefox-macos-10.15");
     expect(env.fingerprint).not.toBe(
       parseBrowserEnvironment(
@@ -57,6 +58,7 @@ describe("parseBrowserEnvironment", () => {
     );
     expect(env.channel).toBe("Mobile");
     expect(env.clientType).toBe("safari");
+    expect(env.deviceName).toBe("Mobile iOS");
     expect(env.fingerprint).toBe("mobile_app-safari-ios-17.0");
   });
 
@@ -67,7 +69,7 @@ describe("parseBrowserEnvironment", () => {
     );
     expect(env.channel).toBe("Extension");
     expect(env.clientType).toBe("chrome");
-    expect(env.deviceName).toBe("Extension macOS - Chrome");
+    expect(env.deviceName).toBe("Extension Chrome");
     expect(env.platformOsLabel).toBe("Extension · Chrome · macOS");
     expect(env.fingerprint).toBe("extension-chrome-macos-10.15.7");
   });
@@ -92,16 +94,30 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
       platform: "unknown",
     };
     expect(formatDeviceClientOs(device)).toBe("Web · Chrome · macOS");
-    expect(formatDeviceTitle(device)).toBe("Web macOS - Chrome");
+    expect(formatDeviceTitle(device)).toBe("Web Chrome");
   });
 
-  it("keeps stored full title", () => {
+  it("keeps Extension channel from fingerprint even when UA looks like Web", () => {
+    const device = {
+      device_name: "Extension Chrome",
+      client_type: "chrome",
+      os_name: "macOS",
+      device_fingerprint: "extension-chrome-macos-10.15.7",
+      user_agent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    };
+    expect(formatDeviceChannel(device)).toBe("Extension");
+    expect(formatDeviceTitle(device)).toBe("Extension Chrome");
+    expect(formatDeviceClientOs(device)).toBe("Extension · Chrome · macOS");
+  });
+
+  it("shortens stored legacy full title", () => {
     const device = {
       device_name: "Web macOS - Chrome",
       client_type: "chrome",
       os_name: "macOS",
     };
-    expect(formatDeviceTitle(device)).toBe("Web macOS - Chrome");
+    expect(formatDeviceTitle(device)).toBe("Web Chrome");
     expect(formatDeviceClientOs(device)).toBe("Web · Chrome · macOS");
   });
 
@@ -113,7 +129,7 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
         os_name: "macOS",
         platform: "desktop",
       }),
-    ).toBe("Web macOS - Chrome");
+    ).toBe("Web Chrome");
   });
 
   it("keeps user rename instead of auto title", () => {
@@ -126,5 +142,19 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }),
     ).toBe("Alexander");
+  });
+
+  it("builds Desktop / Mobile short titles", () => {
+    expect(
+      parseBrowserEnvironment("", { channel: "Desktop" }).deviceName,
+    ).toMatch(/^Desktop /);
+    expect(
+      formatDeviceTitle({
+        device_name: "Desktop Windows 11 - App",
+        client_type: "desktop",
+        os_name: "Windows 11",
+        platform: "desktop",
+      }),
+    ).toBe("Desktop Windows 11");
   });
 });

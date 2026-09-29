@@ -14,6 +14,16 @@ describe("DeviceTypeIcon helpers", () => {
     expect(resolveDeviceFormIcon({ clientType: "web", platform: "desktop" })).toBe("laptop");
   });
 
+  it("maps Extension via device_name / fingerprint when client_type is chrome", () => {
+    expect(
+      resolveDeviceFormIcon({
+        client_type: "chrome",
+        device_name: "Extension Chrome",
+        device_fingerprint: "extension-chrome-macos-10.15.7",
+      }),
+    ).toBe("browserApp");
+  });
+
   it("accepts snake_case wire fields for form icons", () => {
     expect(resolveDeviceFormIcon({ client_type: "extension", platform: "macos" })).toBe(
       "browserApp",
@@ -24,7 +34,7 @@ describe("DeviceTypeIcon helpers", () => {
   it("maps os/browser hints to brand icons", () => {
     expect(resolveDeviceBrandIcon({ osName: "Windows", clientType: "desktop" })).toBe("windows");
     expect(resolveDeviceBrandIcon({ osName: "macOS", clientType: "desktop" })).toBe("apple");
-    expect(resolveDeviceBrandIcon({ clientType: "web", osName: "macOS" })).toBe("chrome");
+    expect(resolveDeviceBrandIcon({ clientType: "web", osName: "macOS" })).toBe("apple");
     expect(
       resolveDeviceBrandIcon({
         clientType: "web",

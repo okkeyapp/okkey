@@ -1,16 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-import "../../assets/popup.css";
-import { PopupShell } from "./PopupShell";
+import "@/assets/popup.css";
+import { PopupApp } from "./PopupApp";
 
-const root = document.getElementById("root");
-if (!root) {
-  throw new Error("Okkey extension popup root element not found");
-}
-
-ReactDOM.createRoot(root).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <PopupShell />
+    <PopupApp />
   </React.StrictMode>,
 );

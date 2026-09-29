@@ -225,7 +225,7 @@ export const previewSampleAuthCode: AuthEmailCodeVariables = {
 };
 
 export const previewSampleDeviceApproval: DeviceApprovalRequestVariables = {
-  deviceName: "Web macOS - Chrome",
+  deviceName: "Web Chrome",
   platform: "Web · Chrome",
   osName: "macOS",
   requestIp: "203.0.113.9",

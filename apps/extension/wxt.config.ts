@@ -7,9 +7,8 @@ const repoRoot = path.resolve(__dirname, "../..");
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   srcDir: "src",
-  outDir: ".output",
+  outDir: "output",
   imports: false,
-  // Plan: MV3 only (Chromium service worker + Firefox event background).
   manifestVersion: 3,
   suppressWarnings: {
     firefoxDataCollection: true,
@@ -17,10 +16,35 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: "Okkey",
     description: "Okkey password manager extension",
-    // Product slice version without `v` — keep in sync with root package version at release.
     version: "0.0.1",
-    permissions: ["storage"],
-    // Narrow permissions for E0 shell; host access lands with autofill (E4).
+    icons: {
+      16: "icon-16.png",
+      32: "icon-32.png",
+      48: "icon-48.png",
+      128: "icon-128.png",
+    },
+    action: {
+      default_title: "Okkey",
+      default_icon: {
+        16: "icon-16.png",
+        32: "icon-32.png",
+        48: "icon-48.png",
+        128: "icon-128.png",
+      },
+    },
+    permissions: ["storage", "tabs"],
+    // E1: session + device API calls to configured Base URL / localhost API.
+    // Autofill host access expands in E4.
+    host_permissions: ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
+    // Required so web (localhost / self-host) can redirect into the PKCE callback
+    // page. Without this, Chrome rewrites the navigation to chrome-extension://invalid/
+    // and shows ERR_BLOCKED_BY_CLIENT.
+    web_accessible_resources: [
+      {
+        resources: ["auth-callback.html"],
+        matches: ["http://*/*", "https://*/*"],
+      },
+    ],
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {
@@ -37,6 +61,11 @@ export default defineConfig({
       alias: {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/ui": path.resolve(repoRoot, "packages/ui/src"),
+        "@okkey/api": path.resolve(repoRoot, "packages/api/src"),
+        "@okkey/auth": path.resolve(repoRoot, "packages/auth/src"),
+        "@okkey/i18n": path.resolve(repoRoot, "packages/i18n/src"),
+        "@okkey/types": path.resolve(repoRoot, "packages/types/src"),
+        "@okkey/id": path.resolve(repoRoot, "packages/id/src"),
       },
     },
   }),

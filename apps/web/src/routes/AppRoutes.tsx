@@ -1,10 +1,12 @@
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import workspaceMembersModule from "@okkey-enterprise/workspace-members";
 import legalModule from "@okkey-enterprise/legal";
+import { Spinner } from "@okkey/ui";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
+import { hasExtensionAuthPending } from "../auth/extensionAuthPendingStorage";
 import AccountRestorePage from "../pages/account/AccountRestorePage";
 import DevicePendingPage from "../pages/account/DevicePendingPage";
 import AuthEmailPage from "../pages/auth/AuthEmailPage";
@@ -12,6 +14,7 @@ import AuthOtpPage from "../pages/auth/AuthOtpPage";
 import AuthRegistrationPage from "../pages/auth/AuthRegistrationPage";
 import AuthTwoFactorPage from "../pages/auth/AuthTwoFactorPage";
 import AuthWebAuthnPage from "../pages/auth/AuthWebAuthnPage";
+import ExtensionAuthStartPage from "../pages/auth/ExtensionAuthStartPage";
 import DevUIAlertPage from "../pages/dev-ui/DevUIAlertPage";
 import DevUIBreadcrumbPage from "../pages/dev-ui/DevUIBreadcrumbPage";
 import DevUITooltipPage from "../pages/dev-ui/DevUITooltipPage";
@@ -45,6 +48,7 @@ import {
   ACCOUNT_NEW_PATH,
   ACCOUNT_RESTORE_PATH,
   AUTH_EMAIL_PATH,
+  AUTH_EXTENSION_START_PATH,
   AUTH_OTP_PATH,
   AUTH_REGISTRATION_LEGACY_PATH,
   AUTH_TWO_FACTOR_PATH,
@@ -70,15 +74,34 @@ import {
 function RootRedirect() {
   const { accessToken } = useAuthVault();
   if (accessToken) {
+    if (hasExtensionAuthPending()) {
+      return <ExtensionHandoffBusy />;
+    }
     return <Navigate to={DEFAULT_AUTHENTICATED_PATH} replace />;
   }
   return <Navigate to={AUTH_EMAIL_PATH} replace />;
+}
+
+function ExtensionHandoffBusy() {
+  return (
+    <div
+      className="flex min-h-[50vh] w-full items-center justify-center okkey-body text-copy-secondary"
+      role="status"
+      aria-busy="true"
+    >
+      <Spinner />
+    </div>
+  );
 }
 
 /** Login/registration screens only when there is no Bearer session (no effect timing). */
 function GuestAuthOnly({ children }: { children: ReactNode }) {
   const { accessToken } = useAuthVault();
   if (accessToken) {
+    // Extension PKCE: never bounce into vault unlock / workspaces while handoff is pending.
+    if (hasExtensionAuthPending()) {
+      return <ExtensionHandoffBusy />;
+    }
     return <Navigate to={DEFAULT_AUTHENTICATED_PATH} replace />;
   }
   return children;
@@ -119,6 +142,7 @@ export default function AppRoutes() {
           </GuestAuthOnly>
         }
       />
+      <Route path={AUTH_EXTENSION_START_PATH} element={<ExtensionAuthStartPage />} />
       <Route
         path={AUTH_WEBAUTHN_PATH}
         element={

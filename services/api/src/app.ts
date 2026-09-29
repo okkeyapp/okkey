@@ -16,6 +16,11 @@ import {
 import { createResolveAuthenticatedUserId } from "./routes/auth-context.ts";
 import { createRegisterCompleteRoute } from "./routes/auth-register-complete.ts";
 import { createAuthSessionBootstrapRoute } from "./routes/auth-session.ts";
+import {
+  createExtensionAuthIssueCodeRoute,
+  createExtensionAuthTokenRoute,
+} from "./routes/auth-extension.ts";
+import type { ExtensionAuthService } from "./extension-auth/service.ts";
 import { healthRouteHandler } from "./routes/health.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
@@ -184,6 +189,8 @@ export interface AppDeps {
   deviceService?: DeviceService;
   accountRecoveryService?: AccountRecoveryService;
   sessionService?: SessionService;
+  /** Browser extension PKCE session handoff (issue code + token exchange). */
+  extensionAuthService?: ExtensionAuthService;
   twoFactorService?: TwoFactorService;
   webauthnService?: WebAuthnService;
   capsuleService?: CapsuleService;
@@ -238,6 +245,18 @@ export function createApiApp(
       "POST",
       "/auth/register/complete",
       createRegisterCompleteRoute(deps.registrationService),
+    );
+  }
+  if (deps.extensionAuthService) {
+    app.route(
+      "POST",
+      "/auth/extension/code",
+      createExtensionAuthIssueCodeRoute(deps.extensionAuthService, resolveUserId),
+    );
+    app.route(
+      "POST",
+      "/auth/extension/token",
+      createExtensionAuthTokenRoute(deps.extensionAuthService),
     );
   }
   if (deps.twoFactorService) {
