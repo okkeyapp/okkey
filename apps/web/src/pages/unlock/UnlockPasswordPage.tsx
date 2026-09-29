@@ -19,6 +19,7 @@ import OkkeyLogoMark from "../../components/app-shell/OkkeyLogoMark";
 import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH, accountDevicePendingWithRedirectQuery } from "../../routes/paths";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
+import { hasExtensionAuthPending } from "../../auth/extensionAuthPendingStorage";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../auth/pinRateLimit";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { readVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
@@ -286,6 +287,20 @@ export default function UnlockPasswordPage() {
       return;
     }
     touchActivity();
+  }
+
+  if (hasExtensionAuthPending()) {
+    return (
+      <AppShellLayout
+        title={t("unlock.title")}
+        description={t("unlock.description")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex flex-col items-center gap-3 py-8" role="status" aria-busy="true">
+          <Spinner />
+        </div>
+      </AppShellLayout>
+    );
   }
 
   if (vaultUnlocked) {

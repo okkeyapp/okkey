@@ -8,8 +8,10 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import {
   clearExtensionAuthPending,
+  hasExtensionAuthPending,
   writeExtensionAuthPending,
 } from "../../auth/extensionAuthPendingStorage";
+import { readStoredSession } from "../../auth/sessionAuthStorage";
 import { AUTH_EMAIL_PATH } from "../../routes/paths";
 
 const CLIENT_ID = "okkey_extension";
@@ -93,7 +95,9 @@ export default function ExtensionAuthStartPage() {
         codeChallengeMethod: "S256",
       });
 
-      if (!accessToken) {
+      // Prefer storage session so we hand off even if React state is still hydrating.
+      const sessionToken = accessToken ?? readStoredSession()?.access_token ?? null;
+      if (!sessionToken) {
         if (!cancelled) {
           setBusy(false);
           navigate(AUTH_EMAIL_PATH, { replace: true });
@@ -102,10 +106,18 @@ export default function ExtensionAuthStartPage() {
       }
 
       const handedOff = await completeExtensionAuthHandoffIfPending();
-      if (!handedOff && !cancelled) {
-        setError("Could not complete extension sign-in. Try again from the extension.");
-        setBusy(false);
+      if (cancelled) {
+        return;
       }
+      if (handedOff) {
+        return;
+      }
+      // Another path may have cleared pending while redirecting — stay on spinner.
+      if (!hasExtensionAuthPending()) {
+        return;
+      }
+      setError("Could not complete extension sign-in. Try again from the extension.");
+      setBusy(false);
     }
 
     void run();

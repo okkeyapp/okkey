@@ -13,6 +13,7 @@ import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { consumeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
+import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { navigateAfterSession } from "../../auth/redirectAfterLogin";
 import { useLocale } from "../../locale/LocaleContext";
 import { AUTH_EMAIL_PATH } from "../../routes/paths";
@@ -58,6 +59,9 @@ export default function AuthTwoFactorPage() {
         const dto = await authClient.verifyTwoFactor(twoFactorAuthStateId, trimmed);
         applyAccessTokenResponse(dto);
         clearPendingVaultBundle();
+        if (await completeExtensionAuthHandoffIfPending()) {
+          return;
+        }
         const capsuleReturnUrl = consumeCapsuleReturnUrl();
         if (capsuleReturnUrl) {
           navigate(capsuleReturnUrl, { replace: true });

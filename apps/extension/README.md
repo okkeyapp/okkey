@@ -48,7 +48,7 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 1. Start Core API + web (`yarn dev` from repo root).
 2. Load the unpacked Chromium build.
 3. Open the popup → **Server**:
-   - Preset SaaS `https://app.okkey.io`, or
+   - Preset SaaS `https://okkey.app`, or
    - Manual Base URL for local: `http://localhost:5173` (API resolves to `http://localhost:4000`).
 4. **Sign in via browser** → web `/auth/extension/start` → email / passkey / 2FA (session only).
 5. Web redirects to the extension callback (`auth-callback.html`, listed in `web_accessible_resources`) with a one-time `auth_code` (PKCE). Vault unlock on web is **not** required.

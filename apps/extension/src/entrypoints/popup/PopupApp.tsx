@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Alert,
   AlertDescription,
@@ -16,6 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
   type DevicePendingApprover,
 } from "@okkey/ui";
@@ -44,18 +48,20 @@ import {
   clearSession,
   normalizeWebBaseUrl,
   readDeviceId,
+  readLastServer,
   readProfile,
   readSession,
   resolveApiBaseFromWebBase,
   wipeAllExtensionData,
+  writeLastServer,
   writePkcePending,
   writeProfile,
+  type ExtensionHostMode,
   type ExtensionProfile,
   type ExtensionSession,
 } from "../../lib/storage";
 
 type Screen = "loading" | "server" | "signing-in" | "pending" | "blocked" | "unlock" | "error";
-type HostMode = "saas" | "self-hosted";
 
 const LOCALE_STORAGE_KEY = "okkey.extension.locale";
 
@@ -71,18 +77,34 @@ function readStoredLocale(): WebLocale {
   return "ru";
 }
 
+function ServerUrlHelpIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden {...props}>
+      <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.25" />
+      <path
+        d="M6.35 6.2c0-.95.72-1.7 1.7-1.7.96 0 1.68.72 1.68 1.62 0 .78-.4 1.18-1.02 1.55-.58.35-.78.58-.78 1.08v.25"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="11.35" r="0.7" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function PopupApp() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [locale, setLocale] = useState<WebLocale>(() => readStoredLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
-  const [hostMode, setHostMode] = useState<HostMode>("saas");
+  const [hostMode, setHostMode] = useState<ExtensionHostMode>("saas");
   const [baseUrlInput, setBaseUrlInput] = useState(OKKEY_SAAS_WEB_BASE_URL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
   const [unlockNote, setUnlockNote] = useState<string | null>(null);
+  const serverUrlInputRef = useRef<HTMLInputElement>(null);
 
   const t = useCallback(
     (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
@@ -134,17 +156,27 @@ export function PopupApp() {
     }
   }, []);
 
+  const applyServerPreference = useCallback((mode: ExtensionHostMode, webBaseUrl: string) => {
+    setHostMode(mode);
+    setBaseUrlInput(mode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : webBaseUrl);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function boot(): Promise<void> {
       const existingProfile = await readProfile();
       const existingSession = await readSession();
+      const lastServer = await readLastServer();
       if (cancelled) return;
       if (existingProfile) {
         setProfile(existingProfile);
-        setBaseUrlInput(existingProfile.webBaseUrl);
-        setHostMode(
-          existingProfile.webBaseUrl === OKKEY_SAAS_WEB_BASE_URL ? "saas" : "self-hosted",
+        const mode: ExtensionHostMode =
+          existingProfile.webBaseUrl === OKKEY_SAAS_WEB_BASE_URL ? "saas" : "self-hosted";
+        applyServerPreference(mode, existingProfile.webBaseUrl);
+      } else if (lastServer) {
+        applyServerPreference(
+          lastServer.hostMode,
+          lastServer.hostMode === "self-hosted" ? lastServer.webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
         );
       }
       if (existingProfile && existingSession) {
@@ -158,7 +190,18 @@ export function PopupApp() {
     return () => {
       cancelled = true;
     };
-  }, [refreshTrust]);
+  }, [applyServerPreference, refreshTrust]);
+
+  useEffect(() => {
+    if (screen !== "server" || hostMode !== "self-hosted") {
+      return;
+    }
+    const id = window.setTimeout(() => {
+      serverUrlInputRef.current?.focus();
+      serverUrlInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [screen, hostMode]);
 
   useEffect(() => {
     if (screen !== "pending" || !profile || !session) {
@@ -181,7 +224,8 @@ export function PopupApp() {
     return () => window.clearInterval(timer);
   }, [screen, profile, session, trust?.deviceId]);
 
-  const onSaveServerAndLogin = async () => {
+  const onSaveServerAndLogin = async (event?: FormEvent) => {
+    event?.preventDefault();
     setBusy(true);
     setError(null);
     try {
@@ -202,6 +246,10 @@ export function PopupApp() {
         updatedAt: Date.now(),
       };
       await writeProfile(nextProfile);
+      await writeLastServer({
+        hostMode,
+        webBaseUrl: hostMode === "self-hosted" ? webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
+      });
       setProfile(nextProfile);
 
       const { state, codeVerifier, codeChallenge } = await createPkcePair();
@@ -242,8 +290,15 @@ export function PopupApp() {
     setTrust(null);
     setMasterPassword("");
     setUnlockNote(null);
-    setHostMode("saas");
-    setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
+    const lastServer = await readLastServer();
+    if (lastServer) {
+      applyServerPreference(
+        lastServer.hostMode,
+        lastServer.hostMode === "self-hosted" ? lastServer.webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
+      );
+    } else {
+      applyServerPreference("saas", OKKEY_SAAS_WEB_BASE_URL);
+    }
     setScreen("server");
   };
 
@@ -282,85 +337,101 @@ export function PopupApp() {
   if (screen === "server") {
     return (
       <PopupFrame>
-        <AuthShell
-          compact
-          logo={shellLogo}
-          topRight={languageSelect}
-          copyright={copyright}
-          className="min-h-[450px]"
-        >
-          <div className="flex w-full flex-col gap-4">
-            <div
-              className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-secondary/60 p-1"
-              role="tablist"
-              aria-label="Host"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={hostMode === "saas"}
-                className={cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  hostMode === "saas"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => {
-                  setHostMode("saas");
-                  setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
-                }}
+        <TooltipProvider delayDuration={200}>
+          <AuthShell
+            compact
+            logo={shellLogo}
+            title={t("auth.email.title")}
+            description={t("auth.extension.description")}
+            topRight={languageSelect}
+            copyright={copyright}
+            className="min-h-[450px]"
+          >
+            <form className="flex w-full flex-col gap-4" onSubmit={(e) => void onSaveServerAndLogin(e)}>
+              <div
+                className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-secondary/60 p-1"
+                role="tablist"
+                aria-label="Host"
               >
-                SaaS
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={hostMode === "self-hosted"}
-                className={cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  hostMode === "self-hosted"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setHostMode("self-hosted")}
-              >
-                Self-hosted
-              </button>
-            </div>
-
-            {hostMode === "self-hosted" ? (
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="base-url">
-                  URL
-                </label>
-                <Input
-                  id="base-url"
-                  value={baseUrlInput}
-                  onChange={(e) => setBaseUrlInput(e.target.value)}
-                  placeholder="https://okkey.example.com"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={hostMode === "saas"}
+                  className={cn(
+                    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    hostMode === "saas"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => {
+                    setHostMode("saas");
+                    setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
+                  }}
+                >
+                  SaaS
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={hostMode === "self-hosted"}
+                  className={cn(
+                    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    hostMode === "self-hosted"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setHostMode("self-hosted")}
+                >
+                  Self-hosted
+                </button>
               </div>
-            ) : null}
 
-            {error ? (
-              <Alert variant="error">
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
+              {hostMode === "self-hosted" ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground" htmlFor="base-url">
+                      {t("auth.extension.labelServerUrl")}
+                    </label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex size-4 items-center justify-center text-muted-foreground hover:text-foreground"
+                          aria-label={t("auth.extension.serverUrlTooltip")}
+                        >
+                          <ServerUrlHelpIcon className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[240px]">
+                        {t("auth.extension.serverUrlTooltip")}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Input
+                    ref={serverUrlInputRef}
+                    id="base-url"
+                    value={baseUrlInput}
+                    onChange={(e) => setBaseUrlInput(e.target.value)}
+                    placeholder="https://okkey.example.com"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+              ) : null}
 
-            <Button
-              type="button"
-              className="w-full"
-              disabled={busy}
-              onClick={() => void onSaveServerAndLogin()}
-            >
-              {busy ? <Spinner className="size-4" /> : t("auth.email.submit")}
-            </Button>
-          </div>
-        </AuthShell>
+              {error ? (
+                <Alert variant="error">
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <Button type="submit" className="w-full" disabled={busy}>
+                {busy ? <Spinner className="size-4" /> : t("auth.email.submit")}
+              </Button>
+            </form>
+          </AuthShell>
+        </TooltipProvider>
       </PopupFrame>
     );
   }

@@ -37,6 +37,7 @@ import { DEVICE_PUBLIC_KEY_KEY } from "../../auth/storageKeys";
 import { useLocale } from "../../locale/LocaleContext";
 import { ACCOUNT_LOCK_PATH, AUTH_EMAIL_PATH, accountLockWithRedirectQuery, invitePath } from "../../routes/paths";
 import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
+import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { registrationErrorI18nKey } from "./registrationErrors";
 import {
   shouldRedirectAwayFromRegistrationForm,
@@ -238,6 +239,8 @@ export default function AuthRegistrationPage() {
       if (secretForStep) {
         setRecoverySecret(secretForStep);
         setStep("recoveryKey");
+      } else if (await completeExtensionAuthHandoffIfPending()) {
+        return;
       } else {
         navigate(nextPath, { replace: true });
       }
@@ -299,9 +302,14 @@ export default function AuthRegistrationPage() {
   }
 
   function finishRegistration() {
-    const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
-    setRecoverySecret(null);
-    navigate(target, { replace: true });
+    void (async () => {
+      if (await completeExtensionAuthHandoffIfPending()) {
+        return;
+      }
+      const target = postRegRedirect ?? ACCOUNT_LOCK_PATH;
+      setRecoverySecret(null);
+      navigate(target, { replace: true });
+    })();
   }
 
   if (step === "enrolling") {

@@ -8,7 +8,7 @@
 export const EXTENSION_DEVICE_CHANNEL = "Extension" as const;
 
 /** SaaS web base URL preset — reserved for E1 server-URL UI. */
-export const OKKEY_SAAS_WEB_BASE_URL = "https://app.okkey.io";
+export const OKKEY_SAAS_WEB_BASE_URL = "https://okkey.app";
 
 /**
  * Fingerprint prefix for extension devices (`extension-…`), distinct from

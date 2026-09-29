@@ -13,6 +13,7 @@ import { createAuthenticatedCoreClient } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { clearPendingVaultBundle } from "../../auth/localVaultBundle";
 import { consumeCapsuleReturnUrl } from "../../auth/capsuleReturnUrl";
+import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import {
   clearPendingLoginDiscover,
   readPendingLoginDiscover,
@@ -105,6 +106,9 @@ export default function AuthWebAuthnPage() {
       writeLastLoginMethodHint({ email: pending!.email, primary: used });
       clearPendingLoginDiscover();
       clearPendingVaultBundle();
+      if (await completeExtensionAuthHandoffIfPending()) {
+        return;
+      }
       const capsuleReturnUrl = consumeCapsuleReturnUrl();
       if (capsuleReturnUrl) {
         navigate(capsuleReturnUrl, { replace: true });

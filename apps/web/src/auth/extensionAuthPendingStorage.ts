@@ -82,3 +82,8 @@ export function clearExtensionAuthPending(): void {
   }
   sessionStorage.removeItem(EXTENSION_AUTH_PENDING_KEY);
 }
+
+/** Sync check for gate / GuestAuthOnly (no expiry side effects beyond read). */
+export function hasExtensionAuthPending(): boolean {
+  return readExtensionAuthPending() != null;
+}

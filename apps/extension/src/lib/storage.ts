@@ -7,7 +7,18 @@ export const STORAGE_KEYS = {
   devicePublicKey: "okkey.extension.devicePublicKey",
   deviceFingerprint: "okkey.extension.deviceFingerprint",
   deviceId: "okkey.extension.deviceId",
+  /** Survives logout / wipe — last chosen SaaS vs self-hosted server URL. */
+  lastServer: "okkey.extension.lastServer",
 } as const;
+
+export type ExtensionHostMode = "saas" | "self-hosted";
+
+export type ExtensionLastServer = {
+  hostMode: ExtensionHostMode;
+  /** Normalized web origin when self-hosted; ignored for saas. */
+  webBaseUrl: string;
+  updatedAt: number;
+};
 
 export type ExtensionProfile = {
   /** Web base URL (origin). SaaS preset or manual. */
@@ -118,7 +129,32 @@ export async function writeDeviceId(deviceId: string): Promise<void> {
   await storageArea().set({ [STORAGE_KEYS.deviceId]: deviceId });
 }
 
-/** Logout + wipe local profile cache (session, PKCE, device keys). Keeps nothing. */
+export async function readLastServer(): Promise<ExtensionLastServer | null> {
+  const result = await storageArea().get(STORAGE_KEYS.lastServer);
+  const raw = result[STORAGE_KEYS.lastServer] as ExtensionLastServer | undefined;
+  if (!raw || (raw.hostMode !== "saas" && raw.hostMode !== "self-hosted")) {
+    return null;
+  }
+  if (raw.hostMode === "self-hosted" && !raw.webBaseUrl?.trim()) {
+    return null;
+  }
+  return {
+    hostMode: raw.hostMode,
+    webBaseUrl: raw.webBaseUrl?.trim() ?? "",
+    updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : 0,
+  };
+}
+
+export async function writeLastServer(value: Omit<ExtensionLastServer, "updatedAt">): Promise<void> {
+  const next: ExtensionLastServer = {
+    hostMode: value.hostMode,
+    webBaseUrl: value.webBaseUrl.trim(),
+    updatedAt: Date.now(),
+  };
+  await storageArea().set({ [STORAGE_KEYS.lastServer]: next });
+}
+
+/** Logout + wipe local profile cache (session, PKCE, device keys). Keeps lastServer preference. */
 export async function wipeAllExtensionData(): Promise<void> {
   await storageArea().remove([
     STORAGE_KEYS.profile,

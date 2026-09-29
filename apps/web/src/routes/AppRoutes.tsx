@@ -1,10 +1,12 @@
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import workspaceMembersModule from "@okkey-enterprise/workspace-members";
 import legalModule from "@okkey-enterprise/legal";
+import { Spinner } from "@okkey/ui";
 import { type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuthVault } from "../auth/AuthVaultContext";
+import { hasExtensionAuthPending } from "../auth/extensionAuthPendingStorage";
 import AccountRestorePage from "../pages/account/AccountRestorePage";
 import DevicePendingPage from "../pages/account/DevicePendingPage";
 import AuthEmailPage from "../pages/auth/AuthEmailPage";
@@ -72,15 +74,34 @@ import {
 function RootRedirect() {
   const { accessToken } = useAuthVault();
   if (accessToken) {
+    if (hasExtensionAuthPending()) {
+      return <ExtensionHandoffBusy />;
+    }
     return <Navigate to={DEFAULT_AUTHENTICATED_PATH} replace />;
   }
   return <Navigate to={AUTH_EMAIL_PATH} replace />;
+}
+
+function ExtensionHandoffBusy() {
+  return (
+    <div
+      className="flex min-h-[50vh] w-full items-center justify-center okkey-body text-copy-secondary"
+      role="status"
+      aria-busy="true"
+    >
+      <Spinner />
+    </div>
+  );
 }
 
 /** Login/registration screens only when there is no Bearer session (no effect timing). */
 function GuestAuthOnly({ children }: { children: ReactNode }) {
   const { accessToken } = useAuthVault();
   if (accessToken) {
+    // Extension PKCE: never bounce into vault unlock / workspaces while handoff is pending.
+    if (hasExtensionAuthPending()) {
+      return <ExtensionHandoffBusy />;
+    }
     return <Navigate to={DEFAULT_AUTHENTICATED_PATH} replace />;
   }
   return children;
