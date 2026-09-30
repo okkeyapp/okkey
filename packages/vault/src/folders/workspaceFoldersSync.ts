@@ -122,6 +122,8 @@ export type WorkspaceFoldersRefreshDiagnostics = {
   folderCount: number;
   usedCache: boolean;
   resetPoisonedCache: boolean;
+  /** True when local materialized folders were re-appended under the current metadata key. */
+  resealedStaleKey: boolean;
 };
 
 export type WorkspaceFoldersSyncController = {
@@ -245,9 +247,104 @@ export function createWorkspaceFoldersSyncController(input: {
     return { eventsFetched, decryptAttempts, decryptFailures };
   }
 
+  /**
+   * True when at least one recent personal-event ciphertext decrypts with the
+   * current metadata key. After master-password restore without folder
+   * migration, the stream stays under the old C while local IndexedDB still
+   * holds plaintext folders — probe fails and we reseal.
+   */
+  async function currentKeyDecryptsRecentEvents(): Promise<boolean> {
+    const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, 0);
+    if (!page.events.length) {
+      return true;
+    }
+    const key = await ensureMetadataKey();
+    const start = Math.max(0, page.events.length - 32);
+    for (let i = page.events.length - 1; i >= start; i -= 1) {
+      const payload = page.events[i]?.encryptedBlob?.payload;
+      if (!payload) {
+        continue;
+      }
+      try {
+        await decryptPersonalVaultMetadataPayload(key, base64ToBytes(payload));
+        return true;
+      } catch {
+        // try older recent events
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Re-append current materialized folder / assignment / favorite state under
+   * the current passwordShareC-derived metadata key. Used after recovery
+   * restore (no old C) or when the stream key drifted from local cache.
+   */
+  async function resealMaterializedStateUnderCurrentKey(): Promise<void> {
+    if (state.folders.size === 0 && state.itemFolder.size === 0 && state.itemFavorite.size === 0) {
+      return;
+    }
+    const key = await ensureMetadataKey();
+    let version = state.lastAppliedVersion;
+    const folders = [...state.folders.values()].sort((a, b) => {
+      const aDepth = a.parentFolderId ? 1 : 0;
+      const bDepth = b.parentFolderId ? 1 : 0;
+      if (aDepth !== bDepth) {
+        return aDepth - bDepth;
+      }
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.folderId.localeCompare(b.folderId);
+    });
+    for (const folder of folders) {
+      const request = await buildFolderCreateAppendRequest(
+        key,
+        folder,
+        version,
+        generateEntityId(),
+      );
+      const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
+      version = appended.version;
+    }
+    for (const [itemId, folderId] of state.itemFolder.entries()) {
+      const request = await buildItemFolderAssignAppendRequest(
+        key,
+        {
+          schemaVersion: 2,
+          itemId,
+          workspaceId: input.workspaceId,
+          folderId,
+        },
+        version,
+        generateEntityId(),
+      );
+      const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
+      version = appended.version;
+    }
+    for (const itemId of state.itemFavorite) {
+      const request = await buildItemFavoriteSetAppendRequest(
+        key,
+        {
+          schemaVersion: 2,
+          itemId,
+          workspaceId: input.workspaceId,
+          favorite: true,
+        },
+        version,
+        generateEntityId(),
+      );
+      const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
+      version = appended.version;
+    }
+    state = {
+      ...state,
+      lastAppliedVersion: version,
+    };
+    await writeCachedState(input.userId, input.workspaceId, state);
+  }
+
   async function refresh(): Promise<WorkspaceFolderReplayState> {
     const cached = await readCachedState(input.userId, input.workspaceId);
     let resetPoisonedCache = false;
+    let resealedStaleKey = false;
     // Empty folders + advanced cursor: prior decrypt-all-fail wrote a cursor that
     // skips the personal-events stream. Force a full replay.
     if (cached && cached.folders.size === 0 && cached.lastAppliedVersion > 0) {
@@ -261,6 +358,17 @@ export function createWorkspaceFoldersSyncController(input: {
     } else if (cached) {
       state = cached;
     }
+
+    // Local plaintext cache + stream under a previous passwordShareC (e.g. after
+    // account restore without folder migration): re-append under the current key.
+    if (
+      state.folders.size > 0 &&
+      !(await currentKeyDecryptsRecentEvents())
+    ) {
+      await resealMaterializedStateUnderCurrentKey();
+      resealedStaleKey = true;
+    }
+
     const fromVersion = state.lastAppliedVersion;
     const stats = await replayIncremental(fromVersion);
     lastRefreshDiagnostics = {
@@ -269,6 +377,7 @@ export function createWorkspaceFoldersSyncController(input: {
       folderCount: state.folders.size,
       usedCache: Boolean(cached) && !resetPoisonedCache,
       resetPoisonedCache,
+      resealedStaleKey,
     };
     return state;
   }
