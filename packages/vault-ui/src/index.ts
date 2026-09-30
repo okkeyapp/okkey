@@ -178,6 +178,13 @@ export {
   type ItemsListFilterScopeVault,
 } from "./filter/ItemsListFilterScopeSubmenus.js";
 
+export {
+  ItemsListFilterDropdown,
+  ScopeRowCloseButton,
+  type ItemsListCoreFilter,
+  type ItemsListFilterDropdownProps,
+} from "./filter/ItemsListFilterDropdown.js";
+
 export { useItemFaviconAttachmentUrl } from "./items/useItemFaviconAttachmentUrl.js";
 export { useWorkspaceLogoUrl } from "./items/useWorkspaceLogoUrl.js";
 

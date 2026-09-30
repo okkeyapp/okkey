@@ -61,7 +61,8 @@ import {
   CategoryIconBadge,
   FilterTagsIcon,
   ItemsListFilterScopeSubmenus,
-} from "./ItemsListFilterScopeSubmenus";
+  ScopeRowCloseButton,
+} from "@okkey/vault-ui";
 import {
   applyWorkspaceSearchToParams,
   FILTER_QUERY_ARCHIVED,
@@ -460,29 +461,6 @@ function monitoringFilterLabelKey(filter: ItemsListFilter): string {
     default:
       return `web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`;
   }
-}
-
-function scopeRowCloseAriaLabel(locale: WebLocale): string {
-  return locale === "ru" ? "Сбросить область списка" : "Clear list scope";
-}
-
-function ScopeRowCloseButton({ locale, onClear }: { locale: WebLocale; onClear: () => void }) {
-  return (
-    <button
-      type="button"
-      aria-label={scopeRowCloseAriaLabel(locale)}
-      className="absolute right-1.5 top-1/2 z-10 flex size-4 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClear();
-      }}
-    >
-      <svg viewBox="0 0 16 16" fill="none" className="size-2.5" aria-hidden>
-        <path d="M5 5L11 11M11 5L5 11" stroke="white" strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    </button>
-  );
 }
 
 function filterFromSearchParam(raw: string): ItemsListFilter {

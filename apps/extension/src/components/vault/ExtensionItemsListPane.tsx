@@ -1,16 +1,10 @@
 import {
   Button,
-  ChevronDownGlyph,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  FilterIconAllRecords,
-  FilterIconArchived,
-  FilterIconDeleted,
-  FilterIconFavorites,
-  FilterIconFrame,
   ListScrollSentinel,
   ScrollArea,
   SidebarGroupLabel,
@@ -25,22 +19,22 @@ import {
   mutedSurfaceOpenBgClassName,
   sortIconForValue,
   useListWindow,
-  vaultDisplayIcon,
   windowListSections,
   type ItemsListLocale,
   type ItemsListSortValue,
 } from "@okkey/ui";
 import type { ExtensionItemListRecord } from "@okkey/vault";
 import {
-  ItemsListFilterScopeSubmenus,
+  ItemsListFilterDropdown,
   LazyItemRecordFavicon,
   getActiveCategoryLabel,
   useItemFaviconAttachmentUrl,
+  type ItemsListCoreFilter,
   type ItemsListFilterScopeVault,
 } from "@okkey/vault-ui";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 
-export type ExtensionListFilter = "all" | "favorites" | "archived" | "recently_deleted";
+export type ExtensionListFilter = ItemsListCoreFilter;
 
 export type ExtensionListSort = ItemsListSortValue;
 
@@ -51,56 +45,6 @@ export type ExtensionListRow = ExtensionItemListRecord & {
   favorite: boolean;
   folderId: string | null;
 };
-
-const itemsPanelSelectTriggerClassName = cn(
-  "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
-  "px-2 text-sm text-foreground",
-  mutedSurfaceHoverBgClassName,
-  "focus:border-transparent focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)] focus-visible:border-transparent",
-  mutedSurfaceOpenBgClassName,
-  "data-[state=open]:border-transparent data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
-);
-
-function filterIconForValue(value: ExtensionListFilter) {
-  switch (value) {
-    case "all":
-      return <FilterIconAllRecords />;
-    case "favorites":
-      return <FilterIconFavorites />;
-    case "archived":
-      return <FilterIconArchived />;
-    case "recently_deleted":
-      return <FilterIconDeleted />;
-    default: {
-      const _ex: never = value;
-      return _ex;
-    }
-  }
-}
-
-function filterLabelKey(filter: ExtensionListFilter): string {
-  switch (filter) {
-    case "all":
-      return "web.items.filter.all";
-    case "favorites":
-      return "web.items.filter.favorites";
-    case "archived":
-      return "web.items.filter.archived";
-    case "recently_deleted":
-      return "web.items.filter.recentlyDeleted";
-    default: {
-      const _ex: never = filter;
-      return _ex;
-    }
-  }
-}
-
-const BASE_FILTERS: readonly ExtensionListFilter[] = [
-  "all",
-  "favorites",
-  "archived",
-  "recently_deleted",
-];
 
 type ExtensionItemsListPaneProps = {
   records: readonly ExtensionListRow[];
@@ -115,7 +59,7 @@ type ExtensionItemsListPaneProps = {
   folderScopeLabel?: string | null;
   categoryScopeLabel?: string | null;
   vaultOptions: readonly ExtensionListVaultOption[];
-  folderTree: Parameters<typeof ItemsListFilterScopeSubmenus>[0]["folderTree"];
+  folderTree: Parameters<typeof ItemsListFilterDropdown>[0]["folderTree"];
   activeVaultId: string;
   activeFolderId: string;
   activeCategoryId: string;
@@ -172,7 +116,6 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     sort,
     selectedId,
     locale,
-    scopeLabel,
     vaultScopeLabel,
     folderScopeLabel,
     categoryScopeLabel,
@@ -194,22 +137,14 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     onPickTag,
     t,
   } = props;
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  const activeScopeLabel =
-    scopeLabel ??
-    vaultScopeLabel ??
-    folderScopeLabel ??
-    categoryScopeLabel ??
-    null;
 
   const sections = useMemo(
     () => buildItemsListSections(records, sort, locale),
     [locale, records, sort],
   );
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
-  const listWindowResetKey = [filter, sort, activeVaultId, activeFolderId, activeCategoryId, scopeLabel ?? ""].join(
+  const listWindowResetKey = [filter, sort, activeVaultId, activeFolderId, activeCategoryId, vaultScopeLabel ?? "", folderScopeLabel ?? "", categoryScopeLabel ?? ""].join(
     "|",
   );
   const { visibleCount, hasMore, loadMore } = useListWindow({
@@ -221,96 +156,30 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     [sections, visibleCount],
   );
 
-  const triggerLeading = (() => {
-    if (vaultScopeLabel) {
-      const vault = vaultOptions.find((v) => v.id === activeVaultId);
-      return (
-        <span className="text-[14px] leading-none" aria-hidden>
-          {vault ? vaultDisplayIcon(vault) : "💼"}
-        </span>
-      );
-    }
-    return filterIconForValue(filter);
-  })();
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-border p-2">
         <div className="flex w-full items-center gap-2">
-          <DropdownMenu open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={t("web.items.list.filterAria")}
-                className={cn(
-                  itemsPanelSelectTriggerClassName,
-                  "flex min-h-9 min-w-0 flex-1 cursor-default items-center justify-start gap-2 text-left outline-none",
-                )}
-              >
-                <FilterIconFrame>{triggerLeading}</FilterIconFrame>
-                <span className="min-w-0 flex-1 truncate text-left text-sm font-normal text-foreground">
-                  {activeScopeLabel ?? t(filterLabelKey(filter))}
-                </span>
-                <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[14rem] p-1">
-              {activeScopeLabel && onClearScope ? (
-                <>
-                  <DropdownMenuItem
-                    className="relative gap-2 whitespace-nowrap bg-muted/80 py-2 ps-2 pe-3 data-[highlighted]:bg-secondary"
-                    onSelect={() => onClearScope()}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-left">{activeScopeLabel}</span>
-                    <span className="text-xs text-muted-foreground" aria-hidden>
-                      ✕
-                    </span>
-                  </DropdownMenuItem>
-                  <div className="mx-1 my-1 h-px bg-border" role="separator" />
-                </>
-              ) : null}
-
-              {BASE_FILTERS.map((value) => {
-                const Icon =
-                  value === "all"
-                    ? FilterIconAllRecords
-                    : value === "favorites"
-                      ? FilterIconFavorites
-                      : value === "archived"
-                        ? FilterIconArchived
-                        : FilterIconDeleted;
-                return (
-                  <DropdownMenuItem
-                    key={value}
-                    className={cn(
-                      "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                      filter === value && !activeScopeLabel && "bg-muted/80 data-[highlighted]:bg-secondary",
-                    )}
-                    onSelect={() => onFilterChange(value)}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-left">{t(filterLabelKey(value))}</span>
-                  </DropdownMenuItem>
-                );
-              })}
-
-              <ItemsListFilterScopeSubmenus
-                t={t}
-                vaults={vaultOptions}
-                folderTree={folderTree}
-                records={records}
-                activeVaultId={activeVaultId}
-                activeFolderId={activeFolderId}
-                activeCategoryId={activeCategoryId}
-                onPickVault={onPickVault}
-                onPickFolder={onPickFolder}
-                onPickCategory={onPickCategory}
-                onPickTag={onPickTag}
-                onCloseMenu={() => setFilterMenuOpen(false)}
-                menuOpen={filterMenuOpen}
-              />
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ItemsListFilterDropdown
+            t={t}
+            locale={locale === "ru" ? "ru" : "en"}
+            filter={filter}
+            onFilterChange={onFilterChange}
+            vaultScopeLabel={vaultScopeLabel}
+            folderScopeLabel={folderScopeLabel}
+            categoryScopeLabel={categoryScopeLabel}
+            vaultOptions={vaultOptions}
+            folderTree={folderTree}
+            records={records}
+            activeVaultId={activeVaultId}
+            activeFolderId={activeFolderId}
+            activeCategoryId={activeCategoryId}
+            onClearScope={onClearScope}
+            onPickVault={onPickVault}
+            onPickFolder={onPickFolder}
+            onPickCategory={onPickCategory}
+            onPickTag={onPickTag}
+          />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

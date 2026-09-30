@@ -104,6 +104,29 @@ function LockIcon({ className }: { className?: string }) {
   );
 }
 
+/** Same chevrons as account footer / default workspace switcher in OkkeyAppSidebar. */
+function WorkspaceSwitcherChevronsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+    >
+      <path
+        d="M4.66663 10.0001L7.99996 13.3334L11.3333 10.0001M4.66663 6.00008L7.99996 2.66675L11.3333 6.00008"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function compareRows(a: ExtensionItemListRecord, b: ExtensionItemListRecord, sort: ExtensionListSort): number {
   if (sort === "name_asc") {
     return a.title.localeCompare(b.title, "ru", { sensitivity: "base" }) || b.updatedAtMs - a.updatedAtMs;
@@ -376,9 +399,17 @@ export function VaultPopup(props: VaultPopupProps) {
           return;
         }
         console.error("[extension] folder sync failed", err);
-        setFolderNodes([]);
-        setItemFolderByItemId(new Map());
-        setItemFavoriteByItemId(new Set());
+        // Prefer any materialized/cached state over wiping the sidebar to "Нет папок".
+        const tree = controller.toFolderTree();
+        if (tree.length > 0) {
+          setFolderNodes(tree);
+          setItemFolderByItemId(new Map(controller.getState().itemFolder));
+          setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
+        } else {
+          setFolderNodes([]);
+          setItemFolderByItemId(new Map());
+          setItemFavoriteByItemId(new Set());
+        }
       }
     },
     [core, secrets.passwordShareC, userId],
@@ -754,6 +785,7 @@ export function VaultPopup(props: VaultPopupProps) {
                     : (identity?.email ?? "")}
                 </p>
               </div>
+              <WorkspaceSwitcherChevronsIcon className="size-4 shrink-0 text-muted-foreground" />
             </>
           ) : null}
         </>

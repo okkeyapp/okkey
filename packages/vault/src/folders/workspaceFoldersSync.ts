@@ -175,7 +175,6 @@ export function createWorkspaceFoldersSyncController(input: {
   }
 
   async function replayIncremental(fromVersion: number): Promise<void> {
-    const key = await ensureMetadataKey();
     let cursor = fromVersion;
     // Mirror vault-items read: keep paging until the server returns an empty page.
     // (Personal-events currently returns the full remainder in one response, but
@@ -186,6 +185,10 @@ export function createWorkspaceFoldersSyncController(input: {
       if (!page.events.length) {
         return;
       }
+      // Derive metadata key only when there is ciphertext to decrypt — allows
+      // serving an IndexedDB cache when WASM is not yet ready (extension popup
+      // reopen), as long as there are no new personal events.
+      const key = await ensureMetadataKey();
       const next = await replayWorkspaceFolderEvents(
         page.events,
         input.workspaceId,

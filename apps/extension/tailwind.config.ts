@@ -5,6 +5,9 @@ const config: Config = {
   content: [
     "./src/**/*.{ts,tsx,html}",
     "../../packages/ui/src/**/*.{ts,tsx,js,jsx}",
+    // ItemActivitySection / filter / KeyFormEditor live here — without this scan,
+    // timeline footer + filter chip utility classes are missing from the popup CSS.
+    "../../packages/vault-ui/src/**/*.{ts,tsx,js,jsx}",
   ],
   theme: {
     extend: {

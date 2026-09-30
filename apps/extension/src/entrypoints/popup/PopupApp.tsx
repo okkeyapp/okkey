@@ -49,6 +49,7 @@ import {
   unlockExtensionVault,
   wipeUnlockSecrets,
 } from "../../lib/extensionUnlock";
+import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
 import {
   clearExtensionUnlockSession,
   DEFAULT_VAULT_IDLE_LOCK_MS,
@@ -224,6 +225,15 @@ export function PopupApp() {
     }
     const bundle = await readExtensionVaultBundle(userId);
     if (!bundle?.encrypted_private_key?.payload) {
+      return false;
+    }
+    // Popup JS context is destroyed on close. Session restore must re-init WASM
+    // before folder metadata / attachment decrypt (unlike unlock-with-MP, which
+    // already calls initExtensionCrypto inside unlockExtensionVault).
+    try {
+      await initExtensionCrypto();
+    } catch (err: unknown) {
+      console.error("[extension] crypto init failed on session restore", err);
       return false;
     }
     const secrets: UnlockWithMasterPasswordResult = {
