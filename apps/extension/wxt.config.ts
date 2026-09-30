@@ -79,6 +79,7 @@ export default defineConfig({
         "@okkey/crypto-wasm": path.resolve(repoRoot, "packages/crypto/dist/okkey_crypto_engine.js"),
         "@okkey/vault": path.resolve(repoRoot, "packages/vault/src"),
         "@okkey/sync": path.resolve(repoRoot, "packages/sync/src"),
+        "@okkey/sync/item-sync": path.resolve(repoRoot, "packages/sync/src/item-sync.ts"),
       },
     },
   }),

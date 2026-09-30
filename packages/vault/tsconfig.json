@@ -15,6 +15,7 @@
       "@okkey/api": ["../api/dist/index.d.ts"],
       "@okkey/crypto": ["../crypto/dist/index.d.ts"],
       "@okkey/sync": ["../sync/dist/index.d.ts"],
+      "@okkey/sync/item-sync": ["../sync/dist/item-sync.d.ts"],
       "@okkey/ui": ["../ui/dist/index.d.ts"]
     }
   },

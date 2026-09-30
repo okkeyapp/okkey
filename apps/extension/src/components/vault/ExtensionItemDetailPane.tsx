@@ -5,8 +5,9 @@ import {
   ScrollArea,
   type KeyFieldFileValue,
 } from "@okkey/ui";
-import { downloadKeyFieldFileAttachment } from "@okkey/vault";
+import { downloadKeyFieldFileAttachment, copyTextWithVaultClipboardPolicy } from "@okkey/vault";
 import {
+  DeleteItemsConfirmPopup,
   ItemActivitySection,
   ItemDetailSavePath,
   ItemRecordFavicon,
@@ -19,9 +20,10 @@ import {
   useItemFaviconAttachmentUrl,
   type KeyFormEditorMessages,
 } from "@okkey/vault-ui";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebLocale } from "@okkey/i18n";
 
+import { readExtensionDevicePrefs } from "../../lib/extensionVaultSession";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 
 type ExtensionItemDetailPaneProps = {
@@ -33,20 +35,25 @@ type ExtensionItemDetailPaneProps = {
   accessToken: string;
   vaultKey: Uint8Array | null | undefined;
   locale: WebLocale;
+  userId: string;
+  favorite: boolean;
+  canFavorite: boolean;
+  canDelete: boolean;
+  canArchive: boolean;
+  deletedItemsRetentionDays: number;
+  mutationBusy?: boolean;
   onEdit: () => void;
   onCreateCapsule: () => void;
-  onFavoriteInWeb: () => void;
-  onArchiveInWeb: () => void;
-  onDeleteInWeb: () => void;
+  onToggleFavorite: () => void;
+  onToggleArchive: () => void;
+  onToggleDelete: (deleted: boolean) => void | Promise<void>;
   onOpenInWeb: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
 
 /**
- * Extension detail pane — same composition as web ItemDetailCard:
- * ItemDetailActionsBar (no back) + favicon/title + full KeyFormEditor view mode
- * + save-path trail + activity footer.
- * Mutations deep-link to web; file fields open via local decrypt → blob URL.
+ * Extension detail pane — same composition as web ItemDetailCard.
+ * Favorite / soft-delete run locally (E3); archive still deep-links when not wired.
  */
 export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
@@ -58,17 +65,26 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     accessToken,
     vaultKey,
     locale,
+    userId,
+    favorite,
+    canFavorite,
+    canDelete,
+    canArchive,
+    deletedItemsRetentionDays,
+    mutationBusy = false,
     onEdit,
     onCreateCapsule,
-    onFavoriteInWeb,
-    onArchiveInWeb,
-    onDeleteInWeb,
+    onToggleFavorite,
+    onToggleArchive,
+    onToggleDelete,
     onOpenInWeb,
     t,
   } = props;
 
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useRadixScrollAreaScrolled(detailScrollRef);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const archived = item.archived ?? false;
   const deleted = item.deleted ?? false;
@@ -129,24 +145,56 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     [accessToken, apiBaseUrl, item.itemId, item.vaultId, vaultKey],
   );
 
+  const handleCopyAction = useCallback(
+    async (text: string) => {
+      const prefs = await readExtensionDevicePrefs(userId);
+      await copyTextWithVaultClipboardPolicy({
+        clipboardClearSeconds: prefs.clipboardClearSeconds,
+        text,
+      });
+    },
+    [userId],
+  );
+
+  const handleToggleDelete = useCallback(() => {
+    if (!canDelete || mutationBusy) {
+      return;
+    }
+    if (deleted) {
+      void onToggleDelete(false);
+      return;
+    }
+    setDeleteConfirmOpen(true);
+  }, [canDelete, deleted, mutationBusy, onToggleDelete]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemDetailActionsBar
         t={t}
-        favorite={false}
+        favorite={favorite}
         archived={archived}
         deleted={deleted}
         headerScrolled={headerScrolled}
         showBack={false}
         onEdit={onEdit}
-        onToggleFavorite={onFavoriteInWeb}
-        onToggleArchive={onArchiveInWeb}
-        onToggleDelete={onDeleteInWeb}
+        onToggleFavorite={() => {
+          if (!canFavorite || mutationBusy) {
+            return;
+          }
+          onToggleFavorite();
+        }}
+        onToggleArchive={() => {
+          if (!canArchive || deleted || mutationBusy) {
+            return;
+          }
+          onToggleArchive();
+        }}
+        onToggleDelete={handleToggleDelete}
         onCreateCapsule={onCreateCapsule}
-        canEdit={!archived && !deleted}
-        canFavorite={!archived && !deleted}
-        canArchive={!deleted}
-        canDelete
+        canEdit={!archived && !deleted && !mutationBusy}
+        canFavorite={!archived && !deleted && canFavorite && !mutationBusy}
+        canArchive={!deleted && canArchive && !mutationBusy}
+        canDelete={canDelete && !mutationBusy}
         canCreateCapsule={!archived && !deleted}
         openInWebLabel={t("extension.vault.openInWeb")}
         onOpenInWeb={onOpenInWeb}
@@ -177,6 +225,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               fieldTypes={keyFormFieldTypes}
               messages={messagesWithCopy}
               onFileOpen={handleFileOpen}
+              onCopyText={handleCopyAction}
             />
 
             <ItemDetailSavePath vault={vault} folderLabel={folderLabel} />
@@ -190,6 +239,26 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
           </div>
         </div>
       </ScrollArea>
+
+      <DeleteItemsConfirmPopup
+        open={deleteConfirmOpen}
+        multiple={false}
+        retentionDays={deletedItemsRetentionDays}
+        deleting={deleting}
+        t={t}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          void (async () => {
+            setDeleting(true);
+            try {
+              await onToggleDelete(true);
+              setDeleteConfirmOpen(false);
+            } finally {
+              setDeleting(false);
+            }
+          })();
+        }}
+      />
     </div>
   );
 }

@@ -208,3 +208,6 @@ export {
   resolveUserTimeZone,
   type FormatUserLocalDateTimeOptions,
 } from "./lib/formatUserLocalDateTime.js";
+
+export { SetupPinPopup } from "./settings/SetupPinPopup.js";
+export { DeleteItemsConfirmPopup } from "./settings/DeleteItemsConfirmPopup.js";

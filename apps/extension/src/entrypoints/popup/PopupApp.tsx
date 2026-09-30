@@ -61,6 +61,7 @@ import {
   persistExtensionUnlockSession,
   readExtensionDevicePrefs,
   readExtensionUnlockSessionIfFresh,
+  resolveExtensionIdleLockMs,
   vaultIdleLockMsFromServerSeconds,
 } from "../../lib/extensionVaultSession";
 import {
@@ -186,7 +187,7 @@ export function PopupApp() {
     </Select>
   );
 
-  const loadIdentity = useCallback(async (apiBaseUrl: string, accessToken: string) => {
+  const loadIdentity = useCallback(async (apiBaseUrl: string, accessToken: string, userId?: string) => {
     try {
       const core = createCoreClient(apiBaseUrl, accessToken);
       const account = await core.getAccountProfile();
@@ -195,7 +196,15 @@ export function PopupApp() {
         firstName: account.first_name ?? "",
         lastName: account.last_name ?? "",
       });
-      setVaultIdleLockMs(vaultIdleLockMsFromServerSeconds(account.vault_idle_lock_seconds));
+      if (userId) {
+        const idleMs = await resolveExtensionIdleLockMs({
+          userId,
+          serverIdleLockSeconds: account.vault_idle_lock_seconds,
+        });
+        setVaultIdleLockMs(idleMs);
+      } else {
+        setVaultIdleLockMs(vaultIdleLockMsFromServerSeconds(account.vault_idle_lock_seconds));
+      }
       return account;
     } catch {
       setIdentity(null);
@@ -271,7 +280,7 @@ export function PopupApp() {
       const core = createCoreClient(apiBaseUrl, accessToken);
       const snapshot = await resolveExtensionDeviceTrust(core);
       await applyTrustSnapshot(snapshot, userId);
-      void loadIdentity(apiBaseUrl, accessToken);
+      void loadIdentity(apiBaseUrl, accessToken, userId);
     },
     [applyTrustSnapshot, loadIdentity],
   );
@@ -552,7 +561,10 @@ export function PopupApp() {
         let idleMs = vaultIdleLockMs;
         try {
           const account = await core.getAccountProfile();
-          idleMs = vaultIdleLockMsFromServerSeconds(account.vault_idle_lock_seconds);
+          idleMs = await resolveExtensionIdleLockMs({
+            userId: session.user_id,
+            serverIdleLockSeconds: account.vault_idle_lock_seconds,
+          });
           setVaultIdleLockMs(idleMs);
           setIdentity({
             email: account.email ?? "",
@@ -867,6 +879,16 @@ export function PopupApp() {
           onChangeServer={() => void onLogout()}
           onLock={lockVault}
           idleLockMs={vaultIdleLockMs}
+          onIdleLockMsChange={(ms) => {
+            setVaultIdleLockMs(ms);
+            if (session && unlockSecrets) {
+              void persistExtensionUnlockSession({
+                userId: session.user_id,
+                secrets: unlockSecrets,
+                idleLockMs: ms,
+              });
+            }
+          }}
           t={t}
         />
       </PopupFrame>

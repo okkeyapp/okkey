@@ -45,6 +45,10 @@ export {
   type WorkspaceVaultItemsReadController,
 } from "./workspace-vault-items-read.js";
 export {
+  withItemArchivedState,
+  withItemDeletedState,
+} from "./item-mutate.js";
+export {
   DEFAULT_VAULT_IDLE_LOCK_MS,
   vaultIdleLockMsFromServerSeconds,
 } from "./vault-idle-lock-ms.js";
