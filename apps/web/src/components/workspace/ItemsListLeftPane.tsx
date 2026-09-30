@@ -90,6 +90,8 @@ import {
   WORKSPACE_QUERY_PARAM,
   isItemsVaultKind,
   itemsPathWithCategoryMerged,
+  itemsPathWithFolderMerged,
+  itemsPathWithVaultMerged,
   withoutOpenItemQueryParam,
   type ItemsVaultKind,
 } from "../../routes/paths";
@@ -974,6 +976,14 @@ export default function ItemsListLeftPane({
     setFilterMenuOpen(false);
   };
 
+  const pickVault = (vaultId: string) => {
+    navigateToItemsPath(itemsPathWithVaultMerged(searchParams, vaultId));
+  };
+
+  const pickFolder = (folderId: string) => {
+    navigateToItemsPath(itemsPathWithFolderMerged(searchParams, folderId));
+  };
+
   const pickCategory = (categoryId: string) => {
     navigateToItemsPath(itemsPathWithCategoryMerged(searchParams, categoryId));
   };
@@ -1555,11 +1565,11 @@ export default function ItemsListLeftPane({
                 vaults={vaults}
                 folderTree={folderTree}
                 records={records}
-                searchParams={searchParams}
                 activeVaultId={vaultQ}
                 activeFolderId={folderQ}
                 activeCategoryId={categoryQ}
-                onNavigateTo={navigateToItemsPath}
+                onPickVault={pickVault}
+                onPickFolder={pickFolder}
                 onPickCategory={pickCategory}
                 onPickTag={pickTag}
                 onCloseMenu={() => setFilterMenuOpen(false)}

@@ -167,3 +167,16 @@ export {
   ItemRecordFaviconField,
   ItemRecordFaviconUploadControl,
 } from "./items/ItemRecordFaviconField.js";
+
+export {
+  CategoryIconBadge,
+  FilterTagsIcon,
+  ItemsListFilterScopeSubmenus,
+  getActiveCategoryLabel,
+  type ItemsListFilterScopeRecord,
+  type ItemsListFilterScopeSubmenusProps,
+  type ItemsListFilterScopeVault,
+} from "./filter/ItemsListFilterScopeSubmenus.js";
+
+export { useItemFaviconAttachmentUrl } from "./items/useItemFaviconAttachmentUrl.js";
+export { useWorkspaceLogoUrl } from "./items/useWorkspaceLogoUrl.js";

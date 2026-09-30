@@ -24,6 +24,7 @@
     "@okkey/i18n": "0.0.1",
     "@okkey/types": "0.0.1",
     "@okkey/ui": "0.0.1",
+    "@okkey/vault": "0.0.1",
     "date-fns": "^4.4.0",
     "otpauth": "^9.5.1"
   },
