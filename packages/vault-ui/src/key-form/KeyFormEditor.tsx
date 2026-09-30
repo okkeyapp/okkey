@@ -165,6 +165,11 @@ export type KeyFormEditorProps = {
   onRecoveryCodesValueChange?: (change: RecoveryCodesValueChange) => void | Promise<void>;
   onFileUpload?: (file: File, onProgress: (percent: number) => void) => Promise<KeyFieldFileValue>;
   onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
+  /**
+   * When set, view-mode file click uses this instead of download + lightbox
+   * (extension open-in-web). Web leaves this unset and uses onFileOpen.
+   */
+  onFileActivate?: (file: KeyFieldFileValue) => void;
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
   datePickerLocale?: Locale;
@@ -1618,6 +1623,7 @@ type SortableFieldProps = {
   fileValue?: boolean;
   onFileUpload?: (file: File, onProgress: (percent: number) => void) => Promise<KeyFieldFileValue>;
   onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
+  onFileActivate?: (file: KeyFieldFileValue) => void;
   statusOverlayLabel?: string;
   onCopyAction?: (value: string) => void | Promise<void>;
   onValueBlur?: () => void;
@@ -1673,6 +1679,7 @@ function SortableField({
   fileValue,
   onFileUpload,
   onFileOpen,
+  onFileActivate,
   statusOverlayLabel,
   onCopyAction,
   onValueBlur,
@@ -1748,6 +1755,7 @@ function SortableField({
       fileValue={fileValue}
       onFileUpload={onFileUpload}
       onFileOpen={onFileOpen}
+      onFileActivate={onFileActivate}
       fileUploadConstraints={fileUploadConstraints}
       autoFocusValue={autoFocusValue}
       autoFocusValueRequest={autoFocusValueRequest}
@@ -1896,6 +1904,7 @@ export function KeyFormEditor({
   datePickerLocale,
   onFileUpload,
   onFileOpen,
+  onFileActivate,
   fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
   allowFileFields = true,
 }: KeyFormEditorProps) {
@@ -3356,6 +3365,7 @@ export function KeyFormEditor({
         fileValue={isFileField}
         onFileUpload={allowFileFields ? handleKeyFieldFileUpload : undefined}
         onFileOpen={onFileOpen}
+        onFileActivate={onFileActivate}
         fileUploadConstraints={fileUploadConstraints}
         fileUploadHintLabels={fileUploadHintLabels}
         fileClearEnabled={allowFileFields}
@@ -3441,6 +3451,7 @@ export function KeyFormEditor({
         fileValue={field.type === "file"}
         onFileUpload={allowFileFields ? handleKeyFieldFileUpload : undefined}
         onFileOpen={onFileOpen}
+        onFileActivate={onFileActivate}
         fileUploadConstraints={fileUploadConstraints}
         fileClearEnabled={allowFileFields}
         addressFieldPlaceholders={messages.address}

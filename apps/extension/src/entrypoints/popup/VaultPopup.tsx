@@ -626,23 +626,26 @@ export function VaultPopup(props: VaultPopupProps) {
     });
 
     let scoped = records;
-    if (vaultFilterId) {
-      scoped = scoped.filter((row) => row.vaultId === vaultFilterId);
-    }
-    if (folderFilterId) {
-      scoped = scoped.filter((row) => row.folderId === folderFilterId);
-    }
-    if (categoryFilterId) {
-      scoped = scoped.filter((row) => row.categoryId === categoryFilterId);
+    const searchTrim = search.trim();
+    if (!searchTrim) {
+      if (categoryFilterId) {
+        scoped = scoped.filter((row) => row.categoryId === categoryFilterId);
+      } else {
+        if (vaultFilterId) {
+          scoped = scoped.filter((row) => row.vaultId === vaultFilterId);
+        }
+        if (folderFilterId) {
+          scoped = scoped.filter((row) => row.folderId === folderFilterId);
+        }
+      }
     }
 
     const filtered = filterRows(scoped, filter);
-    const needle = search.trim();
-    if (!needle) {
+    if (!searchTrim) {
       return [...filtered].sort((a, b) => compareRows(a, b, sort));
     }
     return filtered
-      .map((row) => ({ row, score: scoreItemsListRecordSearch(row, needle) }))
+      .map((row) => ({ row, score: scoreItemsListRecordSearch(row, searchTrim) }))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || compareRows(a.row, b.row, sort))
       .map((entry) => entry.row);
@@ -705,10 +708,17 @@ export function VaultPopup(props: VaultPopupProps) {
     setCategoryFilterId(null);
   }, []);
 
+  /** Web `clearWorkspaceScopeFromUrl`: drop vault/folder/category/search (and keep sort). */
+  const clearAllListScope = useCallback(() => {
+    clearScope();
+    setSearch("");
+  }, [clearScope]);
+
   const pickVaultScope = useCallback((id: string) => {
     setVaultFilterId(id);
     setFolderFilterId(null);
     setCategoryFilterId(null);
+    setSearch("");
     setFilter("all");
     setSelectedId(null);
   }, []);
@@ -717,6 +727,7 @@ export function VaultPopup(props: VaultPopupProps) {
     setFolderFilterId(id);
     setVaultFilterId(null);
     setCategoryFilterId(null);
+    setSearch("");
     setFilter("all");
     setSelectedId(null);
   }, []);
@@ -725,6 +736,7 @@ export function VaultPopup(props: VaultPopupProps) {
     setCategoryFilterId(id);
     setVaultFilterId(null);
     setFolderFilterId(null);
+    setSearch("");
     setFilter("all");
     setSelectedId(null);
   }, []);
@@ -983,6 +995,7 @@ export function VaultPopup(props: VaultPopupProps) {
               sort={sort}
               selectedId={selectedId}
               locale={locale === "ru" ? "ru" : "en"}
+              searchQuery={search}
               vaultScopeLabel={vaultScopeMeta?.name ?? null}
               folderScopeLabel={folderScopeLabel}
               categoryScopeLabel={categoryScopeLabel}
@@ -996,11 +1009,10 @@ export function VaultPopup(props: VaultPopupProps) {
               resolveVaultKey={resolveVaultKey}
               onFilterChange={(next) => {
                 setFilter(next);
-                clearScope();
               }}
               onSortChange={setSort}
               onSelect={onSelectItem}
-              onClearScope={clearScope}
+              onClearScope={clearAllListScope}
               onPickVault={pickVaultScope}
               onPickFolder={pickFolderScope}
               onPickCategory={pickCategoryScope}

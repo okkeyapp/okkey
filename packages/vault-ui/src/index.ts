@@ -181,8 +181,11 @@ export {
 export {
   ItemsListFilterDropdown,
   ScopeRowCloseButton,
+  isItemsListMonitoringFilter,
   type ItemsListCoreFilter,
   type ItemsListFilterDropdownProps,
+  type ItemsListFilterValue,
+  type ItemsListMonitoringFilter,
 } from "./filter/ItemsListFilterDropdown.js";
 
 export { useItemFaviconAttachmentUrl } from "./items/useItemFaviconAttachmentUrl.js";

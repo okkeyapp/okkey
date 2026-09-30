@@ -23,7 +23,7 @@ import {
   type ItemsListLocale,
   type ItemsListSortValue,
 } from "@okkey/ui";
-import type { ExtensionItemListRecord } from "@okkey/vault";
+import { parseTagSearchNeedle, type ExtensionItemListRecord } from "@okkey/vault";
 import {
   ItemsListFilterDropdown,
   LazyItemRecordFavicon,
@@ -54,7 +54,7 @@ type ExtensionItemsListPaneProps = {
   sort: ExtensionListSort;
   selectedId: string | null;
   locale: ItemsListLocale;
-  scopeLabel?: string | null;
+  searchQuery?: string;
   vaultScopeLabel?: string | null;
   folderScopeLabel?: string | null;
   categoryScopeLabel?: string | null;
@@ -116,6 +116,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     sort,
     selectedId,
     locale,
+    searchQuery = "",
     vaultScopeLabel,
     folderScopeLabel,
     categoryScopeLabel,
@@ -139,14 +140,26 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
   } = props;
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  const tagNeedle = useMemo(() => parseTagSearchNeedle(searchQuery), [searchQuery]);
+  const tagScopeLabel = tagNeedle;
+  const searchScopeLabel = searchQuery.trim() && !tagNeedle ? searchQuery.trim() : null;
+
   const sections = useMemo(
     () => buildItemsListSections(records, sort, locale),
     [locale, records, sort],
   );
   const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
-  const listWindowResetKey = [filter, sort, activeVaultId, activeFolderId, activeCategoryId, vaultScopeLabel ?? "", folderScopeLabel ?? "", categoryScopeLabel ?? ""].join(
-    "|",
-  );
+  const listWindowResetKey = [
+    filter,
+    sort,
+    activeVaultId,
+    activeFolderId,
+    activeCategoryId,
+    searchQuery,
+    vaultScopeLabel ?? "",
+    folderScopeLabel ?? "",
+    categoryScopeLabel ?? "",
+  ].join("|");
   const { visibleCount, hasMore, loadMore } = useListWindow({
     total: totalRows,
     resetKey: listWindowResetKey,
@@ -165,9 +178,12 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
             locale={locale === "ru" ? "ru" : "en"}
             filter={filter}
             onFilterChange={onFilterChange}
+            searchScopeLabel={searchScopeLabel}
+            tagScopeLabel={tagScopeLabel}
             vaultScopeLabel={vaultScopeLabel}
             folderScopeLabel={folderScopeLabel}
             categoryScopeLabel={categoryScopeLabel}
+            categoryId={activeCategoryId || null}
             vaultOptions={vaultOptions}
             folderTree={folderTree}
             records={records}

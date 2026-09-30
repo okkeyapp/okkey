@@ -1,6 +1,5 @@
 import {
   Button,
-  ChevronDownGlyph,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -8,23 +7,16 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  FilterIconAllRecords,
   FilterIconArchived,
-  FilterIconDeleted,
   FilterIconFavorites,
-  FilterIconFrame,
-  FilterIconMonitoring,
-  FolderClosedGlyph,
   KeyFieldCopyIcon,
   ScrollArea,
-  SearchGlyph,
   SidebarGroupLabel,
   Skeleton,
   SortIconAlphaAsc,
   SortIconAlphaDesc,
   SortIconNewestFirst,
   SortIconOldestFirst,
-  Spinner,
   mutedSurfaceHoverBgClassName,
   mutedSurfaceHoverBgImportantClassName,
   mutedSurfaceOpenBgClassName,
@@ -33,7 +25,7 @@ import {
   type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
@@ -46,8 +38,7 @@ import { windowListSections } from "../../lists/windowListSections";
 import { formatTagSearchQuery, parseTagSearchNeedle, scoreItemsListRecordSearch } from "../../items/workspaceItemSearch";
 import { LazyItemRecordFavicon } from "../items/ItemRecordFavicon";
 import DeleteItemsConfirmPopup from "../items/DeleteItemsConfirmPopup";
-import { vaultDisplayIcon } from "./settings/vaults/vaultIcons";
-import { getItemCategoryDefinition, isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
+import { isItemCategoryId, itemCategoryIdToPopupSlug } from "../items/itemCategoryCatalog";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useAuthVault } from "../../auth/AuthVaultContext";
@@ -58,10 +49,8 @@ import { EDIT_ITEM_POPUP_ID, NEW_CAPSULE_POPUP_ID, NEW_ITEM_POPUP_ID, buildPopup
 import { stickyHeaderShadowClassName, stickyHeaderSurfaceClassName, stickyFooterShadowClassName, stickyFooterSurfaceClassName } from "./stickyHeaderShadow";
 import {
   getActiveCategoryLabel,
-  CategoryIconBadge,
-  FilterTagsIcon,
-  ItemsListFilterScopeSubmenus,
-  ScopeRowCloseButton,
+  ItemsListFilterDropdown,
+  type ItemsListCoreFilter,
 } from "@okkey/vault-ui";
 import {
   applyWorkspaceSearchToParams,
@@ -98,15 +87,6 @@ import {
 } from "../../routes/paths";
 import { monitoringIssueItemIds } from "../../monitoring/analytics";
 import { useMonitoringReport } from "../../monitoring/useMonitoringReport";
-
-const itemsPanelSelectTriggerClassName = cn(
-  "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
-  "px-2 text-sm text-foreground",
-  mutedSurfaceHoverBgClassName,
-  "focus:border-transparent focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)] focus-visible:border-transparent",
-  mutedSurfaceOpenBgClassName,
-  "data-[state=open]:border-transparent data-[state=open]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
-);
 
 export type ItemsListRecordWire = {
   id: string;
@@ -383,84 +363,6 @@ function isMonitoringListFilter(
     filter === "2fa-gap" ||
     filter === "passkey-gap"
   );
-}
-
-function filterIconForValue(value: ItemsListFilter, className?: string) {
-  const c = cn("shrink-0", className);
-  switch (value) {
-    case "all":
-      return <FilterIconAllRecords className={c} />;
-    case "favorites":
-      return <FilterIconFavorites className={c} />;
-    case "archived":
-      return <FilterIconArchived className={c} />;
-    case "recently_deleted":
-      return <FilterIconDeleted className={c} />;
-    case "reused":
-    case "strong":
-    case "medium":
-    case "weak":
-    case "stale":
-    case "compromised":
-    case "2fa-gap":
-    case "passkey-gap":
-      return <FilterIconMonitoring className={c} />;
-    default: {
-      const _ex: never = value;
-      return _ex;
-    }
-  }
-}
-
-/** Compact filter glyph for the filter dropdown trigger when a vault/folder/search scope is active. */
-function filterSecondaryGlyph(filter: ItemsListFilter): ReactNode {
-  const c = "size-4 shrink-0";
-  switch (filter) {
-    case "favorites":
-      return <FilterIconFavorites className={c} />;
-    case "archived":
-      return <FilterIconArchived className={c} />;
-    case "recently_deleted":
-      return <FilterIconDeleted className={c} />;
-    case "reused":
-    case "strong":
-    case "medium":
-    case "weak":
-    case "stale":
-    case "compromised":
-    case "2fa-gap":
-    case "passkey-gap":
-      return <FilterIconMonitoring className={c} />;
-    case "all":
-      return null;
-    default: {
-      const _ex: never = filter;
-      return _ex;
-    }
-  }
-}
-
-function monitoringFilterLabelKey(filter: ItemsListFilter): string {
-  switch (filter) {
-    case "reused":
-      return "web.monitoring.reusedTitle";
-    case "strong":
-      return "web.items.filter.strong";
-    case "medium":
-      return "web.items.filter.medium";
-    case "weak":
-      return "web.monitoring.weakTitle";
-    case "stale":
-      return "web.monitoring.staleTitle";
-    case "compromised":
-      return "web.monitoring.compromisedTitle";
-    case "2fa-gap":
-      return "web.monitoring.twoFactorGapTitle";
-    case "passkey-gap":
-      return "web.monitoring.passkeyGapTitle";
-    default:
-      return `web.items.filter.${filter === "recently_deleted" ? "recentlyDeleted" : filter}`;
-  }
 }
 
 function filterFromSearchParam(raw: string): ItemsListFilter {
@@ -885,16 +787,10 @@ export default function ItemsListLeftPane({
   const folderScopeLoading = Boolean(folderQ && !itemsListFoldersLoaded && !folderPath);
   const folderTitle = folderPath || (folderScopeLoading ? "" : folderQ);
   const categoryLabel = categoryQ ? getActiveCategoryLabel(categoryQ, t) : undefined;
-  const categoryDefinition = categoryQ ? getItemCategoryDefinition(categoryQ) : undefined;
 
-  const categoryScopeActive = Boolean(categoryQ && categoryDefinition && !searchQ && !vaultQ && !vaultKind && !folderQ);
   const tagSearchActive = Boolean(searchQ && parseTagSearchNeedle(searchQ) !== null);
   const searchScopeLabel = tagSearchActive ? (parseTagSearchNeedle(searchQ) ?? searchQ) : searchQ;
-  const hasListScope = Boolean(searchQ || vaultQ || vaultKind || folderQ || categoryQ);
   const monitoringFilterActive = isMonitoringListFilter(filter);
-  const secondaryFilterInTrigger =
-    hasListScope && filterToSearchParam(filter) !== null && !monitoringFilterActive;
-  const categoryWithSecondaryFilter = categoryScopeActive && secondaryFilterInTrigger;
   const vaultScopeLoading = Boolean(vaultQ && !itemsListVaultsLoaded && !vaultMeta);
   const vaultKindScopeLoading = Boolean(vaultKind && !itemsListVaultsLoaded);
   const scopeTriggerLoading = vaultScopeLoading || vaultKindScopeLoading || folderScopeLoading;
@@ -1292,269 +1188,46 @@ export default function ItemsListLeftPane({
           )}
         >
         <div className="flex w-full items-center gap-2">
-          <DropdownMenu open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-busy={scopeTriggerLoading}
-                aria-label={t("web.items.list.filterAria")}
-                className={cn(
-                  itemsPanelSelectTriggerClassName,
-                  "flex min-h-9 min-w-0 flex-1 cursor-default items-center justify-start gap-2 text-left outline-none",
-                )}
-              >
-                <FilterIconFrame wide={secondaryFilterInTrigger} flush={categoryScopeActive}>
-                  {monitoringFilterActive ? (
-                    <FilterIconMonitoring />
-                  ) : hasListScope ? (
-                    <span
-                      className={cn(
-                        "flex items-center",
-                        categoryScopeActive ? "h-full w-full" : "h-4 gap-1",
-                        categoryWithSecondaryFilter && "gap-0",
-                      )}
-                    >
-                      {searchQ ? (
-                        tagSearchActive ? (
-                          <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
-                        ) : (
-                          <SearchGlyph />
-                        )
-                      ) : categoryScopeActive && categoryDefinition ? (
-                        <>
-                          <CategoryIconBadge
-                            categoryId={categoryDefinition.id}
-                            iconColor={categoryDefinition.iconColor}
-                            size={24}
-                          />
-                          {secondaryFilterInTrigger ? (
-                            <span className="flex flex-1 items-center justify-center">
-                              {filterSecondaryGlyph(filter)}
-                            </span>
-                          ) : null}
-                        </>
-                      ) : vaultQ ? (
-                        vaultScopeLoading ? (
-                          <Spinner size="small" className="size-4 shrink-0" />
-                        ) : (
-                          <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
-                            <span className="text-[14px] leading-none">{vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}</span>
-                          </span>
-                        )
-                      ) : vaultKind ? (
-                        vaultKindScopeLoading ? (
-                          <Spinner size="small" className="size-4 shrink-0" />
-                        ) : (
-                          <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
-                            <span className="text-[14px] leading-none">
-                              {vaultDisplayIcon({ isPersonal: vaultKind === "personal" })}
-                            </span>
-                          </span>
-                        )
-                      ) : folderQ ? (
-                        folderScopeLoading ? (
-                          <Spinner size="small" className="size-4 shrink-0" />
-                        ) : (
-                          <FolderClosedGlyph />
-                        )
-                      ) : (
-                        <FolderClosedGlyph />
-                      )}
-                      {!categoryScopeActive && secondaryFilterInTrigger ? (
-                        <>
-                          <span className="h-4 w-px shrink-0 bg-border/80" aria-hidden />
-                          {filterSecondaryGlyph(filter)}
-                        </>
-                      ) : null}
-                    </span>
-                  ) : (
-                    filterIconForValue(filter)
-                  )}
-                </FilterIconFrame>
-                <span className="min-w-0 flex-1 truncate text-left text-sm font-normal text-foreground">
-                  {monitoringFilterActive
-                    ? t(monitoringFilterLabelKey(filter))
-                    : searchQ
-                      ? searchScopeLabel
-                      : vaultQ
-                        ? vaultScopeLoading
-                          ? null
-                          : (vaultMeta?.name ?? vaultQ)
-                        : vaultKind
-                          ? vaultKindScopeLoading
-                            ? null
-                            : t(`web.monitoring.vaultScope.${vaultKind}`)
-                          : folderQ
-                            ? folderScopeLoading
-                              ? null
-                              : folderTitle
-                            : categoryQ
-                              ? (categoryLabel ?? categoryQ)
-                              : t(
-                                  `web.items.filter.${
-                                    filter === "recently_deleted"
-                                      ? "recentlyDeleted"
-                                      : filter
-                                  }`,
-                                )}
-                </span>
-                <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[12.5rem] p-1">
-              {searchQ ? (
-                <>
-                  <DropdownMenuItem
-                    className={cn(
-                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
-                      "bg-muted/80 data-[highlighted]:bg-secondary",
-                    )}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {tagSearchActive ? (
-                      <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
-                    ) : (
-                      <SearchGlyph className="size-4 shrink-0 text-foreground" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-left">{searchScopeLabel}</span>
-                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="mx-1 my-1" />
-                </>
-              ) : null}
-              {vaultQ ? (
-                <>
-                  <DropdownMenuItem
-                    className={cn(
-                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
-                      "bg-muted/80 data-[highlighted]:bg-secondary",
-                    )}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <span className="text-base leading-none" aria-hidden>
-                      {vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left">{vaultMeta?.name ?? vaultQ}</span>
-                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="mx-1 my-1" />
-                </>
-              ) : null}
-              {!vaultQ && vaultKind ? (
-                <>
-                  <DropdownMenuItem
-                    className={cn(
-                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
-                      "bg-muted/80 data-[highlighted]:bg-secondary",
-                    )}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <span className="text-base leading-none" aria-hidden>
-                      {vaultDisplayIcon({ isPersonal: vaultKind === "personal" })}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left">
-                      {t(`web.monitoring.vaultScope.${vaultKind}`)}
-                    </span>
-                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="mx-1 my-1" />
-                </>
-              ) : null}
-              {!vaultQ && !vaultKind && folderQ ? (
-                <>
-                  <DropdownMenuItem
-                    className={cn(
-                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
-                      "bg-muted/80 data-[highlighted]:bg-secondary",
-                    )}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <FolderClosedGlyph />
-                    <span className="min-w-0 flex-1 truncate text-left">
-                      {folderScopeLoading ? null : folderTitle}
-                    </span>
-                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="mx-1 my-1" />
-                </>
-              ) : null}
-              {!searchQ && !vaultQ && !vaultKind && !folderQ && categoryQ && categoryDefinition ? (
-                <>
-                  <DropdownMenuItem
-                    className={cn(
-                      "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
-                      "bg-muted/80 data-[highlighted]:bg-secondary",
-                    )}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <CategoryIconBadge
-                      categoryId={categoryDefinition.id}
-                      iconColor={categoryDefinition.iconColor}
-                      size={24}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-left">{categoryLabel ?? categoryQ}</span>
-                    <ScopeRowCloseButton locale={locale} onClear={clearWorkspaceScopeFromUrl} />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="mx-1 my-1" />
-                </>
-              ) : null}
-              <DropdownMenuItem
-                className={cn(
-                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                  filter === "all" && "bg-muted/80 data-[highlighted]:bg-secondary",
-                )}
-                onSelect={() => setFilterUrl("all")}
-              >
-                <FilterIconAllRecords className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.all")}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={cn(
-                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                  filter === "favorites" && "bg-muted/80 data-[highlighted]:bg-secondary",
-                )}
-                onSelect={() => setFilterUrl("favorites")}
-              >
-                <FilterIconFavorites className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.favorites")}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={cn(
-                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                  filter === "archived" && "bg-muted/80 data-[highlighted]:bg-secondary",
-                )}
-                onSelect={() => setFilterUrl("archived")}
-              >
-                <FilterIconArchived className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.archived")}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={cn(
-                  "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                  filter === "recently_deleted" && "bg-muted/80 data-[highlighted]:bg-secondary",
-                )}
-                onSelect={() => setFilterUrl("recently_deleted")}
-              >
-                <FilterIconDeleted className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-left">{t("web.items.filter.recentlyDeleted")}</span>
-              </DropdownMenuItem>
-              <ItemsListFilterScopeSubmenus
-                t={t}
-                vaults={vaults}
-                folderTree={folderTree}
-                records={records}
-                activeVaultId={vaultQ}
-                activeFolderId={folderQ}
-                activeCategoryId={categoryQ}
-                onPickVault={pickVault}
-                onPickFolder={pickFolder}
-                onPickCategory={pickCategory}
-                onPickTag={pickTag}
-                onCloseMenu={() => setFilterMenuOpen(false)}
-                menuOpen={filterMenuOpen}
-              />
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ItemsListFilterDropdown
+            t={t}
+            locale={locale}
+            filter={filter}
+            onFilterChange={(next: ItemsListCoreFilter) => setFilterUrl(next)}
+            searchScopeLabel={searchQ && !tagSearchActive ? searchScopeLabel : null}
+            tagScopeLabel={tagSearchActive ? searchScopeLabel : null}
+            vaultScopeLabel={vaultQ ? (vaultMeta?.name ?? vaultQ) : null}
+            vaultKindScopeLabel={
+              !vaultQ && vaultKind ? t(`web.monitoring.vaultScope.${vaultKind}`) : null
+            }
+            vaultKindIsPersonal={vaultKind === "personal"}
+            folderScopeLabel={
+              !vaultQ && !vaultKind && folderQ
+                ? folderScopeLoading
+                  ? folderQ
+                  : folderTitle
+                : null
+            }
+            categoryScopeLabel={
+              !searchQ && !vaultQ && !vaultKind && !folderQ && categoryQ
+                ? (categoryLabel ?? categoryQ)
+                : null
+            }
+            categoryId={categoryQ || null}
+            vaultOptions={vaults}
+            folderTree={folderTree}
+            records={records}
+            activeVaultId={vaultQ}
+            activeFolderId={folderQ}
+            activeCategoryId={categoryQ}
+            scopeTriggerLoading={scopeTriggerLoading}
+            onClearScope={clearWorkspaceScopeFromUrl}
+            onPickVault={pickVault}
+            onPickFolder={pickFolder}
+            onPickCategory={pickCategory}
+            onPickTag={pickTag}
+            open={filterMenuOpen}
+            onOpenChange={setFilterMenuOpen}
+          />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -151,6 +151,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               initialSections={formSections}
               fieldTypes={keyFormFieldTypes}
               messages={messagesWithCopy}
+              onFileActivate={() => onOpenInWeb()}
             />
 
             <ItemDetailSavePath vault={vault} folderLabel={folderLabel} />

@@ -1,7 +1,9 @@
 /**
  * Shared items-list filter dropdown (web + extension).
- * Matches web `ItemsListLeftPane` filter trigger + menu: scope chip with red
- * close, icons on selected rows, and multi-glyph trigger (scope + secondary filter).
+ * Parity with web `ItemsListLeftPane` filter trigger + menu: scope chip with red
+ * close, icons on selected rows, multi-glyph trigger (scope + secondary filter).
+ * Monitoring list filters are display-only here (set via URL / monitoring page);
+ * the dropdown menu never lists monitoring rows.
  */
 import type { WebLocale, WebMessageValues } from "@okkey/i18n";
 import {
@@ -16,7 +18,10 @@ import {
   FilterIconDeleted,
   FilterIconFavorites,
   FilterIconFrame,
+  FilterIconMonitoring,
   FolderClosedGlyph,
+  SearchGlyph,
+  Spinner,
   cn,
   mutedSurfaceHoverBgClassName,
   mutedSurfaceOpenBgClassName,
@@ -35,6 +40,19 @@ import {
 
 export type ItemsListCoreFilter = "all" | "favorites" | "archived" | "recently_deleted";
 
+export type ItemsListMonitoringFilter =
+  | "reused"
+  | "strong"
+  | "medium"
+  | "weak"
+  | "stale"
+  | "compromised"
+  | "2fa-gap"
+  | "passkey-gap";
+
+/** Core list filters + monitoring filters (trigger display / URL state). */
+export type ItemsListFilterValue = ItemsListCoreFilter | ItemsListMonitoringFilter;
+
 const itemsPanelSelectTriggerClassName = cn(
   "h-9 min-h-9 rounded-lg border-0 bg-slate-100 shadow-none dark:bg-muted",
   "px-2 text-sm text-foreground",
@@ -51,7 +69,22 @@ const CORE_FILTERS: readonly ItemsListCoreFilter[] = [
   "recently_deleted",
 ];
 
-function filterIconForValue(value: ItemsListCoreFilter, className?: string) {
+export function isItemsListMonitoringFilter(
+  filter: ItemsListFilterValue,
+): filter is ItemsListMonitoringFilter {
+  return (
+    filter === "reused" ||
+    filter === "strong" ||
+    filter === "medium" ||
+    filter === "weak" ||
+    filter === "stale" ||
+    filter === "compromised" ||
+    filter === "2fa-gap" ||
+    filter === "passkey-gap"
+  );
+}
+
+function filterIconForValue(value: ItemsListFilterValue, className?: string) {
   const c = cn("shrink-0", className);
   switch (value) {
     case "all":
@@ -62,6 +95,15 @@ function filterIconForValue(value: ItemsListCoreFilter, className?: string) {
       return <FilterIconArchived className={c} />;
     case "recently_deleted":
       return <FilterIconDeleted className={c} />;
+    case "reused":
+    case "strong":
+    case "medium":
+    case "weak":
+    case "stale":
+    case "compromised":
+    case "2fa-gap":
+    case "passkey-gap":
+      return <FilterIconMonitoring className={c} />;
     default: {
       const _ex: never = value;
       return _ex;
@@ -69,7 +111,7 @@ function filterIconForValue(value: ItemsListCoreFilter, className?: string) {
   }
 }
 
-function filterSecondaryGlyph(filter: ItemsListCoreFilter): ReactNode {
+function filterSecondaryGlyph(filter: ItemsListFilterValue): ReactNode {
   const c = "size-4 shrink-0";
   switch (filter) {
     case "favorites":
@@ -78,6 +120,15 @@ function filterSecondaryGlyph(filter: ItemsListCoreFilter): ReactNode {
       return <FilterIconArchived className={c} />;
     case "recently_deleted":
       return <FilterIconDeleted className={c} />;
+    case "reused":
+    case "strong":
+    case "medium":
+    case "weak":
+    case "stale":
+    case "compromised":
+    case "2fa-gap":
+    case "passkey-gap":
+      return <FilterIconMonitoring className={c} />;
     case "all":
       return null;
     default: {
@@ -87,7 +138,7 @@ function filterSecondaryGlyph(filter: ItemsListCoreFilter): ReactNode {
   }
 }
 
-function filterLabelKey(filter: ItemsListCoreFilter): string {
+function coreFilterLabelKey(filter: ItemsListCoreFilter): string {
   switch (filter) {
     case "all":
       return "web.items.filter.all";
@@ -97,6 +148,31 @@ function filterLabelKey(filter: ItemsListCoreFilter): string {
       return "web.items.filter.archived";
     case "recently_deleted":
       return "web.items.filter.recentlyDeleted";
+    default: {
+      const _ex: never = filter;
+      return _ex;
+    }
+  }
+}
+
+function monitoringFilterLabelKey(filter: ItemsListMonitoringFilter): string {
+  switch (filter) {
+    case "reused":
+      return "web.monitoring.reusedTitle";
+    case "strong":
+      return "web.items.filter.strong";
+    case "medium":
+      return "web.items.filter.medium";
+    case "weak":
+      return "web.monitoring.weakTitle";
+    case "stale":
+      return "web.monitoring.staleTitle";
+    case "compromised":
+      return "web.monitoring.compromisedTitle";
+    case "2fa-gap":
+      return "web.monitoring.twoFactorGapTitle";
+    case "passkey-gap":
+      return "web.monitoring.passkeyGapTitle";
     default: {
       const _ex: never = filter;
       return _ex;
@@ -137,23 +213,35 @@ export function ScopeRowCloseButton({
 export type ItemsListFilterDropdownProps<TRecord extends ItemsListFilterScopeRecord> = {
   t: (key: string, values?: WebMessageValues) => string;
   locale: WebLocale;
-  filter: ItemsListCoreFilter;
+  filter: ItemsListFilterValue;
+  /** Core filters only — monitoring filters are not chosen from this menu. */
   onFilterChange: (filter: ItemsListCoreFilter) => void;
+  /** Plain text search scope (non-tag). Mutually exclusive display with tagScopeLabel. */
+  searchScopeLabel?: string | null;
+  tagScopeLabel?: string | null;
   vaultScopeLabel?: string | null;
+  /** Personal/shared vault-kind scope label (web monitoring vaultScope.*). */
+  vaultKindScopeLabel?: string | null;
+  vaultKindIsPersonal?: boolean;
   folderScopeLabel?: string | null;
   categoryScopeLabel?: string | null;
-  tagScopeLabel?: string | null;
+  categoryId?: string | null;
   vaultOptions: readonly ItemsListFilterScopeVault[];
   folderTree: Parameters<typeof ItemsListFilterScopeSubmenus>[0]["folderTree"];
   records: readonly TRecord[];
   activeVaultId: string;
   activeFolderId: string;
   activeCategoryId: string;
+  /** Spinner on trigger while vault/folder labels resolve. */
+  scopeTriggerLoading?: boolean;
   onClearScope?: () => void;
   onPickVault: (vaultId: string) => void;
   onPickFolder: (folderId: string) => void;
   onPickCategory: (categoryId: string) => void;
   onPickTag: (tag: string) => void;
+  /** Controlled open state (optional; defaults to internal state). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeRecord>(
@@ -164,43 +252,83 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
     locale,
     filter,
     onFilterChange,
+    searchScopeLabel,
+    tagScopeLabel,
     vaultScopeLabel,
+    vaultKindScopeLabel,
+    vaultKindIsPersonal,
     folderScopeLabel,
     categoryScopeLabel,
-    tagScopeLabel,
+    categoryId,
     vaultOptions,
     folderTree,
     records,
     activeVaultId,
     activeFolderId,
     activeCategoryId,
+    scopeTriggerLoading = false,
     onClearScope,
     onPickVault,
     onPickFolder,
     onPickCategory,
     onPickTag,
+    open: openControlled,
+    onOpenChange: onOpenChangeControlled,
   } = props;
 
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [filterMenuOpenUncontrolled, setFilterMenuOpenUncontrolled] = useState(false);
+  const filterMenuOpen = openControlled ?? filterMenuOpenUncontrolled;
+  const setFilterMenuOpen = onOpenChangeControlled ?? setFilterMenuOpenUncontrolled;
 
   const vaultMeta = activeVaultId
     ? vaultOptions.find((v) => v.id === activeVaultId)
     : undefined;
-  const categoryDefinition = activeCategoryId
-    ? getItemCategoryDefinition(activeCategoryId)
+  const resolvedCategoryId = categoryId ?? activeCategoryId;
+  const categoryDefinition = resolvedCategoryId
+    ? getItemCategoryDefinition(resolvedCategoryId)
     : undefined;
 
+  const tagSearchActive = Boolean(tagScopeLabel);
+  const searchActive = Boolean(searchScopeLabel || tagScopeLabel);
   const hasListScope = Boolean(
-    tagScopeLabel || vaultScopeLabel || folderScopeLabel || categoryScopeLabel,
+    searchActive || vaultScopeLabel || vaultKindScopeLabel || folderScopeLabel || categoryScopeLabel,
   );
-  const secondaryFilterInTrigger = hasListScope && filter !== "all";
-  const categoryScopeActive = Boolean(categoryScopeLabel && categoryDefinition);
+  const monitoringFilterActive = isItemsListMonitoringFilter(filter);
+  const secondaryFilterInTrigger =
+    hasListScope && filter !== "all" && !monitoringFilterActive && filterSecondaryGlyph(filter) !== null;
+  const categoryScopeActive = Boolean(
+    categoryScopeLabel &&
+      categoryDefinition &&
+      !searchActive &&
+      !vaultScopeLabel &&
+      !vaultKindScopeLabel &&
+      !folderScopeLabel,
+  );
   const categoryWithSecondaryFilter = categoryScopeActive && secondaryFilterInTrigger;
 
-  const activeScopeLabel =
-    tagScopeLabel ?? vaultScopeLabel ?? folderScopeLabel ?? categoryScopeLabel ?? null;
+  const triggerLabel = monitoringFilterActive
+    ? t(monitoringFilterLabelKey(filter))
+    : searchActive
+      ? (tagScopeLabel ?? searchScopeLabel)
+      : vaultScopeLabel
+        ? scopeTriggerLoading
+          ? null
+          : vaultScopeLabel
+        : vaultKindScopeLabel
+          ? scopeTriggerLoading
+            ? null
+            : vaultKindScopeLabel
+          : folderScopeLabel
+            ? scopeTriggerLoading
+              ? null
+              : folderScopeLabel
+            : categoryScopeLabel
+              ? categoryScopeLabel
+              : isItemsListMonitoringFilter(filter)
+                ? t(monitoringFilterLabelKey(filter))
+                : t(coreFilterLabelKey(filter));
 
-  const triggerLabel = activeScopeLabel ?? t(filterLabelKey(filter));
+  const showScopeChip = Boolean(onClearScope);
 
   return (
     <DropdownMenu open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
@@ -208,6 +336,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
         <button
           type="button"
           data-okkey-filter="vault-ui-shared"
+          aria-busy={scopeTriggerLoading}
           aria-label={t("web.items.list.filterAria")}
           className={cn(
             itemsPanelSelectTriggerClassName,
@@ -215,7 +344,9 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
           )}
         >
           <FilterIconFrame wide={secondaryFilterInTrigger} flush={categoryScopeActive}>
-            {hasListScope ? (
+            {monitoringFilterActive ? (
+              <FilterIconMonitoring />
+            ) : hasListScope ? (
               <span
                 className={cn(
                   "flex items-center",
@@ -223,8 +354,12 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
                   categoryWithSecondaryFilter && "gap-0",
                 )}
               >
-                {tagScopeLabel ? (
-                  <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
+                {searchActive ? (
+                  tagSearchActive ? (
+                    <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
+                  ) : (
+                    <SearchGlyph />
+                  )
                 ) : categoryScopeActive && categoryDefinition ? (
                   <>
                     <CategoryIconBadge
@@ -239,11 +374,31 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
                     ) : null}
                   </>
                 ) : vaultScopeLabel ? (
-                  <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
-                    <span className="text-[14px] leading-none">
-                      {vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}
+                  scopeTriggerLoading ? (
+                    <Spinner size="small" className="size-4 shrink-0" />
+                  ) : (
+                    <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
+                      <span className="text-[14px] leading-none">
+                        {vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}
+                      </span>
                     </span>
-                  </span>
+                  )
+                ) : vaultKindScopeLabel ? (
+                  scopeTriggerLoading ? (
+                    <Spinner size="small" className="size-4 shrink-0" />
+                  ) : (
+                    <span className="flex size-4 shrink-0 items-center justify-center leading-none" aria-hidden>
+                      <span className="text-[14px] leading-none">
+                        {vaultDisplayIcon({ isPersonal: Boolean(vaultKindIsPersonal) })}
+                      </span>
+                    </span>
+                  )
+                ) : folderScopeLabel ? (
+                  scopeTriggerLoading ? (
+                    <Spinner size="small" className="size-4 shrink-0" />
+                  ) : (
+                    <FolderClosedGlyph />
+                  )
                 ) : (
                   <FolderClosedGlyph />
                 )}
@@ -264,8 +419,8 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
           <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[14rem] p-1">
-        {tagScopeLabel && onClearScope ? (
+      <DropdownMenuContent align="start" className="min-w-[12.5rem] p-1">
+        {searchActive && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -274,14 +429,20 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
               )}
               onSelect={(e) => e.preventDefault()}
             >
-              <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
-              <span className="min-w-0 flex-1 truncate text-left">{tagScopeLabel}</span>
-              <ScopeRowCloseButton locale={locale} onClear={onClearScope} />
+              {tagSearchActive ? (
+                <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
+              ) : (
+                <SearchGlyph className="size-4 shrink-0 text-foreground" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-left">
+                {tagScopeLabel ?? searchScopeLabel}
+              </span>
+              <ScopeRowCloseButton locale={locale} onClear={onClearScope!} />
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
         ) : null}
-        {vaultScopeLabel && onClearScope ? (
+        {vaultScopeLabel && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -294,12 +455,30 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
                 {vaultMeta ? vaultDisplayIcon(vaultMeta) : "💼"}
               </span>
               <span className="min-w-0 flex-1 truncate text-left">{vaultScopeLabel}</span>
-              <ScopeRowCloseButton locale={locale} onClear={onClearScope} />
+              <ScopeRowCloseButton locale={locale} onClear={onClearScope!} />
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
         ) : null}
-        {!vaultScopeLabel && folderScopeLabel && onClearScope ? (
+        {!vaultScopeLabel && vaultKindScopeLabel && showScopeChip ? (
+          <>
+            <DropdownMenuItem
+              className={cn(
+                "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                "bg-muted/80 data-[highlighted]:bg-secondary",
+              )}
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span className="text-base leading-none" aria-hidden>
+                {vaultDisplayIcon({ isPersonal: Boolean(vaultKindIsPersonal) })}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-left">{vaultKindScopeLabel}</span>
+              <ScopeRowCloseButton locale={locale} onClear={onClearScope!} />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="mx-1 my-1" />
+          </>
+        ) : null}
+        {!vaultScopeLabel && !vaultKindScopeLabel && folderScopeLabel && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -309,18 +488,21 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
               onSelect={(e) => e.preventDefault()}
             >
               <FolderClosedGlyph />
-              <span className="min-w-0 flex-1 truncate text-left">{folderScopeLabel}</span>
-              <ScopeRowCloseButton locale={locale} onClear={onClearScope} />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {scopeTriggerLoading ? null : folderScopeLabel}
+              </span>
+              <ScopeRowCloseButton locale={locale} onClear={onClearScope!} />
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
         ) : null}
-        {!tagScopeLabel &&
+        {!searchActive &&
         !vaultScopeLabel &&
+        !vaultKindScopeLabel &&
         !folderScopeLabel &&
         categoryScopeLabel &&
         categoryDefinition &&
-        onClearScope ? (
+        showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -335,7 +517,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
                 size={24}
               />
               <span className="min-w-0 flex-1 truncate text-left">{categoryScopeLabel}</span>
-              <ScopeRowCloseButton locale={locale} onClear={onClearScope} />
+              <ScopeRowCloseButton locale={locale} onClear={onClearScope!} />
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
@@ -360,7 +542,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
               onSelect={() => onFilterChange(value)}
             >
               <Icon className="size-4 shrink-0" />
-              <span className="min-w-0 flex-1 truncate text-left">{t(filterLabelKey(value))}</span>
+              <span className="min-w-0 flex-1 truncate text-left">{t(coreFilterLabelKey(value))}</span>
             </DropdownMenuItem>
           );
         })}
