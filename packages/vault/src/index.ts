@@ -81,16 +81,11 @@ export {
 } from "./vault-unlock-session.js";
 export {
   createWorkspaceFoldersSyncController,
-  importPeerWorkspaceFoldersCaches,
   parsePersonalEventsVersionMismatch,
-  readWorkspaceFoldersCachedState,
   refreshWorkspaceFoldersCachesForIds,
   replayStateToFlatFolders,
-  shouldImportPeerFolderCache,
   shouldResealLocalFoldersForStreamKey,
-  writeWorkspaceFoldersCachedState,
   AGENT_REPAIR_PROBE_FOLDER_NAME,
-  type WorkspaceFoldersCachedStateDto,
   type WorkspaceFoldersSyncController,
   type WorkspaceFoldersRefreshDiagnostics,
 } from "./folders/workspaceFoldersSync.js";

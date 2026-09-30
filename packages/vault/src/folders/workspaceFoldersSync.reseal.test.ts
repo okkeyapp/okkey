@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.ts";
-import {
-  shouldImportPeerFolderCache,
-  shouldResealLocalFoldersForStreamKey,
-} from "./shouldResealLocalFoldersForStreamKey.ts";
+import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.ts";
 
 describe("parsePersonalEventsVersionMismatch", () => {
   it("parses ApiRequestError-shaped VERSION_MISMATCH body", () => {
@@ -57,6 +54,7 @@ describe("parsePersonalEventsVersionMismatch", () => {
 describe("shouldResealLocalFoldersForStreamKey", () => {
   it("reseals when stream is mixed-key and local folders are missing on decryptable set", () => {
     // Real folders in IndexedDB + only extension-repair-probe decrypts on stream.
+    // Caller must already have applied decryptable remote DELETE/CREATE.
     assert.equal(
       shouldResealLocalFoldersForStreamKey({
         localFolderCount: 2,
@@ -83,8 +81,8 @@ describe("shouldResealLocalFoldersForStreamKey", () => {
   });
 
   it("does not reseal when callers excluded probe-only cache (localFolderCount 0)", () => {
-    // Extension cache has only extension-repair-probe — resealing cannot recover
-    // real folders; wait for a peer (web) with full plaintext cache.
+    // Extension/web cold start with only extension-repair-probe — resealing
+    // cannot invent real folders; stream must already carry them under current C.
     assert.equal(
       shouldResealLocalFoldersForStreamKey({
         localFolderCount: 0,
@@ -122,51 +120,17 @@ describe("shouldResealLocalFoldersForStreamKey", () => {
       false,
     );
   });
-});
 
-describe("shouldImportPeerFolderCache", () => {
-  it("imports when extension cache is empty and web peer has real folders", () => {
+  it("does not reseal after catch-up when deleted folders left the local set", () => {
+    // Stale cache had folder A; decryptable DELETE removed it during replay.
+    // localMissingOnStream must be evaluated on the post-replay set only.
     assert.equal(
-      shouldImportPeerFolderCache({
-        localRealFolderCount: 0,
-        peerRealFolderCount: 2,
-      }),
-      true,
-    );
-  });
-
-  it("imports when peer has more real folders than local probe-only cache", () => {
-    assert.equal(
-      shouldImportPeerFolderCache({
-        localRealFolderCount: 0,
-        peerRealFolderCount: 1,
-      }),
-      true,
-    );
-  });
-
-  it("does not import when local already matches or exceeds peer", () => {
-    assert.equal(
-      shouldImportPeerFolderCache({
-        localRealFolderCount: 2,
-        peerRealFolderCount: 2,
-      }),
-      false,
-    );
-    assert.equal(
-      shouldImportPeerFolderCache({
-        localRealFolderCount: 3,
-        peerRealFolderCount: 2,
-      }),
-      false,
-    );
-  });
-
-  it("does not import empty peer", () => {
-    assert.equal(
-      shouldImportPeerFolderCache({
-        localRealFolderCount: 0,
-        peerRealFolderCount: 0,
+      shouldResealLocalFoldersForStreamKey({
+        localFolderCount: 1,
+        decrypts: true,
+        tipVersion: 12,
+        folderDecryptFail: 3,
+        localMissingOnStream: false,
       }),
       false,
     );
