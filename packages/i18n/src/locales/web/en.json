@@ -28,6 +28,7 @@
   "web.accountMenu.settings": "My settings",
   "web.accountMenu.logout": "Log out",
   "web.accountMenu.changeServer": "Change server",
+  "web.accountMenu.language": "Language: {lang}",
   "web.settingsPopup.close": "Close",
   "web.settingsPopup.menuLabel": "My settings",
   "web.settingsPopup.main.label": "General",

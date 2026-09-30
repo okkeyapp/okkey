@@ -334,6 +334,8 @@ export {
   useOkkeyAppShellLayout,
   workspaceSwitcherActiveItemClassName,
   type OkkeyAppSidebarAccountMenu,
+  type OkkeyAppSidebarAccountLanguageMenu,
+  type OkkeyAppSidebarAccountLanguageOption,
   type OkkeyAppSidebarProps,
   type OkkeyWorkspaceShellNavLabels,
   type OkkeyWorkspaceShellNavPaths,

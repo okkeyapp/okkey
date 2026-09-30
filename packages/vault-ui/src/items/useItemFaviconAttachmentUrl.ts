@@ -47,22 +47,30 @@ export function useItemFaviconAttachmentUrl(input: {
 
     let cancelled = false;
     setLoading(true);
-    const pending =
-      pendingFaviconUrlCache.get(key) ??
-      downloadKeyFieldFileAttachment({
+    let pending = pendingFaviconUrlCache.get(key);
+    if (!pending) {
+      pending = downloadKeyFieldFileAttachment({
         apiBaseUrl: input.apiBaseUrl,
         accessToken: input.accessToken,
         vaultId: input.vaultId,
         itemId: input.itemId,
         vaultKey: input.vaultKey,
         file: keyFieldFileValueFromFaviconId(input.faviconId),
-      }).then((url) => {
-        faviconUrlCache.set(key, url);
-        pendingFaviconUrlCache.delete(key);
-        return url;
-      });
-
-    pendingFaviconUrlCache.set(key, pending);
+      }).then(
+        (url) => {
+          faviconUrlCache.set(key, url);
+          pendingFaviconUrlCache.delete(key);
+          return url;
+        },
+        (error: unknown) => {
+          // Do not poison the pending map with a rejected promise — retry when
+          // vault key / token becomes available (common in extension popup).
+          pendingFaviconUrlCache.delete(key);
+          throw error;
+        },
+      );
+      pendingFaviconUrlCache.set(key, pending);
+    }
     pending
       .then((url) => {
         if (!cancelled) {

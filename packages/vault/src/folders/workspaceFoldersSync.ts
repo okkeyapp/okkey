@@ -176,19 +176,31 @@ export function createWorkspaceFoldersSyncController(input: {
 
   async function replayIncremental(fromVersion: number): Promise<void> {
     const key = await ensureMetadataKey();
-    const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, fromVersion);
-    if (!page.events.length) {
-      return;
+    let cursor = fromVersion;
+    // Mirror vault-items read: keep paging until the server returns an empty page.
+    // (Personal-events currently returns the full remainder in one response, but
+    // looping stays correct if a limit is introduced later.)
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
+      if (!page.events.length) {
+        return;
+      }
+      const next = await replayWorkspaceFolderEvents(
+        page.events,
+        input.workspaceId,
+        async (b64) => decryptPersonalVaultMetadataPayload(key, base64ToBytes(b64)),
+        cursor,
+        state,
+      );
+      state = next;
+      await writeCachedState(input.userId, input.workspaceId, state);
+      const lastVersion = page.events[page.events.length - 1]?.version ?? cursor;
+      if (lastVersion <= cursor) {
+        return;
+      }
+      cursor = lastVersion;
     }
-    const next = await replayWorkspaceFolderEvents(
-      page.events,
-      input.workspaceId,
-      async (b64) => decryptPersonalVaultMetadataPayload(key, base64ToBytes(b64)),
-      fromVersion,
-      state,
-    );
-    state = next;
-    await writeCachedState(input.userId, input.workspaceId, state);
   }
 
   async function refresh(): Promise<WorkspaceFolderReplayState> {

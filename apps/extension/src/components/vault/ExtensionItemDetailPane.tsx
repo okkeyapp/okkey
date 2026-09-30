@@ -5,8 +5,11 @@ import {
   ScrollArea,
 } from "@okkey/ui";
 import {
+  ItemActivitySection,
+  ItemDetailSavePath,
   ItemRecordFavicon,
   KeyFormEditor,
+  buildItemActivityEntries,
   createKeyFormEditorMessages,
   createLocalizedKeyFieldTypes,
   filterKeyFieldTypesForFilesEnabled,
@@ -20,6 +23,8 @@ import type { WebLocale } from "@okkey/i18n";
 type ExtensionItemDetailPaneProps = {
   item: ItemPlaintextV2;
   vault?: Vault;
+  folderLabel: string;
+  actorLabel: string;
   apiBaseUrl: string;
   accessToken: string;
   vaultKey: Uint8Array | null | undefined;
@@ -30,17 +35,21 @@ type ExtensionItemDetailPaneProps = {
   onArchiveInWeb: () => void;
   onDeleteInWeb: () => void;
   onOpenInWeb: () => void;
-  t: (key: string) => string;
+  t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
 
 /**
  * Extension detail pane — same composition as web ItemDetailCard:
- * ItemDetailActionsBar (no back) + favicon/title + full KeyFormEditor view mode.
+ * ItemDetailActionsBar (no back) + favicon/title + full KeyFormEditor view mode
+ * + save-path trail + activity footer.
  * Mutations deep-link to web.
  */
 export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
     item,
+    vault,
+    folderLabel,
+    actorLabel,
     apiBaseUrl,
     accessToken,
     vaultKey,
@@ -84,6 +93,17 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
       copied: t("extension.vault.copied"),
     };
   }, [keyFormMessages, t]);
+
+  const activityEntries = useMemo(
+    () =>
+      buildItemActivityEntries({
+        itemId: item.itemId,
+        createdAtMs: item.createdAtMs,
+        updatedAtMs: item.updatedAtMs,
+        actorLabel,
+      }),
+    [actorLabel, item.createdAtMs, item.itemId, item.updatedAtMs],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -131,6 +151,15 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               initialSections={formSections}
               fieldTypes={keyFormFieldTypes}
               messages={messagesWithCopy}
+            />
+
+            <ItemDetailSavePath vault={vault} folderLabel={folderLabel} />
+
+            <ItemActivitySection
+              key={`activity-${item.itemId}`}
+              t={t}
+              locale={locale}
+              entries={activityEntries}
             />
           </div>
         </div>

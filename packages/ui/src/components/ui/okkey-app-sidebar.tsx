@@ -5,6 +5,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
@@ -516,7 +519,7 @@ function LogOutMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) 
   );
 }
 
-function ChangeServerMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+function LanguageMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -540,6 +543,56 @@ function ChangeServerMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElem
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function LanguageChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M6 12L10 8L6 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChangeServerMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M2 4.6665C2 4.13607 2.21071 3.62736 2.58579 3.25229C2.96086 2.87722 3.46957 2.6665 4 2.6665H12C12.5304 2.6665 13.0391 2.87722 13.4142 3.25229C13.7893 3.62736 14 4.13607 14 4.6665V5.99984C14 6.53027 13.7893 7.03898 13.4142 7.41405C13.0391 7.78912 12.5304 7.99984 12 7.99984H4C3.46957 7.99984 2.96086 7.78912 2.58579 7.41405C2.21071 7.03898 2 6.53027 2 5.99984V4.6665Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 13.3333H4C3.46957 13.3333 2.96086 13.1226 2.58579 12.7475C2.21071 12.3725 2 11.8638 2 11.3333V10C2 9.46957 2.21071 8.96086 2.58579 8.58579C2.96086 8.21071 3.46957 8 4 8H11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.6666 11.9998C10.6666 12.3535 10.8071 12.6926 11.0572 12.9426C11.3072 13.1927 11.6463 13.3332 12 13.3332C12.3536 13.3332 12.6927 13.1927 12.9428 12.9426C13.1928 12.6926 13.3333 12.3535 13.3333 11.9998C13.3333 11.6462 13.1928 11.3071 12.9428 11.057C12.6927 10.807 12.3536 10.6665 12 10.6665C11.6463 10.6665 11.3072 10.807 11.0572 11.057C10.8071 11.3071 10.6666 11.6462 10.6666 11.9998Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12 9.6665V10.6665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 13.3335V14.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14.0213 10.8335L13.1553 11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.8466 12.6665L9.97998 13.1665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.97998 10.8335L10.8466 11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.1553 12.6665L14.0219 13.1665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 5.3335V5.34016" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 10.6665V10.6732" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -599,6 +652,7 @@ function ProfileAccountDropdownPanel({
   onSettings,
   onLogout,
   onChangeServer,
+  language,
   settingsLabel = "My settings",
   logoutLabel = "Log out",
   changeServerLabel = "Change server",
@@ -609,6 +663,7 @@ function ProfileAccountDropdownPanel({
   onSettings?: () => void;
   onLogout?: () => void;
   onChangeServer?: () => void;
+  language?: OkkeyAppSidebarAccountLanguageMenu;
   settingsLabel?: string;
   logoutLabel?: string;
   changeServerLabel?: string;
@@ -636,6 +691,36 @@ function ProfileAccountDropdownPanel({
             <NavSettingsIcon />
             <span>{settingsLabel}</span>
           </DropdownMenuItem>
+        ) : null}
+        {language ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="cursor-pointer gap-2 [&>svg:last-child]:ml-auto">
+              <LanguageMenuIcon />
+              <span className="min-w-0 flex-1 truncate text-left">{language.label}</span>
+              <LanguageChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="min-w-[10rem] p-1">
+              {language.options.map((option) => (
+                <DropdownMenuItem
+                  key={option.code}
+                  className={cn(
+                    "cursor-pointer gap-2",
+                    option.code === language.currentCode && "bg-muted/80 data-[highlighted]:bg-secondary",
+                  )}
+                  onSelect={() => {
+                    language.onSelect(option.code);
+                  }}
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+                  {option.code === language.currentCode ? (
+                    <span className="shrink-0 text-primary" aria-hidden>
+                      ✓
+                    </span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
         ) : null}
         <DropdownMenuItem
           className="cursor-pointer gap-2"
@@ -822,6 +907,19 @@ function demoPlainLinkItems(): OkkeySidebarPlainLinkItem[] {
 }
 
 /** When passed from the host app (e.g. web shell), footer user block + account menu use real identity and logout. */
+export type OkkeyAppSidebarAccountLanguageOption = {
+  code: string;
+  label: string;
+};
+
+export type OkkeyAppSidebarAccountLanguageMenu = {
+  /** Trigger label, e.g. `Language: English` / `Язык: Русский`. */
+  label: string;
+  currentCode: string;
+  options: readonly OkkeyAppSidebarAccountLanguageOption[];
+  onSelect: (code: string) => void;
+};
+
 export type OkkeyAppSidebarAccountMenu = {
   firstName?: string;
   lastName?: string;
@@ -834,6 +932,8 @@ export type OkkeyAppSidebarAccountMenu = {
   onLogout: () => void;
   /** Optional row below logout (e.g. extension “Change server”). */
   onChangeServer?: () => void;
+  /** Optional language submenu above logout (extension popup). */
+  language?: OkkeyAppSidebarAccountLanguageMenu;
 };
 
 function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefined) {
@@ -848,6 +948,7 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
       onSettings: accountMenu.onSettings,
       onLogout: accountMenu.onLogout,
       onChangeServer: accountMenu.onChangeServer,
+      language: accountMenu.language,
     };
   }
   return {
@@ -860,6 +961,7 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
     onSettings: undefined as (() => void) | undefined,
     onLogout: undefined as (() => void) | undefined,
     onChangeServer: undefined as (() => void) | undefined,
+    language: undefined as OkkeyAppSidebarAccountLanguageMenu | undefined,
   };
 }
 
@@ -1561,6 +1663,7 @@ function OkkeyAppSidebarInner({
               onSettings={footerAccount.onSettings}
               onLogout={footerAccount.onLogout}
               onChangeServer={footerAccount.onChangeServer}
+              language={footerAccount.language}
             />
           </DropdownMenuContent>
         </DropdownMenu>

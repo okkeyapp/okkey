@@ -48,9 +48,9 @@ export function useWorkspaceLogoUrl(input: {
     let cancelled = false;
     setLoading(true);
 
-    const pending =
-      pendingLogoUrlCache.get(key) ??
-      downloadKeyFieldFileAttachment({
+    let pending = pendingLogoUrlCache.get(key);
+    if (!pending) {
+      pending = downloadKeyFieldFileAttachment({
         apiBaseUrl: input.apiBaseUrl,
         accessToken: input.accessToken,
         vaultId: input.vaultId,
@@ -62,13 +62,20 @@ export function useWorkspaceLogoUrl(input: {
           mimeType: "image/png",
           sizeBytes: 0,
         },
-      }).then((url) => {
-        logoUrlCache.set(key, url);
-        pendingLogoUrlCache.delete(key);
-        return url;
-      });
-
-    pendingLogoUrlCache.set(key, pending);
+      }).then(
+        (url) => {
+          logoUrlCache.set(key, url);
+          pendingLogoUrlCache.delete(key);
+          return url;
+        },
+        (error: unknown) => {
+          // Clear pending on failure so a later correct vault key can retry.
+          pendingLogoUrlCache.delete(key);
+          throw error;
+        },
+      );
+      pendingLogoUrlCache.set(key, pending);
+    }
     pending
       .then((url) => {
         if (!cancelled) {

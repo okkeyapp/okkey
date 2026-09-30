@@ -28,6 +28,7 @@
   "web.accountMenu.settings": "Мои настройки",
   "web.accountMenu.logout": "Выйти",
   "web.accountMenu.changeServer": "Сменить сервер",
+  "web.accountMenu.language": "Язык: {lang}",
   "web.settingsPopup.close": "Закрыть",
   "web.settingsPopup.menuLabel": "Мои настройки",
   "web.settingsPopup.main.label": "Основное",

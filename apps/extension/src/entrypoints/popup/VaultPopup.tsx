@@ -1,11 +1,12 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef } from "react";
 import type { CoreApiClient } from "@okkey/api";
-import type { WebLocale } from "@okkey/i18n";
+import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
 import type { ItemPlaintextV2, Vault, Workspace } from "@okkey/types";
 import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
 import {
   createWorkspaceFoldersSyncController,
   createWorkspaceVaultItemsReadController,
+  findWorkspaceFolderPathById,
   formatTagSearchQuery,
   itemPlaintextToExtensionListRecord,
   resolveVaultItemEncryptionKey,
@@ -65,7 +66,7 @@ type VaultPopupProps = {
   encryptedPrivateKeyPayload: string;
   identity: { email: string; firstName: string; lastName: string } | null;
   locale: WebLocale;
-  localeSelect: React.ReactNode;
+  onLocaleChange: (locale: WebLocale) => void;
   signOutLabel: string;
   onSignOut: () => void;
   onChangeServer: () => void;
@@ -244,49 +245,44 @@ function WorkspaceSwitcherPanel(props: {
   apiBaseUrl: string;
   accessToken: string;
   vaultKey: Uint8Array | null;
-  localeSelect: React.ReactNode;
   t: VaultPopupProps["t"];
   onPick: (id: string) => void;
 }) {
   const shell = useOkkeyAppShellLayout();
   return (
-    <>
-      <div className="p-1">
-        {props.workspaces.map((ws) => {
-          const active = ws.id === props.workspaceId;
-          return (
-            <DropdownMenuItem
-              key={ws.id}
-              className={cn(
-                "h-auto cursor-pointer items-center gap-3",
-                active ? workspaceSwitcherActiveItemClassName : undefined,
-              )}
-              onSelect={() => {
-                props.onPick(ws.id);
-                shell.setMobileDrawerOpen(false);
-              }}
-            >
-              <ExtensionWorkspaceTileAvatar
-                workspace={ws}
-                sizeClass="size-8"
-                apiBaseUrl={props.apiBaseUrl}
-                accessToken={props.accessToken}
-                vaultKey={props.vaultKey}
-              />
-              <div className="min-w-0 flex-1 text-left">
-                <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
-                <p className="truncate text-xs leading-4 text-muted-foreground">
-                  {planTierLabel(ws.planTier, props.t)}
-                </p>
-              </div>
-              {active ? <span className="shrink-0 text-primary">✓</span> : null}
-            </DropdownMenuItem>
-          );
-        })}
-      </div>
-      <div className="border-t border-border" role="presentation" />
-      <div className="p-1 px-2 py-1">{props.localeSelect}</div>
-    </>
+    <div className="p-1">
+      {props.workspaces.map((ws) => {
+        const active = ws.id === props.workspaceId;
+        return (
+          <DropdownMenuItem
+            key={ws.id}
+            className={cn(
+              "h-auto cursor-pointer items-center gap-3",
+              active ? workspaceSwitcherActiveItemClassName : undefined,
+            )}
+            onSelect={() => {
+              props.onPick(ws.id);
+              shell.setMobileDrawerOpen(false);
+            }}
+          >
+            <ExtensionWorkspaceTileAvatar
+              workspace={ws}
+              sizeClass="size-8"
+              apiBaseUrl={props.apiBaseUrl}
+              accessToken={props.accessToken}
+              vaultKey={props.vaultKey}
+            />
+            <div className="min-w-0 flex-1 text-left">
+              <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
+              <p className="truncate text-xs leading-4 text-muted-foreground">
+                {planTierLabel(ws.planTier, props.t)}
+              </p>
+            </div>
+            {active ? <span className="shrink-0 text-primary">✓</span> : null}
+          </DropdownMenuItem>
+        );
+      })}
+    </div>
   );
 }
 
@@ -301,7 +297,7 @@ export function VaultPopup(props: VaultPopupProps) {
     encryptedPrivateKeyPayload,
     identity,
     locale,
-    localeSelect,
+    onLocaleChange,
     signOutLabel,
     onSignOut,
     onChangeServer,
@@ -333,6 +329,7 @@ export function VaultPopup(props: VaultPopupProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const disposeRef = useRef<(() => void) | null>(null);
   const foldersDisposeRef = useRef<(() => void) | null>(null);
+  const foldersLoadGenRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const noteActivity = useCallback(() => {
@@ -356,6 +353,7 @@ export function VaultPopup(props: VaultPopupProps) {
 
   const loadFolders = useCallback(
     async (wsId: string) => {
+      const gen = ++foldersLoadGenRef.current;
       foldersDisposeRef.current?.();
       foldersDisposeRef.current = null;
       const controller = createWorkspaceFoldersSyncController({
@@ -367,10 +365,17 @@ export function VaultPopup(props: VaultPopupProps) {
       foldersDisposeRef.current = () => controller.dispose();
       try {
         await controller.refresh();
+        if (gen !== foldersLoadGenRef.current) {
+          return;
+        }
         setFolderNodes(controller.toFolderTree());
         setItemFolderByItemId(new Map(controller.getState().itemFolder));
         setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
-      } catch {
+      } catch (err: unknown) {
+        if (gen !== foldersLoadGenRef.current) {
+          return;
+        }
+        console.error("[extension] folder sync failed", err);
         setFolderNodes([]);
         setItemFolderByItemId(new Map());
         setItemFavoriteByItemId(new Set());
@@ -679,11 +684,40 @@ export function VaultPopup(props: VaultPopupProps) {
   };
 
   const resolveVaultKey = useCallback(
-    (vaultId: string) => vaultKeyById.get(vaultId) ?? secrets.vaultKey,
-    [secrets.vaultKey, vaultKeyById],
+    (vaultId: string) => vaultKeyById.get(vaultId) ?? null,
+    [vaultKeyById],
   );
 
-  const isMultiWorkspaceUi = workspaces.length > 1;
+  const selectedFolderId = selectedItem
+    ? (itemFolderByItemId.get(selectedItem.itemId) ?? null)
+    : null;
+  const selectedFolderLabel = selectedFolderId
+    ? findWorkspaceFolderPathById(folderNodes, selectedFolderId) || selectedFolderId
+    : t("web.newItemPopup.noFolder");
+  const actorLabel = useMemo(() => {
+    if (!identity) {
+      return "";
+    }
+    const name = [identity.firstName.trim(), identity.lastName.trim()].filter(Boolean).join(" ");
+    return name || identity.email || "";
+  }, [identity]);
+
+  const languageMenu = useMemo(
+    () => ({
+      label: t("web.accountMenu.language", { lang: getWebLocaleNativeName(locale) }),
+      currentCode: locale,
+      options: WEB_LOCALES.map((code) => ({
+        code,
+        label: getWebLocaleNativeName(code),
+      })),
+      onSelect: (code: string) => {
+        if (code === "en" || code === "ru") {
+          onLocaleChange(code);
+        }
+      },
+    }),
+    [locale, onLocaleChange, t],
+  );
 
   return (
     <OkkeyAppSidebar
@@ -725,20 +759,15 @@ export function VaultPopup(props: VaultPopupProps) {
         </>
       )}
       workspaceSwitcherDropdown={
-        isMultiWorkspaceUi ? (
-          <WorkspaceSwitcherPanel
-            workspaces={workspaces}
-            workspaceId={workspaceId}
-            apiBaseUrl={apiBaseUrl}
-            accessToken={accessToken}
-            vaultKey={secrets.vaultKey}
-            localeSelect={localeSelect}
-            t={t}
-            onPick={(id) => void onPickWorkspace(id)}
-          />
-        ) : (
-          <div className="p-1">{localeSelect}</div>
-        )
+        <WorkspaceSwitcherPanel
+          workspaces={workspaces}
+          workspaceId={workspaceId}
+          apiBaseUrl={apiBaseUrl}
+          accessToken={accessToken}
+          vaultKey={secrets.vaultKey}
+          t={t}
+          onPick={(id) => void onPickWorkspace(id)}
+        />
       }
       accountMenu={
         identity
@@ -750,6 +779,7 @@ export function VaultPopup(props: VaultPopupProps) {
               changeServerLabel: t("web.accountMenu.changeServer"),
               onLogout: onSignOut,
               onChangeServer,
+              language: languageMenu,
             }
           : undefined
       }
@@ -838,6 +868,8 @@ export function VaultPopup(props: VaultPopupProps) {
               <ExtensionItemDetailPane
                 item={selectedItem}
                 vault={selectedVault}
+                folderLabel={selectedFolderLabel}
+                actorLabel={actorLabel}
                 apiBaseUrl={apiBaseUrl}
                 accessToken={accessToken}
                 vaultKey={resolveVaultKey(selectedItem.vaultId)}

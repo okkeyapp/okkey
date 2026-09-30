@@ -180,3 +180,21 @@ export {
 
 export { useItemFaviconAttachmentUrl } from "./items/useItemFaviconAttachmentUrl.js";
 export { useWorkspaceLogoUrl } from "./items/useWorkspaceLogoUrl.js";
+
+export {
+  buildItemActivityEntries,
+  enrichItemActivityWithItemTimestamps,
+  mapItemActivityWireEntries,
+  resolveItemUpdateActivityKey,
+  type ItemActivityActionKey,
+  type ItemActivityEntry,
+  type ItemActivityWireEntry,
+} from "./items/buildItemActivityEntries.js";
+
+export { default as ItemActivitySection, type ItemActivitySectionProps } from "./items/ItemActivitySection.js";
+export { default as ItemDetailSavePath, type ItemDetailSavePathProps } from "./items/ItemDetailSavePath.js";
+export {
+  formatUserLocalDateParts,
+  resolveUserTimeZone,
+  type FormatUserLocalDateTimeOptions,
+} from "./lib/formatUserLocalDateTime.js";

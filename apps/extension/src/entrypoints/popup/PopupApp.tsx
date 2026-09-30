@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AccountUserBar,
   AuthShell,
@@ -591,6 +591,12 @@ export function PopupApp() {
   };
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
+  const vaultCore = useMemo(() => {
+    if (!profile || !session) {
+      return null;
+    }
+    return createCoreClient(profile.apiBaseUrl, session.access_token);
+  }, [profile, session]);
   const identityBar =
     identity || session ? (
       <AccountUserBar
@@ -846,11 +852,11 @@ export function PopupApp() {
     );
   }
 
-  if (screen === "vault" && profile && session && unlockSecrets && encryptedPrivateKeyPayload) {
+  if (screen === "vault" && profile && session && unlockSecrets && encryptedPrivateKeyPayload && vaultCore) {
     return (
       <PopupFrame>
         <VaultPopup
-          core={createCoreClient(profile.apiBaseUrl, session.access_token)}
+          core={vaultCore}
           userId={session.user_id}
           accessToken={session.access_token}
           apiBaseUrl={profile.apiBaseUrl}
@@ -859,7 +865,7 @@ export function PopupApp() {
           encryptedPrivateKeyPayload={encryptedPrivateKeyPayload}
           identity={identity}
           locale={locale}
-          localeSelect={languageSelect}
+          onLocaleChange={onLocaleChange}
           signOutLabel={t("unlock.signOut")}
           onSignOut={() => void onLogout()}
           onChangeServer={() => void onLogout()}
