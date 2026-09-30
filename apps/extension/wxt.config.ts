@@ -67,6 +67,7 @@ export default defineConfig({
       alias: {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/ui": path.resolve(repoRoot, "packages/ui/src"),
+        "@okkey/vault-ui": path.resolve(repoRoot, "packages/vault-ui/src"),
         "@okkey/api": path.resolve(repoRoot, "packages/api/src"),
         "@okkey/auth": path.resolve(repoRoot, "packages/auth/src"),
         "@okkey/i18n": path.resolve(repoRoot, "packages/i18n/src"),

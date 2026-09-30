@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createKeyFormEditorMessages } from "./keyFormI18n";
-import { resolveKeyFormFieldLabel } from "./keyFormFieldLabel";
-import { keyFormSectionsToItemPlaintext } from "../../items/keyFormToItemPlaintext";
-import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
+import { createKeyFormEditorMessages } from "./keyFormI18n.js";
+import { resolveKeyFormFieldLabel } from "./keyFormFieldLabel.js";
+import { keyFormSectionsToItemPlaintext } from "../items/keyFormToItemPlaintext.js";
+import { itemPlaintextToKeyFormSections } from "../items/itemPlaintextToKeyFormSections.js";
 
 describe("resolveKeyFormFieldLabel", () => {
   it("translates saved default login label when locale changes", () => {

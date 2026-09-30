@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createKeyFormEditorMessages } from "../components/key-form/keyFormI18n";
-import { getDefaultSectionsForCategory } from "../components/items/itemCategoryDefaultSections";
-import { itemPlaintextToKeyFormSections } from "./itemPlaintextToKeyFormSections";
-import { keyFormSectionsToItemPlaintext } from "./keyFormToItemPlaintext";
+import { createKeyFormEditorMessages } from "../key-form/keyFormI18n.js";
+import { getDefaultSectionsForCategory } from "./itemCategoryDefaultSections.js";
+import { itemPlaintextToKeyFormSections } from "./itemPlaintextToKeyFormSections.js";
+import { keyFormSectionsToItemPlaintext } from "./keyFormToItemPlaintext.js";
 
 const messages = createKeyFormEditorMessages("ru");
 

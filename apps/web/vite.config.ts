@@ -118,6 +118,7 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/i18n": path.resolve(__dirname, "../../packages/i18n/src"),
         "@okkey/ui": path.resolve(__dirname, "../../packages/ui/src"),
+        "@okkey/vault-ui": path.resolve(__dirname, "../../packages/vault-ui/src"),
         "@workspace/ui": path.resolve(__dirname, "../../packages/ui/src"),
         "@okkey/import": path.resolve(__dirname, "../../packages/import/src"),
         "@okkey/types": path.resolve(__dirname, "../../packages/types/src"),
