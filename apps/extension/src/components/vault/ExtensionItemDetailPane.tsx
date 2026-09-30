@@ -1,18 +1,29 @@
 import type { ItemPlaintextV2, Vault } from "@okkey/types";
 import {
-  Favicon,
+  ItemsDetailPanelEmptyStateFill,
   ItemDetailActionsBar,
-  KeyField,
-  KeyForm,
   ScrollArea,
 } from "@okkey/ui";
-import { extractReadableItemFields } from "@okkey/vault";
+import {
+  ItemRecordFavicon,
+  KeyFormEditor,
+  createKeyFormEditorMessages,
+  createLocalizedKeyFieldTypes,
+  filterKeyFieldTypesForFilesEnabled,
+  itemPlaintextToKeyFormSections,
+  useItemFaviconAttachmentUrl,
+  type KeyFormEditorMessages,
+} from "@okkey/vault-ui";
+import { useMemo } from "react";
+import type { WebLocale } from "@okkey/i18n";
 
 type ExtensionItemDetailPaneProps = {
   item: ItemPlaintextV2;
   vault?: Vault;
-  emptyLabel: string;
-  onCopy: (value: string, label: string) => void;
+  apiBaseUrl: string;
+  accessToken: string;
+  vaultKey: Uint8Array | null | undefined;
+  locale: WebLocale;
   onEdit: () => void;
   onCreateCapsule: () => void;
   onFavoriteInWeb: () => void;
@@ -24,13 +35,16 @@ type ExtensionItemDetailPaneProps = {
 
 /**
  * Extension detail pane — same composition as web ItemDetailCard:
- * ItemDetailActionsBar (no back) + favicon/title + KeyForm view fields.
+ * ItemDetailActionsBar (no back) + favicon/title + full KeyFormEditor view mode.
  * Mutations deep-link to web.
  */
 export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
     item,
-    onCopy,
+    apiBaseUrl,
+    accessToken,
+    vaultKey,
+    locale,
     onEdit,
     onCreateCapsule,
     onFavoriteInWeb,
@@ -39,10 +53,37 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     onOpenInWeb,
     t,
   } = props;
-  const fields = extractReadableItemFields(item);
+
   const archived = item.archived ?? false;
   const deleted = item.deleted ?? false;
-  const isLogin = item.categoryId === "login";
+
+  const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
+  const formSections = useMemo(
+    () => itemPlaintextToKeyFormSections(item, keyFormMessages),
+    [item, keyFormMessages],
+  );
+  const keyFormFieldTypes = useMemo(
+    () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), true),
+    [locale],
+  );
+
+  const faviconUrl = useItemFaviconAttachmentUrl({
+    apiBaseUrl,
+    accessToken,
+    vaultKey,
+    vaultId: item.vaultId,
+    itemId: item.itemId,
+    faviconId: item.faviconId,
+    enabled: Boolean(vaultKey && item.faviconId),
+  });
+
+  const messagesWithCopy = useMemo((): KeyFormEditorMessages => {
+    return {
+      ...keyFormMessages,
+      copy: t("extension.vault.copy"),
+      copied: t("extension.vault.copied"),
+    };
+  }, [keyFormMessages, t]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -70,8 +111,12 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
-              <Favicon
-                name={isLogin ? item.title : undefined}
+              <ItemRecordFavicon
+                categoryId={item.categoryId}
+                title={item.title}
+                faviconId={item.faviconId}
+                previewImageSrc={faviconUrl.imageSrc}
+                previewLoading={faviconUrl.loading}
                 size={40}
                 alt=""
               />
@@ -80,30 +125,13 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               </h1>
             </div>
 
-            <KeyForm mode="view">
-              {fields.map((field) => (
-                <KeyField
-                  key={field.id}
-                  mode="view"
-                  label={field.label}
-                  value={field.conceal ? undefined : field.value}
-                  concealValue={field.conceal}
-                  copyValue={field.copyable ? field.value : undefined}
-                  copyLabel={t("extension.vault.copy")}
-                  copySuccessLabel={t("extension.vault.copied")}
-                  onCopyAction={
-                    field.copyable
-                      ? async (value) => {
-                          onCopy(value, field.label);
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </KeyForm>
-            {fields.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("extension.vault.noFields")}</p>
-            ) : null}
+            <KeyFormEditor
+              key={item.itemId}
+              mode="view"
+              initialSections={formSections}
+              fieldTypes={keyFormFieldTypes}
+              messages={messagesWithCopy}
+            />
           </div>
         </div>
       </ScrollArea>
@@ -112,14 +140,12 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
 }
 
 export function ExtensionItemDetailEmpty(props: {
-  workspaceName?: string;
-  selectLabel: string;
-  workspaceFallback: string;
+  title: string;
+  description: string;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-sm text-muted-foreground">
-      <p>{props.workspaceName ?? props.workspaceFallback}</p>
-      <p>{props.selectLabel}</p>
+    <div className="relative min-h-0 flex-1">
+      <ItemsDetailPanelEmptyStateFill title={props.title} description={props.description} />
     </div>
   );
 }

@@ -852,10 +852,13 @@ export function PopupApp() {
         <VaultPopup
           core={createCoreClient(profile.apiBaseUrl, session.access_token)}
           userId={session.user_id}
+          accessToken={session.access_token}
+          apiBaseUrl={profile.apiBaseUrl}
           webBaseUrl={profile.webBaseUrl}
           secrets={unlockSecrets}
           encryptedPrivateKeyPayload={encryptedPrivateKeyPayload}
           identity={identity}
+          locale={locale}
           localeSelect={languageSelect}
           signOutLabel={t("unlock.signOut")}
           onSignOut={() => void onLogout()}

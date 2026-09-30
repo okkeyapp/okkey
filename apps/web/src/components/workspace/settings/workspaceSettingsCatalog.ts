@@ -5,7 +5,7 @@ import {
   type WorkspaceSettingsResponseDto,
 } from "@okkey/types";
 
-export const DEFAULT_WORKSPACE_TILE_COLOR = "#3b82f6";
+export { DEFAULT_WORKSPACE_TILE_COLOR } from "@okkey/ui";
 
 export const DELETED_ITEMS_RETENTION_DAY_OPTIONS = [1, 3, 7, 14, 30] as const;
 

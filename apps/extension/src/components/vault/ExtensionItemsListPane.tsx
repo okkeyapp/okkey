@@ -6,13 +6,12 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Favicon,
   FilterIconAllRecords,
   FilterIconArchived,
   FilterIconDeleted,
   FilterIconFavorites,
   FilterIconFrame,
-  FilterIconMonitoring,
+  ListScrollSentinel,
   ScrollArea,
   SidebarGroupLabel,
   SortIconAlphaAsc,
@@ -20,35 +19,37 @@ import {
   SortIconNewestFirst,
   SortIconOldestFirst,
   Spinner,
+  buildItemsListSections,
   cn,
   mutedSurfaceHoverBgClassName,
   mutedSurfaceOpenBgClassName,
   sortIconForValue,
+  useListWindow,
+  vaultDisplayIcon,
+  windowListSections,
+  type ItemsListLocale,
   type ItemsListSortValue,
 } from "@okkey/ui";
 import type { ExtensionItemListRecord } from "@okkey/vault";
-import { useState } from "react";
+import {
+  ItemsListFilterScopeSubmenus,
+  LazyItemRecordFavicon,
+  getActiveCategoryLabel,
+  useItemFaviconAttachmentUrl,
+  type ItemsListFilterScopeVault,
+} from "@okkey/vault-ui";
+import { useMemo, useRef, useState } from "react";
 
-export type ExtensionListFilter =
-  | "all"
-  | "favorites"
-  | "archived"
-  | "recently_deleted"
-  | "reused"
-  | "strong"
-  | "medium"
-  | "weak"
-  | "stale"
-  | "compromised"
-  | "2fa-gap"
-  | "passkey-gap";
+export type ExtensionListFilter = "all" | "favorites" | "archived" | "recently_deleted";
 
 export type ExtensionListSort = ItemsListSortValue;
 
-export type ExtensionListVaultOption = {
-  id: string;
-  name: string;
-  emoji?: string;
+export type ExtensionListVaultOption = ItemsListFilterScopeVault;
+
+export type ExtensionListRow = ExtensionItemListRecord & {
+  date: Date;
+  favorite: boolean;
+  folderId: string | null;
 };
 
 const itemsPanelSelectTriggerClassName = cn(
@@ -70,15 +71,6 @@ function filterIconForValue(value: ExtensionListFilter) {
       return <FilterIconArchived />;
     case "recently_deleted":
       return <FilterIconDeleted />;
-    case "reused":
-    case "strong":
-    case "medium":
-    case "weak":
-    case "stale":
-    case "compromised":
-    case "2fa-gap":
-    case "passkey-gap":
-      return <FilterIconMonitoring />;
     default: {
       const _ex: never = value;
       return _ex;
@@ -96,22 +88,6 @@ function filterLabelKey(filter: ExtensionListFilter): string {
       return "web.items.filter.archived";
     case "recently_deleted":
       return "web.items.filter.recentlyDeleted";
-    case "reused":
-      return "web.monitoring.reusedTitle";
-    case "strong":
-      return "web.items.filter.strong";
-    case "medium":
-      return "web.items.filter.medium";
-    case "weak":
-      return "web.monitoring.weakTitle";
-    case "stale":
-      return "web.monitoring.staleTitle";
-    case "compromised":
-      return "web.monitoring.compromisedTitle";
-    case "2fa-gap":
-      return "web.monitoring.twoFactorGapTitle";
-    case "passkey-gap":
-      return "web.monitoring.passkeyGapTitle";
     default: {
       const _ex: never = filter;
       return _ex;
@@ -126,33 +102,66 @@ const BASE_FILTERS: readonly ExtensionListFilter[] = [
   "recently_deleted",
 ];
 
-const MONITORING_FILTERS: readonly ExtensionListFilter[] = [
-  "reused",
-  "strong",
-  "medium",
-  "weak",
-  "stale",
-  "compromised",
-  "2fa-gap",
-  "passkey-gap",
-];
-
 type ExtensionItemsListPaneProps = {
-  records: readonly ExtensionItemListRecord[];
+  records: readonly ExtensionListRow[];
   loading: boolean;
   error: string | null;
   filter: ExtensionListFilter;
   sort: ExtensionListSort;
   selectedId: string | null;
+  locale: ItemsListLocale;
+  scopeLabel?: string | null;
   vaultScopeLabel?: string | null;
-  vaultOptions?: readonly ExtensionListVaultOption[];
+  folderScopeLabel?: string | null;
+  categoryScopeLabel?: string | null;
+  vaultOptions: readonly ExtensionListVaultOption[];
+  folderTree: Parameters<typeof ItemsListFilterScopeSubmenus>[0]["folderTree"];
+  activeVaultId: string;
+  activeFolderId: string;
+  activeCategoryId: string;
+  apiBaseUrl: string;
+  accessToken: string;
+  resolveVaultKey: (vaultId: string) => Uint8Array | null | undefined;
   onFilterChange: (filter: ExtensionListFilter) => void;
   onSortChange: (sort: ExtensionListSort) => void;
   onSelect: (id: string) => void;
-  onClearVaultScope?: () => void;
-  onPickVault?: (vaultId: string) => void;
+  onClearScope?: () => void;
+  onPickVault: (vaultId: string) => void;
+  onPickFolder: (folderId: string) => void;
+  onPickCategory: (categoryId: string) => void;
+  onPickTag: (tag: string) => void;
   t: (key: string) => string;
 };
+
+function ExtensionListRowFavicon(props: {
+  row: ExtensionListRow;
+  apiBaseUrl: string;
+  accessToken: string;
+  vaultKey: Uint8Array | null | undefined;
+}) {
+  const faviconUrl = useItemFaviconAttachmentUrl({
+    apiBaseUrl: props.apiBaseUrl,
+    accessToken: props.accessToken,
+    vaultKey: props.vaultKey,
+    vaultId: props.row.vaultId,
+    itemId: props.row.id,
+    faviconId: props.row.faviconId,
+    enabled: Boolean(props.vaultKey && props.row.faviconId),
+  });
+
+  return (
+    <LazyItemRecordFavicon
+      categoryId={props.row.categoryId}
+      title={props.row.title}
+      faviconId={props.row.faviconId}
+      previewImageSrc={faviconUrl.imageSrc}
+      previewLoading={faviconUrl.loading}
+      size={32}
+      alt=""
+      className="size-8"
+    />
+  );
+}
 
 export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
   const {
@@ -162,16 +171,67 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     filter,
     sort,
     selectedId,
+    locale,
+    scopeLabel,
     vaultScopeLabel,
-    vaultOptions = [],
+    folderScopeLabel,
+    categoryScopeLabel,
+    vaultOptions,
+    folderTree,
+    activeVaultId,
+    activeFolderId,
+    activeCategoryId,
+    apiBaseUrl,
+    accessToken,
+    resolveVaultKey,
     onFilterChange,
     onSortChange,
     onSelect,
-    onClearVaultScope,
+    onClearScope,
     onPickVault,
+    onPickFolder,
+    onPickCategory,
+    onPickTag,
     t,
   } = props;
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  const activeScopeLabel =
+    scopeLabel ??
+    vaultScopeLabel ??
+    folderScopeLabel ??
+    categoryScopeLabel ??
+    null;
+
+  const sections = useMemo(
+    () => buildItemsListSections(records, sort, locale),
+    [locale, records, sort],
+  );
+  const totalRows = useMemo(() => sections.reduce((n, s) => n + s.rows.length, 0), [sections]);
+  const listWindowResetKey = [filter, sort, activeVaultId, activeFolderId, activeCategoryId, scopeLabel ?? ""].join(
+    "|",
+  );
+  const { visibleCount, hasMore, loadMore } = useListWindow({
+    total: totalRows,
+    resetKey: listWindowResetKey,
+  });
+  const visibleSections = useMemo(
+    () => windowListSections(sections, visibleCount),
+    [sections, visibleCount],
+  );
+
+  const triggerLeading = (() => {
+    if (vaultScopeLabel) {
+      const vault = vaultOptions.find((v) => v.id === activeVaultId);
+      return (
+        <span className="text-[14px] leading-none" aria-hidden>
+          {vault ? vaultDisplayIcon(vault) : "💼"}
+        </span>
+      );
+    }
+    return filterIconForValue(filter);
+  })();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -187,32 +247,21 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                   "flex min-h-9 min-w-0 flex-1 cursor-default items-center justify-start gap-2 text-left outline-none",
                 )}
               >
-                <FilterIconFrame>
-                  {vaultScopeLabel ? (
-                    <span className="text-[14px] leading-none" aria-hidden>
-                      💼
-                    </span>
-                  ) : (
-                    filterIconForValue(filter)
-                  )}
-                </FilterIconFrame>
+                <FilterIconFrame>{triggerLeading}</FilterIconFrame>
                 <span className="min-w-0 flex-1 truncate text-left text-sm font-normal text-foreground">
-                  {vaultScopeLabel ?? t(filterLabelKey(filter))}
+                  {activeScopeLabel ?? t(filterLabelKey(filter))}
                 </span>
                 <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-[14rem] p-1">
-              {vaultScopeLabel && onClearVaultScope ? (
+              {activeScopeLabel && onClearScope ? (
                 <>
                   <DropdownMenuItem
                     className="relative gap-2 whitespace-nowrap bg-muted/80 py-2 ps-2 pe-3 data-[highlighted]:bg-secondary"
-                    onSelect={() => onClearVaultScope()}
+                    onSelect={() => onClearScope()}
                   >
-                    <span className="text-base leading-none" aria-hidden>
-                      💼
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left">{vaultScopeLabel}</span>
+                    <span className="min-w-0 flex-1 truncate text-left">{activeScopeLabel}</span>
                     <span className="text-xs text-muted-foreground" aria-hidden>
                       ✕
                     </span>
@@ -235,7 +284,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                     key={value}
                     className={cn(
                       "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                      filter === value && !vaultScopeLabel && "bg-muted/80 data-[highlighted]:bg-secondary",
+                      filter === value && !activeScopeLabel && "bg-muted/80 data-[highlighted]:bg-secondary",
                     )}
                     onSelect={() => onFilterChange(value)}
                   >
@@ -245,44 +294,21 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                 );
               })}
 
-              <div className="mx-1 my-1 h-px bg-border" role="separator" />
-              <SidebarGroupLabel className="pointer-events-none">
-                {t("web.nav.monitoring")}
-              </SidebarGroupLabel>
-              {MONITORING_FILTERS.map((value) => (
-                <DropdownMenuItem
-                  key={value}
-                  className={cn(
-                    "gap-2 whitespace-nowrap py-2 ps-2 pe-3",
-                    filter === value && !vaultScopeLabel && "bg-muted/80 data-[highlighted]:bg-secondary",
-                  )}
-                  onSelect={() => onFilterChange(value)}
-                >
-                  <FilterIconMonitoring className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate text-left">{t(filterLabelKey(value))}</span>
-                </DropdownMenuItem>
-              ))}
-
-              {vaultOptions.length > 0 && onPickVault ? (
-                <>
-                  <div className="mx-1 my-1 h-px bg-border" role="separator" />
-                  <SidebarGroupLabel className="pointer-events-none">
-                    {t("web.nav.vaultsSection")}
-                  </SidebarGroupLabel>
-                  {vaultOptions.map((vault) => (
-                    <DropdownMenuItem
-                      key={vault.id}
-                      className="gap-2 whitespace-nowrap py-2 ps-2 pe-3"
-                      onSelect={() => onPickVault(vault.id)}
-                    >
-                      <span className="text-base leading-none" aria-hidden>
-                        {vault.emoji ?? "💼"}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-left">{vault.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </>
-              ) : null}
+              <ItemsListFilterScopeSubmenus
+                t={t}
+                vaults={vaultOptions}
+                folderTree={folderTree}
+                records={records}
+                activeVaultId={activeVaultId}
+                activeFolderId={activeFolderId}
+                activeCategoryId={activeCategoryId}
+                onPickVault={onPickVault}
+                onPickFolder={onPickFolder}
+                onPickCategory={onPickCategory}
+                onPickTag={onPickTag}
+                onCloseMenu={() => setFilterMenuOpen(false)}
+                menuOpen={filterMenuOpen}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -344,63 +370,77 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
         </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
         {loading ? (
           <div className="flex items-center justify-center py-10" role="status" aria-busy="true">
             <Spinner className="size-5" />
           </div>
         ) : error ? (
           <p className="p-3 text-sm text-destructive">{error}</p>
-        ) : records.length === 0 ? (
+        ) : totalRows === 0 ? (
           <div className="flex min-h-[12rem] flex-col items-center justify-center px-4 py-10">
             <p className="text-center text-sm text-muted-foreground">{t("web.items.list.empty")}</p>
           </div>
         ) : (
-          <ul className="flex flex-col gap-0 px-2 py-2" role="list">
-            {records.map((row) => {
-              const rowActive = selectedId === row.id;
-              const rowSubtitle = row.description.trim();
-              const isLogin = row.categoryId === "login";
-              return (
-                <li key={row.id}>
-                  <button
-                    type="button"
-                    aria-current={rowActive ? "true" : undefined}
-                    onClick={() => onSelect(row.id)}
-                    className={cn(
-                      "group relative z-0 flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left transition-colors",
-                      "hover:bg-muted/60",
-                      rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-                    )}
-                  >
-                    <Favicon
-                      name={isLogin ? row.title : undefined}
-                      size={32}
-                      lazy
-                      alt=""
-                      className="size-8"
-                    />
-                    {rowSubtitle ? (
-                      <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
-                        <span className="block truncate text-sm font-medium leading-5 text-foreground">
-                          {row.title || "—"}
-                        </span>
-                        <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">
-                          {rowSubtitle}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
-                        {row.title || "—"}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex flex-col gap-0 px-2 py-2">
+            {visibleSections.map((section) => (
+              <div key={section.key} className="flex flex-col">
+                <SidebarGroupLabel className="sticky top-0 z-[1] bg-background px-3 py-1.5">
+                  {section.label}
+                </SidebarGroupLabel>
+                <ul className="flex flex-col gap-0" role="list">
+                  {section.rows.map((row) => {
+                    const rowActive = selectedId === row.id;
+                    const rowSubtitle = row.description.trim();
+                    return (
+                      <li key={row.id}>
+                        <button
+                          type="button"
+                          aria-current={rowActive ? "true" : undefined}
+                          onClick={() => onSelect(row.id)}
+                          className={cn(
+                            "group relative z-0 flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left transition-colors",
+                            "hover:bg-muted/60",
+                            rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                          )}
+                        >
+                          <ExtensionListRowFavicon
+                            row={row}
+                            apiBaseUrl={apiBaseUrl}
+                            accessToken={accessToken}
+                            vaultKey={resolveVaultKey(row.vaultId)}
+                          />
+                          {rowSubtitle ? (
+                            <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
+                              <span className="block truncate text-sm font-medium leading-5 text-foreground">
+                                {row.title || "—"}
+                              </span>
+                              <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">
+                                {rowSubtitle}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
+                              {row.title || "—"}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+            <ListScrollSentinel
+              scrollAreaRef={scrollAreaRef}
+              disabled={!hasMore}
+              onVisible={loadMore}
+            />
+          </div>
         )}
       </ScrollArea>
     </div>
   );
 }
+
+export { getActiveCategoryLabel };

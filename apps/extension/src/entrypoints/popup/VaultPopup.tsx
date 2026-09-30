@@ -1,28 +1,35 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef } from "react";
 import type { CoreApiClient } from "@okkey/api";
+import type { WebLocale } from "@okkey/i18n";
 import type { ItemPlaintextV2, Vault, Workspace } from "@okkey/types";
 import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
 import {
-  copyTextWithVaultClipboardPolicy,
+  createWorkspaceFoldersSyncController,
   createWorkspaceVaultItemsReadController,
+  formatTagSearchQuery,
   itemPlaintextToExtensionListRecord,
-  itemUrlsMatchTab,
+  resolveVaultItemEncryptionKey,
   scoreItemsListRecordSearch,
+  toSidebarFolderTree,
   type ExtensionItemListRecord,
+  type WorkspaceFolderNode,
 } from "@okkey/vault";
 import {
   Button,
   DropdownMenuItem,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
-  Popup,
+  WorkspaceLogoTile,
   WorkspaceSearchField,
   cn,
+  planTierLabel,
   useOkkeyAppShellLayout,
+  vaultDisplayIcon,
+  workspaceSwitcherActiveItemClassName,
   type OkkeySidebarVaultItem,
   type OkkeyWorkspaceNavLinkComponent,
 } from "@okkey/ui";
-import { toast } from "sonner";
+import { useWorkspaceLogoUrl } from "@okkey/vault-ui";
 
 import {
   ExtensionItemDetailEmpty,
@@ -30,7 +37,9 @@ import {
 } from "../../components/vault/ExtensionItemDetailPane";
 import {
   ExtensionItemsListPane,
+  getActiveCategoryLabel,
   type ExtensionListFilter,
+  type ExtensionListRow,
   type ExtensionListSort,
 } from "../../components/vault/ExtensionItemsListPane";
 import {
@@ -39,12 +48,8 @@ import {
   buildNewCapsuleDeepLink,
   buildNewItemDeepLink,
   openWebDeepLink,
-  readActiveTabUrl,
 } from "../../lib/deepLinks";
-import {
-  readExtensionDevicePrefs,
-  touchExtensionUnlockSession,
-} from "../../lib/extensionVaultSession";
+import { touchExtensionUnlockSession } from "../../lib/extensionVaultSession";
 import {
   readStoredCurrentWorkspaceId,
   writeStoredCurrentWorkspaceId,
@@ -53,18 +58,19 @@ import {
 type VaultPopupProps = {
   core: CoreApiClient;
   userId: string;
+  accessToken: string;
+  apiBaseUrl: string;
   webBaseUrl: string;
   secrets: UnlockWithMasterPasswordResult;
   encryptedPrivateKeyPayload: string;
   identity: { email: string; firstName: string; lastName: string } | null;
+  locale: WebLocale;
   localeSelect: React.ReactNode;
   signOutLabel: string;
   onSignOut: () => void;
   onChangeServer: () => void;
   onLock: () => void;
-  /** Optional idle lock interval (ms); activity is tracked via session storage. */
   idleLockMs?: number;
-  /** Optional activity callback (parent idle timer); session touch runs regardless. */
   onActivity?: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
@@ -97,55 +103,32 @@ function LockIcon({ className }: { className?: string }) {
   );
 }
 
-function WorkspaceCheckIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0", className)}>
-      <path d="M3.33337 8.00004L6.66671 11.3334L12.6667 4.66671" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function vaultEmoji(vault: Vault): string {
-  return vault.isPersonal ? "🏠" : "💼";
-}
-
 function compareRows(a: ExtensionItemListRecord, b: ExtensionItemListRecord, sort: ExtensionListSort): number {
   if (sort === "name_asc") {
-    return a.title.localeCompare(b.title) || b.updatedAtMs - a.updatedAtMs;
+    return a.title.localeCompare(b.title, "ru", { sensitivity: "base" }) || b.updatedAtMs - a.updatedAtMs;
   }
   if (sort === "name_desc") {
-    return b.title.localeCompare(a.title) || b.updatedAtMs - a.updatedAtMs;
+    return b.title.localeCompare(a.title, "ru", { sensitivity: "base" }) || b.updatedAtMs - a.updatedAtMs;
   }
   if (sort === "date_asc") {
-    return a.updatedAtMs - b.updatedAtMs || a.title.localeCompare(b.title);
+    return a.updatedAtMs - b.updatedAtMs || a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
   }
-  return b.updatedAtMs - a.updatedAtMs || a.title.localeCompare(b.title);
+  return b.updatedAtMs - a.updatedAtMs || a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
 }
 
 function filterRows(
-  rows: readonly ExtensionItemListRecord[],
+  rows: readonly ExtensionListRow[],
   filter: ExtensionListFilter,
-): ExtensionItemListRecord[] {
+): ExtensionListRow[] {
   switch (filter) {
     case "all":
       return rows.filter((r) => !r.deleted && !r.archived);
     case "favorites":
-      // Favorites sync is E3; keep filter UI parity with web (empty until wired).
-      return [];
+      return rows.filter((r) => !r.deleted && !r.archived && r.favorite);
     case "archived":
       return rows.filter((r) => !r.deleted && r.archived);
     case "recently_deleted":
       return rows.filter((r) => r.deleted);
-    case "reused":
-    case "strong":
-    case "medium":
-    case "weak":
-    case "stale":
-    case "compromised":
-    case "2fa-gap":
-    case "passkey-gap":
-      // Monitoring analytics not available in extension yet.
-      return [];
     default: {
       const _ex: never = filter;
       return _ex;
@@ -187,31 +170,123 @@ const ExtensionVaultFilterLink = forwardRef(function ExtensionVaultFilterLink(
   );
 });
 
+const ExtensionFolderNavLink = forwardRef(function ExtensionFolderNavLink(
+  props: {
+    to: string;
+    className?: string;
+    children: React.ReactNode;
+    "aria-current"?: React.ComponentProps<"a">["aria-current"];
+    onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+    onPickFolder: (folderId: string) => void;
+  },
+  ref: ForwardedRef<HTMLAnchorElement>,
+) {
+  const { to, className, children, onClick, onPickFolder, ...rest } = props;
+  const shell = useOkkeyAppShellLayout();
+  return (
+    <a
+      ref={ref}
+      href={to}
+      className={className}
+      onClick={(event) => {
+        event.preventDefault();
+        const id = to.startsWith("folder:") ? to.slice("folder:".length) : "";
+        if (id) {
+          onPickFolder(id);
+        }
+        shell.setMobileDrawerOpen(false);
+        onClick?.(event);
+      }}
+      {...rest}
+    >
+      {children}
+    </a>
+  );
+});
+
+function ExtensionWorkspaceTileAvatar(props: {
+  workspace?: Workspace;
+  sizeClass: string;
+  apiBaseUrl: string;
+  accessToken: string;
+  vaultKey: Uint8Array | null;
+}) {
+  const { workspace, sizeClass, apiBaseUrl, accessToken, vaultKey } = props;
+  const hasCustomLogo = Boolean(workspace?.logoVaultId && workspace?.logoAttachmentId);
+  const logoUrl = useWorkspaceLogoUrl({
+    apiBaseUrl,
+    accessToken,
+    vaultKey,
+    vaultId: workspace?.logoVaultId,
+    attachmentId: workspace?.logoAttachmentId,
+    workspaceId: workspace?.id ?? "",
+    enabled: hasCustomLogo,
+  });
+
+  if (!workspace) {
+    return <div className={cn("shrink-0 rounded-lg bg-muted", sizeClass)} />;
+  }
+
+  return (
+    <WorkspaceLogoTile
+      className={cn("shrink-0", sizeClass)}
+      tileColor={workspace.tileColor}
+      hasCustomLogo={hasCustomLogo}
+      imageSrc={logoUrl.imageSrc}
+      loading={logoUrl.loading}
+    />
+  );
+}
+
 function WorkspaceSwitcherPanel(props: {
   workspaces: readonly Workspace[];
   workspaceId: string | null;
+  apiBaseUrl: string;
+  accessToken: string;
+  vaultKey: Uint8Array | null;
   localeSelect: React.ReactNode;
+  t: VaultPopupProps["t"];
   onPick: (id: string) => void;
 }) {
   const shell = useOkkeyAppShellLayout();
   return (
-    <div className="p-1">
-      {props.workspaces.map((ws) => (
-        <DropdownMenuItem
-          key={ws.id}
-          className={cn("cursor-pointer gap-2", ws.id === props.workspaceId && "bg-muted/80")}
-          onSelect={() => {
-            props.onPick(ws.id);
-            shell.setMobileDrawerOpen(false);
-          }}
-        >
-          <span className="min-w-0 flex-1 truncate">{ws.name}</span>
-          {ws.id === props.workspaceId ? <WorkspaceCheckIcon className="size-4 shrink-0" /> : null}
-        </DropdownMenuItem>
-      ))}
-      <div className="mx-1 my-1 h-px bg-border" role="separator" />
-      <div className="px-2 py-1">{props.localeSelect}</div>
-    </div>
+    <>
+      <div className="p-1">
+        {props.workspaces.map((ws) => {
+          const active = ws.id === props.workspaceId;
+          return (
+            <DropdownMenuItem
+              key={ws.id}
+              className={cn(
+                "h-auto cursor-pointer items-center gap-3",
+                active ? workspaceSwitcherActiveItemClassName : undefined,
+              )}
+              onSelect={() => {
+                props.onPick(ws.id);
+                shell.setMobileDrawerOpen(false);
+              }}
+            >
+              <ExtensionWorkspaceTileAvatar
+                workspace={ws}
+                sizeClass="size-8"
+                apiBaseUrl={props.apiBaseUrl}
+                accessToken={props.accessToken}
+                vaultKey={props.vaultKey}
+              />
+              <div className="min-w-0 flex-1 text-left">
+                <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
+                <p className="truncate text-xs leading-4 text-muted-foreground">
+                  {planTierLabel(ws.planTier, props.t)}
+                </p>
+              </div>
+              {active ? <span className="shrink-0 text-primary">✓</span> : null}
+            </DropdownMenuItem>
+          );
+        })}
+      </div>
+      <div className="border-t border-border" role="presentation" />
+      <div className="p-1 px-2 py-1">{props.localeSelect}</div>
+    </>
   );
 }
 
@@ -219,10 +294,13 @@ export function VaultPopup(props: VaultPopupProps) {
   const {
     core,
     userId,
+    accessToken,
+    apiBaseUrl,
     webBaseUrl,
     secrets,
     encryptedPrivateKeyPayload,
     identity,
+    locale,
     localeSelect,
     signOutLabel,
     onSignOut,
@@ -236,26 +314,31 @@ export function VaultPopup(props: VaultPopupProps) {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [items, setItems] = useState<ItemPlaintextV2[]>([]);
+  const [folderNodes, setFolderNodes] = useState<WorkspaceFolderNode[]>([]);
+  const [itemFolderByItemId, setItemFolderByItemId] = useState<ReadonlyMap<string, string | null>>(
+    () => new Map(),
+  );
+  const [itemFavoriteByItemId, setItemFavoriteByItemId] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [vaultKeyById, setVaultKeyById] = useState<ReadonlyMap<string, Uint8Array>>(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ExtensionListFilter>("all");
   const [sort, setSort] = useState<ExtensionListSort>("date_desc");
   const [vaultFilterId, setVaultFilterId] = useState<string | null>(null);
+  const [folderFilterId, setFolderFilterId] = useState<string | null>(null);
+  const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tabUrl, setTabUrl] = useState<string | null>(null);
-  const [copyConfirm, setCopyConfirm] = useState<{ value: string; label: string } | null>(null);
   const disposeRef = useRef<(() => void) | null>(null);
+  const foldersDisposeRef = useRef<(() => void) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const noteActivity = useCallback(() => {
     void touchExtensionUnlockSession(userId);
     onActivity?.();
   }, [onActivity, userId]);
-
-  useEffect(() => {
-    void readActiveTabUrl().then(setTabUrl);
-  }, []);
 
   const loadWorkspaces = useCallback(async () => {
     const list = await core.listWorkspaces();
@@ -270,6 +353,31 @@ export function VaultPopup(props: VaultPopupProps) {
       await writeStoredCurrentWorkspaceId(userId, next);
     }
   }, [core, userId]);
+
+  const loadFolders = useCallback(
+    async (wsId: string) => {
+      foldersDisposeRef.current?.();
+      foldersDisposeRef.current = null;
+      const controller = createWorkspaceFoldersSyncController({
+        core,
+        userId,
+        workspaceId: wsId,
+        passwordShareC: secrets.passwordShareC,
+      });
+      foldersDisposeRef.current = () => controller.dispose();
+      try {
+        await controller.refresh();
+        setFolderNodes(controller.toFolderTree());
+        setItemFolderByItemId(new Map(controller.getState().itemFolder));
+        setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
+      } catch {
+        setFolderNodes([]);
+        setItemFolderByItemId(new Map());
+        setItemFavoriteByItemId(new Set());
+      }
+    },
+    [core, secrets.passwordShareC, userId],
+  );
 
   const loadItems = useCallback(
     async (wsId: string) => {
@@ -291,16 +399,37 @@ export function VaultPopup(props: VaultPopupProps) {
         disposeRef.current = () => controller.dispose();
         await controller.refresh();
         setItems(controller.getAllItems());
+
+        const keys = new Map<string, Uint8Array>();
+        await Promise.all(
+          nextVaults.map(async (vault) => {
+            try {
+              const key = await resolveVaultItemEncryptionKey({
+                vault,
+                accountVaultKey: secrets.vaultKey,
+                core,
+                encryptedPrivateKeyPayload,
+              });
+              keys.set(vault.id, key);
+            } catch {
+              // Favicons for this vault stay on category/monogram fallback.
+            }
+          }),
+        );
+        setVaultKeyById(keys);
+        await loadFolders(wsId);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         setItems([]);
         setVaults([]);
+        setFolderNodes([]);
+        setVaultKeyById(new Map());
       } finally {
         setLoading(false);
       }
     },
-    [core, encryptedPrivateKeyPayload, secrets.vaultKey, userId],
+    [core, encryptedPrivateKeyPayload, loadFolders, secrets.vaultKey, userId],
   );
 
   useEffect(() => {
@@ -314,6 +443,7 @@ export function VaultPopup(props: VaultPopupProps) {
     })();
     return () => {
       disposeRef.current?.();
+      foldersDisposeRef.current?.();
     };
   }, [loadWorkspaces]);
 
@@ -323,13 +453,34 @@ export function VaultPopup(props: VaultPopupProps) {
       return;
     }
     setVaultFilterId(null);
+    setFolderFilterId(null);
+    setCategoryFilterId(null);
     setSelectedId(null);
     void loadItems(workspaceId);
   }, [workspaceId, loadItems]);
 
-  const listRecords = useMemo(() => {
-    const records = items.map(itemPlaintextToExtensionListRecord);
-    const scoped = vaultFilterId ? records.filter((row) => row.vaultId === vaultFilterId) : records;
+  const listRecords = useMemo((): ExtensionListRow[] => {
+    const records: ExtensionListRow[] = items.map((item) => {
+      const base = itemPlaintextToExtensionListRecord(item);
+      return {
+        ...base,
+        date: new Date(item.updatedAtMs),
+        favorite: itemFavoriteByItemId.has(item.itemId),
+        folderId: itemFolderByItemId.get(item.itemId) ?? null,
+      };
+    });
+
+    let scoped = records;
+    if (vaultFilterId) {
+      scoped = scoped.filter((row) => row.vaultId === vaultFilterId);
+    }
+    if (folderFilterId) {
+      scoped = scoped.filter((row) => row.folderId === folderFilterId);
+    }
+    if (categoryFilterId) {
+      scoped = scoped.filter((row) => row.categoryId === categoryFilterId);
+    }
+
     const filtered = filterRows(scoped, filter);
     const needle = search.trim();
     if (!needle) {
@@ -340,7 +491,17 @@ export function VaultPopup(props: VaultPopupProps) {
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || compareRows(a.row, b.row, sort))
       .map((entry) => entry.row);
-  }, [filter, items, search, sort, vaultFilterId]);
+  }, [
+    categoryFilterId,
+    filter,
+    folderFilterId,
+    itemFavoriteByItemId,
+    itemFolderByItemId,
+    items,
+    search,
+    sort,
+    vaultFilterId,
+  ]);
 
   const selectedItem = useMemo(
     () => (selectedId ? items.find((item) => item.itemId === selectedId) ?? null : null),
@@ -358,33 +519,60 @@ export function VaultPopup(props: VaultPopupProps) {
     await writeStoredCurrentWorkspaceId(userId, id);
   };
 
-  const performCopy = async (value: string, label: string) => {
-    noteActivity();
-    const prefs = await readExtensionDevicePrefs(userId);
-    await copyTextWithVaultClipboardPolicy({
-      clipboardClearSeconds: prefs.clipboardClearSeconds,
-      text: value,
-    });
-    toast.message(t("extension.vault.copied"), { description: label });
-  };
-
-  const copyWithGuard = async (value: string, label: string, itemUrls: readonly string[]) => {
-    const matches = itemUrlsMatchTab(tabUrl, itemUrls, "entire-site");
-    if (!matches) {
-      setCopyConfirm({ value, label });
-      return;
-    }
-    await performCopy(value, label);
-  };
-
-  const confirmCopy = async () => {
-    if (!copyConfirm) return;
-    await performCopy(copyConfirm.value, copyConfirm.label);
-    setCopyConfirm(null);
-  };
-
   const currentWorkspace = workspaces.find((w) => w.id === workspaceId) ?? null;
   const vaultScopeMeta = vaultFilterId ? vaults.find((v) => v.id === vaultFilterId) : null;
+
+  const findFolderLabel = useCallback((nodes: readonly WorkspaceFolderNode[], id: string): string => {
+    for (const node of nodes) {
+      if (node.id === id) {
+        return node.label;
+      }
+      if (node.children?.length) {
+        const nested = findFolderLabel(node.children, id);
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+    return "";
+  }, []);
+
+  const folderScopeLabel = folderFilterId
+    ? findFolderLabel(folderNodes, folderFilterId) || folderFilterId
+    : null;
+  const categoryScopeLabel = categoryFilterId
+    ? getActiveCategoryLabel(categoryFilterId, t) ?? categoryFilterId
+    : null;
+
+  const clearScope = useCallback(() => {
+    setVaultFilterId(null);
+    setFolderFilterId(null);
+    setCategoryFilterId(null);
+  }, []);
+
+  const pickVaultScope = useCallback((id: string) => {
+    setVaultFilterId(id);
+    setFolderFilterId(null);
+    setCategoryFilterId(null);
+    setFilter("all");
+    setSelectedId(null);
+  }, []);
+
+  const pickFolderScope = useCallback((id: string) => {
+    setFolderFilterId(id);
+    setVaultFilterId(null);
+    setCategoryFilterId(null);
+    setFilter("all");
+    setSelectedId(null);
+  }, []);
+
+  const pickCategoryScope = useCallback((id: string) => {
+    setCategoryFilterId(id);
+    setVaultFilterId(null);
+    setFolderFilterId(null);
+    setFilter("all");
+    setSelectedId(null);
+  }, []);
 
   const openNewItem = () => {
     void openWebDeepLink(
@@ -408,9 +596,23 @@ export function VaultPopup(props: VaultPopupProps) {
     void openWebDeepLink(buildItemsDeepLink({ webBaseUrl, workspaceId, itemId }));
   };
 
+  const folderTreeForSidebar = useMemo(
+    () =>
+      toSidebarFolderTree(
+        folderNodes,
+        (folderId) => `folder:${folderId}`,
+        folderFilterId ?? "",
+      ),
+    [folderFilterId, folderNodes],
+  );
+
   const sidebarVaultItems: OkkeySidebarVaultItem[] = vaults.map((vault) => ({
     id: vault.id,
-    leading: <span className="text-base leading-none">{vaultEmoji(vault)}</span>,
+    leading: (
+      <span className="text-base leading-none" aria-hidden>
+        {vaultDisplayIcon(vault)}
+      </span>
+    ),
     label: vault.name,
     to: `vault:${vault.id}`,
     isActive: vaultFilterId === vault.id,
@@ -419,14 +621,11 @@ export function VaultPopup(props: VaultPopupProps) {
   const vaultOptions = vaults.map((vault) => ({
     id: vault.id,
     name: vault.name,
-    emoji: vaultEmoji(vault),
+    isPersonal: vault.isPersonal,
+    icon: vault.icon,
   }));
 
   const VaultNavLink = useMemo(() => {
-    const onPickVault = (id: string) => {
-      setVaultFilterId(id);
-      setSelectedId(null);
-    };
     const Link = forwardRef(function VaultFilterLink(
       linkProps: {
         to: string;
@@ -437,10 +636,26 @@ export function VaultPopup(props: VaultPopupProps) {
       },
       ref: ForwardedRef<HTMLAnchorElement>,
     ) {
-      return <ExtensionVaultFilterLink ref={ref} {...linkProps} onPickVault={onPickVault} />;
+      return <ExtensionVaultFilterLink ref={ref} {...linkProps} onPickVault={pickVaultScope} />;
     });
     return Link as OkkeyWorkspaceNavLinkComponent;
-  }, []);
+  }, [pickVaultScope]);
+
+  const FolderNavLink = useMemo(() => {
+    const Link = forwardRef(function FolderFilterLink(
+      linkProps: {
+        to: string;
+        className?: string;
+        children: React.ReactNode;
+        "aria-current"?: React.ComponentProps<"a">["aria-current"];
+        onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+      },
+      ref: ForwardedRef<HTMLAnchorElement>,
+    ) {
+      return <ExtensionFolderNavLink ref={ref} {...linkProps} onPickFolder={pickFolderScope} />;
+    });
+    return Link as OkkeyWorkspaceNavLinkComponent;
+  }, [pickFolderScope]);
 
   const onPickWorkspace = async (id: string) => {
     await onSelectWorkspace(id);
@@ -456,13 +671,28 @@ export function VaultPopup(props: VaultPopupProps) {
     noteActivity();
   };
 
+  const onPickTag = (tag: string) => {
+    setSearch(formatTagSearchQuery(tag));
+    clearScope();
+    setFilter("all");
+    setSelectedId(null);
+  };
+
+  const resolveVaultKey = useCallback(
+    (vaultId: string) => vaultKeyById.get(vaultId) ?? secrets.vaultKey,
+    [secrets.vaultKey, vaultKeyById],
+  );
+
+  const isMultiWorkspaceUi = workspaces.length > 1;
+
   return (
     <OkkeyAppSidebar
       workspaceNavItems={[]}
       showVaultHeaderPlus={false}
       showFolderHeaderPlus={false}
       showFooterPlainLinks={false}
-      folderTree={[]}
+      folderTree={folderTreeForSidebar}
+      folderNavLink={FolderNavLink}
       folderEmptyLabel={t("web.nav.foldersEmpty")}
       vaultSectionTitle={t("web.nav.vaultsSection")}
       folderSectionTitle={t("web.nav.foldersSection")}
@@ -471,9 +701,13 @@ export function VaultPopup(props: VaultPopupProps) {
       mobileNavCloseLabel={t("web.nav.closeMobileNav")}
       workspaceSwitcherTrigger={({ expanded }) => (
         <>
-          <div className={cn("flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-sm font-semibold", !expanded && "size-9")}>
-            {(currentWorkspace?.name ?? "O").trim().slice(0, 1).toUpperCase() || "O"}
-          </div>
+          <ExtensionWorkspaceTileAvatar
+            workspace={currentWorkspace ?? undefined}
+            sizeClass={cn("size-8", !expanded && "size-9")}
+            apiBaseUrl={apiBaseUrl}
+            accessToken={accessToken}
+            vaultKey={secrets.vaultKey}
+          />
           {expanded ? (
             <>
               <div className="min-w-0 flex-1">
@@ -481,7 +715,9 @@ export function VaultPopup(props: VaultPopupProps) {
                   {currentWorkspace?.name ?? t("extension.vault.workspace")}
                 </p>
                 <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
-                  {identity?.email ?? ""}
+                  {currentWorkspace
+                    ? planTierLabel(currentWorkspace.planTier, t)
+                    : (identity?.email ?? "")}
                 </p>
               </div>
             </>
@@ -489,12 +725,20 @@ export function VaultPopup(props: VaultPopupProps) {
         </>
       )}
       workspaceSwitcherDropdown={
-        <WorkspaceSwitcherPanel
-          workspaces={workspaces}
-          workspaceId={workspaceId}
-          localeSelect={localeSelect}
-          onPick={(id) => void onPickWorkspace(id)}
-        />
+        isMultiWorkspaceUi ? (
+          <WorkspaceSwitcherPanel
+            workspaces={workspaces}
+            workspaceId={workspaceId}
+            apiBaseUrl={apiBaseUrl}
+            accessToken={accessToken}
+            vaultKey={secrets.vaultKey}
+            localeSelect={localeSelect}
+            t={t}
+            onPick={(id) => void onPickWorkspace(id)}
+          />
+        ) : (
+          <div className="p-1">{localeSelect}</div>
+        )
       }
       accountMenu={
         identity
@@ -557,16 +801,29 @@ export function VaultPopup(props: VaultPopupProps) {
               filter={filter}
               sort={sort}
               selectedId={selectedId}
+              locale={locale === "ru" ? "ru" : "en"}
               vaultScopeLabel={vaultScopeMeta?.name ?? null}
+              folderScopeLabel={folderScopeLabel}
+              categoryScopeLabel={categoryScopeLabel}
               vaultOptions={vaultOptions}
-              onFilterChange={setFilter}
+              folderTree={folderTreeForSidebar}
+              activeVaultId={vaultFilterId ?? ""}
+              activeFolderId={folderFilterId ?? ""}
+              activeCategoryId={categoryFilterId ?? ""}
+              apiBaseUrl={apiBaseUrl}
+              accessToken={accessToken}
+              resolveVaultKey={resolveVaultKey}
+              onFilterChange={(next) => {
+                setFilter(next);
+                clearScope();
+              }}
               onSortChange={setSort}
               onSelect={onSelectItem}
-              onClearVaultScope={() => setVaultFilterId(null)}
-              onPickVault={(id) => {
-                setVaultFilterId(id);
-                setSelectedId(null);
-              }}
+              onClearScope={clearScope}
+              onPickVault={pickVaultScope}
+              onPickFolder={pickFolderScope}
+              onPickCategory={pickCategoryScope}
+              onPickTag={onPickTag}
               t={t}
             />
           </aside>
@@ -574,18 +831,17 @@ export function VaultPopup(props: VaultPopupProps) {
           <main className="flex min-w-0 flex-1 flex-col">
             {!selectedItem ? (
               <ExtensionItemDetailEmpty
-                workspaceName={currentWorkspace?.name}
-                selectLabel={t("extension.vault.selectItem")}
-                workspaceFallback={t("extension.vault.workspace")}
+                title={t("web.items.detail.selectItemTitle")}
+                description={t("web.items.detail.selectItemDescription")}
               />
             ) : (
               <ExtensionItemDetailPane
                 item={selectedItem}
                 vault={selectedVault}
-                emptyLabel={t("extension.vault.noFields")}
-                onCopy={(value, label) =>
-                  void copyWithGuard(value, label, itemPlaintextToExtensionListRecord(selectedItem).urls)
-                }
+                apiBaseUrl={apiBaseUrl}
+                accessToken={accessToken}
+                vaultKey={resolveVaultKey(selectedItem.vaultId)}
+                locale={locale}
                 onEdit={() => openItemInWeb(selectedItem.itemId, { popup: "editItem" })}
                 onCreateCapsule={() => openItemInWeb(selectedItem.itemId, { popup: "newCapsule" })}
                 onFavoriteInWeb={() => openItemInWeb(selectedItem.itemId)}
@@ -598,25 +854,6 @@ export function VaultPopup(props: VaultPopupProps) {
           </main>
         </div>
       </div>
-
-      {copyConfirm ? (
-        <Popup
-          header={t("extension.vault.copyGuardTitle")}
-          description={t("extension.vault.copyGuardBody")}
-          width={360}
-          onClose={() => setCopyConfirm(null)}
-          footer={
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setCopyConfirm(null)}>
-                {t("extension.vault.copyGuardCancel")}
-              </Button>
-              <Button type="button" onClick={() => void confirmCopy()}>
-                {t("extension.vault.copyGuardConfirm")}
-              </Button>
-            </div>
-          }
-        />
-      ) : null}
     </OkkeyAppSidebar>
   );
 }
