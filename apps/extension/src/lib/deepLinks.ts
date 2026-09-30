@@ -6,6 +6,11 @@ export function joinWebPath(webBaseUrl: string, pathWithQuery: string): string {
   return `${base}${path}`;
 }
 
+/** Encode popup query values but keep `|` literal (web `popupQuerySearch` convention). */
+function encodePopupQueryParam(value: string): string {
+  return encodeURIComponent(value).replaceAll("%7C", "|");
+}
+
 export function buildItemsDeepLink(input: {
   webBaseUrl: string;
   workspaceId?: string;
@@ -41,32 +46,35 @@ export function buildNewItemDeepLink(input: {
   });
 }
 
+/** `/items?item={id}&popup=editItem|{id}` (+ optional workspace). */
 export function buildEditItemDeepLink(input: {
   webBaseUrl: string;
-  workspaceId: string;
+  workspaceId?: string;
   itemId: string;
 }): string {
-  const params = new URLSearchParams({
-    workspace: input.workspaceId,
-    item: input.itemId,
-    popup: "editItem",
-  });
-  return joinWebPath(input.webBaseUrl, `/items?${params.toString()}`);
+  const parts: string[] = [];
+  if (input.workspaceId) {
+    parts.push(`workspace=${encodeURIComponent(input.workspaceId)}`);
+  }
+  parts.push(`item=${encodeURIComponent(input.itemId)}`);
+  parts.push(`popup=${encodePopupQueryParam(`editItem|${input.itemId}`)}`);
+  return joinWebPath(input.webBaseUrl, `/items?${parts.join("&")}`);
 }
 
+/** `/items?item={id}&popup=newCapsule&capsuleFromItem={id}` (+ optional workspace). */
 export function buildNewCapsuleDeepLink(input: {
   webBaseUrl: string;
   workspaceId?: string;
   itemId: string;
 }): string {
-  const params = new URLSearchParams({
-    popup: "newCapsule",
-    capsuleFromItemId: input.itemId,
-  });
+  const parts: string[] = [];
   if (input.workspaceId) {
-    params.set("workspace", input.workspaceId);
+    parts.push(`workspace=${encodeURIComponent(input.workspaceId)}`);
   }
-  return joinWebPath(input.webBaseUrl, `/items?${params.toString()}`);
+  parts.push(`item=${encodeURIComponent(input.itemId)}`);
+  parts.push("popup=newCapsule");
+  parts.push(`capsuleFromItem=${encodeURIComponent(input.itemId)}`);
+  return joinWebPath(input.webBaseUrl, `/items?${parts.join("&")}`);
 }
 
 export function buildCapsulesDeepLink(webBaseUrl: string): string {
@@ -74,7 +82,12 @@ export function buildCapsulesDeepLink(webBaseUrl: string): string {
 }
 
 export function buildDevicesSettingsDeepLink(webBaseUrl: string): string {
-  return joinWebPath(webBaseUrl, "/items?popup=settings%7Cdevices");
+  return joinWebPath(webBaseUrl, `/items?popup=${encodePopupQueryParam("settings|devices")}`);
+}
+
+/** `/items?popup=settings|main` — account settings entry from extension. */
+export function buildSettingsMainDeepLink(webBaseUrl: string): string {
+  return joinWebPath(webBaseUrl, `/items?popup=${encodePopupQueryParam("settings|main")}`);
 }
 
 export async function openWebDeepLink(url: string): Promise<void> {

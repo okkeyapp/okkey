@@ -48,6 +48,7 @@ import {
   buildItemsDeepLink,
   buildNewCapsuleDeepLink,
   buildNewItemDeepLink,
+  buildSettingsMainDeepLink,
   openWebDeepLink,
 } from "../../lib/deepLinks";
 import { touchExtensionUnlockSession } from "../../lib/extensionVaultSession";
@@ -756,15 +757,27 @@ export function VaultPopup(props: VaultPopupProps) {
   };
 
   const openItemInWeb = (itemId: string, extra?: { popup?: string }) => {
-    if (!workspaceId) return;
     if (extra?.popup === "editItem") {
-      void openWebDeepLink(buildEditItemDeepLink({ webBaseUrl, workspaceId, itemId }));
+      void openWebDeepLink(
+        buildEditItemDeepLink({
+          webBaseUrl,
+          workspaceId: workspaceId ?? undefined,
+          itemId,
+        }),
+      );
       return;
     }
     if (extra?.popup === "newCapsule") {
-      void openWebDeepLink(buildNewCapsuleDeepLink({ webBaseUrl, workspaceId, itemId }));
+      void openWebDeepLink(
+        buildNewCapsuleDeepLink({
+          webBaseUrl,
+          workspaceId: workspaceId ?? undefined,
+          itemId,
+        }),
+      );
       return;
     }
+    if (!workspaceId) return;
     void openWebDeepLink(buildItemsDeepLink({ webBaseUrl, workspaceId, itemId }));
   };
 
@@ -943,8 +956,12 @@ export function VaultPopup(props: VaultPopupProps) {
               email: identity.email,
               firstName: identity.firstName,
               lastName: identity.lastName,
+              settingsLabel: t("web.accountMenu.settings"),
               logoutLabel: signOutLabel,
               changeServerLabel: t("web.accountMenu.changeServer"),
+              onSettings: () => {
+                void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl));
+              },
               onLogout: onSignOut,
               onChangeServer,
               language: languageMenu,

@@ -555,6 +555,29 @@ function LanguageChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Open-in-web affordance on the account dropdown profile header. */
+function OpenSettingsExternalIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M14 6V2H10M14 2L6.66667 9.33333M12 8.66667V12.6667C12 13.0203 11.8595 13.3594 11.6095 13.6095C11.3594 13.8595 11.0203 14 10.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V5.33333C2 4.97971 2.14048 4.64057 2.39052 4.39052C2.64057 4.14048 2.97971 4 3.33333 4H7.33333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ChangeServerMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -671,27 +694,33 @@ function ProfileAccountDropdownPanel({
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
   const titleLine = displayName.length > 0 ? displayName : email;
 
+  const profileHeader = (
+    <>
+      <UserAccountFavicon firstName={firstName} lastName={lastName} email={email} size={32} />
+      <div className="min-w-0 flex-1 text-left">
+        <p className="truncate text-sm font-semibold leading-5 text-foreground">{titleLine}</p>
+        {displayName ? <p className="truncate text-xs leading-4 text-muted-foreground">{email}</p> : null}
+      </div>
+    </>
+  );
+
   return (
     <>
-      <div className="flex gap-3 border-b border-border px-3 py-3">
-        <UserAccountFavicon firstName={firstName} lastName={lastName} email={email} size={32} />
-        <div className="min-w-0 flex-1 text-left">
-          <p className="truncate text-sm font-semibold leading-5 text-foreground">{titleLine}</p>
-          {displayName ? <p className="truncate text-xs leading-4 text-muted-foreground">{email}</p> : null}
-        </div>
-      </div>
+      {onSettings ? (
+        <DropdownMenuItem
+          className="cursor-pointer items-center gap-3 rounded-none border-b border-border px-3 py-3 focus:bg-accent data-[highlighted]:bg-accent"
+          aria-label={settingsLabel}
+          onSelect={() => {
+            onSettings();
+          }}
+        >
+          {profileHeader}
+          <OpenSettingsExternalIcon className="text-muted-foreground" />
+        </DropdownMenuItem>
+      ) : (
+        <div className="flex gap-3 border-b border-border px-3 py-3">{profileHeader}</div>
+      )}
       <div className="p-1">
-        {onSettings ? (
-          <DropdownMenuItem
-            className="cursor-pointer gap-2"
-            onSelect={() => {
-              onSettings();
-            }}
-          >
-            <NavSettingsIcon />
-            <span>{settingsLabel}</span>
-          </DropdownMenuItem>
-        ) : null}
         {language ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer gap-2 [&>svg:last-child]:ml-auto">
@@ -927,7 +956,7 @@ export type OkkeyAppSidebarAccountMenu = {
   settingsLabel?: string;
   logoutLabel?: string;
   changeServerLabel?: string;
-  /** When omitted, the settings row is hidden (e.g. extension popup). */
+  /** When set, the profile header becomes a button (opens settings / web). No separate settings menu row. */
   onSettings?: () => void;
   onLogout: () => void;
   /** Optional row below logout (e.g. extension “Change server”). */
