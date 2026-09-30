@@ -1,14 +1,14 @@
 /**
  * Pure gate for mixed-key / stale-stream reseal (unit-tested).
  *
- * Callers MUST catch up personal-events (apply decryptable CREATE/UPDATE/DELETE)
- * before invoking this. Resealing from a stale local snapshot re-appends deleted
- * folders onto the server stream and breaks every client.
+ * NOT used by refresh()/unlock/open/switch anymore — those paths are API-first
+ * (empty → personal-events from 0). Kept for the explicit opt-in rebaseline /
+ * recovery tooling and for documenting when a local-plaintext reseal would have
+ * been justified historically.
  *
- * After master-password restore, personal-events can mix old-C and new-C
- * envelopes. A single decryptable recent event (e.g. agent repair-probe) must
- * not suppress reseal when local IndexedDB still holds real folders missing
- * from the decryptable stream set.
+ * Callers that still invoke resealing MUST catch up personal-events (apply
+ * decryptable CREATE/UPDATE/DELETE) before invoking this. Resealing from a
+ * stale local snapshot re-appends deleted folders onto the server stream.
  */
 export function shouldResealLocalFoldersForStreamKey(input: {
   localFolderCount: number;

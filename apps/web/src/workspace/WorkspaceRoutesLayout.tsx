@@ -240,9 +240,9 @@ export default function WorkspaceRoutesLayout() {
     }).catch(() => undefined);
   }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
 
-  // Heal mixed-key personal-events on every workspace that has a local folder
-  // cache (not only the active one). refresh() catches up personal-events first,
-  // then reseals under the current key only from post-replay plaintext.
+  // API-first rematerialize personal folders for every workspace after unlock
+  // (personal-events from version 0 → decrypt → tree). Same path as active
+  // workspace refresh; IndexedDB is only written after a successful API sync.
   const workspaceIdsKey = workspaceList.map((workspace) => workspace.id).join("\0");
   useEffect(() => {
     if (!core || !userId || !vaultUnlocked || !passwordShareC || !workspaceIdsKey) {

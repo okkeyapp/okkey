@@ -376,8 +376,8 @@ export function VaultPopup(props: VaultPopupProps) {
       await writeStoredCurrentWorkspaceId(userId, next);
     }
 
-    // Pull personal-events for every workspace (same path as web): catch up
-    // CREATE/DELETE first, reseal mixed-key only from post-replay plaintext.
+    // API-first rematerialize for every workspace (same path as web refresh):
+    // personal-events from version 0 → decrypt → tree. No local-IDB reseal.
     // Current workspace still loads via loadFolders on open / switch.
     const shareCRaw = secrets.passwordShareC;
     if (shareCRaw && shareCRaw.byteLength === 32 && list.length > 0) {
@@ -523,19 +523,12 @@ export function VaultPopup(props: VaultPopupProps) {
           phase: "failed",
           error: err instanceof Error ? err.message : String(err),
           ...diag,
-          folderCount: controller.toFolderTree().length,
+          folderCount: 0,
         });
-        // Prefer any materialized/cached state over wiping the sidebar to "Нет папок".
-        const tree = controller.toFolderTree();
-        if (tree.length > 0) {
-          setFolderNodes(tree);
-          setItemFolderByItemId(new Map(controller.getState().itemFolder));
-          setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
-        } else {
-          setFolderNodes([]);
-          setItemFolderByItemId(new Map());
-          setItemFavoriteByItemId(new Set());
-        }
+        // API-first: never paint stale IDB/materialized folders when sync fails.
+        setFolderNodes([]);
+        setItemFolderByItemId(new Map());
+        setItemFavoriteByItemId(new Set());
       }
     },
     [core, secrets.passwordShareC, userId],

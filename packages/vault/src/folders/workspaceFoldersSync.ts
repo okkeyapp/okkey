@@ -27,10 +27,7 @@ import type { WorkspaceFolderNode } from "./workspaceFolderTree.js";
 import { flattenWorkspaceFolders } from "./workspaceFolderTree.js";
 import { IndexedDbWorkspacePersonalOutboxStore } from "./workspacePersonalOutboxStore.js";
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
-import {
-  folderIdsToTombstoneForRebaseline,
-  shouldResealLocalFoldersForStreamKey,
-} from "./shouldResealLocalFoldersForStreamKey.js";
+import { folderIdsToTombstoneForRebaseline } from "./shouldResealLocalFoldersForStreamKey.js";
 
 const CACHE_DB = "okkey-workspace-personal-sync";
 const CACHE_STORE = "materialized_state";
@@ -152,29 +149,42 @@ export type WorkspaceFoldersRefreshDiagnostics = {
   eventsFetched: number;
   decryptAttempts: number;
   decryptFailures: number;
+  /** Always 0 on unlock/open/switch: full rematerialize from personal-events. */
   fromVersion: number;
   folderCount: number;
+  /**
+   * Always false for refresh: IndexedDB is never the bootstrap source of truth.
+   * Kept for host diagnostics compatibility.
+   */
   usedCache: boolean;
+  /** Always false for refresh (API-first empty start). */
   resetPoisonedCache: boolean;
-  /** True when local materialized folders were re-appended under the current metadata key. */
+  /** Always false for refresh: no local-plaintext reseal on the hot path. */
   resealedStaleKey: boolean;
   /** True when agent `extension-repair-probe` folder(s) were tombstoned. */
   deletedRepairProbe: boolean;
-  /** True when an explicit local-plaintext rebaseline tombstoned stream extras / resealed. */
+  /** True only for the explicit opt-in `rebaselineFromLocalPlaintext` recovery path. */
   rebaselinedFromLocal: boolean;
   /** FOLDER_* events that failed AEAD during stream key health probe. */
   probeFolderDecryptFail: number;
   /** FOLDER_* events that decrypted during stream key health probe. */
   probeFolderDecryptOk: number;
+  /** Server tip version after API rematerialize (lastAppliedVersion). */
+  serverTipVersion: number;
 };
 
 export type WorkspaceFoldersSyncController = {
+  /**
+   * API-first rematerialize: empty local state → pull personal-events from
+   * version 0 → decrypt → tree. IndexedDB is written only after a successful
+   * API sync (optional offline cache), never used as UI source of truth.
+   */
   refresh: () => Promise<WorkspaceFolderReplayState>;
   /**
-   * One-shot repair when personal-events is polluted with zombie folders under
-   * the current key. Uses IndexedDB plaintext on THIS origin as source of truth:
-   * tombstones decryptable stream folders that are not in that set, then reseals
-   * desired folders / assignments / favorites. Not peer-seed.
+   * Explicit opt-in recovery only (not used on unlock/open/switch). When the
+   * personal-events stream is polluted with zombie folders under the current
+   * key, uses IndexedDB plaintext on THIS origin to tombstone extras + reseal.
+   * Prefer fixing the stream; do not call from the hot path.
    */
   rebaselineFromLocalPlaintext: () => Promise<WorkspaceFolderReplayState>;
   drainOutbox: () => Promise<void>;
@@ -552,74 +562,34 @@ export function createWorkspaceFoldersSyncController(input: {
   }
 
   async function refresh(): Promise<WorkspaceFolderReplayState> {
-    const cached = await readCachedState(input.userId, input.workspaceId);
-    let resetPoisonedCache = false;
-    let resealedStaleKey = false;
+    // API-first (same idea as vault list): IndexedDB is never the bootstrap
+    // source of truth. Always rematerialize from personal-events at version 0
+    // with an empty in-memory tree, then optionally write IDB as offline cache.
+    // Auto-reseal / rebaseline-from-local are intentionally NOT on this path —
+    // they treated local plaintext as SoT and re-polluted the server stream.
+    state = {
+      folders: new Map(),
+      itemFolder: new Map(),
+      itemFavorite: new Set(),
+      lastAppliedVersion: 0,
+    };
+
     let deletedRepairProbe = false;
-    let probeFolderDecryptFail = 0;
-    let probeFolderDecryptOk = 0;
-    // Empty folders + advanced cursor: prior decrypt-all-fail wrote a cursor that
-    // skips the personal-events stream. Force a full replay.
-    if (cached && cached.folders.size === 0 && cached.lastAppliedVersion > 0) {
-      resetPoisonedCache = true;
-      state = {
-        folders: new Map(),
-        itemFolder: new Map(),
-        itemFavorite: new Set(),
-        lastAppliedVersion: 0,
-      };
-    } else if (cached) {
-      state = cached;
-    }
-
-    // Catch up to the server BEFORE any reseal. Resealing from a stale local
-    // snapshot (DELETE/CREATE not yet applied) re-appends deleted folders and
-    // advances lastAppliedVersion past the real tombstones — that pollutes the
-    // personal-events stream so every client (web cold start, extension) shows
-    // zombie folders. Apply decryptable remote events first; only then decide
-    // whether local plaintext still needs to be written under the current key.
-    const fromVersion = state.lastAppliedVersion;
-    let stats = await replayIncremental(fromVersion);
-
-    // Local plaintext + stream under a previous passwordShareC (e.g. after
-    // account restore without folder migration): re-append under the current key.
-    // Also reseal when the stream is mixed-key and real local folders are still
-    // missing from the decryptable set (after catch-up). Ignore repair-probes.
-    const realLocalFolders = [...state.folders.entries()].filter(
-      ([, folder]) => folder.name !== AGENT_REPAIR_PROBE_FOLDER_NAME,
-    );
-    if (realLocalFolders.length > 0) {
-      const probe = await probeCurrentKeyAgainstStream();
-      probeFolderDecryptFail = probe.folderDecryptFail;
-      probeFolderDecryptOk = probe.folderDecryptOk;
-      const localMissingOnStream = realLocalFolders.some(
-        ([id]) => !probe.decryptableFolderIds.has(id),
-      );
-      if (
-        shouldResealLocalFoldersForStreamKey({
-          localFolderCount: realLocalFolders.length,
-          decrypts: probe.decrypts,
-          tipVersion: probe.tipVersion,
-          folderDecryptFail: probe.folderDecryptFail,
-          localMissingOnStream,
-        })
-      ) {
-        await resealMaterializedStateUnderCurrentKey(probe.tipVersion);
-        resealedStaleKey = true;
-        const afterReseal = await replayIncremental(state.lastAppliedVersion);
-        stats = {
-          eventsFetched: stats.eventsFetched + afterReseal.eventsFetched,
-          decryptAttempts: stats.decryptAttempts + afterReseal.decryptAttempts,
-          decryptFailures: stats.decryptFailures + afterReseal.decryptFailures,
-        };
-      }
-    }
+    let stats = await replayIncremental(0);
 
     // Drop agent test probe even when it was the only decryptable folder.
     if ([...state.folders.values()].some((f) => f.name === AGENT_REPAIR_PROBE_FOLDER_NAME)) {
       deletedRepairProbe = await deleteAgentRepairProbeFolders(state.lastAppliedVersion);
       if (deletedRepairProbe) {
-        const afterProbe = await replayIncremental(state.lastAppliedVersion);
+        // Probe DELETE advanced the tip — rematerialize again from 0 so UI
+        // matches server tip after the tombstone.
+        state = {
+          folders: new Map(),
+          itemFolder: new Map(),
+          itemFavorite: new Set(),
+          lastAppliedVersion: 0,
+        };
+        const afterProbe = await replayIncremental(0);
         stats = {
           eventsFetched: stats.eventsFetched + afterProbe.eventsFetched,
           decryptAttempts: stats.decryptAttempts + afterProbe.decryptAttempts,
@@ -628,33 +598,34 @@ export function createWorkspaceFoldersSyncController(input: {
       }
     }
 
-    // Empty after replay: still probe so hosts can distinguish a healthy empty
-    // workspace from a mixed-key stream that needs a client with plaintext cache.
-    if (state.folders.size === 0 && probeFolderDecryptFail === 0 && probeFolderDecryptOk === 0) {
-      const probe = await probeCurrentKeyAgainstStream();
-      probeFolderDecryptFail = probe.folderDecryptFail;
-      probeFolderDecryptOk = probe.folderDecryptOk;
-    }
+    // Diagnostics only: mixed-key streams show decrypt failures without inventing
+    // folders from a local snapshot.
+    const probe = await probeCurrentKeyAgainstStream();
+
+    // Persist after successful API materialization (optional offline cache).
+    await writeCachedState(input.userId, input.workspaceId, state);
 
     lastRefreshDiagnostics = {
       ...stats,
-      fromVersion,
+      fromVersion: 0,
       folderCount: state.folders.size,
-      usedCache: Boolean(cached) && !resetPoisonedCache,
-      resetPoisonedCache,
-      resealedStaleKey,
+      usedCache: false,
+      resetPoisonedCache: false,
+      resealedStaleKey: false,
       deletedRepairProbe,
       rebaselinedFromLocal: false,
-      probeFolderDecryptFail,
-      probeFolderDecryptOk,
+      probeFolderDecryptFail: probe.folderDecryptFail,
+      probeFolderDecryptOk: probe.folderDecryptOk,
+      serverTipVersion: state.lastAppliedVersion,
     };
     return state;
   }
 
   /**
-   * Repair a polluted personal-events folder stream using THIS origin's IndexedDB
-   * plaintext as the source of truth (no peer-seed). Call from the device whose
-   * folder tree is correct after a normal unlock/edit.
+   * Explicit opt-in recovery only — NOT used by refresh()/unlock/open/switch.
+   * Repairs a polluted personal-events stream using THIS origin's IndexedDB
+   * plaintext. Prefer API-first rematerialize; call this only when the stream
+   * itself must be rewritten from a known-good local tree.
    */
   async function rebaselineFromLocalPlaintext(): Promise<WorkspaceFolderReplayState> {
     const cached = await readCachedState(input.userId, input.workspaceId);
@@ -735,6 +706,7 @@ export function createWorkspaceFoldersSyncController(input: {
       rebaselinedFromLocal: true,
       probeFolderDecryptFail: 0,
       probeFolderDecryptOk: 0,
+      serverTipVersion: state.lastAppliedVersion,
     };
     return state;
   }
@@ -922,9 +894,9 @@ export function replayStateToFlatFolders(state: WorkspaceFolderReplayState) {
 }
 
 /**
- * Best-effort refresh/reseal of personal folder caches for many workspaces.
- * Used after unlock so each workspace catches up to personal-events (and reseals
- * mixed-key streams from this origin's post-replay plaintext) before switch.
+ * Best-effort API-first rematerialize of personal folders for many workspaces.
+ * Each workspace pulls personal-events from version 0 (same as refresh on open /
+ * switch). Does not reseal from local plaintext.
  */
 export async function refreshWorkspaceFoldersCachesForIds(input: {
   core: CoreClient;
@@ -959,7 +931,7 @@ export async function refreshWorkspaceFoldersCachesForIds(input: {
 /**
  * Explicit recovery for a polluted personal-events folder stream: rebaseline one
  * workspace from this origin's IndexedDB plaintext (tombstone extras + reseal).
- * Run on the device whose folder tree is already correct.
+ * Opt-in only — not part of unlock/open/switch. Prefer API-first refresh.
  */
 export async function rebaselineWorkspaceFoldersFromLocalCache(input: {
   core: CoreClient;
