@@ -264,7 +264,7 @@
   "web.settingsPopup.deviceSettings.label": "Device settings",
   "web.settingsPopup.deviceSettings.title": "Device settings",
   "web.settingsPopup.deviceSettings.groupLabel": "Device settings",
-  "web.settingsPopup.deviceSettings.description": "These preferences apply only to the current browser on this device and are not carried over to other devices when you sign in to your account.",
+  "web.settingsPopup.deviceSettings.description": "These preferences apply only to the current browser on this device and are not carried over to other devices.",
   "web.settingsPopup.deviceSettings.personalization": "Personalization",
   "web.settingsPopup.deviceSettings.security": "Security",
   "web.settingsPopup.deviceSettings.unlock": "Unlock",
