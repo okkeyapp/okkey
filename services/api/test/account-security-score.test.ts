@@ -180,7 +180,9 @@ test("vault factors: thresholds for idle / clipboard / MP age / deletion / bio|p
   // Six vault gaps (weight 5 each) → only top 4 CTAs shown; score still reflects all zeros.
   assert.equal(bad.recommendations.length, ACCOUNT_SECURITY_MAX_RECOMMENDATIONS);
   assert.ok(
-    bad.recommendations.every((r) => r.target === "vault" || r.target === "deviceSettings"),
+    bad.recommendations.every(
+      (r) => r.target === "vault" || r.target === "deviceSecurity" || r.target === "deviceUnlock",
+    ),
   );
   assert.ok(bad.score < 100);
 

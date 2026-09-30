@@ -24,7 +24,11 @@ import SettingsLoginContent from "./SettingsLoginContent";
 import SettingsRecoveryContent from "./SettingsRecoveryContent";
 import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
 import SettingsVaultContent from "./SettingsVaultContent";
-import DeviceSettingsIcon from "./DeviceSettingsIcon";
+import {
+  DevicePersonalizationIcon,
+  DeviceSecurityIcon,
+  DeviceUnlockIcon,
+} from "./DeviceSettingsMenuIcons";
 import { clearSettingsPopupCache, prefetchSettingsPopupCache } from "./settingsPopupCache";
 
 export type SettingsPopupItemId =
@@ -34,9 +38,26 @@ export type SettingsPopupItemId =
   | "twoFactor"
   | "recovery"
   | "devices"
-  | "deviceSettings";
+  | "devicePersonalization"
+  | "deviceSecurity"
+  | "deviceUnlock";
+
+/** First device-settings page — sidebar deep-link and legacy `deviceSettings` redirect. */
+export const DEFAULT_DEVICE_SETTINGS_ITEM_ID: SettingsPopupItemId = "devicePersonalization";
 
 const DEFAULT_SETTINGS_POPUP_ITEM_ID: SettingsPopupItemId = "main";
+
+const SETTINGS_POPUP_ITEM_IDS: readonly SettingsPopupItemId[] = [
+  "main",
+  "vault",
+  "login",
+  "twoFactor",
+  "recovery",
+  "devices",
+  "devicePersonalization",
+  "deviceSecurity",
+  "deviceUnlock",
+] as const;
 
 type SettingsPopupProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -163,9 +184,7 @@ function DevicesIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function isSettingsPopupItemId(itemId: string): itemId is SettingsPopupItemId {
-  return ["main", "vault", "login", "twoFactor", "recovery", "devices", "deviceSettings"].includes(
-    itemId,
-  );
+  return (SETTINGS_POPUP_ITEM_IDS as readonly string[]).includes(itemId);
 }
 
 export default function SettingsPopup({ t, workspaceIds = [], children }: SettingsPopupProps) {
@@ -176,9 +195,13 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
   const { clearZoneUnlocked } = useSectionReauth();
   const activePopup = parsePopupQueryValue(searchParams.get(POPUP_QUERY_PARAM));
   const open = activePopup?.popupId === SETTINGS_POPUP_ID;
+  const rawMenuItemId = open ? activePopup.menuItemId : undefined;
+  // Legacy single device-settings page → personalization.
+  const normalizedMenuItemId =
+    rawMenuItemId === "deviceSettings" ? DEFAULT_DEVICE_SETTINGS_ITEM_ID : rawMenuItemId;
   const activeItemIdRaw =
-    open && activePopup.menuItemId && isSettingsPopupItemId(activePopup.menuItemId)
-      ? activePopup.menuItemId
+    normalizedMenuItemId && isSettingsPopupItemId(normalizedMenuItemId)
+      ? normalizedMenuItemId
       : DEFAULT_SETTINGS_POPUP_ITEM_ID;
   const activeItemId: SettingsPopupItemId =
     !ACCOUNT_LOGIN_METHODS_UI_ENABLED && activeItemIdRaw === "login"
@@ -209,6 +232,24 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
         search: popupQuerySearch(
           location.search,
           buildPopupQueryValue(SETTINGS_POPUP_ID, DEFAULT_SETTINGS_POPUP_ITEM_ID),
+        ),
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [open, activePopup?.menuItemId, location.pathname, location.search, location.hash, navigate]);
+
+  // Rewrite legacy `deviceSettings` query to personalization.
+  useEffect(() => {
+    if (!open || activePopup?.menuItemId !== "deviceSettings") {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: popupQuerySearch(
+          location.search,
+          buildPopupQueryValue(SETTINGS_POPUP_ID, DEFAULT_DEVICE_SETTINGS_ITEM_ID),
         ),
         hash: location.hash,
       },
@@ -273,9 +314,24 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     { id: "devices", label: t("web.settingsPopup.devices.label"), icon: <DevicesIcon className="size-4" /> },
     { id: "devices-deviceSettings-sep", separator: true as const },
     {
-      id: "deviceSettings",
-      label: t("web.settingsPopup.deviceSettings.label"),
-      icon: <DeviceSettingsIcon className="size-4" />,
+      id: "deviceSettings-group",
+      groupLabel: true as const,
+      label: t("web.settingsPopup.deviceSettings.groupLabel"),
+    },
+    {
+      id: "devicePersonalization",
+      label: t("web.settingsPopup.deviceSettings.personalization"),
+      icon: <DevicePersonalizationIcon className="size-4" />,
+    },
+    {
+      id: "deviceSecurity",
+      label: t("web.settingsPopup.deviceSettings.security"),
+      icon: <DeviceSecurityIcon className="size-4" />,
+    },
+    {
+      id: "deviceUnlock",
+      label: t("web.settingsPopup.deviceSettings.unlock"),
+      icon: <DeviceUnlockIcon className="size-4" />,
     },
   ];
   const headingByItemId: Record<SettingsPopupItemId, string> = {
@@ -285,7 +341,9 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     twoFactor: t("web.settingsPopup.twoFactor.title"),
     recovery: t("web.settingsPopup.recovery.title"),
     devices: t("web.settingsPopup.devices.title"),
-    deviceSettings: t("web.settingsPopup.deviceSettings.title"),
+    devicePersonalization: t("web.settingsPopup.deviceSettings.personalization"),
+    deviceSecurity: t("web.settingsPopup.deviceSettings.security"),
+    deviceUnlock: t("web.settingsPopup.deviceSettings.unlock"),
   };
   const heading = headingByItemId[activeItemId] ?? headingByItemId[DEFAULT_SETTINGS_POPUP_ITEM_ID];
   const menu: PopupMenu = {
@@ -293,7 +351,7 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     activeItemId,
     items: menuItems,
     onItemSelect: (item) => {
-      if (item.separator) {
+      if (item.separator || item.groupLabel) {
         return;
       }
       if (isSettingsPopupItemId(item.id)) {
@@ -324,8 +382,12 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
             <SettingsTwoFactorContent t={t} />
           ) : activeItemId === "devices" ? (
             <SettingsDevicesContent t={t} />
-          ) : activeItemId === "deviceSettings" ? (
-            <SettingsDeviceSettingsContent t={t} />
+          ) : activeItemId === "devicePersonalization" ? (
+            <SettingsDeviceSettingsContent t={t} page="personalization" />
+          ) : activeItemId === "deviceSecurity" ? (
+            <SettingsDeviceSettingsContent t={t} page="security" />
+          ) : activeItemId === "deviceUnlock" ? (
+            <SettingsDeviceSettingsContent t={t} page="unlock" />
           ) : activeItemId === "recovery" ? (
             <SettingsRecoveryContent t={t} />
           ) : (

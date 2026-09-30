@@ -166,6 +166,11 @@ export type PopupMenuItem = {
   onSelect?: () => void;
   /** When true, renders a visual separator; label/icon/onSelect are ignored. */
   separator?: boolean;
+  /**
+   * When true, renders a non-interactive group heading (same style as `PopupMenu.label`).
+   * Useful for a second group mid-list after a separator.
+   */
+  groupLabel?: boolean;
 };
 
 export type PopupMenu = {
@@ -197,6 +202,9 @@ function popupWidthToCssValue(width: PopupWidth): string {
 }
 
 function isActiveMenuItem(menu: PopupMenu, item: PopupMenuItem) {
+  if (item.separator || item.groupLabel) {
+    return false;
+  }
   return item.active ?? menu.activeItemId === item.id;
 }
 
@@ -316,6 +324,20 @@ function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar"
                 className="my-1 h-px shrink-0 bg-sidebar-border"
                 aria-hidden
               />
+            );
+          }
+
+          if (item.groupLabel) {
+            return (
+              <div
+                key={item.id}
+                className={cn(
+                  "h-8 min-w-0 px-2 text-xs font-medium leading-8 text-muted-foreground",
+                  surface === "sidebar" && "text-sidebar-foreground/50",
+                )}
+              >
+                <span className="block truncate">{item.label}</span>
+              </div>
             );
           }
 

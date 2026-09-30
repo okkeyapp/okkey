@@ -44,11 +44,7 @@ import {
 } from "../../theme/applyTheme";
 import { PAGE_BACKGROUND_GRADIENT_LIGHT } from "../../theme/pageBackgroundGradients";
 import SetupPinPopup from "./SetupPinPopup";
-import {
-  SettingsRow,
-  SettingsSectionDivider,
-  SettingsSectionHeading,
-} from "./SettingsRows";
+import { SettingsRow } from "./SettingsRows";
 
 const ACCENT_OPTIONS = [
   { id: "a1", light: "hsl(215 5% 9%)", dark: "hsl(215 4% 98%)" },
@@ -62,8 +58,11 @@ const ACCENT_OPTIONS = [
 
 type AccentId = (typeof ACCENT_OPTIONS)[number]["id"];
 
+export type DeviceSettingsPage = "personalization" | "security" | "unlock";
+
 type SettingsDeviceSettingsContentProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
+  page: DeviceSettingsPage;
 };
 
 function notifySaved(t: SettingsDeviceSettingsContentProps["t"]) {
@@ -165,7 +164,7 @@ function clipboardLabel(seconds: number, t: SettingsDeviceSettingsContentProps["
   return t("web.settingsPopup.vault.clipboard.minutes", { count: String(Math.round(seconds / 60)) });
 }
 
-export default function SettingsDeviceSettingsContent({ t }: SettingsDeviceSettingsContentProps) {
+export default function SettingsDeviceSettingsContent({ t, page }: SettingsDeviceSettingsContentProps) {
   const {
     userId,
     vaultKey,
@@ -328,164 +327,172 @@ export default function SettingsDeviceSettingsContent({ t }: SettingsDeviceSetti
     },
   ];
 
+  if (page === "personalization") {
+    return (
+      <div className="min-h-[420px] pb-1">
+        <p className="pb-4 text-sm leading-5 text-muted-foreground">
+          {t("web.settingsPopup.deviceSettings.description")}
+        </p>
+        <section>
+          <SettingsRow
+            label={t("web.settingsPopup.general.theme")}
+            border={false}
+            controlClassName="w-[338px] overflow-visible max-md:justify-start"
+          >
+            <div className="flex w-[338px] min-w-[338px] max-w-full justify-end gap-3 max-md:w-full max-md:min-w-0 max-md:justify-start">
+              {themeOptions.map((option) => {
+                const active = themePreference === option.value;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    variant="ghost"
+                    className="group h-auto w-[100px] min-w-[100px] flex-col gap-0 !bg-transparent p-0 text-center !shadow-none outline-none hover:!bg-transparent hover:!shadow-none focus:!bg-transparent focus:!shadow-none focus-visible:!bg-transparent focus-visible:!shadow-none active:!bg-transparent active:!shadow-none"
+                    onClick={() => updateThemePreference(option.value)}
+                  >
+                    <span
+                      className={cn(
+                        "relative flex h-[70px] w-[100px] overflow-hidden rounded-[10px] border border-border bg-background",
+                        "items-center justify-center transition-[border-color,box-shadow]",
+                        "group-focus-visible:border-accent group-focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                        active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                      )}
+                    >
+                      <span className="absolute inset-0 rounded-[10px]" style={{ backgroundImage: option.gradient }} aria-hidden />
+                      <span className={cn("relative z-[1]", option.iconClassName)}>{option.icon}</span>
+                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_0_4px_hsl(var(--background))]" />
+                      {active ? (
+                        <span className="absolute bottom-1 right-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <CheckIcon className="size-4" />
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-1.5 block truncate text-sm leading-5 text-foreground">{option.label}</span>
+                  </Button>
+                );
+              })}
+            </div>
+          </SettingsRow>
+          <SettingsRow label={t("web.settingsPopup.general.accent")} controlClassName="max-md:justify-start">
+            <div className="flex w-full items-center justify-end gap-1.5 max-md:justify-start">
+              {ACCENT_OPTIONS.map((option) => {
+                const color = accentColor(option);
+                const checkOnLightAccent = option.id === "a1";
+                return (
+                  <Button
+                    key={option.id}
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className={cn(
+                      "group size-9 rounded-full p-0 shadow-none hover:shadow-none",
+                      "focus-visible:shadow-[0_0_0_3px_hsl(var(--accent)_/_0.35)]",
+                      checkOnLightAccent ? "text-white dark:text-[#0A0A0A]" : "text-white",
+                    )}
+                    style={{ backgroundColor: color }}
+                    aria-label={t("web.settingsPopup.general.accentAria", { id: option.id })}
+                    onClick={() => updateAccent(option.id)}
+                  >
+                    <CheckIcon
+                      className={cn(
+                        "size-4 opacity-0 transition-opacity",
+                        accent === option.id && "opacity-100",
+                        "group-hover:opacity-100",
+                      )}
+                    />
+                  </Button>
+                );
+              })}
+            </div>
+          </SettingsRow>
+          <SettingsRow
+            label={t("web.settingsPopup.general.accentTint")}
+            description={t("web.settingsPopup.general.accentTintHint")}
+            stackOnMobile={false}
+          >
+            <Switch
+              size="lg"
+              checked={accentTintEnabled}
+              onCheckedChange={updateAccentTint}
+              aria-label={t("web.settingsPopup.general.accentTint")}
+            />
+          </SettingsRow>
+        </section>
+      </div>
+    );
+  }
+
+  if (page === "security") {
+    return (
+      <div className="min-h-[420px] pb-1">
+        <p className="pb-4 text-sm leading-5 text-muted-foreground">
+          {t("web.settingsPopup.deviceSettings.description")}
+        </p>
+        <section>
+          <SettingsRow
+            border={false}
+            label={t("web.settingsPopup.vault.idle.label")}
+            description={t("web.settingsPopup.vault.idle.description")}
+            controlClassName="w-[150px]"
+          >
+            <Select value={String(idleSeconds)} onValueChange={(v) => handleIdleChange(v)}>
+              <SelectTrigger className="w-full font-normal">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {IDLE_LOCK_OPTIONS_SECONDS.map((seconds) => (
+                  <SelectItem key={seconds} value={String(seconds)}>
+                    {idleLabel(seconds, t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+
+          <SettingsRow
+            label={t("web.settingsPopup.vault.lockOnSleep.label")}
+            description={t("web.settingsPopup.vault.lockOnSleep.description")}
+            controlClassName="w-[100px]"
+          >
+            <Switch
+              size="lg"
+              checked={prefs.lockOnDeviceSleep}
+              onCheckedChange={(checked) => updatePrefs({ lockOnDeviceSleep: checked })}
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            label={t("web.settingsPopup.vault.clipboard.label")}
+            description={t("web.settingsPopup.vault.clipboard.description")}
+            controlClassName="w-[150px]"
+          >
+            <Select
+              value={String(prefs.clipboardClearSeconds)}
+              onValueChange={(v) => updatePrefs({ clipboardClearSeconds: Number(v) })}
+            >
+              <SelectTrigger className="w-full font-normal">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {CLIPBOARD_CLEAR_OPTIONS_SECONDS.map((seconds) => (
+                  <SelectItem key={seconds} value={String(seconds)}>
+                    {clipboardLabel(seconds, t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[420px] pb-1">
       <p className="pb-4 text-sm leading-5 text-muted-foreground">
         {t("web.settingsPopup.deviceSettings.description")}
       </p>
-
       <section>
-        <SettingsSectionHeading>
-          {t("web.settingsPopup.deviceSettings.personalization")}
-        </SettingsSectionHeading>
-        <SettingsRow
-          label={t("web.settingsPopup.general.theme")}
-          border={false}
-          controlClassName="w-[338px] overflow-visible max-md:justify-start"
-        >
-          <div className="flex w-[338px] min-w-[338px] max-w-full justify-end gap-3 max-md:w-full max-md:min-w-0 max-md:justify-start">
-            {themeOptions.map((option) => {
-              const active = themePreference === option.value;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  variant="ghost"
-                  className="group h-auto w-[100px] min-w-[100px] flex-col gap-0 !bg-transparent p-0 text-center !shadow-none outline-none hover:!bg-transparent hover:!shadow-none focus:!bg-transparent focus:!shadow-none focus-visible:!bg-transparent focus-visible:!shadow-none active:!bg-transparent active:!shadow-none"
-                  onClick={() => updateThemePreference(option.value)}
-                >
-                  <span
-                    className={cn(
-                      "relative flex h-[70px] w-[100px] overflow-hidden rounded-[10px] border border-border bg-background",
-                      "items-center justify-center transition-[border-color,box-shadow]",
-                      "group-focus-visible:border-accent group-focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-                      active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-                    )}
-                  >
-                    <span className="absolute inset-0 rounded-[10px]" style={{ backgroundImage: option.gradient }} aria-hidden />
-                    <span className={cn("relative z-[1]", option.iconClassName)}>{option.icon}</span>
-                    <span className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_0_4px_hsl(var(--background))]" />
-                    {active ? (
-                      <span className="absolute bottom-1 right-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <CheckIcon className="size-4" />
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="mt-1.5 block truncate text-sm leading-5 text-foreground">{option.label}</span>
-                </Button>
-              );
-            })}
-          </div>
-        </SettingsRow>
-        <SettingsRow label={t("web.settingsPopup.general.accent")} controlClassName="max-md:justify-start">
-          <div className="flex w-full items-center justify-end gap-1.5 max-md:justify-start">
-            {ACCENT_OPTIONS.map((option) => {
-              const color = accentColor(option);
-              const checkOnLightAccent = option.id === "a1";
-              return (
-                <Button
-                  key={option.id}
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className={cn(
-                    "group size-9 rounded-full p-0 shadow-none hover:shadow-none",
-                    "focus-visible:shadow-[0_0_0_3px_hsl(var(--accent)_/_0.35)]",
-                    checkOnLightAccent ? "text-white dark:text-[#0A0A0A]" : "text-white",
-                  )}
-                  style={{ backgroundColor: color }}
-                  aria-label={t("web.settingsPopup.general.accentAria", { id: option.id })}
-                  onClick={() => updateAccent(option.id)}
-                >
-                  <CheckIcon
-                    className={cn(
-                      "size-4 opacity-0 transition-opacity",
-                      accent === option.id && "opacity-100",
-                      "group-hover:opacity-100",
-                    )}
-                  />
-                </Button>
-              );
-            })}
-          </div>
-        </SettingsRow>
-        <SettingsRow
-          label={t("web.settingsPopup.general.accentTint")}
-          description={t("web.settingsPopup.general.accentTintHint")}
-          stackOnMobile={false}
-        >
-          <Switch
-            size="lg"
-            checked={accentTintEnabled}
-            onCheckedChange={updateAccentTint}
-            aria-label={t("web.settingsPopup.general.accentTint")}
-          />
-        </SettingsRow>
-      </section>
-
-      <SettingsSectionDivider />
-
-      <section>
-        <SettingsSectionHeading>{t("web.settingsPopup.deviceSettings.security")}</SettingsSectionHeading>
-        <SettingsRow
-          border={false}
-          label={t("web.settingsPopup.vault.idle.label")}
-          description={t("web.settingsPopup.vault.idle.description")}
-          controlClassName="w-[150px]"
-        >
-          <Select value={String(idleSeconds)} onValueChange={(v) => handleIdleChange(v)}>
-            <SelectTrigger className="w-full font-normal">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {IDLE_LOCK_OPTIONS_SECONDS.map((seconds) => (
-                <SelectItem key={seconds} value={String(seconds)}>
-                  {idleLabel(seconds, t)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-
-        <SettingsRow
-          label={t("web.settingsPopup.vault.lockOnSleep.label")}
-          description={t("web.settingsPopup.vault.lockOnSleep.description")}
-          controlClassName="w-[100px]"
-        >
-          <Switch
-            size="lg"
-            checked={prefs.lockOnDeviceSleep}
-            onCheckedChange={(checked) => updatePrefs({ lockOnDeviceSleep: checked })}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          label={t("web.settingsPopup.vault.clipboard.label")}
-          description={t("web.settingsPopup.vault.clipboard.description")}
-          controlClassName="w-[150px]"
-        >
-          <Select
-            value={String(prefs.clipboardClearSeconds)}
-            onValueChange={(v) => updatePrefs({ clipboardClearSeconds: Number(v) })}
-          >
-            <SelectTrigger className="w-full font-normal">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {CLIPBOARD_CLEAR_OPTIONS_SECONDS.map((seconds) => (
-                <SelectItem key={seconds} value={String(seconds)}>
-                  {clipboardLabel(seconds, t)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-      </section>
-
-      <SettingsSectionDivider />
-
-      <section>
-        <SettingsSectionHeading>{t("web.settingsPopup.deviceSettings.unlock")}</SettingsSectionHeading>
         <div className={cn("flex flex-col gap-4 py-4")}>
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1 py-0.5">
