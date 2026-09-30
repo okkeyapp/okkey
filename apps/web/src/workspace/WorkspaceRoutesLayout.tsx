@@ -41,7 +41,8 @@ import { ItemCategoryPreferencesProvider } from "../components/items/ItemCategor
 import { toSidebarFolderTree, workspaceFolderIdExists } from "../folders/workspaceFolderTree";
 import { isItemCategoryId } from "../components/items/itemCategoryCatalog";
 import FoldersSettingsPopup from "../components/folders/FoldersSettingsPopup";
-import SettingsPopup from "../components/settings/SettingsPopup";
+import SettingsPopup, { DEFAULT_DEVICE_SETTINGS_ITEM_ID } from "../components/settings/SettingsPopup";
+import DeviceSettingsIcon from "../components/settings/DeviceSettingsIcon";
 import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthContext";
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
 import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
@@ -850,8 +851,11 @@ export default function WorkspaceRoutesLayout() {
                 lastName: profile?.lastName,
                 email,
                 settingsLabel: t("web.accountMenu.settings"),
+                deviceSettingsLabel: t("web.accountMenu.deviceSettings"),
                 logoutLabel: t("web.accountMenu.logout"),
-                onSettings: openSettingsPopup,
+                onSettings: () => openSettingsPopup(),
+                onDeviceSettings: () => openSettingsPopup(DEFAULT_DEVICE_SETTINGS_ITEM_ID),
+                deviceSettingsIcon: <DeviceSettingsIcon className="size-4" />,
                 onLogout: logout,
               }
             : undefined;

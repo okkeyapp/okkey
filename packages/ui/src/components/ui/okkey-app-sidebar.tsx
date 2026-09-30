@@ -674,10 +674,13 @@ function ProfileAccountDropdownPanel({
   email,
   onSettings,
   settingsAsProfileHeader = false,
+  onDeviceSettings,
+  deviceSettingsIcon,
   onLogout,
   onChangeServer,
   language,
   settingsLabel = "My settings",
+  deviceSettingsLabel = "Device settings",
   logoutLabel = "Log out",
   changeServerLabel = "Change server",
 }: {
@@ -687,10 +690,13 @@ function ProfileAccountDropdownPanel({
   onSettings?: () => void;
   /** Extension only: profile row opens settings in web (external icon). Web keeps a separate settings item. */
   settingsAsProfileHeader?: boolean;
+  onDeviceSettings?: () => void;
+  deviceSettingsIcon?: React.ReactNode;
   onLogout?: () => void;
   onChangeServer?: () => void;
   language?: OkkeyAppSidebarAccountLanguageMenu;
   settingsLabel?: string;
+  deviceSettingsLabel?: string;
   logoutLabel?: string;
   changeServerLabel?: string;
 }) {
@@ -739,6 +745,17 @@ function ProfileAccountDropdownPanel({
           >
             <NavSettingsIcon />
             <span>{settingsLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {onDeviceSettings ? (
+          <DropdownMenuItem
+            className="cursor-pointer gap-2"
+            onSelect={() => {
+              onDeviceSettings();
+            }}
+          >
+            {deviceSettingsIcon ?? <NavSettingsIcon />}
+            <span>{deviceSettingsLabel}</span>
           </DropdownMenuItem>
         ) : null}
         {language ? (
@@ -974,6 +991,7 @@ export type OkkeyAppSidebarAccountMenu = {
   lastName?: string;
   email: string;
   settingsLabel?: string;
+  deviceSettingsLabel?: string;
   logoutLabel?: string;
   changeServerLabel?: string;
   /** When omitted, the settings row is hidden (e.g. extension without deep-link). */
@@ -983,6 +1001,9 @@ export type OkkeyAppSidebarAccountMenu = {
    * Web must leave this false/undefined so the classic settings menu row stays.
    */
   settingsAsProfileHeader?: boolean;
+  /** Opens personal settings on the device-settings page (web). */
+  onDeviceSettings?: () => void;
+  deviceSettingsIcon?: React.ReactNode;
   onLogout: () => void;
   /** Optional row below logout (e.g. extension “Change server”). */
   onChangeServer?: () => void;
@@ -997,10 +1018,13 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
       lastName: accountMenu.lastName ?? "",
       email: accountMenu.email.trim(),
       settingsLabel: accountMenu.settingsLabel,
+      deviceSettingsLabel: accountMenu.deviceSettingsLabel,
       logoutLabel: accountMenu.logoutLabel,
       changeServerLabel: accountMenu.changeServerLabel,
       onSettings: accountMenu.onSettings,
       settingsAsProfileHeader: accountMenu.settingsAsProfileHeader,
+      onDeviceSettings: accountMenu.onDeviceSettings,
+      deviceSettingsIcon: accountMenu.deviceSettingsIcon,
       onLogout: accountMenu.onLogout,
       onChangeServer: accountMenu.onChangeServer,
       language: accountMenu.language,
@@ -1011,10 +1035,13 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
     lastName: DEMO_PROFILE.lastName,
     email: DEMO_PROFILE.email,
     settingsLabel: undefined,
+    deviceSettingsLabel: undefined,
     logoutLabel: undefined,
     changeServerLabel: undefined,
     onSettings: undefined as (() => void) | undefined,
     settingsAsProfileHeader: undefined as boolean | undefined,
+    onDeviceSettings: undefined as (() => void) | undefined,
+    deviceSettingsIcon: undefined as React.ReactNode | undefined,
     onLogout: undefined as (() => void) | undefined,
     onChangeServer: undefined as (() => void) | undefined,
     language: undefined as OkkeyAppSidebarAccountLanguageMenu | undefined,
@@ -1714,10 +1741,13 @@ function OkkeyAppSidebarInner({
               lastName={footerAccount.lastName}
               email={footerAccount.email}
               settingsLabel={footerAccount.settingsLabel}
+              deviceSettingsLabel={footerAccount.deviceSettingsLabel}
               logoutLabel={footerAccount.logoutLabel}
               changeServerLabel={footerAccount.changeServerLabel}
               onSettings={footerAccount.onSettings}
               settingsAsProfileHeader={footerAccount.settingsAsProfileHeader}
+              onDeviceSettings={footerAccount.onDeviceSettings}
+              deviceSettingsIcon={footerAccount.deviceSettingsIcon}
               onLogout={footerAccount.onLogout}
               onChangeServer={footerAccount.onChangeServer}
               language={footerAccount.language}

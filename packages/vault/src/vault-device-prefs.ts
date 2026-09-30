@@ -20,6 +20,12 @@ export type SectionReauthZoneId =
 
 export type VaultDevicePrefs = {
   lockOnDeviceSleep: boolean;
+  /**
+   * Idle lock timeout in seconds (device-local).
+   * Absent until the user sets it or a one-time migration from the former
+   * server `vault_idle_lock_seconds` runs on this device.
+   */
+  idleLockSeconds?: number;
   /** 0 = never clear clipboard after copy. */
   clipboardClearSeconds: number;
   requireReauthZones: SectionReauthZoneId[];
@@ -92,11 +98,17 @@ export function parseVaultDevicePrefs(raw: string | null): VaultDevicePrefs {
   try {
     const o = JSON.parse(raw) as Record<string, unknown>;
     const zonesRaw = Array.isArray(o.requireReauthZones) ? o.requireReauthZones : [];
+    const idleRaw = o.idleLockSeconds;
+    const idleLockSeconds =
+      typeof idleRaw === "number" && Number.isFinite(idleRaw)
+        ? Math.max(0, Math.trunc(idleRaw))
+        : undefined;
     return {
       lockOnDeviceSleep:
         typeof o.lockOnDeviceSleep === "boolean"
           ? o.lockOnDeviceSleep
           : DEFAULT_VAULT_DEVICE_PREFS.lockOnDeviceSleep,
+      ...(idleLockSeconds !== undefined ? { idleLockSeconds } : {}),
       clipboardClearSeconds:
         typeof o.clipboardClearSeconds === "number" && Number.isFinite(o.clipboardClearSeconds)
           ? Math.max(0, Math.trunc(o.clipboardClearSeconds))

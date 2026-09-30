@@ -57,7 +57,7 @@ import {
 } from "./sessionAuthStorage";
 import { clearStoredCurrentWorkspaceId } from "./workspaceStorage";
 import { clearDeviceUnlockSecrets } from "./vaultDeviceUnlockStore";
-import { readVaultDevicePrefs } from "./vaultDevicePrefs";
+import { patchVaultDevicePrefs, readVaultDevicePrefs } from "./vaultDevicePrefs";
 import { scheduleClipboardClearAfterCopy } from "./vaultClipboardClear";
 import { DEFAULT_VAULT_IDLE_LOCK_MS, vaultIdleLockMsFromServerSeconds } from "./vaultIdleLockMs";
 import {
@@ -68,6 +68,7 @@ import {
   touchVaultUnlockSession,
   vaultUnlockSessionExceededIdle,
 } from "./vaultUnlockSessionStorage";
+import { useLocale } from "../locale/LocaleContext";
 
 export const DEFAULT_IDLE_MS = DEFAULT_VAULT_IDLE_LOCK_MS;
 
@@ -115,7 +116,7 @@ export type AuthVaultContextValue = {
   hasVaultBundle: boolean;
   /** While true, split-key is being fetched from the API after an empty local vault bundle. */
   vaultUnlockBootstrapLoading: boolean;
-  /** Idle interval before vault locks (ms), from server `vault_idle_lock_seconds`. */
+  /** Idle interval before vault locks (ms), from device-local prefs (migrated from server once). */
   vaultIdleLockMs: number;
   /** Current browser device trust vs account devices (gates unlock). */
   deviceTrustStatus: DeviceTrustStatus | "idle";
@@ -244,6 +245,7 @@ function VaultIdleLockBridge({
 export function AuthVaultProvider({ children }: { children: ReactNode }) {
   const publicApi = useMemo(() => createPublicApiClient(), []);
   const authClient = useMemo(() => createAuthSdk(publicApi), [publicApi]);
+  const { setLocale } = useLocale();
 
   const [accessToken, setAccessToken] = useState<string | null>(() => readStoredSession()?.access_token ?? null);
   const [userId, setUserId] = useState<string | null>(() => readStoredSession()?.user_id ?? null);
@@ -459,7 +461,19 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         if (!dto) {
           return;
         }
-        setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(dto.vault_idle_lock_seconds));
+        // Locale from account profile must apply before Settings opens (clear-cache → login).
+        if (dto.locale === "en" || dto.locale === "ru") {
+          setLocale(dto.locale);
+        }
+        // Idle lock is device-local; migrate former server value once if unset on this device.
+        const prefs = readVaultDevicePrefs(userId);
+        if (typeof prefs.idleLockSeconds === "number" && Number.isFinite(prefs.idleLockSeconds)) {
+          setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(prefs.idleLockSeconds));
+        } else {
+          const migratedSeconds = dto.vault_idle_lock_seconds;
+          patchVaultDevicePrefs(userId, { idleLockSeconds: Math.trunc(migratedSeconds) });
+          setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(migratedSeconds));
+        }
         if (dto.master_password_changed_at) {
           setMasterPasswordChangedAt(dto.master_password_changed_at);
         }
@@ -481,7 +495,18 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, userId]);
+  }, [accessToken, userId, setLocale]);
+
+  // Prefer already-migrated local idle prefs as soon as userId is known (before profile fetch).
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+    const prefs = readVaultDevicePrefs(userId);
+    if (typeof prefs.idleLockSeconds === "number" && Number.isFinite(prefs.idleLockSeconds)) {
+      setVaultIdleLockMsState(vaultIdleLockMsFromServerSeconds(prefs.idleLockSeconds));
+    }
+  }, [userId]);
 
   const setEmailChallenge = useCallback((email: string, challengeId: string, resendAvailableAt?: string) => {
     setPendingEmail(email);

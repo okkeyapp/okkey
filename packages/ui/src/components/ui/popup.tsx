@@ -15,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
@@ -158,11 +159,18 @@ function PopupMobileSheetHandle({
 
 export type PopupMenuItem = {
   id: string;
-  label: React.ReactNode;
+  label?: React.ReactNode;
   icon?: React.ReactNode;
   active?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
+  /** When true, renders a visual separator; label/icon/onSelect are ignored. */
+  separator?: boolean;
+  /**
+   * When true, renders a non-interactive group heading (same style as `PopupMenu.label`).
+   * Useful for a second group mid-list after a separator.
+   */
+  groupLabel?: boolean;
 };
 
 export type PopupMenu = {
@@ -194,6 +202,9 @@ function popupWidthToCssValue(width: PopupWidth): string {
 }
 
 function isActiveMenuItem(menu: PopupMenu, item: PopupMenuItem) {
+  if (item.separator || item.groupLabel) {
+    return false;
+  }
   return item.active ?? menu.activeItemId === item.id;
 }
 
@@ -302,10 +313,42 @@ function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar"
       ) : null}
       <div className="flex min-w-0 flex-col gap-1">
         {menu.items.map((item) => {
+          if (item.separator) {
+            if (surface === "dropdown") {
+              return <DropdownMenuSeparator key={item.id} className="my-1" />;
+            }
+            return (
+              <div
+                key={item.id}
+                role="separator"
+                className="my-1 h-px shrink-0 bg-sidebar-border"
+                aria-hidden
+              />
+            );
+          }
+
+          if (item.groupLabel) {
+            return (
+              <div
+                key={item.id}
+                className={cn(
+                  "h-8 min-w-0 px-2 text-xs font-medium leading-8 text-muted-foreground",
+                  surface === "sidebar" && "text-sidebar-foreground/50",
+                )}
+              >
+                <span className="block truncate">{item.label}</span>
+              </div>
+            );
+          }
+
           const active = isActiveMenuItem(menu, item);
           const content = (
             <>
-              {item.icon ? <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span> : null}
+              {item.icon ? (
+                <span className="flex size-4 shrink-0 items-center justify-center overflow-visible">
+                  {item.icon}
+                </span>
+              ) : null}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
             </>
           );

@@ -82,7 +82,9 @@ export type AccountSecurityRecommendationTarget =
   | "recovery"
   | "devices"
   | "login"
-  | "vault";
+  | "vault"
+  | "deviceSecurity"
+  | "deviceUnlock";
 
 export type AccountSecurityRecommendation = {
   id: AccountSecurityRecommendationId;
@@ -338,16 +340,16 @@ function buildRecommendations(
   }
 
   if (vault.idleLockSeconds > ACCOUNT_SECURITY_VAULT_IDLE_MAX_SECONDS) {
-    push("shortenVaultIdleLock", "vault", W.vaultIdleLock);
+    push("shortenVaultIdleLock", "deviceSecurity", W.vaultIdleLock);
   }
   if (!vault.lockOnDeviceSleep) {
-    push("enableVaultLockOnSleep", "vault", W.vaultLockOnSleep);
+    push("enableVaultLockOnSleep", "deviceSecurity", W.vaultLockOnSleep);
   }
   if (
     vault.clipboardClearSeconds <= 0 ||
     vault.clipboardClearSeconds > ACCOUNT_SECURITY_VAULT_CLIPBOARD_MAX_SECONDS
   ) {
-    push("shortenClipboardClear", "vault", W.vaultClipboardClear);
+    push("shortenClipboardClear", "deviceSecurity", W.vaultClipboardClear);
   }
   if (!isMasterPasswordFresh(vault.masterPasswordChangedAt, nowMs)) {
     push("refreshMasterPassword", "vault", W.vaultMasterPasswordFresh);
@@ -356,7 +358,7 @@ function buildRecommendations(
     push("requireReauthOnDeletion", "vault", W.vaultReauthOnDeletion);
   }
   if (!vault.biometricEnabled && !vault.pinEnabled) {
-    push("enableBiometricOrPin", "vault", W.vaultBiometricOrPin);
+    push("enableBiometricOrPin", "deviceUnlock", W.vaultBiometricOrPin);
   }
 
   out.sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
