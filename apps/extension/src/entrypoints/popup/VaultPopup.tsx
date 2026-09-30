@@ -966,7 +966,7 @@ export function VaultPopup(props: VaultPopupProps) {
             <Button
               type="button"
               variant="outline"
-              className="h-9 shrink-0 gap-1.5 rounded-lg px-3"
+              className="h-9 shrink-0 gap-1.5 rounded-lg px-3 shadow-none"
               aria-label={t("extension.vault.lock")}
               onClick={onLock}
             >
