@@ -26,6 +26,7 @@ import {
 } from "@okkey/crypto-wasm";
 import { CryptoSdkError, mapWasmError } from "./errors.js";
 export { initCrypto } from "./wasm-init.js";
+export { registerWasmModulePath, ensureWasm } from "./wasm-init.js";
 import {
   decodeHybridEnvelopeV1,
   encodeHybridEnvelopeV1,

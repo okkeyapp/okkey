@@ -114,6 +114,16 @@ async function writeCachedState(
   }
 }
 
+export type WorkspaceFoldersRefreshDiagnostics = {
+  eventsFetched: number;
+  decryptAttempts: number;
+  decryptFailures: number;
+  fromVersion: number;
+  folderCount: number;
+  usedCache: boolean;
+  resetPoisonedCache: boolean;
+};
+
 export type WorkspaceFoldersSyncController = {
   refresh: () => Promise<WorkspaceFolderReplayState>;
   drainOutbox: () => Promise<void>;
@@ -123,6 +133,7 @@ export type WorkspaceFoldersSyncController = {
   setItemFavorite: (itemId: string, favorite: boolean) => Promise<void>;
   setItemsFavorite: (itemIds: readonly string[], favorite: boolean) => Promise<void>;
   getState: () => WorkspaceFolderReplayState;
+  getLastRefreshDiagnostics: () => WorkspaceFoldersRefreshDiagnostics | null;
   toFolderTree: () => WorkspaceFolderNode[];
   dispose: () => void;
 };
@@ -141,6 +152,7 @@ export function createWorkspaceFoldersSyncController(input: {
   };
   let metadataKey: Uint8Array | null = null;
   let metadataKeyReady: Promise<Uint8Array> | null = null;
+  let lastRefreshDiagnostics: WorkspaceFoldersRefreshDiagnostics | null = null;
 
   const outbox = new WorkspacePersonalOutboxClient(
     new IndexedDbWorkspacePersonalOutboxStore(input.userId, input.workspaceId),
@@ -174,10 +186,13 @@ export function createWorkspaceFoldersSyncController(input: {
     return metadataKeyReady;
   }
 
-  async function replayIncremental(fromVersion: number): Promise<void> {
+  async function replayIncremental(
+    fromVersion: number,
+  ): Promise<{ eventsFetched: number; decryptAttempts: number; decryptFailures: number }> {
     let cursor = fromVersion;
     let decryptAttempts = 0;
     let decryptFailures = 0;
+    let eventsFetched = 0;
     // Mirror vault-items read: keep paging until the server returns an empty page.
     // (Personal-events currently returns the full remainder in one response, but
     // looping stays correct if a limit is introduced later.)
@@ -187,6 +202,7 @@ export function createWorkspaceFoldersSyncController(input: {
       if (!page.events.length) {
         break;
       }
+      eventsFetched += page.events.length;
       // Derive metadata key only when there is ciphertext to decrypt — allows
       // serving an IndexedDB cache when WASM is not yet ready (extension popup
       // reopen), as long as there are no new personal events.
@@ -220,21 +236,40 @@ export function createWorkspaceFoldersSyncController(input: {
     if (
       decryptAttempts > 0 &&
       decryptFailures >= decryptAttempts &&
-      state.folders.size === 0 &&
-      fromVersion === 0
+      state.folders.size === 0
     ) {
       throw new Error(
-        `FOLDER_METADATA_DECRYPT_FAILED attempts=${decryptAttempts} failures=${decryptFailures}`,
+        `FOLDER_METADATA_DECRYPT_FAILED attempts=${decryptAttempts} failures=${decryptFailures} events=${eventsFetched}`,
       );
     }
+    return { eventsFetched, decryptAttempts, decryptFailures };
   }
 
   async function refresh(): Promise<WorkspaceFolderReplayState> {
     const cached = await readCachedState(input.userId, input.workspaceId);
-    if (cached) {
+    let resetPoisonedCache = false;
+    // Empty folders + advanced cursor: prior decrypt-all-fail wrote a cursor that
+    // skips the personal-events stream. Force a full replay.
+    if (cached && cached.folders.size === 0 && cached.lastAppliedVersion > 0) {
+      resetPoisonedCache = true;
+      state = {
+        folders: new Map(),
+        itemFolder: new Map(),
+        itemFavorite: new Set(),
+        lastAppliedVersion: 0,
+      };
+    } else if (cached) {
       state = cached;
     }
-    await replayIncremental(state.lastAppliedVersion);
+    const fromVersion = state.lastAppliedVersion;
+    const stats = await replayIncremental(fromVersion);
+    lastRefreshDiagnostics = {
+      ...stats,
+      fromVersion,
+      folderCount: state.folders.size,
+      usedCache: Boolean(cached) && !resetPoisonedCache,
+      resetPoisonedCache,
+    };
     return state;
   }
 
@@ -276,6 +311,7 @@ export function createWorkspaceFoldersSyncController(input: {
 
   return {
     getState: () => state,
+    getLastRefreshDiagnostics: () => lastRefreshDiagnostics,
     toFolderTree: () => rowsToWorkspaceTree(state.folders),
     refresh,
     drainOutbox: async () => {

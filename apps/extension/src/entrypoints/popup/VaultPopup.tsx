@@ -381,35 +381,66 @@ export function VaultPopup(props: VaultPopupProps) {
       foldersDisposeRef.current?.();
       foldersDisposeRef.current = null;
 
-      const shareC = secrets.passwordShareC;
-      console.info("[extension] folder sync start", {
-        workspaceId: wsId,
-        userId,
+      // Copy bytes so an in-place wipe of React state cannot zero the key mid-sync.
+      const shareCRaw = secrets.passwordShareC;
+      const shareC =
+        shareCRaw && shareCRaw.byteLength === 32 ? new Uint8Array(shareCRaw) : null;
+      const shareCAllZero = shareC ? shareC.every((b) => b === 0) : true;
+
+      const writeDebug = (payload: Record<string, unknown>) => {
+        const body = {
+          at: Date.now(),
+          workspaceId: wsId,
+          userId,
+          ...payload,
+        };
+        console.info("[extension] folder sync debug", body);
+        try {
+          void browser.storage.local.set({ "okkey.extension.folderSyncDebug": body });
+        } catch {
+          // ignore
+        }
+      };
+
+      writeDebug({
+        phase: "start",
         passwordShareCBytes: shareC?.byteLength ?? 0,
+        shareCAllZero,
       });
 
       // Popup JS context is destroyed on close; always re-assert WASM before
       // personal-metadata decrypt (shared wasm-init gate + explicit asset URL).
       try {
         await initExtensionCrypto();
+        writeDebug({ phase: "wasm_ok", passwordShareCBytes: shareC?.byteLength ?? 0, shareCAllZero });
       } catch (err: unknown) {
         if (gen !== foldersLoadGenRef.current) {
           return;
         }
         console.error("[extension] folder sync crypto init failed", err);
+        writeDebug({
+          phase: "wasm_failed",
+          error: err instanceof Error ? err.message : String(err),
+        });
         setFolderNodes([]);
         setItemFolderByItemId(new Map());
         setItemFavoriteByItemId(new Set());
         return;
       }
 
-      if (!shareC || shareC.byteLength !== 32) {
+      if (!shareC || shareCAllZero) {
         if (gen !== foldersLoadGenRef.current) {
           return;
         }
         console.error("[extension] folder sync missing passwordShareC", {
           workspaceId: wsId,
           byteLength: shareC?.byteLength ?? 0,
+          shareCAllZero,
+        });
+        writeDebug({
+          phase: "missing_share_c",
+          byteLength: shareC?.byteLength ?? 0,
+          shareCAllZero,
         });
         setFolderNodes([]);
         setItemFolderByItemId(new Map());
@@ -431,12 +462,22 @@ export function VaultPopup(props: VaultPopupProps) {
         }
         const tree = controller.toFolderTree();
         const st = controller.getState();
+        const diag = controller.getLastRefreshDiagnostics();
         console.info("[extension] folder sync ok", {
           workspaceId: wsId,
           folderCount: tree.length,
           itemFolderCount: st.itemFolder.size,
           favoriteCount: st.itemFavorite.size,
           lastAppliedVersion: st.lastAppliedVersion,
+          ...diag,
+        });
+        writeDebug({
+          phase: "ok",
+          folderCount: tree.length,
+          itemFolderCount: st.itemFolder.size,
+          favoriteCount: st.itemFavorite.size,
+          lastAppliedVersion: st.lastAppliedVersion,
+          ...diag,
         });
         setFolderNodes(tree);
         setItemFolderByItemId(new Map(st.itemFolder));
@@ -445,9 +486,17 @@ export function VaultPopup(props: VaultPopupProps) {
         if (gen !== foldersLoadGenRef.current) {
           return;
         }
+        const diag = controller.getLastRefreshDiagnostics();
         console.error("[extension] folder sync failed", {
           workspaceId: wsId,
           err,
+          ...diag,
+        });
+        writeDebug({
+          phase: "failed",
+          error: err instanceof Error ? err.message : String(err),
+          ...diag,
+          folderCount: controller.toFolderTree().length,
         });
         // Prefer any materialized/cached state over wiping the sidebar to "Нет папок".
         const tree = controller.toFolderTree();
@@ -472,6 +521,9 @@ export function VaultPopup(props: VaultPopupProps) {
       disposeRef.current?.();
       disposeRef.current = null;
       try {
+        // Same WASM gate as folders — item/favicon decrypt must not start a
+        // path-less initWasm race ahead of the explicit extension asset URL.
+        await initExtensionCrypto();
         const nextVaults = await core.listWorkspaceVaults(wsId);
         setVaults(nextVaults);
         const controller = createWorkspaceVaultItemsReadController({

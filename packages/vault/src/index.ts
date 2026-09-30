@@ -83,6 +83,7 @@ export {
   createWorkspaceFoldersSyncController,
   replayStateToFlatFolders,
   type WorkspaceFoldersSyncController,
+  type WorkspaceFoldersRefreshDiagnostics,
 } from "./folders/workspaceFoldersSync.js";
 export {
   NO_FOLDER_VALUE,
