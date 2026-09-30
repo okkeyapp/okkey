@@ -27,7 +27,10 @@ import type { WorkspaceFolderNode } from "./workspaceFolderTree.js";
 import { flattenWorkspaceFolders } from "./workspaceFolderTree.js";
 import { IndexedDbWorkspacePersonalOutboxStore } from "./workspacePersonalOutboxStore.js";
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
-import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.js";
+import {
+  folderIdsToTombstoneForRebaseline,
+  shouldResealLocalFoldersForStreamKey,
+} from "./shouldResealLocalFoldersForStreamKey.js";
 
 const CACHE_DB = "okkey-workspace-personal-sync";
 const CACHE_STORE = "materialized_state";
@@ -37,7 +40,10 @@ export const AGENT_REPAIR_PROBE_FOLDER_NAME = "extension-repair-probe";
 const FOLDER_EVENT_TYPES = new Set(["FOLDER_CREATE", "FOLDER_UPDATE", "FOLDER_DELETE"]);
 
 export { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
-export { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.js";
+export {
+  folderIdsToTombstoneForRebaseline,
+  shouldResealLocalFoldersForStreamKey,
+} from "./shouldResealLocalFoldersForStreamKey.js";
 
 type CachedMaterializedState = {
   key: string;
@@ -123,6 +129,25 @@ async function writeCachedState(
   }
 }
 
+/** Drop one workspace materialized folder cache so the next refresh does a full pull. */
+export async function clearWorkspaceFoldersMaterializedCache(
+  userId: string,
+  workspaceId: string,
+): Promise<void> {
+  try {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_STORE, "readwrite");
+    tx.objectStore(CACHE_STORE).delete(cacheKey(userId, workspaceId));
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // cache is best-effort
+  }
+}
+
 export type WorkspaceFoldersRefreshDiagnostics = {
   eventsFetched: number;
   decryptAttempts: number;
@@ -135,6 +160,8 @@ export type WorkspaceFoldersRefreshDiagnostics = {
   resealedStaleKey: boolean;
   /** True when agent `extension-repair-probe` folder(s) were tombstoned. */
   deletedRepairProbe: boolean;
+  /** True when an explicit local-plaintext rebaseline tombstoned stream extras / resealed. */
+  rebaselinedFromLocal: boolean;
   /** FOLDER_* events that failed AEAD during stream key health probe. */
   probeFolderDecryptFail: number;
   /** FOLDER_* events that decrypted during stream key health probe. */
@@ -143,6 +170,13 @@ export type WorkspaceFoldersRefreshDiagnostics = {
 
 export type WorkspaceFoldersSyncController = {
   refresh: () => Promise<WorkspaceFolderReplayState>;
+  /**
+   * One-shot repair when personal-events is polluted with zombie folders under
+   * the current key. Uses IndexedDB plaintext on THIS origin as source of truth:
+   * tombstones decryptable stream folders that are not in that set, then reseals
+   * desired folders / assignments / favorites. Not peer-seed.
+   */
+  rebaselineFromLocalPlaintext: () => Promise<WorkspaceFolderReplayState>;
   drainOutbox: () => Promise<void>;
   createFolder: (label: string, parentFolderId?: string | null) => Promise<string>;
   commitFolderTree: (nextTree: readonly WorkspaceFolderNode[]) => Promise<void>;
@@ -610,8 +644,97 @@ export function createWorkspaceFoldersSyncController(input: {
       resetPoisonedCache,
       resealedStaleKey,
       deletedRepairProbe,
+      rebaselinedFromLocal: false,
       probeFolderDecryptFail,
       probeFolderDecryptOk,
+    };
+    return state;
+  }
+
+  /**
+   * Repair a polluted personal-events folder stream using THIS origin's IndexedDB
+   * plaintext as the source of truth (no peer-seed). Call from the device whose
+   * folder tree is correct after a normal unlock/edit.
+   */
+  async function rebaselineFromLocalPlaintext(): Promise<WorkspaceFolderReplayState> {
+    const cached = await readCachedState(input.userId, input.workspaceId);
+    const desiredFolders = new Map(
+      [...(cached?.folders.entries() ?? [])].filter(
+        ([, folder]) => folder.name !== AGENT_REPAIR_PROBE_FOLDER_NAME,
+      ),
+    );
+    if (desiredFolders.size === 0) {
+      throw new Error("REBASELINE_NO_LOCAL_PLAINTEXT");
+    }
+    const desiredItemFolder = new Map(cached?.itemFolder ?? []);
+    const desiredItemFavorite = new Set(cached?.itemFavorite ?? []);
+    const desiredIds = new Set(desiredFolders.keys());
+
+    // Materialize decryptable stream folders from empty (current key only).
+    state = {
+      folders: new Map(),
+      itemFolder: new Map(),
+      itemFavorite: new Set(),
+      lastAppliedVersion: 0,
+    };
+    const streamStats = await replayIncremental(0);
+    const extras = folderIdsToTombstoneForRebaseline(state.folders.keys(), desiredIds);
+
+    let version = await readServerTipVersion(state.lastAppliedVersion);
+    const key = await ensureMetadataKey();
+    for (const folderId of extras) {
+      const existing = state.folders.get(folderId);
+      const idempotencyKey = generateEntityId();
+      const tombstone = createFolderDeleteTombstoneV2(
+        folderId,
+        input.workspaceId,
+        existing?.updatedAtMs ?? Date.now(),
+      );
+      const result = await appendResealEvent(
+        (baseVersion) =>
+          buildFolderDeleteAppendRequest(key, tombstone, baseVersion, idempotencyKey),
+        version,
+      );
+      if (result.kind === "peer_resealed") {
+        version = result.tipVersion;
+        break;
+      }
+      version = result.version;
+      state.folders.delete(folderId);
+    }
+
+    state = {
+      folders: desiredFolders,
+      itemFolder: desiredItemFolder,
+      itemFavorite: desiredItemFavorite,
+      lastAppliedVersion: version,
+    };
+    await writeCachedState(input.userId, input.workspaceId, state);
+    await resealMaterializedStateUnderCurrentKey(version);
+    const afterStats = await replayIncremental(state.lastAppliedVersion);
+
+    // Keep desired plaintext even if residual undecryptable history exists.
+    state = {
+      folders: desiredFolders,
+      itemFolder: desiredItemFolder,
+      itemFavorite: desiredItemFavorite,
+      lastAppliedVersion: Math.max(state.lastAppliedVersion, version),
+    };
+    await writeCachedState(input.userId, input.workspaceId, state);
+
+    lastRefreshDiagnostics = {
+      eventsFetched: streamStats.eventsFetched + afterStats.eventsFetched,
+      decryptAttempts: streamStats.decryptAttempts + afterStats.decryptAttempts,
+      decryptFailures: streamStats.decryptFailures + afterStats.decryptFailures,
+      fromVersion: 0,
+      folderCount: state.folders.size,
+      usedCache: true,
+      resetPoisonedCache: false,
+      resealedStaleKey: true,
+      deletedRepairProbe: false,
+      rebaselinedFromLocal: true,
+      probeFolderDecryptFail: 0,
+      probeFolderDecryptOk: 0,
     };
     return state;
   }
@@ -677,6 +800,7 @@ export function createWorkspaceFoldersSyncController(input: {
     getLastRefreshDiagnostics: () => lastRefreshDiagnostics,
     toFolderTree: () => rowsToWorkspaceTree(state.folders),
     refresh,
+    rebaselineFromLocalPlaintext,
     drainOutbox: async () => {
       await outbox.drain(input.workspaceId);
       await replayIncremental(state.lastAppliedVersion);
@@ -829,5 +953,29 @@ export async function refreshWorkspaceFoldersCachesForIds(input: {
     } finally {
       controller.dispose();
     }
+  }
+}
+
+/**
+ * Explicit recovery for a polluted personal-events folder stream: rebaseline one
+ * workspace from this origin's IndexedDB plaintext (tombstone extras + reseal).
+ * Run on the device whose folder tree is already correct.
+ */
+export async function rebaselineWorkspaceFoldersFromLocalCache(input: {
+  core: CoreClient;
+  userId: string;
+  workspaceId: string;
+  passwordShareC: Uint8Array;
+}): Promise<WorkspaceFolderReplayState> {
+  const controller = createWorkspaceFoldersSyncController({
+    core: input.core,
+    userId: input.userId,
+    workspaceId: input.workspaceId,
+    passwordShareC: input.passwordShareC,
+  });
+  try {
+    return await controller.rebaselineFromLocalPlaintext();
+  } finally {
+    controller.dispose();
   }
 }

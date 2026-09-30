@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.ts";
-import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.ts";
+import {
+  folderIdsToTombstoneForRebaseline,
+  shouldResealLocalFoldersForStreamKey,
+} from "./shouldResealLocalFoldersForStreamKey.ts";
 
 describe("parsePersonalEventsVersionMismatch", () => {
   it("parses ApiRequestError-shaped VERSION_MISMATCH body", () => {
@@ -134,5 +137,15 @@ describe("shouldResealLocalFoldersForStreamKey", () => {
       }),
       false,
     );
+  });
+});
+
+describe("folderIdsToTombstoneForRebaseline", () => {
+  it("returns stream ids missing from the desired local set", () => {
+    assert.deepEqual(
+      folderIdsToTombstoneForRebaseline(["a", "b", "c"], new Set(["a", "c"])),
+      ["b"],
+    );
+    assert.deepEqual(folderIdsToTombstoneForRebaseline(["a"], new Set(["a", "b"])), []);
   });
 });

@@ -25,3 +25,20 @@ export function shouldResealLocalFoldersForStreamKey(input: {
   }
   return input.folderDecryptFail > 0 && input.localMissingOnStream;
 }
+
+/**
+ * Folder ids present on a decryptable stream materialization that are not in the
+ * desired local plaintext set (and should be tombstoned during rebaseline).
+ */
+export function folderIdsToTombstoneForRebaseline(
+  streamFolderIds: Iterable<string>,
+  desiredFolderIds: ReadonlySet<string>,
+): string[] {
+  const extras: string[] = [];
+  for (const id of streamFolderIds) {
+    if (!desiredFolderIds.has(id)) {
+      extras.push(id);
+    }
+  }
+  return extras.sort((a, b) => a.localeCompare(b));
+}
