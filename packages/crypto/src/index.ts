@@ -1,4 +1,4 @@
-import initWasm, {
+import {
   random_bytes,
   kdf_derive,
   aead_encrypt,
@@ -25,6 +25,7 @@ import initWasm, {
   decrypt_hybrid,
 } from "@okkey/crypto-wasm";
 import { CryptoSdkError, mapWasmError } from "./errors.js";
+export { initCrypto } from "./wasm-init.js";
 import {
   decodeHybridEnvelopeV1,
   encodeHybridEnvelopeV1,
@@ -34,16 +35,6 @@ import {
 
 export type AeadAlg = "aes-256-gcm" | "xchacha20-poly1305";
 
-let wasmReady: Promise<void> | undefined;
-
-export async function initCrypto(moduleOrPath?: unknown): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm(
-      moduleOrPath as Parameters<typeof initWasm>[0],
-    ).then(() => undefined);
-  }
-  return wasmReady;
-}
 
 function withWasmError<T>(op: string, fn: () => T): T {
   try {

@@ -2,7 +2,8 @@
  * Wrap the 32-byte account `VaultKey` with a high-entropy recovery secret (UTF-8 bytes).
  * Used by account recovery flows; wire format is a versioned `EncryptedBlob`.
  */
-import initWasm, { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
+import { aead_decrypt, aead_encrypt, kdf_derive, random_bytes } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import { getCryptoConfig } from "./config/index.js";
 import { OKKEY_PASSWORD_KDF_PARAMS_V1 } from "./registration.js";
@@ -25,14 +26,6 @@ const RECOVERY_WRAP_AAD = new TextEncoder().encode("okkey-vault-recovery-wrap-v1
 
 const RECOVERY_WRITE_CONFIG = getCryptoConfig(2);
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 function uint8ToStandardBase64(bytes: Uint8Array): string {
   let binary = "";

@@ -207,6 +207,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          data-okkey-filter="vault-ui-shared"
           aria-label={t("web.items.list.filterAria")}
           className={cn(
             itemsPanelSelectTriggerClassName,

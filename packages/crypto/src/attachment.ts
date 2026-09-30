@@ -1,22 +1,15 @@
-import initWasm, {
+import {
   aead_decrypt,
   aead_encrypt,
   random_bytes,
 } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import { wipeBytes } from "./secret-buffer.js";
 
 const NONCE_LEN = 24;
 const ATTACHMENT_PAYLOAD_AAD_PREFIX = "okkey-attachment-payload-v1";
 const ATTACHMENT_KEY_AAD_PREFIX = "okkey-attachment-key-wrap-v1";
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 export type AttachmentAadContext = {
   vaultId: string;

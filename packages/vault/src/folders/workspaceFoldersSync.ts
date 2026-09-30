@@ -176,6 +176,8 @@ export function createWorkspaceFoldersSyncController(input: {
 
   async function replayIncremental(fromVersion: number): Promise<void> {
     let cursor = fromVersion;
+    let decryptAttempts = 0;
+    let decryptFailures = 0;
     // Mirror vault-items read: keep paging until the server returns an empty page.
     // (Personal-events currently returns the full remainder in one response, but
     // looping stays correct if a limit is introduced later.)
@@ -183,7 +185,7 @@ export function createWorkspaceFoldersSyncController(input: {
     while (true) {
       const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
       if (!page.events.length) {
-        return;
+        break;
       }
       // Derive metadata key only when there is ciphertext to decrypt — allows
       // serving an IndexedDB cache when WASM is not yet ready (extension popup
@@ -192,7 +194,15 @@ export function createWorkspaceFoldersSyncController(input: {
       const next = await replayWorkspaceFolderEvents(
         page.events,
         input.workspaceId,
-        async (b64) => decryptPersonalVaultMetadataPayload(key, base64ToBytes(b64)),
+        async (b64) => {
+          decryptAttempts += 1;
+          try {
+            return await decryptPersonalVaultMetadataPayload(key, base64ToBytes(b64));
+          } catch (err) {
+            decryptFailures += 1;
+            throw err;
+          }
+        },
         cursor,
         state,
       );
@@ -200,9 +210,22 @@ export function createWorkspaceFoldersSyncController(input: {
       await writeCachedState(input.userId, input.workspaceId, state);
       const lastVersion = page.events[page.events.length - 1]?.version ?? cursor;
       if (lastVersion <= cursor) {
-        return;
+        break;
       }
       cursor = lastVersion;
+    }
+    // replayWorkspaceFolderEvents swallows per-event decrypt errors. If every
+    // ciphertext failed, surface a hard error so hosts do not render a false
+    // "no folders" empty state (extension popup previously looked healthy).
+    if (
+      decryptAttempts > 0 &&
+      decryptFailures >= decryptAttempts &&
+      state.folders.size === 0 &&
+      fromVersion === 0
+    ) {
+      throw new Error(
+        `FOLDER_METADATA_DECRYPT_FAILED attempts=${decryptAttempts} failures=${decryptFailures}`,
+      );
     }
   }
 

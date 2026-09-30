@@ -2,12 +2,13 @@
  * Client-side registration crypto: split-key VaultKey = A ⊕ B ⊕ C (32-byte XOR),
  * C = Argon2id(master_password, salt). Backend receives only A and encrypted artifacts.
  */
-import initWasm, {
+import {
   b64_encode,
   ed25519_keypair,
   kdf_derive,
   random_bytes,
 } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import {
   encryptUserIdentityPrivateBundle,
@@ -28,14 +29,6 @@ export const OKKEY_PASSWORD_KDF_PARAMS_V1 = {
 
 export const OKKEY_PASSWORD_KDF_PARAMS_VERSION = 1 as const;
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 function xor32(a: Uint8Array, b: Uint8Array, c: Uint8Array): Uint8Array {
   const out = new Uint8Array(SHARE_LEN);

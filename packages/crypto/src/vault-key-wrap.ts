@@ -8,13 +8,14 @@
  * Security currently reduces to PQ-KEM for the recipient; replace the static ECC
  * material with per-user X25519 identity keys in a follow-up.
  */
-import initWasm, {
+import {
   b64_decode,
   b64_encode,
   decrypt_hybrid,
   encrypt_hybrid,
   random_bytes,
 } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import { mapWasmError } from "./errors.js";
 
@@ -32,14 +33,6 @@ const INTERIM_ECC_PUBLIC = Uint8Array.from([
   0x0d, 0xbf, 0x3a, 0x0d, 0x26, 0x38, 0x1a, 0xf4, 0xeb, 0xa4, 0xa9, 0x8e, 0xaa, 0x9b, 0x4e, 0x6a,
 ]);
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 function withWasmError<T>(op: string, fn: () => T): T {
   try {

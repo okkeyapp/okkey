@@ -51,6 +51,7 @@ import {
   openWebDeepLink,
 } from "../../lib/deepLinks";
 import { touchExtensionUnlockSession } from "../../lib/extensionVaultSession";
+import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
 import {
   readStoredCurrentWorkspaceId,
   writeStoredCurrentWorkspaceId,
@@ -379,11 +380,48 @@ export function VaultPopup(props: VaultPopupProps) {
       const gen = ++foldersLoadGenRef.current;
       foldersDisposeRef.current?.();
       foldersDisposeRef.current = null;
+
+      const shareC = secrets.passwordShareC;
+      console.info("[extension] folder sync start", {
+        workspaceId: wsId,
+        userId,
+        passwordShareCBytes: shareC?.byteLength ?? 0,
+      });
+
+      // Popup JS context is destroyed on close; always re-assert WASM before
+      // personal-metadata decrypt (shared wasm-init gate + explicit asset URL).
+      try {
+        await initExtensionCrypto();
+      } catch (err: unknown) {
+        if (gen !== foldersLoadGenRef.current) {
+          return;
+        }
+        console.error("[extension] folder sync crypto init failed", err);
+        setFolderNodes([]);
+        setItemFolderByItemId(new Map());
+        setItemFavoriteByItemId(new Set());
+        return;
+      }
+
+      if (!shareC || shareC.byteLength !== 32) {
+        if (gen !== foldersLoadGenRef.current) {
+          return;
+        }
+        console.error("[extension] folder sync missing passwordShareC", {
+          workspaceId: wsId,
+          byteLength: shareC?.byteLength ?? 0,
+        });
+        setFolderNodes([]);
+        setItemFolderByItemId(new Map());
+        setItemFavoriteByItemId(new Set());
+        return;
+      }
+
       const controller = createWorkspaceFoldersSyncController({
         core,
         userId,
         workspaceId: wsId,
-        passwordShareC: secrets.passwordShareC,
+        passwordShareC: shareC,
       });
       foldersDisposeRef.current = () => controller.dispose();
       try {
@@ -391,14 +429,26 @@ export function VaultPopup(props: VaultPopupProps) {
         if (gen !== foldersLoadGenRef.current) {
           return;
         }
-        setFolderNodes(controller.toFolderTree());
-        setItemFolderByItemId(new Map(controller.getState().itemFolder));
-        setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
+        const tree = controller.toFolderTree();
+        const st = controller.getState();
+        console.info("[extension] folder sync ok", {
+          workspaceId: wsId,
+          folderCount: tree.length,
+          itemFolderCount: st.itemFolder.size,
+          favoriteCount: st.itemFavorite.size,
+          lastAppliedVersion: st.lastAppliedVersion,
+        });
+        setFolderNodes(tree);
+        setItemFolderByItemId(new Map(st.itemFolder));
+        setItemFavoriteByItemId(new Set(st.itemFavorite));
       } catch (err: unknown) {
         if (gen !== foldersLoadGenRef.current) {
           return;
         }
-        console.error("[extension] folder sync failed", err);
+        console.error("[extension] folder sync failed", {
+          workspaceId: wsId,
+          err,
+        });
         // Prefer any materialized/cached state over wiping the sidebar to "Нет папок".
         const tree = controller.toFolderTree();
         if (tree.length > 0) {
@@ -453,19 +503,17 @@ export function VaultPopup(props: VaultPopupProps) {
           }),
         );
         setVaultKeyById(keys);
-        await loadFolders(wsId);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         setItems([]);
         setVaults([]);
-        setFolderNodes([]);
         setVaultKeyById(new Map());
       } finally {
         setLoading(false);
       }
     },
-    [core, encryptedPrivateKeyPayload, loadFolders, secrets.vaultKey, userId],
+    [core, encryptedPrivateKeyPayload, secrets.vaultKey, userId],
   );
 
   useEffect(() => {
@@ -482,6 +530,25 @@ export function VaultPopup(props: VaultPopupProps) {
       foldersDisposeRef.current?.();
     };
   }, [loadWorkspaces]);
+
+  // Mirror web WorkspaceFoldersContext: folder sync is independent of item read
+  // so an items failure cannot wipe the sidebar, and share-C / crypto are ready
+  // before personal-events decrypt.
+  useEffect(() => {
+    if (!workspaceId) {
+      return;
+    }
+    void loadFolders(workspaceId);
+    const onFocus = () => {
+      void loadFolders(workspaceId);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      foldersDisposeRef.current?.();
+      foldersDisposeRef.current = null;
+    };
+  }, [workspaceId, loadFolders]);
 
   useEffect(() => {
     if (!workspaceId) {
