@@ -83,6 +83,8 @@ export {
   createWorkspaceFoldersSyncController,
   parsePersonalEventsVersionMismatch,
   replayStateToFlatFolders,
+  shouldResealLocalFoldersForStreamKey,
+  AGENT_REPAIR_PROBE_FOLDER_NAME,
   type WorkspaceFoldersSyncController,
   type WorkspaceFoldersRefreshDiagnostics,
 } from "./folders/workspaceFoldersSync.js";

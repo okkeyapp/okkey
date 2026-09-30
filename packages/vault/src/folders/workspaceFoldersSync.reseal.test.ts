@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.ts";
+import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.ts";
 
 describe("parsePersonalEventsVersionMismatch", () => {
   it("parses ApiRequestError-shaped VERSION_MISMATCH body", () => {
@@ -46,6 +47,63 @@ describe("parsePersonalEventsVersionMismatch", () => {
         },
       }),
       null,
+    );
+  });
+});
+
+describe("shouldResealLocalFoldersForStreamKey", () => {
+  it("reseals when stream is mixed-key and local folders are missing on decryptable set", () => {
+    // Real folders in IndexedDB + only extension-repair-probe decrypts on stream.
+    assert.equal(
+      shouldResealLocalFoldersForStreamKey({
+        localFolderCount: 2,
+        decrypts: true,
+        tipVersion: 3,
+        folderDecryptFail: 2,
+        localMissingOnStream: true,
+      }),
+      true,
+    );
+  });
+
+  it("does not reseal when local folders are already covered by decryptable stream", () => {
+    // Extension cache has only the probe which decrypts — resealing probe alone
+    // cannot recover real folders; wait for a peer with full plaintext cache.
+    assert.equal(
+      shouldResealLocalFoldersForStreamKey({
+        localFolderCount: 1,
+        decrypts: true,
+        tipVersion: 3,
+        folderDecryptFail: 2,
+        localMissingOnStream: false,
+      }),
+      false,
+    );
+  });
+
+  it("reseals when nothing decrypts but tip and local cache exist", () => {
+    assert.equal(
+      shouldResealLocalFoldersForStreamKey({
+        localFolderCount: 6,
+        decrypts: false,
+        tipVersion: 325,
+        folderDecryptFail: 56,
+        localMissingOnStream: true,
+      }),
+      true,
+    );
+  });
+
+  it("does not reseal a healthy stream", () => {
+    assert.equal(
+      shouldResealLocalFoldersForStreamKey({
+        localFolderCount: 2,
+        decrypts: true,
+        tipVersion: 10,
+        folderDecryptFail: 0,
+        localMissingOnStream: false,
+      }),
+      false,
     );
   });
 });

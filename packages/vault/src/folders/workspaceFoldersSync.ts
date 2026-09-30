@@ -4,7 +4,7 @@ import {
   derivePersonalWorkspaceMetadataKey,
   wipeBytes,
 } from "@okkey/crypto";
-import { generateEntityId } from "@okkey/types";
+import { createFolderDeleteTombstoneV2, generateEntityId, parseFolderPlaintextV2Utf8 } from "@okkey/types";
 import type { FolderPlaintextV2, SyncAppendEventRequestDto } from "@okkey/types";
 import {
   buildFolderCreateAppendRequest,
@@ -27,12 +27,17 @@ import type { WorkspaceFolderNode } from "./workspaceFolderTree.js";
 import { flattenWorkspaceFolders } from "./workspaceFolderTree.js";
 import { IndexedDbWorkspacePersonalOutboxStore } from "./workspacePersonalOutboxStore.js";
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
+import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.js";
 
 const CACHE_DB = "okkey-workspace-personal-sync";
 const CACHE_STORE = "materialized_state";
 const RESEAL_APPEND_MAX_ATTEMPTS = 8;
+/** Agent live-reseal test folder left on personal-events; remove on refresh. */
+export const AGENT_REPAIR_PROBE_FOLDER_NAME = "extension-repair-probe";
+const FOLDER_EVENT_TYPES = new Set(["FOLDER_CREATE", "FOLDER_UPDATE", "FOLDER_DELETE"]);
 
 export { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
+export { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.js";
 
 type CachedMaterializedState = {
   key: string;
@@ -128,6 +133,12 @@ export type WorkspaceFoldersRefreshDiagnostics = {
   resetPoisonedCache: boolean;
   /** True when local materialized folders were re-appended under the current metadata key. */
   resealedStaleKey: boolean;
+  /** True when agent `extension-repair-probe` folder(s) were tombstoned. */
+  deletedRepairProbe: boolean;
+  /** FOLDER_* events that failed AEAD during stream key health probe. */
+  probeFolderDecryptFail: number;
+  /** FOLDER_* events that decrypted during stream key health probe. */
+  probeFolderDecryptOk: number;
 };
 
 export type WorkspaceFoldersSyncController = {
@@ -252,35 +263,73 @@ export function createWorkspaceFoldersSyncController(input: {
   }
 
   /**
-   * Probe whether recent personal-event ciphertext decrypts with the current
-   * metadata key, and return the server tip version. After master-password
-   * restore without folder migration, the stream stays under the old C while
-   * local IndexedDB still holds plaintext folders — probe fails and we reseal.
+   * Probe personal-event ciphertext against the current metadata key.
+   *
+   * After master-password restore without folder migration, the stream can be a
+   * mix of old-C and new-C envelopes (e.g. real folders under old C + a later
+   * `extension-repair-probe` under current C). "Any recent event decrypts" is
+   * NOT enough — we must detect undecryptable FOLDER_* events and whether local
+   * materialized folder ids are missing from the decryptable stream set.
    */
   async function probeCurrentKeyAgainstStream(): Promise<{
     decrypts: boolean;
     tipVersion: number;
+    folderDecryptOk: number;
+    folderDecryptFail: number;
+    decryptableFolderIds: Set<string>;
   }> {
     const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, 0);
     if (!page.events.length) {
-      return { decrypts: true, tipVersion: 0 };
+      return {
+        decrypts: true,
+        tipVersion: 0,
+        folderDecryptOk: 0,
+        folderDecryptFail: 0,
+        decryptableFolderIds: new Set(),
+      };
     }
     const tipVersion = page.events[page.events.length - 1]?.version ?? 0;
     const key = await ensureMetadataKey();
-    const start = Math.max(0, page.events.length - 32);
-    for (let i = page.events.length - 1; i >= start; i -= 1) {
-      const payload = page.events[i]?.encryptedBlob?.payload;
+    let folderDecryptOk = 0;
+    let folderDecryptFail = 0;
+    let anyDecrypts = false;
+    const decryptableFolderIds = new Set<string>();
+
+    for (const ev of page.events) {
+      const payload = ev.encryptedBlob?.payload;
       if (!payload) {
         continue;
       }
+      const isFolderEvent = FOLDER_EVENT_TYPES.has(ev.eventType);
       try {
-        await decryptPersonalVaultMetadataPayload(key, base64ToBytes(payload));
-        return { decrypts: true, tipVersion };
+        const plaintext = await decryptPersonalVaultMetadataPayload(key, base64ToBytes(payload));
+        anyDecrypts = true;
+        if (!isFolderEvent) {
+          continue;
+        }
+        folderDecryptOk += 1;
+        const row = parseFolderPlaintextV2Utf8(plaintext);
+        if (!row || row.workspaceId !== input.workspaceId) {
+          continue;
+        }
+        if (ev.eventType === "FOLDER_DELETE" || row.deleted) {
+          decryptableFolderIds.delete(row.folderId);
+        } else {
+          decryptableFolderIds.add(row.folderId);
+        }
       } catch {
-        // try older recent events
+        if (isFolderEvent) {
+          folderDecryptFail += 1;
+        }
       }
     }
-    return { decrypts: false, tipVersion };
+    return {
+      decrypts: anyDecrypts,
+      tipVersion,
+      folderDecryptOk,
+      folderDecryptFail,
+      decryptableFolderIds,
+    };
   }
 
   /**
@@ -305,7 +354,12 @@ export function createWorkspaceFoldersSyncController(input: {
           throw err;
         }
         const probe = await probeCurrentKeyAgainstStream();
-        if (probe.decrypts) {
+        // Peer resealed when undecryptable FOLDER_* events are gone and local
+        // folder ids (if any) are covered by the decryptable set.
+        const localMissing = [...state.folders.keys()].some(
+          (id) => !probe.decryptableFolderIds.has(id),
+        );
+        if (probe.folderDecryptFail === 0 && !localMissing && probe.decrypts) {
           return { kind: "peer_resealed", tipVersion: probe.tipVersion };
         }
         baseVersion = mismatch.latestVersion;
@@ -417,10 +471,57 @@ export function createWorkspaceFoldersSyncController(input: {
     await writeCachedState(input.userId, input.workspaceId, state);
   }
 
+  /** Tombstone agent live-reseal probe folders left on the personal-events stream. */
+  async function deleteAgentRepairProbeFolders(serverTipVersion: number): Promise<boolean> {
+    const probes = [...state.folders.values()].filter(
+      (folder) => folder.name === AGENT_REPAIR_PROBE_FOLDER_NAME,
+    );
+    if (!probes.length) {
+      return false;
+    }
+    const key = await ensureMetadataKey();
+    let version = Math.max(serverTipVersion, state.lastAppliedVersion);
+    let deleted = false;
+    for (const folder of probes) {
+      const idempotencyKey = generateEntityId();
+      const tombstone = createFolderDeleteTombstoneV2(
+        folder.folderId,
+        input.workspaceId,
+        Date.now(),
+      );
+      const result = await appendResealEvent(
+        (baseVersion) =>
+          buildFolderDeleteAppendRequest(key, tombstone, baseVersion, idempotencyKey),
+        version,
+      );
+      if (result.kind === "peer_resealed") {
+        state = {
+          ...state,
+          lastAppliedVersion: result.tipVersion,
+        };
+        break;
+      }
+      version = result.version;
+      state.folders.delete(folder.folderId);
+      deleted = true;
+    }
+    if (deleted) {
+      state = {
+        ...state,
+        lastAppliedVersion: version,
+      };
+      await writeCachedState(input.userId, input.workspaceId, state);
+    }
+    return deleted;
+  }
+
   async function refresh(): Promise<WorkspaceFolderReplayState> {
     const cached = await readCachedState(input.userId, input.workspaceId);
     let resetPoisonedCache = false;
     let resealedStaleKey = false;
+    let deletedRepairProbe = false;
+    let probeFolderDecryptFail = 0;
+    let probeFolderDecryptOk = 0;
     // Empty folders + advanced cursor: prior decrypt-all-fail wrote a cursor that
     // skips the personal-events stream. Force a full replay.
     if (cached && cached.folders.size === 0 && cached.lastAppliedVersion > 0) {
@@ -437,11 +538,27 @@ export function createWorkspaceFoldersSyncController(input: {
 
     // Local plaintext cache + stream under a previous passwordShareC (e.g. after
     // account restore without folder migration): re-append under the current key.
+    // Also reseal when the stream is mixed-key: some FOLDER_* decrypt (often an
+    // agent repair-probe) while older real folders do not — otherwise web keeps
+    // showing IndexedDB plaintext and extension only materializes the probe.
     // Use server tip for baseVersion — local lastAppliedVersion often lags when
     // undecryptable remote events were skipped during replay.
     if (state.folders.size > 0) {
       const probe = await probeCurrentKeyAgainstStream();
-      if (!probe.decrypts) {
+      probeFolderDecryptFail = probe.folderDecryptFail;
+      probeFolderDecryptOk = probe.folderDecryptOk;
+      const localMissingOnStream = [...state.folders.keys()].some(
+        (id) => !probe.decryptableFolderIds.has(id),
+      );
+      if (
+        shouldResealLocalFoldersForStreamKey({
+          localFolderCount: state.folders.size,
+          decrypts: probe.decrypts,
+          tipVersion: probe.tipVersion,
+          folderDecryptFail: probe.folderDecryptFail,
+          localMissingOnStream,
+        })
+      ) {
         await resealMaterializedStateUnderCurrentKey(probe.tipVersion);
         resealedStaleKey = true;
       }
@@ -449,6 +566,15 @@ export function createWorkspaceFoldersSyncController(input: {
 
     const fromVersion = state.lastAppliedVersion;
     const stats = await replayIncremental(fromVersion);
+
+    // Drop agent test probe even when it was the only decryptable folder.
+    if ([...state.folders.values()].some((f) => f.name === AGENT_REPAIR_PROBE_FOLDER_NAME)) {
+      deletedRepairProbe = await deleteAgentRepairProbeFolders(state.lastAppliedVersion);
+      if (deletedRepairProbe) {
+        await replayIncremental(state.lastAppliedVersion);
+      }
+    }
+
     lastRefreshDiagnostics = {
       ...stats,
       fromVersion,
@@ -456,6 +582,9 @@ export function createWorkspaceFoldersSyncController(input: {
       usedCache: Boolean(cached) && !resetPoisonedCache,
       resetPoisonedCache,
       resealedStaleKey,
+      deletedRepairProbe,
+      probeFolderDecryptFail,
+      probeFolderDecryptOk,
     };
     return state;
   }

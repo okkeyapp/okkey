@@ -380,6 +380,11 @@ export function VaultPopup(props: VaultPopupProps) {
       const gen = ++foldersLoadGenRef.current;
       foldersDisposeRef.current?.();
       foldersDisposeRef.current = null;
+      // Clear previous workspace folders immediately so a switch never flashes
+      // stale sidebar rows (e.g. repair-probe from another workspace).
+      setFolderNodes([]);
+      setItemFolderByItemId(new Map());
+      setItemFavoriteByItemId(new Set());
 
       // Copy bytes so an in-place wipe of React state cannot zero the key mid-sync.
       const shareCRaw = secrets.passwordShareC;
