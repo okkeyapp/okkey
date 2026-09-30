@@ -81,6 +81,7 @@ export {
 } from "./vault-unlock-session.js";
 export {
   createWorkspaceFoldersSyncController,
+  parsePersonalEventsVersionMismatch,
   replayStateToFlatFolders,
   type WorkspaceFoldersSyncController,
   type WorkspaceFoldersRefreshDiagnostics,

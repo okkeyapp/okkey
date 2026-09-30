@@ -26,9 +26,13 @@ import {
 import type { WorkspaceFolderNode } from "./workspaceFolderTree.js";
 import { flattenWorkspaceFolders } from "./workspaceFolderTree.js";
 import { IndexedDbWorkspacePersonalOutboxStore } from "./workspacePersonalOutboxStore.js";
+import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
 
 const CACHE_DB = "okkey-workspace-personal-sync";
 const CACHE_STORE = "materialized_state";
+const RESEAL_APPEND_MAX_ATTEMPTS = 8;
+
+export { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
 
 type CachedMaterializedState = {
   key: string;
@@ -248,16 +252,20 @@ export function createWorkspaceFoldersSyncController(input: {
   }
 
   /**
-   * True when at least one recent personal-event ciphertext decrypts with the
-   * current metadata key. After master-password restore without folder
-   * migration, the stream stays under the old C while local IndexedDB still
-   * holds plaintext folders — probe fails and we reseal.
+   * Probe whether recent personal-event ciphertext decrypts with the current
+   * metadata key, and return the server tip version. After master-password
+   * restore without folder migration, the stream stays under the old C while
+   * local IndexedDB still holds plaintext folders — probe fails and we reseal.
    */
-  async function currentKeyDecryptsRecentEvents(): Promise<boolean> {
+  async function probeCurrentKeyAgainstStream(): Promise<{
+    decrypts: boolean;
+    tipVersion: number;
+  }> {
     const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, 0);
     if (!page.events.length) {
-      return true;
+      return { decrypts: true, tipVersion: 0 };
     }
+    const tipVersion = page.events[page.events.length - 1]?.version ?? 0;
     const key = await ensureMetadataKey();
     const start = Math.max(0, page.events.length - 32);
     for (let i = page.events.length - 1; i >= start; i -= 1) {
@@ -267,25 +275,62 @@ export function createWorkspaceFoldersSyncController(input: {
       }
       try {
         await decryptPersonalVaultMetadataPayload(key, base64ToBytes(payload));
-        return true;
+        return { decrypts: true, tipVersion };
       } catch {
         // try older recent events
       }
     }
-    return false;
+    return { decrypts: false, tipVersion };
+  }
+
+  /**
+   * Append one personal event. Prefer a known tip so we do not POST a stale
+   * baseVersion (browser DevTools 409). On VERSION_MISMATCH: if a peer already
+   * resealed under the current key, abort; otherwise rebase onto latestVersion
+   * and retry (same ciphertext / idempotencyKey).
+   */
+  async function appendResealEvent(
+    buildRequest: (baseVersion: number) => Promise<SyncAppendEventRequestDto>,
+    startVersion: number,
+  ): Promise<{ kind: "appended"; version: number } | { kind: "peer_resealed"; tipVersion: number }> {
+    let baseVersion = startVersion;
+    let request = await buildRequest(baseVersion);
+    for (let attempt = 0; attempt < RESEAL_APPEND_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
+        return { kind: "appended", version: appended.version };
+      } catch (err) {
+        const mismatch = parsePersonalEventsVersionMismatch(err);
+        if (!mismatch) {
+          throw err;
+        }
+        const probe = await probeCurrentKeyAgainstStream();
+        if (probe.decrypts) {
+          return { kind: "peer_resealed", tipVersion: probe.tipVersion };
+        }
+        baseVersion = mismatch.latestVersion;
+        request = { ...request, baseVersion };
+      }
+    }
+    throw new Error("RESEAL_VERSION_CONFLICT");
   }
 
   /**
    * Re-append current materialized folder / assignment / favorite state under
    * the current passwordShareC-derived metadata key. Used after recovery
    * restore (no old C) or when the stream key drifted from local cache.
+   *
+   * `serverTipVersion` must be the current MAX(version) on the server — local
+   * `lastAppliedVersion` often lags when undecryptable events were skipped.
    */
-  async function resealMaterializedStateUnderCurrentKey(): Promise<void> {
+  async function resealMaterializedStateUnderCurrentKey(serverTipVersion: number): Promise<void> {
     if (state.folders.size === 0 && state.itemFolder.size === 0 && state.itemFavorite.size === 0) {
       return;
     }
     const key = await ensureMetadataKey();
-    let version = state.lastAppliedVersion;
+    const resealOrigin = Math.max(serverTipVersion, state.lastAppliedVersion);
+    let version = resealOrigin;
+    let abortedForPeer = false;
     const folders = [...state.folders.values()].sort((a, b) => {
       const aDepth = a.parentFolderId ? 1 : 0;
       const bDepth = b.parentFolderId ? 1 : 0;
@@ -294,50 +339,81 @@ export function createWorkspaceFoldersSyncController(input: {
       }
       return (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.folderId.localeCompare(b.folderId);
     });
-    for (const folder of folders) {
-      const request = await buildFolderCreateAppendRequest(
-        key,
-        folder,
-        version,
-        generateEntityId(),
-      );
-      const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
-      version = appended.version;
-    }
-    for (const [itemId, folderId] of state.itemFolder.entries()) {
-      const request = await buildItemFolderAssignAppendRequest(
-        key,
-        {
-          schemaVersion: 2,
-          itemId,
-          workspaceId: input.workspaceId,
-          folderId,
-        },
-        version,
-        generateEntityId(),
-      );
-      const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
-      version = appended.version;
-    }
-    for (const itemId of state.itemFavorite) {
-      const request = await buildItemFavoriteSetAppendRequest(
-        key,
-        {
-          schemaVersion: 2,
-          itemId,
-          workspaceId: input.workspaceId,
-          favorite: true,
-        },
-        version,
-        generateEntityId(),
-      );
-      const appended = await input.core.appendWorkspacePersonalEvent(input.workspaceId, request);
-      version = appended.version;
-    }
-    state = {
-      ...state,
-      lastAppliedVersion: version,
+
+    const runAppend = async (
+      buildRequest: (baseVersion: number) => Promise<SyncAppendEventRequestDto>,
+    ): Promise<boolean> => {
+      const result = await appendResealEvent(buildRequest, version);
+      if (result.kind === "peer_resealed") {
+        // Peer wrote under the current key — replay their events from origin.
+        state = {
+          ...state,
+          lastAppliedVersion: resealOrigin,
+        };
+        abortedForPeer = true;
+        return false;
+      }
+      version = result.version;
+      return true;
     };
+
+    for (const folder of folders) {
+      const idempotencyKey = generateEntityId();
+      const ok = await runAppend((baseVersion) =>
+        buildFolderCreateAppendRequest(key, folder, baseVersion, idempotencyKey),
+      );
+      if (!ok) {
+        break;
+      }
+    }
+    if (!abortedForPeer) {
+      for (const [itemId, folderId] of state.itemFolder.entries()) {
+        const idempotencyKey = generateEntityId();
+        const ok = await runAppend((baseVersion) =>
+          buildItemFolderAssignAppendRequest(
+            key,
+            {
+              schemaVersion: 2,
+              itemId,
+              workspaceId: input.workspaceId,
+              folderId,
+            },
+            baseVersion,
+            idempotencyKey,
+          ),
+        );
+        if (!ok) {
+          break;
+        }
+      }
+    }
+    if (!abortedForPeer) {
+      for (const itemId of state.itemFavorite) {
+        const idempotencyKey = generateEntityId();
+        const ok = await runAppend((baseVersion) =>
+          buildItemFavoriteSetAppendRequest(
+            key,
+            {
+              schemaVersion: 2,
+              itemId,
+              workspaceId: input.workspaceId,
+              favorite: true,
+            },
+            baseVersion,
+            idempotencyKey,
+          ),
+        );
+        if (!ok) {
+          break;
+        }
+      }
+    }
+    if (!abortedForPeer) {
+      state = {
+        ...state,
+        lastAppliedVersion: version,
+      };
+    }
     await writeCachedState(input.userId, input.workspaceId, state);
   }
 
@@ -361,12 +437,14 @@ export function createWorkspaceFoldersSyncController(input: {
 
     // Local plaintext cache + stream under a previous passwordShareC (e.g. after
     // account restore without folder migration): re-append under the current key.
-    if (
-      state.folders.size > 0 &&
-      !(await currentKeyDecryptsRecentEvents())
-    ) {
-      await resealMaterializedStateUnderCurrentKey();
-      resealedStaleKey = true;
+    // Use server tip for baseVersion — local lastAppliedVersion often lags when
+    // undecryptable remote events were skipped during replay.
+    if (state.folders.size > 0) {
+      const probe = await probeCurrentKeyAgainstStream();
+      if (!probe.decrypts) {
+        await resealMaterializedStateUnderCurrentKey(probe.tipVersion);
+        resealedStaleKey = true;
+      }
     }
 
     const fromVersion = state.lastAppliedVersion;
@@ -384,7 +462,9 @@ export function createWorkspaceFoldersSyncController(input: {
 
   async function enqueue(request: SyncAppendEventRequestDto): Promise<void> {
     await replayIncremental(state.lastAppliedVersion);
-    request.baseVersion = state.lastAppliedVersion;
+    // Append baseVersion must match server tip; lastAppliedVersion can lag when
+    // undecryptable events were skipped (outbox would 409+retry and spam DevTools).
+    request.baseVersion = await readServerTipVersion(state.lastAppliedVersion);
     await outbox.enqueue({
       workspaceId: input.workspaceId,
       request,
@@ -393,10 +473,28 @@ export function createWorkspaceFoldersSyncController(input: {
     await replayIncremental(state.lastAppliedVersion);
   }
 
+  async function readServerTipVersion(afterVersion: number): Promise<number> {
+    let tip = afterVersion;
+    let cursor = afterVersion;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const page = await input.core.listWorkspacePersonalEvents(input.workspaceId, cursor);
+      if (!page.events.length) {
+        break;
+      }
+      tip = page.events[page.events.length - 1]?.version ?? tip;
+      if (tip <= cursor) {
+        break;
+      }
+      cursor = tip;
+    }
+    return tip;
+  }
+
   async function applyMutations(mutations: FolderTreeMutation[]): Promise<void> {
     const key = await ensureMetadataKey();
     await replayIncremental(state.lastAppliedVersion);
-    let version = state.lastAppliedVersion;
+    let version = await readServerTipVersion(state.lastAppliedVersion);
     for (const mutation of mutations) {
       let request: SyncAppendEventRequestDto;
       if (mutation.kind === "create") {
@@ -512,7 +610,7 @@ export function createWorkspaceFoldersSyncController(input: {
       }
       const key = await ensureMetadataKey();
       await replayIncremental(state.lastAppliedVersion);
-      let version = state.lastAppliedVersion;
+      let version = await readServerTipVersion(state.lastAppliedVersion);
       for (const itemId of uniqueIds) {
         const request = await buildItemFavoriteSetAppendRequest(
           key,
