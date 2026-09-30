@@ -94,8 +94,8 @@ import type {
   PendingVaultWrapsResponseDto,
   VaultAccessResponseDto,
   VaultAccessUpdateRequestDto,
-} from "../../types/src/index.js";
-import { isClientPqCapable } from "../../types/src/index.js";
+} from "@okkey/types";
+import { isClientPqCapable } from "@okkey/types";
 
 export interface ApiClientOptions {
   baseUrl: string;
