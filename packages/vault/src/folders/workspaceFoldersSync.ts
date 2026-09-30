@@ -27,7 +27,7 @@ import type { WorkspaceFolderNode } from "./workspaceFolderTree.js";
 import { flattenWorkspaceFolders } from "./workspaceFolderTree.js";
 import { IndexedDbWorkspacePersonalOutboxStore } from "./workspacePersonalOutboxStore.js";
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
-import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.js";
+import { shouldResealLocalFoldersForStreamKey, shouldImportPeerFolderCache } from "./shouldResealLocalFoldersForStreamKey.js";
 
 const CACHE_DB = "okkey-workspace-personal-sync";
 const CACHE_STORE = "materialized_state";
@@ -37,7 +37,10 @@ export const AGENT_REPAIR_PROBE_FOLDER_NAME = "extension-repair-probe";
 const FOLDER_EVENT_TYPES = new Set(["FOLDER_CREATE", "FOLDER_UPDATE", "FOLDER_DELETE"]);
 
 export { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.js";
-export { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.js";
+export {
+  shouldImportPeerFolderCache,
+  shouldResealLocalFoldersForStreamKey,
+} from "./shouldResealLocalFoldersForStreamKey.js";
 
 type CachedMaterializedState = {
   key: string;
@@ -123,6 +126,14 @@ async function writeCachedState(
   }
 }
 
+export type WorkspaceFoldersCachedStateDto = {
+  key: string;
+  lastAppliedVersion: number;
+  folders: Array<[string, FolderPlaintextV2]>;
+  itemFolder: Array<[string, string | null]>;
+  itemFavorite: string[];
+};
+
 export type WorkspaceFoldersRefreshDiagnostics = {
   eventsFetched: number;
   decryptAttempts: number;
@@ -140,6 +151,79 @@ export type WorkspaceFoldersRefreshDiagnostics = {
   /** FOLDER_* events that decrypted during stream key health probe. */
   probeFolderDecryptOk: number;
 };
+
+function countRealFolders(
+  folders: Iterable<FolderPlaintextV2> | ReadonlyMap<string, FolderPlaintextV2>,
+): number {
+  const values = folders instanceof Map ? folders.values() : folders;
+  let count = 0;
+  for (const folder of values) {
+    if (folder.name !== AGENT_REPAIR_PROBE_FOLDER_NAME) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+export async function readWorkspaceFoldersCachedState(
+  userId: string,
+  workspaceId: string,
+): Promise<WorkspaceFolderReplayState | null> {
+  return readCachedState(userId, workspaceId);
+}
+
+export async function writeWorkspaceFoldersCachedState(
+  userId: string,
+  workspaceId: string,
+  state: WorkspaceFolderReplayState,
+): Promise<void> {
+  await writeCachedState(userId, workspaceId, state);
+}
+
+/**
+ * Copy peer-origin plaintext folder caches (e.g. web IndexedDB rows read by the
+ * extension) into this origin's cache so refresh() can reseal mixed-key streams
+ * without requiring the user to manually open web first.
+ */
+export async function importPeerWorkspaceFoldersCaches(input: {
+  userId: string;
+  rows: readonly WorkspaceFoldersCachedStateDto[];
+}): Promise<{ importedWorkspaceIds: string[] }> {
+  const prefix = `okkey.workspace-personal-sync.v1.u.${input.userId}.w.`;
+  const importedWorkspaceIds: string[] = [];
+  for (const row of input.rows) {
+    if (!row?.key?.startsWith(prefix)) {
+      continue;
+    }
+    const workspaceId = row.key.slice(prefix.length).trim();
+    if (!workspaceId) {
+      continue;
+    }
+    const peerFolders = new Map(row.folders ?? []);
+    const peerReal = countRealFolders(peerFolders);
+    if (peerReal <= 0) {
+      continue;
+    }
+    const local = await readCachedState(input.userId, workspaceId);
+    const localReal = local ? countRealFolders(local.folders) : 0;
+    if (
+      !shouldImportPeerFolderCache({
+        localRealFolderCount: localReal,
+        peerRealFolderCount: peerReal,
+      })
+    ) {
+      continue;
+    }
+    await writeCachedState(input.userId, workspaceId, {
+      folders: peerFolders,
+      itemFolder: new Map(row.itemFolder ?? []),
+      itemFavorite: new Set(row.itemFavorite ?? []),
+      lastAppliedVersion: Math.max(0, Number(row.lastAppliedVersion) || 0),
+    });
+    importedWorkspaceIds.push(workspaceId);
+  }
+  return { importedWorkspaceIds };
+}
 
 export type WorkspaceFoldersSyncController = {
   refresh: () => Promise<WorkspaceFolderReplayState>;
@@ -787,8 +871,8 @@ export function replayStateToFlatFolders(state: WorkspaceFolderReplayState) {
 
 /**
  * Best-effort refresh/reseal of personal folder caches for many workspaces.
- * Used after unlock so a mixed-key stream in a non-active workspace is healed
- * from that origin's IndexedDB plaintext (web) before the extension switches to it.
+ * Used after unlock so a mixed-key stream is healed from this origin's IndexedDB
+ * plaintext (and after extension peer-import from web) before workspace switch.
  */
 export async function refreshWorkspaceFoldersCachesForIds(input: {
   core: CoreClient;
@@ -809,8 +893,12 @@ export async function refreshWorkspaceFoldersCachesForIds(input: {
     });
     try {
       await controller.refresh();
-    } catch {
-      // Peer streams / empty caches may fail decrypt until a cache-bearing origin reseals.
+    } catch (err) {
+      // Empty peer caches may still fail AEAD until plaintext is imported + resealed.
+      console.warn("[okkey] workspace folder cache refresh failed", {
+        workspaceId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       controller.dispose();
     }

@@ -241,9 +241,9 @@ export default function WorkspaceRoutesLayout() {
   }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
 
   // Heal mixed-key personal-events on every workspace that has a local folder
-  // cache (not only the active one). Extension has a separate IndexedDB origin
-  // and can only decrypt post-reseal ciphertexts — without this, switching to a
-  // second workspace shows empty folders while web still shows IndexedDB plaintext.
+  // cache (not only the active one). Extension has a separate IndexedDB origin;
+  // it imports web plaintext via scripting when needed, then reseals under the
+  // current key so workspace switch matches web without a manual web-first step.
   const workspaceIdsKey = workspaceList.map((workspace) => workspace.id).join("\0");
   useEffect(() => {
     if (!core || !userId || !vaultUnlocked || !passwordShareC || !workspaceIdsKey) {

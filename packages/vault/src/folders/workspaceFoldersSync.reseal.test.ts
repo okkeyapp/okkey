@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parsePersonalEventsVersionMismatch } from "./personalEventsVersionMismatch.ts";
-import { shouldResealLocalFoldersForStreamKey } from "./shouldResealLocalFoldersForStreamKey.ts";
+import {
+  shouldImportPeerFolderCache,
+  shouldResealLocalFoldersForStreamKey,
+} from "./shouldResealLocalFoldersForStreamKey.ts";
 
 describe("parsePersonalEventsVersionMismatch", () => {
   it("parses ApiRequestError-shaped VERSION_MISMATCH body", () => {
@@ -115,6 +118,55 @@ describe("shouldResealLocalFoldersForStreamKey", () => {
         tipVersion: 10,
         folderDecryptFail: 0,
         localMissingOnStream: false,
+      }),
+      false,
+    );
+  });
+});
+
+describe("shouldImportPeerFolderCache", () => {
+  it("imports when extension cache is empty and web peer has real folders", () => {
+    assert.equal(
+      shouldImportPeerFolderCache({
+        localRealFolderCount: 0,
+        peerRealFolderCount: 2,
+      }),
+      true,
+    );
+  });
+
+  it("imports when peer has more real folders than local probe-only cache", () => {
+    assert.equal(
+      shouldImportPeerFolderCache({
+        localRealFolderCount: 0,
+        peerRealFolderCount: 1,
+      }),
+      true,
+    );
+  });
+
+  it("does not import when local already matches or exceeds peer", () => {
+    assert.equal(
+      shouldImportPeerFolderCache({
+        localRealFolderCount: 2,
+        peerRealFolderCount: 2,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldImportPeerFolderCache({
+        localRealFolderCount: 3,
+        peerRealFolderCount: 2,
+      }),
+      false,
+    );
+  });
+
+  it("does not import empty peer", () => {
+    assert.equal(
+      shouldImportPeerFolderCache({
+        localRealFolderCount: 0,
+        peerRealFolderCount: 0,
       }),
       false,
     );

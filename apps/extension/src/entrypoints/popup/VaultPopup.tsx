@@ -16,6 +16,7 @@ import {
   type ExtensionItemListRecord,
   type WorkspaceFolderNode,
 } from "@okkey/vault";
+import { seedExtensionFolderCachesFromWebPeer } from "../../lib/folderCachePeerImport";
 import {
   Button,
   DropdownMenuItem,
@@ -376,18 +377,28 @@ export function VaultPopup(props: VaultPopupProps) {
       await writeStoredCurrentWorkspaceId(userId, next);
     }
 
-    // Background: reseal/pull folder caches for every workspace that already has
-    // local IndexedDB plaintext. Current workspace still loads via loadFolders;
-    // siblings heal mixed-key streams so a later switch matches web.
+    // Import web plaintext folder caches (separate IndexedDB origin), then
+    // reseal/pull every workspace so mixed-key streams heal without a manual
+    // "open web → reseal" step. Current workspace still loads via loadFolders.
     const shareCRaw = secrets.passwordShareC;
     if (shareCRaw && shareCRaw.byteLength === 32 && list.length > 0) {
       const shareC = new Uint8Array(shareCRaw);
-      void refreshWorkspaceFoldersCachesForIds({
-        core,
-        userId,
-        passwordShareC: shareC,
-        workspaceIds: list.map((workspace) => workspace.id),
-      }).catch(() => undefined);
+      void (async () => {
+        try {
+          const peer = await seedExtensionFolderCachesFromWebPeer({ userId });
+          if (peer.importedWorkspaceIds.length > 0) {
+            console.info("[extension] seeded folder caches from web peer", peer);
+          }
+        } catch (err) {
+          console.warn("[extension] folder peer seed failed", err);
+        }
+        await refreshWorkspaceFoldersCachesForIds({
+          core,
+          userId,
+          passwordShareC: shareC,
+          workspaceIds: list.map((workspace) => workspace.id),
+        });
+      })().catch(() => undefined);
     }
   }, [core, secrets.passwordShareC, userId]);
 
@@ -469,6 +480,27 @@ export function VaultPopup(props: VaultPopupProps) {
         return;
       }
 
+      // Before refresh: pull web-origin plaintext so mixed-key streams can reseal
+      // from data available to the extension (no manual "open web first").
+      let peerSeed: Awaited<ReturnType<typeof seedExtensionFolderCachesFromWebPeer>> | null =
+        null;
+      try {
+        peerSeed = await seedExtensionFolderCachesFromWebPeer({ userId, workspaceId: wsId });
+        if (gen !== foldersLoadGenRef.current) {
+          return;
+        }
+        if (peerSeed.importedWorkspaceIds.length > 0) {
+          writeDebug({
+            phase: "peer_seeded",
+            ...peerSeed,
+            passwordShareCBytes: shareC.byteLength,
+            shareCAllZero,
+          });
+        }
+      } catch (err) {
+        console.warn("[extension] folder peer seed before refresh failed", err);
+      }
+
       const controller = createWorkspaceFoldersSyncController({
         core,
         userId,
@@ -490,6 +522,7 @@ export function VaultPopup(props: VaultPopupProps) {
           itemFolderCount: st.itemFolder.size,
           favoriteCount: st.itemFavorite.size,
           lastAppliedVersion: st.lastAppliedVersion,
+          peerSeed,
           ...diag,
         });
         writeDebug({
@@ -498,6 +531,7 @@ export function VaultPopup(props: VaultPopupProps) {
           itemFolderCount: st.itemFolder.size,
           favoriteCount: st.itemFavorite.size,
           lastAppliedVersion: st.lastAppliedVersion,
+          peerSeed,
           needsPeerReseal:
             tree.length === 0 &&
             typeof diag?.probeFolderDecryptFail === "number" &&
@@ -515,11 +549,13 @@ export function VaultPopup(props: VaultPopupProps) {
         console.error("[extension] folder sync failed", {
           workspaceId: wsId,
           err,
+          peerSeed,
           ...diag,
         });
         writeDebug({
           phase: "failed",
           error: err instanceof Error ? err.message : String(err),
+          peerSeed,
           ...diag,
           folderCount: controller.toFolderTree().length,
         });

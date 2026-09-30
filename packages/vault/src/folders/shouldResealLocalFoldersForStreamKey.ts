@@ -21,3 +21,14 @@ export function shouldResealLocalFoldersForStreamKey(input: {
   }
   return input.folderDecryptFail > 0 && input.localMissingOnStream;
 }
+
+/**
+ * Prefer peer-origin plaintext (e.g. web IndexedDB read by the extension) when
+ * the local cache is empty/probe-only and the peer still has real folders.
+ */
+export function shouldImportPeerFolderCache(input: {
+  localRealFolderCount: number;
+  peerRealFolderCount: number;
+}): boolean {
+  return input.peerRealFolderCount > 0 && input.peerRealFolderCount > input.localRealFolderCount;
+}

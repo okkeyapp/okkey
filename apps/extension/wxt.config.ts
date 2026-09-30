@@ -32,7 +32,9 @@ export default defineConfig({
         128: "icon-128.png",
       },
     },
-    permissions: ["storage", "tabs", "idle"],
+    // scripting: read web-origin folder IndexedDB so extension can reseal mixed-key
+    // personal-events without a manual "open web first" step.
+    permissions: ["storage", "tabs", "idle", "scripting"],
     // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
     content_security_policy: {
       // blob: required for decrypted favicon / workspace-logo object URLs in <img>.
