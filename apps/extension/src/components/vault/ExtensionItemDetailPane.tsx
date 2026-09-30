@@ -3,7 +3,9 @@ import {
   ItemsDetailPanelEmptyStateFill,
   ItemDetailActionsBar,
   ScrollArea,
+  type KeyFieldFileValue,
 } from "@okkey/ui";
+import { downloadKeyFieldFileAttachment } from "@okkey/vault";
 import {
   ItemActivitySection,
   ItemDetailSavePath,
@@ -17,8 +19,10 @@ import {
   useItemFaviconAttachmentUrl,
   type KeyFormEditorMessages,
 } from "@okkey/vault-ui";
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { WebLocale } from "@okkey/i18n";
+
+import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 
 type ExtensionItemDetailPaneProps = {
   item: ItemPlaintextV2;
@@ -42,7 +46,7 @@ type ExtensionItemDetailPaneProps = {
  * Extension detail pane — same composition as web ItemDetailCard:
  * ItemDetailActionsBar (no back) + favicon/title + full KeyFormEditor view mode
  * + save-path trail + activity footer.
- * Mutations deep-link to web.
+ * Mutations deep-link to web; file fields open via local decrypt → blob URL.
  */
 export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
@@ -62,6 +66,9 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     onOpenInWeb,
     t,
   } = props;
+
+  const detailScrollRef = useRef<HTMLDivElement>(null);
+  const headerScrolled = useRadixScrollAreaScrolled(detailScrollRef);
 
   const archived = item.archived ?? false;
   const deleted = item.deleted ?? false;
@@ -105,6 +112,23 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     [actorLabel, item.createdAtMs, item.itemId, item.updatedAtMs],
   );
 
+  const handleFileOpen = useCallback(
+    async (file: KeyFieldFileValue) => {
+      if (!vaultKey) {
+        throw new Error("VAULT_KEY_REQUIRED");
+      }
+      return downloadKeyFieldFileAttachment({
+        apiBaseUrl,
+        accessToken,
+        vaultId: item.vaultId,
+        itemId: item.itemId,
+        vaultKey,
+        file,
+      });
+    },
+    [accessToken, apiBaseUrl, item.itemId, item.vaultId, vaultKey],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemDetailActionsBar
@@ -112,6 +136,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         favorite={false}
         archived={archived}
         deleted={deleted}
+        headerScrolled={headerScrolled}
         showBack={false}
         onEdit={onEdit}
         onToggleFavorite={onFavoriteInWeb}
@@ -127,7 +152,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         onOpenInWeb={onOpenInWeb}
       />
 
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea ref={detailScrollRef} className="min-h-0 flex-1">
         <div className="mx-auto w-full max-w-[600px] flex-1 px-4 py-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
@@ -151,7 +176,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               initialSections={formSections}
               fieldTypes={keyFormFieldTypes}
               messages={messagesWithCopy}
-              onFileActivate={() => onOpenInWeb()}
+              onFileOpen={handleFileOpen}
             />
 
             <ItemDetailSavePath vault={vault} folderLabel={folderLabel} />

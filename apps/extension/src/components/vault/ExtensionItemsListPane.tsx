@@ -34,6 +34,8 @@ import {
 } from "@okkey/vault-ui";
 import { useMemo, useRef } from "react";
 
+import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
+
 export type ExtensionListFilter = ItemsListCoreFilter;
 
 export type ExtensionListSort = ItemsListSortValue;
@@ -107,6 +109,12 @@ function ExtensionListRowFavicon(props: {
   );
 }
 
+const listHeaderShadowClassName = (scrolled: boolean) =>
+  cn(
+    "relative z-10 shrink-0 border-b border-border bg-background p-2 transition-shadow",
+    scrolled && "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+  );
+
 export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
   const {
     records,
@@ -139,6 +147,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     t,
   } = props;
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const listHeaderScrolled = useRadixScrollAreaScrolled(scrollAreaRef);
 
   const tagNeedle = useMemo(() => parseTagSearchNeedle(searchQuery), [searchQuery]);
   const tagScopeLabel = tagNeedle;
@@ -171,7 +180,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-border p-2">
+      <div className={listHeaderShadowClassName(listHeaderScrolled)}>
         <div className="flex w-full items-center gap-2">
           <ItemsListFilterDropdown
             t={t}
@@ -270,7 +279,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
           <div className="flex flex-col gap-0 px-2 py-2">
             {visibleSections.map((section) => (
               <div key={section.key} className="flex flex-col">
-                <SidebarGroupLabel className="sticky top-0 z-[1] bg-background px-3 py-1.5">
+                <SidebarGroupLabel className="bg-background px-3 py-1.5">
                   {section.label}
                 </SidebarGroupLabel>
                 <ul className="flex flex-col gap-0" role="list">
