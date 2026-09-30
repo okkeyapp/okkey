@@ -263,7 +263,7 @@
   "web.settingsPopup.recovery.error.vaultLocked": "Разблокируйте хранилище, чтобы управлять ключом восстановления.",
   "web.settingsPopup.deviceSettings.label": "Настройки устройства",
   "web.settingsPopup.deviceSettings.title": "Настройки устройства",
-  "web.settingsPopup.deviceSettings.description": "Эти настройки действуют только на этом устройстве и не синхронизируются с другими.",
+  "web.settingsPopup.deviceSettings.description": "Эти параметры применяются только к текущему браузеру на этом устройстве и не переносятся на другие устройства при входе в аккаунт.",
   "web.settingsPopup.deviceSettings.personalization": "Персонализация",
   "web.settingsPopup.deviceSettings.security": "Безопасность",
   "web.settingsPopup.deviceSettings.unlock": "Разблокировка",

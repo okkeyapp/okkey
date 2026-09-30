@@ -322,7 +322,11 @@ function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar"
           const active = isActiveMenuItem(menu, item);
           const content = (
             <>
-              {item.icon ? <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span> : null}
+              {item.icon ? (
+                <span className="flex size-4 shrink-0 items-center justify-center overflow-visible">
+                  {item.icon}
+                </span>
+              ) : null}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
             </>
           );

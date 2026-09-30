@@ -4,7 +4,7 @@ import type { SVGProps } from "react";
  * Monitor + gear (16×16). Stroke uses currentColor — never hard-coded black.
  * Shared by SettingsPopup menu and sidebar account dropdown.
  */
-export default function DeviceSettingsIcon(props: SVGProps<SVGSVGElement>) {
+export default function DeviceSettingsIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       width={16}
@@ -14,32 +14,75 @@ export default function DeviceSettingsIcon(props: SVGProps<SVGSVGElement>) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
       {...props}
+      overflow="visible"
+      className={className}
     >
       <path
-        d="M1.5 2.83333C1.5 2.55619 1.72486 2.33333 2.002 2.33333H9.66467C9.94181 2.33333 10.1667 2.55619 10.1667 2.83333V8.16667C10.1667 8.44381 9.94181 8.66667 9.66467 8.66667H6.5"
+        d="M8 11.3333H2.66667C2.48986 11.3333 2.32029 11.2631 2.19526 11.1381C2.07024 11.013 2 10.8435 2 10.6667V2.66667C2 2.48986 2.07024 2.32029 2.19526 2.19526C2.32029 2.07024 2.48986 2 2.66667 2H13.3333C13.5101 2 13.6797 2.07024 13.8047 2.19526C13.9298 2.32029 14 2.48986 14 2.66667V8"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M4 12.6667H7"
+        d="M2 8.6665H10.6667"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M5.5 8.66667V12.6667"
+        d="M5.33337 14H8.00004"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M12.5 9.16667V9.5M12.5 14.5V14.8333M10.1667 12V12M14.8333 12V12M10.8452 10.3452L11.0833 10.5833M13.9167 13.4167L14.1548 13.6548M14.1548 10.3452L13.9167 10.5833M11.0833 13.4167L10.8452 13.6548"
+        d="M6.66671 11.3335L6.33337 14.0002"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="12.5" cy="12" r="1.5" stroke="currentColor" />
+      <path
+        d="M11.334 12.6668C11.334 13.0205 11.4745 13.3596 11.7245 13.6096C11.9746 13.8597 12.3137 14.0002 12.6673 14.0002C13.0209 14.0002 13.3601 13.8597 13.6101 13.6096C13.8602 13.3596 14.0007 13.0205 14.0007 12.6668C14.0007 12.3132 13.8602 11.9741 13.6101 11.724C13.3601 11.474 13.0209 11.3335 12.6673 11.3335C12.3137 11.3335 11.9746 11.474 11.7245 11.724C11.4745 11.9741 11.334 12.3132 11.334 12.6668Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12.6674 10.3335V11.3335"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12.6674 14V15"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14.688 11.5L13.822 12"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11.5133 13.3335L10.6466 13.8335"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.6466 11.5L11.5133 12"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.822 13.3335L14.6887 13.8335"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
