@@ -18,21 +18,32 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import SettingsDevicesContent from "./SettingsDevicesContent";
+import SettingsDeviceSettingsContent from "./SettingsDeviceSettingsContent";
 import SettingsGeneralContent from "./SettingsGeneralContent";
 import SettingsLoginContent from "./SettingsLoginContent";
 import SettingsRecoveryContent from "./SettingsRecoveryContent";
 import SettingsTwoFactorContent from "./SettingsTwoFactorContent";
 import SettingsVaultContent from "./SettingsVaultContent";
+import DeviceSettingsIcon from "./DeviceSettingsIcon";
 import { clearSettingsPopupCache, prefetchSettingsPopupCache } from "./settingsPopupCache";
 
-export type SettingsPopupItemId = "main" | "vault" | "login" | "twoFactor" | "recovery" | "devices";
+export type SettingsPopupItemId =
+  | "main"
+  | "vault"
+  | "login"
+  | "twoFactor"
+  | "recovery"
+  | "devices"
+  | "deviceSettings";
 
 const DEFAULT_SETTINGS_POPUP_ITEM_ID: SettingsPopupItemId = "main";
 
 type SettingsPopupProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   workspaceIds?: string[];
-  children: (controls: { openSettingsPopup: () => void }) => ReactNode;
+  children: (controls: {
+    openSettingsPopup: (menuItemId?: SettingsPopupItemId) => void;
+  }) => ReactNode;
 };
 
 function SettingsIcon(props: SVGProps<SVGSVGElement>) {
@@ -152,7 +163,9 @@ function DevicesIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function isSettingsPopupItemId(itemId: string): itemId is SettingsPopupItemId {
-  return ["main", "vault", "login", "twoFactor", "recovery", "devices"].includes(itemId);
+  return ["main", "vault", "login", "twoFactor", "recovery", "devices", "deviceSettings"].includes(
+    itemId,
+  );
 }
 
 export default function SettingsPopup({ t, workspaceIds = [], children }: SettingsPopupProps) {
@@ -203,8 +216,8 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     );
   }, [open, activePopup?.menuItemId, location.pathname, location.search, location.hash, navigate]);
 
-  function openSettingsPopup() {
-    setPopupQuery(SETTINGS_POPUP_ID, DEFAULT_SETTINGS_POPUP_ITEM_ID);
+  function openSettingsPopup(menuItemId: SettingsPopupItemId = DEFAULT_SETTINGS_POPUP_ITEM_ID) {
+    setPopupQuery(SETTINGS_POPUP_ID, menuItemId);
   }
 
   function closePopup() {
@@ -258,6 +271,12 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     { id: "twoFactor", label: t("web.settingsPopup.twoFactor.label"), icon: <TwoFactorIcon className="size-4" /> },
     { id: "recovery", label: t("web.settingsPopup.recovery.label"), icon: <RecoveryIcon className="size-4" /> },
     { id: "devices", label: t("web.settingsPopup.devices.label"), icon: <DevicesIcon className="size-4" /> },
+    { id: "devices-deviceSettings-sep", separator: true as const },
+    {
+      id: "deviceSettings",
+      label: t("web.settingsPopup.deviceSettings.label"),
+      icon: <DeviceSettingsIcon className="size-4" />,
+    },
   ];
   const headingByItemId: Record<SettingsPopupItemId, string> = {
     main: t("web.settingsPopup.main.title"),
@@ -266,6 +285,7 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     twoFactor: t("web.settingsPopup.twoFactor.title"),
     recovery: t("web.settingsPopup.recovery.title"),
     devices: t("web.settingsPopup.devices.title"),
+    deviceSettings: t("web.settingsPopup.deviceSettings.title"),
   };
   const heading = headingByItemId[activeItemId] ?? headingByItemId[DEFAULT_SETTINGS_POPUP_ITEM_ID];
   const menu: PopupMenu = {
@@ -273,6 +293,9 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
     activeItemId,
     items: menuItems,
     onItemSelect: (item) => {
+      if (item.separator) {
+        return;
+      }
       if (isSettingsPopupItemId(item.id)) {
         setPopupQuery(SETTINGS_POPUP_ID, item.id);
       }
@@ -301,6 +324,8 @@ export default function SettingsPopup({ t, workspaceIds = [], children }: Settin
             <SettingsTwoFactorContent t={t} />
           ) : activeItemId === "devices" ? (
             <SettingsDevicesContent t={t} />
+          ) : activeItemId === "deviceSettings" ? (
+            <SettingsDeviceSettingsContent t={t} />
           ) : activeItemId === "recovery" ? (
             <SettingsRecoveryContent t={t} />
           ) : (

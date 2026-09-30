@@ -15,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
@@ -158,11 +159,13 @@ function PopupMobileSheetHandle({
 
 export type PopupMenuItem = {
   id: string;
-  label: React.ReactNode;
+  label?: React.ReactNode;
   icon?: React.ReactNode;
   active?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
+  /** When true, renders a visual separator; label/icon/onSelect are ignored. */
+  separator?: boolean;
 };
 
 export type PopupMenu = {
@@ -302,6 +305,20 @@ function PopupMenuItems({ menu, surface }: { menu: PopupMenu; surface: "sidebar"
       ) : null}
       <div className="flex min-w-0 flex-col gap-1">
         {menu.items.map((item) => {
+          if (item.separator) {
+            if (surface === "dropdown") {
+              return <DropdownMenuSeparator key={item.id} className="my-1" />;
+            }
+            return (
+              <div
+                key={item.id}
+                role="separator"
+                className="my-1 h-px shrink-0 bg-sidebar-border"
+                aria-hidden
+              />
+            );
+          }
+
           const active = isActiveMenuItem(menu, item);
           const content = (
             <>

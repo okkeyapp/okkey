@@ -179,7 +179,9 @@ test("vault factors: thresholds for idle / clipboard / MP age / deletion / bio|p
   assert.equal(bad.factorPoints.vaultBiometricOrPin, 0);
   // Six vault gaps (weight 5 each) → only top 4 CTAs shown; score still reflects all zeros.
   assert.equal(bad.recommendations.length, ACCOUNT_SECURITY_MAX_RECOMMENDATIONS);
-  assert.ok(bad.recommendations.every((r) => r.target === "vault"));
+  assert.ok(
+    bad.recommendations.every((r) => r.target === "vault" || r.target === "deviceSettings"),
+  );
   assert.ok(bad.score < 100);
 
   const clipboardNever = computeAccountSecurityScore(
