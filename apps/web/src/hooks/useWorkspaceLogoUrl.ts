@@ -1,14 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useWorkspaceLogoUrl as useWorkspaceLogoUrlWithBaseUrl } from "@okkey/vault-ui";
 
-import { downloadKeyFieldFileAttachment } from "../api/key-field-files";
+import { getApiBaseUrl } from "../api/client";
 
-const logoUrlCache = new Map<string, string>();
-const pendingLogoUrlCache = new Map<string, Promise<string>>();
-
-function cacheKey(input: { vaultId: string; workspaceId: string; attachmentId: string }): string {
-  return `${input.vaultId}:${input.workspaceId}:${input.attachmentId}`;
-}
-
+/** Thin wrapper over `@okkey/vault-ui`'s hook, injecting the web app's resolved API base URL. */
 export function useWorkspaceLogoUrl(input: {
   accessToken: string | null;
   vaultKey: Uint8Array | null;
@@ -17,82 +11,5 @@ export function useWorkspaceLogoUrl(input: {
   workspaceId: string;
   enabled: boolean;
 }): { imageSrc: string | undefined; loading: boolean } {
-  const key = useMemo(() => {
-    if (!input.vaultId || !input.attachmentId || !input.workspaceId) {
-      return null;
-    }
-    return cacheKey({ vaultId: input.vaultId, workspaceId: input.workspaceId, attachmentId: input.attachmentId });
-  }, [input.attachmentId, input.vaultId, input.workspaceId]);
-
-  const [imageSrc, setImageSrc] = useState<string | undefined>(() => (key ? logoUrlCache.get(key) : undefined));
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setImageSrc(key ? logoUrlCache.get(key) : undefined);
-  }, [key]);
-
-  useEffect(() => {
-    if (
-      !input.enabled ||
-      !key ||
-      !input.accessToken ||
-      !input.vaultKey ||
-      !input.vaultId ||
-      !input.attachmentId ||
-      logoUrlCache.has(key)
-    ) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-
-    const pending =
-      pendingLogoUrlCache.get(key) ??
-      downloadKeyFieldFileAttachment({
-        accessToken: input.accessToken,
-        vaultId: input.vaultId,
-        itemId: input.workspaceId,
-        vaultKey: input.vaultKey,
-        file: {
-          attachmentId: input.attachmentId,
-          name: "workspace-logo",
-          mimeType: "image/png",
-          sizeBytes: 0,
-        },
-      }).then((url) => {
-        logoUrlCache.set(key, url);
-        pendingLogoUrlCache.delete(key);
-        return url;
-      });
-
-    pendingLogoUrlCache.set(key, pending);
-    pending
-      .then((url) => {
-        if (!cancelled) {
-          setImageSrc(url);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    input.accessToken,
-    input.attachmentId,
-    input.enabled,
-    input.vaultId,
-    input.vaultKey,
-    input.workspaceId,
-    key,
-  ]);
-
-  return { imageSrc, loading };
+  return useWorkspaceLogoUrlWithBaseUrl({ apiBaseUrl: getApiBaseUrl(), ...input });
 }

@@ -1,6 +1,7 @@
 import type { ItemFaviconSource, ItemPlaintextV2 } from "@okkey/types";
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 import type { KeyFieldFileValue } from "@okkey/ui";
+import { keyFieldFileValueFromFaviconId as faviconAttachmentValue } from "@okkey/vault";
 
 import { downloadKeyFieldFileAttachmentBytes, uploadEncryptedAttachment } from "../api/key-field-files";
 import { previewItemFavicon } from "../api/item-favicons";
@@ -39,15 +40,6 @@ export type SyncItemFaviconResult = {
   item: ItemPlaintextV2;
   uploadedFavicon?: KeyFieldFileValue;
 };
-
-function faviconAttachmentValue(faviconId: string): KeyFieldFileValue {
-  return {
-    attachmentId: faviconId,
-    name: FAVICON_ATTACHMENT_NAME,
-    mimeType: FAVICON_ATTACHMENT_MIME_TYPE,
-    sizeBytes: 0,
-  };
-}
 
 async function uploadFaviconAttachment(input: {
   accessToken: string;
@@ -146,6 +138,4 @@ export async function syncItemFaviconForPlaintext(
   };
 }
 
-export function keyFieldFileValueFromFaviconId(faviconId: string): KeyFieldFileValue {
-  return faviconAttachmentValue(faviconId);
-}
+export { keyFieldFileValueFromFaviconId } from "@okkey/vault";
