@@ -262,8 +262,8 @@ export default function AccountRestorePage() {
       );
 
       // Recovery restore has vaultKey but not old passwordShareC, so migratePersonalFolders
-      // cannot decrypt the personal-event stream. Refresh each workspace so any local
-      // IndexedDB folder cache is re-sealed under the new C (see workspaceFoldersSync).
+      // cannot decrypt the personal-event stream. Rematerialize each workspace from
+      // personal-events under the new C (API-first; no local-IDB reseal on this path).
       try {
         const workspaces = await core.listWorkspaces();
         for (const workspace of workspaces) {
@@ -280,7 +280,7 @@ export default function AccountRestorePage() {
           }
         }
       } catch {
-        // Best-effort: unlock must still succeed if folder reseal fails.
+        // Best-effort: unlock must still succeed if folder rematerialize fails.
       }
 
       if (freshBrowser || mintedFreshShare) {
