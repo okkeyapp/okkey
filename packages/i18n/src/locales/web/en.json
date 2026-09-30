@@ -1679,5 +1679,14 @@
   "extension.vault.copyGuardConfirm": "Copy",
   "extension.vault.changeServer": "Change server",
   "extension.vault.createRecord": "Create item",
-  "extension.vault.openInWeb": "Open in web"
+  "extension.vault.openInWeb": "Open in web",
+  "extension.authCallback.documentTitle": "Okkey extension — Session ready",
+  "extension.authCallback.title": "Okkey extension",
+  "extension.authCallback.completing": "Completing sign-in…",
+  "extension.authCallback.signedIn": "Signed in. You can close this tab and open the Okkey extension popup.",
+  "extension.authCallback.sessionReady": "Session ready",
+  "extension.authCallback.signInFailed": "Sign-in failed",
+  "extension.authCallback.errorMissingCode": "Missing code or state in callback URL.",
+  "extension.authCallback.errorNoPending": "No pending sign-in in this extension. Start again from the popup.",
+  "extension.authCallback.errorStateMismatch": "State mismatch — possible CSRF. Start sign-in again."
 }

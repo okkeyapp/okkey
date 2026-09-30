@@ -51,6 +51,10 @@ import {
 } from "../../lib/extensionUnlock";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
 import {
+  readStoredExtensionLocale,
+  writeStoredExtensionLocale,
+} from "../../lib/locale";
+import {
   clearExtensionUnlockSession,
   DEFAULT_VAULT_IDLE_LOCK_MS,
   extensionUnlockSessionExceededIdle,
@@ -105,20 +109,6 @@ type AccountIdentity = {
   lastName: string;
 };
 
-const LOCALE_STORAGE_KEY = "okkey.extension.locale";
-
-function readStoredLocale(): WebLocale {
-  try {
-    const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (raw && (WEB_LOCALES as string[]).includes(raw)) {
-      return raw as WebLocale;
-    }
-  } catch {
-    // ignore
-  }
-  return "ru";
-}
-
 function formatAbsoluteDate(iso: string, locale: WebLocale): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
@@ -150,7 +140,7 @@ function ServerUrlHelpIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export function PopupApp() {
   const [screen, setScreen] = useState<Screen>("loading");
-  const [locale, setLocale] = useState<WebLocale>(() => readStoredLocale());
+  const [locale, setLocale] = useState<WebLocale>(() => readStoredExtensionLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
@@ -175,11 +165,7 @@ export function PopupApp() {
 
   const onLocaleChange = (next: WebLocale) => {
     setLocale(next);
-    try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, next);
-    } catch {
-      // ignore
-    }
+    writeStoredExtensionLocale(next);
   };
 
   const languageSelect = (
