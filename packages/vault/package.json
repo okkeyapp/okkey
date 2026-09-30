@@ -17,10 +17,11 @@
     "@okkey/api": "0.0.1",
     "@okkey/crypto": "0.0.1",
     "@okkey/sync": "0.0.1",
-    "@okkey/types": "file:../types"
+    "@okkey/types": "file:../types",
+    "@okkey/ui": "0.0.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types --test src/*.test.ts"
+    "test": "node --experimental-strip-types --test src/*.test.ts src/**/*.test.ts"
   }
 }

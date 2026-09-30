@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 
 import type { FolderPlaintextV2 } from "@okkey/types";
 
@@ -6,8 +7,8 @@ import {
   diffWorkspaceFolderTrees,
   rowsToWorkspaceTree,
   workspaceTreeToRowMap,
-} from "./folderTreeCommit";
-import type { WorkspaceFolderNode } from "./workspaceFolderTree";
+} from "./folderTreeCommit.ts";
+import type { WorkspaceFolderNode } from "./workspaceFolderTree.ts";
 
 function folderRow(
   folderId: string,
@@ -43,7 +44,7 @@ describe("folderTreeCommit", () => {
       ["c", folderRow("c", workspaceId, "Gamma", null, 1)],
     ]);
 
-    expect(rowsToWorkspaceTree(rows).map((node) => node.id)).toEqual(["b", "c", "a"]);
+    assert.deepEqual(rowsToWorkspaceTree(rows).map((node) => node.id), ["b", "c", "a"]);
   });
 
   it("emits updates when only sibling order changes", () => {
@@ -68,10 +69,11 @@ describe("folderTreeCommit", () => {
       nowMs: 2,
     });
 
-    expect(mutations).toHaveLength(3);
-    expect(mutations.every((mutation) => mutation.kind === "update")).toBe(true);
-    expect(
+    assert.equal(mutations.length, 3);
+    assert.equal(mutations.every((mutation) => mutation.kind === "update"), true);
+    assert.deepEqual(
       mutations.map((mutation) => (mutation.kind === "update" ? mutation.folder.sortOrder : -1)),
-    ).toEqual([0, 1, 2]);
+      [0, 1, 2],
+    );
   });
 });

@@ -79,6 +79,41 @@ export {
   type VaultUnlockSessionRecord,
   type VaultUnlockSessionStorage,
 } from "./vault-unlock-session.js";
+export {
+  createWorkspaceFoldersSyncController,
+  replayStateToFlatFolders,
+  type WorkspaceFoldersSyncController,
+} from "./folders/workspaceFoldersSync.js";
+export {
+  NO_FOLDER_VALUE,
+  createWorkspaceFolderAtRoot,
+  findWorkspaceFolderPathById,
+  flattenWorkspaceFolders,
+  folderPathExists,
+  toSidebarFolderTree,
+  workspaceFolderIdExists,
+  type FlatWorkspaceFolder,
+  type WorkspaceFolderNode,
+} from "./folders/workspaceFolderTree.js";
+export {
+  compareFolderSiblingOrder,
+  diffWorkspaceFolderTrees,
+  normalizeWorkspaceFolderTreeForSave,
+  rowsToWorkspaceTree,
+  workspaceTreeToRowMap,
+  type FolderRowSnapshot,
+  type FolderTreeMutation,
+} from "./folders/folderTreeCommit.js";
+export { IndexedDbWorkspacePersonalOutboxStore } from "./folders/workspacePersonalOutboxStore.js";
+export {
+  downloadKeyFieldFileAttachment,
+  downloadKeyFieldFileAttachmentBytes,
+  keyFieldFileAttachmentIsImage,
+  keyFieldFileValueFromFaviconId,
+  type DownloadedKeyFieldFileAttachmentBytes,
+  type DownloadKeyFieldFileAttachmentBytesInput,
+  type DownloadKeyFieldFileAttachmentInput,
+} from "./key-field-file-attachments.js";
 
 export interface VaultStore {
   listVaults(): Promise<Vault[]>;
