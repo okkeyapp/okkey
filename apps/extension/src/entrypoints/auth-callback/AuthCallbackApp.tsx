@@ -16,6 +16,7 @@ import {
 /**
  * Receives `?code=&state=` from web after PKCE login and exchanges for a Bearer session.
  * Full browser tab — AuthShell without `compact` so content is viewport-centered.
+ * Toasts stay in the default (non-centered) corner via Sonner.
  */
 export function AuthCallbackApp() {
   const locale = useMemo(() => readStoredExtensionLocale(), []);
@@ -88,9 +89,10 @@ export function AuthCallbackApp() {
   }, [t]);
 
   return (
-    <div className="relative min-h-screen w-full">
+    <div className="relative flex h-full min-h-dvh w-full flex-col">
       <Toaster />
       <AuthShell
+        className="min-h-full flex-1"
         logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
         title={t("extension.authCallback.title")}
         description={status === "error" ? undefined : message}

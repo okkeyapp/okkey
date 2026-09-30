@@ -385,7 +385,9 @@ export function createWorkspaceFoldersSyncController(input: {
     const resealOrigin = Math.max(serverTipVersion, state.lastAppliedVersion);
     let version = resealOrigin;
     let abortedForPeer = false;
-    const folders = [...state.folders.values()].sort((a, b) => {
+    const folders = [...state.folders.values()]
+      .filter((folder) => folder.name !== AGENT_REPAIR_PROBE_FOLDER_NAME)
+      .sort((a, b) => {
       const aDepth = a.parentFolderId ? 1 : 0;
       const bDepth = b.parentFolderId ? 1 : 0;
       if (aDepth !== bDepth) {
@@ -543,16 +545,21 @@ export function createWorkspaceFoldersSyncController(input: {
     // showing IndexedDB plaintext and extension only materializes the probe.
     // Use server tip for baseVersion — local lastAppliedVersion often lags when
     // undecryptable remote events were skipped during replay.
+    // Ignore agent repair-probes when deciding reseal: resealing probes alone
+    // cannot recover real folders still encrypted under the old key.
     if (state.folders.size > 0) {
       const probe = await probeCurrentKeyAgainstStream();
       probeFolderDecryptFail = probe.folderDecryptFail;
       probeFolderDecryptOk = probe.folderDecryptOk;
-      const localMissingOnStream = [...state.folders.keys()].some(
-        (id) => !probe.decryptableFolderIds.has(id),
+      const realLocalFolders = [...state.folders.entries()].filter(
+        ([, folder]) => folder.name !== AGENT_REPAIR_PROBE_FOLDER_NAME,
+      );
+      const localMissingOnStream = realLocalFolders.some(
+        ([id]) => !probe.decryptableFolderIds.has(id),
       );
       if (
         shouldResealLocalFoldersForStreamKey({
-          localFolderCount: state.folders.size,
+          localFolderCount: realLocalFolders.length,
           decrypts: probe.decrypts,
           tipVersion: probe.tipVersion,
           folderDecryptFail: probe.folderDecryptFail,
@@ -573,6 +580,14 @@ export function createWorkspaceFoldersSyncController(input: {
       if (deletedRepairProbe) {
         await replayIncremental(state.lastAppliedVersion);
       }
+    }
+
+    // Empty after replay: still probe so hosts can distinguish a healthy empty
+    // workspace from mixed-key / needs-peer-reseal (web IndexedDB has plaintext).
+    if (state.folders.size === 0 && probeFolderDecryptFail === 0 && probeFolderDecryptOk === 0) {
+      const probe = await probeCurrentKeyAgainstStream();
+      probeFolderDecryptFail = probe.folderDecryptFail;
+      probeFolderDecryptOk = probe.folderDecryptOk;
     }
 
     lastRefreshDiagnostics = {
@@ -768,4 +783,36 @@ export function createWorkspaceFoldersSyncController(input: {
 
 export function replayStateToFlatFolders(state: WorkspaceFolderReplayState) {
   return flattenWorkspaceFolders(rowsToWorkspaceTree(state.folders));
+}
+
+/**
+ * Best-effort refresh/reseal of personal folder caches for many workspaces.
+ * Used after unlock so a mixed-key stream in a non-active workspace is healed
+ * from that origin's IndexedDB plaintext (web) before the extension switches to it.
+ */
+export async function refreshWorkspaceFoldersCachesForIds(input: {
+  core: CoreClient;
+  userId: string;
+  passwordShareC: Uint8Array;
+  workspaceIds: readonly string[];
+}): Promise<void> {
+  for (const workspaceId of input.workspaceIds) {
+    const id = workspaceId.trim();
+    if (!id) {
+      continue;
+    }
+    const controller = createWorkspaceFoldersSyncController({
+      core: input.core,
+      userId: input.userId,
+      workspaceId: id,
+      passwordShareC: input.passwordShareC,
+    });
+    try {
+      await controller.refresh();
+    } catch {
+      // Peer streams / empty caches may fail decrypt until a cache-bearing origin reseals.
+    } finally {
+      controller.dispose();
+    }
+  }
 }

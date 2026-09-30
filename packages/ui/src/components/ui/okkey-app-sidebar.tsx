@@ -673,6 +673,7 @@ function ProfileAccountDropdownPanel({
   lastName,
   email,
   onSettings,
+  settingsAsProfileHeader = false,
   onLogout,
   onChangeServer,
   language,
@@ -684,6 +685,8 @@ function ProfileAccountDropdownPanel({
   lastName: string;
   email: string;
   onSettings?: () => void;
+  /** Extension only: profile row opens settings in web (external icon). Web keeps a separate settings item. */
+  settingsAsProfileHeader?: boolean;
   onLogout?: () => void;
   onChangeServer?: () => void;
   language?: OkkeyAppSidebarAccountLanguageMenu;
@@ -704,23 +707,40 @@ function ProfileAccountDropdownPanel({
     </>
   );
 
+  const openSettingsViaProfile = Boolean(onSettings && settingsAsProfileHeader);
+  const showSettingsMenuRow = Boolean(onSettings && !settingsAsProfileHeader);
+
   return (
     <>
-      {onSettings ? (
-        <DropdownMenuItem
-          className="cursor-pointer items-center gap-3 rounded-none border-b border-border px-3 py-3 focus:bg-accent data-[highlighted]:bg-accent"
-          aria-label={settingsLabel}
-          onSelect={() => {
-            onSettings();
-          }}
-        >
-          {profileHeader}
-          <OpenSettingsExternalIcon className="text-muted-foreground" />
-        </DropdownMenuItem>
+      {openSettingsViaProfile ? (
+        <div className="p-1">
+          <DropdownMenuItem
+            className="h-auto cursor-pointer items-center gap-3"
+            aria-label={settingsLabel}
+            onSelect={() => {
+              onSettings?.();
+            }}
+          >
+            {profileHeader}
+            <OpenSettingsExternalIcon className="text-muted-foreground" />
+          </DropdownMenuItem>
+        </div>
       ) : (
         <div className="flex gap-3 border-b border-border px-3 py-3">{profileHeader}</div>
       )}
+      {openSettingsViaProfile ? <div className="border-t border-border" role="presentation" /> : null}
       <div className="p-1">
+        {showSettingsMenuRow ? (
+          <DropdownMenuItem
+            className="cursor-pointer gap-2"
+            onSelect={() => {
+              onSettings?.();
+            }}
+          >
+            <NavSettingsIcon />
+            <span>{settingsLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
         {language ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer gap-2 [&>svg:last-child]:ml-auto">
@@ -956,8 +976,13 @@ export type OkkeyAppSidebarAccountMenu = {
   settingsLabel?: string;
   logoutLabel?: string;
   changeServerLabel?: string;
-  /** When set, the profile header becomes a button (opens settings / web). No separate settings menu row. */
+  /** When omitted, the settings row is hidden (e.g. extension without deep-link). */
   onSettings?: () => void;
+  /**
+   * Extension only: make the profile header the settings control (external icon).
+   * Web must leave this false/undefined so the classic settings menu row stays.
+   */
+  settingsAsProfileHeader?: boolean;
   onLogout: () => void;
   /** Optional row below logout (e.g. extension “Change server”). */
   onChangeServer?: () => void;
@@ -975,6 +1000,7 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
       logoutLabel: accountMenu.logoutLabel,
       changeServerLabel: accountMenu.changeServerLabel,
       onSettings: accountMenu.onSettings,
+      settingsAsProfileHeader: accountMenu.settingsAsProfileHeader,
       onLogout: accountMenu.onLogout,
       onChangeServer: accountMenu.onChangeServer,
       language: accountMenu.language,
@@ -988,6 +1014,7 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
     logoutLabel: undefined,
     changeServerLabel: undefined,
     onSettings: undefined as (() => void) | undefined,
+    settingsAsProfileHeader: undefined as boolean | undefined,
     onLogout: undefined as (() => void) | undefined,
     onChangeServer: undefined as (() => void) | undefined,
     language: undefined as OkkeyAppSidebarAccountLanguageMenu | undefined,
@@ -1690,6 +1717,7 @@ function OkkeyAppSidebarInner({
               logoutLabel={footerAccount.logoutLabel}
               changeServerLabel={footerAccount.changeServerLabel}
               onSettings={footerAccount.onSettings}
+              settingsAsProfileHeader={footerAccount.settingsAsProfileHeader}
               onLogout={footerAccount.onLogout}
               onChangeServer={footerAccount.onChangeServer}
               language={footerAccount.language}

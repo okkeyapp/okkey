@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps,
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
+import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
@@ -238,6 +239,38 @@ export default function WorkspaceRoutesLayout() {
       accountVaultKey: vaultKey,
     }).catch(() => undefined);
   }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
+
+  // Heal mixed-key personal-events on every workspace that has a local folder
+  // cache (not only the active one). Extension has a separate IndexedDB origin
+  // and can only decrypt post-reseal ciphertexts — without this, switching to a
+  // second workspace shows empty folders while web still shows IndexedDB plaintext.
+  const workspaceIdsKey = workspaceList.map((workspace) => workspace.id).join("\0");
+  useEffect(() => {
+    if (!core || !userId || !vaultUnlocked || !passwordShareC || !workspaceIdsKey) {
+      return;
+    }
+    let cancelled = false;
+    const shareC = new Uint8Array(passwordShareC);
+    const workspaceIds = workspaceIdsKey.split("\0").filter(Boolean);
+    void (async () => {
+      try {
+        if (cancelled) {
+          return;
+        }
+        await refreshWorkspaceFoldersCachesForIds({
+          core,
+          userId,
+          passwordShareC: shareC,
+          workspaceIds,
+        });
+      } catch {
+        // best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, userId, vaultUnlocked, passwordShareC, workspaceIdsKey]);
 
   const patchWorkspace = useCallback((workspaceId: string, patch: Partial<Workspace>) => {
     setWorkspaceList((previous) =>

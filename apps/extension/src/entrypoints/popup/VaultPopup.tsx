@@ -9,6 +9,7 @@ import {
   findWorkspaceFolderPathById,
   formatTagSearchQuery,
   itemPlaintextToExtensionListRecord,
+  refreshWorkspaceFoldersCachesForIds,
   resolveVaultItemEncryptionKey,
   scoreItemsListRecordSearch,
   toSidebarFolderTree,
@@ -374,7 +375,21 @@ export function VaultPopup(props: VaultPopupProps) {
     if (next) {
       await writeStoredCurrentWorkspaceId(userId, next);
     }
-  }, [core, userId]);
+
+    // Background: reseal/pull folder caches for every workspace that already has
+    // local IndexedDB plaintext. Current workspace still loads via loadFolders;
+    // siblings heal mixed-key streams so a later switch matches web.
+    const shareCRaw = secrets.passwordShareC;
+    if (shareCRaw && shareCRaw.byteLength === 32 && list.length > 0) {
+      const shareC = new Uint8Array(shareCRaw);
+      void refreshWorkspaceFoldersCachesForIds({
+        core,
+        userId,
+        passwordShareC: shareC,
+        workspaceIds: list.map((workspace) => workspace.id),
+      }).catch(() => undefined);
+    }
+  }, [core, secrets.passwordShareC, userId]);
 
   const loadFolders = useCallback(
     async (wsId: string) => {
@@ -483,6 +498,10 @@ export function VaultPopup(props: VaultPopupProps) {
           itemFolderCount: st.itemFolder.size,
           favoriteCount: st.itemFavorite.size,
           lastAppliedVersion: st.lastAppliedVersion,
+          needsPeerReseal:
+            tree.length === 0 &&
+            typeof diag?.probeFolderDecryptFail === "number" &&
+            diag.probeFolderDecryptFail > 0,
           ...diag,
         });
         setFolderNodes(tree);
@@ -959,6 +978,7 @@ export function VaultPopup(props: VaultPopupProps) {
               settingsLabel: t("web.accountMenu.settings"),
               logoutLabel: signOutLabel,
               changeServerLabel: t("web.accountMenu.changeServer"),
+              settingsAsProfileHeader: true,
               onSettings: () => {
                 void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl));
               },

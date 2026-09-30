@@ -66,12 +66,25 @@ describe("shouldResealLocalFoldersForStreamKey", () => {
     );
   });
 
-  it("does not reseal when local folders are already covered by decryptable stream", () => {
-    // Extension cache has only the probe which decrypts — resealing probe alone
-    // cannot recover real folders; wait for a peer with full plaintext cache.
+  it("does not reseal when local real folders are already covered by decryptable stream", () => {
     assert.equal(
       shouldResealLocalFoldersForStreamKey({
         localFolderCount: 1,
+        decrypts: true,
+        tipVersion: 3,
+        folderDecryptFail: 2,
+        localMissingOnStream: false,
+      }),
+      false,
+    );
+  });
+
+  it("does not reseal when callers excluded probe-only cache (localFolderCount 0)", () => {
+    // Extension cache has only extension-repair-probe — resealing cannot recover
+    // real folders; wait for a peer (web) with full plaintext cache.
+    assert.equal(
+      shouldResealLocalFoldersForStreamKey({
+        localFolderCount: 0,
         decrypts: true,
         tipVersion: 3,
         folderDecryptFail: 2,

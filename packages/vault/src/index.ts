@@ -82,6 +82,7 @@ export {
 export {
   createWorkspaceFoldersSyncController,
   parsePersonalEventsVersionMismatch,
+  refreshWorkspaceFoldersCachesForIds,
   replayStateToFlatFolders,
   shouldResealLocalFoldersForStreamKey,
   AGENT_REPAIR_PROBE_FOLDER_NAME,
