@@ -1,5 +1,10 @@
-import { isKeyFieldFileImageMimeType, resolveKeyFieldFileMimeType, type KeyFieldFileValue } from "@okkey/ui";
-import { decryptAttachmentPayload, encryptAttachmentPayload } from "@okkey/crypto";
+import { isKeyFieldFileImageMimeType, type KeyFieldFileValue } from "@okkey/ui";
+import { encryptAttachmentPayload } from "@okkey/crypto";
+import {
+  downloadKeyFieldFileAttachment as downloadKeyFieldFileAttachmentWithBaseUrl,
+  downloadKeyFieldFileAttachmentBytes as downloadKeyFieldFileAttachmentBytesWithBaseUrl,
+  type DownloadedKeyFieldFileAttachmentBytes,
+} from "@okkey/vault";
 
 import { getApiBaseUrl } from "./client";
 
@@ -22,15 +27,6 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
 }
 
 export async function uploadKeyFieldFileAttachment(input: {
@@ -119,6 +115,7 @@ export async function uploadEncryptedAttachment(input: {
   });
 }
 
+/** Thin wrapper over `@okkey/vault`'s download helper, injecting the web app's resolved API base URL. */
 export async function downloadKeyFieldFileAttachment(input: {
   accessToken: string;
   vaultId: string;
@@ -126,11 +123,7 @@ export async function downloadKeyFieldFileAttachment(input: {
   vaultKey: Uint8Array;
   file: KeyFieldFileValue;
 }): Promise<string> {
-  const downloaded = await downloadKeyFieldFileAttachmentBytes(input);
-  const blob = new Blob([downloaded.plaintext], {
-    type: resolveKeyFieldFileMimeType(downloaded.name, downloaded.mimeType),
-  });
-  return URL.createObjectURL(blob);
+  return downloadKeyFieldFileAttachmentWithBaseUrl({ apiBaseUrl: getApiBaseUrl(), ...input });
 }
 
 export async function downloadKeyFieldFileAttachmentBytes(input: {
@@ -139,42 +132,8 @@ export async function downloadKeyFieldFileAttachmentBytes(input: {
   itemId: string;
   vaultKey: Uint8Array;
   file: KeyFieldFileValue;
-}): Promise<{ plaintext: Uint8Array; name: string; mimeType: string; sizeBytes: number }> {
-  const response = await fetch(
-    `${getApiBaseUrl()}/vaults/${encodeURIComponent(input.vaultId)}/items/${encodeURIComponent(input.itemId)}/attachments/${encodeURIComponent(input.file.attachmentId)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${input.accessToken}`,
-      },
-    },
-  );
-
-  if (!response.ok) {
-    const responseText = await response.text();
-    throw new Error(readErrorMessage(response.status, responseText));
-  }
-
-  const encryptedKeyHeader = response.headers.get("x-encrypted-key");
-  if (!encryptedKeyHeader) {
-    throw new Error("Invalid attachment response");
-  }
-
-  const encryptedBody = new Uint8Array(await response.arrayBuffer());
-  const plaintext = await decryptAttachmentPayload(
-    input.vaultKey,
-    base64ToBytes(encryptedKeyHeader),
-    encryptedBody,
-    {
-      vaultId: input.vaultId,
-      itemId: input.itemId,
-    },
-  );
-  return {
-    plaintext,
-    name: input.file.name,
-    mimeType: input.file.mimeType || "application/octet-stream",
-    sizeBytes: plaintext.byteLength,
-  };
+}): Promise<DownloadedKeyFieldFileAttachmentBytes> {
+  return downloadKeyFieldFileAttachmentBytesWithBaseUrl({ apiBaseUrl: getApiBaseUrl(), ...input });
 }
 
 export async function deleteKeyFieldFileAttachment(input: {

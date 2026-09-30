@@ -32,7 +32,13 @@ export default defineConfig({
         128: "icon-128.png",
       },
     },
-    permissions: ["storage", "tabs"],
+    permissions: ["storage", "tabs", "idle"],
+    // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
+    content_security_policy: {
+      // blob: required for decrypted favicon / workspace-logo object URLs in <img>.
+      extension_pages:
+        "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob:; connect-src 'self' http: https:;",
+    },
     // E1: session + device API calls to configured Base URL / localhost API.
     // Autofill host access expands in E4.
     host_permissions: ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
@@ -57,15 +63,22 @@ export default defineConfig({
       : {}),
   }),
   vite: () => ({
+    // Same as apps/web: emit `.wasm` as build assets (required for crypto unlock).
+    assetsInclude: ["**/*.wasm"],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/ui": path.resolve(repoRoot, "packages/ui/src"),
+        "@okkey/vault-ui": path.resolve(repoRoot, "packages/vault-ui/src"),
         "@okkey/api": path.resolve(repoRoot, "packages/api/src"),
         "@okkey/auth": path.resolve(repoRoot, "packages/auth/src"),
         "@okkey/i18n": path.resolve(repoRoot, "packages/i18n/src"),
         "@okkey/types": path.resolve(repoRoot, "packages/types/src"),
         "@okkey/id": path.resolve(repoRoot, "packages/id/src"),
+        "@okkey/crypto": path.resolve(repoRoot, "packages/crypto/src"),
+        "@okkey/crypto-wasm": path.resolve(repoRoot, "packages/crypto/dist/okkey_crypto_engine.js"),
+        "@okkey/vault": path.resolve(repoRoot, "packages/vault/src"),
+        "@okkey/sync": path.resolve(repoRoot, "packages/sync/src"),
       },
     },
   }),

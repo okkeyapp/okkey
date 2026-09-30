@@ -2,7 +2,8 @@
  * Capsule payload crypto helpers (client-side only).
  * Wire format: 24-byte nonce || ciphertext+tag (XChaCha20-Poly1305).
  */
-import initWasm, { aead_decrypt, aead_encrypt, random_bytes } from "@okkey/crypto-wasm";
+import { aead_decrypt, aead_encrypt, random_bytes } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import { CryptoSdkError } from "./errors.js";
 import { getCryptoConfig } from "./config/index.js";
 
@@ -12,14 +13,6 @@ const CAPSULE_OWNER_WRAP_AAD = new TextEncoder().encode("okkey-capsule-owner-key
 const NONCE_LEN = 24;
 const KEY_LEN = 32;
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 export async function generateCapsuleKey(): Promise<Uint8Array> {
   await ensureWasm();

@@ -233,6 +233,48 @@ export {
   urlsForRemoteFavicon,
   type FaviconProps,
 } from "./components/ui/favicon.js";
+export {
+  ChevronDownGlyph,
+  FilterIconAllRecords,
+  FilterIconArchived,
+  FilterIconDeleted,
+  FilterIconFavorites,
+  FilterIconFrame,
+  FilterIconMonitoring,
+  FolderClosedGlyph,
+  SearchGlyph,
+  SortIconAlphaAsc,
+  SortIconAlphaDesc,
+  SortIconNewestFirst,
+  SortIconOldestFirst,
+  sortIconForValue,
+  type ItemsListSortValue,
+} from "./components/items/items-list-filter-icons.js";
+export {
+  ItemDetailActionsBar,
+  type ItemDetailActionsBarProps,
+  type ItemDetailActionsBarTranslate,
+} from "./components/items/item-detail-actions-bar.js";
+export {
+  WorkspaceSearchField,
+  type WorkspaceSearchFieldProps,
+} from "./components/ui/workspace-search-field.js";
+export {
+  ACCENT_TINT_STORAGE_KEY,
+  applySemanticAccentTint,
+  clearSemanticAccentTintInline,
+  readAccentTintEnabled,
+  writeAccentTintEnabled,
+} from "./theme/accent-semantic-tint.js";
+export {
+  applyStoredTheme,
+  DEFAULT_ACCENT_ID,
+  DEFAULT_THEME_PREFERENCE,
+  normalizeThemePreference,
+  readStoredThemePreference,
+  type ThemeMode,
+  type ThemePreference,
+} from "./theme/apply-theme.js";
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./components/ui/collapsible.js";
 export { Calendar, CalendarDayButton } from "./components/ui/calendar.js";
 export { CalendarMonthYearCaption } from "./components/ui/calendar-month-year-caption.js";
@@ -292,6 +334,8 @@ export {
   useOkkeyAppShellLayout,
   workspaceSwitcherActiveItemClassName,
   type OkkeyAppSidebarAccountMenu,
+  type OkkeyAppSidebarAccountLanguageMenu,
+  type OkkeyAppSidebarAccountLanguageOption,
   type OkkeyAppSidebarProps,
   type OkkeyWorkspaceShellNavLabels,
   type OkkeyWorkspaceShellNavPaths,
@@ -352,3 +396,39 @@ export {
   type ParseBrowserEnvironmentOptions,
   type ParsedBrowserEnvironment,
 } from "./lib/device-environment.js";
+
+export { LIST_PAGE_SIZE } from "./lists/list-page-size.js";
+export {
+  useListWindow,
+  type UseListWindowOptions,
+  type UseListWindowResult,
+} from "./lists/use-list-window.js";
+export { windowListSections } from "./lists/window-list-sections.js";
+export {
+  ListScrollSentinel,
+  type ListScrollSentinelProps,
+} from "./lists/list-scroll-sentinel.js";
+export {
+  buildItemsListSections,
+  type ItemsListLocale,
+  type ItemsListSection,
+  type ItemsListSectionRow,
+  type ItemsListSort,
+} from "./lists/items-list-sections.js";
+export {
+  ItemsDetailPanelEmptyState,
+  ItemsDetailPanelEmptyStateFill,
+} from "./components/items/items-detail-panel-empty-state.js";
+export {
+  VAULT_ICON_EMOJIS,
+  DEFAULT_PERSONAL_VAULT_ICON,
+  DEFAULT_SHARED_VAULT_ICON,
+  normalizeVaultIcon,
+  vaultDisplayIcon,
+  type VaultIconEmoji,
+} from "./components/workspace/vault-icons.js";
+export {
+  WorkspaceLogoTile,
+  DEFAULT_WORKSPACE_TILE_COLOR,
+} from "./components/workspace/workspace-logo-tile.js";
+export { planTierLabel } from "./workspace/plan-tier-label.js";

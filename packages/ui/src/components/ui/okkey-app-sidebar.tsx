@@ -5,6 +5,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./dropdown-menu.js";
 import { ScrollArea } from "./scroll-area.js";
@@ -516,6 +519,107 @@ function LogOutMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) 
   );
 }
 
+function LanguageMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M8 14.6667C11.6819 14.6667 14.6667 11.6819 14.6667 8C14.6667 4.3181 11.6819 1.33333 8 1.33333C4.3181 1.33333 1.33333 4.3181 1.33333 8C1.33333 11.6819 4.3181 14.6667 8 14.6667Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M1.33333 8H14.6667M8 1.33333C9.66746 3.11924 10.6152 5.4712 10.6667 8C10.6152 10.5288 9.66746 12.8808 8 14.6667C6.33254 12.8808 5.38477 10.5288 5.33333 8C5.38477 5.4712 6.33254 3.11924 8 1.33333Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LanguageChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path d="M6 12L10 8L6 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Open-in-web affordance on the account dropdown profile header. */
+function OpenSettingsExternalIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M14 6V2H10M14 2L6.66667 9.33333M12 8.66667V12.6667C12 13.0203 11.8595 13.3594 11.6095 13.6095C11.3594 13.8595 11.0203 14 10.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V5.33333C2 4.97971 2.14048 4.64057 2.39052 4.39052C2.64057 4.14048 2.97971 4 3.33333 4H7.33333"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChangeServerMenuIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M2 4.6665C2 4.13607 2.21071 3.62736 2.58579 3.25229C2.96086 2.87722 3.46957 2.6665 4 2.6665H12C12.5304 2.6665 13.0391 2.87722 13.4142 3.25229C13.7893 3.62736 14 4.13607 14 4.6665V5.99984C14 6.53027 13.7893 7.03898 13.4142 7.41405C13.0391 7.78912 12.5304 7.99984 12 7.99984H4C3.46957 7.99984 2.96086 7.78912 2.58579 7.41405C2.21071 7.03898 2 6.53027 2 5.99984V4.6665Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 13.3333H4C3.46957 13.3333 2.96086 13.1226 2.58579 12.7475C2.21071 12.3725 2 11.8638 2 11.3333V10C2 9.46957 2.21071 8.96086 2.58579 8.58579C2.96086 8.21071 3.46957 8 4 8H11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.6666 11.9998C10.6666 12.3535 10.8071 12.6926 11.0572 12.9426C11.3072 13.1927 11.6463 13.3332 12 13.3332C12.3536 13.3332 12.6927 13.1927 12.9428 12.9426C13.1928 12.6926 13.3333 12.3535 13.3333 11.9998C13.3333 11.6462 13.1928 11.3071 12.9428 11.057C12.6927 10.807 12.3536 10.6665 12 10.6665C11.6463 10.6665 11.3072 10.807 11.0572 11.057C10.8071 11.3071 10.6666 11.6462 10.6666 11.9998Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12 9.6665V10.6665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 13.3335V14.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14.0213 10.8335L13.1553 11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.8466 12.6665L9.97998 13.1665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.97998 10.8335L10.8466 11.3335" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.1553 12.6665L14.0219 13.1665" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 5.3335V5.34016" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.66663 10.6665V10.6732" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** Row highlight for the current workspace in switcher menus (shared with app shell). */
 export const workspaceSwitcherActiveItemClassName =
   "bg-[rgba(0,0,0,0.05)] dark:bg-[rgba(255,255,255,0.08)] data-[highlighted]:bg-secondary dark:data-[highlighted]:bg-secondary";
@@ -569,40 +673,104 @@ function ProfileAccountDropdownPanel({
   lastName,
   email,
   onSettings,
+  settingsAsProfileHeader = false,
   onLogout,
+  onChangeServer,
+  language,
   settingsLabel = "My settings",
   logoutLabel = "Log out",
+  changeServerLabel = "Change server",
 }: {
   firstName: string;
   lastName: string;
   email: string;
   onSettings?: () => void;
+  /** Extension only: profile row opens settings in web (external icon). Web keeps a separate settings item. */
+  settingsAsProfileHeader?: boolean;
   onLogout?: () => void;
+  onChangeServer?: () => void;
+  language?: OkkeyAppSidebarAccountLanguageMenu;
   settingsLabel?: string;
   logoutLabel?: string;
+  changeServerLabel?: string;
 }) {
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
   const titleLine = displayName.length > 0 ? displayName : email;
 
+  const profileHeader = (
+    <>
+      <UserAccountFavicon firstName={firstName} lastName={lastName} email={email} size={32} />
+      <div className="min-w-0 flex-1 text-left">
+        <p className="truncate text-sm font-semibold leading-5 text-foreground">{titleLine}</p>
+        {displayName ? <p className="truncate text-xs leading-4 text-muted-foreground">{email}</p> : null}
+      </div>
+    </>
+  );
+
+  const openSettingsViaProfile = Boolean(onSettings && settingsAsProfileHeader);
+  const showSettingsMenuRow = Boolean(onSettings && !settingsAsProfileHeader);
+
   return (
     <>
-      <div className="flex gap-3 border-b border-border px-3 py-3">
-        <UserAccountFavicon firstName={firstName} lastName={lastName} email={email} size={32} />
-        <div className="min-w-0 flex-1 text-left">
-          <p className="truncate text-sm font-semibold leading-5 text-foreground">{titleLine}</p>
-          {displayName ? <p className="truncate text-xs leading-4 text-muted-foreground">{email}</p> : null}
+      {openSettingsViaProfile ? (
+        <div className="p-1">
+          <DropdownMenuItem
+            className="h-auto cursor-pointer items-center gap-3"
+            aria-label={settingsLabel}
+            onSelect={() => {
+              onSettings?.();
+            }}
+          >
+            {profileHeader}
+            <OpenSettingsExternalIcon className="text-muted-foreground" />
+          </DropdownMenuItem>
         </div>
-      </div>
+      ) : (
+        <div className="flex gap-3 border-b border-border px-3 py-3">{profileHeader}</div>
+      )}
+      {openSettingsViaProfile ? <div className="border-t border-border" role="presentation" /> : null}
       <div className="p-1">
-        <DropdownMenuItem
-          className="cursor-pointer gap-2"
-          onSelect={() => {
-            onSettings?.();
-          }}
-        >
-          <NavSettingsIcon />
-          <span>{settingsLabel}</span>
-        </DropdownMenuItem>
+        {showSettingsMenuRow ? (
+          <DropdownMenuItem
+            className="cursor-pointer gap-2"
+            onSelect={() => {
+              onSettings?.();
+            }}
+          >
+            <NavSettingsIcon />
+            <span>{settingsLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {language ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="cursor-pointer gap-2 [&>svg:last-child]:ml-auto">
+              <LanguageMenuIcon />
+              <span className="min-w-0 flex-1 truncate text-left">{language.label}</span>
+              <LanguageChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="min-w-[10rem] p-1">
+              {language.options.map((option) => (
+                <DropdownMenuItem
+                  key={option.code}
+                  className={cn(
+                    "cursor-pointer gap-2",
+                    option.code === language.currentCode && "bg-muted/80 data-[highlighted]:bg-secondary",
+                  )}
+                  onSelect={() => {
+                    language.onSelect(option.code);
+                  }}
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+                  {option.code === language.currentCode ? (
+                    <span className="shrink-0 text-primary" aria-hidden>
+                      ✓
+                    </span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
         <DropdownMenuItem
           className="cursor-pointer gap-2"
           onSelect={() => {
@@ -612,6 +780,17 @@ function ProfileAccountDropdownPanel({
           <LogOutMenuIcon />
           <span>{logoutLabel}</span>
         </DropdownMenuItem>
+        {onChangeServer ? (
+          <DropdownMenuItem
+            className="cursor-pointer gap-2"
+            onSelect={() => {
+              onChangeServer();
+            }}
+          >
+            <ChangeServerMenuIcon />
+            <span>{changeServerLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
       </div>
     </>
   );
@@ -777,14 +956,38 @@ function demoPlainLinkItems(): OkkeySidebarPlainLinkItem[] {
 }
 
 /** When passed from the host app (e.g. web shell), footer user block + account menu use real identity and logout. */
+export type OkkeyAppSidebarAccountLanguageOption = {
+  code: string;
+  label: string;
+};
+
+export type OkkeyAppSidebarAccountLanguageMenu = {
+  /** Trigger label, e.g. `Language: English` / `Язык: Русский`. */
+  label: string;
+  currentCode: string;
+  options: readonly OkkeyAppSidebarAccountLanguageOption[];
+  onSelect: (code: string) => void;
+};
+
 export type OkkeyAppSidebarAccountMenu = {
   firstName?: string;
   lastName?: string;
   email: string;
   settingsLabel?: string;
   logoutLabel?: string;
+  changeServerLabel?: string;
+  /** When omitted, the settings row is hidden (e.g. extension without deep-link). */
   onSettings?: () => void;
+  /**
+   * Extension only: make the profile header the settings control (external icon).
+   * Web must leave this false/undefined so the classic settings menu row stays.
+   */
+  settingsAsProfileHeader?: boolean;
   onLogout: () => void;
+  /** Optional row below logout (e.g. extension “Change server”). */
+  onChangeServer?: () => void;
+  /** Optional language submenu above logout (extension popup). */
+  language?: OkkeyAppSidebarAccountLanguageMenu;
 };
 
 function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefined) {
@@ -795,8 +998,12 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
       email: accountMenu.email.trim(),
       settingsLabel: accountMenu.settingsLabel,
       logoutLabel: accountMenu.logoutLabel,
+      changeServerLabel: accountMenu.changeServerLabel,
       onSettings: accountMenu.onSettings,
+      settingsAsProfileHeader: accountMenu.settingsAsProfileHeader,
       onLogout: accountMenu.onLogout,
+      onChangeServer: accountMenu.onChangeServer,
+      language: accountMenu.language,
     };
   }
   return {
@@ -805,8 +1012,12 @@ function footerAccountFromProps(accountMenu: OkkeyAppSidebarAccountMenu | undefi
     email: DEMO_PROFILE.email,
     settingsLabel: undefined,
     logoutLabel: undefined,
+    changeServerLabel: undefined,
     onSettings: undefined as (() => void) | undefined,
+    settingsAsProfileHeader: undefined as boolean | undefined,
     onLogout: undefined as (() => void) | undefined,
+    onChangeServer: undefined as (() => void) | undefined,
+    language: undefined as OkkeyAppSidebarAccountLanguageMenu | undefined,
   };
 }
 
@@ -849,6 +1060,11 @@ export type OkkeyAppSidebarProps = {
   accountMenu?: OkkeyAppSidebarAccountMenu;
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
+  /**
+   * When false, hide Documentation / Help footer links entirely (e.g. extension popup).
+   * Default true for gallery / web.
+   */
+  showFooterPlainLinks?: boolean;
   /** `aria-label` + tooltip for the vaults section “+” (expanded + collapsed dropdown). Default: gallery English. */
   vaultHeaderPlusAriaLabel?: string;
   /**
@@ -860,6 +1076,11 @@ export type OkkeyAppSidebarProps = {
   onVaultHeaderPlusPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   /** `aria-label` + tooltip for the folders section header action (expanded + collapsed dropdown). Default: gallery English. */
   folderHeaderPlusAriaLabel?: string;
+  /**
+   * When false, hide the folders section header action (“folder settings”).
+   * Default true for gallery; extension should pass false.
+   */
+  showFolderHeaderPlus?: boolean;
   /** Opens folder settings when the folders section header action is clicked. */
   onFolderHeaderActionClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   /** Narrow viewport: close control on the drawer panel (`aria-label`). Default: English. */
@@ -1092,9 +1313,11 @@ function OkkeyAppSidebarInner({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  showFooterPlainLinks = true,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
   showVaultHeaderPlus = true,
+  showFolderHeaderPlus = true,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel: _mobileNavCloseLabel = "Close menu",
@@ -1117,9 +1340,11 @@ function OkkeyAppSidebarInner({
   | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
+  | "showFooterPlainLinks"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
   | "showVaultHeaderPlus"
+  | "showFolderHeaderPlus"
   | "onVaultHeaderPlusPointerDown"
   | "onFolderHeaderActionClick"
   | "mobileNavCloseLabel"
@@ -1161,6 +1386,9 @@ function OkkeyAppSidebarInner({
   const footerAccount = footerAccountFromProps(accountMenu);
   const footerNameLine = [footerAccount.firstName.trim(), footerAccount.lastName.trim()].filter(Boolean).join(" ");
   const footerPlainItems = React.useMemo((): OkkeySidebarPlainLinkItem[] => {
+    if (!showFooterPlainLinks) {
+      return [];
+    }
     const base = demoPlainLinkItems();
     if (!footerPlainLinkLabels) return base;
     return base.map((item) => {
@@ -1168,7 +1396,7 @@ function OkkeyAppSidebarInner({
       if (item.id === "help") return { ...item, label: footerPlainLinkLabels.help };
       return item;
     });
-  }, [footerPlainLinkLabels]);
+  }, [footerPlainLinkLabels, showFooterPlainLinks]);
   const primaryNav = workspaceNavItems ?? okkeyWorkspaceShellNavItems();
   const groupLabel = workspaceNavGroupLabel ?? "Workspace";
   const vaultData = vaultItems ?? demoVaultItems();
@@ -1181,6 +1409,8 @@ function OkkeyAppSidebarInner({
     collapsedDesktopSidebar && vaultData.some((item) => item.isActive);
   const collapsedFolderTriggerActive =
     collapsedDesktopSidebar && folderTreeHasActiveNode(folderData);
+  const showPrimaryNav = primaryNav.length > 0;
+  const showFooterPlain = footerPlainItems.length > 0;
 
   return (
     <div
@@ -1254,9 +1484,11 @@ function OkkeyAppSidebarInner({
           <div className="flex flex-col gap-6 p-2">
             {!showExpanded ? (
               <SidebarMenu>
-                {primaryNav.map((item) => (
-                  <CollapsedPrimaryNavRow key={item.id} item={item} linkComponent={workspaceNavLink} />
-                ))}
+                {showPrimaryNav
+                  ? primaryNav.map((item) => (
+                      <CollapsedPrimaryNavRow key={item.id} item={item} linkComponent={workspaceNavLink} />
+                    ))
+                  : null}
                 <SidebarMenuItem>
                   <DropdownMenu open={collapsedVaultDropdownOpen} onOpenChange={setCollapsedVaultDropdownOpen}>
                     <CollapsedDropdownIconTooltip label={vaultTitle} menuOpen={collapsedVaultDropdownOpen}>
@@ -1327,7 +1559,7 @@ function OkkeyAppSidebarInner({
                           tree={folderData}
                           leafIcon={<FolderClosedIcon />}
                           emptyLabel={folderEmptyLabel}
-                          showHeaderPlus
+                          showHeaderPlus={showFolderHeaderPlus}
                           headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                           onHeaderActionClick={onFolderHeaderActionClick}
                           linkComponent={folderNavLink}
@@ -1340,11 +1572,13 @@ function OkkeyAppSidebarInner({
               </SidebarMenu>
             ) : (
               <>
-                <OkkeySidebarWorkspaceMenu
-                  labelText={groupLabel}
-                  items={primaryNav}
-                  linkComponent={workspaceNavLink}
-                />
+                {showPrimaryNav ? (
+                  <OkkeySidebarWorkspaceMenu
+                    labelText={groupLabel}
+                    items={primaryNav}
+                    linkComponent={workspaceNavLink}
+                  />
+                ) : null}
 
                 <div className={cn("flex flex-col", safesOpen ? "gap-6" : "gap-2")}>
                   <OkkeySidebarVaultsMenu
@@ -1367,7 +1601,7 @@ function OkkeyAppSidebarInner({
                       tree={folderData}
                       leafIcon={<FolderClosedIcon />}
                       emptyLabel={folderEmptyLabel}
-                      showHeaderPlus
+                      showHeaderPlus={showFolderHeaderPlus}
                       headerPlusAriaLabel={folderHeaderPlusAriaLabel}
                       onHeaderActionClick={onFolderHeaderActionClick}
                       linkComponent={folderNavLink}
@@ -1380,22 +1614,24 @@ function OkkeyAppSidebarInner({
         </ScrollArea>
 
         <div className="mt-auto shrink-0 p-2">
-          {!showExpanded ? (
-            <SidebarMenu>
-              {footerPlainItems.map((link) => (
-                <SidebarMenuItem key={link.id}>
-                  <SidebarCollapsedTooltip label={link.label}>
-                    <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
-                      {link.icon}
-                      <span className="sr-only">{link.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarCollapsedTooltip>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          ) : (
-            <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
-          )}
+          {showFooterPlain ? (
+            !showExpanded ? (
+              <SidebarMenu>
+                {footerPlainItems.map((link) => (
+                  <SidebarMenuItem key={link.id}>
+                    <SidebarCollapsedTooltip label={link.label}>
+                      <SidebarMenuButton type="button" className="h-9 min-h-9 justify-center px-0">
+                        {link.icon}
+                        <span className="sr-only">{link.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarCollapsedTooltip>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            ) : (
+              <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
+            )
+          ) : null}
         </div>
       </SidebarContent>
 
@@ -1479,8 +1715,12 @@ function OkkeyAppSidebarInner({
               email={footerAccount.email}
               settingsLabel={footerAccount.settingsLabel}
               logoutLabel={footerAccount.logoutLabel}
+              changeServerLabel={footerAccount.changeServerLabel}
               onSettings={footerAccount.onSettings}
+              settingsAsProfileHeader={footerAccount.settingsAsProfileHeader}
               onLogout={footerAccount.onLogout}
+              onChangeServer={footerAccount.onChangeServer}
+              language={footerAccount.language}
             />
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1516,9 +1756,11 @@ export function OkkeyAppSidebar({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  showFooterPlainLinks,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
   showVaultHeaderPlus,
+  showFolderHeaderPlus,
   onVaultHeaderPlusPointerDown,
   onFolderHeaderActionClick,
   mobileNavCloseLabel,
@@ -1587,9 +1829,11 @@ export function OkkeyAppSidebar({
                   folderEmptyLabel={folderEmptyLabel}
                   accountMenu={accountMenu}
                   footerPlainLinkLabels={footerPlainLinkLabels}
+                  showFooterPlainLinks={showFooterPlainLinks}
                   vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                   folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
                   showVaultHeaderPlus={showVaultHeaderPlus}
+                  showFolderHeaderPlus={showFolderHeaderPlus}
                   onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                   onFolderHeaderActionClick={onFolderHeaderActionClick}
                   mobileNavCloseLabel={mobileNavCloseLabel}
@@ -1622,9 +1866,11 @@ export function OkkeyAppSidebar({
                     folderEmptyLabel={folderEmptyLabel}
                     accountMenu={accountMenu}
                     footerPlainLinkLabels={footerPlainLinkLabels}
+                    showFooterPlainLinks={showFooterPlainLinks}
                     vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
                     folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
                     showVaultHeaderPlus={showVaultHeaderPlus}
+                    showFolderHeaderPlus={showFolderHeaderPlus}
                     onVaultHeaderPlusPointerDown={onVaultHeaderPlusPointerDown}
                     onFolderHeaderActionClick={onFolderHeaderActionClick}
                     mobileNavCloseLabel={mobileNavCloseLabel}

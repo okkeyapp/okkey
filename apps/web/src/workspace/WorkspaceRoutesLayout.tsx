@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps,
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
+import { refreshWorkspaceFoldersCachesForIds } from "@okkey/vault";
 
 import AppShellNavLink from "../components/workspace/AppShellNavLink";
 import { useAuthVault, useAuthenticatedCoreClient } from "../auth/AuthVaultContext";
@@ -238,6 +239,37 @@ export default function WorkspaceRoutesLayout() {
       accountVaultKey: vaultKey,
     }).catch(() => undefined);
   }, [core, resolvedWorkspaceId, userId, vaultKey, vaultUnlocked]);
+
+  // API-first rematerialize personal folders for every workspace after unlock
+  // (personal-events from version 0 → decrypt → tree). Same path as active
+  // workspace refresh; IndexedDB is only written after a successful API sync.
+  const workspaceIdsKey = workspaceList.map((workspace) => workspace.id).join("\0");
+  useEffect(() => {
+    if (!core || !userId || !vaultUnlocked || !passwordShareC || !workspaceIdsKey) {
+      return;
+    }
+    let cancelled = false;
+    const shareC = new Uint8Array(passwordShareC);
+    const workspaceIds = workspaceIdsKey.split("\0").filter(Boolean);
+    void (async () => {
+      try {
+        if (cancelled) {
+          return;
+        }
+        await refreshWorkspaceFoldersCachesForIds({
+          core,
+          userId,
+          passwordShareC: shareC,
+          workspaceIds,
+        });
+      } catch {
+        // best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, userId, vaultUnlocked, passwordShareC, workspaceIdsKey]);
 
   const patchWorkspace = useCallback((workspaceId: string, patch: Partial<Workspace>) => {
     setWorkspaceList((previous) =>

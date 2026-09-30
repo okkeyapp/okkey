@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { formatWebMessage, type WebMessageValues } from "@okkey/i18n";
 import { AuthShell, OkkeyLogoMark, Spinner } from "@okkey/ui";
 import { toast } from "sonner";
 
 import { Toaster } from "../../components/toaster";
 import { exchangeExtensionAuthCode } from "../../lib/api";
+import { readStoredExtensionLocale } from "../../lib/locale";
 import {
   clearPkcePending,
   readPkcePending,
@@ -13,10 +15,23 @@ import {
 
 /**
  * Receives `?code=&state=` from web after PKCE login and exchanges for a Bearer session.
+ * Full browser tab — AuthShell without `compact` so content is viewport-centered.
+ * Toasts stay in the default (non-centered) corner via Sonner.
  */
 export function AuthCallbackApp() {
+  const locale = useMemo(() => readStoredExtensionLocale(), []);
+  const t = useMemo(
+    () => (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
+    [locale],
+  );
+
   const [status, setStatus] = useState<"working" | "ok" | "error">("working");
-  const [message, setMessage] = useState("Completing sign-in…");
+  const [message, setMessage] = useState(() => t("extension.authCallback.completing"));
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = t("extension.authCallback.documentTitle");
+  }, [locale, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,14 +41,14 @@ export function AuthCallbackApp() {
         const code = params.get("code")?.trim() ?? "";
         const state = params.get("state")?.trim() ?? "";
         if (!code || !state) {
-          throw new Error("Missing code or state in callback URL.");
+          throw new Error(t("extension.authCallback.errorMissingCode"));
         }
         const pending = await readPkcePending();
         if (!pending) {
-          throw new Error("No pending sign-in in this extension. Start again from the popup.");
+          throw new Error(t("extension.authCallback.errorNoPending"));
         }
         if (pending.state !== state) {
-          throw new Error("State mismatch — possible CSRF. Start sign-in again.");
+          throw new Error(t("extension.authCallback.errorStateMismatch"));
         }
 
         const session = await exchangeExtensionAuthCode({
@@ -51,10 +66,11 @@ export function AuthCallbackApp() {
         await clearPkcePending();
 
         if (!cancelled) {
+          const signedIn = t("extension.authCallback.signedIn");
           setStatus("ok");
-          setMessage("Signed in. You can close this tab and open the Okkey extension popup.");
-          toast.success("Session ready", {
-            description: "Signed in. You can close this tab and open the Okkey extension popup.",
+          setMessage(signedIn);
+          toast.success(t("extension.authCallback.sessionReady"), {
+            description: signedIn,
           });
         }
       } catch (err: unknown) {
@@ -62,7 +78,7 @@ export function AuthCallbackApp() {
           const text = err instanceof Error ? err.message : String(err);
           setStatus("error");
           setMessage(text);
-          toast.error("Sign-in failed", { description: text });
+          toast.error(t("extension.authCallback.signInFailed"), { description: text });
         }
       }
     }
@@ -70,20 +86,21 @@ export function AuthCallbackApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative flex h-full min-h-dvh w-full flex-col">
       <Toaster />
       <AuthShell
-        compact
+        className="min-h-full flex-1"
         logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-        title="Okkey extension"
-        description={status === "working" ? message : status === "ok" ? message : undefined}
-        contentClassName="max-w-[340px]"
+        title={t("extension.authCallback.title")}
+        description={status === "error" ? undefined : message}
+        contentClassName="max-w-[340px] text-center"
+        childrenClassName="flex flex-col items-center text-center"
       >
         {status === "working" ? (
-          <div className="flex flex-col items-center" role="status" aria-busy="true">
+          <div className="flex flex-col items-center justify-center" role="status" aria-busy="true">
             <Spinner />
           </div>
         ) : null}

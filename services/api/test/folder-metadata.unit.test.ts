@@ -414,3 +414,115 @@ test("replayWorkspaceFolderEvents applies delete on top of initial materialized 
   assert.equal(state.folders.get(keepId)?.name, "Keep");
   assert.equal(state.lastAppliedVersion, 2);
 });
+
+test("replayWorkspaceFolderEvents advances cursor on decrypt failure so later deletes still apply", async () => {
+  const workspaceId = testEntityId();
+  const userId = testEntityId();
+  const zombieId = testEntityId();
+  const keepId = testEntityId();
+  const now = Date.now();
+
+  const initialFolders = new Map([
+    [
+      zombieId,
+      {
+        schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+        folderId: zombieId,
+        workspaceId,
+        name: "Zombie",
+        parentFolderId: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      },
+    ],
+    [
+      keepId,
+      {
+        schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+        folderId: keepId,
+        workspaceId,
+        name: "Keep",
+        parentFolderId: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      },
+    ],
+  ]);
+
+  const tombstone = {
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+    folderId: zombieId,
+    workspaceId,
+    name: "",
+    parentFolderId: null,
+    createdAtMs: 0,
+    updatedAtMs: now + 1,
+    deleted: true,
+  };
+
+  const createKeep = {
+    schemaVersion: FOLDER_PLAINTEXT_SCHEMA_VERSION_V2,
+    folderId: keepId,
+    workspaceId,
+    name: "Keep-v2",
+    parentFolderId: null,
+    createdAtMs: now,
+    updatedAtMs: now + 2,
+  };
+
+  let decryptCalls = 0;
+  const state = await replayWorkspaceFolderEvents(
+    [
+      baseWire({
+        eventType: "FOLDER_UPDATE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson({ junk: true }),
+          meta: {},
+        },
+        version: 2,
+      }),
+      baseWire({
+        eventType: "FOLDER_DELETE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(tombstone),
+          meta: {},
+        },
+        version: 3,
+      }),
+      baseWire({
+        eventType: "FOLDER_UPDATE",
+        actorId: userId,
+        workspaceId,
+        encryptedBlob: {
+          crypto_version: 2,
+          algorithm: "opaque",
+          payload: opaqueJson(createKeep),
+          meta: {},
+        },
+        version: 4,
+      }),
+    ],
+    workspaceId,
+    async (b64) => {
+      decryptCalls += 1;
+      if (decryptCalls === 1) {
+        throw new Error("AEAD_FAIL");
+      }
+      return Uint8Array.from(Buffer.from(b64, "base64"));
+    },
+    1,
+    { folders: initialFolders, itemFolder: new Map() },
+  );
+
+  assert.equal(state.folders.has(zombieId), false);
+  assert.equal(state.folders.get(keepId)?.name, "Keep-v2");
+  assert.equal(state.lastAppliedVersion, 4);
+});

@@ -7,6 +7,7 @@ import {
   wipeBytes,
   wrapVaultKeyWithRecoverySecret,
 } from "@okkey/crypto";
+import { createWorkspaceFoldersSyncController } from "@okkey/vault";
 import type { AccountRecoveryStatusResponseDto } from "@okkey/types";
 import {
   Alert,
@@ -259,6 +260,28 @@ export default function AccountRestorePage() {
         },
         userId,
       );
+
+      // Recovery restore has vaultKey but not old passwordShareC, so migratePersonalFolders
+      // cannot decrypt the personal-event stream. Rematerialize each workspace from
+      // personal-events under the new C (API-first; no local-IDB reseal on this path).
+      try {
+        const workspaces = await core.listWorkspaces();
+        for (const workspace of workspaces) {
+          const folders = createWorkspaceFoldersSyncController({
+            core,
+            userId,
+            workspaceId: workspace.id,
+            passwordShareC: rebalanced.passwordShareC,
+          });
+          try {
+            await folders.refresh();
+          } finally {
+            folders.dispose();
+          }
+        }
+      } catch {
+        // Best-effort: unlock must still succeed if folder rematerialize fails.
+      }
 
       if (freshBrowser || mintedFreshShare) {
         await registerCurrentBrowserDevice(core, getOrCreateDeviceFingerprint(), {

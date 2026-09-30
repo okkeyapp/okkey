@@ -1,10 +1,127 @@
-import type { Item, Vault } from "../../types/src/index.js";
+import type { Item, Vault } from "@okkey/types";
 import type {
   CapsuleCreateRequestDto,
   EncryptedBlobDto,
   CapsuleMetadataDto,
   CapsuleOpenResponseDto,
-} from "../../types/src/index.js";
+} from "@okkey/types";
+
+export { bytesToBase64, base64ToBytes } from "./base64.js";
+export {
+  mapVaultUnlockBootstrapToStored,
+  parseStoredVaultBundle,
+  type StoredVaultBundle,
+} from "./vault-bundle.js";
+export {
+  unlockWithMasterPassword,
+  type UnlockWithMasterPasswordResult,
+} from "./unlock-with-master-password.js";
+export {
+  formatTagSearchQuery,
+  itemRecordMatchesTagSearch,
+  parseTagSearchNeedle,
+  scoreItemsListRecordSearch,
+  type ItemsListSearchableRecord,
+} from "./workspace-item-search.js";
+export {
+  collectItemUrls,
+  extractReadableItemFields,
+  itemPlaintextToExtensionListRecord,
+  readFirstNonSecretFilledFieldDescription,
+  type ExtensionItemListRecord,
+  type ReadableItemField,
+} from "./item-field-extract.js";
+export {
+  itemUrlMatchesTab,
+  itemUrlsMatchTab,
+  type UrlAutofillScope,
+} from "./item-url-match.js";
+export {
+  resolveVaultItemEncryptionKey,
+  type VaultIdentityKeys,
+} from "./resolve-vault-item-key.js";
+export {
+  createWorkspaceVaultItemsReadController,
+  type WorkspaceVaultItemsReadController,
+} from "./workspace-vault-items-read.js";
+export {
+  DEFAULT_VAULT_IDLE_LOCK_MS,
+  vaultIdleLockMsFromServerSeconds,
+} from "./vault-idle-lock-ms.js";
+export {
+  CLIPBOARD_CLEAR_OPTIONS_SECONDS,
+  DEFAULT_VAULT_DEVICE_PREFS,
+  IDLE_LOCK_OPTIONS_SECONDS,
+  SECTION_REAUTH_ZONE_IDS,
+  parseVaultDevicePrefs,
+  patchVaultDevicePrefsAsync,
+  readVaultDevicePrefsAsync,
+  serializeVaultDevicePrefs,
+  vaultDevicePrefsKey,
+  writeVaultDevicePrefsAsync,
+  type SectionReauthZoneId,
+  type VaultDevicePrefs,
+  type VaultDevicePrefsStorage,
+} from "./vault-device-prefs.js";
+export {
+  _resetVaultClipboardClearForTests,
+  copyTextWithVaultClipboardPolicy,
+  scheduleClipboardClearAfterCopy,
+} from "./vault-clipboard-clear.js";
+export {
+  VAULT_UNLOCK_SESSION_STORAGE_KEY,
+  clearVaultUnlockSession,
+  persistVaultUnlockSession,
+  readVaultUnlockSessionIfFresh,
+  touchVaultUnlockSession,
+  vaultUnlockSessionExceededIdle,
+  type VaultUnlockSessionFreshResult,
+  type VaultUnlockSessionRecord,
+  type VaultUnlockSessionStorage,
+} from "./vault-unlock-session.js";
+export {
+  createWorkspaceFoldersSyncController,
+  clearWorkspaceFoldersMaterializedCache,
+  folderIdsToTombstoneForRebaseline,
+  parsePersonalEventsVersionMismatch,
+  refreshWorkspaceFoldersCachesForIds,
+  rebaselineWorkspaceFoldersFromLocalCache,
+  replayStateToFlatFolders,
+  shouldResealLocalFoldersForStreamKey,
+  AGENT_REPAIR_PROBE_FOLDER_NAME,
+  type WorkspaceFoldersSyncController,
+  type WorkspaceFoldersRefreshDiagnostics,
+} from "./folders/workspaceFoldersSync.js";
+export {
+  NO_FOLDER_VALUE,
+  createWorkspaceFolderAtRoot,
+  findWorkspaceFolderPathById,
+  flattenWorkspaceFolders,
+  folderPathExists,
+  toSidebarFolderTree,
+  workspaceFolderIdExists,
+  type FlatWorkspaceFolder,
+  type WorkspaceFolderNode,
+} from "./folders/workspaceFolderTree.js";
+export {
+  compareFolderSiblingOrder,
+  diffWorkspaceFolderTrees,
+  normalizeWorkspaceFolderTreeForSave,
+  rowsToWorkspaceTree,
+  workspaceTreeToRowMap,
+  type FolderRowSnapshot,
+  type FolderTreeMutation,
+} from "./folders/folderTreeCommit.js";
+export { IndexedDbWorkspacePersonalOutboxStore } from "./folders/workspacePersonalOutboxStore.js";
+export {
+  downloadKeyFieldFileAttachment,
+  downloadKeyFieldFileAttachmentBytes,
+  keyFieldFileAttachmentIsImage,
+  keyFieldFileValueFromFaviconId,
+  type DownloadedKeyFieldFileAttachmentBytes,
+  type DownloadKeyFieldFileAttachmentBytesInput,
+  type DownloadKeyFieldFileAttachmentInput,
+} from "./key-field-file-attachments.js";
 
 export interface VaultStore {
   listVaults(): Promise<Vault[]>;

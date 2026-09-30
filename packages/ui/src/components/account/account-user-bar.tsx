@@ -44,7 +44,7 @@ export function AccountUserBar({
   onSignOut,
   action,
 }: AccountUserBarProps) {
-  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  const displayName = [(firstName ?? "").trim(), (lastName ?? "").trim()].filter(Boolean).join(" ");
   const hasDisplayName = displayName.length > 0;
   const emailValue = email?.trim() ?? "";
   const faviconName = hasDisplayName ? displayName : emailValue || "?";

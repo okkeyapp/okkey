@@ -238,6 +238,11 @@ export type KeyFieldProps = Omit<
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   onFileUpload?: KeyFieldFileUploadHandler;
   onFileOpen?: (file: KeyFieldFileValue) => Promise<string>;
+  /**
+   * When set, view-mode file click/open uses this instead of download + lightbox.
+   * Extension uses it to deep-link into web; leave unset on web so onFileOpen runs.
+   */
+  onFileActivate?: (file: KeyFieldFileValue) => void;
   autoFocusValue?: boolean;
   /** Bumps when the parent requests value focus again for the same field. */
   autoFocusValueRequest?: number;
@@ -324,6 +329,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
       onFileUpload,
       onFileOpen,
+      onFileActivate,
       autoFocusValue = false,
       autoFocusValueRequest = 0,
       reorderable = false,
@@ -922,6 +928,11 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
 
     function handleOpenFile() {
       if (!parsedFileValue) {
+        return;
+      }
+
+      if (onFileActivate) {
+        onFileActivate(parsedFileValue);
         return;
       }
 

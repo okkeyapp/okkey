@@ -7,26 +7,19 @@
  *
  * Wire format matches vault item payloads: 24-byte nonce || ciphertext+tag (XChaCha20-Poly1305).
  */
-import initWasm, {
+import {
   aead_decrypt,
   aead_encrypt,
   random_bytes,
   sha256,
 } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 
 const PERSONAL_METADATA_AAD = new TextEncoder().encode(
   "okkey-personal-vault-metadata-payload-v1",
 );
 const NONCE_LEN = 24;
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 /**
  * Deterministic 32-byte key: SHA-256( C ‖ domain ‖ vaultId UTF-8 ).

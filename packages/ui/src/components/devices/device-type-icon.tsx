@@ -119,9 +119,9 @@ function alphaMaskStyle(
     maskPosition: `-${offsetX}px 0`,
     WebkitMaskRepeat: "no-repeat",
     maskRepeat: "no-repeat",
-    WebkitMaskMode: "alpha",
     maskMode: "alpha",
-  };
+    ["WebkitMaskMode" as string]: "alpha",
+  } as CSSProperties;
 }
 
 export function resolveDeviceFormIcon(input: DeviceIconHints): DeviceFormIcon {

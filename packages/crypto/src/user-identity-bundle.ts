@@ -2,7 +2,7 @@
  * Hybrid user identity: Ed25519 + ML-KEM-768 private material in one AEAD-protected bundle (plaintext layout).
  * Public PQ key is stored separately (ML-KEM encapsulation key).
  */
-import initWasm, {
+import {
   aead_decrypt,
   aead_encrypt,
   mlkem768_decapsulation_key_len,
@@ -10,6 +10,7 @@ import initWasm, {
   mlkem768_keypair,
   random_bytes,
 } from "@okkey/crypto-wasm";
+import { ensureWasm } from "./wasm-init.js";
 import type { EncryptedBlobDto } from "@okkey/types";
 import { getCryptoConfig } from "./config/index.js";
 import { wipeBytes } from "./secret-buffer.js";
@@ -54,14 +55,6 @@ function standardBase64ToUint8(b64: string): Uint8Array {
   return out;
 }
 
-let wasmReady: Promise<void> | undefined;
-
-async function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = initWasm().then(() => undefined);
-  }
-  await wasmReady;
-}
 
 export function encodeUserIdentityPrivateBundleV1(
   ed25519SecretKey32: Uint8Array,

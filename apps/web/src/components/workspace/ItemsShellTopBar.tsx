@@ -6,8 +6,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   useOkkeyAppShellLayout,
+  WorkspaceSearchField,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, type SVGProps } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useLocale } from "../../locale/LocaleContext";
@@ -42,28 +43,6 @@ function shouldTriggerWorkspaceSearchShortcut(e: KeyboardEvent, isApple: boolean
     return e.metaKey && !e.ctrlKey;
   }
   return e.ctrlKey && !e.metaKey;
-}
-
-function SearchIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      className={cn("size-4 shrink-0", className)}
-      {...props}
-    >
-      <path
-        d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function PlusIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
@@ -201,64 +180,19 @@ export default function ItemsShellTopBar() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-row items-center gap-2" data-testid="items-shell-topbar">
-      <div className="flex min-w-0 flex-1 justify-center px-0 sm:px-1">
-        <div
-          className={cn(
-            "flex h-9 w-full max-w-[420px] shrink-0 items-stretch rounded-md border border-transparent",
-            "bg-[rgba(0,0,0,0.05)] text-sm text-foreground shadow-none transition-[color,box-shadow,border-color,background-color]",
-            "dark:bg-white/[0.06]",
-            "hover:border-[color-mix(in_hsl,hsl(var(--input))_82%,hsl(var(--accent))_18%)]",
-            "dark:hover:border-[color-mix(in_hsl,hsl(var(--input))_76%,hsl(var(--accent))_24%)]",
-            "focus-within:border-accent focus-within:bg-background focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-            "dark:focus-within:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-            "focus-within:hover:border-accent dark:focus-within:hover:border-accent",
-            "focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-within:hover:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-          )}
-          data-testid="items-shell-search-wrap"
-        >
-          <div className="flex shrink-0 items-center ps-3 pe-2 py-1.5 text-muted-foreground">
-            <SearchIcon />
-          </div>
-          <input
-            ref={searchInputRef}
-            type="text"
-            role="searchbox"
-            name="workspace-shell-search"
-            id="workspace-shell-search"
-            placeholder={searchFieldLabel}
-            aria-label={searchFieldLabel}
-            autoComplete="off"
-            data-testid="items-shell-search"
-            onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
-              if (e.key !== "Enter") {
-                return;
-              }
-              e.preventDefault();
-              submitWorkspaceSearch(e.currentTarget.value);
-            }}
-            className={cn(
-              "min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm leading-5 text-foreground outline-none",
-              "placeholder:text-muted-foreground",
-              "focus-visible:outline-none",
-            )}
-          />
-          <div className="hidden min-[991px]:flex shrink-0 items-center ps-1 pe-2.5">
-            <kbd
-              className={cn(
-                "inline-flex items-center gap-1 rounded-[4px] bg-background px-[6px] py-0.5 text-xs leading-4 text-muted-foreground",
-                "shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]",
-              )}
-              aria-label={shortcutAriaLabel}
-            >
-              {shortcutSegments.map((part, index) => (
-                <span key={index} className="shrink-0" aria-hidden>
-                  {part}
-                </span>
-              ))}
-            </kbd>
-          </div>
-        </div>
-      </div>
+      <WorkspaceSearchField
+        defaultValue={searchFromUrl}
+        onChange={(value) => {
+          submitWorkspaceSearch(value);
+        }}
+        onSubmit={submitWorkspaceSearch}
+        placeholder={searchFieldLabel}
+        inputRef={searchInputRef}
+        clearAriaLabel={t("web.items.searchClear")}
+        showShortcutKbd={!shell.isMobile}
+        shortcutSegments={shortcutSegments}
+        shortcutAriaLabel={shortcutAriaLabel}
+      />
 
       <div className="flex shrink-0 items-center gap-2">
         {WORKSPACE_SHELL_NOTIFICATIONS_ENABLED ? (

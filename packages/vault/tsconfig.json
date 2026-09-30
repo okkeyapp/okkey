@@ -4,13 +4,20 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
+    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
+    "ignoreDeprecations": "5.0",
+    "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@okkey/types": ["../types/src"]
-    },
-    "skipLibCheck": true
+      "@okkey/types": ["../types/dist/index.d.ts"],
+      "@okkey/api": ["../api/dist/index.d.ts"],
+      "@okkey/crypto": ["../crypto/dist/index.d.ts"],
+      "@okkey/sync": ["../sync/dist/index.d.ts"],
+      "@okkey/ui": ["../ui/dist/index.d.ts"]
+    }
   },
-  "include": ["src", "../types/src"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

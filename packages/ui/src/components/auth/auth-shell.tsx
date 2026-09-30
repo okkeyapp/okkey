@@ -66,6 +66,7 @@ function AuthHeader({
 /**
  * Shared presentational shell. Web login/auth pages use `AppShellLayout` (apps/web) — not this.
  * Extension popup passes `compact` for the 600×450 layout.
+ * Auth-callback (full tab) uses the non-compact path for viewport centering.
  */
 export function AuthShell({
   title,
@@ -83,12 +84,14 @@ export function AuthShell({
   hideHeader = false,
   className,
 }: AuthShellProps) {
-  // Non-compact: match historical web AppShellLayout (vertical center + footer outside scroll).
+  // Non-compact (auth-callback tab): fill the viewport and center the column on both axes.
+  // Avoid nested `min-h-0 flex-1` under `min-h-screen` only — that often fails to grow in
+  // extension pages, leaving content top/left. Use an explicit full-height flex center.
   if (!compact) {
     return (
       <div
         className={cn(
-          "relative isolate min-h-screen overflow-x-hidden bg-background text-foreground",
+          "relative isolate flex h-full min-h-dvh w-full flex-col overflow-x-hidden bg-background text-foreground",
           className,
         )}
       >
@@ -97,32 +100,25 @@ export function AuthShell({
         {topLeft != null ? <div className="absolute left-10 top-10 z-10">{topLeft}</div> : null}
         {topRight != null ? <div className="absolute right-10 top-10 z-10">{topRight}</div> : null}
 
-        <div className="relative flex min-h-screen flex-col py-10">
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            <div
-              className={cn(
-                "flex min-h-0 flex-1 flex-col items-center justify-center py-6",
-                frameClassName ?? "px-10",
-              )}
-            >
-              <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
-                <AuthHeader
-                  title={title}
-                  description={description}
-                  logo={logo}
-                  hideHeader={hideHeader}
-                  headerClassName={headerClassName}
-                />
-                {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
-              </div>
-            </div>
+        <div
+          className={cn(
+            "relative flex min-h-0 flex-1 flex-col items-center justify-center",
+            frameClassName ?? "px-10 py-10",
+          )}
+        >
+          <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
+            <AuthHeader
+              title={title}
+              description={description}
+              logo={logo}
+              hideHeader={hideHeader}
+              headerClassName={headerClassName}
+            />
+            {children != null ? <div className={cn("w-full", childrenClassName)}>{children}</div> : null}
+            {copyright ? (
+              <footer className="okkey-body w-full text-center text-xs text-muted-foreground">{copyright}</footer>
+            ) : null}
           </div>
-
-          {copyright ? (
-            <footer className="okkey-body mt-8 shrink-0 px-10 text-center text-xs text-muted-foreground">
-              {copyright}
-            </footer>
-          ) : null}
         </div>
 
         <div

@@ -118,6 +118,7 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
         "@okkey/i18n": path.resolve(__dirname, "../../packages/i18n/src"),
         "@okkey/ui": path.resolve(__dirname, "../../packages/ui/src"),
+        "@okkey/vault-ui": path.resolve(__dirname, "../../packages/vault-ui/src"),
         "@workspace/ui": path.resolve(__dirname, "../../packages/ui/src"),
         "@okkey/import": path.resolve(__dirname, "../../packages/import/src"),
         "@okkey/types": path.resolve(__dirname, "../../packages/types/src"),
@@ -125,6 +126,8 @@ export default defineConfig(({ mode }) => {
         "@okkey/auth": path.resolve(__dirname, "../../packages/auth/src"),
         "@okkey/crypto": path.resolve(__dirname, "../../packages/crypto/src"),
         "@okkey/crypto-wasm": path.resolve(__dirname, "../../packages/crypto/dist/okkey_crypto_engine.js"),
+        "@okkey/vault": path.resolve(__dirname, "../../packages/vault/src"),
+        "@okkey/sync": path.resolve(__dirname, "../../packages/sync/src"),
         "@okkey-enterprise/workspace-roles": enterpriseModules ? enterpriseRolesPath : enterpriseRolesStubPath,
         "@okkey-enterprise/workspace-profiles": enterpriseModules
           ? enterpriseProfilesPath

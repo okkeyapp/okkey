@@ -5,11 +5,23 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": ["dist", "src"],
   "dependencies": {
-    "@okkey/types": "file:../types"
+    "@okkey/api": "0.0.1",
+    "@okkey/crypto": "0.0.1",
+    "@okkey/sync": "0.0.1",
+    "@okkey/types": "file:../types",
+    "@okkey/ui": "0.0.1"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test src/*.test.ts src/**/*.test.ts"
   }
 }

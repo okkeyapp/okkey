@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AccountUserBar,
   AuthShell,
@@ -26,8 +26,11 @@ import {
 } from "@okkey/i18n";
 import { toast } from "sonner";
 
+import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
+
 import { Toaster } from "../../components/toaster";
 import { createCoreClient } from "../../lib/api";
+import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
   buildExtensionAuthStartUrl,
   createPkcePair,
@@ -42,6 +45,24 @@ import {
   retryExtensionDeviceRegistration,
   revokeExtensionDeviceBestEffort,
 } from "../../lib/deviceTrust";
+import {
+  unlockExtensionVault,
+  wipeUnlockSecrets,
+} from "../../lib/extensionUnlock";
+import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
+import {
+  readStoredExtensionLocale,
+  writeStoredExtensionLocale,
+} from "../../lib/locale";
+import {
+  clearExtensionUnlockSession,
+  DEFAULT_VAULT_IDLE_LOCK_MS,
+  extensionUnlockSessionExceededIdle,
+  persistExtensionUnlockSession,
+  readExtensionDevicePrefs,
+  readExtensionUnlockSessionIfFresh,
+  vaultIdleLockMsFromServerSeconds,
+} from "../../lib/extensionVaultSession";
 import {
   clearSession,
   normalizeWebBaseUrl,
@@ -58,6 +79,18 @@ import {
   type ExtensionProfile,
   type ExtensionSession,
 } from "../../lib/storage";
+import { readExtensionVaultBundle } from "../../lib/vaultStorage";
+import { VaultPopup } from "./VaultPopup";
+
+/**
+ * lockOnDeviceSleep: do NOT use document.visibilitychange / window blur in the
+ * popup — closing the extension popup hides the document and would false-trigger
+ * a lock. OS sleep cannot be reliably distinguished from popup close here.
+ * Prefer chrome.idle when available; otherwise rely on idleLockMs session
+ * freshness (checked while open + on next open via readExtensionUnlockSessionIfFresh).
+ * Closing the popup must NOT clearExtensionUnlockSession or wipeUnlockSecrets —
+ * session storage holds key material for restore on the next open.
+ */
 
 type Screen =
   | "loading"
@@ -67,6 +100,7 @@ type Screen =
   | "blocked"
   | "rejected"
   | "unlock"
+  | "vault"
   | "error";
 
 type AccountIdentity = {
@@ -74,20 +108,6 @@ type AccountIdentity = {
   firstName: string;
   lastName: string;
 };
-
-const LOCALE_STORAGE_KEY = "okkey.extension.locale";
-
-function readStoredLocale(): WebLocale {
-  try {
-    const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (raw && (WEB_LOCALES as string[]).includes(raw)) {
-      return raw as WebLocale;
-    }
-  } catch {
-    // ignore
-  }
-  return "ru";
-}
 
 function formatAbsoluteDate(iso: string, locale: WebLocale): string {
   const date = new Date(iso);
@@ -120,7 +140,7 @@ function ServerUrlHelpIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export function PopupApp() {
   const [screen, setScreen] = useState<Screen>("loading");
-  const [locale, setLocale] = useState<WebLocale>(() => readStoredLocale());
+  const [locale, setLocale] = useState<WebLocale>(() => readStoredExtensionLocale());
   const [profile, setProfile] = useState<ExtensionProfile | null>(null);
   const [session, setSession] = useState<ExtensionSession | null>(null);
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
@@ -131,7 +151,12 @@ export function PopupApp() {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [masterPassword, setMasterPassword] = useState("");
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockSecrets, setUnlockSecrets] = useState<UnlockWithMasterPasswordResult | null>(null);
+  const [encryptedPrivateKeyPayload, setEncryptedPrivateKeyPayload] = useState<string | null>(null);
+  const [vaultIdleLockMs, setVaultIdleLockMs] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
+  const unlockSecretsRef = useRef<UnlockWithMasterPasswordResult | null>(null);
 
   const t = useCallback(
     (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
@@ -140,11 +165,7 @@ export function PopupApp() {
 
   const onLocaleChange = (next: WebLocale) => {
     setLocale(next);
-    try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, next);
-    } catch {
-      // ignore
-    }
+    writeStoredExtensionLocale(next);
   };
 
   const languageSelect = (
@@ -174,36 +195,82 @@ export function PopupApp() {
         firstName: account.first_name ?? "",
         lastName: account.last_name ?? "",
       });
+      setVaultIdleLockMs(vaultIdleLockMsFromServerSeconds(account.vault_idle_lock_seconds));
+      return account;
     } catch {
       setIdentity(null);
+      return null;
     }
   }, []);
 
-  const applyTrustSnapshot = useCallback((snapshot: DeviceTrustSnapshot) => {
-    setTrust(snapshot);
-    if (snapshot.status === "trusted") {
-      setScreen("unlock");
-    } else if (snapshot.status === "blocked") {
-      setScreen("blocked");
-    } else if (snapshot.status === "rejected") {
-      setScreen("rejected");
-    } else if (snapshot.status === "pending" || snapshot.status === "checking") {
-      setScreen("pending");
-    } else if (snapshot.status === "error") {
-      const message = snapshot.errorMessage ?? "Device registration failed";
-      setError(message);
-      toast.error(message);
-      setScreen("error");
-    } else {
-      setScreen("pending");
+  const tryRestoreUnlockSession = useCallback(async (userId: string): Promise<boolean> => {
+    const fresh = await readExtensionUnlockSessionIfFresh(userId);
+    // Share C must exist to restore; null means incomplete session — do not unlock.
+    if (!fresh?.passwordShareC) {
+      return false;
     }
+    const bundle = await readExtensionVaultBundle(userId);
+    if (!bundle?.encrypted_private_key?.payload) {
+      return false;
+    }
+    // Popup JS context is destroyed on close. Session restore must re-init WASM
+    // before folder metadata / attachment decrypt (unlike unlock-with-MP, which
+    // already calls initExtensionCrypto inside unlockExtensionVault).
+    try {
+      await initExtensionCrypto();
+    } catch (err: unknown) {
+      console.error("[extension] crypto init failed on session restore", err);
+      return false;
+    }
+    const secrets: UnlockWithMasterPasswordResult = {
+      vaultKey: fresh.vaultKey,
+      passwordShareC: fresh.passwordShareC,
+    };
+    wipeUnlockSecrets(unlockSecretsRef.current);
+    unlockSecretsRef.current = secrets;
+    setUnlockSecrets(secrets);
+    setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+    setVaultIdleLockMs(fresh.idleLockMs);
+    setMasterPassword("");
+    void applyExtensionStoredTheme();
+    setScreen("vault");
+    return true;
   }, []);
+
+  const applyTrustSnapshot = useCallback(
+    async (snapshot: DeviceTrustSnapshot, userId?: string) => {
+      setTrust(snapshot);
+      if (snapshot.status === "trusted") {
+        if (userId) {
+          const restored = await tryRestoreUnlockSession(userId);
+          if (restored) {
+            return;
+          }
+        }
+        setScreen("unlock");
+      } else if (snapshot.status === "blocked") {
+        setScreen("blocked");
+      } else if (snapshot.status === "rejected") {
+        setScreen("rejected");
+      } else if (snapshot.status === "pending" || snapshot.status === "checking") {
+        setScreen("pending");
+      } else if (snapshot.status === "error") {
+        const message = snapshot.errorMessage ?? "Device registration failed";
+        setError(message);
+        toast.error(message);
+        setScreen("error");
+      } else {
+        setScreen("pending");
+      }
+    },
+    [tryRestoreUnlockSession],
+  );
 
   const refreshTrust = useCallback(
-    async (apiBaseUrl: string, accessToken: string) => {
+    async (apiBaseUrl: string, accessToken: string, userId?: string) => {
       const core = createCoreClient(apiBaseUrl, accessToken);
       const snapshot = await resolveExtensionDeviceTrust(core);
-      applyTrustSnapshot(snapshot);
+      await applyTrustSnapshot(snapshot, userId);
       void loadIdentity(apiBaseUrl, accessToken);
     },
     [applyTrustSnapshot, loadIdentity],
@@ -215,8 +282,13 @@ export function PopupApp() {
   }, []);
 
   useEffect(() => {
+    void applyExtensionStoredTheme();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     async function boot(): Promise<void> {
+      void applyExtensionStoredTheme();
       const existingProfile = await readProfile();
       const existingSession = await readSession();
       const lastServer = await readLastServer();
@@ -234,7 +306,11 @@ export function PopupApp() {
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
-        await refreshTrust(existingProfile.apiBaseUrl, existingSession.access_token);
+        await refreshTrust(
+          existingProfile.apiBaseUrl,
+          existingSession.access_token,
+          existingSession.user_id,
+        );
         return;
       }
       setScreen("server");
@@ -242,8 +318,67 @@ export function PopupApp() {
     void boot();
     return () => {
       cancelled = true;
+      // Do NOT clearExtensionUnlockSession or wipeUnlockSecrets on popup unmount —
+      // closing the popup must leave the session in chrome.storage.session for restore.
     };
   }, [applyServerPreference, refreshTrust]);
+
+  // Idle lock while vault is open. Session freshness is also checked on reopen.
+  // Do not use visibilitychange: popup close hides the document and is not sleep.
+  useEffect(() => {
+    if (screen !== "vault" || !session) {
+      return;
+    }
+    const userId = session.user_id;
+    const tick = () => {
+      void extensionUnlockSessionExceededIdle(userId).then((exceeded) => {
+        if (exceeded) {
+          wipeUnlockSecrets(unlockSecretsRef.current);
+          unlockSecretsRef.current = null;
+          setUnlockSecrets(null);
+          setEncryptedPrivateKeyPayload(null);
+          setMasterPassword("");
+          void clearExtensionUnlockSession();
+          setScreen("unlock");
+        }
+      });
+    };
+    const timer = window.setInterval(tick, Math.min(5_000, Math.max(1_000, vaultIdleLockMs / 12)));
+    return () => window.clearInterval(timer);
+  }, [screen, session, vaultIdleLockMs]);
+
+  // lockOnDeviceSleep via chrome.idle (not visibilitychange — popup close must not lock).
+  useEffect(() => {
+    if (screen !== "vault" || !session) {
+      return;
+    }
+    const userId = session.user_id;
+    const idleApi = browser.idle;
+    if (!idleApi?.onStateChanged) {
+      return;
+    }
+    const onIdleState = (state: string) => {
+      if (state !== "locked") {
+        return;
+      }
+      void readExtensionDevicePrefs(userId).then((prefs) => {
+        if (!prefs.lockOnDeviceSleep) {
+          return;
+        }
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = null;
+        setUnlockSecrets(null);
+        setEncryptedPrivateKeyPayload(null);
+        setMasterPassword("");
+        void clearExtensionUnlockSession();
+        setScreen("unlock");
+      });
+    };
+    idleApi.onStateChanged.addListener(onIdleState);
+    return () => {
+      idleApi.onStateChanged.removeListener(onIdleState);
+    };
+  }, [screen, session]);
 
   useEffect(() => {
     if (screen !== "server" || hostMode !== "self-hosted") {
@@ -266,7 +401,7 @@ export function PopupApp() {
         if (snapshot.status === "rejected") {
           await markExtensionDeviceDeferred(snapshot.deviceId);
         }
-        applyTrustSnapshot(snapshot);
+        await applyTrustSnapshot(snapshot, session.user_id);
       });
     }, 4_000);
     return () => window.clearInterval(timer);
@@ -329,7 +464,22 @@ export function PopupApp() {
     }
   };
 
+  const lockVault = useCallback(() => {
+    wipeUnlockSecrets(unlockSecretsRef.current);
+    unlockSecretsRef.current = null;
+    setUnlockSecrets(null);
+    setEncryptedPrivateKeyPayload(null);
+    setMasterPassword("");
+    void clearExtensionUnlockSession();
+    setScreen("unlock");
+  }, []);
+
   const onLogout = async () => {
+    wipeUnlockSecrets(unlockSecretsRef.current);
+    unlockSecretsRef.current = null;
+    setUnlockSecrets(null);
+    setEncryptedPrivateKeyPayload(null);
+    void clearExtensionUnlockSession();
     if (profile && session) {
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
       await revokeExtensionDeviceBestEffort(core, trust?.deviceId ?? (await readDeviceId()));
@@ -360,7 +510,7 @@ export function PopupApp() {
     try {
       const core = createCoreClient(profile.apiBaseUrl, session.access_token);
       const snapshot = await retryExtensionDeviceRegistration(core);
-      applyTrustSnapshot(snapshot);
+      await applyTrustSnapshot(snapshot, session.user_id);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -373,18 +523,76 @@ export function PopupApp() {
 
   const onUnlockSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (!profile || !session || unlockBusy) {
+      return;
+    }
     if (!masterPassword.trim()) {
       toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
       return;
     }
-    // E1: session trusted; full vault unlock (crypto) lands in E2.
-    toast.message("E1 unlock stub", {
-      description:
-        "Session trusted. Vault unlock (master password / PIN) lands in E2 — password was not sent anywhere.",
-    });
+    setUnlockBusy(true);
+    void (async () => {
+      try {
+        const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+        const secrets = await unlockExtensionVault({
+          core,
+          userId: session.user_id,
+          masterPassword,
+        });
+        if (!secrets) {
+          toast.error(t("unlock.errorTitle"), { description: t("unlock.errorIncorrectPassword") });
+          return;
+        }
+        const bundle = await readExtensionVaultBundle(session.user_id);
+        if (!bundle?.encrypted_private_key?.payload) {
+          wipeUnlockSecrets(secrets);
+          toast.error(t("unlock.errorTitle"), { description: t("unlock.errorNoLocalVault") });
+          return;
+        }
+        let idleMs = vaultIdleLockMs;
+        try {
+          const account = await core.getAccountProfile();
+          idleMs = vaultIdleLockMsFromServerSeconds(account.vault_idle_lock_seconds);
+          setVaultIdleLockMs(idleMs);
+          setIdentity({
+            email: account.email ?? "",
+            firstName: account.first_name ?? "",
+            lastName: account.last_name ?? "",
+          });
+        } catch {
+          /* keep previous idle / identity */
+        }
+        wipeUnlockSecrets(unlockSecretsRef.current);
+        unlockSecretsRef.current = secrets;
+        setUnlockSecrets(secrets);
+        setEncryptedPrivateKeyPayload(bundle.encrypted_private_key.payload);
+        setMasterPassword("");
+        await persistExtensionUnlockSession({
+          userId: session.user_id,
+          secrets,
+          idleLockMs: idleMs,
+        });
+        void applyExtensionStoredTheme();
+        setScreen("vault");
+        void core.recordVaultUnlock().catch(() => {
+          /* best-effort */
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(t("unlock.errorTitle"), { description: message });
+      } finally {
+        setUnlockBusy(false);
+      }
+    })();
   };
 
   const shellLogo = <OkkeyLogoMark className="h-[60px] w-[61px]" />;
+  const vaultCore = useMemo(() => {
+    if (!profile || !session) {
+      return null;
+    }
+    return createCoreClient(profile.apiBaseUrl, session.access_token);
+  }, [profile, session]);
   const identityBar =
     identity || session ? (
       <AccountUserBar
@@ -535,7 +743,11 @@ export function PopupApp() {
                   if (nextSession && nextProfile) {
                     setSession(nextSession);
                     setProfile(nextProfile);
-                    await refreshTrust(nextProfile.apiBaseUrl, nextSession.access_token);
+                    await refreshTrust(
+                      nextProfile.apiBaseUrl,
+                      nextSession.access_token,
+                      nextSession.user_id,
+                    );
                   }
                 })();
               }}
@@ -636,6 +848,31 @@ export function PopupApp() {
     );
   }
 
+  if (screen === "vault" && profile && session && unlockSecrets && encryptedPrivateKeyPayload && vaultCore) {
+    return (
+      <PopupFrame>
+        <VaultPopup
+          core={vaultCore}
+          userId={session.user_id}
+          accessToken={session.access_token}
+          apiBaseUrl={profile.apiBaseUrl}
+          webBaseUrl={profile.webBaseUrl}
+          secrets={unlockSecrets}
+          encryptedPrivateKeyPayload={encryptedPrivateKeyPayload}
+          identity={identity}
+          locale={locale}
+          onLocaleChange={onLocaleChange}
+          signOutLabel={t("unlock.signOut")}
+          onSignOut={() => void onLogout()}
+          onChangeServer={() => void onLogout()}
+          onLock={lockVault}
+          idleLockMs={vaultIdleLockMs}
+          t={t}
+        />
+      </PopupFrame>
+    );
+  }
+
   return (
     <PopupFrame>
       <AuthShell compact logo={shellLogo} title={t("unlock.title")} topRight={languageSelect}>
@@ -656,11 +893,17 @@ export function PopupApp() {
               autoComplete="current-password"
               value={masterPassword}
               onChange={(e) => setMasterPassword(e.target.value)}
+              disabled={unlockBusy}
             />
           </div>
 
-          <Button type="submit" variant="default" className="w-full" disabled={masterPassword.length === 0}>
-            {t("unlock.submit")}
+          <Button
+            type="submit"
+            variant="default"
+            className="w-full"
+            disabled={masterPassword.length === 0 || unlockBusy}
+          >
+            {unlockBusy ? <Spinner className="size-4" /> : t("unlock.submit")}
           </Button>
         </form>
       </AuthShell>
