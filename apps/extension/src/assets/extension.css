@@ -47,8 +47,9 @@
     --okkey-z-tooltip: 110;
     --okkey-z-lightbox: 120;
 
-    /* Extension vault shell header */
-    --extension-shell-header: 216 28% 90%;
+    /* Extension vault shell header gradient (to-right) */
+    --extension-shell-header-from: #eaf0fa;
+    --extension-shell-header-to: #f5f4f4;
   }
 
   .dark {
@@ -81,8 +82,9 @@
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
 
-    /* #0a101e */
-    --extension-shell-header: 222 50% 8%;
+    /* Extension vault shell header gradient (to-right) */
+    --extension-shell-header-from: #090f1e;
+    --extension-shell-header-to: #161a26;
   }
 
   /* Accent overrides (7 variants) — keep in sync with apps/web/src/index.css */

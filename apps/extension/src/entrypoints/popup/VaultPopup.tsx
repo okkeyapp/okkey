@@ -948,7 +948,7 @@ export function VaultPopup(props: VaultPopupProps) {
       }
     >
       <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
-        <header className="flex h-[52px] shrink-0 items-center gap-2 bg-[hsl(var(--extension-shell-header))] p-2">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 bg-gradient-to-r from-[var(--extension-shell-header-from)] to-[var(--extension-shell-header-to)] p-2">
           <OkkeyAppSidebarToolbar
             openMobileNavLabel={t("web.nav.openMobileNav")}
             className="!p-0"
