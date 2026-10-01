@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -713,8 +714,10 @@ function ProfileAccountDropdownPanel({
     </>
   );
 
+  const shell = useOkkeyAppShellLayout();
   const openSettingsViaProfile = Boolean(onSettings && settingsAsProfileHeader);
   const showSettingsMenuRow = Boolean(onSettings && !settingsAsProfileHeader);
+  const hasSettingsBlock = Boolean(showSettingsMenuRow || language || onDeviceSettings);
 
   return (
     <>
@@ -747,17 +750,6 @@ function ProfileAccountDropdownPanel({
             <span>{settingsLabel}</span>
           </DropdownMenuItem>
         ) : null}
-        {onDeviceSettings ? (
-          <DropdownMenuItem
-            className="cursor-pointer gap-2"
-            onSelect={() => {
-              onDeviceSettings();
-            }}
-          >
-            {deviceSettingsIcon ?? <NavSettingsIcon />}
-            <span>{deviceSettingsLabel}</span>
-          </DropdownMenuItem>
-        ) : null}
         {language ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer gap-2 [&>svg:last-child]:ml-auto">
@@ -788,6 +780,19 @@ function ProfileAccountDropdownPanel({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
+        {onDeviceSettings ? (
+          <DropdownMenuItem
+            className="cursor-pointer gap-2"
+            onSelect={() => {
+              shell.setMobileDrawerOpen(false);
+              onDeviceSettings();
+            }}
+          >
+            {deviceSettingsIcon ?? <NavSettingsIcon />}
+            <span>{deviceSettingsLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {hasSettingsBlock ? <DropdownMenuSeparator className="mx-1 my-1" /> : null}
         <DropdownMenuItem
           className="cursor-pointer gap-2"
           onSelect={() => {

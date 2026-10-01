@@ -254,22 +254,23 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
 
   async function updateThemePreference(preference: ThemePreference) {
     await writeExtensionThemePreference({ theme: preference });
-    setThemePreference(preference);
+    // Apply DOM theme before state so auto/light accent swatches never flash the dark (white) a1.
     await applyExtensionStoredTheme();
+    setThemePreference(preference);
     notifySaved(t);
   }
 
   async function updateAccent(nextAccent: AccentId) {
     await writeExtensionThemePreference({ accent: nextAccent });
-    setAccent(nextAccent);
     await applyExtensionStoredTheme();
+    setAccent(nextAccent);
     notifySaved(t);
   }
 
   async function updateAccentTint(enabled: boolean) {
     await writeExtensionThemePreference({ accentTint: enabled });
-    setAccentTintEnabled(enabled);
     await applyExtensionStoredTheme();
+    setAccentTintEnabled(enabled);
     notifySaved(t);
   }
 
@@ -329,10 +330,14 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
     if (themePreference === "dark") {
       return option.dark;
     }
-    if (themePreference === "light" || typeof document === "undefined") {
+    if (themePreference === "light") {
       return option.light;
     }
-    return document.documentElement.classList.contains("dark") ? option.dark : option.light;
+    // auto: resolve from system preference (not classList — avoids white a1 while async theme apply races).
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? option.dark : option.light;
+    }
+    return option.light;
   }
 
   const themeOptions: Array<{
@@ -386,10 +391,10 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                 key={item.id}
                 type="button"
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm",
+                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-foreground",
                   active
-                    ? "bg-accent/15 font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                    ? "bg-secondary font-medium"
+                    : "hover:bg-[rgba(0,0,0,0.05)] dark:hover:bg-[rgba(255,255,255,0.08)]",
                 )}
                 onClick={() => setPage(item.id)}
               >

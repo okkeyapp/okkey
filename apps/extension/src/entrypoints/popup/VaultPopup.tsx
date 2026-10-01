@@ -36,6 +36,10 @@ import {
   DropdownMenuItem,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   WorkspaceLogoTile,
   WorkspaceSearchField,
   cn,
@@ -122,6 +126,32 @@ function LockIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/** Header icon between Lock and Create — closes mobile drawer when opening settings. */
+function VaultHeaderDeviceSettingsButton(props: { label: string; onOpen: () => void }) {
+  const shell = useOkkeyAppShellLayout();
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg p-0 shadow-none"
+            aria-label={props.label}
+            onClick={() => {
+              shell.setMobileDrawerOpen(false);
+              props.onOpen();
+            }}
+          >
+            <DeviceSettingsIcon className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{props.label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -810,6 +840,46 @@ export function VaultPopup(props: VaultPopupProps) {
     setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
   }, []);
 
+  const syncFoldersFromController = useCallback(() => {
+    const controller = foldersControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    const st = controller.getState();
+    setFolderNodes(controller.toFolderTree());
+    setItemFolderByItemId(new Map(st.itemFolder));
+    setItemFavoriteByItemId(new Set(st.itemFavorite));
+  }, []);
+
+  const onAssignFolder = useCallback(
+    async (itemId: string, folderId: string | null) => {
+      const controller = foldersControllerRef.current;
+      if (!controller) {
+        throw new Error("Folders controller not ready");
+      }
+      await controller.assignItemToFolder(itemId, folderId);
+      syncFoldersFromController();
+    },
+    [syncFoldersFromController],
+  );
+
+  const onCreateFolder = useCallback(
+    async (label: string) => {
+      const controller = foldersControllerRef.current;
+      if (!controller) {
+        throw new Error("Folders controller not ready");
+      }
+      const id = await controller.createFolder(label);
+      syncFoldersFromController();
+      return id;
+    },
+    [syncFoldersFromController],
+  );
+
+  const openDeviceSettings = useCallback(() => {
+    setDeviceSettingsOpen(true);
+  }, []);
+
   const onToggleFavorite = useCallback(
     async (itemId: string, nextFavorite: boolean) => {
       const controller = foldersControllerRef.current;
@@ -1174,7 +1244,7 @@ export function VaultPopup(props: VaultPopupProps) {
                 void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl));
               },
               onDeviceSettings: () => {
-                setDeviceSettingsOpen(true);
+                openDeviceSettings();
               },
               onLogout: onSignOut,
               onChangeServer,
@@ -1219,15 +1289,26 @@ export function VaultPopup(props: VaultPopupProps) {
               <LockIcon />
               <span className="text-sm font-medium">{t("extension.vault.lock")}</span>
             </Button>
-            <Button
-              type="button"
-              variant="default"
-              className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg p-0"
-              aria-label={t("web.items.createRecord")}
-              onClick={openNewItem}
-            >
-              <PlusIcon />
-            </Button>
+            <VaultHeaderDeviceSettingsButton
+              label={t("web.accountMenu.deviceSettings")}
+              onOpen={openDeviceSettings}
+            />
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="default"
+                    className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg p-0"
+                    aria-label={t("extension.vault.createRecord")}
+                    onClick={openNewItem}
+                  >
+                    <PlusIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t("extension.vault.createRecord")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </header>
 
@@ -1277,7 +1358,9 @@ export function VaultPopup(props: VaultPopupProps) {
               <ExtensionItemDetailPane
                 item={selectedItem}
                 vault={selectedVault}
+                folderId={selectedFolderId}
                 folderLabel={selectedFolderLabel}
+                folderNodes={folderNodes}
                 actorLabel={actorLabel}
                 apiBaseUrl={apiBaseUrl}
                 accessToken={accessToken}
@@ -1291,6 +1374,7 @@ export function VaultPopup(props: VaultPopupProps) {
                   itemsControllerRef.current?.getItemCreatedByUserId(selectedItem.itemId),
                 )}
                 canArchive={canUseFunction(selectedItem.vaultId, "archive")}
+                canChangeFolder={!selectedItem.deleted}
                 deletedItemsRetentionDays={
                   currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
                 }
@@ -1307,6 +1391,8 @@ export function VaultPopup(props: VaultPopupProps) {
                   void onToggleArchive(selectedItem);
                 }}
                 onToggleDelete={(deleted) => onToggleDelete(selectedItem, deleted)}
+                onAssignFolder={(folderId) => onAssignFolder(selectedItem.itemId, folderId)}
+                onCreateFolder={onCreateFolder}
                 onOpenInWeb={() => openItemInWeb(selectedItem.itemId)}
                 t={t}
               />

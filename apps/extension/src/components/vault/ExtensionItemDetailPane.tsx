@@ -5,6 +5,7 @@ import {
   ScrollArea,
   type KeyFieldFileValue,
 } from "@okkey/ui";
+import type { WorkspaceFolderNode } from "@okkey/vault";
 import { downloadKeyFieldFileAttachment, copyTextWithVaultClipboardPolicy } from "@okkey/vault";
 import {
   DeleteItemsConfirmPopup,
@@ -25,11 +26,14 @@ import type { WebLocale } from "@okkey/i18n";
 
 import { readExtensionDevicePrefs } from "../../lib/extensionVaultSession";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
+import { ExtensionItemFolderAssignControl } from "./ExtensionItemFolderAssignControl";
 
 type ExtensionItemDetailPaneProps = {
   item: ItemPlaintextV2;
   vault?: Vault;
+  folderId: string | null;
   folderLabel: string;
+  folderNodes: readonly WorkspaceFolderNode[];
   actorLabel: string;
   apiBaseUrl: string;
   accessToken: string;
@@ -40,6 +44,7 @@ type ExtensionItemDetailPaneProps = {
   canFavorite: boolean;
   canDelete: boolean;
   canArchive: boolean;
+  canChangeFolder?: boolean;
   deletedItemsRetentionDays: number;
   mutationBusy?: boolean;
   onEdit: () => void;
@@ -47,6 +52,8 @@ type ExtensionItemDetailPaneProps = {
   onToggleFavorite: () => void;
   onToggleArchive: () => void;
   onToggleDelete: (deleted: boolean) => void | Promise<void>;
+  onAssignFolder: (folderId: string | null) => Promise<void>;
+  onCreateFolder: (label: string) => Promise<string>;
   onOpenInWeb: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
@@ -59,7 +66,9 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
     item,
     vault,
+    folderId,
     folderLabel,
+    folderNodes,
     actorLabel,
     apiBaseUrl,
     accessToken,
@@ -70,6 +79,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     canFavorite,
     canDelete,
     canArchive,
+    canChangeFolder = true,
     deletedItemsRetentionDays,
     mutationBusy = false,
     onEdit,
@@ -77,6 +87,8 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     onToggleFavorite,
     onToggleArchive,
     onToggleDelete,
+    onAssignFolder,
+    onCreateFolder,
     onOpenInWeb,
     t,
   } = props;
@@ -228,7 +240,22 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               onCopyText={handleCopyAction}
             />
 
-            <ItemDetailSavePath vault={vault} folderLabel={folderLabel} />
+            <ItemDetailSavePath
+              vault={vault}
+              folderLabel={folderLabel}
+              trailing={
+                canChangeFolder && !deleted ? (
+                  <ExtensionItemFolderAssignControl
+                    t={t}
+                    folderId={folderId}
+                    folderNodes={folderNodes}
+                    disabled={mutationBusy}
+                    onAssign={onAssignFolder}
+                    onCreateFolder={onCreateFolder}
+                  />
+                ) : null
+              }
+            />
 
             <ItemActivitySection
               key={`activity-${item.itemId}`}
