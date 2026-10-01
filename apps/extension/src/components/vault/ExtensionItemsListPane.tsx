@@ -127,16 +127,16 @@ async function openItemWebsite(url: string): Promise<void> {
   await browser.tabs.create({ url: withProtocol });
 }
 
-function IconOpenWebsite24({ className }: { className?: string }) {
+function IconOpenWebsite({ className }: { className?: string }) {
   return (
     <svg
-      width={24}
-      height={24}
+      width={20}
+      height={20}
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
-      className={cn("size-6 shrink-0", className)}
+      className={cn("size-5 shrink-0", className)}
     >
       <path
         d="M21 9V3H15M21 3L10 14M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
@@ -365,17 +365,16 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             <button
                               type="button"
                               className={cn(
-                                "pointer-events-none absolute inset-y-0 right-0 z-10",
-                                "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg p-0",
-                                mutedSurfaceActiveBgClassName,
-                                "text-foreground",
-                                "opacity-0 transition-[opacity,background-color,box-shadow]",
+                                "pointer-events-none absolute inset-y-0 right-0 z-10 size-[60px] p-0",
+                                "opacity-0 transition-opacity",
                                 "group-hover:pointer-events-auto group-hover:opacity-100",
-                                "hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
                                 "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
-                                "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
-                                "[&_svg]:size-6",
+                                "focus-visible:outline-none",
+                                "hover:[&>[data-open-visual]]:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)]",
+                                "dark:hover:[&>[data-open-visual]]:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                "focus-visible:[&>[data-open-visual]]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                                "focus-visible:[&>[data-open-visual]]:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)]",
+                                "dark:focus-visible:[&>[data-open-visual]]:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
                               )}
                               aria-label={t("extension.vault.openAndFill")}
                               onClick={(event) => {
@@ -384,7 +383,18 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                 void openItemWebsite(firstUrl);
                               }}
                             >
-                              <IconOpenWebsite24 />
+                              <span
+                                data-open-visual
+                                className={cn(
+                                  "pointer-events-none absolute top-[7px] right-[7px] flex size-[46px] items-center justify-center rounded-[6px]",
+                                  mutedSurfaceActiveBgClassName,
+                                  "text-foreground",
+                                  "transition-[background-color,box-shadow]",
+                                  "[&_svg]:size-5",
+                                )}
+                              >
+                                <IconOpenWebsite />
+                              </span>
                             </button>
                           ) : null}
                         </div>
