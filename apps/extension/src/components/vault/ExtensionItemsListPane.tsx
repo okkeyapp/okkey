@@ -381,22 +381,22 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                       "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                      // No ring — pressed/focus use slate-400 step, darker than hover mid.
+                                      // No ring — pressed/focus = one soft step past hover mid (slate-300, not slate-400).
                                       // Mouse click does not set :focus-visible; :active covers press, :focus covers post-click focus.
                                       "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
-                                      "active:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "active:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus-visible:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus-visible:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "active:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
                                       // Hover must not mute active/focus while the pointer stays on the button.
-                                      "active:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "active:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus-visible:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      "focus-visible:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "active:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
                                       "[&_svg]:size-5",
                                     )}
                                     aria-label={t("extension.vault.openAndFill")}
