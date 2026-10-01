@@ -377,22 +377,31 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                       "opacity-0 transition-[opacity,background-color,border-color]",
                                       "group-hover:pointer-events-auto group-hover:opacity-100",
                                       rowActive && "pointer-events-auto opacity-100",
-                                      // Hover: mid (#e2e8f0) — lighter than focus. Focus must win when both match.
+                                      // Hover: mid (#e2e8f0) — lighter than pressed/focus.
                                       "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                      // Focus: no ring/shadow — slate-400 step, clearly darker than hover mid.
+                                      // No ring — pressed/focus use slate-400 step, darker than hover mid.
+                                      // Mouse click does not set :focus-visible; :active covers press, :focus covers post-click focus.
                                       "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
+                                      "active:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "active:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "focus:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "focus:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
                                       "focus-visible:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
                                       "focus-visible:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
-                                      // Same focus fill while hovered (hover alone must not mute focus).
+                                      // Hover must not mute active/focus while the pointer stays on the button.
+                                      "active:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "active:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:active:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "focus:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "focus:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
                                       "focus-visible:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
                                       "focus-visible:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
                                       "[&_svg]:size-5",
                                     )}
                                     aria-label={t("extension.vault.openAndFill")}
                                     onClick={(event) => {
-                                      event.preventDefault();
+                                      // Do not preventDefault on mousedown — that would block focus.
                                       event.stopPropagation();
                                       void openItemWebsite(firstUrl);
                                     }}
