@@ -1362,6 +1362,9 @@ export function VaultPopup(props: VaultPopupProps) {
                 folderLabel={selectedFolderLabel}
                 folderNodes={folderNodes}
                 actorLabel={actorLabel}
+                activityWireEntries={
+                  itemsControllerRef.current?.getItemActivityById(selectedItem.itemId) ?? []
+                }
                 apiBaseUrl={apiBaseUrl}
                 accessToken={accessToken}
                 vaultKey={resolveVaultKey(selectedItem.vaultId)}

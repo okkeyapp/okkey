@@ -43,6 +43,7 @@ export {
 export {
   createWorkspaceVaultItemsReadController,
   type WorkspaceVaultItemsReadController,
+  type VaultItemActivityWireEntry,
 } from "./workspace-vault-items-read.js";
 export {
   withItemArchivedState,

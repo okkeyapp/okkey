@@ -14,11 +14,14 @@ import {
   ItemRecordFavicon,
   KeyFormEditor,
   buildItemActivityEntries,
+  enrichItemActivityWithItemTimestamps,
+  mapItemActivityWireEntries,
   createKeyFormEditorMessages,
   createLocalizedKeyFieldTypes,
   filterKeyFieldTypesForFilesEnabled,
   itemPlaintextToKeyFormSections,
   useItemFaviconAttachmentUrl,
+  type ItemActivityWireEntry,
   type KeyFormEditorMessages,
 } from "@okkey/vault-ui";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -35,6 +38,7 @@ type ExtensionItemDetailPaneProps = {
   folderLabel: string;
   folderNodes: readonly WorkspaceFolderNode[];
   actorLabel: string;
+  activityWireEntries?: readonly ItemActivityWireEntry[];
   apiBaseUrl: string;
   accessToken: string;
   vaultKey: Uint8Array | null | undefined;
@@ -70,6 +74,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     folderLabel,
     folderNodes,
     actorLabel,
+    activityWireEntries = [],
     apiBaseUrl,
     accessToken,
     vaultKey,
@@ -129,16 +134,21 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     };
   }, [keyFormMessages, t]);
 
-  const activityEntries = useMemo(
-    () =>
-      buildItemActivityEntries({
-        itemId: item.itemId,
-        createdAtMs: item.createdAtMs,
-        updatedAtMs: item.updatedAtMs,
+  const activityEntries = useMemo(() => {
+    if (activityWireEntries.length > 0) {
+      return enrichItemActivityWithItemTimestamps(
+        mapItemActivityWireEntries(activityWireEntries, () => actorLabel),
+        item,
         actorLabel,
-      }),
-    [actorLabel, item.createdAtMs, item.itemId, item.updatedAtMs],
-  );
+      );
+    }
+    return buildItemActivityEntries({
+      itemId: item.itemId,
+      createdAtMs: item.createdAtMs,
+      updatedAtMs: item.updatedAtMs,
+      actorLabel,
+    });
+  }, [activityWireEntries, actorLabel, item]);
 
   const handleFileOpen = useCallback(
     async (file: KeyFieldFileValue) => {

@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
   SettingsRow,
+  ScrollArea,
   Switch,
   cn,
   normalizeThemePreference,
@@ -391,10 +392,8 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                 key={item.id}
                 type="button"
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-foreground",
-                  active
-                    ? "bg-secondary font-medium"
-                    : "hover:bg-[rgba(0,0,0,0.05)] dark:hover:bg-[rgba(255,255,255,0.08)]",
+                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-foreground hover:bg-secondary",
+                  active && "bg-secondary font-medium",
                 )}
                 onClick={() => setPage(item.id)}
               >
@@ -405,10 +404,11 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
           })}
         </nav>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-3">
-          <p className="pb-3 text-xs leading-4 text-muted-foreground">
-            {t("web.settingsPopup.deviceSettings.description")}
-          </p>
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="px-4 py-3">
+            <p className="pb-3 text-xs leading-4 text-muted-foreground">
+              {t("web.settingsPopup.deviceSettings.description")}
+            </p>
 
           {page === "personalization" ? (
             <section>
@@ -623,7 +623,8 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
               </SettingsRow>
             </section>
           ) : null}
-        </div>
+          </div>
+        </ScrollArea>
       </div>
 
       <SetupPinPopup

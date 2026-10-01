@@ -1878,11 +1878,16 @@ export function OkkeyAppSidebar({
               <div
                 className={cn(
                   "fixed inset-y-0 left-0 z-sidebar flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
-                  !mobileDrawerOpen && "-translate-x-full pointer-events-none",
+                  !mobileDrawerOpen && "-translate-x-full pointer-events-none overflow-hidden",
                   mobileDrawerOpen && "translate-x-0 pointer-events-auto",
                 )}
               >
-                <div className="relative h-full w-[min(255px,calc(100vw-52px))] max-w-[calc(100vw-52px)] shrink-0 overflow-hidden bg-sidebar shadow-xl">
+                <div
+                  className={cn(
+                    "relative h-full w-[min(255px,calc(100vw-52px))] max-w-[calc(100vw-52px)] shrink-0 overflow-hidden bg-sidebar",
+                    mobileDrawerOpen ? "shadow-xl" : "shadow-none",
+                  )}
+                >
                   <OkkeyAppSidebarInner
                     className={className}
                     workspaceNavItems={workspaceNavItems}
