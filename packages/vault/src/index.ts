@@ -32,6 +32,7 @@ export {
   type ReadableItemField,
 } from "./item-field-extract.js";
 export {
+  itemHasUrlMatchingTab,
   itemUrlMatchesTab,
   itemUrlsMatchTab,
   type UrlAutofillScope,
@@ -43,7 +44,12 @@ export {
 export {
   createWorkspaceVaultItemsReadController,
   type WorkspaceVaultItemsReadController,
+  type VaultItemActivityWireEntry,
 } from "./workspace-vault-items-read.js";
+export {
+  withItemArchivedState,
+  withItemDeletedState,
+} from "./item-mutate.js";
 export {
   DEFAULT_VAULT_IDLE_LOCK_MS,
   vaultIdleLockMsFromServerSeconds,

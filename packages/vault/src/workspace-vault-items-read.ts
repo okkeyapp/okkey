@@ -1,8 +1,16 @@
 import type { CoreClient } from "@okkey/api";
 import { decryptVaultItemPayload } from "@okkey/crypto";
-import { applyItemPlaintextToReplayMap } from "@okkey/sync";
-import type { ItemPlaintextV2, SyncEventWireDto, Vault } from "@okkey/types";
-import { parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
+import {
+  IndexedDbOutboxStore,
+  SyncOutboxClient,
+  applyItemPlaintextToReplayMap,
+} from "@okkey/sync";
+import {
+  buildItemSyncMetadataFromPlaintext,
+  buildItemUpdateAppendRequest,
+} from "@okkey/sync/item-sync";
+import type { ItemPlaintextV2, SyncAppendEventRequestDto, SyncEventWireDto, Vault } from "@okkey/types";
+import { generateEntityId, parseAndNormalizeItemPlaintextUtf8 } from "@okkey/types";
 
 import { base64ToBytes } from "./base64.js";
 import { resolveVaultItemEncryptionKey } from "./resolve-vault-item-key.js";
@@ -12,8 +20,19 @@ const CACHE_STORE = "materialized_state";
 const ITEM_EVENT_TYPES = new Set(["ITEM_CREATE", "ITEM_UPDATE", "ITEM_DELETE"]);
 const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = new Set([1, 2]);
 
+/** Wire activity entry — same shape as web / `@okkey/vault-ui` ItemActivityWireEntry. */
+export type VaultItemActivityWireEntry = {
+  id: string;
+  actionKey: "created" | "updated" | "archived" | "unarchived" | "deleted" | "restored";
+  atMs: number;
+  actorId: string | null;
+};
+
 type VaultItemsMaterializedState = {
   items: Map<string, ItemPlaintextV2>;
+  itemActivity: Map<string, VaultItemActivityWireEntry[]>;
+  /** First ITEM_CREATE actorId per item (for profile `own` scope). */
+  itemCreatedByUserId: Map<string, string | null>;
   lastAppliedVersion: number;
 };
 
@@ -24,6 +43,8 @@ type CachedWorkspaceVaultItemsState = {
       string,
       {
         items: Array<[string, ItemPlaintextV2]>;
+        itemActivity?: Array<[string, VaultItemActivityWireEntry[]]>;
+        itemCreatedByUserId?: Array<[string, string | null]>;
         lastAppliedVersion: number;
       },
     ]
@@ -71,9 +92,13 @@ async function readCachedState(
     }
     const vaults = new Map<string, VaultItemsMaterializedState>();
     for (const [vaultId, snapshot] of row.vaults) {
+      // Caches written before activity tracking lack itemActivity — force full replay.
+      const hasActivity = Array.isArray(snapshot.itemActivity);
       vaults.set(vaultId, {
-        items: new Map(snapshot.items),
-        lastAppliedVersion: snapshot.lastAppliedVersion,
+        items: hasActivity ? new Map(snapshot.items) : new Map(),
+        itemActivity: new Map(snapshot.itemActivity ?? []),
+        itemCreatedByUserId: hasActivity ? new Map(snapshot.itemCreatedByUserId ?? []) : new Map(),
+        lastAppliedVersion: hasActivity ? snapshot.lastAppliedVersion : 0,
       });
     }
     return vaults;
@@ -97,6 +122,8 @@ async function writeCachedState(
         vaultId,
         {
           items: [...snapshot.items.entries()],
+          itemActivity: [...snapshot.itemActivity.entries()],
+          itemCreatedByUserId: [...snapshot.itemCreatedByUserId.entries()],
           lastAppliedVersion: snapshot.lastAppliedVersion,
         },
       ]),
@@ -112,7 +139,53 @@ async function writeCachedState(
 }
 
 function emptyVaultState(): VaultItemsMaterializedState {
-  return { items: new Map(), lastAppliedVersion: 0 };
+  return { items: new Map(), itemActivity: new Map(), itemCreatedByUserId: new Map(), lastAppliedVersion: 0 };
+}
+
+function resolveItemUpdateActivityKey(
+  previous: ItemPlaintextV2 | undefined,
+  next: ItemPlaintextV2,
+): VaultItemActivityWireEntry["actionKey"] {
+  const wasDeleted = Boolean(previous?.deleted);
+  const isDeleted = Boolean(next.deleted);
+  if (!wasDeleted && isDeleted) {
+    return "deleted";
+  }
+  if (wasDeleted && !isDeleted) {
+    return "restored";
+  }
+  const wasArchived = Boolean(previous?.archived);
+  const isArchived = Boolean(next.archived);
+  if (!wasArchived && isArchived) {
+    return "archived";
+  }
+  if (wasArchived && !isArchived) {
+    return "unarchived";
+  }
+  return "updated";
+}
+
+function appendItemActivity(
+  itemActivity: Map<string, VaultItemActivityWireEntry[]>,
+  itemId: string,
+  event: SyncEventWireDto,
+  actionKey: VaultItemActivityWireEntry["actionKey"],
+  atMsOverride?: number,
+  idSuffix?: string,
+): void {
+  const list = itemActivity.get(itemId) ?? [];
+  const entryId = idSuffix ? `${event.id}:${idSuffix}` : event.id;
+  if (list.some((entry) => entry.id === entryId)) {
+    return;
+  }
+  const parsedEventAt = Date.parse(event.createdAt);
+  list.push({
+    id: entryId,
+    actionKey,
+    atMs: atMsOverride ?? (Number.isFinite(parsedEventAt) ? parsedEventAt : Date.now()),
+    actorId: event.actorId,
+  });
+  itemActivity.set(itemId, list);
 }
 
 function getEventBlob(event: SyncEventWireDto): { crypto_version: number; payload: string } {
@@ -139,6 +212,8 @@ async function applyVaultItemEvents(
   decryptWirePayload: (encryptedPayloadBase64: string) => Promise<Uint8Array>,
 ): Promise<VaultItemsMaterializedState> {
   const items = new Map(state.items);
+  const itemActivity = new Map(state.itemActivity);
+  const itemCreatedByUserId = new Map(state.itemCreatedByUserId);
   let lastAppliedVersion = state.lastAppliedVersion;
 
   for (const event of events) {
@@ -170,21 +245,53 @@ async function applyVaultItemEvents(
       continue;
     }
 
+    if (event.eventType === "ITEM_CREATE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "created", parsed.createdAtMs);
+      if (parsed.updatedAtMs > parsed.createdAtMs) {
+        appendItemActivity(
+          itemActivity,
+          parsed.itemId,
+          event,
+          "updated",
+          parsed.updatedAtMs,
+          "updated",
+        );
+      }
+      if (!itemCreatedByUserId.has(parsed.itemId)) {
+        itemCreatedByUserId.set(parsed.itemId, event.actorId);
+      }
+    } else if (event.eventType === "ITEM_UPDATE") {
+      const previous = items.get(parsed.itemId);
+      appendItemActivity(
+        itemActivity,
+        parsed.itemId,
+        event,
+        resolveItemUpdateActivityKey(previous, parsed),
+      );
+    } else if (event.eventType === "ITEM_DELETE") {
+      appendItemActivity(itemActivity, parsed.itemId, event, "deleted");
+    }
+
     applyItemPlaintextToReplayMap(items, parsed, event);
     lastAppliedVersion = event.version;
   }
 
-  return { items, lastAppliedVersion };
+  return { items, itemActivity, itemCreatedByUserId, lastAppliedVersion };
 }
 
 export type WorkspaceVaultItemsReadController = {
   refresh: () => Promise<void>;
   getAllItems: () => ItemPlaintextV2[];
   getItemsByVault: (vaultId: string) => ItemPlaintextV2[];
+  getItemById: (itemId: string) => ItemPlaintextV2 | null;
+  getItemActivityById: (itemId: string) => VaultItemActivityWireEntry[];
+  getItemCreatedByUserId: (itemId: string) => string | null | undefined;
+  /** Soft-delete / archive / field updates via ITEM_UPDATE append. */
+  updateItem: (item: ItemPlaintextV2) => Promise<string>;
   dispose: () => void;
 };
 
-/** Read-only vault items sync (event log replay + IndexedDB cache). Mutations stay in web / E3. */
+/** Vault items sync (event log replay + IndexedDB cache) with update mutations for E3+. */
 export function createWorkspaceVaultItemsReadController(input: {
   core: CoreClient;
   userId: string;
@@ -195,6 +302,16 @@ export function createWorkspaceVaultItemsReadController(input: {
 }): WorkspaceVaultItemsReadController {
   let vaultStates = new Map<string, VaultItemsMaterializedState>();
   const vaultKeyCache = new Map<string, Uint8Array>();
+
+  const outbox = new SyncOutboxClient(
+    new IndexedDbOutboxStore({
+      dbName: `okkey-ws-vault-items-outbox.u.${input.userId}.w.${input.workspaceId}`,
+    }),
+    {
+      appendVaultEvent: (vaultId, body) => input.core.appendVaultEvent(vaultId, body),
+      listVaultEvents: (vaultId, afterVersion) => input.core.listVaultEvents(vaultId, afterVersion),
+    },
+  );
 
   function ensureVaultState(vaultId: string): VaultItemsMaterializedState {
     const existing = vaultStates.get(vaultId);
@@ -260,10 +377,58 @@ export function createWorkspaceVaultItemsReadController(input: {
     }
   }
 
+  async function enqueue(request: SyncAppendEventRequestDto, vaultId: string): Promise<void> {
+    await outbox.enqueue({ vaultId, request });
+    await outbox.drain(vaultId);
+    await replayVaultIncremental(vaultId);
+    await writeCachedState(input.userId, input.workspaceId, vaultStates);
+  }
+
   return {
     refresh,
     getAllItems: () => [...vaultStates.values()].flatMap((state) => [...state.items.values()]),
     getItemsByVault: (vaultId) => [...(vaultStates.get(vaultId)?.items.values() ?? [])],
+    getItemById: (itemId) => {
+      for (const state of vaultStates.values()) {
+        const item = state.items.get(itemId);
+        if (item) {
+          return item;
+        }
+      }
+      return null;
+    },
+    getItemActivityById: (itemId) => {
+      for (const state of vaultStates.values()) {
+        const entries = state.itemActivity.get(itemId);
+        if (entries && entries.length > 0) {
+          return [...entries].sort((a, b) => b.atMs - a.atMs);
+        }
+      }
+      return [];
+    },
+    getItemCreatedByUserId: (itemId) => {
+      for (const state of vaultStates.values()) {
+        if (state.itemCreatedByUserId.has(itemId)) {
+          return state.itemCreatedByUserId.get(itemId);
+        }
+      }
+      return undefined;
+    },
+    updateItem: async (item) => {
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemUpdateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
+        item,
+      );
+      await enqueue(request, item.vaultId);
+      return item.itemId;
+    },
     dispose: () => {
       vaultKeyCache.clear();
     },

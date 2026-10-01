@@ -175,4 +175,140 @@
   .okkey-small {
     @apply text-sm font-normal leading-5 tracking-normal;
   }
+
+  /* Popup open/close — mirror apps/web/src/index.css */
+  .okkey-popup-overlay {
+    animation: okkey-popup-overlay-in 240ms ease-out;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .okkey-popup-overlay[data-state="closing"] {
+    animation: okkey-popup-overlay-out 240ms ease-in forwards;
+  }
+
+  .okkey-popup-panel {
+    animation: okkey-popup-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: calc(100dvh - 32px);
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.1),
+      0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+
+  .okkey-popup-panel[data-state="closing"] {
+    animation: okkey-popup-panel-out 200ms ease-in forwards;
+  }
+
+  .dark .okkey-popup-panel {
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+
+  @media (max-width: 767px) {
+    .okkey-popup-sheet {
+      animation: okkey-popup-sheet-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .okkey-popup-sheet[data-state="closing"] {
+      animation: okkey-popup-sheet-out 200ms ease-in forwards;
+    }
+
+    .okkey-popup-panel {
+      animation: none;
+    }
+
+    .okkey-popup-panel[data-state="closing"] {
+      animation: none;
+    }
+  }
+
+  @keyframes okkey-popup-overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes okkey-popup-overlay-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes okkey-popup-panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes okkey-popup-panel-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes okkey-popup-sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes okkey-popup-sheet-out {
+    from {
+      transform: translateY(var(--okkey-sheet-drag-y, 0px));
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+
+  /*
+   * Sonner forces full-width toasts under 600px and overflow-wrap:anywhere —
+   * in the narrow extension popup that collapses text to 1 letter/line.
+   * Full-width toaster + centered content-sized toasts.
+   */
+  [data-sonner-toaster][data-x-position="center"] {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  [data-sonner-toaster][data-x-position="center"] [data-sonner-toast] {
+    pointer-events: auto;
+    left: auto !important;
+    right: auto !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: min(320px, calc(100vw - 24px)) !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    padding: 0.5rem 0.75rem !important;
+    gap: 0.5rem !important;
+  }
 }

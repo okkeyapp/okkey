@@ -101,6 +101,28 @@ export function FilterIconDeleted({ className, ...props }: SVGProps<SVGSVGElemen
   );
 }
 
+/** Tab URL suggestions scope (extension list; not a menu row). */
+export function FilterIconSuggestions({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M8 1.5V3.5M8 12.5V14.5M3.5 8H1.5M14.5 8H12.5M4.05 4.05L2.64 2.64M13.36 13.36L11.95 11.95M11.95 4.05L13.36 2.64M2.64 13.36L4.05 11.95"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  );
+}
+
 export function FolderClosedGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4 shrink-0 text-foreground", className)} {...props}>

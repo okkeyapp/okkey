@@ -1,0 +1,640 @@
+import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
+import {
+  CLIPBOARD_CLEAR_OPTIONS_SECONDS,
+  IDLE_LOCK_OPTIONS_SECONDS,
+  type VaultDevicePrefs,
+  vaultIdleLockMsFromServerSeconds,
+} from "@okkey/vault";
+import { wrapUnlockMaterialWithPin } from "@okkey/crypto";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  DevicePersonalizationIcon,
+  DeviceSecurityIcon,
+  DeviceUnlockIcon,
+  PAGE_BACKGROUND_GRADIENT_LIGHT,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SettingsRow,
+  ScrollArea,
+  Switch,
+  cn,
+  normalizeThemePreference,
+  type ThemePreference,
+} from "@okkey/ui";
+import { SetupPinPopup } from "@okkey/vault-ui";
+import { useCallback, useEffect, useState, type ReactNode, type SVGProps } from "react";
+import { toast } from "sonner";
+
+import { SettingsGearIcon } from "../icons/SettingsGearIcon";
+import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
+import {
+  biometricErrorMessageKey,
+  disableExtensionBiometricUnlock,
+  getExtensionBiometricUnlockCapability,
+  setupExtensionBiometricUnlock,
+  type BiometricCapability,
+  type BiometricUnlockErrorCode,
+} from "../../lib/extensionBiometricUnlock";
+import { writeExtensionPinUnlockWrap } from "../../lib/extensionDeviceUnlockStore";
+import {
+  patchExtensionDevicePrefs,
+  readExtensionDevicePrefs,
+  readExtensionThemePreference,
+  writeExtensionThemePreference,
+} from "../../lib/extensionVaultSession";
+
+const ACCENT_OPTIONS = [
+  { id: "a1", light: "hsl(215 5% 9%)", dark: "hsl(215 4% 98%)" },
+  { id: "a2", light: "hsl(217.2 93.2% 59.8%)", dark: "hsl(217.2 93.2% 59.8%)" },
+  { id: "a3", light: "hsl(188.7 96.2% 42.7%)", dark: "hsl(188.7 96.2% 42.7%)" },
+  { id: "a4", light: "hsl(159.8 83.5% 41%)", dark: "hsl(159.8 83.5% 41%)" },
+  { id: "a5", light: "hsl(24.6 97% 53.1%)", dark: "hsl(24.6 97% 53.1%)" },
+  { id: "a6", light: "hsl(331 82.5% 60.4%)", dark: "hsl(331 82.5% 60.4%)" },
+  { id: "a7", light: "hsl(258.6 90.5% 67.1%)", dark: "hsl(258.6 90.5% 67.1%)" },
+] as const;
+
+type AccentId = (typeof ACCENT_OPTIONS)[number]["id"];
+
+export type DeviceSettingsPage = "personalization" | "security" | "unlock";
+
+type ExtensionDeviceSettingsPanelProps = {
+  userId: string;
+  secrets: UnlockWithMasterPasswordResult;
+  idleLockMs: number;
+  onIdleLockMsChange: (ms: number) => void;
+  onBack: () => void;
+  t: (key: string, values?: Record<string, string | number | boolean>) => string;
+};
+
+function notifySaved(t: ExtensionDeviceSettingsPanelProps["t"]) {
+  toast.success(t("web.toast.save.success"));
+}
+
+function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M13.3334 4L6.00008 11.3333L2.66675 8"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SunIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M12 2V4M12 20V22M4.93018 4.92993L6.34018 6.33993M17.6602 17.6599L19.0702 19.0699M2 12H4M20 12H22M6.34018 17.6599L4.93018 19.0699M19.0702 4.92993L17.6602 6.33993M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M12 3C10.8065 4.19347 10.136 5.81217 10.136 7.5C10.136 9.18783 10.8065 10.8065 12 12C13.1935 13.1935 14.8122 13.864 16.5 13.864C18.1878 13.864 19.8065 13.1935 21 12C21 13.78 20.4722 15.5201 19.4832 17.0001C18.4943 18.4802 17.0887 19.6337 15.4442 20.3149C13.7996 20.9961 11.99 21.1743 10.2442 20.8271C8.49836 20.4798 6.89472 19.6226 5.63604 18.364C4.37737 17.1053 3.5202 15.5016 3.17294 13.7558C2.82567 12.01 3.0039 10.2004 3.68509 8.55585C4.36628 6.91131 5.51983 5.50571 6.99987 4.51677C8.47991 3.52784 10.22 3 12 3Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SunMoonIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M12 2V4M12 20V22M4.8999 4.8999L6.2999 6.2999M17.7002 17.7L19.1002 19.1M2 12H4M20 12H22M6.2999 17.7L4.8999 19.1M19.1002 4.8999L17.6602 6.3399M12 8C11.4984 8.5362 11.2249 9.24634 11.2371 9.98047C11.2493 10.7146 11.5464 11.4152 12.0656 11.9344C12.5848 12.4536 13.2854 12.7507 14.0195 12.7629C14.7537 12.7751 15.4638 12.5016 16 12C16 12.7911 15.7654 13.5645 15.3259 14.2223C14.8864 14.8801 14.2616 15.3928 13.5307 15.6955C12.7998 15.9983 11.9956 16.0775 11.2196 15.9231C10.4437 15.7688 9.73098 15.3878 9.17157 14.8284C8.61216 14.269 8.2312 13.5563 8.07686 12.7804C7.92252 12.0044 8.00173 11.2002 8.30448 10.4693C8.60723 9.73836 9.11992 9.11365 9.77772 8.67412C10.4355 8.2346 11.2089 8 12 8Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function BackChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4", className)}>
+      <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function idleLabel(seconds: number, t: ExtensionDeviceSettingsPanelProps["t"]): string {
+  if (seconds < 60) {
+    return t("web.settingsPopup.vault.idle.seconds", { count: String(seconds) });
+  }
+  if (seconds < 3600) {
+    return t("web.settingsPopup.vault.idle.minutes", { count: String(Math.round(seconds / 60)) });
+  }
+  return t("web.settingsPopup.vault.idle.hours", { count: String(Math.round(seconds / 3600)) });
+}
+
+function clipboardLabel(seconds: number, t: ExtensionDeviceSettingsPanelProps["t"]): string {
+  if (seconds <= 0) {
+    return t("web.settingsPopup.vault.clipboard.never");
+  }
+  if (seconds < 60) {
+    return t("web.settingsPopup.vault.clipboard.seconds", { count: String(seconds) });
+  }
+  return t("web.settingsPopup.vault.clipboard.minutes", { count: String(Math.round(seconds / 60)) });
+}
+
+const MENU: Array<{ id: DeviceSettingsPage; labelKey: string; Icon: typeof DevicePersonalizationIcon }> = [
+  {
+    id: "personalization",
+    labelKey: "web.settingsPopup.deviceSettings.personalization",
+    Icon: DevicePersonalizationIcon,
+  },
+  {
+    id: "security",
+    labelKey: "web.settingsPopup.deviceSettings.security",
+    Icon: DeviceSecurityIcon,
+  },
+  {
+    id: "unlock",
+    labelKey: "web.settingsPopup.deviceSettings.unlock",
+    Icon: DeviceUnlockIcon,
+  },
+];
+
+export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanelProps) {
+  const { userId, secrets, idleLockMs, onIdleLockMsChange, onBack, t } = props;
+  const [page, setPage] = useState<DeviceSettingsPage>("personalization");
+  const [prefs, setPrefs] = useState<VaultDevicePrefs | null>(null);
+  const [idleSeconds, setIdleSeconds] = useState(() => Math.round(idleLockMs / 1000));
+  const [themePreference, setThemePreference] = useState<ThemePreference>("auto");
+  const [accent, setAccent] = useState<AccentId>("a2");
+  const [accentTintEnabled, setAccentTintEnabled] = useState(false);
+  const [pinSetupOpen, setPinSetupOpen] = useState(false);
+  const [bioError, setBioError] = useState<string | null>(null);
+  const [bioBusy, setBioBusy] = useState(false);
+  const [bioCapability, setBioCapability] = useState<BiometricCapability | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [nextPrefs, theme] = await Promise.all([
+        readExtensionDevicePrefs(userId),
+        readExtensionThemePreference(),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      setPrefs(nextPrefs);
+      setThemePreference(normalizeThemePreference(theme.theme));
+      const accentIds = new Set(ACCENT_OPTIONS.map((o) => o.id));
+      setAccent(theme.accent && accentIds.has(theme.accent as AccentId) ? (theme.accent as AccentId) : "a2");
+      setAccentTintEnabled(theme.accentTint === "1" || theme.accentTint === "true");
+      if (typeof nextPrefs.idleLockSeconds === "number") {
+        setIdleSeconds(nextPrefs.idleLockSeconds);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    setIdleSeconds(Math.round(idleLockMs / 1000));
+  }, [idleLockMs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getExtensionBiometricUnlockCapability().then((capability) => {
+      if (!cancelled) {
+        setBioCapability(capability);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updatePrefs = useCallback(
+    async (patch: Partial<VaultDevicePrefs>) => {
+      const next = await patchExtensionDevicePrefs(userId, patch);
+      setPrefs(next);
+      notifySaved(t);
+    },
+    [userId, t],
+  );
+
+  async function updateThemePreference(preference: ThemePreference) {
+    await writeExtensionThemePreference({ theme: preference });
+    // Apply DOM theme before state so auto/light accent swatches never flash the dark (white) a1.
+    await applyExtensionStoredTheme();
+    setThemePreference(preference);
+    notifySaved(t);
+  }
+
+  async function updateAccent(nextAccent: AccentId) {
+    await writeExtensionThemePreference({ accent: nextAccent });
+    await applyExtensionStoredTheme();
+    setAccent(nextAccent);
+    notifySaved(t);
+  }
+
+  async function updateAccentTint(enabled: boolean) {
+    await writeExtensionThemePreference({ accentTint: enabled });
+    await applyExtensionStoredTheme();
+    setAccentTintEnabled(enabled);
+    notifySaved(t);
+  }
+
+  async function handleIdleChange(value: string) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds)) {
+      return;
+    }
+    setIdleSeconds(seconds);
+    const ms = vaultIdleLockMsFromServerSeconds(seconds);
+    onIdleLockMsChange(ms);
+    await patchExtensionDevicePrefs(userId, { idleLockSeconds: Math.trunc(seconds) });
+    notifySaved(t);
+  }
+
+  const bioMessageForCode = useCallback(
+    (code: BiometricUnlockErrorCode) => t(biometricErrorMessageKey(code)),
+    [t],
+  );
+
+  const runBiometricSetup = useCallback(async () => {
+    if (!secrets.vaultKey || !secrets.passwordShareC) {
+      setBioError(t("web.settingsPopup.vault.biometric.needUnlock"));
+      return false;
+    }
+    setBioBusy(true);
+    setBioError(null);
+    try {
+      const capability = await getExtensionBiometricUnlockCapability();
+      setBioCapability(capability);
+      if (capability.status !== "ready") {
+        setBioError(bioMessageForCode(capability.code));
+        return false;
+      }
+      const result = await setupExtensionBiometricUnlock({
+        userId,
+        vaultKey: secrets.vaultKey,
+        passwordShareC: secrets.passwordShareC,
+      });
+      if (!result.ok) {
+        setBioError(bioMessageForCode(result.code));
+        return false;
+      }
+      setBioError(null);
+      await updatePrefs({ biometricEnabled: true });
+      return true;
+    } finally {
+      setBioBusy(false);
+    }
+  }, [userId, secrets, t, bioMessageForCode, updatePrefs]);
+
+  const bioReady = bioCapability?.status === "ready";
+  const bioBlockedCode =
+    bioCapability && bioCapability.status !== "ready" ? bioCapability.code : null;
+  const pageTitle = t(MENU.find((item) => item.id === page)?.labelKey ?? MENU[0].labelKey);
+
+  function accentColor(option: (typeof ACCENT_OPTIONS)[number]): string {
+    if (themePreference === "dark") {
+      return option.dark;
+    }
+    if (themePreference === "light") {
+      return option.light;
+    }
+    // auto: resolve from system preference (not classList — avoids white a1 while async theme apply races).
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? option.dark : option.light;
+    }
+    return option.light;
+  }
+
+  const themeOptions: Array<{
+    value: ThemePreference;
+    label: string;
+    gradient: string;
+    icon: ReactNode;
+    iconClassName?: string;
+  }> = [
+    {
+      value: "light",
+      label: t("web.settingsPopup.general.theme.light"),
+      gradient: PAGE_BACKGROUND_GRADIENT_LIGHT,
+      icon: <SunIcon className="!size-6" />,
+      iconClassName: "text-[#0A0A0A]",
+    },
+    {
+      value: "dark",
+      label: t("web.settingsPopup.general.theme.dark"),
+      gradient:
+        "linear-gradient(136.85deg, rgba(131,109,81,0) 8.44%, rgb(131,109,81) 91.56%), linear-gradient(180deg, rgb(64,79,112) 0%, rgb(46,125,107) 100%)",
+      icon: <MoonIcon className="!size-6" />,
+      iconClassName: "text-white",
+    },
+    {
+      value: "auto",
+      label: t("web.settingsPopup.general.theme.auto"),
+      gradient: PAGE_BACKGROUND_GRADIENT_LIGHT,
+      icon: <SunMoonIcon className="!size-6" />,
+      iconClassName: "text-[#0A0A0A]",
+    },
+  ];
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
+      <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-2">
+        <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0" onClick={onBack} aria-label={t("web.settingsPopup.close")}>
+          <BackChevronIcon />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium leading-4 text-muted-foreground">
+            {t("web.settingsPopup.deviceSettings.title")}
+          </p>
+          <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{pageTitle}</h1>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border p-2" aria-label={t("web.settingsPopup.deviceSettings.groupLabel")}>
+          {MENU.map((item) => {
+            const active = page === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-foreground hover:bg-secondary",
+                  active && "bg-secondary font-medium",
+                )}
+                onClick={() => setPage(item.id)}
+              >
+                <item.Icon className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">{t(item.labelKey)}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="px-4 py-3">
+          {page === "personalization" ? (
+            <section>
+              <SettingsRow
+                label={t("web.settingsPopup.general.theme")}
+                border={false}
+                stackOnMobile={false}
+                controlClassName="w-auto max-w-full overflow-visible"
+              >
+                <div className="flex flex-wrap justify-end gap-2">
+                  {themeOptions.map((option) => {
+                    const active = themePreference === option.value;
+                    return (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        variant="ghost"
+                        className="group h-auto w-[84px] min-w-[84px] flex-col gap-0 !bg-transparent p-0 text-center !shadow-none"
+                        onClick={() => void updateThemePreference(option.value)}
+                      >
+                        <span
+                          className={cn(
+                            "relative flex h-[56px] w-[84px] overflow-hidden rounded-[10px] border border-border bg-background",
+                            "items-center justify-center",
+                            active && "border-accent shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
+                          )}
+                        >
+                          <span className="absolute inset-0 rounded-[10px]" style={{ backgroundImage: option.gradient }} aria-hidden />
+                          <span className={cn("relative z-[1]", option.iconClassName)}>{option.icon}</span>
+                          {active ? (
+                            <span className="absolute bottom-1 right-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                              <CheckIcon className="size-3.5" />
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="mt-1 block truncate text-xs leading-4 text-foreground">{option.label}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
+              </SettingsRow>
+              <SettingsRow label={t("web.settingsPopup.general.accent")} stackOnMobile={false} controlClassName="max-md:justify-start">
+                <div className="flex w-full flex-wrap items-center justify-end gap-1.5">
+                  {ACCENT_OPTIONS.map((option) => {
+                    const color = accentColor(option);
+                    const checkOnLightAccent = option.id === "a1";
+                    return (
+                      <Button
+                        key={option.id}
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "size-8 rounded-full p-0 shadow-none",
+                          checkOnLightAccent ? "text-white dark:text-[#0A0A0A]" : "text-white",
+                        )}
+                        style={{ backgroundColor: color }}
+                        aria-label={t("web.settingsPopup.general.accentAria", { id: option.id })}
+                        onClick={() => void updateAccent(option.id)}
+                      >
+                        <CheckIcon className={cn("size-3.5 opacity-0", accent === option.id && "opacity-100")} />
+                      </Button>
+                    );
+                  })}
+                </div>
+              </SettingsRow>
+              <SettingsRow
+                label={t("web.settingsPopup.general.accentTint")}
+                description={t("web.settingsPopup.general.accentTintHint")}
+                stackOnMobile={false}
+              >
+                <Switch
+                  size="lg"
+                  checked={accentTintEnabled}
+                  onCheckedChange={(checked) => void updateAccentTint(checked)}
+                  aria-label={t("web.settingsPopup.general.accentTint")}
+                />
+              </SettingsRow>
+            </section>
+          ) : null}
+
+          {page === "security" && prefs ? (
+            <section>
+              <SettingsRow
+                border={false}
+                label={t("web.settingsPopup.vault.idle.label")}
+                description={t("web.settingsPopup.vault.idle.description")}
+                controlClassName="w-[140px]"
+                stackOnMobile={false}
+              >
+                <Select value={String(idleSeconds)} onValueChange={(v) => void handleIdleChange(v)}>
+                  <SelectTrigger className="w-full font-normal">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    {IDLE_LOCK_OPTIONS_SECONDS.map((seconds) => (
+                      <SelectItem key={seconds} value={String(seconds)}>
+                        {idleLabel(seconds, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+              <SettingsRow
+                label={t("web.settingsPopup.vault.lockOnSleep.label")}
+                description={t("web.settingsPopup.vault.lockOnSleep.description")}
+                controlClassName="w-[100px]"
+                stackOnMobile={false}
+              >
+                <Switch
+                  size="lg"
+                  checked={prefs.lockOnDeviceSleep}
+                  onCheckedChange={(checked) => void updatePrefs({ lockOnDeviceSleep: checked })}
+                />
+              </SettingsRow>
+              <SettingsRow
+                label={t("web.settingsPopup.vault.clipboard.label")}
+                description={t("web.settingsPopup.vault.clipboard.description")}
+                controlClassName="w-[140px]"
+                stackOnMobile={false}
+              >
+                <Select
+                  value={String(prefs.clipboardClearSeconds)}
+                  onValueChange={(v) => void updatePrefs({ clipboardClearSeconds: Number(v) })}
+                >
+                  <SelectTrigger className="w-full font-normal">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    {CLIPBOARD_CLEAR_OPTIONS_SECONDS.map((seconds) => (
+                      <SelectItem key={seconds} value={String(seconds)}>
+                        {clipboardLabel(seconds, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+            </section>
+          ) : null}
+
+          {page === "unlock" && prefs ? (
+            <section>
+              <div className="flex flex-col gap-3 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-5 text-foreground">
+                      {t("web.settingsPopup.vault.biometric.label")}
+                    </p>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      {t("web.settingsPopup.vault.biometric.description")}
+                    </p>
+                  </div>
+                  <Switch
+                    size="lg"
+                    checked={prefs.biometricEnabled}
+                    disabled={bioBusy || (!prefs.biometricEnabled && bioCapability !== null && !bioReady)}
+                    onCheckedChange={(checked) => {
+                      if (!checked) {
+                        void disableExtensionBiometricUnlock(userId);
+                        setBioError(null);
+                        void updatePrefs({ biometricEnabled: false });
+                        return;
+                      }
+                      void runBiometricSetup();
+                    }}
+                  />
+                </div>
+                {prefs.biometricEnabled ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    disabled={bioBusy || !bioReady}
+                    onClick={() => void runBiometricSetup()}
+                  >
+                    <SettingsGearIcon className="size-4" />
+                    {bioBusy
+                      ? t("web.settingsPopup.vault.biometric.setupBusy")
+                      : t("web.settingsPopup.vault.biometric.reconfigure")}
+                  </Button>
+                ) : null}
+                {bioError ? (
+                  <Alert variant="error">
+                    <AlertDescription>{bioError}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {!bioError && bioBlockedCode ? (
+                  <Alert variant="info">
+                    <AlertDescription>{bioMessageForCode(bioBlockedCode)}</AlertDescription>
+                  </Alert>
+                ) : null}
+              </div>
+
+              <SettingsRow
+                label={t("web.settingsPopup.vault.pin.label")}
+                description={t("web.settingsPopup.vault.pin.description")}
+                controlClassName="w-[100px]"
+                stackOnMobile={false}
+              >
+                <Switch
+                  size="lg"
+                  checked={prefs.pinEnabled}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      setPinSetupOpen(true);
+                      return;
+                    }
+                    void writeExtensionPinUnlockWrap(userId, null);
+                    void updatePrefs({ pinEnabled: false });
+                  }}
+                />
+              </SettingsRow>
+            </section>
+          ) : null}
+          </div>
+        </ScrollArea>
+      </div>
+
+      <SetupPinPopup
+        open={pinSetupOpen}
+        t={t}
+        onClose={() => setPinSetupOpen(false)}
+        onSubmit={(pin) => {
+          void (async () => {
+            if (!secrets.vaultKey || !secrets.passwordShareC) {
+              setPinSetupOpen(false);
+              return;
+            }
+            const pinBytes = new TextEncoder().encode(pin);
+            try {
+              const wrap = await wrapUnlockMaterialWithPin({
+                vaultKey: secrets.vaultKey,
+                passwordShareC: secrets.passwordShareC,
+                pinUtf8: pinBytes,
+              });
+              await writeExtensionPinUnlockWrap(userId, wrap);
+              await updatePrefs({ pinEnabled: true });
+              setPinSetupOpen(false);
+            } finally {
+              pinBytes.fill(0);
+            }
+          })();
+        }}
+      />
+    </div>
+  );
+}

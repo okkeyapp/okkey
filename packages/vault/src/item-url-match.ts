@@ -1,10 +1,18 @@
 export type UrlAutofillScope = "entire-site" | "exact-url" | "none";
 
 function tryParseUrl(raw: string): URL | null {
-  try {
-    return new URL(raw.trim());
-  } catch {
+  const trimmed = raw.trim();
+  if (!trimmed) {
     return null;
+  }
+  try {
+    return new URL(trimmed);
+  } catch {
+    try {
+      return new URL(`https://${trimmed}`);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -34,6 +42,10 @@ export function itemUrlMatchesTab(
   return normalizeHost(tab.hostname) === normalizeHost(item.hostname);
 }
 
+/**
+ * Autofill helper: no tab constraint / empty URLs → treat as match (do not hide).
+ * Prefer {@link itemHasUrlMatchingTab} when filtering to tab-matching suggestions.
+ */
 export function itemUrlsMatchTab(
   tabUrl: string | null | undefined,
   itemUrls: readonly string[],
@@ -41,6 +53,18 @@ export function itemUrlsMatchTab(
 ): boolean {
   if (!tabUrl?.trim() || itemUrls.length === 0) {
     return true;
+  }
+  return itemUrls.some((url) => itemUrlMatchesTab(tabUrl, url, scope));
+}
+
+/** True only when the tab URL matches at least one item URL (strict; empty → false). */
+export function itemHasUrlMatchingTab(
+  tabUrl: string | null | undefined,
+  itemUrls: readonly string[],
+  scope: UrlAutofillScope = "entire-site",
+): boolean {
+  if (!tabUrl?.trim() || itemUrls.length === 0) {
+    return false;
   }
   return itemUrls.some((url) => itemUrlMatchesTab(tabUrl, url, scope));
 }

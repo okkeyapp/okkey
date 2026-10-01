@@ -1,74 +1,105 @@
-import type { ItemPlaintextV2, Vault } from "@okkey/types";
+import { ITEM_CATEGORY_LOGIN, type ItemPlaintextV2, type Vault } from "@okkey/types";
 import {
   ItemsDetailPanelEmptyStateFill,
   ItemDetailActionsBar,
   ScrollArea,
   type KeyFieldFileValue,
 } from "@okkey/ui";
-import { downloadKeyFieldFileAttachment } from "@okkey/vault";
+import type { WorkspaceFolderNode } from "@okkey/vault";
+import { downloadKeyFieldFileAttachment, copyTextWithVaultClipboardPolicy, collectItemUrls } from "@okkey/vault";
 import {
+  DeleteItemsConfirmPopup,
   ItemActivitySection,
   ItemDetailSavePath,
   ItemRecordFavicon,
   KeyFormEditor,
   buildItemActivityEntries,
+  enrichItemActivityWithItemTimestamps,
+  mapItemActivityWireEntries,
   createKeyFormEditorMessages,
   createLocalizedKeyFieldTypes,
   filterKeyFieldTypesForFilesEnabled,
   itemPlaintextToKeyFormSections,
   useItemFaviconAttachmentUrl,
+  type ItemActivityWireEntry,
   type KeyFormEditorMessages,
 } from "@okkey/vault-ui";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebLocale } from "@okkey/i18n";
 
+import { readExtensionDevicePrefs } from "../../lib/extensionVaultSession";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
+import { ExtensionItemFolderAssignControl } from "./ExtensionItemFolderAssignControl";
 
 type ExtensionItemDetailPaneProps = {
   item: ItemPlaintextV2;
   vault?: Vault;
+  folderId: string | null;
   folderLabel: string;
+  folderNodes: readonly WorkspaceFolderNode[];
   actorLabel: string;
+  activityWireEntries?: readonly ItemActivityWireEntry[];
   apiBaseUrl: string;
   accessToken: string;
   vaultKey: Uint8Array | null | undefined;
   locale: WebLocale;
+  userId: string;
+  favorite: boolean;
+  canFavorite: boolean;
+  canDelete: boolean;
+  canArchive: boolean;
+  canChangeFolder?: boolean;
+  deletedItemsRetentionDays: number;
   onEdit: () => void;
   onCreateCapsule: () => void;
-  onFavoriteInWeb: () => void;
-  onArchiveInWeb: () => void;
-  onDeleteInWeb: () => void;
+  onToggleFavorite: () => void;
+  onToggleArchive: () => void;
+  onToggleDelete: (deleted: boolean) => void | Promise<void>;
+  onAssignFolder: (folderId: string | null) => Promise<void>;
+  onCreateFolder: (label: string) => Promise<string>;
   onOpenInWeb: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
 
 /**
- * Extension detail pane — same composition as web ItemDetailCard:
- * ItemDetailActionsBar (no back) + favicon/title + full KeyFormEditor view mode
- * + save-path trail + activity footer.
- * Mutations deep-link to web; file fields open via local decrypt → blob URL.
+ * Extension detail pane — same composition as web ItemDetailCard.
+ * Favorite / archive / soft-delete run locally (E3).
  */
 export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
     item,
     vault,
+    folderId,
     folderLabel,
+    folderNodes,
     actorLabel,
+    activityWireEntries = [],
     apiBaseUrl,
     accessToken,
     vaultKey,
     locale,
+    userId,
+    favorite,
+    canFavorite,
+    canDelete,
+    canArchive,
+    canChangeFolder = true,
+    deletedItemsRetentionDays,
     onEdit,
     onCreateCapsule,
-    onFavoriteInWeb,
-    onArchiveInWeb,
-    onDeleteInWeb,
+    onToggleFavorite,
+    onToggleArchive,
+    onToggleDelete,
+    onAssignFolder,
+    onCreateFolder,
     onOpenInWeb,
     t,
   } = props;
 
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const headerScrolled = useRadixScrollAreaScrolled(detailScrollRef);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const archived = item.archived ?? false;
   const deleted = item.deleted ?? false;
@@ -94,23 +125,30 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   });
 
   const messagesWithCopy = useMemo((): KeyFormEditorMessages => {
+    const isLoginItem = item.categoryId === ITEM_CATEGORY_LOGIN;
     return {
       ...keyFormMessages,
       copy: t("extension.vault.copy"),
       copied: t("extension.vault.copied"),
+      ...(isLoginItem ? { openWebsite: t("extension.vault.openAndFill") } : null),
     };
-  }, [keyFormMessages, t]);
+  }, [item.categoryId, keyFormMessages, t]);
 
-  const activityEntries = useMemo(
-    () =>
-      buildItemActivityEntries({
-        itemId: item.itemId,
-        createdAtMs: item.createdAtMs,
-        updatedAtMs: item.updatedAtMs,
+  const activityEntries = useMemo(() => {
+    if (activityWireEntries.length > 0) {
+      return enrichItemActivityWithItemTimestamps(
+        mapItemActivityWireEntries(activityWireEntries, () => actorLabel),
+        item,
         actorLabel,
-      }),
-    [actorLabel, item.createdAtMs, item.itemId, item.updatedAtMs],
-  );
+      );
+    }
+    return buildItemActivityEntries({
+      itemId: item.itemId,
+      createdAtMs: item.createdAtMs,
+      updatedAtMs: item.updatedAtMs,
+      actorLabel,
+    });
+  }, [activityWireEntries, actorLabel, item]);
 
   const handleFileOpen = useCallback(
     async (file: KeyFieldFileValue) => {
@@ -129,27 +167,77 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     [accessToken, apiBaseUrl, item.itemId, item.vaultId, vaultKey],
   );
 
+  const handleCopyAction = useCallback(
+    async (text: string) => {
+      const prefs = await readExtensionDevicePrefs(userId);
+      await copyTextWithVaultClipboardPolicy({
+        clipboardClearSeconds: prefs.clipboardClearSeconds,
+        text,
+      });
+    },
+    [userId],
+  );
+
+  const firstWebsiteUrl = useMemo(() => {
+    if (item.categoryId !== ITEM_CATEGORY_LOGIN) {
+      return "";
+    }
+    return collectItemUrls(item)[0]?.trim() ?? "";
+  }, [item]);
+
+  const handleOpenWebsite = useCallback(async () => {
+    const trimmed = firstWebsiteUrl.trim();
+    if (!trimmed) {
+      return;
+    }
+    const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
+    await browser.tabs.create({ url: withProtocol });
+  }, [firstWebsiteUrl]);
+
+  const handleToggleDelete = useCallback(() => {
+    if (!canDelete) {
+      return;
+    }
+    if (deleted) {
+      void onToggleDelete(false);
+      return;
+    }
+    setDeleteConfirmOpen(true);
+  }, [canDelete, deleted, onToggleDelete]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ItemDetailActionsBar
         t={t}
-        favorite={false}
+        favorite={favorite}
         archived={archived}
         deleted={deleted}
         headerScrolled={headerScrolled}
         showBack={false}
         onEdit={onEdit}
-        onToggleFavorite={onFavoriteInWeb}
-        onToggleArchive={onArchiveInWeb}
-        onToggleDelete={onDeleteInWeb}
+        onToggleFavorite={() => {
+          if (!canFavorite) {
+            return;
+          }
+          onToggleFavorite();
+        }}
+        onToggleArchive={() => {
+          if (!canArchive || deleted) {
+            return;
+          }
+          onToggleArchive();
+        }}
+        onToggleDelete={handleToggleDelete}
         onCreateCapsule={onCreateCapsule}
         canEdit={!archived && !deleted}
-        canFavorite={!archived && !deleted}
-        canArchive={!deleted}
-        canDelete
+        canFavorite={!archived && !deleted && canFavorite}
+        canArchive={!deleted && canArchive}
+        canDelete={canDelete}
         canCreateCapsule={!archived && !deleted}
         openInWebLabel={t("extension.vault.openInWeb")}
         onOpenInWeb={onOpenInWeb}
+        openWebsiteLabel={firstWebsiteUrl ? t("extension.vault.open") : undefined}
+        onOpenWebsite={firstWebsiteUrl ? () => void handleOpenWebsite() : undefined}
       />
 
       <ScrollArea ref={detailScrollRef} className="min-h-0 flex-1">
@@ -177,9 +265,24 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               fieldTypes={keyFormFieldTypes}
               messages={messagesWithCopy}
               onFileOpen={handleFileOpen}
+              onCopyText={handleCopyAction}
             />
 
-            <ItemDetailSavePath vault={vault} folderLabel={folderLabel} />
+            <ItemDetailSavePath
+              vault={vault}
+              folderLabel={folderLabel}
+              trailing={
+                canChangeFolder && !deleted ? (
+                  <ExtensionItemFolderAssignControl
+                    t={t}
+                    folderId={folderId}
+                    folderNodes={folderNodes}
+                    onAssign={onAssignFolder}
+                    onCreateFolder={onCreateFolder}
+                  />
+                ) : null
+              }
+            />
 
             <ItemActivitySection
               key={`activity-${item.itemId}`}
@@ -190,6 +293,26 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
           </div>
         </div>
       </ScrollArea>
+
+      <DeleteItemsConfirmPopup
+        open={deleteConfirmOpen}
+        multiple={false}
+        retentionDays={deletedItemsRetentionDays}
+        deleting={deleting}
+        t={t}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          void (async () => {
+            setDeleting(true);
+            try {
+              await onToggleDelete(true);
+              setDeleteConfirmOpen(false);
+            } finally {
+              setDeleting(false);
+            }
+          })();
+        }}
+      />
     </div>
   );
 }

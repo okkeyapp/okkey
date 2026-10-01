@@ -241,6 +241,7 @@ export {
   FilterIconFavorites,
   FilterIconFrame,
   FilterIconMonitoring,
+  FilterIconSuggestions,
   FolderClosedGlyph,
   SearchGlyph,
   SortIconAlphaAsc,
@@ -432,3 +433,14 @@ export {
   DEFAULT_WORKSPACE_TILE_COLOR,
 } from "./components/workspace/workspace-logo-tile.js";
 export { planTierLabel } from "./workspace/plan-tier-label.js";
+export {
+  SettingsRow,
+  SettingsSectionDivider,
+  SettingsSectionHeading,
+} from "./components/settings/SettingsRows.js";
+export { DeviceSettingsIcon } from "./components/settings/DeviceSettingsIcon.js";
+export {
+  DevicePersonalizationIcon,
+  DeviceSecurityIcon,
+  DeviceUnlockIcon,
+} from "./components/settings/DeviceSettingsMenuIcons.js";

@@ -111,6 +111,7 @@ export async function readExtensionThemePreference(): Promise<{
 export async function writeExtensionThemePreference(input: {
   theme?: string;
   accent?: string;
+  accentTint?: boolean;
 }): Promise<void> {
   const store = chromeLocalKvStorage();
   if (input.theme != null) {
@@ -119,6 +120,41 @@ export async function writeExtensionThemePreference(input: {
   if (input.accent != null) {
     await store.setItem(ACCENT_KEY, input.accent);
   }
+  if (input.accentTint !== undefined) {
+    if (input.accentTint) {
+      await store.setItem(ACCENT_TINT_KEY, "1");
+    } else {
+      await browser.storage.local.remove(ACCENT_TINT_KEY);
+    }
+  }
+}
+
+export async function patchExtensionDevicePrefs(
+  userId: string,
+  patch: Partial<VaultDevicePrefs>,
+): Promise<VaultDevicePrefs> {
+  const next = { ...(await readExtensionDevicePrefs(userId)), ...patch };
+  await writeExtensionDevicePrefs(userId, next);
+  return next;
+}
+
+/**
+ * Prefer device-local `idleLockSeconds`; one-time migrate from server value when unset.
+ */
+export async function resolveExtensionIdleLockMs(input: {
+  userId: string;
+  serverIdleLockSeconds?: number | null;
+}): Promise<number> {
+  const prefs = await readExtensionDevicePrefs(input.userId);
+  if (typeof prefs.idleLockSeconds === "number" && Number.isFinite(prefs.idleLockSeconds)) {
+    return vaultIdleLockMsFromServerSeconds(prefs.idleLockSeconds);
+  }
+  const migratedSeconds =
+    input.serverIdleLockSeconds != null && Number.isFinite(input.serverIdleLockSeconds)
+      ? Math.trunc(input.serverIdleLockSeconds)
+      : Math.round(DEFAULT_VAULT_IDLE_LOCK_MS / 1000);
+  await patchExtensionDevicePrefs(input.userId, { idleLockSeconds: migratedSeconds });
+  return vaultIdleLockMsFromServerSeconds(migratedSeconds);
 }
 
 export { vaultIdleLockMsFromServerSeconds, DEFAULT_VAULT_IDLE_LOCK_MS };

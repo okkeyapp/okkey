@@ -7,7 +7,7 @@ import {
   parseTagSearchNeedle,
   scoreItemsListRecordSearch,
 } from "./workspace-item-search.ts";
-import { itemUrlMatchesTab, itemUrlsMatchTab } from "./item-url-match.ts";
+import { itemHasUrlMatchingTab, itemUrlMatchesTab, itemUrlsMatchTab } from "./item-url-match.ts";
 
 describe("workspaceItemSearch", () => {
   const row = {
@@ -80,5 +80,12 @@ describe("itemUrlMatch", () => {
   it("itemUrlsMatchTab is true when no tab/urls", () => {
     assert.equal(itemUrlsMatchTab(null, ["https://a.com"]), true);
     assert.equal(itemUrlsMatchTab("https://a.com", []), true);
+  });
+
+  it("itemHasUrlMatchingTab is strict and accepts bare hosts", () => {
+    assert.equal(itemHasUrlMatchingTab(null, ["https://a.com"]), false);
+    assert.equal(itemHasUrlMatchingTab("https://a.com", []), false);
+    assert.equal(itemHasUrlMatchingTab("https://github.com/login", ["github.com"]), true);
+    assert.equal(itemHasUrlMatchingTab("https://evil.example", ["github.com"]), false);
   });
 });

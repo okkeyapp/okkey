@@ -13,6 +13,10 @@ import {
   SortIconNewestFirst,
   SortIconOldestFirst,
   Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   buildItemsListSections,
   cn,
   mutedSurfaceHoverBgClassName,
@@ -33,6 +37,7 @@ import {
   type ItemsListFilterScopeVault,
 } from "@okkey/vault-ui";
 import { useMemo, useRef } from "react";
+import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 
@@ -57,6 +62,7 @@ type ExtensionItemsListPaneProps = {
   selectedId: string | null;
   locale: ItemsListLocale;
   searchQuery?: string;
+  suggestionsScopeLabel?: string | null;
   vaultScopeLabel?: string | null;
   folderScopeLabel?: string | null;
   categoryScopeLabel?: string | null;
@@ -115,6 +121,36 @@ const listHeaderShadowClassName = (scrolled: boolean) =>
     scrolled && "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
   );
 
+async function openItemWebsite(url: string): Promise<void> {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return;
+  }
+  const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
+  await browser.tabs.create({ url: withProtocol });
+}
+
+function IconOpenWebsite({ className }: { className?: string }) {
+  return (
+    <svg
+      width={20}
+      height={20}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-5 shrink-0", className)}
+    >
+      <path
+        d="M21 9V3H15M21 3L10 14M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
   const {
     records,
@@ -125,6 +161,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     selectedId,
     locale,
     searchQuery = "",
+    suggestionsScopeLabel = null,
     vaultScopeLabel,
     folderScopeLabel,
     categoryScopeLabel,
@@ -165,6 +202,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     activeFolderId,
     activeCategoryId,
     searchQuery,
+    suggestionsScopeLabel ?? "",
     vaultScopeLabel ?? "",
     folderScopeLabel ?? "",
     categoryScopeLabel ?? "",
@@ -189,6 +227,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
             onFilterChange={onFilterChange}
             searchScopeLabel={searchScopeLabel}
             tagScopeLabel={tagScopeLabel}
+            suggestionsScopeLabel={suggestionsScopeLabel}
             vaultScopeLabel={vaultScopeLabel}
             folderScopeLabel={folderScopeLabel}
             categoryScopeLabel={categoryScopeLabel}
@@ -286,39 +325,97 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                   {section.rows.map((row) => {
                     const rowActive = selectedId === row.id;
                     const rowSubtitle = row.description.trim();
+                    const firstUrl = row.urls[0]?.trim() ?? "";
+                    const showOpenAndFill =
+                      row.categoryId === ITEM_CATEGORY_LOGIN && firstUrl.length > 0;
                     return (
                       <li key={row.id}>
-                        <button
-                          type="button"
-                          aria-current={rowActive ? "true" : undefined}
-                          onClick={() => onSelect(row.id)}
+                        <div
                           className={cn(
-                            "group relative z-0 flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left transition-colors",
+                            "group relative z-0 rounded-lg transition-colors",
                             "hover:bg-muted/60",
                             rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                           )}
                         >
-                          <ExtensionListRowFavicon
-                            row={row}
-                            apiBaseUrl={apiBaseUrl}
-                            accessToken={accessToken}
-                            vaultKey={resolveVaultKey(row.vaultId)}
-                          />
-                          {rowSubtitle ? (
-                            <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
-                              <span className="block truncate text-sm font-medium leading-5 text-foreground">
+                          <button
+                            type="button"
+                            aria-current={rowActive ? "true" : undefined}
+                            onClick={() => onSelect(row.id)}
+                            className="relative flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left"
+                          >
+                            <ExtensionListRowFavicon
+                              row={row}
+                              apiBaseUrl={apiBaseUrl}
+                              accessToken={accessToken}
+                              vaultKey={resolveVaultKey(row.vaultId)}
+                            />
+                            {rowSubtitle ? (
+                              <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
+                                <span className="block truncate text-sm font-medium leading-5 text-foreground">
+                                  {row.title || "—"}
+                                </span>
+                                <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">
+                                  {rowSubtitle}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
                                 {row.title || "—"}
                               </span>
-                              <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">
-                                {rowSubtitle}
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
-                              {row.title || "—"}
-                            </span>
-                          )}
-                        </button>
+                            )}
+                          </button>
+                          {showOpenAndFill ? (
+                            <TooltipProvider delayDuration={300}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "pointer-events-none absolute inset-y-0 right-0 z-10",
+                                      "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
+                                      "bg-muted/60 text-foreground",
+                                      "opacity-0 transition-[opacity,background-color,border-color]",
+                                      "group-hover:pointer-events-auto group-hover:opacity-100",
+                                      rowActive && "pointer-events-auto opacity-100",
+                                      // Hover: mid (#e2e8f0) — lighter than pressed/focus.
+                                      "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      "focus-visible:pointer-events-auto focus-visible:opacity-100",
+                                      // No ring — pressed/focus = one soft step past hover mid (slate-300, not slate-400).
+                                      // Mouse click does not set :focus-visible; :active covers press, :focus covers post-click focus.
+                                      "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
+                                      "active:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      // Hover must not mute active/focus while the pointer stays on the button.
+                                      "active:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "[&_svg]:size-5",
+                                    )}
+                                    aria-label={t("extension.vault.openAndFill")}
+                                    onClick={(event) => {
+                                      // Do not preventDefault on mousedown — that would block focus.
+                                      event.stopPropagation();
+                                      void openItemWebsite(firstUrl);
+                                    }}
+                                  >
+                                    <IconOpenWebsite />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left">
+                                  {t("extension.vault.openAndFill")}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : null}
+                        </div>
                       </li>
                     );
                   })}

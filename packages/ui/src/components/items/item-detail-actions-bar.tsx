@@ -173,13 +173,45 @@ function BackChevronGlyph({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** External-link / open-website glyph (24 viewBox; size via className). */
+function IconExternalLink16({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+      {...props}
+    >
+      <path
+        d="M21 9V3H15M21 3L10 14M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const iconGroupButtonClassName = cn(
   buttonVariants({ variant: "outline", size: "icon" }),
   controlGroupItemFixedClassName,
   "!size-9 !min-h-9 !min-w-9",
 );
 
-const editButtonClassName = cn(buttonVariants({ variant: "outline", size: "sm" }), controlGroupItemFixedClassName, "!h-9 gap-2");
+const actionsTextButtonClassName = cn(
+  buttonVariants({ variant: "outline", size: "sm" }),
+  controlGroupItemFixedClassName,
+  "!h-9 gap-2 shrink-0 px-3",
+);
+
+const openWebsiteButtonClassName = cn(
+  buttonVariants({ variant: "default", size: "sm" }),
+  "!h-9 gap-2 shrink-0",
+);
 
 const mobileBackButtonClassName = cn(
   buttonVariants({ variant: "secondary", size: "iconSm" }),
@@ -217,11 +249,14 @@ export type ItemDetailActionsBarProps = {
   /** Extension: open current item in web app. */
   openInWebLabel?: string;
   onOpenInWeb?: () => void;
+  /** Login/password: open first website URL (primary CTA). */
+  openWebsiteLabel?: string;
+  onOpenWebsite?: () => void;
   className?: string;
 };
 
 /**
- * Presentational item detail actions bar (capsule / favorite / edit / more).
+ * Presentational item detail actions bar (favorite + actions; open CTA optional).
  * No vault/folder breadcrumbs — hosts supply optional `leading` or `showBack`.
  */
 export function ItemDetailActionsBar({
@@ -246,11 +281,26 @@ export function ItemDetailActionsBar({
   onCreateCapsule,
   openInWebLabel,
   onOpenInWeb,
+  openWebsiteLabel,
+  onOpenWebsite,
   className,
 }: ItemDetailActionsBarProps) {
   const favoriteTooltip = favorite
     ? t("web.items.detail.favoriteRemoveTooltip")
     : t("web.items.detail.favoriteAddTooltip");
+  const editLabel = t("web.items.menu.edit");
+  const showOpenWebsite = Boolean(openWebsiteLabel && onOpenWebsite);
+
+  const showMenuEdit = canEdit;
+  const showMenuCreateCapsule = !archived && !deleted && canCreateCapsule;
+  const showMenuFavorite = !archived && !deleted && canFavorite;
+  const showMenuCopy = !archived && !deleted && Boolean(onCopy);
+  const showMenuArchive = !deleted && canArchive;
+  const showMenuDelete = canDelete;
+  const showMenuOpenInWeb = Boolean(openInWebLabel && onOpenInWeb);
+  const menuSection1 = showMenuEdit || showMenuCreateCapsule;
+  const menuSection2 = showMenuFavorite || showMenuCopy || showMenuArchive || showMenuDelete;
+  const menuSection3 = showMenuOpenInWeb;
 
   const leadingContent =
     leading ??
@@ -276,104 +326,90 @@ export function ItemDetailActionsBar({
         className,
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">{leadingContent}</div>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {leadingContent}
+        {showOpenWebsite ? (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className={openWebsiteButtonClassName}
+            onClick={onOpenWebsite}
+          >
+            <IconExternalLink16 />
+            <span>{openWebsiteLabel}</span>
+          </Button>
+        ) : null}
+      </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {!archived && !deleted ? (
-          <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
+        <ControlGroup aria-label={t("web.items.detail.favoriteActionsGroupAria")} className={controlGroupLayoutClassName}>
+          {!archived && !deleted && canFavorite ? (
             <TooltipProvider delayDuration={300}>
-              {canCreateCapsule ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className={iconGroupButtonClassName}
-                      aria-label={t("web.nav.addCapsule")}
-                      onClick={onCreateCapsule}
-                    >
-                      <IconCapsule16 />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("web.nav.addCapsule")}</TooltipContent>
-                </Tooltip>
-              ) : null}
-              {canFavorite ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className={iconGroupButtonClassName}
-                      aria-label={favoriteTooltip}
-                      aria-pressed={favorite}
-                      onClick={onToggleFavorite}
-                    >
-                      <IconFavorite16 filled={favorite} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{favoriteTooltip}</TooltipContent>
-                </Tooltip>
-              ) : null}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className={iconGroupButtonClassName}
+                    aria-label={favoriteTooltip}
+                    aria-pressed={favorite}
+                    onClick={onToggleFavorite}
+                  >
+                    <IconFavorite16 filled={favorite} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{favoriteTooltip}</TooltipContent>
+              </Tooltip>
             </TooltipProvider>
-          </ControlGroup>
-        ) : null}
-
-        <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
-          {canEdit ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={editButtonClassName}
-              disabled={archived || deleted}
-              onClick={onEdit}
-            >
-              <IconEdit16 />
-              <span>{t("web.items.menu.edit")}</span>
-            </Button>
           ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" className={iconGroupButtonClassName} aria-label={t("web.items.detail.moreActionsAria")}>
+              <button type="button" className={actionsTextButtonClassName}>
+                <span>{t("web.items.list.actions")}</span>
                 <MoreVerticalIcon />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
-              {!archived && !deleted ? (
-                <>
-                  {onCopy ? (
-                    <DropdownMenuItem className="gap-2" onSelect={onCopy}>
-                      <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
-                      <span>{t("web.items.menu.copy")}</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {canFavorite ? (
-                    <DropdownMenuItem className="gap-2" onSelect={onToggleFavorite}>
-                      {favorite ? (
-                        <IconUnfavorite16 className="text-foreground" />
-                      ) : (
-                        <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
-                      )}
-                      <span>
-                        {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
-                      </span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {canCreateCapsule ? (
-                    <DropdownMenuItem className="gap-2" onSelect={onCreateCapsule}>
-                      <IconCapsule16 />
-                      <span>{t("web.nav.addCapsule")}</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {(canFavorite || canCreateCapsule || onCopy) && (canArchive || canDelete || onOpenInWeb) ? (
-                    <DropdownMenuSeparator className="mx-1 my-1" />
-                  ) : null}
-                </>
+              {/* Section 1: Edit / Create capsule (leave to website) */}
+              {showMenuEdit ? (
+                <DropdownMenuItem className="gap-2" onSelect={onEdit}>
+                  <IconEdit16 />
+                  <span>{editLabel}</span>
+                  <IconExternalLink16 className="ml-auto size-4 shrink-0 text-muted-foreground" />
+                </DropdownMenuItem>
               ) : null}
-              {!deleted && canArchive ? (
+              {showMenuCreateCapsule ? (
+                <DropdownMenuItem className="gap-2" onSelect={onCreateCapsule}>
+                  <IconCapsule16 />
+                  <span>{t("web.nav.addCapsule")}</span>
+                  <IconExternalLink16 className="ml-auto size-4 shrink-0 text-muted-foreground" />
+                </DropdownMenuItem>
+              ) : null}
+
+              {menuSection1 && menuSection2 ? <DropdownMenuSeparator className="mx-1 my-1" /> : null}
+
+              {/* Section 2: Favorite / Archive / Delete (local mutations) */}
+              {showMenuFavorite ? (
+                <DropdownMenuItem className="gap-2" onSelect={onToggleFavorite}>
+                  {favorite ? (
+                    <IconUnfavorite16 className="text-foreground" />
+                  ) : (
+                    <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                  )}
+                  <span>
+                    {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
+              {showMenuCopy && onCopy ? (
+                <DropdownMenuItem className="gap-2" onSelect={onCopy}>
+                  <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
+                  <span>{t("web.items.menu.copy")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {showMenuArchive ? (
                 <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
                   {archived ? (
                     <IconUnarchive16 className="text-foreground" />
@@ -383,7 +419,7 @@ export function ItemDetailActionsBar({
                   <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
                 </DropdownMenuItem>
               ) : null}
-              {canDelete ? (
+              {showMenuDelete ? (
                 <DropdownMenuItem
                   className={cn(
                     "gap-2",
@@ -395,15 +431,17 @@ export function ItemDetailActionsBar({
                   <span>{deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
                 </DropdownMenuItem>
               ) : null}
-              {openInWebLabel && onOpenInWeb ? (
-                <>
-                  {(canArchive || canDelete || (!archived && !deleted && (canFavorite || canCreateCapsule || onCopy))) ? (
-                    <DropdownMenuSeparator className="mx-1 my-1" />
-                  ) : null}
-                  <DropdownMenuItem className="gap-2" onSelect={onOpenInWeb}>
-                    <span>{openInWebLabel}</span>
-                  </DropdownMenuItem>
-                </>
+
+              {(menuSection1 || menuSection2) && menuSection3 ? (
+                <DropdownMenuSeparator className="mx-1 my-1" />
+              ) : null}
+
+              {/* Section 3: Open in web */}
+              {showMenuOpenInWeb ? (
+                <DropdownMenuItem className="gap-2" onSelect={onOpenInWeb}>
+                  <IconExternalLink16 className="text-foreground" />
+                  <span>{openInWebLabel}</span>
+                </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>

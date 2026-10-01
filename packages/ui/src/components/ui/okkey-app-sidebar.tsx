@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -713,8 +714,10 @@ function ProfileAccountDropdownPanel({
     </>
   );
 
+  const shell = useOkkeyAppShellLayout();
   const openSettingsViaProfile = Boolean(onSettings && settingsAsProfileHeader);
   const showSettingsMenuRow = Boolean(onSettings && !settingsAsProfileHeader);
+  const hasSettingsBlock = Boolean(showSettingsMenuRow || language || onDeviceSettings);
 
   return (
     <>
@@ -747,17 +750,6 @@ function ProfileAccountDropdownPanel({
             <span>{settingsLabel}</span>
           </DropdownMenuItem>
         ) : null}
-        {onDeviceSettings ? (
-          <DropdownMenuItem
-            className="cursor-pointer gap-2"
-            onSelect={() => {
-              onDeviceSettings();
-            }}
-          >
-            {deviceSettingsIcon ?? <NavSettingsIcon />}
-            <span>{deviceSettingsLabel}</span>
-          </DropdownMenuItem>
-        ) : null}
         {language ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer gap-2 [&>svg:last-child]:ml-auto">
@@ -788,6 +780,19 @@ function ProfileAccountDropdownPanel({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
+        {onDeviceSettings ? (
+          <DropdownMenuItem
+            className="cursor-pointer gap-2"
+            onSelect={() => {
+              shell.setMobileDrawerOpen(false);
+              onDeviceSettings();
+            }}
+          >
+            {deviceSettingsIcon ?? <NavSettingsIcon />}
+            <span>{deviceSettingsLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {hasSettingsBlock ? <DropdownMenuSeparator className="mx-1 my-1" /> : null}
         <DropdownMenuItem
           className="cursor-pointer gap-2"
           onSelect={() => {
@@ -1873,11 +1878,16 @@ export function OkkeyAppSidebar({
               <div
                 className={cn(
                   "fixed inset-y-0 left-0 z-sidebar flex h-full w-max max-w-[calc(100vw-8px)] flex-row items-start transition-transform duration-200 ease-out will-change-transform",
-                  !mobileDrawerOpen && "-translate-x-full pointer-events-none",
+                  !mobileDrawerOpen && "-translate-x-full pointer-events-none overflow-hidden",
                   mobileDrawerOpen && "translate-x-0 pointer-events-auto",
                 )}
               >
-                <div className="relative h-full w-[min(255px,calc(100vw-52px))] max-w-[calc(100vw-52px)] shrink-0 overflow-hidden bg-sidebar shadow-xl">
+                <div
+                  className={cn(
+                    "relative h-full w-[min(255px,calc(100vw-52px))] max-w-[calc(100vw-52px)] shrink-0 overflow-hidden bg-sidebar",
+                    mobileDrawerOpen ? "shadow-xl" : "shadow-none",
+                  )}
+                >
                   <OkkeyAppSidebarInner
                     className={className}
                     workspaceNavItems={workspaceNavItems}

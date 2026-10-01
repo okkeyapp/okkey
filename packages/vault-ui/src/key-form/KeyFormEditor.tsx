@@ -176,6 +176,11 @@ export type KeyFormEditorProps = {
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   /** When false, file field type is hidden and existing file fields cannot be cleared or re-uploaded. */
   allowFileFields?: boolean;
+  /**
+   * Optional override for copying field text (not URL open / recovery-code specials).
+   * Used by extension clipboard-clear policy.
+   */
+  onCopyText?: (value: string) => void | Promise<void>;
 };
 
 export type RecoveryCodesValueChange = {
@@ -1907,6 +1912,7 @@ export function KeyFormEditor({
   onFileActivate,
   fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
   allowFileFields = true,
+  onCopyText,
 }: KeyFormEditorProps) {
   const messages = messagesProp ?? englishKeyFormEditorMessages;
   const fieldTypes = useMemo(() => {
@@ -3385,7 +3391,11 @@ export function KeyFormEditor({
             ? (value) => copyRecoveryCode(section.id, field, value)
             : isWebsiteField
               ? openWebsite
-              : undefined
+              : onCopyText
+                ? (value) => {
+                    void onCopyText(value);
+                  }
+                : undefined
         }
         onLabelChange={(label) => updateFieldLabel(section.id, field.id, label)}
         onValueChange={(value) => {

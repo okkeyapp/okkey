@@ -1,26 +1,47 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef } from "react";
 import type { CoreApiClient } from "@okkey/api";
 import { getWebLocaleNativeName, WEB_LOCALES, type WebLocale } from "@okkey/i18n";
-import type { ItemPlaintextV2, Vault, Workspace } from "@okkey/types";
+import type { ItemPlaintextV2, MeVaultProfileEntryDto, Vault, Workspace } from "@okkey/types";
+import {
+  DEFAULT_DELETED_ITEMS_RETENTION_DAYS,
+  createEmptyProfilePermissions,
+  createFullAccessProfilePermissions,
+  ensureProfilePermissions,
+  profileAllowsEntriesDelete,
+  profileAllowsFunction,
+  type ProfileFunctionActionId,
+  type ProfilePermitsContext,
+} from "@okkey/types";
 import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
 import {
   createWorkspaceFoldersSyncController,
   createWorkspaceVaultItemsReadController,
   findWorkspaceFolderPathById,
   formatTagSearchQuery,
+  itemHasUrlMatchingTab,
   itemPlaintextToExtensionListRecord,
   refreshWorkspaceFoldersCachesForIds,
   resolveVaultItemEncryptionKey,
   scoreItemsListRecordSearch,
   toSidebarFolderTree,
+  withItemArchivedState,
+  withItemDeletedState,
   type ExtensionItemListRecord,
   type WorkspaceFolderNode,
+  type WorkspaceFoldersSyncController,
+  type WorkspaceVaultItemsReadController,
 } from "@okkey/vault";
 import {
   Button,
+  ControlGroup,
+  controlGroupItemFixedClassName,
   DropdownMenuItem,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   WorkspaceLogoTile,
   WorkspaceSearchField,
   cn,
@@ -32,6 +53,7 @@ import {
   type OkkeyWorkspaceNavLinkComponent,
 } from "@okkey/ui";
 import { useWorkspaceLogoUrl } from "@okkey/vault-ui";
+import { toast } from "sonner";
 
 import {
   ExtensionItemDetailEmpty,
@@ -44,6 +66,8 @@ import {
   type ExtensionListRow,
   type ExtensionListSort,
 } from "../../components/vault/ExtensionItemsListPane";
+import { ExtensionDeviceSettingsPanel } from "../../components/settings/ExtensionDeviceSettingsPanel";
+import { SettingsGearIcon } from "../../components/icons/SettingsGearIcon";
 import {
   buildEditItemDeepLink,
   buildItemsDeepLink,
@@ -51,6 +75,7 @@ import {
   buildNewItemDeepLink,
   buildSettingsMainDeepLink,
   openWebDeepLink,
+  readActiveTabUrl,
 } from "../../lib/deepLinks";
 import { touchExtensionUnlockSession } from "../../lib/extensionVaultSession";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
@@ -74,7 +99,8 @@ type VaultPopupProps = {
   onSignOut: () => void;
   onChangeServer: () => void;
   onLock: () => void;
-  idleLockMs?: number;
+  idleLockMs: number;
+  onIdleLockMsChange?: (ms: number) => void;
   onActivity?: () => void;
   t: (key: string, values?: Record<string, string | number | boolean>) => string;
 };
@@ -104,6 +130,37 @@ function LockIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/** Gear segment inside Lock+Settings header group — closes mobile drawer when opening settings. */
+function VaultHeaderDeviceSettingsButton(props: {
+  label: string;
+  onOpen: () => void;
+  className?: string;
+}) {
+  const shell = useOkkeyAppShellLayout();
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className={cn(controlGroupItemFixedClassName, props.className)}
+            aria-label={props.label}
+            onClick={() => {
+              shell.setMobileDrawerOpen(false);
+              props.onOpen();
+            }}
+          >
+            <SettingsGearIcon className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{props.label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -328,6 +385,8 @@ export function VaultPopup(props: VaultPopupProps) {
     onSignOut,
     onChangeServer,
     onLock,
+    idleLockMs,
+    onIdleLockMsChange,
     onActivity,
     t,
   } = props;
@@ -344,6 +403,10 @@ export function VaultPopup(props: VaultPopupProps) {
     () => new Set(),
   );
   const [vaultKeyById, setVaultKeyById] = useState<ReadonlyMap<string, Uint8Array>>(() => new Map());
+  const [profilesByVaultId, setProfilesByVaultId] = useState<
+    ReadonlyMap<string, MeVaultProfileEntryDto>
+  >(() => new Map());
+  const [profilesReady, setProfilesReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -352,11 +415,17 @@ export function VaultPopup(props: VaultPopupProps) {
   const [vaultFilterId, setVaultFilterId] = useState<string | null>(null);
   const [folderFilterId, setFolderFilterId] = useState<string | null>(null);
   const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
+  const [activeTabUrl, setActiveTabUrl] = useState<string | null>(null);
+  const [suggestionsActive, setSuggestionsActive] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const disposeRef = useRef<(() => void) | null>(null);
+  const itemsControllerRef = useRef<WorkspaceVaultItemsReadController | null>(null);
   const foldersDisposeRef = useRef<(() => void) | null>(null);
+  const foldersControllerRef = useRef<WorkspaceFoldersSyncController | null>(null);
   const foldersLoadGenRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsAutoDoneRef = useRef(false);
 
   const noteActivity = useCallback(() => {
     void touchExtensionUnlockSession(userId);
@@ -477,7 +546,13 @@ export function VaultPopup(props: VaultPopupProps) {
         workspaceId: wsId,
         passwordShareC: shareC,
       });
-      foldersDisposeRef.current = () => controller.dispose();
+      foldersControllerRef.current = controller;
+      foldersDisposeRef.current = () => {
+        if (foldersControllerRef.current === controller) {
+          foldersControllerRef.current = null;
+        }
+        controller.dispose();
+      };
       try {
         await controller.refresh();
         if (gen !== foldersLoadGenRef.current) {
@@ -554,9 +629,24 @@ export function VaultPopup(props: VaultPopupProps) {
           accountVaultKey: secrets.vaultKey,
           encryptedPrivateKeyPayload,
         });
-        disposeRef.current = () => controller.dispose();
+        itemsControllerRef.current = controller;
+        disposeRef.current = () => {
+          if (itemsControllerRef.current === controller) {
+            itemsControllerRef.current = null;
+          }
+          controller.dispose();
+        };
         await controller.refresh();
         setItems(controller.getAllItems());
+
+        try {
+          const profiles = await core.getWorkspaceMeVaultProfiles(wsId);
+          setProfilesByVaultId(new Map(profiles.vaults.map((entry) => [entry.vaultId, entry])));
+          setProfilesReady(true);
+        } catch {
+          setProfilesByVaultId(new Map());
+          setProfilesReady(false);
+        }
 
         const keys = new Map<string, Uint8Array>();
         await Promise.all(
@@ -630,9 +720,49 @@ export function VaultPopup(props: VaultPopupProps) {
     setVaultFilterId(null);
     setFolderFilterId(null);
     setCategoryFilterId(null);
+    setSearch("");
+    setSuggestionsActive(false);
+    suggestionsAutoDoneRef.current = false;
     setSelectedId(null);
     void loadItems(workspaceId);
   }, [workspaceId, loadItems]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readActiveTabUrl().then((url) => {
+      if (!cancelled) {
+        setActiveTabUrl(url);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (suggestionsAutoDoneRef.current || !activeTabUrl || loading) {
+      return;
+    }
+    if (vaultFilterId || folderFilterId || categoryFilterId || search.trim()) {
+      suggestionsAutoDoneRef.current = true;
+      return;
+    }
+    const hasMatch = items.some((item) =>
+      itemHasUrlMatchingTab(activeTabUrl, itemPlaintextToExtensionListRecord(item).urls),
+    );
+    if (hasMatch) {
+      setSuggestionsActive(true);
+      suggestionsAutoDoneRef.current = true;
+    }
+  }, [
+    activeTabUrl,
+    categoryFilterId,
+    folderFilterId,
+    items,
+    loading,
+    search,
+    vaultFilterId,
+  ]);
 
   const listRecords = useMemo((): ExtensionListRow[] => {
     const records: ExtensionListRow[] = items.map((item) => {
@@ -647,7 +777,9 @@ export function VaultPopup(props: VaultPopupProps) {
 
     let scoped = records;
     const searchTrim = search.trim();
-    if (!searchTrim) {
+    if (suggestionsActive && activeTabUrl) {
+      scoped = scoped.filter((row) => itemHasUrlMatchingTab(activeTabUrl, row.urls));
+    } else if (!searchTrim) {
       if (categoryFilterId) {
         scoped = scoped.filter((row) => row.categoryId === categoryFilterId);
       } else {
@@ -661,7 +793,7 @@ export function VaultPopup(props: VaultPopupProps) {
     }
 
     const filtered = filterRows(scoped, filter);
-    if (!searchTrim) {
+    if (suggestionsActive || !searchTrim) {
       return [...filtered].sort((a, b) => compareRows(a, b, sort));
     }
     return filtered
@@ -670,6 +802,7 @@ export function VaultPopup(props: VaultPopupProps) {
       .sort((a, b) => b.score - a.score || compareRows(a.row, b.row, sort))
       .map((entry) => entry.row);
   }, [
+    activeTabUrl,
     categoryFilterId,
     filter,
     folderFilterId,
@@ -678,6 +811,7 @@ export function VaultPopup(props: VaultPopupProps) {
     items,
     search,
     sort,
+    suggestionsActive,
     vaultFilterId,
   ]);
 
@@ -689,6 +823,209 @@ export function VaultPopup(props: VaultPopupProps) {
   const selectedVault = useMemo(
     () => (selectedItem ? vaults.find((v) => v.id === selectedItem.vaultId) : undefined),
     [selectedItem, vaults],
+  );
+
+  const personalVaultIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const vault of vaults) {
+      if (vault.isPersonal) {
+        ids.add(vault.id);
+      }
+    }
+    return ids;
+  }, [vaults]);
+
+  const buildPermitsContext = useCallback(
+    (vaultId: string, itemCreatedByUserId?: string | null): ProfilePermitsContext | null => {
+      const entry = profilesByVaultId.get(vaultId);
+      let permissions = entry ? ensureProfilePermissions(entry.permissions) : null;
+      if (!permissions) {
+        if (personalVaultIds.has(vaultId)) {
+          permissions = createFullAccessProfilePermissions();
+        } else if (vaults.some((v) => v.id === vaultId)) {
+          permissions = createEmptyProfilePermissions();
+        } else {
+          return null;
+        }
+      }
+      return {
+        permissions,
+        userId,
+        itemCreatedByUserId: itemCreatedByUserId ?? null,
+      };
+    },
+    [personalVaultIds, profilesByVaultId, userId, vaults],
+  );
+
+  const canDeleteItem = useCallback(
+    (vaultId: string, itemCreatedByUserId?: string | null) => {
+      if (!profilesReady) {
+        return true;
+      }
+      const ctx = buildPermitsContext(vaultId, itemCreatedByUserId);
+      return ctx ? profileAllowsEntriesDelete(ctx) : false;
+    },
+    [buildPermitsContext, profilesReady],
+  );
+
+  const canUseFunction = useCallback(
+    (vaultId: string, action: ProfileFunctionActionId) => {
+      if (!profilesReady) {
+        return true;
+      }
+      const ctx = buildPermitsContext(vaultId);
+      return ctx ? profileAllowsFunction(ctx, action) : false;
+    },
+    [buildPermitsContext, profilesReady],
+  );
+
+  const syncItemsFromController = useCallback(() => {
+    const controller = itemsControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    setItems(controller.getAllItems());
+  }, []);
+
+  const syncFavoritesFromController = useCallback(() => {
+    const controller = foldersControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    setItemFavoriteByItemId(new Set(controller.getState().itemFavorite));
+  }, []);
+
+  const syncFoldersFromController = useCallback(() => {
+    const controller = foldersControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    const st = controller.getState();
+    setFolderNodes(controller.toFolderTree());
+    setItemFolderByItemId(new Map(st.itemFolder));
+    setItemFavoriteByItemId(new Set(st.itemFavorite));
+  }, []);
+
+  const onAssignFolder = useCallback(
+    async (itemId: string, folderId: string | null) => {
+      const controller = foldersControllerRef.current;
+      if (!controller) {
+        throw new Error("Folders controller not ready");
+      }
+      await controller.assignItemToFolder(itemId, folderId);
+      syncFoldersFromController();
+    },
+    [syncFoldersFromController],
+  );
+
+  const onCreateFolder = useCallback(
+    async (label: string) => {
+      const controller = foldersControllerRef.current;
+      if (!controller) {
+        throw new Error("Folders controller not ready");
+      }
+      const id = await controller.createFolder(label);
+      syncFoldersFromController();
+      return id;
+    },
+    [syncFoldersFromController],
+  );
+
+  const openDeviceSettings = useCallback(() => {
+    setDeviceSettingsOpen(true);
+  }, []);
+
+  const onToggleFavorite = useCallback(
+    async (itemId: string, nextFavorite: boolean) => {
+      const controller = foldersControllerRef.current;
+      if (!controller) {
+        return;
+      }
+      setItemFavoriteByItemId((prev) => {
+        const next = new Set(prev);
+        if (nextFavorite) {
+          next.add(itemId);
+        } else {
+          next.delete(itemId);
+        }
+        return next;
+      });
+      try {
+        await controller.setItemFavorite(itemId, nextFavorite);
+        syncFavoritesFromController();
+        toast.success(
+          t(nextFavorite ? "extension.vault.toast.favoriteAdded" : "extension.vault.toast.favoriteRemoved"),
+        );
+      } catch (err: unknown) {
+        syncFavoritesFromController();
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [syncFavoritesFromController, t],
+  );
+
+  const onToggleDelete = useCallback(
+    async (item: ItemPlaintextV2, deleted: boolean) => {
+      const controller = itemsControllerRef.current;
+      if (!controller) {
+        return;
+      }
+      const previous = item;
+      setItems((prev) =>
+        prev.map((entry) => (entry.itemId === item.itemId ? withItemDeletedState(entry, deleted) : entry)),
+      );
+      try {
+        await controller.updateItem(withItemDeletedState(item, deleted));
+        syncItemsFromController();
+        if (deleted && itemFavoriteByItemId.has(item.itemId)) {
+          const folders = foldersControllerRef.current;
+          if (folders) {
+            await folders.setItemFavorite(item.itemId, false);
+            syncFavoritesFromController();
+          }
+        }
+        if (deleted) {
+          setSelectedId(null);
+        }
+        toast.success(t(deleted ? "extension.vault.toast.deleted" : "extension.vault.toast.restored"));
+      } catch (err: unknown) {
+        setItems((prev) => prev.map((entry) => (entry.itemId === item.itemId ? previous : entry)));
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [itemFavoriteByItemId, syncFavoritesFromController, syncItemsFromController, t],
+  );
+
+  const onToggleArchive = useCallback(
+    async (item: ItemPlaintextV2) => {
+      const controller = itemsControllerRef.current;
+      if (!controller) {
+        return;
+      }
+      const nextArchived = !(item.archived ?? false);
+      const previous = item;
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.itemId === item.itemId ? withItemArchivedState(entry, nextArchived) : entry,
+        ),
+      );
+      try {
+        await controller.updateItem(withItemArchivedState(item, nextArchived));
+        syncItemsFromController();
+        if (nextArchived && itemFavoriteByItemId.has(item.itemId)) {
+          const folders = foldersControllerRef.current;
+          if (folders) {
+            await folders.setItemFavorite(item.itemId, false);
+            syncFavoritesFromController();
+          }
+        }
+        toast.success(t(nextArchived ? "extension.vault.toast.archived" : "extension.vault.toast.unarchived"));
+      } catch (err: unknown) {
+        setItems((prev) => prev.map((entry) => (entry.itemId === item.itemId ? previous : entry)));
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [itemFavoriteByItemId, syncFavoritesFromController, syncItemsFromController, t],
   );
 
   const onSelectWorkspace = async (id: string) => {
@@ -726,40 +1063,42 @@ export function VaultPopup(props: VaultPopupProps) {
     setVaultFilterId(null);
     setFolderFilterId(null);
     setCategoryFilterId(null);
+    setSuggestionsActive(false);
+    suggestionsAutoDoneRef.current = true;
   }, []);
 
-  /** Web `clearWorkspaceScopeFromUrl`: drop vault/folder/category/search (and keep sort). */
+  /** Drop slot-B scope (vault/folder/category/search/suggestions); keep slot-A filter + sort. */
   const clearAllListScope = useCallback(() => {
     clearScope();
     setSearch("");
   }, [clearScope]);
 
-  const pickVaultScope = useCallback((id: string) => {
-    setVaultFilterId(id);
+  const clearSlotB = useCallback(() => {
+    setVaultFilterId(null);
     setFolderFilterId(null);
     setCategoryFilterId(null);
     setSearch("");
-    setFilter("all");
-    setSelectedId(null);
+    setSuggestionsActive(false);
+    suggestionsAutoDoneRef.current = true;
   }, []);
+
+  const pickVaultScope = useCallback((id: string) => {
+    clearSlotB();
+    setVaultFilterId(id);
+    setSelectedId(null);
+  }, [clearSlotB]);
 
   const pickFolderScope = useCallback((id: string) => {
+    clearSlotB();
     setFolderFilterId(id);
-    setVaultFilterId(null);
-    setCategoryFilterId(null);
-    setSearch("");
-    setFilter("all");
     setSelectedId(null);
-  }, []);
+  }, [clearSlotB]);
 
   const pickCategoryScope = useCallback((id: string) => {
+    clearSlotB();
     setCategoryFilterId(id);
-    setVaultFilterId(null);
-    setFolderFilterId(null);
-    setSearch("");
-    setFilter("all");
     setSelectedId(null);
-  }, []);
+  }, [clearSlotB]);
 
   const openNewItem = () => {
     void openWebDeepLink(
@@ -861,6 +1200,13 @@ export function VaultPopup(props: VaultPopupProps) {
   };
 
   const onSearchChange = (value: string) => {
+    if (value.trim()) {
+      setVaultFilterId(null);
+      setFolderFilterId(null);
+      setCategoryFilterId(null);
+      setSuggestionsActive(false);
+      suggestionsAutoDoneRef.current = true;
+    }
     setSearch(value);
     noteActivity();
   };
@@ -871,9 +1217,8 @@ export function VaultPopup(props: VaultPopupProps) {
   };
 
   const onPickTag = (tag: string) => {
+    clearSlotB();
     setSearch(formatTagSearchQuery(tag));
-    clearScope();
-    setFilter("all");
     setSelectedId(null);
   };
 
@@ -971,11 +1316,16 @@ export function VaultPopup(props: VaultPopupProps) {
               firstName: identity.firstName,
               lastName: identity.lastName,
               settingsLabel: t("web.accountMenu.settings"),
+              deviceSettingsLabel: t("web.accountMenu.deviceSettings"),
+              deviceSettingsIcon: <SettingsGearIcon />,
               logoutLabel: signOutLabel,
               changeServerLabel: t("web.accountMenu.changeServer"),
               settingsAsProfileHeader: true,
               onSettings: () => {
                 void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl));
+              },
+              onDeviceSettings: () => {
+                openDeviceSettings();
               },
               onLogout: onSignOut,
               onChangeServer,
@@ -984,6 +1334,16 @@ export function VaultPopup(props: VaultPopupProps) {
           : undefined
       }
     >
+      {deviceSettingsOpen ? (
+        <ExtensionDeviceSettingsPanel
+          userId={userId}
+          secrets={secrets}
+          idleLockMs={idleLockMs}
+          onIdleLockMsChange={(ms) => onIdleLockMsChange?.(ms)}
+          onBack={() => setDeviceSettingsOpen(false)}
+          t={t}
+        />
+      ) : (
       <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
         <header className="flex h-[52px] shrink-0 items-center gap-2 bg-gradient-to-r from-[var(--extension-shell-header-from)] to-[var(--extension-shell-header-to)] p-2">
           <OkkeyAppSidebarToolbar
@@ -1000,25 +1360,41 @@ export function VaultPopup(props: VaultPopupProps) {
             wrapClassName="px-0 sm:px-0"
           />
           <div className="flex shrink-0 items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 shrink-0 gap-1.5 rounded-lg px-3 shadow-none"
-              aria-label={t("extension.vault.lock")}
-              onClick={onLock}
+            <ControlGroup
+              className="w-auto shrink-0"
+              aria-label={`${t("extension.vault.lock")} / ${t("web.accountMenu.deviceSettings")}`}
             >
-              <LockIcon />
-              <span className="text-sm font-medium">{t("extension.vault.lock")}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg p-0"
-              aria-label={t("web.items.createRecord")}
-              onClick={openNewItem}
-            >
-              <PlusIcon />
-            </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(controlGroupItemFixedClassName, "h-9 gap-1.5 px-3")}
+                aria-label={t("extension.vault.lock")}
+                onClick={onLock}
+              >
+                <LockIcon />
+                <span className="text-sm font-medium">{t("extension.vault.lock")}</span>
+              </Button>
+              <VaultHeaderDeviceSettingsButton
+                label={t("web.accountMenu.deviceSettings")}
+                onOpen={openDeviceSettings}
+              />
+            </ControlGroup>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="default"
+                    className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg p-0"
+                    aria-label={t("extension.vault.createRecord")}
+                    onClick={openNewItem}
+                  >
+                    <PlusIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t("extension.vault.createRecord")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </header>
 
@@ -1033,6 +1409,9 @@ export function VaultPopup(props: VaultPopupProps) {
               selectedId={selectedId}
               locale={locale === "ru" ? "ru" : "en"}
               searchQuery={search}
+              suggestionsScopeLabel={
+                suggestionsActive ? t("extension.vault.filterSuggestions") : null
+              }
               vaultScopeLabel={vaultScopeMeta?.name ?? null}
               folderScopeLabel={folderScopeLabel}
               categoryScopeLabel={categoryScopeLabel}
@@ -1068,17 +1447,43 @@ export function VaultPopup(props: VaultPopupProps) {
               <ExtensionItemDetailPane
                 item={selectedItem}
                 vault={selectedVault}
+                folderId={selectedFolderId}
                 folderLabel={selectedFolderLabel}
+                folderNodes={folderNodes}
                 actorLabel={actorLabel}
+                activityWireEntries={
+                  itemsControllerRef.current?.getItemActivityById(selectedItem.itemId) ?? []
+                }
                 apiBaseUrl={apiBaseUrl}
                 accessToken={accessToken}
                 vaultKey={resolveVaultKey(selectedItem.vaultId)}
                 locale={locale}
+                userId={userId}
+                favorite={itemFavoriteByItemId.has(selectedItem.itemId)}
+                canFavorite={canUseFunction(selectedItem.vaultId, "favorite")}
+                canDelete={canDeleteItem(
+                  selectedItem.vaultId,
+                  itemsControllerRef.current?.getItemCreatedByUserId(selectedItem.itemId),
+                )}
+                canArchive={canUseFunction(selectedItem.vaultId, "archive")}
+                canChangeFolder={!selectedItem.deleted}
+                deletedItemsRetentionDays={
+                  currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
+                }
                 onEdit={() => openItemInWeb(selectedItem.itemId, { popup: "editItem" })}
                 onCreateCapsule={() => openItemInWeb(selectedItem.itemId, { popup: "newCapsule" })}
-                onFavoriteInWeb={() => openItemInWeb(selectedItem.itemId)}
-                onArchiveInWeb={() => openItemInWeb(selectedItem.itemId)}
-                onDeleteInWeb={() => openItemInWeb(selectedItem.itemId)}
+                onToggleFavorite={() => {
+                  void onToggleFavorite(
+                    selectedItem.itemId,
+                    !itemFavoriteByItemId.has(selectedItem.itemId),
+                  );
+                }}
+                onToggleArchive={() => {
+                  void onToggleArchive(selectedItem);
+                }}
+                onToggleDelete={(deleted) => onToggleDelete(selectedItem, deleted)}
+                onAssignFolder={(folderId) => onAssignFolder(selectedItem.itemId, folderId)}
+                onCreateFolder={onCreateFolder}
                 onOpenInWeb={() => openItemInWeb(selectedItem.itemId)}
                 t={t}
               />
@@ -1086,6 +1491,7 @@ export function VaultPopup(props: VaultPopupProps) {
           </main>
         </div>
       </div>
+      )}
     </OkkeyAppSidebar>
   );
 }
