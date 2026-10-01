@@ -241,6 +241,7 @@ export {
   FilterIconFavorites,
   FilterIconFrame,
   FilterIconMonitoring,
+  FilterIconSuggestions,
   FolderClosedGlyph,
   SearchGlyph,
   SortIconAlphaAsc,

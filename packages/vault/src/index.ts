@@ -32,6 +32,7 @@ export {
   type ReadableItemField,
 } from "./item-field-extract.js";
 export {
+  itemHasUrlMatchingTab,
   itemUrlMatchesTab,
   itemUrlsMatchTab,
   type UrlAutofillScope,

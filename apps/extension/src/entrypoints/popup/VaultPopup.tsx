@@ -18,6 +18,7 @@ import {
   createWorkspaceVaultItemsReadController,
   findWorkspaceFolderPathById,
   formatTagSearchQuery,
+  itemHasUrlMatchingTab,
   itemPlaintextToExtensionListRecord,
   refreshWorkspaceFoldersCachesForIds,
   resolveVaultItemEncryptionKey,
@@ -74,6 +75,7 @@ import {
   buildNewItemDeepLink,
   buildSettingsMainDeepLink,
   openWebDeepLink,
+  readActiveTabUrl,
 } from "../../lib/deepLinks";
 import { touchExtensionUnlockSession } from "../../lib/extensionVaultSession";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
@@ -413,6 +415,8 @@ export function VaultPopup(props: VaultPopupProps) {
   const [vaultFilterId, setVaultFilterId] = useState<string | null>(null);
   const [folderFilterId, setFolderFilterId] = useState<string | null>(null);
   const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
+  const [activeTabUrl, setActiveTabUrl] = useState<string | null>(null);
+  const [suggestionsActive, setSuggestionsActive] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const disposeRef = useRef<(() => void) | null>(null);
@@ -421,6 +425,7 @@ export function VaultPopup(props: VaultPopupProps) {
   const foldersControllerRef = useRef<WorkspaceFoldersSyncController | null>(null);
   const foldersLoadGenRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsAutoDoneRef = useRef(false);
 
   const noteActivity = useCallback(() => {
     void touchExtensionUnlockSession(userId);
@@ -715,9 +720,49 @@ export function VaultPopup(props: VaultPopupProps) {
     setVaultFilterId(null);
     setFolderFilterId(null);
     setCategoryFilterId(null);
+    setSearch("");
+    setSuggestionsActive(false);
+    suggestionsAutoDoneRef.current = false;
     setSelectedId(null);
     void loadItems(workspaceId);
   }, [workspaceId, loadItems]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readActiveTabUrl().then((url) => {
+      if (!cancelled) {
+        setActiveTabUrl(url);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (suggestionsAutoDoneRef.current || !activeTabUrl || loading) {
+      return;
+    }
+    if (vaultFilterId || folderFilterId || categoryFilterId || search.trim()) {
+      suggestionsAutoDoneRef.current = true;
+      return;
+    }
+    const hasMatch = items.some((item) =>
+      itemHasUrlMatchingTab(activeTabUrl, itemPlaintextToExtensionListRecord(item).urls),
+    );
+    if (hasMatch) {
+      setSuggestionsActive(true);
+      suggestionsAutoDoneRef.current = true;
+    }
+  }, [
+    activeTabUrl,
+    categoryFilterId,
+    folderFilterId,
+    items,
+    loading,
+    search,
+    vaultFilterId,
+  ]);
 
   const listRecords = useMemo((): ExtensionListRow[] => {
     const records: ExtensionListRow[] = items.map((item) => {
@@ -732,7 +777,9 @@ export function VaultPopup(props: VaultPopupProps) {
 
     let scoped = records;
     const searchTrim = search.trim();
-    if (!searchTrim) {
+    if (suggestionsActive && activeTabUrl) {
+      scoped = scoped.filter((row) => itemHasUrlMatchingTab(activeTabUrl, row.urls));
+    } else if (!searchTrim) {
       if (categoryFilterId) {
         scoped = scoped.filter((row) => row.categoryId === categoryFilterId);
       } else {
@@ -746,7 +793,7 @@ export function VaultPopup(props: VaultPopupProps) {
     }
 
     const filtered = filterRows(scoped, filter);
-    if (!searchTrim) {
+    if (suggestionsActive || !searchTrim) {
       return [...filtered].sort((a, b) => compareRows(a, b, sort));
     }
     return filtered
@@ -755,6 +802,7 @@ export function VaultPopup(props: VaultPopupProps) {
       .sort((a, b) => b.score - a.score || compareRows(a.row, b.row, sort))
       .map((entry) => entry.row);
   }, [
+    activeTabUrl,
     categoryFilterId,
     filter,
     folderFilterId,
@@ -763,6 +811,7 @@ export function VaultPopup(props: VaultPopupProps) {
     items,
     search,
     sort,
+    suggestionsActive,
     vaultFilterId,
   ]);
 
@@ -1014,40 +1063,42 @@ export function VaultPopup(props: VaultPopupProps) {
     setVaultFilterId(null);
     setFolderFilterId(null);
     setCategoryFilterId(null);
+    setSuggestionsActive(false);
+    suggestionsAutoDoneRef.current = true;
   }, []);
 
-  /** Web `clearWorkspaceScopeFromUrl`: drop vault/folder/category/search (and keep sort). */
+  /** Drop slot-B scope (vault/folder/category/search/suggestions); keep slot-A filter + sort. */
   const clearAllListScope = useCallback(() => {
     clearScope();
     setSearch("");
   }, [clearScope]);
 
-  const pickVaultScope = useCallback((id: string) => {
-    setVaultFilterId(id);
+  const clearSlotB = useCallback(() => {
+    setVaultFilterId(null);
     setFolderFilterId(null);
     setCategoryFilterId(null);
     setSearch("");
-    setFilter("all");
-    setSelectedId(null);
+    setSuggestionsActive(false);
+    suggestionsAutoDoneRef.current = true;
   }, []);
+
+  const pickVaultScope = useCallback((id: string) => {
+    clearSlotB();
+    setVaultFilterId(id);
+    setSelectedId(null);
+  }, [clearSlotB]);
 
   const pickFolderScope = useCallback((id: string) => {
+    clearSlotB();
     setFolderFilterId(id);
-    setVaultFilterId(null);
-    setCategoryFilterId(null);
-    setSearch("");
-    setFilter("all");
     setSelectedId(null);
-  }, []);
+  }, [clearSlotB]);
 
   const pickCategoryScope = useCallback((id: string) => {
+    clearSlotB();
     setCategoryFilterId(id);
-    setVaultFilterId(null);
-    setFolderFilterId(null);
-    setSearch("");
-    setFilter("all");
     setSelectedId(null);
-  }, []);
+  }, [clearSlotB]);
 
   const openNewItem = () => {
     void openWebDeepLink(
@@ -1149,6 +1200,13 @@ export function VaultPopup(props: VaultPopupProps) {
   };
 
   const onSearchChange = (value: string) => {
+    if (value.trim()) {
+      setVaultFilterId(null);
+      setFolderFilterId(null);
+      setCategoryFilterId(null);
+      setSuggestionsActive(false);
+      suggestionsAutoDoneRef.current = true;
+    }
     setSearch(value);
     noteActivity();
   };
@@ -1159,9 +1217,8 @@ export function VaultPopup(props: VaultPopupProps) {
   };
 
   const onPickTag = (tag: string) => {
+    clearSlotB();
     setSearch(formatTagSearchQuery(tag));
-    clearScope();
-    setFilter("all");
     setSelectedId(null);
   };
 
@@ -1352,6 +1409,9 @@ export function VaultPopup(props: VaultPopupProps) {
               selectedId={selectedId}
               locale={locale === "ru" ? "ru" : "en"}
               searchQuery={search}
+              suggestionsScopeLabel={
+                suggestionsActive ? t("extension.vault.filterSuggestions") : null
+              }
               vaultScopeLabel={vaultScopeMeta?.name ?? null}
               folderScopeLabel={folderScopeLabel}
               categoryScopeLabel={categoryScopeLabel}

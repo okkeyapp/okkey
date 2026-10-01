@@ -14,8 +14,8 @@ import {
   SortIconOldestFirst,
   Spinner,
   buildItemsListSections,
-  buttonVariants,
   cn,
+  mutedSurfaceActiveBgClassName,
   mutedSurfaceHoverBgClassName,
   mutedSurfaceOpenBgClassName,
   sortIconForValue,
@@ -59,6 +59,7 @@ type ExtensionItemsListPaneProps = {
   selectedId: string | null;
   locale: ItemsListLocale;
   searchQuery?: string;
+  suggestionsScopeLabel?: string | null;
   vaultScopeLabel?: string | null;
   folderScopeLabel?: string | null;
   categoryScopeLabel?: string | null;
@@ -140,7 +141,6 @@ function IconOpenWebsite24({ className }: { className?: string }) {
       <path
         d="M21 9V3H15M21 3L10 14M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
         stroke="currentColor"
-        strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -158,6 +158,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     selectedId,
     locale,
     searchQuery = "",
+    suggestionsScopeLabel = null,
     vaultScopeLabel,
     folderScopeLabel,
     categoryScopeLabel,
@@ -198,6 +199,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     activeFolderId,
     activeCategoryId,
     searchQuery,
+    suggestionsScopeLabel ?? "",
     vaultScopeLabel ?? "",
     folderScopeLabel ?? "",
     categoryScopeLabel ?? "",
@@ -222,6 +224,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
             onFilterChange={onFilterChange}
             searchScopeLabel={searchScopeLabel}
             tagScopeLabel={tagScopeLabel}
+            suggestionsScopeLabel={suggestionsScopeLabel}
             vaultScopeLabel={vaultScopeLabel}
             folderScopeLabel={folderScopeLabel}
             categoryScopeLabel={categoryScopeLabel}
@@ -362,13 +365,17 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             <button
                               type="button"
                               className={cn(
-                                buttonVariants({ variant: "default" }),
-                                "pointer-events-none absolute top-[5px] right-[5px] z-10",
-                                "flex !size-[50px] !min-h-[50px] !min-w-[50px] items-center justify-center !rounded-[6px] !p-0",
-                                "opacity-0 transition-[opacity,color,background-color,box-shadow,border-color]",
+                                "pointer-events-none absolute inset-y-0 right-0 z-10",
+                                "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg p-0",
+                                mutedSurfaceActiveBgClassName,
+                                "text-foreground",
+                                "opacity-0 transition-[opacity,background-color,box-shadow]",
                                 "group-hover:pointer-events-auto group-hover:opacity-100",
+                                "hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
                                 "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                "[&_svg]:!size-6",
+                                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                                "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                "[&_svg]:size-6",
                               )}
                               aria-label={t("extension.vault.openAndFill")}
                               onClick={(event) => {
@@ -377,7 +384,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                 void openItemWebsite(firstUrl);
                               }}
                             >
-                              <IconOpenWebsite24 className="text-primary-foreground" />
+                              <IconOpenWebsite24 />
                             </button>
                           ) : null}
                         </div>

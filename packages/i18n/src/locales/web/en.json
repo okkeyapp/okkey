@@ -1696,6 +1696,7 @@
   "extension.vault.toast.restored": "Restored",
   "extension.vault.openAndFill": "Open and fill",
   "extension.vault.open": "Open",
+  "extension.vault.filterSuggestions": "Suggestions",
   "extension.authCallback.documentTitle": "Okkey extension — Session ready",
   "extension.authCallback.title": "Okkey extension",
   "extension.authCallback.completing": "Completing sign-in…",

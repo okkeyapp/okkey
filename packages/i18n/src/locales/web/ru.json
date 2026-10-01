@@ -1696,6 +1696,7 @@
   "extension.vault.toast.restored": "Восстановлено",
   "extension.vault.openAndFill": "Открыть и заполнить",
   "extension.vault.open": "Открыть",
+  "extension.vault.filterSuggestions": "Предложения",
   "extension.authCallback.documentTitle": "Расширение Okkey — Сессия готова",
   "extension.authCallback.title": "Расширение Okkey",
   "extension.authCallback.completing": "Завершаем вход…",

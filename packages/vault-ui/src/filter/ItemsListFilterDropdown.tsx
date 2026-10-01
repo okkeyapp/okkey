@@ -19,6 +19,7 @@ import {
   FilterIconFavorites,
   FilterIconFrame,
   FilterIconMonitoring,
+  FilterIconSuggestions,
   FolderClosedGlyph,
   SearchGlyph,
   Spinner,
@@ -219,6 +220,8 @@ export type ItemsListFilterDropdownProps<TRecord extends ItemsListFilterScopeRec
   /** Plain text search scope (non-tag). Mutually exclusive display with tagScopeLabel. */
   searchScopeLabel?: string | null;
   tagScopeLabel?: string | null;
+  /** Auto tab-URL suggestions scope (extension; dismissable chip only — not a menu row). */
+  suggestionsScopeLabel?: string | null;
   vaultScopeLabel?: string | null;
   /** Personal/shared vault-kind scope label (web monitoring vaultScope.*). */
   vaultKindScopeLabel?: string | null;
@@ -254,6 +257,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
     onFilterChange,
     searchScopeLabel,
     tagScopeLabel,
+    suggestionsScopeLabel,
     vaultScopeLabel,
     vaultKindScopeLabel,
     vaultKindIsPersonal,
@@ -289,9 +293,15 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
     : undefined;
 
   const tagSearchActive = Boolean(tagScopeLabel);
+  const suggestionsActive = Boolean(suggestionsScopeLabel);
   const searchActive = Boolean(searchScopeLabel || tagScopeLabel);
   const hasListScope = Boolean(
-    searchActive || vaultScopeLabel || vaultKindScopeLabel || folderScopeLabel || categoryScopeLabel,
+    suggestionsActive ||
+      searchActive ||
+      vaultScopeLabel ||
+      vaultKindScopeLabel ||
+      folderScopeLabel ||
+      categoryScopeLabel,
   );
   const monitoringFilterActive = isItemsListMonitoringFilter(filter);
   const secondaryFilterInTrigger =
@@ -299,6 +309,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
   const categoryScopeActive = Boolean(
     categoryScopeLabel &&
       categoryDefinition &&
+      !suggestionsActive &&
       !searchActive &&
       !vaultScopeLabel &&
       !vaultKindScopeLabel &&
@@ -308,25 +319,27 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
 
   const triggerLabel = monitoringFilterActive
     ? t(monitoringFilterLabelKey(filter))
-    : searchActive
-      ? (tagScopeLabel ?? searchScopeLabel)
-      : vaultScopeLabel
-        ? scopeTriggerLoading
-          ? null
-          : vaultScopeLabel
-        : vaultKindScopeLabel
+    : suggestionsActive
+      ? suggestionsScopeLabel
+      : searchActive
+        ? (tagScopeLabel ?? searchScopeLabel)
+        : vaultScopeLabel
           ? scopeTriggerLoading
             ? null
-            : vaultKindScopeLabel
-          : folderScopeLabel
+            : vaultScopeLabel
+          : vaultKindScopeLabel
             ? scopeTriggerLoading
               ? null
-              : folderScopeLabel
-            : categoryScopeLabel
-              ? categoryScopeLabel
-              : isItemsListMonitoringFilter(filter)
-                ? t(monitoringFilterLabelKey(filter))
-                : t(coreFilterLabelKey(filter));
+              : vaultKindScopeLabel
+            : folderScopeLabel
+              ? scopeTriggerLoading
+                ? null
+                : folderScopeLabel
+              : categoryScopeLabel
+                ? categoryScopeLabel
+                : isItemsListMonitoringFilter(filter)
+                  ? t(monitoringFilterLabelKey(filter))
+                  : t(coreFilterLabelKey(filter));
 
   const showScopeChip = Boolean(onClearScope);
 
@@ -354,7 +367,9 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
                   categoryWithSecondaryFilter && "gap-0",
                 )}
               >
-                {searchActive ? (
+                {suggestionsActive ? (
+                  <FilterIconSuggestions className="size-4 shrink-0 text-foreground" />
+                ) : searchActive ? (
                   tagSearchActive ? (
                     <FilterTagsIcon className="size-4 shrink-0 text-foreground" />
                   ) : (
@@ -419,8 +434,23 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
           <ChevronDownGlyph className="shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[12.5rem] p-1">
-        {searchActive && showScopeChip ? (
+      <DropdownMenuContent align="start" collisionPadding={8} className="min-w-[12.5rem] p-1">
+        {suggestionsActive && showScopeChip ? (
+          <>
+            <DropdownMenuItem
+              className={cn(
+                "relative gap-2 whitespace-nowrap py-2 ps-2 pe-7",
+                "bg-muted/80 data-[highlighted]:bg-secondary",
+              )}
+              onSelect={(e) => e.preventDefault()}
+            >
+              <FilterIconSuggestions className="size-4 shrink-0 text-foreground" />
+              <span className="min-w-0 flex-1 truncate text-left">{suggestionsScopeLabel}</span>
+              <ScopeRowCloseButton locale={locale} onClear={onClearScope!} />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="mx-1 my-1" />
+          </>
+        ) : searchActive && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -441,8 +471,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
-        ) : null}
-        {vaultScopeLabel && showScopeChip ? (
+        ) : vaultScopeLabel && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -459,8 +488,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
-        ) : null}
-        {!vaultScopeLabel && vaultKindScopeLabel && showScopeChip ? (
+        ) : !vaultScopeLabel && vaultKindScopeLabel && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -477,8 +505,7 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
-        ) : null}
-        {!vaultScopeLabel && !vaultKindScopeLabel && folderScopeLabel && showScopeChip ? (
+        ) : !vaultScopeLabel && !vaultKindScopeLabel && folderScopeLabel && showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
@@ -495,14 +522,14 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
             </DropdownMenuItem>
             <DropdownMenuSeparator className="mx-1 my-1" />
           </>
-        ) : null}
-        {!searchActive &&
-        !vaultScopeLabel &&
-        !vaultKindScopeLabel &&
-        !folderScopeLabel &&
-        categoryScopeLabel &&
-        categoryDefinition &&
-        showScopeChip ? (
+        ) : !suggestionsActive &&
+          !searchActive &&
+          !vaultScopeLabel &&
+          !vaultKindScopeLabel &&
+          !folderScopeLabel &&
+          categoryScopeLabel &&
+          categoryDefinition &&
+          showScopeChip ? (
           <>
             <DropdownMenuItem
               className={cn(
