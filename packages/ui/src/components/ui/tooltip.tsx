@@ -18,7 +18,8 @@ const TooltipContent = React.forwardRef<React.ComponentRef<typeof TooltipPrimiti
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-tooltip max-w-xs overflow-hidden rounded-md border-0 bg-foreground px-3 py-1.5 text-sm text-background shadow-md",
+          // Pass-through so tooltips never block clicks / hover on elements underneath.
+          "pointer-events-none z-tooltip max-w-xs overflow-hidden rounded-md border-0 bg-foreground px-3 py-1.5 text-sm text-background shadow-md",
           className,
         )}
         {...props}
