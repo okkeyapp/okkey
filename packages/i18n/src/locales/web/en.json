@@ -1092,6 +1092,7 @@
   "web.items.detail.favoriteAddTooltip": "Add to favorites",
   "web.items.detail.favoriteRemoveTooltip": "Remove from favorites",
   "web.items.detail.editActionsGroupAria": "Edit and more actions",
+  "web.items.detail.favoriteActionsGroupAria": "Favorites and actions",
   "web.items.detail.tagsEmpty": "No tags",
   "web.items.detail.activity.title": "Activity",
   "web.items.detail.activity.created": "Created",

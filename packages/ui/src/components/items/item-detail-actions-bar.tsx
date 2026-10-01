@@ -202,6 +202,12 @@ const iconGroupButtonClassName = cn(
   "!size-9 !min-h-9 !min-w-9",
 );
 
+const actionsTextButtonClassName = cn(
+  buttonVariants({ variant: "outline", size: "sm" }),
+  controlGroupItemFixedClassName,
+  "!h-9 gap-2 shrink-0 px-3",
+);
+
 const openWebsiteButtonClassName = cn(
   buttonVariants({ variant: "default", size: "sm" }),
   "!h-9 gap-2 shrink-0",
@@ -250,7 +256,7 @@ export type ItemDetailActionsBarProps = {
 };
 
 /**
- * Presentational item detail actions bar (capsule / favorite / edit / more).
+ * Presentational item detail actions bar (favorite + actions; open CTA optional).
  * No vault/folder breadcrumbs — hosts supply optional `leading` or `showBack`.
  */
 export function ItemDetailActionsBar({
@@ -337,50 +343,8 @@ export function ItemDetailActionsBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {!archived && !deleted ? (
-          <ControlGroup aria-label={t("web.items.detail.capsuleFavoriteGroupAria")} className={controlGroupLayoutClassName}>
-            <TooltipProvider delayDuration={300}>
-              {canCreateCapsule ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className={iconGroupButtonClassName}
-                      aria-label={t("web.nav.addCapsule")}
-                      onClick={onCreateCapsule}
-                    >
-                      <IconCapsule16 />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("web.nav.addCapsule")}</TooltipContent>
-                </Tooltip>
-              ) : null}
-              {canFavorite ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className={iconGroupButtonClassName}
-                      aria-label={favoriteTooltip}
-                      aria-pressed={favorite}
-                      onClick={onToggleFavorite}
-                    >
-                      <IconFavorite16 filled={favorite} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{favoriteTooltip}</TooltipContent>
-                </Tooltip>
-              ) : null}
-            </TooltipProvider>
-          </ControlGroup>
-        ) : null}
-
-        <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
-          {canEdit ? (
+        <ControlGroup aria-label={t("web.items.detail.favoriteActionsGroupAria")} className={controlGroupLayoutClassName}>
+          {!archived && !deleted && canFavorite ? (
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -389,34 +353,24 @@ export function ItemDetailActionsBar({
                     variant="outline"
                     size="icon"
                     className={iconGroupButtonClassName}
-                    disabled={archived || deleted}
-                    aria-label={editLabel}
-                    onClick={onEdit}
+                    aria-label={favoriteTooltip}
+                    aria-pressed={favorite}
+                    onClick={onToggleFavorite}
                   >
-                    <IconEdit16 />
+                    <IconFavorite16 filled={favorite} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{editLabel}</TooltipContent>
+                <TooltipContent>{favoriteTooltip}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : null}
           <DropdownMenu>
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className={iconGroupButtonClassName}
-                      aria-label={t("web.items.list.actions")}
-                    >
-                      <MoreVerticalIcon />
-                    </button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>{t("web.items.list.actions")}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={actionsTextButtonClassName}>
+                <span>{t("web.items.list.actions")}</span>
+                <MoreVerticalIcon />
+              </button>
+            </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-1">
               {/* Section 1: Edit / Create capsule (leave to website) */}
               {showMenuEdit ? (
