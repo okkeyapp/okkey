@@ -32,7 +32,6 @@ import {
 } from "@okkey/vault";
 import {
   Button,
-  DeviceSettingsIcon,
   DropdownMenuItem,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
@@ -65,6 +64,7 @@ import {
   type ExtensionListSort,
 } from "../../components/vault/ExtensionItemsListPane";
 import { ExtensionDeviceSettingsPanel } from "../../components/settings/ExtensionDeviceSettingsPanel";
+import { SettingsGearIcon } from "../../components/icons/SettingsGearIcon";
 import {
   buildEditItemDeepLink,
   buildItemsDeepLink,
@@ -146,7 +146,7 @@ function VaultHeaderDeviceSettingsButton(props: { label: string; onOpen: () => v
               props.onOpen();
             }}
           >
-            <DeviceSettingsIcon className="size-4" />
+            <SettingsGearIcon className="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{props.label}</TooltipContent>
@@ -408,7 +408,6 @@ export function VaultPopup(props: VaultPopupProps) {
   const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
-  const [mutationBusy, setMutationBusy] = useState(false);
   const disposeRef = useRef<(() => void) | null>(null);
   const itemsControllerRef = useRef<WorkspaceVaultItemsReadController | null>(null);
   const foldersDisposeRef = useRef<(() => void) | null>(null);
@@ -886,17 +885,27 @@ export function VaultPopup(props: VaultPopupProps) {
       if (!controller) {
         return;
       }
-      setMutationBusy(true);
+      setItemFavoriteByItemId((prev) => {
+        const next = new Set(prev);
+        if (nextFavorite) {
+          next.add(itemId);
+        } else {
+          next.delete(itemId);
+        }
+        return next;
+      });
       try {
         await controller.setItemFavorite(itemId, nextFavorite);
         syncFavoritesFromController();
+        toast.success(
+          t(nextFavorite ? "extension.vault.toast.favoriteAdded" : "extension.vault.toast.favoriteRemoved"),
+        );
       } catch (err: unknown) {
+        syncFavoritesFromController();
         toast.error(err instanceof Error ? err.message : String(err));
-      } finally {
-        setMutationBusy(false);
       }
     },
-    [syncFavoritesFromController],
+    [syncFavoritesFromController, t],
   );
 
   const onToggleDelete = useCallback(
@@ -905,7 +914,10 @@ export function VaultPopup(props: VaultPopupProps) {
       if (!controller) {
         return;
       }
-      setMutationBusy(true);
+      const previous = item;
+      setItems((prev) =>
+        prev.map((entry) => (entry.itemId === item.itemId ? withItemDeletedState(entry, deleted) : entry)),
+      );
       try {
         await controller.updateItem(withItemDeletedState(item, deleted));
         syncItemsFromController();
@@ -919,13 +931,13 @@ export function VaultPopup(props: VaultPopupProps) {
         if (deleted) {
           setSelectedId(null);
         }
+        toast.success(t(deleted ? "extension.vault.toast.deleted" : "extension.vault.toast.restored"));
       } catch (err: unknown) {
+        setItems((prev) => prev.map((entry) => (entry.itemId === item.itemId ? previous : entry)));
         toast.error(err instanceof Error ? err.message : String(err));
-      } finally {
-        setMutationBusy(false);
       }
     },
-    [itemFavoriteByItemId, syncFavoritesFromController, syncItemsFromController],
+    [itemFavoriteByItemId, syncFavoritesFromController, syncItemsFromController, t],
   );
 
   const onToggleArchive = useCallback(
@@ -935,7 +947,12 @@ export function VaultPopup(props: VaultPopupProps) {
         return;
       }
       const nextArchived = !(item.archived ?? false);
-      setMutationBusy(true);
+      const previous = item;
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.itemId === item.itemId ? withItemArchivedState(entry, nextArchived) : entry,
+        ),
+      );
       try {
         await controller.updateItem(withItemArchivedState(item, nextArchived));
         syncItemsFromController();
@@ -946,13 +963,13 @@ export function VaultPopup(props: VaultPopupProps) {
             syncFavoritesFromController();
           }
         }
+        toast.success(t(nextArchived ? "extension.vault.toast.archived" : "extension.vault.toast.unarchived"));
       } catch (err: unknown) {
+        setItems((prev) => prev.map((entry) => (entry.itemId === item.itemId ? previous : entry)));
         toast.error(err instanceof Error ? err.message : String(err));
-      } finally {
-        setMutationBusy(false);
       }
     },
-    [itemFavoriteByItemId, syncFavoritesFromController, syncItemsFromController],
+    [itemFavoriteByItemId, syncFavoritesFromController, syncItemsFromController, t],
   );
 
   const onSelectWorkspace = async (id: string) => {
@@ -1236,7 +1253,7 @@ export function VaultPopup(props: VaultPopupProps) {
               lastName: identity.lastName,
               settingsLabel: t("web.accountMenu.settings"),
               deviceSettingsLabel: t("web.accountMenu.deviceSettings"),
-              deviceSettingsIcon: <DeviceSettingsIcon />,
+              deviceSettingsIcon: <SettingsGearIcon />,
               logoutLabel: signOutLabel,
               changeServerLabel: t("web.accountMenu.changeServer"),
               settingsAsProfileHeader: true,
@@ -1381,7 +1398,6 @@ export function VaultPopup(props: VaultPopupProps) {
                 deletedItemsRetentionDays={
                   currentWorkspace?.deletedItemsRetentionDays ?? DEFAULT_DELETED_ITEMS_RETENTION_DAYS
                 }
-                mutationBusy={mutationBusy}
                 onEdit={() => openItemInWeb(selectedItem.itemId, { popup: "editItem" })}
                 onCreateCapsule={() => openItemInWeb(selectedItem.itemId, { popup: "newCapsule" })}
                 onToggleFavorite={() => {

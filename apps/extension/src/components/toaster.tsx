@@ -55,12 +55,12 @@ export function Toaster(props: ToasterProps) {
       toastOptions={{
         classNames: {
           toast:
-            "group toast !w-auto !min-w-[12rem] !max-w-[min(356px,calc(100vw-32px))] !whitespace-normal break-words [overflow-wrap:break-word] group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-          title: "whitespace-normal break-words text-foreground",
-          description: "whitespace-normal break-words text-foreground",
+            "group toast !w-auto !min-w-0 !max-w-[min(320px,calc(100vw-24px))] !whitespace-normal break-words [overflow-wrap:break-word] !px-3 !py-2 !gap-2 group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-md",
+          title: "whitespace-normal break-words text-sm leading-5 text-foreground",
+          description: "whitespace-normal break-words text-xs leading-4 text-foreground",
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
-          icon: "text-inherit",
+          icon: "text-inherit !size-4",
         },
       }}
       {...props}

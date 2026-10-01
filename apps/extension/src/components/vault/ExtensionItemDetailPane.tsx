@@ -50,7 +50,6 @@ type ExtensionItemDetailPaneProps = {
   canArchive: boolean;
   canChangeFolder?: boolean;
   deletedItemsRetentionDays: number;
-  mutationBusy?: boolean;
   onEdit: () => void;
   onCreateCapsule: () => void;
   onToggleFavorite: () => void;
@@ -64,7 +63,7 @@ type ExtensionItemDetailPaneProps = {
 
 /**
  * Extension detail pane — same composition as web ItemDetailCard.
- * Favorite / soft-delete run locally (E3); archive still deep-links when not wired.
+ * Favorite / archive / soft-delete run locally (E3).
  */
 export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const {
@@ -86,7 +85,6 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     canArchive,
     canChangeFolder = true,
     deletedItemsRetentionDays,
-    mutationBusy = false,
     onEdit,
     onCreateCapsule,
     onToggleFavorite,
@@ -179,7 +177,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   );
 
   const handleToggleDelete = useCallback(() => {
-    if (!canDelete || mutationBusy) {
+    if (!canDelete) {
       return;
     }
     if (deleted) {
@@ -187,7 +185,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
       return;
     }
     setDeleteConfirmOpen(true);
-  }, [canDelete, deleted, mutationBusy, onToggleDelete]);
+  }, [canDelete, deleted, onToggleDelete]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -200,23 +198,23 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         showBack={false}
         onEdit={onEdit}
         onToggleFavorite={() => {
-          if (!canFavorite || mutationBusy) {
+          if (!canFavorite) {
             return;
           }
           onToggleFavorite();
         }}
         onToggleArchive={() => {
-          if (!canArchive || deleted || mutationBusy) {
+          if (!canArchive || deleted) {
             return;
           }
           onToggleArchive();
         }}
         onToggleDelete={handleToggleDelete}
         onCreateCapsule={onCreateCapsule}
-        canEdit={!archived && !deleted && !mutationBusy}
-        canFavorite={!archived && !deleted && canFavorite && !mutationBusy}
-        canArchive={!deleted && canArchive && !mutationBusy}
-        canDelete={canDelete && !mutationBusy}
+        canEdit={!archived && !deleted}
+        canFavorite={!archived && !deleted && canFavorite}
+        canArchive={!deleted && canArchive}
+        canDelete={canDelete}
         canCreateCapsule={!archived && !deleted}
         openInWebLabel={t("extension.vault.openInWeb")}
         onOpenInWeb={onOpenInWeb}
@@ -259,7 +257,6 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
                     t={t}
                     folderId={folderId}
                     folderNodes={folderNodes}
-                    disabled={mutationBusy}
                     onAssign={onAssignFolder}
                     onCreateFolder={onCreateFolder}
                   />
