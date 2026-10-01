@@ -202,7 +202,10 @@ const iconGroupButtonClassName = cn(
   "!size-9 !min-h-9 !min-w-9",
 );
 
-const editButtonClassName = cn(buttonVariants({ variant: "outline", size: "sm" }), controlGroupItemFixedClassName, "!h-9 gap-2");
+const openWebsiteButtonClassName = cn(
+  buttonVariants({ variant: "default", size: "sm" }),
+  "!h-9 gap-2 shrink-0",
+);
 
 const mobileBackButtonClassName = cn(
   buttonVariants({ variant: "secondary", size: "iconSm" }),
@@ -240,6 +243,9 @@ export type ItemDetailActionsBarProps = {
   /** Extension: open current item in web app. */
   openInWebLabel?: string;
   onOpenInWeb?: () => void;
+  /** Login/password: open first website URL (primary CTA). */
+  openWebsiteLabel?: string;
+  onOpenWebsite?: () => void;
   className?: string;
 };
 
@@ -269,11 +275,15 @@ export function ItemDetailActionsBar({
   onCreateCapsule,
   openInWebLabel,
   onOpenInWeb,
+  openWebsiteLabel,
+  onOpenWebsite,
   className,
 }: ItemDetailActionsBarProps) {
   const favoriteTooltip = favorite
     ? t("web.items.detail.favoriteRemoveTooltip")
     : t("web.items.detail.favoriteAddTooltip");
+  const editLabel = t("web.items.menu.edit");
+  const showOpenWebsite = Boolean(openWebsiteLabel && onOpenWebsite);
 
   const leadingContent =
     leading ??
@@ -346,17 +356,24 @@ export function ItemDetailActionsBar({
 
         <ControlGroup aria-label={t("web.items.detail.editActionsGroupAria")} className={controlGroupLayoutClassName}>
           {canEdit ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={editButtonClassName}
-              disabled={archived || deleted}
-              onClick={onEdit}
-            >
-              <IconEdit16 />
-              <span>{t("web.items.menu.edit")}</span>
-            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className={iconGroupButtonClassName}
+                    disabled={archived || deleted}
+                    aria-label={editLabel}
+                    onClick={onEdit}
+                  >
+                    <IconEdit16 />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{editLabel}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -432,6 +449,19 @@ export function ItemDetailActionsBar({
             </DropdownMenuContent>
           </DropdownMenu>
         </ControlGroup>
+
+        {showOpenWebsite ? (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className={openWebsiteButtonClassName}
+            onClick={onOpenWebsite}
+          >
+            <IconExternalLink16 />
+            <span>{openWebsiteLabel}</span>
+          </Button>
+        ) : null}
       </div>
     </div>
   );

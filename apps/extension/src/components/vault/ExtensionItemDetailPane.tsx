@@ -6,7 +6,7 @@ import {
   type KeyFieldFileValue,
 } from "@okkey/ui";
 import type { WorkspaceFolderNode } from "@okkey/vault";
-import { downloadKeyFieldFileAttachment, copyTextWithVaultClipboardPolicy } from "@okkey/vault";
+import { downloadKeyFieldFileAttachment, copyTextWithVaultClipboardPolicy, collectItemUrls } from "@okkey/vault";
 import {
   DeleteItemsConfirmPopup,
   ItemActivitySection,
@@ -178,6 +178,22 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     [userId],
   );
 
+  const firstWebsiteUrl = useMemo(() => {
+    if (item.categoryId !== ITEM_CATEGORY_LOGIN) {
+      return "";
+    }
+    return collectItemUrls(item)[0]?.trim() ?? "";
+  }, [item]);
+
+  const handleOpenWebsite = useCallback(async () => {
+    const trimmed = firstWebsiteUrl.trim();
+    if (!trimmed) {
+      return;
+    }
+    const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
+    await browser.tabs.create({ url: withProtocol });
+  }, [firstWebsiteUrl]);
+
   const handleToggleDelete = useCallback(() => {
     if (!canDelete) {
       return;
@@ -220,6 +236,8 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         canCreateCapsule={!archived && !deleted}
         openInWebLabel={t("extension.vault.openInWeb")}
         onOpenInWeb={onOpenInWeb}
+        openWebsiteLabel={firstWebsiteUrl ? t("extension.vault.open") : undefined}
+        onOpenWebsite={firstWebsiteUrl ? () => void handleOpenWebsite() : undefined}
       />
 
       <ScrollArea ref={detailScrollRef} className="min-h-0 flex-1">
