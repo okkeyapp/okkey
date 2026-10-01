@@ -377,14 +377,17 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                       "opacity-0 transition-[opacity,background-color,border-color]",
                                       "group-hover:pointer-events-auto group-hover:opacity-100",
                                       rowActive && "pointer-events-auto opacity-100",
-                                      // Hover: mid between static muted/60 and focus.
+                                      // Hover: mid (#e2e8f0) — lighter than focus. Focus must win when both match.
                                       "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                      // Focus: no ring/shadow — slightly darker than prior focus bg.
+                                      // Focus: no ring/shadow — slate-400 step, clearly darker than hover mid.
                                       "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
-                                      "focus-visible:bg-[color-mix(in_srgb,#b0bcc9_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_96%,hsl(var(--foreground))_4%)]",
-                                      "focus-visible:border-[color-mix(in_srgb,#b0bcc9_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_96%,hsl(var(--foreground))_4%)]",
+                                      "focus-visible:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "focus-visible:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      // Same focus fill while hovered (hover alone must not mute focus).
+                                      "focus-visible:hover:bg-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
+                                      "focus-visible:hover:border-[color-mix(in_srgb,#94a3b8_92%,hsl(var(--secondary))_8%)] dark:focus-visible:hover:border-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--secondary))_45%)]",
                                       "[&_svg]:size-5",
                                     )}
                                     aria-label={t("extension.vault.openAndFill")}
