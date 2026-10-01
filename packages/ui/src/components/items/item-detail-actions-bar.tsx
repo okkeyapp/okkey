@@ -285,6 +285,17 @@ export function ItemDetailActionsBar({
   const editLabel = t("web.items.menu.edit");
   const showOpenWebsite = Boolean(openWebsiteLabel && onOpenWebsite);
 
+  const showMenuEdit = canEdit;
+  const showMenuCreateCapsule = !archived && !deleted && canCreateCapsule;
+  const showMenuFavorite = !archived && !deleted && canFavorite;
+  const showMenuCopy = !archived && !deleted && Boolean(onCopy);
+  const showMenuArchive = !deleted && canArchive;
+  const showMenuDelete = canDelete;
+  const showMenuOpenInWeb = Boolean(openInWebLabel && onOpenInWeb);
+  const menuSection1 = showMenuEdit || showMenuCreateCapsule;
+  const menuSection2 = showMenuFavorite || showMenuCopy || showMenuArchive || showMenuDelete;
+  const menuSection3 = showMenuOpenInWeb;
+
   const leadingContent =
     leading ??
     (showBack && onBack ? (
@@ -407,38 +418,44 @@ export function ItemDetailActionsBar({
               </Tooltip>
             </TooltipProvider>
             <DropdownMenuContent align="end" className="w-52 p-1">
-              {!archived && !deleted ? (
-                <>
-                  {onCopy ? (
-                    <DropdownMenuItem className="gap-2" onSelect={onCopy}>
-                      <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
-                      <span>{t("web.items.menu.copy")}</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {canFavorite ? (
-                    <DropdownMenuItem className="gap-2" onSelect={onToggleFavorite}>
-                      {favorite ? (
-                        <IconUnfavorite16 className="text-foreground" />
-                      ) : (
-                        <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
-                      )}
-                      <span>
-                        {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
-                      </span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {canCreateCapsule ? (
-                    <DropdownMenuItem className="gap-2" onSelect={onCreateCapsule}>
-                      <IconCapsule16 />
-                      <span>{t("web.nav.addCapsule")}</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                  {(canFavorite || canCreateCapsule || onCopy) && (canArchive || canDelete || onOpenInWeb) ? (
-                    <DropdownMenuSeparator className="mx-1 my-1" />
-                  ) : null}
-                </>
+              {/* Section 1: Edit / Create capsule (leave to website) */}
+              {showMenuEdit ? (
+                <DropdownMenuItem className="gap-2" onSelect={onEdit}>
+                  <IconEdit16 />
+                  <span>{editLabel}</span>
+                  <IconExternalLink16 className="ml-auto size-4 shrink-0 text-muted-foreground" />
+                </DropdownMenuItem>
               ) : null}
-              {!deleted && canArchive ? (
+              {showMenuCreateCapsule ? (
+                <DropdownMenuItem className="gap-2" onSelect={onCreateCapsule}>
+                  <IconCapsule16 />
+                  <span>{t("web.nav.addCapsule")}</span>
+                  <IconExternalLink16 className="ml-auto size-4 shrink-0 text-muted-foreground" />
+                </DropdownMenuItem>
+              ) : null}
+
+              {menuSection1 && menuSection2 ? <DropdownMenuSeparator className="mx-1 my-1" /> : null}
+
+              {/* Section 2: Favorite / Archive / Delete (local mutations) */}
+              {showMenuFavorite ? (
+                <DropdownMenuItem className="gap-2" onSelect={onToggleFavorite}>
+                  {favorite ? (
+                    <IconUnfavorite16 className="text-foreground" />
+                  ) : (
+                    <FilterIconFavorites className="size-4 shrink-0 text-foreground" />
+                  )}
+                  <span>
+                    {favorite ? t("web.items.menu.removeFromFavorites") : t("web.items.menu.addToFavorites")}
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
+              {showMenuCopy && onCopy ? (
+                <DropdownMenuItem className="gap-2" onSelect={onCopy}>
+                  <KeyFieldCopyIcon className="size-4 shrink-0 text-foreground" />
+                  <span>{t("web.items.menu.copy")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {showMenuArchive ? (
                 <DropdownMenuItem className="gap-2" onSelect={onToggleArchive}>
                   {archived ? (
                     <IconUnarchive16 className="text-foreground" />
@@ -448,7 +465,7 @@ export function ItemDetailActionsBar({
                   <span>{archived ? t("web.items.menu.unarchive") : t("web.items.menu.archive")}</span>
                 </DropdownMenuItem>
               ) : null}
-              {canDelete ? (
+              {showMenuDelete ? (
                 <DropdownMenuItem
                   className={cn(
                     "gap-2",
@@ -460,16 +477,17 @@ export function ItemDetailActionsBar({
                   <span>{deleted ? t("web.items.menu.restore") : t("web.items.menu.delete")}</span>
                 </DropdownMenuItem>
               ) : null}
-              {openInWebLabel && onOpenInWeb ? (
-                <>
-                  {(canArchive || canDelete || (!archived && !deleted && (canFavorite || canCreateCapsule || onCopy))) ? (
-                    <DropdownMenuSeparator className="mx-1 my-1" />
-                  ) : null}
-                  <DropdownMenuItem className="gap-2" onSelect={onOpenInWeb}>
-                    <IconExternalLink16 className="text-foreground" />
-                    <span>{openInWebLabel}</span>
-                  </DropdownMenuItem>
-                </>
+
+              {(menuSection1 || menuSection2) && menuSection3 ? (
+                <DropdownMenuSeparator className="mx-1 my-1" />
+              ) : null}
+
+              {/* Section 3: Open in web */}
+              {showMenuOpenInWeb ? (
+                <DropdownMenuItem className="gap-2" onSelect={onOpenInWeb}>
+                  <IconExternalLink16 className="text-foreground" />
+                  <span>{openInWebLabel}</span>
+                </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
