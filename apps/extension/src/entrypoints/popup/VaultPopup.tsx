@@ -32,6 +32,8 @@ import {
 } from "@okkey/vault";
 import {
   Button,
+  ControlGroup,
+  controlGroupItemFixedClassName,
   DropdownMenuItem,
   OkkeyAppSidebar,
   OkkeyAppSidebarToolbar,
@@ -142,11 +144,9 @@ function VaultHeaderDeviceSettingsButton(props: {
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant="ghost"
-            className={cn(
-              "size-9 min-h-9 min-w-9 shrink-0 rounded-none border-0 p-0 shadow-none",
-              props.className,
-            )}
+            variant="outline"
+            size="icon"
+            className={cn(controlGroupItemFixedClassName, props.className)}
             aria-label={props.label}
             onClick={() => {
               shell.setMobileDrawerOpen(false);
@@ -1303,28 +1303,25 @@ export function VaultPopup(props: VaultPopupProps) {
             wrapClassName="px-0 sm:px-0"
           />
           <div className="flex shrink-0 items-center gap-2">
-            <div
-              className="inline-flex h-9 shrink-0 items-stretch overflow-hidden rounded-lg border border-input bg-background shadow-none"
-              role="group"
+            <ControlGroup
+              className="w-auto shrink-0"
               aria-label={`${t("extension.vault.lock")} / ${t("web.accountMenu.deviceSettings")}`}
             >
               <Button
                 type="button"
-                variant="ghost"
-                className="h-full shrink-0 gap-1.5 rounded-none border-0 px-3 shadow-none hover:bg-accent"
+                variant="outline"
+                className={cn(controlGroupItemFixedClassName, "h-9 gap-1.5 px-3")}
                 aria-label={t("extension.vault.lock")}
                 onClick={onLock}
               >
                 <LockIcon />
                 <span className="text-sm font-medium">{t("extension.vault.lock")}</span>
               </Button>
-              <span className="w-px shrink-0 self-stretch bg-border" aria-hidden />
               <VaultHeaderDeviceSettingsButton
                 label={t("web.accountMenu.deviceSettings")}
                 onOpen={openDeviceSettings}
-                className="hover:bg-accent"
               />
-            </div>
+            </ControlGroup>
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>

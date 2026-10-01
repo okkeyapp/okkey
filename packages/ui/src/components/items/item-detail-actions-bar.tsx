@@ -376,11 +376,22 @@ export function ItemDetailActionsBar({
             </TooltipProvider>
           ) : null}
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button" className={iconGroupButtonClassName} aria-label={t("web.items.detail.moreActionsAria")}>
-                <MoreVerticalIcon />
-              </button>
-            </DropdownMenuTrigger>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={iconGroupButtonClassName}
+                      aria-label={t("web.items.list.actions")}
+                    >
+                      <MoreVerticalIcon />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{t("web.items.list.actions")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <DropdownMenuContent align="end" className="w-52 p-1">
               {!archived && !deleted ? (
                 <>
@@ -449,20 +460,20 @@ export function ItemDetailActionsBar({
             </DropdownMenuContent>
           </DropdownMenu>
         </ControlGroup>
-
-        {showOpenWebsite ? (
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            className={openWebsiteButtonClassName}
-            onClick={onOpenWebsite}
-          >
-            <IconExternalLink16 />
-            <span>{openWebsiteLabel}</span>
-          </Button>
-        ) : null}
       </div>
+
+      {showOpenWebsite ? (
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          className={openWebsiteButtonClassName}
+          onClick={onOpenWebsite}
+        >
+          <IconExternalLink16 />
+          <span>{openWebsiteLabel}</span>
+        </Button>
+      ) : null}
     </div>
   );
 }

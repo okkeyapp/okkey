@@ -125,20 +125,21 @@ async function openItemWebsite(url: string): Promise<void> {
   await browser.tabs.create({ url: withProtocol });
 }
 
-function IconOpenWebsite16({ className }: { className?: string }) {
+function IconOpenWebsite24({ className }: { className?: string }) {
   return (
     <svg
-      width={16}
-      height={16}
+      width={24}
+      height={24}
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
-      className={cn("size-4 shrink-0", className)}
+      className={cn("size-6 shrink-0", className)}
     >
       <path
         d="M14 6V2H10M14 2L6.66667 9.33333M12 8.66667V12.6667C12 13.0203 11.8595 13.3594 11.6095 13.6095C11.3594 13.8595 11.0203 14 10.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V5.33333C2 4.97971 2.14048 4.64057 2.39052 4.39052C2.64057 4.14048 2.97971 4 3.33333 4H7.33333"
         stroke="currentColor"
+        strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -360,9 +361,9 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             <button
                               type="button"
                               className={cn(
-                                "pointer-events-none absolute inset-y-0 right-0 z-10",
-                                "flex size-[60px] items-center justify-center",
-                                "rounded-l-none rounded-r-lg",
+                                "pointer-events-none absolute top-[5px] right-[5px] z-10",
+                                "flex size-[50px] items-center justify-center",
+                                "rounded-[6px]",
                                 "bg-primary text-primary-foreground",
                                 "opacity-0 transition-opacity",
                                 "group-hover:pointer-events-auto group-hover:opacity-100",
@@ -376,7 +377,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                 void openItemWebsite(firstUrl);
                               }}
                             >
-                              <IconOpenWebsite16 className="text-primary-foreground" />
+                              <IconOpenWebsite24 className="text-primary-foreground" />
                             </button>
                           ) : null}
                         </div>
