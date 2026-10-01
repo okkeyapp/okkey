@@ -13,6 +13,10 @@ import {
   SortIconNewestFirst,
   SortIconOldestFirst,
   Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   buildItemsListSections,
   cn,
   mutedSurfaceHoverBgClassName,
@@ -361,30 +365,43 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             )}
                           </button>
                           {showOpenAndFill ? (
-                            <button
-                              type="button"
-                              className={cn(
-                                "pointer-events-none absolute inset-y-0 right-0 z-10",
-                                "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
-                                "bg-muted/60 text-foreground",
-                                "opacity-0 transition-[opacity,background-color,box-shadow]",
-                                "group-hover:pointer-events-auto group-hover:opacity-100",
-                                rowActive && "pointer-events-auto opacity-100",
-                                "hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
-                                "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
-                                "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
-                                "[&_svg]:size-5",
-                              )}
-                              aria-label={t("extension.vault.openAndFill")}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void openItemWebsite(firstUrl);
-                              }}
-                            >
-                              <IconOpenWebsite />
-                            </button>
+                            <TooltipProvider delayDuration={300}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "pointer-events-none absolute inset-y-0 right-0 z-10",
+                                      "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
+                                      "bg-muted/60 text-foreground",
+                                      "opacity-0 transition-[opacity,background-color,border-color,box-shadow]",
+                                      "group-hover:pointer-events-auto group-hover:opacity-100",
+                                      rowActive && "pointer-events-auto opacity-100",
+                                      // Hover: mid between static muted/60 and focus (old hover).
+                                      "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      "focus-visible:pointer-events-auto focus-visible:opacity-100",
+                                      "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                                      // Focus: previous hover bg; border matches that bg.
+                                      "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                      "focus-visible:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                      "[&_svg]:size-5",
+                                    )}
+                                    aria-label={t("extension.vault.openAndFill")}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      void openItemWebsite(firstUrl);
+                                    }}
+                                  >
+                                    <IconOpenWebsite />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left">
+                                  {t("extension.vault.openAndFill")}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           ) : null}
                         </div>
                       </li>
