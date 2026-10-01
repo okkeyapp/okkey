@@ -15,7 +15,6 @@ import {
   Spinner,
   buildItemsListSections,
   cn,
-  mutedSurfaceActiveBgClassName,
   mutedSurfaceHoverBgClassName,
   mutedSurfaceOpenBgClassName,
   sortIconForValue,
@@ -365,16 +364,17 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             <button
                               type="button"
                               className={cn(
-                                "pointer-events-none absolute inset-y-0 right-0 z-10 size-[60px] p-0",
-                                "opacity-0 transition-opacity",
+                                "pointer-events-none absolute inset-y-0 right-0 z-10",
+                                "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
+                                "bg-muted/60 text-foreground",
+                                "opacity-0 transition-[opacity,background-color,box-shadow]",
                                 "group-hover:pointer-events-auto group-hover:opacity-100",
+                                rowActive && "pointer-events-auto opacity-100",
+                                "hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
                                 "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                "focus-visible:outline-none",
-                                "hover:[&>[data-open-visual]]:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)]",
-                                "dark:hover:[&>[data-open-visual]]:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
-                                "focus-visible:[&>[data-open-visual]]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
-                                "focus-visible:[&>[data-open-visual]]:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)]",
-                                "dark:focus-visible:[&>[data-open-visual]]:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.35)]",
+                                "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                "[&_svg]:size-5",
                               )}
                               aria-label={t("extension.vault.openAndFill")}
                               onClick={(event) => {
@@ -383,18 +383,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                 void openItemWebsite(firstUrl);
                               }}
                             >
-                              <span
-                                data-open-visual
-                                className={cn(
-                                  "pointer-events-none absolute top-[7px] right-[7px] flex size-[46px] items-center justify-center rounded-[6px]",
-                                  mutedSurfaceActiveBgClassName,
-                                  "text-foreground",
-                                  "transition-[background-color,box-shadow]",
-                                  "[&_svg]:size-5",
-                                )}
-                              >
-                                <IconOpenWebsite />
-                              </span>
+                              <IconOpenWebsite />
                             </button>
                           ) : null}
                         </div>
