@@ -374,18 +374,17 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                       "pointer-events-none absolute inset-y-0 right-0 z-10",
                                       "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
                                       "bg-muted/60 text-foreground",
-                                      "opacity-0 transition-[opacity,background-color,border-color,box-shadow]",
+                                      "opacity-0 transition-[opacity,background-color,border-color]",
                                       "group-hover:pointer-events-auto group-hover:opacity-100",
                                       rowActive && "pointer-events-auto opacity-100",
-                                      // Hover: mid between static muted/60 and focus (old hover).
+                                      // Hover: mid between static muted/60 and focus.
                                       "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                      // Same focus ring as Button / buttonVariants (accent @ 0.4).
-                                      "focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
-                                      // Focus: previous hover bg; border matches that bg.
-                                      "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
-                                      "focus-visible:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_92%,hsl(var(--foreground))_8%)]",
+                                      // Focus: no ring/shadow — slightly darker than prior focus bg.
+                                      "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
+                                      "focus-visible:bg-[color-mix(in_srgb,#b0bcc9_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_96%,hsl(var(--foreground))_4%)]",
+                                      "focus-visible:border-[color-mix(in_srgb,#b0bcc9_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_96%,hsl(var(--foreground))_4%)]",
                                       "[&_svg]:size-5",
                                     )}
                                     aria-label={t("extension.vault.openAndFill")}

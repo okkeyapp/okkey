@@ -3,9 +3,22 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "../../lib/utils.js";
 
-const TooltipProvider = TooltipPrimitive.Provider;
+type TooltipProviderProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>;
 
-const Tooltip = TooltipPrimitive.Root;
+/**
+ * Defaults `disableHoverableContent` so leaving the trigger closes immediately —
+ * pointer-events-none alone is not enough; Radix otherwise keeps the tooltip open
+ * while the pointer moves onto the content.
+ */
+function TooltipProvider({ disableHoverableContent = true, ...props }: TooltipProviderProps) {
+  return <TooltipPrimitive.Provider disableHoverableContent={disableHoverableContent} {...props} />;
+}
+
+type TooltipProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root>;
+
+function Tooltip({ disableHoverableContent = true, ...props }: TooltipProps) {
+  return <TooltipPrimitive.Root disableHoverableContent={disableHoverableContent} {...props} />;
+}
 
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
