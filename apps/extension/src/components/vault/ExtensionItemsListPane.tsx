@@ -33,6 +33,7 @@ import {
   type ItemsListFilterScopeVault,
 } from "@okkey/vault-ui";
 import { useMemo, useRef } from "react";
+import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 
@@ -114,6 +115,15 @@ const listHeaderShadowClassName = (scrolled: boolean) =>
     "relative z-10 shrink-0 border-b border-border bg-background p-2 transition-shadow",
     scrolled && "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
   );
+
+async function openItemWebsite(url: string): Promise<void> {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return;
+  }
+  const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
+  await browser.tabs.create({ url: withProtocol });
+}
 
 export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
   const {
@@ -286,39 +296,69 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                   {section.rows.map((row) => {
                     const rowActive = selectedId === row.id;
                     const rowSubtitle = row.description.trim();
+                    const firstUrl = row.urls[0]?.trim() ?? "";
+                    const showOpenAndFill =
+                      row.categoryId === ITEM_CATEGORY_LOGIN && firstUrl.length > 0;
                     return (
                       <li key={row.id}>
-                        <button
-                          type="button"
-                          aria-current={rowActive ? "true" : undefined}
-                          onClick={() => onSelect(row.id)}
+                        <div
                           className={cn(
-                            "group relative z-0 flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left transition-colors",
+                            "group relative z-0 rounded-lg transition-colors",
                             "hover:bg-muted/60",
                             rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                           )}
                         >
-                          <ExtensionListRowFavicon
-                            row={row}
-                            apiBaseUrl={apiBaseUrl}
-                            accessToken={accessToken}
-                            vaultKey={resolveVaultKey(row.vaultId)}
-                          />
-                          {rowSubtitle ? (
-                            <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
-                              <span className="block truncate text-sm font-medium leading-5 text-foreground">
+                          <button
+                            type="button"
+                            aria-current={rowActive ? "true" : undefined}
+                            onClick={() => onSelect(row.id)}
+                            className="relative flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left"
+                          >
+                            <ExtensionListRowFavicon
+                              row={row}
+                              apiBaseUrl={apiBaseUrl}
+                              accessToken={accessToken}
+                              vaultKey={resolveVaultKey(row.vaultId)}
+                            />
+                            {rowSubtitle ? (
+                              <span className="flex min-h-10 min-w-0 flex-1 flex-col justify-center">
+                                <span className="block truncate text-sm font-medium leading-5 text-foreground">
+                                  {row.title || "—"}
+                                </span>
+                                <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">
+                                  {rowSubtitle}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
                                 {row.title || "—"}
                               </span>
-                              <span className="block min-h-5 truncate text-sm leading-5 text-muted-foreground">
-                                {rowSubtitle}
+                            )}
+                          </button>
+                          {showOpenAndFill ? (
+                            <button
+                              type="button"
+                              className={cn(
+                                "pointer-events-none absolute inset-y-0 right-0 z-10 flex w-1/2 items-center justify-center",
+                                "opacity-0 transition-opacity",
+                                "group-hover:pointer-events-auto group-hover:opacity-100",
+                                "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none",
+                              )}
+                              aria-label={t("extension.vault.openAndFill")}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void openItemWebsite(firstUrl);
+                              }}
+                            >
+                              <span className="block w-max rounded-[10px] bg-border px-2">
+                                <span className="flex h-5 shrink-0 items-center text-[12px] leading-none text-foreground">
+                                  {t("extension.vault.openAndFill")}
+                                </span>
                               </span>
-                            </span>
-                          ) : (
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-foreground">
-                              {row.title || "—"}
-                            </span>
-                          )}
-                        </button>
+                            </button>
+                          ) : null}
+                        </div>
                       </li>
                     );
                   })}

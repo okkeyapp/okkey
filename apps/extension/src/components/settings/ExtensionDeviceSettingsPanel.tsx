@@ -308,6 +308,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   const bioReady = bioCapability?.status === "ready";
   const bioBlockedCode =
     bioCapability && bioCapability.status !== "ready" ? bioCapability.code : null;
+  const pageTitle = t(MENU.find((item) => item.id === page)?.labelKey ?? MENU[0].labelKey);
 
   function accentColor(option: (typeof ACCENT_OPTIONS)[number]): string {
     if (themePreference === "dark") {
@@ -360,9 +361,12 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
         <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0" onClick={onBack} aria-label={t("web.settingsPopup.close")}>
           <BackChevronIcon />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5">
-          {t("web.settingsPopup.deviceSettings.title")}
-        </h1>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium leading-4 text-muted-foreground">
+            {t("web.settingsPopup.deviceSettings.title")}
+          </p>
+          <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{pageTitle}</h1>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">

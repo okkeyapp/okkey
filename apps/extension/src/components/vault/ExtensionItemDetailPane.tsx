@@ -1,4 +1,4 @@
-import type { ItemPlaintextV2, Vault } from "@okkey/types";
+import { ITEM_CATEGORY_LOGIN, type ItemPlaintextV2, type Vault } from "@okkey/types";
 import {
   ItemsDetailPanelEmptyStateFill,
   ItemDetailActionsBar,
@@ -125,12 +125,14 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   });
 
   const messagesWithCopy = useMemo((): KeyFormEditorMessages => {
+    const isLoginItem = item.categoryId === ITEM_CATEGORY_LOGIN;
     return {
       ...keyFormMessages,
       copy: t("extension.vault.copy"),
       copied: t("extension.vault.copied"),
+      ...(isLoginItem ? { openWebsite: t("extension.vault.openAndFill") } : null),
     };
-  }, [keyFormMessages, t]);
+  }, [item.categoryId, keyFormMessages, t]);
 
   const activityEntries = useMemo(() => {
     if (activityWireEntries.length > 0) {
