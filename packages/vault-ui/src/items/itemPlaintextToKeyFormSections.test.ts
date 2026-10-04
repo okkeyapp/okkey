@@ -1000,3 +1000,54 @@ describe("itemPlaintextToKeyFormSections secure_files", () => {
     });
   });
 });
+
+describe("urlAutofillScope persist", () => {
+  it("round-trips exact-url and none on website fields", () => {
+    const sections = getDefaultSectionsForCategory("login", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "login") {
+          return { ...field, value: "user@example.com" };
+        }
+        if (field.id === "password") {
+          return { ...field, value: "secret" };
+        }
+        if (field.id === "website-1") {
+          return { ...field, value: "https://github.com/login", urlAutofillScope: "exact-url" as const };
+        }
+        return field;
+      }),
+    }));
+    sections
+      .find((section) => section.id === "websites")
+      ?.fields.push({
+        id: "website-2",
+        type: "url",
+        label: "URL",
+        value: "https://evil.example",
+        urlAutofillScope: "none",
+        editableLabel: true,
+        deletable: true,
+      });
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-login-scope-1",
+      vaultId: "vault-1",
+      title: "GitHub",
+      categoryId: "login",
+      nowMs: 1,
+    });
+
+    const website1 = item.fields.find((field) => field.id === "website-1");
+    const website2 = item.fields.find((field) => field.id === "website-2");
+    expect(website1?.value).toMatchObject({ kind: "url", urlAutofillScope: "exact-url" });
+    expect(website2?.value).toMatchObject({ kind: "url", urlAutofillScope: "none" });
+
+    const restored = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const websites = restored.find((section) => section.id === "websites");
+    expect(websites?.fields.find((field) => field.id === "website-1")?.urlAutofillScope).toBe("exact-url");
+    expect(websites?.fields.find((field) => field.id === "website-2")?.urlAutofillScope).toBe("none");
+  });
+});
+

@@ -178,9 +178,9 @@ export type KeyFormEditorProps = {
   allowFileFields?: boolean;
   /**
    * Optional override for copying field text (not URL open / recovery-code specials).
-   * Used by extension clipboard-clear policy.
+   * Used by extension clipboard-clear policy and copy-guard.
    */
-  onCopyText?: (value: string) => void | Promise<void>;
+  onCopyText?: (value: string, field: Pick<KeyFormEditorField, "id" | "type">) => void | Promise<void>;
 };
 
 export type RecoveryCodesValueChange = {
@@ -3393,7 +3393,7 @@ export function KeyFormEditor({
               ? openWebsite
               : onCopyText
                 ? (value) => {
-                    void onCopyText(value);
+                    void onCopyText(value, { id: field.id, type: field.type });
                   }
                 : undefined
         }

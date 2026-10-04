@@ -1122,7 +1122,14 @@ function toFormField(
     deletable,
     required: isFieldRequired(sectionId, field, sectionFields, isPresetSection),
     ...(secretKind ? { secretKind } : {}),
-    ...(type === "url" ? { urlAutofillScope: "entire-site" as const } : {}),
+    ...(type === "url"
+      ? {
+          urlAutofillScope:
+            field.value.kind === "url" && field.value.urlAutofillScope
+              ? field.value.urlAutofillScope
+              : ("entire-site" as const),
+        }
+      : {}),
     ...(type === "multiline-text" && field.value.kind === "note" && field.value.disableClickCopy
       ? { disableClickCopy: true }
       : {}),

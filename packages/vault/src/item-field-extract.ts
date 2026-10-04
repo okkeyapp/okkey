@@ -178,3 +178,66 @@ export function extractReadableItemFields(item: ItemPlaintextV2): ReadableItemFi
   }
   return out;
 }
+
+export type LoginAutofillSecrets = {
+  username: string;
+  password: string;
+  totpSecretBase32: string;
+  totpPeriodSeconds: number;
+  totpDigits: number;
+};
+
+function firstFilledText(item: ItemPlaintextV2, predicate: (field: ItemFieldV2) => boolean): string {
+  for (const field of orderedItemFields(item)) {
+    if (!predicate(field) || field.value.kind !== "text") {
+      continue;
+    }
+    const text = field.value.text.trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+/** Login + password (+ TOTP secret if present) for autofill of Логин/пароль items. */
+export function extractLoginAutofillSecrets(item: ItemPlaintextV2): LoginAutofillSecrets | null {
+  let username = "";
+  let password = "";
+  let totpSecretBase32 = "";
+  let totpPeriodSeconds = 30;
+  let totpDigits = 6;
+
+  for (const field of orderedItemFields(item)) {
+    if (!username && (field.id === "login" || field.type === "email") && field.value.kind === "text") {
+      username = field.value.text.trim();
+    }
+    if (!password && field.value.kind === "password") {
+      password = field.value.password;
+    }
+    if (!totpSecretBase32 && field.value.kind === "totp") {
+      totpSecretBase32 = field.value.secretBase32.trim();
+      totpPeriodSeconds = field.value.periodSeconds && field.value.periodSeconds > 0 ? field.value.periodSeconds : 30;
+      totpDigits = field.value.digits && field.value.digits > 0 ? field.value.digits : 6;
+    }
+  }
+
+  if (!username) {
+    username = firstFilledText(
+      item,
+      (field) => field.type === "text" && field.id !== "password" && !isSecretItemField(field),
+    );
+  }
+
+  if (!username && !password && !totpSecretBase32) {
+    return null;
+  }
+
+  return { username, password, totpSecretBase32, totpPeriodSeconds, totpDigits };
+}
+
+/** Copy-guard applies to login / password (not URL, TOTP, notes). */
+export function isLoginOrPasswordCopyField(field: { id: string; type: string }): boolean {
+  return field.type === "password" || field.type === "email" || field.id === "login";
+}
+

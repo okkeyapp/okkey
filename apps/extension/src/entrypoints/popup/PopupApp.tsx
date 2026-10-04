@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
 
 import { Toaster } from "../../components/toaster";
+import { AUTOFILL_MSG } from "../../lib/autofillMessages";
 import { createCoreClient } from "../../lib/api";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
@@ -243,6 +244,9 @@ export function PopupApp() {
     setMasterPassword("");
     void applyExtensionStoredTheme();
     setScreen("vault");
+    void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlocked }).catch(() => {
+      /* popup may be the only listener besides SW */
+    });
     return true;
   }, []);
 
@@ -586,6 +590,9 @@ export function PopupApp() {
         });
         void applyExtensionStoredTheme();
         setScreen("vault");
+        void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlocked }).catch(() => {
+          /* best-effort */
+        });
         void core.recordVaultUnlock().catch(() => {
           /* best-effort */
         });

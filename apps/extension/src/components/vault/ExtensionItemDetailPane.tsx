@@ -5,9 +5,16 @@ import {
   ScrollArea,
   type KeyFieldFileValue,
 } from "@okkey/ui";
-import type { WorkspaceFolderNode } from "@okkey/vault";
-import { downloadKeyFieldFileAttachment, copyTextWithVaultClipboardPolicy, collectItemUrls } from "@okkey/vault";
 import {
+  copyTextWithVaultClipboardPolicy,
+  collectItemUrls,
+  downloadKeyFieldFileAttachment,
+  isLoginOrPasswordCopyField,
+  loginItemMatchesTab,
+  type WorkspaceFolderNode,
+} from "@okkey/vault";
+import {
+  CopyGuardConfirmPopup,
   DeleteItemsConfirmPopup,
   ItemActivitySection,
   ItemDetailSavePath,
@@ -27,6 +34,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebLocale } from "@okkey/i18n";
 
+import { readActiveTabUrl } from "../../lib/deepLinks";
 import { readExtensionDevicePrefs } from "../../lib/extensionVaultSession";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 import { ExtensionItemFolderAssignControl } from "./ExtensionItemFolderAssignControl";
@@ -100,6 +108,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const headerScrolled = useRadixScrollAreaScrolled(detailScrollRef);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [copyGuardText, setCopyGuardText] = useState<string | null>(null);
 
   const archived = item.archived ?? false;
   const deleted = item.deleted ?? false;
@@ -167,7 +176,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     [accessToken, apiBaseUrl, item.itemId, item.vaultId, vaultKey],
   );
 
-  const handleCopyAction = useCallback(
+  const copyWithPolicy = useCallback(
     async (text: string) => {
       const prefs = await readExtensionDevicePrefs(userId);
       await copyTextWithVaultClipboardPolicy({
@@ -176,6 +185,22 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
       });
     },
     [userId],
+  );
+
+  const handleCopyAction = useCallback(
+    async (text: string, field: { id: string; type: string }) => {
+      const needsGuard =
+        item.categoryId === ITEM_CATEGORY_LOGIN && isLoginOrPasswordCopyField(field);
+      if (needsGuard) {
+        const tabUrl = await readActiveTabUrl();
+        if (!loginItemMatchesTab(item, tabUrl)) {
+          setCopyGuardText(text);
+          return;
+        }
+      }
+      await copyWithPolicy(text);
+    },
+    [copyWithPolicy, item],
   );
 
   const firstWebsiteUrl = useMemo(() => {
@@ -311,6 +336,18 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               setDeleting(false);
             }
           })();
+        }}
+      />
+      <CopyGuardConfirmPopup
+        open={copyGuardText !== null}
+        t={t}
+        onCancel={() => setCopyGuardText(null)}
+        onCopy={() => {
+          const text = copyGuardText;
+          setCopyGuardText(null);
+          if (text) {
+            void copyWithPolicy(text);
+          }
         }}
       />
     </div>

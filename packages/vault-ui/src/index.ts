@@ -211,3 +211,4 @@ export {
 
 export { SetupPinPopup } from "./settings/SetupPinPopup.js";
 export { DeleteItemsConfirmPopup } from "./settings/DeleteItemsConfirmPopup.js";
+export { CopyGuardConfirmPopup } from "./settings/CopyGuardConfirmPopup.js";

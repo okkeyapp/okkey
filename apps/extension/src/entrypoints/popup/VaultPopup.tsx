@@ -18,7 +18,7 @@ import {
   createWorkspaceVaultItemsReadController,
   findWorkspaceFolderPathById,
   formatTagSearchQuery,
-  itemHasUrlMatchingTab,
+  loginItemMatchesTab,
   itemPlaintextToExtensionListRecord,
   refreshWorkspaceFoldersCachesForIds,
   resolveVaultItemEncryptionKey,
@@ -747,9 +747,7 @@ export function VaultPopup(props: VaultPopupProps) {
       suggestionsAutoDoneRef.current = true;
       return;
     }
-    const hasMatch = items.some((item) =>
-      itemHasUrlMatchingTab(activeTabUrl, itemPlaintextToExtensionListRecord(item).urls),
-    );
+    const hasMatch = items.some((item) => loginItemMatchesTab(item, activeTabUrl));
     if (hasMatch) {
       setSuggestionsActive(true);
       suggestionsAutoDoneRef.current = true;
@@ -778,7 +776,10 @@ export function VaultPopup(props: VaultPopupProps) {
     let scoped = records;
     const searchTrim = search.trim();
     if (suggestionsActive && activeTabUrl) {
-      scoped = scoped.filter((row) => itemHasUrlMatchingTab(activeTabUrl, row.urls));
+      const matchingIds = new Set(
+        items.filter((item) => loginItemMatchesTab(item, activeTabUrl)).map((item) => item.itemId),
+      );
+      scoped = scoped.filter((row) => matchingIds.has(row.id));
     } else if (!searchTrim) {
       if (categoryFilterId) {
         scoped = scoped.filter((row) => row.categoryId === categoryFilterId);

@@ -291,6 +291,18 @@ export type WorkspaceVaultItemsReadController = {
   dispose: () => void;
 };
 
+/** Read already-materialized vault items from IndexedDB (autofill; no network). */
+export async function listCachedWorkspaceVaultItems(input: {
+  userId: string;
+  workspaceId: string;
+}): Promise<ItemPlaintextV2[]> {
+  const cached = await readCachedState(input.userId, input.workspaceId);
+  if (!cached) {
+    return [];
+  }
+  return [...cached.values()].flatMap((state) => [...state.items.values()]);
+}
+
 /** Vault items sync (event log replay + IndexedDB cache) with update mutations for E3+. */
 export function createWorkspaceVaultItemsReadController(input: {
   core: CoreClient;

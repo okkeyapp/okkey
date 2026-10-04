@@ -1685,7 +1685,7 @@
   "extension.vault.copyGuardTitle": "Незнакомый URL",
   "extension.vault.copyGuardBody": "Сайт не совпадает с URL записи. Всё равно скопировать?",
   "extension.vault.copyGuardCancel": "Отмена",
-  "extension.vault.copyGuardConfirm": "Скопировать",
+  "extension.vault.copyGuardConfirm": "Копировать",
   "extension.vault.changeServer": "Сменить сервер",
   "extension.vault.createRecord": "Создать запись",
   "extension.vault.openInWeb": "Открыть в web",

@@ -1,6 +1,20 @@
-import type { ItemFieldV2, ItemPlaintextV2, ItemSectionV2, FieldValueNote, FieldValueV2 } from "./types.js";
+import type {
+  ItemFieldV2,
+  ItemPlaintextV2,
+  ItemSectionV2,
+  FieldValueNote,
+  FieldValueV2,
+  UrlAutofillScope,
+} from "./types.js";
 import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2 } from "./types.js";
 import { emptyValueForFieldType } from "./field-defaults.js";
+
+export function parseUrlAutofillScope(raw: unknown): UrlAutofillScope {
+  if (raw === "exact-url" || raw === "none" || raw === "entire-site") {
+    return raw;
+  }
+  return "entire-site";
+}
 
 export interface ItemPlaintextValidationIssue {
   path: string;
@@ -39,8 +53,13 @@ export function normalizeFieldValue(type: string, value: unknown): FieldValueV2 
         periodSeconds: typeof value.periodSeconds === "number" ? value.periodSeconds : 30,
         digits: typeof value.digits === "number" ? value.digits : 6,
       };
-    case "url":
-      return { kind: "url", url: typeof value.url === "string" ? value.url : "" };
+    case "url": {
+      const url = typeof value.url === "string" ? value.url : "";
+      const urlAutofillScope = parseUrlAutofillScope(value.urlAutofillScope);
+      return urlAutofillScope === "entire-site"
+        ? { kind: "url", url }
+        : { kind: "url", url, urlAutofillScope };
+    }
     case "note": {
       const noteValue: FieldValueNote = {
         kind: "note",

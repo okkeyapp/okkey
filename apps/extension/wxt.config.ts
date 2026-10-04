@@ -39,9 +39,8 @@ export default defineConfig({
       extension_pages:
         "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob:; connect-src 'self' http: https:;",
     },
-    // E1: session + device API calls to configured Base URL / localhost API.
-    // Autofill host access expands in E4.
-    host_permissions: ["http://localhost/*", "http://127.0.0.1/*", "https://*/*"],
+    // E4: content scripts + autofill on arbitrary http(s) origins.
+    host_permissions: ["<all_urls>"],
     // Required so web (localhost / self-host) can redirect into the PKCE callback
     // page. Without this, Chrome rewrites the navigation to chrome-extension://invalid/
     // and shows ERR_BLOCKED_BY_CLIENT.
