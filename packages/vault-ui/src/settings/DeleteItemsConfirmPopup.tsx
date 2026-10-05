@@ -35,11 +35,12 @@ export function DeleteItemsConfirmPopup({
     <Popup
       className="z-popup-nested"
       width={420}
+      layout="desktop"
       header={t(multiple ? "web.deleteItemsConfirmPopup.titleMultiple" : "web.deleteItemsConfirmPopup.titleSingle")}
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
       closeDisabled={deleting}
-      panelClassName="min-h-0"
+      panelClassName="min-h-0 max-w-[420px]"
       contentClassName="pb-0 pt-0"
       footer={
         <>

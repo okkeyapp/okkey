@@ -67,8 +67,8 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 - **E1:** Server URL, web+PKCE session, device pending/approve.
 - **E2 (this phase):** Local MP unlock, sync read, workspace switch, search/filter, item read/copy + copy-guard, web deep links, vault UI parity with web mobile shell.
 - **E3:** delete/favorite mutations, device settings (theme/PIN).
-- **E4 (this phase):** persist `urlAutofillScope` on login «Вебсайт URL»; content-script autofill (login + password + TOTP); copy-guard in popup; host permissions `<all_urls>`.
-- **Not yet (E4.1+):** save-password prompt / generator on page.
+- **E4 (this phase):** persist `urlAutofillScope` on login «Вебсайт URL»; content-script autofill (login + password + TOTP); copy-guard in popup; host permissions `<all_urls>`; save-password prompt MVP; auto-submit after fill / open-and-fill.
+- **Not yet (E4.1+):** password generator on page.
 
 ## E4 — Autofill
 

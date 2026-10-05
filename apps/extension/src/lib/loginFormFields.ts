@@ -139,3 +139,96 @@ export function fillLoginForm(
     }
   }
 }
+
+function inputFilled(el: HTMLInputElement): boolean {
+  return el.value.trim().length > 0;
+}
+
+/** True when every visible login field on the page has a non-empty value. */
+export function loginFormReadyToSubmit(root: ParentNode): boolean {
+  const fields = findLoginFields(root);
+  const all = [...fields.username, ...fields.password, ...fields.otp];
+  if (all.length === 0) {
+    return false;
+  }
+  return all.every(inputFilled);
+}
+
+function resolveFormForFields(fields: ReturnType<typeof findLoginFields>): HTMLFormElement | null {
+  const sample = fields.password[0] ?? fields.username[0] ?? fields.otp[0] ?? null;
+  return sample?.form ?? null;
+}
+
+export function findSubmitControl(form: HTMLFormElement): HTMLElement | null {
+  const explicit = form.querySelector<HTMLElement>(
+    'button[type="submit"], input[type="submit"], button:not([type]), [type="submit"]',
+  );
+  if (explicit && isVisibleFillableElementLike(explicit)) {
+    return explicit;
+  }
+  const buttons = Array.from(form.querySelectorAll("button")).filter((btn) => {
+    if (!(btn instanceof HTMLButtonElement)) {
+      return false;
+    }
+    const type = (btn.type || "submit").toLowerCase();
+    return type === "submit" && isVisibleFillableElementLike(btn);
+  });
+  return buttons[0] ?? null;
+}
+
+function isVisibleFillableElementLike(el: HTMLElement): boolean {
+  if (el instanceof HTMLButtonElement && el.disabled) {
+    return false;
+  }
+  if (el instanceof HTMLInputElement && el.disabled) {
+    return false;
+  }
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (style && (style.visibility === "hidden" || style.display === "none")) {
+    return false;
+  }
+  return el.getClientRects().length > 0;
+}
+
+/** Submit the nearest login form when all filled fields look ready. */
+export function submitLoginFormIfReady(root: ParentNode): boolean {
+  const fields = findLoginFields(root);
+  if (!loginFormReadyToSubmit(root)) {
+    return false;
+  }
+  const form = resolveFormForFields(fields);
+  if (!form) {
+    return false;
+  }
+  const submitControl = findSubmitControl(form);
+  if (submitControl) {
+    submitControl.click();
+    return true;
+  }
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit();
+    return true;
+  }
+  form.submit();
+  return true;
+}
+
+export function fillLoginFormAndMaybeSubmit(
+  root: ParentNode,
+  payload: { username: string; password: string; totp?: string },
+): { filled: boolean; submitted: boolean } {
+  fillLoginForm(root, payload);
+  const submitted = submitLoginFormIfReady(root);
+  return { filled: true, submitted };
+}
+
+/** Read username/password currently in the page (for save-password capture). */
+export function captureLoginCredentials(root: ParentNode): { username: string; password: string } | null {
+  const fields = findLoginFields(root);
+  const password = fields.password[0]?.value?.trim() ?? "";
+  if (!password) {
+    return null;
+  }
+  const username = fields.username[0]?.value?.trim() ?? "";
+  return { username, password };
+}

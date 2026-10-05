@@ -6,6 +6,7 @@ import {
   applyItemPlaintextToReplayMap,
 } from "@okkey/sync";
 import {
+  buildItemCreateAppendRequest,
   buildItemSyncMetadataFromPlaintext,
   buildItemUpdateAppendRequest,
 } from "@okkey/sync/item-sync";
@@ -288,6 +289,8 @@ export type WorkspaceVaultItemsReadController = {
   getItemCreatedByUserId: (itemId: string) => string | null | undefined;
   /** Soft-delete / archive / field updates via ITEM_UPDATE append. */
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
+  /** Create login (and other) items via ITEM_CREATE append. */
+  createItem: (item: ItemPlaintextV2) => Promise<string>;
   dispose: () => void;
 };
 
@@ -431,6 +434,21 @@ export function createWorkspaceVaultItemsReadController(input: {
       const vaultKey = await resolveVaultKey(item.vaultId);
       const request = buildItemSyncMetadataFromPlaintext(
         await buildItemUpdateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
+        item,
+      );
+      await enqueue(request, item.vaultId);
+      return item.itemId;
+    },
+    createItem: async (item) => {
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemCreateAppendRequest(
           vaultKey,
           item,
           state.lastAppliedVersion,

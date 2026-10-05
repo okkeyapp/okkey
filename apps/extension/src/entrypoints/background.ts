@@ -3,7 +3,9 @@ import { defineBackground } from "wxt/utils/define-background";
 import {
   broadcastAutofillUnlocked,
   handleAutofillFill,
+  handleAutofillOpenAndFill,
   handleAutofillQuery,
+  handleAutofillSave,
   isAutofillRuntimeMessage,
   openExtensionUnlockPrompt,
 } from "../lib/autofillBroker";
@@ -31,6 +33,22 @@ export default defineBackground(() => {
     }
     if (message.type === AUTOFILL_MSG.unlocked) {
       return broadcastAutofillUnlocked().then(() => ({ ok: true }));
+    }
+    if (message.type === AUTOFILL_MSG.save) {
+      return handleAutofillSave({
+        pageUrl: message.pageUrl,
+        websiteUrl: message.websiteUrl,
+        title: message.title,
+        username: message.username,
+        password: message.password,
+      });
+    }
+    if (message.type === AUTOFILL_MSG.openAndFill) {
+      return handleAutofillOpenAndFill(message.itemId, message.url);
+    }
+    if (message.type === AUTOFILL_MSG.applyFill) {
+      // Content script handles applyFill; SW ignores.
+      return Promise.resolve({ ok: true });
     }
     return undefined;
   });

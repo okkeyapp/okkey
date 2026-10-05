@@ -34,6 +34,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebLocale } from "@okkey/i18n";
 
+import { AUTOFILL_MSG } from "../../lib/autofillMessages";
 import { readActiveTabUrl } from "../../lib/deepLinks";
 import { readExtensionDevicePrefs } from "../../lib/extensionVaultSession";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
@@ -215,9 +216,17 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
     if (!trimmed) {
       return;
     }
+    if (item.categoryId === ITEM_CATEGORY_LOGIN) {
+      await browser.runtime.sendMessage({
+        type: AUTOFILL_MSG.openAndFill,
+        itemId: item.itemId,
+        url: trimmed,
+      });
+      return;
+    }
     const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
     await browser.tabs.create({ url: withProtocol });
-  }, [firstWebsiteUrl]);
+  }, [firstWebsiteUrl, item.categoryId, item.itemId]);
 
   const handleToggleDelete = useCallback(() => {
     if (!canDelete) {
@@ -261,7 +270,11 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         canCreateCapsule={!archived && !deleted}
         openInWebLabel={t("extension.vault.openInWeb")}
         onOpenInWeb={onOpenInWeb}
-        openWebsiteLabel={firstWebsiteUrl ? t("extension.vault.open") : undefined}
+        openWebsiteLabel={
+          firstWebsiteUrl
+            ? t(item.categoryId === ITEM_CATEGORY_LOGIN ? "extension.vault.openAndFill" : "extension.vault.open")
+            : undefined
+        }
         onOpenWebsite={firstWebsiteUrl ? () => void handleOpenWebsite() : undefined}
       />
 

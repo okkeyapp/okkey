@@ -39,6 +39,7 @@ import {
 import { useMemo, useRef } from "react";
 import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 
+import { AUTOFILL_MSG } from "../../lib/autofillMessages";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 
 export type ExtensionListFilter = ItemsListCoreFilter;
@@ -121,13 +122,12 @@ const listHeaderShadowClassName = (scrolled: boolean) =>
     scrolled && "shadow-[0_1px_3px_rgba(0,0,0,0.1)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
   );
 
-async function openItemWebsite(url: string): Promise<void> {
-  const trimmed = url.trim();
-  if (!trimmed) {
-    return;
-  }
-  const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
-  await browser.tabs.create({ url: withProtocol });
+async function openAndFillItem(itemId: string, url: string): Promise<void> {
+  await browser.runtime.sendMessage({
+    type: AUTOFILL_MSG.openAndFill,
+    itemId,
+    url,
+  });
 }
 
 function IconOpenWebsite({ className }: { className?: string }) {
@@ -373,7 +373,8 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                     className={cn(
                                       "pointer-events-none absolute inset-y-0 right-0 z-10",
                                       "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
-                                      "bg-muted/60 text-foreground",
+                                      // Solid mid-tone between row bg and hover (no translucent muted/60).
+                                      "bg-[color-mix(in_srgb,#e2e8f0_45%,hsl(var(--background))_55%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--background))_45%)] text-foreground",
                                       "opacity-0 transition-[opacity,background-color,border-color]",
                                       "group-hover:pointer-events-auto group-hover:opacity-100",
                                       rowActive && "pointer-events-auto opacity-100",
@@ -403,7 +404,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                     onClick={(event) => {
                                       // Do not preventDefault on mousedown — that would block focus.
                                       event.stopPropagation();
-                                      void openItemWebsite(firstUrl);
+                                      void openAndFillItem(row.id, firstUrl);
                                     }}
                                   >
                                     <IconOpenWebsite />
