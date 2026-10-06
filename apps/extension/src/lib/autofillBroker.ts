@@ -16,6 +16,8 @@ import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
   type AutofillOpenAndFillResponse,
+  type AutofillPendingSaveGetResponse,
+  type AutofillPendingSavePayload,
   type AutofillQueryResponse,
   type AutofillRuntimeMessage,
   type AutofillSaveContextResponse,
@@ -26,6 +28,134 @@ import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "
 import { initExtensionCrypto } from "./initExtensionCrypto";
 import { readProfile, readSession } from "./storage";
 import { readExtensionVaultBundle, readStoredCurrentWorkspaceId } from "./vaultStorage";
+
+const PENDING_SAVE_TTL_MS = 90_000;
+const PENDING_SAVE_SESSION_KEY = "okkey.autofill.pendingSaveByTab";
+
+type PendingSaveByTab = Record<string, AutofillPendingSavePayload>;
+
+const pendingSaveByTab = new Map<number, AutofillPendingSavePayload>();
+let pendingSaveSessionHydrated = false;
+
+async function hydratePendingSaveSession(): Promise<void> {
+  if (pendingSaveSessionHydrated) {
+    return;
+  }
+  pendingSaveSessionHydrated = true;
+  try {
+    const bag = await browser.storage.session.get(PENDING_SAVE_SESSION_KEY);
+    const raw = bag[PENDING_SAVE_SESSION_KEY] as PendingSaveByTab | undefined;
+    if (!raw || typeof raw !== "object") {
+      return;
+    }
+    const now = Date.now();
+    for (const [tabKey, pending] of Object.entries(raw)) {
+      const tabId = Number(tabKey);
+      if (!Number.isFinite(tabId) || !pending?.username || !pending?.password) {
+        continue;
+      }
+      if (now - pending.createdAt > PENDING_SAVE_TTL_MS) {
+        continue;
+      }
+      pendingSaveByTab.set(tabId, pending);
+    }
+  } catch {
+    /* session storage unavailable */
+  }
+}
+
+async function persistPendingSaveSession(): Promise<void> {
+  const record: PendingSaveByTab = {};
+  for (const [tabId, pending] of pendingSaveByTab) {
+    record[String(tabId)] = pending;
+  }
+  try {
+    await browser.storage.session.set({ [PENDING_SAVE_SESSION_KEY]: record });
+  } catch {
+    /* ignore */
+  }
+}
+
+function isPendingSaveFresh(pending: AutofillPendingSavePayload): boolean {
+  return Date.now() - pending.createdAt <= PENDING_SAVE_TTL_MS;
+}
+
+export async function setPendingSaveOffer(
+  tabId: number,
+  input: { username: string; password: string; captureUrl: string },
+): Promise<void> {
+  await hydratePendingSaveSession();
+  pendingSaveByTab.set(tabId, {
+    username: input.username,
+    password: input.password,
+    captureUrl: input.captureUrl,
+    createdAt: Date.now(),
+    interacted: false,
+  });
+  await persistPendingSaveSession();
+}
+
+export async function getPendingSaveOffer(tabId: number): Promise<AutofillPendingSaveGetResponse> {
+  await hydratePendingSaveSession();
+  const pending = pendingSaveByTab.get(tabId);
+  if (!pending || !isPendingSaveFresh(pending)) {
+    if (pending) {
+      pendingSaveByTab.delete(tabId);
+      await persistPendingSaveSession();
+    }
+    return { status: "none" };
+  }
+  return { status: "ok", pending };
+}
+
+export async function clearPendingSaveOffer(tabId: number): Promise<void> {
+  await hydratePendingSaveSession();
+  if (!pendingSaveByTab.delete(tabId)) {
+    return;
+  }
+  await persistPendingSaveSession();
+}
+
+export async function markPendingSaveInteracted(tabId: number, currentUrl: string): Promise<void> {
+  await hydratePendingSaveSession();
+  const pending = pendingSaveByTab.get(tabId);
+  if (!pending || !isPendingSaveFresh(pending)) {
+    if (pending) {
+      pendingSaveByTab.delete(tabId);
+      await persistPendingSaveSession();
+    }
+    return;
+  }
+  if (pending.interacted) {
+    return;
+  }
+  /** Only cancel on destination pages (after redirects away from the login URL). */
+  if (normalizePendingUrl(currentUrl) === normalizePendingUrl(pending.captureUrl)) {
+    return;
+  }
+  pending.interacted = true;
+  pendingSaveByTab.set(tabId, pending);
+  await persistPendingSaveSession();
+}
+
+function normalizePendingUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, "") || parsed.origin;
+  } catch {
+    return url;
+  }
+}
+
+export function wirePendingSaveTabCleanup(): void {
+  browser.tabs.onRemoved.addListener((tabId) => {
+    if (!pendingSaveByTab.has(tabId)) {
+      return;
+    }
+    pendingSaveByTab.delete(tabId);
+    void persistPendingSaveSession();
+  });
+}
 
 async function resolveUnlockUserId(): Promise<{ userId: string; unlocked: boolean } | null> {
   const session = await readSession();
@@ -540,6 +670,10 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.saveContext ||
     type === AUTOFILL_MSG.siteIcon ||
     type === AUTOFILL_MSG.openAndFill ||
-    type === AUTOFILL_MSG.applyFill
+    type === AUTOFILL_MSG.applyFill ||
+    type === AUTOFILL_MSG.pendingSaveSet ||
+    type === AUTOFILL_MSG.pendingSaveGet ||
+    type === AUTOFILL_MSG.pendingSaveClear ||
+    type === AUTOFILL_MSG.pendingSaveMarkInteracted
   );
 }

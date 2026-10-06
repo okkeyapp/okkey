@@ -3,6 +3,7 @@ import { defineContentScript } from "wxt/utils/define-content-script";
 import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
+  type AutofillPendingSaveGetResponse,
   type AutofillQueryResponse,
   type AutofillSaveContextResponse,
   type AutofillSaveResponse,
@@ -231,6 +232,7 @@ export default defineContentScript({
             display: block;
             pointer-events: auto;
             box-sizing: border-box;
+            position: relative;
             width: 360px;
             max-width: calc(100vw - 16px);
             font-family: ${OVERLAY_FONT_STACK} !important;
@@ -238,8 +240,10 @@ export default defineContentScript({
             font-weight: 400;
             line-height: 20px;
             color: hsl(var(--ok-fg));
-            background: hsl(var(--ok-bg));
-            border: 1px solid hsl(var(--ok-primary));
+            background:
+              linear-gradient(hsl(var(--ok-bg)), hsl(var(--ok-bg))) padding-box,
+              linear-gradient(135deg, hsl(var(--ok-primary)) 0%, #f472b6 100%) border-box;
+            border: 1px solid transparent;
             border-radius: 12px;
             box-shadow:
               0 0 0 1px rgba(var(--ok-shadow), 0.08),
@@ -259,8 +263,15 @@ export default defineContentScript({
             width: 360px;
             padding: 16px;
             display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: stretch;
+          }
+          .unlock-list-top {
+            display: flex;
             gap: 16px;
-            align-items: flex-start;
+            align-items: center;
+            width: 100%;
           }
           .list {
             display: flex;
@@ -566,19 +577,13 @@ export default defineContentScript({
             height: 32px;
             flex-shrink: 0;
             display: block;
-            align-self: center;
-          }
-          .unlock-list-body {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
           }
           .unlock-list-copy {
             display: flex;
             flex-direction: column;
             gap: 2px;
+            flex: 1;
+            min-width: 0;
           }
           .unlock-list-copy .save-title { line-height: 28px; }
           .unlock-list-copy .save-body { margin: 0; }
@@ -612,7 +617,8 @@ export default defineContentScript({
             pointer-events: none;
             position: fixed;
             z-index: 3;
-            max-width: 220px;
+            box-sizing: border-box;
+            max-width: min(220px, calc(100vw - 16px));
             padding: 6px 10px;
             border-radius: 8px;
             background: hsl(var(--ok-fg));
@@ -620,8 +626,12 @@ export default defineContentScript({
             font-size: 12px;
             font-weight: 500;
             line-height: 16px;
+            text-align: center;
             box-shadow: 0 4px 12px rgba(var(--ok-shadow), 0.2);
-            white-space: nowrap;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            transform: translate(-50%, calc(-100% - 8px));
           }
       `;
     }
@@ -813,17 +823,17 @@ export default defineContentScript({
 
     function unlockListHtml(): string {
       return `<div class="panel panel-unlock-list">
-        <img class="unlock-list-logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock-compact"))}" alt="" />
-        <div class="unlock-list-body">
+        <div class="unlock-list-top">
+          <img class="unlock-list-logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock-compact"))}" alt="" />
           <div class="unlock-list-copy">
             <div class="save-title">${escapeHtml(strings.unlockTitle)}</div>
             <div class="save-body">${escapeHtml(strings.unlockBody)}</div>
           </div>
-          <button type="button" class="cta cta-full" data-unlock="1">
-            <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
-            <span>${escapeHtml(strings.unlockCta)}</span>
-          </button>
         </div>
+        <button type="button" class="cta cta-full" data-unlock="1">
+          <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
+          <span>${escapeHtml(strings.unlockCta)}</span>
+        </button>
       </div>`;
     }
 
@@ -853,9 +863,10 @@ export default defineContentScript({
 
     function positionSavePanel(panel: HTMLElement): void {
       panel.style.position = "fixed";
-      panel.style.left = "50%";
-      panel.style.top = "24px";
-      panel.style.transform = "translateX(-50%)";
+      panel.style.top = "16px";
+      panel.style.right = "16px";
+      panel.style.left = "auto";
+      panel.style.transform = "none";
     }
 
     function wireOverlayOnce(root: ShadowRoot): void {
@@ -888,6 +899,7 @@ export default defineContentScript({
         if (target.closest("[data-save-cancel]")) {
           pendingSave = null;
           saveEditing = false;
+          void clearPendingSaveOffer();
           hideOverlay();
           return;
         }
@@ -978,7 +990,7 @@ export default defineContentScript({
 
       const tooltipMarkup =
         overlayMode === "empty-tooltip" && togglePos
-          ? `<div class="tooltip" style="left:${togglePos.left - 8}px;top:${togglePos.top - 34}px">${escapeHtml(strings.emptyTooltip)}</div>`
+          ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px">${escapeHtml(strings.emptyTooltip)}</div>`
           : "";
 
       const toggleMarkup =
@@ -993,6 +1005,17 @@ export default defineContentScript({
       root.innerHTML = `<style>${panelBaseStyles(theme.cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
       wireOverlayOnce(root);
       focusRenameInput(root);
+
+      const tip = root.querySelector(".tooltip");
+      if (tip instanceof HTMLElement) {
+        const rect = tip.getBoundingClientRect();
+        const half = rect.width / 2;
+        const minCenter = 8 + half;
+        const maxCenter = window.innerWidth - 8 - half;
+        const currentCenter = rect.left + half;
+        const clamped = Math.min(Math.max(currentCenter, minCenter), maxCenter);
+        tip.style.left = `${clamped}px`;
+      }
 
       const panel = root.querySelector(".panel");
       if (panel instanceof HTMLElement) {
@@ -1112,6 +1135,62 @@ export default defineContentScript({
       void hydrateSavePromptIcon(creds);
     }
 
+    async function clearPendingSaveOffer(): Promise<void> {
+      try {
+        await browser.runtime.sendMessage({ type: AUTOFILL_MSG.pendingSaveClear });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    async function persistPendingSaveOffer(creds: { username: string; password: string }): Promise<void> {
+      try {
+        await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.pendingSaveSet,
+          username: creds.username,
+          password: creds.password,
+          captureUrl: pageUrl(),
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    async function markDestinationInteracted(): Promise<void> {
+      try {
+        await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.pendingSaveMarkInteracted,
+          currentUrl: pageUrl(),
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    async function restorePendingSaveOffer(): Promise<void> {
+      if (window !== window.top) {
+        return;
+      }
+      let response: AutofillPendingSaveGetResponse;
+      try {
+        response = (await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.pendingSaveGet,
+        })) as AutofillPendingSaveGetResponse;
+      } catch {
+        return;
+      }
+      if (response.status !== "ok") {
+        return;
+      }
+      if (response.pending.interacted) {
+        return;
+      }
+      await maybeOfferSave({
+        username: response.pending.username,
+        password: response.pending.password,
+      });
+    }
+
     async function hydrateSaveContext(): Promise<void> {
       try {
         const ctx = await fetchSaveContext();
@@ -1219,11 +1298,13 @@ export default defineContentScript({
       if (result.status === "ok" || result.status === "exists") {
         pendingSave = null;
         saveIconUrl = undefined;
+        void clearPendingSaveOffer();
         hideOverlay();
         return;
       }
       if (result.status === "signed-out") {
         pendingSave = null;
+        void clearPendingSaveOffer();
         hideOverlay();
       }
     }
@@ -1239,6 +1320,7 @@ export default defineContentScript({
         return;
       }
       if (response.status === "signed-out") {
+        void clearPendingSaveOffer();
         return;
       }
       if (response.status === "locked") {
@@ -1246,6 +1328,7 @@ export default defineContentScript({
         return;
       }
       if (response.suggestions.length > 0) {
+        void clearPendingSaveOffer();
         return;
       }
       showSavePrompt(creds, false);
@@ -1259,6 +1342,7 @@ export default defineContentScript({
       if (!creds) {
         return;
       }
+      void persistPendingSaveOffer(creds);
       void maybeOfferSave(creds);
     }
 
@@ -1339,6 +1423,55 @@ export default defineContentScript({
     });
 
     document.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (window !== window.top) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element) {
+          if (host?.contains(target)) {
+            return;
+          }
+          if (target.closest?.("[data-okkey-autofill]")) {
+            return;
+          }
+        }
+        void markDestinationInteracted();
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (window !== window.top) {
+          return;
+        }
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+          return;
+        }
+        // Ignore pure modifiers / navigation that often accompany redirects.
+        if (
+          event.key === "Shift" ||
+          event.key === "Tab" ||
+          event.key === "Escape" ||
+          event.key === "Meta" ||
+          event.key === "Control" ||
+          event.key === "Alt"
+        ) {
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && host?.contains(target)) {
+          return;
+        }
+        void markDestinationInteracted();
+      },
+      true,
+    );
+
+    document.addEventListener(
       "submit",
       () => {
         onCredentialsSubmitted();
@@ -1390,5 +1523,34 @@ export default defineContentScript({
     if (pendingTotpItemId) {
       void pendingTotpItemId;
     }
+
+    void restorePendingSaveOffer();
+
+    let lastSeenUrl = pageUrl();
+    const onPossibleNavigation = (): void => {
+      const next = pageUrl();
+      if (next === lastSeenUrl) {
+        return;
+      }
+      lastSeenUrl = next;
+      if (pendingSave) {
+        // Keep local offer; re-paint after SPA redirect away from the login form.
+        void maybeOfferSave(pendingSave);
+        return;
+      }
+      void restorePendingSaveOffer();
+    };
+    window.addEventListener("popstate", onPossibleNavigation);
+    window.addEventListener("pageshow", onPossibleNavigation);
+    const originalPushState = history.pushState.bind(history);
+    const originalReplaceState = history.replaceState.bind(history);
+    history.pushState = (...args: Parameters<History["pushState"]>) => {
+      originalPushState(...args);
+      onPossibleNavigation();
+    };
+    history.replaceState = (...args: Parameters<History["replaceState"]>) => {
+      originalReplaceState(...args);
+      onPossibleNavigation();
+    };
   },
 });

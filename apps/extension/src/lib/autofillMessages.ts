@@ -8,7 +8,22 @@ export const AUTOFILL_MSG = {
   siteIcon: "okkey.autofill.siteIcon",
   openAndFill: "okkey.autofill.openAndFill",
   applyFill: "okkey.autofill.applyFill",
+  /** Persist save offer across post-login redirects (per tab). */
+  pendingSaveSet: "okkey.autofill.pendingSave.set",
+  pendingSaveGet: "okkey.autofill.pendingSave.get",
+  pendingSaveClear: "okkey.autofill.pendingSave.clear",
+  pendingSaveMarkInteracted: "okkey.autofill.pendingSave.markInteracted",
 } as const;
+
+export type AutofillPendingSavePayload = {
+  username: string;
+  password: string;
+  /** Page URL where credentials were captured (login form). */
+  captureUrl: string;
+  createdAt: number;
+  /** User interacted on a post-redirect destination page — do not show. */
+  interacted: boolean;
+};
 
 export type AutofillSuggestion = {
   itemId: string;
@@ -114,6 +129,30 @@ export type AutofillApplyFillMessage = {
   pageUrl: string;
 };
 
+export type AutofillPendingSaveSetMessage = {
+  type: typeof AUTOFILL_MSG.pendingSaveSet;
+  username: string;
+  password: string;
+  captureUrl: string;
+};
+
+export type AutofillPendingSaveGetMessage = {
+  type: typeof AUTOFILL_MSG.pendingSaveGet;
+};
+
+export type AutofillPendingSaveClearMessage = {
+  type: typeof AUTOFILL_MSG.pendingSaveClear;
+};
+
+export type AutofillPendingSaveMarkInteractedMessage = {
+  type: typeof AUTOFILL_MSG.pendingSaveMarkInteracted;
+  currentUrl: string;
+};
+
+export type AutofillPendingSaveGetResponse =
+  | { status: "none" }
+  | { status: "ok"; pending: AutofillPendingSavePayload };
+
 export type AutofillRuntimeMessage =
   | AutofillQueryMessage
   | AutofillFillMessage
@@ -123,4 +162,8 @@ export type AutofillRuntimeMessage =
   | AutofillSaveContextMessage
   | AutofillSiteIconMessage
   | AutofillOpenAndFillMessage
-  | AutofillApplyFillMessage;
+  | AutofillApplyFillMessage
+  | AutofillPendingSaveSetMessage
+  | AutofillPendingSaveGetMessage
+  | AutofillPendingSaveClearMessage
+  | AutofillPendingSaveMarkInteractedMessage;
