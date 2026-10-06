@@ -46,7 +46,12 @@ export default defineConfig({
     // and shows ERR_BLOCKED_BY_CLIENT.
     web_accessible_resources: [
       {
-        resources: ["auth-callback.html"],
+        // Content-script shadow DOM loads Inter + overlay icons via extension URLs.
+        resources: [
+          "auth-callback.html",
+          "fonts/*",
+          "icons/*",
+        ],
         matches: ["http://*/*", "https://*/*"],
       },
     ],

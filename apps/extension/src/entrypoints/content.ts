@@ -4,9 +4,17 @@ import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
   type AutofillQueryResponse,
+  type AutofillSaveContextResponse,
   type AutofillSaveResponse,
+  type AutofillSaveVaultOption,
   type AutofillSiteIconResponse,
+  type AutofillSuggestion,
 } from "../lib/autofillMessages";
+import {
+  interFontFaceCss,
+  OVERLAY_FONT_STACK,
+  overlayIconUrl,
+} from "../lib/overlayAssets";
 import { resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   captureLoginCredentials,
@@ -17,28 +25,39 @@ import {
   submitLoginFormIfReady,
 } from "../lib/loginFormFields";
 
+type OverlayMode =
+  | "hidden"
+  | "list"
+  | "unlock-list"
+  | "empty-tooltip"
+  | "save"
+  | "save-rename"
+  | "unlock-save";
+
 function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
   return ru
     ? {
         unlockTitle: "Сейф закрыт",
-        unlockCta: "Разблокировать",
+        unlockBody: "Разблокируйте для автозаполнения",
+        unlockCta: "Разблокировать Okkey",
         saveTitle: "Сохранить учётную запись?",
-        saveBody: "Okkey может сохранить логин и пароль для этого сайта.",
+        saveUnlockBody: "Чтобы сохранить учётную запись, сначала нужно разблокировать Okkey.",
         saveConfirm: "Сохранить",
-        saveCancel: "Отмена",
-        saveLocked: "Разблокируйте сейф, чтобы сохранить учётную запись",
-        saved: "Сохранено",
+        emptyTooltip: "Нет элементов для автозаполнения",
+        workspaceFallback: "Workspace",
+        vaultFallback: "Сейф",
       }
     : {
         unlockTitle: "Vault locked",
-        unlockCta: "Unlock",
+        unlockBody: "Unlock to autofill",
+        unlockCta: "Unlock Okkey",
         saveTitle: "Save this login?",
-        saveBody: "Okkey can save the username and password for this site.",
+        saveUnlockBody: "To save this login, unlock Okkey first.",
         saveConfirm: "Save",
-        saveCancel: "Cancel",
-        saveLocked: "Unlock the vault to save this login",
-        saved: "Saved",
+        emptyTooltip: "No items to autofill",
+        workspaceFallback: "Workspace",
+        vaultFallback: "Vault",
       };
 }
 
@@ -62,6 +81,10 @@ async function fillItem(itemId: string): Promise<AutofillFillResponse> {
   return browser.runtime.sendMessage({ type: AUTOFILL_MSG.fill, itemId, pageUrl: pageUrl() });
 }
 
+async function fetchSaveContext(): Promise<AutofillSaveContextResponse> {
+  return browser.runtime.sendMessage({ type: AUTOFILL_MSG.saveContext });
+}
+
 export default defineContentScript({
   matches: ["http://*/*", "https://*/*"],
   allFrames: true,
@@ -77,6 +100,16 @@ export default defineContentScript({
     let pendingSave: { username: string; password: string } | null = null;
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
+    let overlayMode: OverlayMode = "hidden";
+    let listOpen = false;
+    let cachedSuggestions: AutofillSuggestion[] = [];
+    let saveTitleDraft = "";
+    let saveEditing = false;
+    let saveVaults: AutofillSaveVaultOption[] = [];
+    let saveWorkspaceName = "";
+    let saveVaultId = "";
+    let vaultMenuOpen = false;
+    let saveIconUrl: string | undefined;
 
     function markFilledByOkkey(): void {
       filledByOkkeyUntil = Date.now() + 15_000;
@@ -86,25 +119,31 @@ export default defineContentScript({
       return Date.now() < filledByOkkeyUntil;
     }
 
+    let overlayWired = false;
+
     function ensureOverlay(): ShadowRoot {
       if (host && shadow) {
         return shadow;
       }
       host = document.createElement("div");
       host.setAttribute("data-okkey-autofill", "true");
-      host.style.all = "initial";
-      host.style.position = "fixed";
-      host.style.zIndex = "2147483647";
-      host.style.pointerEvents = "none";
+      host.style.cssText =
+        "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:none;";
       shadow = host.attachShadow({ mode: "closed" });
       document.documentElement.appendChild(host);
       return shadow;
     }
 
     function hideOverlay(): void {
+      overlayMode = "hidden";
+      listOpen = false;
+      vaultMenuOpen = false;
       if (host) {
         host.style.display = "none";
         host.style.pointerEvents = "none";
+      }
+      if (shadow) {
+        shadow.innerHTML = "";
       }
       if (!pendingSave) {
         restoreNativeAutocomplete();
@@ -174,40 +213,54 @@ export default defineContentScript({
       return wasFilledByOkkey();
     }
 
-    function panelBaseStyles(minWidth: number, themeCssVars: string): string {
-      const fontStack =
-        'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", ui-sans-serif, sans-serif';
+    function panelBaseStyles(themeCssVars: string): string {
       return `
+          ${interFontFaceCss()}
           :host {
-            all: initial;
             ${themeCssVars}
-            font-family: ${fontStack} !important;
+            font-family: ${OVERLAY_FONT_STACK} !important;
             color: hsl(var(--ok-fg));
             line-height: 20px;
             -webkit-font-smoothing: antialiased;
+          }
+          *, *::before, *::after {
+            box-sizing: border-box;
+            font-family: ${OVERLAY_FONT_STACK} !important;
           }
           .panel {
             display: block;
             pointer-events: auto;
             box-sizing: border-box;
-            min-width: ${Math.max(220, minWidth)}px;
-            max-width: 360px;
-            font-family: ${fontStack} !important;
+            width: 360px;
+            max-width: calc(100vw - 16px);
+            font-family: ${OVERLAY_FONT_STACK} !important;
             font-size: 14px;
+            font-weight: 400;
             line-height: 20px;
             color: hsl(var(--ok-fg));
             background: hsl(var(--ok-bg));
-            border: 0;
-            border-radius: 8px;
+            border: 1px solid hsl(var(--ok-primary));
+            border-radius: 12px;
             box-shadow:
-              0 0 0 1px rgba(var(--ok-shadow), 0.12),
-              0 10px 30px rgba(var(--ok-shadow), 0.12);
+              0 0 0 1px rgba(var(--ok-shadow), 0.08),
+              0 2px 3px rgba(var(--ok-shadow), 0.16);
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
           }
-          .panel, .panel *, .panel *::before, .panel *::after {
-            box-sizing: border-box;
-            font-family: ${fontStack} !important;
+          .panel-save {
+            width: 400px;
+            max-width: min(400px, calc(100vw - 16px));
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+          }
+          .panel-unlock-list {
+            width: 360px;
+            padding: 16px;
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
           }
           .list {
             display: flex;
@@ -215,23 +268,22 @@ export default defineContentScript({
             gap: 0;
             padding: 8px;
           }
-          button.row {
+          button.row, .row {
             display: flex;
             align-items: center;
             gap: 16px;
             width: 100%;
-            min-height: 60px;
-            height: 60px;
             text-align: left;
             border: 0;
             border-radius: 8px;
             background: transparent;
-            padding: 0 12px;
+            padding: 8px 10px;
             margin: 0;
             cursor: pointer;
             color: hsl(var(--ok-fg));
             appearance: none;
             -webkit-appearance: none;
+            font: inherit;
           }
           button.row:hover, button.row:focus-visible {
             background: hsl(var(--ok-hover));
@@ -266,7 +318,6 @@ export default defineContentScript({
             display: flex;
             flex-direction: column;
             justify-content: center;
-            min-height: 40px;
           }
           .row-title {
             display: block;
@@ -280,123 +331,307 @@ export default defineContentScript({
           }
           .row-meta {
             display: block;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 400;
-            line-height: 20px;
+            line-height: 18px;
             color: hsl(var(--ok-muted));
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            min-height: 20px;
           }
-          button.cta, button.secondary {
+          button.cta {
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 10px;
             min-height: 36px;
+            height: 36px;
             border: 0;
             border-radius: 8px;
-            padding: 0 12px;
+            padding: 8px 16px;
             cursor: pointer;
-            font: inherit;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
             appearance: none;
             -webkit-appearance: none;
-          }
-          button.cta {
             background: hsl(var(--ok-primary));
             color: hsl(var(--ok-primary-fg));
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
           }
-          button.cta:hover {
-            filter: brightness(0.92);
+          button.cta:hover { filter: brightness(0.95); }
+          button.cta img { width: 16px; height: 16px; display: block; }
+          button.icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border: 0;
+            border-radius: 8px;
+            background: hsl(var(--ok-edit-btn));
+            padding: 0;
+            cursor: pointer;
+            flex-shrink: 0;
+            appearance: none;
           }
-          button.secondary {
+          button.icon-btn img { width: 16px; height: 16px; display: block; }
+          button.close-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border: 0;
             background: transparent;
-            color: hsl(var(--ok-fg));
-            box-shadow: 0 0 0 1px rgba(var(--ok-shadow), 0.14);
+            padding: 0;
+            cursor: pointer;
+            opacity: 0.7;
+            flex-shrink: 0;
+            appearance: none;
           }
-          button.secondary:hover { background: hsl(var(--ok-muted-bg)); }
-          .empty, .save-body {
-            padding: 12px 16px;
-            color: hsl(var(--ok-muted));
-            font-size: 14px;
-            line-height: 20px;
+          button.close-btn img { width: 16px; height: 16px; display: block; }
+          .save-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+          }
+          .save-header img.logo {
+            width: 32px;
+            height: 32px;
+            flex-shrink: 0;
+            display: block;
           }
           .save-title {
-            padding: 16px 16px 0;
             font-size: 16px;
             font-weight: 600;
-            line-height: 24px;
+            line-height: 28px;
+            color: hsl(var(--ok-fg));
+            white-space: nowrap;
+          }
+          .save-header .spacer { flex: 1; min-width: 0; }
+          .save-body {
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 20px;
+            color: hsl(var(--ok-muted));
+            width: 100%;
+          }
+          .save-card {
+            width: 100%;
+            background: hsl(var(--ok-row-muted));
+            border-radius: 8px;
+            overflow: hidden;
+          }
+          .save-card .row { pointer-events: none; cursor: default; }
+          .save-card .row.editing { pointer-events: auto; }
+          .rename-wrap {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            height: 32px;
+            background: hsl(var(--ok-bg));
+            border: 1px solid hsl(var(--ok-primary));
+            border-radius: 8px;
+            box-shadow: 0 0 0 2px hsla(var(--ok-primary) / 0.4);
+            padding: 4px 4px 4px 12px;
+            gap: 4px;
+          }
+          .rename-wrap input {
+            flex: 1;
+            min-width: 0;
+            border: 0;
+            outline: none;
+            background: transparent;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
+            color: hsl(var(--ok-fg));
+            font-family: inherit;
+            padding: 0;
+          }
+          .rename-check {
+            width: 24px;
+            height: 24px;
+            border: 0;
+            border-radius: 6px;
+            background: hsl(var(--ok-primary));
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            flex-shrink: 0;
+            appearance: none;
+          }
+          .rename-check img { width: 16px; height: 16px; display: block; }
+          .save-divider {
+            height: 1px;
+            width: 100%;
+            background: rgba(15, 23, 42, 0.1);
+            border: 0;
+            margin: 0;
+          }
+          .vault-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 8px 16px 4px;
+            position: relative;
+          }
+          .vault-ws {
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
+            color: hsl(var(--ok-fg));
+            white-space: nowrap;
+          }
+          .vault-arrow {
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 20px;
             color: hsl(var(--ok-fg));
           }
+          button.vault-picker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: hsl(var(--ok-bg));
+            border: 0;
+            border-radius: 8px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font: inherit;
+            color: hsl(var(--ok-fg));
+            appearance: none;
+            max-width: 100%;
+          }
+          button.vault-picker .vault-name {
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 20px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 140px;
+          }
+          button.vault-picker img.chevron {
+            width: 16px;
+            height: 16px;
+            display: block;
+            flex-shrink: 0;
+          }
+          .vault-menu {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            top: calc(100% - 2px);
+            z-index: 2;
+            background: hsl(var(--ok-bg));
+            border: 1px solid hsl(var(--ok-primary) / 0.35);
+            border-radius: 8px;
+            box-shadow: 0 8px 20px rgba(var(--ok-shadow), 0.16);
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .vault-menu button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            border: 0;
+            background: transparent;
+            border-radius: 6px;
+            padding: 6px 8px;
+            cursor: pointer;
+            font: inherit;
+            color: hsl(var(--ok-fg));
+            text-align: left;
+            appearance: none;
+          }
+          .vault-menu button:hover { background: hsl(var(--ok-hover)); }
           .save-actions {
             display: flex;
             justify-content: flex-end;
-            gap: 8px;
-            padding: 12px 16px 16px;
+            width: 100%;
+          }
+          .unlock-list-logo {
+            width: 32px;
+            height: 32px;
+            flex-shrink: 0;
+            display: block;
+            align-self: center;
+          }
+          .unlock-list-body {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+          .unlock-list-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .unlock-list-copy .save-title { line-height: 28px; }
+          .unlock-list-copy .save-body { margin: 0; }
+          .cta-full { width: 100%; }
+          .toggle {
+            pointer-events: auto;
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border-radius: 40px;
+            border: 1px solid #fff;
+            background: hsl(var(--ok-primary));
+            box-shadow:
+              0 0 0 1px rgba(0,0,0,0.08),
+              0 1px 3px rgba(0,0,0,0.1);
+            padding: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            appearance: none;
+            z-index: 2;
+          }
+          .toggle img {
+            width: 11.5px;
+            height: 14.2px;
+            display: block;
+            margin-left: 1px;
+          }
+          .tooltip {
+            pointer-events: none;
+            position: fixed;
+            z-index: 3;
+            max-width: 220px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: hsl(var(--ok-fg));
+            color: hsl(var(--ok-bg));
+            font-size: 12px;
+            font-weight: 500;
+            line-height: 16px;
+            box-shadow: 0 4px 12px rgba(var(--ok-shadow), 0.2);
+            white-space: nowrap;
           }
       `;
     }
 
-    function wirePanelClicks(root: ShadowRoot): void {
-      const panel = root.querySelector(".panel");
-      if (!(panel instanceof HTMLElement)) {
-        return;
-      }
-      panel.addEventListener("mousedown", (event) => event.preventDefault());
-      panel.addEventListener("click", (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
-          return;
-        }
-        if (target.closest("[data-unlock]")) {
-          void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
-          return;
-        }
-        if (target.closest("[data-save-cancel]")) {
-          pendingSave = null;
-          hideOverlay();
-          return;
-        }
-        if (target.closest("[data-save-confirm]")) {
-          void confirmSave();
-          return;
-        }
-        const row = target.closest("[data-item]");
-        if (!(row instanceof HTMLElement) || !row.dataset.item) {
-          return;
-        }
-        void applyFillForItem(row.dataset.item).then(() => hideOverlay());
-      });
-    }
-
-    async function renderPanel(
-      html: string,
-      anchor: HTMLElement | null,
-      opts?: { fixedCenter?: boolean },
-    ): Promise<void> {
-      const root = ensureOverlay();
-      if (!host) {
-        return;
-      }
-      host.style.display = "block";
-      host.style.pointerEvents = "auto";
-      const minWidth = anchor ? Math.max(220, anchor.getBoundingClientRect().width) : 280;
-      if (opts?.fixedCenter || !anchor) {
-        host.style.left = "50%";
-        host.style.top = "24px";
-        host.style.transform = "translateX(-50%)";
-      } else {
-        const rect = anchor.getBoundingClientRect();
-        host.style.transform = "";
-        host.style.left = `${Math.max(8, rect.left)}px`;
-        host.style.top = `${rect.bottom + 6}px`;
-      }
-      const theme = await resolveOverlayThemeCss();
-      root.innerHTML = `
-        <style>${panelBaseStyles(minWidth, theme.cssVars)}</style>
-        <div class="panel">${html}</div>
-      `;
-      wirePanelClicks(root);
+    function escapeHtml(value: string): string {
+      return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     const MONOGRAM_COLORS = [
@@ -445,12 +680,7 @@ export default defineContentScript({
       return MONOGRAM_COLORS[0];
     }
 
-    function suggestionRowHtml(item: {
-      itemId: string;
-      title: string;
-      username: string;
-      iconUrl?: string;
-    }): string {
+    function suggestionRowHtml(item: AutofillSuggestion): string {
       const letters = monogram(item.title);
       const iconInner = item.iconUrl
         ? `<img src="${escapeHtml(item.iconUrl)}" alt="" />`
@@ -458,81 +688,373 @@ export default defineContentScript({
       const meta = item.username
         ? `<span class="row-meta">${escapeHtml(item.username)}</span>`
         : "";
-      const titleOnlyStyle = item.username ? "" : ` style="min-height:0"`;
       return `<button type="button" class="row" data-item="${escapeHtml(item.itemId)}">
               <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
-              <span class="row-text"${titleOnlyStyle}>
+              <span class="row-text">
                 <span class="row-title">${escapeHtml(item.title)}</span>
                 ${meta}
               </span>
             </button>`;
     }
 
-    function recordPreviewRowHtml(input: {
+    function previewRowHtml(input: {
       title: string;
       username: string;
-      website: string;
       iconUrl?: string;
+      editing?: boolean;
     }): string {
       const letters = monogram(input.title);
       const iconInner = input.iconUrl
         ? `<img src="${escapeHtml(input.iconUrl)}" alt="" />`
         : escapeHtml(letters);
-      const metaParts = [input.username, input.website].filter((part) => part.trim().length > 0);
-      const meta = metaParts.length
-        ? `<span class="row-meta">${escapeHtml(metaParts.join(" · "))}</span>`
+      if (input.editing) {
+        return `<div class="row editing">
+              <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
+              <div class="rename-wrap">
+                <input type="text" data-rename-input value="${escapeHtml(input.title)}" />
+                <button type="button" class="rename-check" data-rename-confirm="1" aria-label="OK">
+                  <img src="${escapeHtml(overlayIconUrl("tabler-check"))}" alt="" />
+                </button>
+              </div>
+            </div>`;
+      }
+      const meta = input.username
+        ? `<span class="row-meta">${escapeHtml(input.username)}</span>`
         : "";
-      return `<div class="row" style="pointer-events:none">
+      return `<div class="row">
               <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
               <span class="row-text">
                 <span class="row-title">${escapeHtml(input.title)}</span>
                 ${meta}
               </span>
+              <button type="button" class="icon-btn" data-rename-start="1" aria-label="Edit">
+                <img src="${escapeHtml(overlayIconUrl("tabler-pencil"))}" alt="" />
+              </button>
             </div>`;
     }
 
-    function showSavePrompt(
-      creds: { username: string; password: string },
-      locked: boolean,
-      iconUrl?: string,
-    ): void {
-      pendingSave = creds;
-      const preview = recordPreviewRowHtml({
-        title: domainTitle(),
-        username: creds.username,
-        website: websiteUrl(),
-        iconUrl,
-      });
-      const body = locked
-        ? `${preview ? `<div class="list" style="padding-top:8px">${preview}</div>` : ""}
-           <div class="empty">${strings.saveLocked}</div>
-           <button type="button" class="cta" data-unlock="1" style="margin:0 16px 16px;width:calc(100% - 32px)">${strings.unlockCta}</button>`
-        : `<div class="save-body">${strings.saveBody}</div>
-           <div class="list" style="padding-top:0">${preview}</div>
-           <div class="save-actions">
-             <button type="button" class="secondary" data-save-cancel="1">${strings.saveCancel}</button>
-             <button type="button" class="cta" data-save-confirm="1">${strings.saveConfirm}</button>
-           </div>`;
-      void renderPanel(
-        `<div class="save-title">${strings.saveTitle}</div>${body}`,
-        null,
-        { fixedCenter: true },
-      );
+    function selectedVault(): AutofillSaveVaultOption | undefined {
+      return saveVaults.find((vault) => vault.vaultId === saveVaultId) ?? saveVaults[0];
     }
 
-    async function hydrateSavePromptIcon(creds: { username: string; password: string }, locked: boolean): Promise<void> {
-      try {
-        const result = (await browser.runtime.sendMessage({
-          type: AUTOFILL_MSG.siteIcon,
-          websiteUrl: websiteUrl(),
-        })) as AutofillSiteIconResponse;
-        if (pendingSave !== creds || result.status !== "ok") {
+    function vaultPickerHtml(): string {
+      const vault = selectedVault();
+      const icon = vault?.icon || "💼";
+      const name = vault?.name || strings.vaultFallback;
+      const menu = vaultMenuOpen
+        ? `<div class="vault-menu">${saveVaults
+            .map(
+              (option) =>
+                `<button type="button" data-vault-id="${escapeHtml(option.vaultId)}">
+                   <span>${escapeHtml(option.icon || "💼")}</span>
+                   <span>${escapeHtml(option.name)}</span>
+                 </button>`,
+            )
+            .join("")}</div>`
+        : "";
+      return `<div class="vault-row">
+        <span class="vault-ws">${escapeHtml(saveWorkspaceName || strings.workspaceFallback)}</span>
+        <span class="vault-arrow">→</span>
+        <button type="button" class="vault-picker" data-vault-toggle="1">
+          <span>${escapeHtml(icon)}</span>
+          <span class="vault-name">${escapeHtml(name)}</span>
+          <img class="chevron" src="${escapeHtml(overlayIconUrl("lucide-chevron-down"))}" alt="" />
+        </button>
+        ${menu}
+      </div>`;
+    }
+
+    function savePanelHtml(locked: boolean): string {
+      if (locked) {
+        return `<div class="panel panel-save">
+          <div class="save-header">
+            <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock"))}" alt="" />
+            <span class="save-title">${escapeHtml(strings.saveTitle)}</span>
+            <span class="spacer"></span>
+            <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
+              <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
+            </button>
+          </div>
+          <div class="save-body">${escapeHtml(strings.saveUnlockBody)}</div>
+          <div class="save-actions">
+            <button type="button" class="cta" data-unlock="1">
+              <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
+              <span>${escapeHtml(strings.unlockCta)}</span>
+            </button>
+          </div>
+        </div>`;
+      }
+      const title = saveTitleDraft || domainTitle();
+      const preview = previewRowHtml({
+        title,
+        username: pendingSave?.username ?? "",
+        iconUrl: saveIconUrl,
+        editing: saveEditing,
+      });
+      return `<div class="panel panel-save">
+        <div class="save-header">
+          <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
+          <span class="save-title">${escapeHtml(strings.saveTitle)}</span>
+          <span class="spacer"></span>
+          <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
+            <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
+          </button>
+        </div>
+        <div class="save-card">
+          ${preview}
+          <hr class="save-divider" />
+          ${vaultPickerHtml()}
+        </div>
+        <div class="save-actions">
+          <button type="button" class="cta" data-save-confirm="1">${escapeHtml(strings.saveConfirm)}</button>
+        </div>
+      </div>`;
+    }
+
+    function unlockListHtml(): string {
+      return `<div class="panel panel-unlock-list">
+        <img class="unlock-list-logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock-compact"))}" alt="" />
+        <div class="unlock-list-body">
+          <div class="unlock-list-copy">
+            <div class="save-title">${escapeHtml(strings.unlockTitle)}</div>
+            <div class="save-body">${escapeHtml(strings.unlockBody)}</div>
+          </div>
+          <button type="button" class="cta cta-full" data-unlock="1">
+            <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
+            <span>${escapeHtml(strings.unlockCta)}</span>
+          </button>
+        </div>
+      </div>`;
+    }
+
+    function listHtml(suggestions: AutofillSuggestion[]): string {
+      return `<div class="panel"><div class="list">${suggestions
+        .map((item) => suggestionRowHtml(item))
+        .join("")}</div></div>`;
+    }
+
+    function toggleRectForInput(input: HTMLElement): { left: number; top: number } {
+      const rect = input.getBoundingClientRect();
+      const size = 20;
+      return {
+        left: Math.max(4, rect.right - size - 8),
+        top: rect.top + (rect.height - size) / 2,
+      };
+    }
+
+    function positionPanelNearInput(panel: HTMLElement, input: HTMLElement): void {
+      const rect = input.getBoundingClientRect();
+      const width = panel.offsetWidth || 360;
+      const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+      panel.style.position = "fixed";
+      panel.style.left = `${left}px`;
+      panel.style.top = `${rect.bottom + 6}px`;
+    }
+
+    function positionSavePanel(panel: HTMLElement): void {
+      panel.style.position = "fixed";
+      panel.style.left = "50%";
+      panel.style.top = "24px";
+      panel.style.transform = "translateX(-50%)";
+    }
+
+    function wireOverlayOnce(root: ShadowRoot): void {
+      if (overlayWired) {
+        return;
+      }
+      overlayWired = true;
+      root.addEventListener("mousedown", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
           return;
         }
-        showSavePrompt(creds, locked, result.iconUrl);
-      } catch {
-        /* keep initials */
+        if (target.closest(".panel, .toggle, .tooltip")) {
+          event.preventDefault();
+        }
+      });
+      root.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        if (target.closest("[data-toggle]")) {
+          void onToggleClick();
+          return;
+        }
+        if (target.closest("[data-unlock]")) {
+          void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
+          return;
+        }
+        if (target.closest("[data-save-cancel]")) {
+          pendingSave = null;
+          saveEditing = false;
+          hideOverlay();
+          return;
+        }
+        if (target.closest("[data-save-confirm]")) {
+          void confirmSave();
+          return;
+        }
+        if (target.closest("[data-rename-start]")) {
+          saveEditing = true;
+          overlayMode = "save-rename";
+          void paintOverlay();
+          return;
+        }
+        if (target.closest("[data-rename-confirm]")) {
+          const input = root.querySelector("[data-rename-input]");
+          if (input instanceof HTMLInputElement) {
+            saveTitleDraft = input.value.trim() || domainTitle();
+          }
+          saveEditing = false;
+          overlayMode = "save";
+          void paintOverlay();
+          return;
+        }
+        if (target.closest("[data-vault-toggle]")) {
+          vaultMenuOpen = !vaultMenuOpen;
+          void paintOverlay();
+          return;
+        }
+        const vaultBtn = target.closest("[data-vault-id]");
+        if (vaultBtn instanceof HTMLElement && vaultBtn.dataset.vaultId) {
+          saveVaultId = vaultBtn.dataset.vaultId;
+          vaultMenuOpen = false;
+          void paintOverlay();
+          return;
+        }
+        const row = target.closest("[data-item]");
+        if (row instanceof HTMLElement && row.dataset.item) {
+          void applyFillForItem(row.dataset.item).then(() => hideOverlay());
+        }
+      });
+    }
+
+    function focusRenameInput(root: ShadowRoot): void {
+      const renameInput = root.querySelector("[data-rename-input]");
+      if (!(renameInput instanceof HTMLInputElement)) {
+        return;
       }
+      renameInput.focus();
+      renameInput.select();
+      renameInput.onkeydown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          saveTitleDraft = renameInput.value.trim() || domainTitle();
+          saveEditing = false;
+          overlayMode = "save";
+          void paintOverlay();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          saveEditing = false;
+          overlayMode = "save";
+          void paintOverlay();
+        }
+      };
+    }
+
+    async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
+      const root = ensureOverlay();
+      if (!host) {
+        return;
+      }
+      const theme = await resolveOverlayThemeCss();
+      const togglePos =
+        activeInput && document.contains(activeInput)
+          ? toggleRectForInput(activeInput)
+          : null;
+      const showToggle = Boolean(togglePos && !pendingSave && overlayMode !== "unlock-save");
+
+      let panelMarkup = "";
+      if (overlayMode === "list" && cachedSuggestions.length > 0) {
+        panelMarkup = listHtml(cachedSuggestions);
+      } else if (overlayMode === "unlock-list") {
+        panelMarkup = unlockListHtml();
+      } else if (overlayMode === "save" || overlayMode === "save-rename") {
+        panelMarkup = savePanelHtml(false);
+      } else if (overlayMode === "unlock-save") {
+        panelMarkup = savePanelHtml(true);
+      }
+
+      const tooltipMarkup =
+        overlayMode === "empty-tooltip" && togglePos
+          ? `<div class="tooltip" style="left:${togglePos.left - 8}px;top:${togglePos.top - 34}px">${escapeHtml(strings.emptyTooltip)}</div>`
+          : "";
+
+      const toggleMarkup =
+        showToggle && togglePos
+          ? `<button type="button" class="toggle" data-toggle="1" style="left:${togglePos.left}px;top:${togglePos.top}px" aria-label="Okkey">
+               <img src="${escapeHtml(overlayIconUrl("okkey-mark"))}" alt="" />
+             </button>`
+          : "";
+
+      host.style.display = "block";
+      host.style.pointerEvents = "none";
+      root.innerHTML = `<style>${panelBaseStyles(theme.cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
+      wireOverlayOnce(root);
+      focusRenameInput(root);
+
+      const panel = root.querySelector(".panel");
+      if (panel instanceof HTMLElement) {
+        panel.style.pointerEvents = "auto";
+        if (
+          overlayMode === "save" ||
+          overlayMode === "save-rename" ||
+          overlayMode === "unlock-save"
+        ) {
+          positionSavePanel(panel);
+        } else if (activeInput && document.contains(activeInput)) {
+          positionPanelNearInput(panel, activeInput);
+        }
+      }
+      if (opts?.showToggleOnly && !panelMarkup && !tooltipMarkup && !toggleMarkup) {
+        hideOverlay();
+      }
+    }
+
+    async function onToggleClick(): Promise<void> {
+      if (!activeInput) {
+        return;
+      }
+      if (listOpen && (overlayMode === "list" || overlayMode === "unlock-list")) {
+        listOpen = false;
+        overlayMode = "hidden";
+        await paintOverlay({ showToggleOnly: true });
+        return;
+      }
+      let response: AutofillQueryResponse;
+      try {
+        response = await queryMatches();
+      } catch {
+        return;
+      }
+      if (response.status === "signed-out") {
+        hideOverlay();
+        return;
+      }
+      if (response.status === "locked") {
+        listOpen = true;
+        overlayMode = "unlock-list";
+        await paintOverlay();
+        return;
+      }
+      cachedSuggestions = response.suggestions;
+      if (cachedSuggestions.length === 0) {
+        listOpen = false;
+        overlayMode = "empty-tooltip";
+        await paintOverlay();
+        window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+          if (overlayMode === "empty-tooltip") {
+            overlayMode = "hidden";
+            void paintOverlay({ showToggleOnly: true });
+          }
+        }, 2200);
+        return;
+      }
+      listOpen = true;
+      overlayMode = "list";
+      await paintOverlay();
     }
 
     async function showForInput(input: HTMLInputElement): Promise<void> {
@@ -556,30 +1078,69 @@ export default defineContentScript({
         return;
       }
       if (response.status === "locked") {
-        void renderPanel(
-          `<div class="list">
-             <div class="empty">${strings.unlockTitle}</div>
-             <button type="button" class="cta" data-unlock="1" style="margin:0 8px 8px;width:calc(100% - 16px)">${strings.unlockCta}</button>
-           </div>`,
-          input,
-        );
+        cachedSuggestions = [];
+        listOpen = true;
+        overlayMode = "unlock-list";
+        await paintOverlay();
         return;
       }
-      const suggestions = response.suggestions;
-      if (suggestions.length === 0) {
-        hideOverlay();
+      cachedSuggestions = response.suggestions;
+      if (cachedSuggestions.length === 0) {
+        listOpen = false;
+        overlayMode = "hidden";
+        await paintOverlay({ showToggleOnly: true });
         return;
       }
-      const rows = suggestions.map((item) => suggestionRowHtml(item)).join("");
-      void renderPanel(`<div class="list">${rows}</div>`, input);
+      listOpen = true;
+      overlayMode = "list";
+      await paintOverlay();
     }
 
-    function escapeHtml(value: string): string {
-      return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+    function showSavePrompt(creds: { username: string; password: string }, locked: boolean): void {
+      pendingSave = creds;
+      listOpen = false;
+      saveEditing = false;
+      vaultMenuOpen = false;
+      if (!saveTitleDraft) {
+        saveTitleDraft = domainTitle();
+      }
+      overlayMode = locked ? "unlock-save" : "save";
+      void paintOverlay();
+      if (!locked) {
+        void hydrateSaveContext();
+      }
+      void hydrateSavePromptIcon(creds);
+    }
+
+    async function hydrateSaveContext(): Promise<void> {
+      try {
+        const ctx = await fetchSaveContext();
+        if (!pendingSave || ctx.status !== "ok") {
+          return;
+        }
+        saveWorkspaceName = ctx.workspaceName;
+        saveVaults = ctx.vaults;
+        saveVaultId = ctx.defaultVaultId;
+        await paintOverlay();
+      } catch {
+        /* keep fallbacks */
+      }
+    }
+
+    async function hydrateSavePromptIcon(creds: { username: string; password: string }): Promise<void> {
+      try {
+        const result = (await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.siteIcon,
+          websiteUrl: websiteUrl(),
+        })) as AutofillSiteIconResponse;
+        if (pendingSave !== creds || result.status !== "ok") {
+          return;
+        }
+        saveIconUrl = result.iconUrl;
+        await paintOverlay();
+      } catch {
+        /* keep initials */
+      }
     }
 
     function watchForOtp(itemId: string, totp: string | undefined): void {
@@ -624,12 +1185,10 @@ export default defineContentScript({
         hideOverlay();
       }
       if (result.fill.totp) {
-        // If OTP was not on this step, watch for the next screen.
         const fields = findLoginFields(document);
         if (fields.otp.length === 0) {
           watchForOtp(itemId, result.fill.totp);
         } else {
-          // OTP filled; try submit again shortly for SPA validation.
           setTimeout(() => {
             submitLoginFormIfReady(document);
           }, 120);
@@ -642,22 +1201,24 @@ export default defineContentScript({
         return;
       }
       const creds = pendingSave;
+      const title = saveTitleDraft.trim() || domainTitle();
       const result = (await browser.runtime.sendMessage({
         type: AUTOFILL_MSG.save,
         pageUrl: pageUrl(),
         websiteUrl: websiteUrl(),
-        title: domainTitle(),
+        title,
         username: creds.username,
         password: creds.password,
+        vaultId: saveVaultId || undefined,
       })) as AutofillSaveResponse;
       if (result.status === "locked") {
         showSavePrompt(creds, true);
-        void hydrateSavePromptIcon(creds, true);
         void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
         return;
       }
       if (result.status === "ok" || result.status === "exists") {
         pendingSave = null;
+        saveIconUrl = undefined;
         hideOverlay();
         return;
       }
@@ -682,14 +1243,12 @@ export default defineContentScript({
       }
       if (response.status === "locked") {
         showSavePrompt(creds, true);
-        void hydrateSavePromptIcon(creds, true);
         return;
       }
       if (response.suggestions.length > 0) {
         return;
       }
       showSavePrompt(creds, false);
-      void hydrateSavePromptIcon(creds, false);
     }
 
     function onCredentialsSubmitted(): void {
@@ -740,8 +1299,17 @@ export default defineContentScript({
       "focusout",
       () => {
         hideTimer = window.setTimeout(() => {
-          // Keep save prompt visible (no active input).
           if (pendingSave) {
+            return;
+          }
+          if (overlayMode === "empty-tooltip") {
+            return;
+          }
+          // Keep toggle while field may still be "active"; hide panels on blur.
+          listOpen = false;
+          if (overlayMode === "list" || overlayMode === "unlock-list") {
+            overlayMode = "hidden";
+            void paintOverlay({ showToggleOnly: true });
             return;
           }
           hideOverlay();
@@ -749,6 +1317,26 @@ export default defineContentScript({
       },
       true,
     );
+
+    document.addEventListener(
+      "scroll",
+      () => {
+        if (overlayMode === "hidden" && !activeInput) {
+          return;
+        }
+        if (pendingSave) {
+          return;
+        }
+        void paintOverlay({ showToggleOnly: overlayMode === "hidden" || overlayMode === "empty-tooltip" });
+      },
+      true,
+    );
+
+    window.addEventListener("resize", () => {
+      if (host?.style.display === "block") {
+        void paintOverlay();
+      }
+    });
 
     document.addEventListener(
       "submit",
@@ -769,7 +1357,6 @@ export default defineContentScript({
         if (!control) {
           return;
         }
-        // Defer so field values are final.
         setTimeout(() => onCredentialsSubmitted(), 0);
       },
       true,
@@ -800,7 +1387,6 @@ export default defineContentScript({
       }
     });
 
-    // Late OTP step after navigation within SPA when we already filled login.
     if (pendingTotpItemId) {
       void pendingTotpItemId;
     }

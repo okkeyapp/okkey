@@ -6,6 +6,7 @@ import {
   handleAutofillOpenAndFill,
   handleAutofillQuery,
   handleAutofillSave,
+  handleAutofillSaveContext,
   handleAutofillSiteIcon,
   isAutofillRuntimeMessage,
   openExtensionUnlockPrompt,
@@ -42,7 +43,11 @@ export default defineBackground(() => {
         title: message.title,
         username: message.username,
         password: message.password,
+        vaultId: message.vaultId,
       });
+    }
+    if (message.type === AUTOFILL_MSG.saveContext) {
+      return handleAutofillSaveContext();
     }
     if (message.type === AUTOFILL_MSG.siteIcon) {
       return handleAutofillSiteIcon(message.websiteUrl);

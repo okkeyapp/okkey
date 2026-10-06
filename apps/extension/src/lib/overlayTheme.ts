@@ -11,10 +11,12 @@ const ACCENT_IDS = new Set(["a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
 
 const LIGHT = {
   bg: "0 0% 100%",
-  fg: "222.2 84% 4.9%",
-  muted: "215.4 16.3% 46.9%",
+  fg: "0 0% 3.9%",
+  muted: "0 0% 45.1%",
   mutedBg: "210 40% 96.1%",
-  hover: "210 40% 96.1% / 0.6",
+  hover: "210 40% 96.1%",
+  rowMuted: "210 40% 96.1%",
+  editBtn: "210 16% 91%",
   shadow: "15, 23, 42",
 } as const;
 
@@ -23,7 +25,9 @@ const DARK = {
   fg: "210 40% 98%",
   muted: "215 20.2% 65.1%",
   mutedBg: "217.2 32.6% 17.5%",
-  hover: "217.2 32.6% 20% / 0.6",
+  hover: "217.2 32.6% 20%",
+  rowMuted: "217.2 32.6% 17.5%",
+  editBtn: "217.2 32.6% 22%",
   shadow: "0, 0, 0",
 } as const;
 
@@ -53,6 +57,8 @@ export async function resolveOverlayThemeCss(): Promise<OverlayThemeCss> {
     --ok-muted: ${tokens.muted};
     --ok-muted-bg: ${tokens.mutedBg};
     --ok-hover: ${tokens.hover};
+    --ok-row-muted: ${tokens.rowMuted};
+    --ok-edit-btn: ${tokens.editBtn};
     --ok-primary: ${primary};
     --ok-primary-fg: 0 0% 100%;
     --ok-shadow: ${tokens.shadow};

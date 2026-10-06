@@ -18,6 +18,7 @@ import {
   type AutofillOpenAndFillResponse,
   type AutofillQueryResponse,
   type AutofillRuntimeMessage,
+  type AutofillSaveContextResponse,
   type AutofillSaveResponse,
   type AutofillSiteIconResponse,
 } from "./autofillMessages";
@@ -249,12 +250,57 @@ async function uploadFaviconAttachment(input: {
   }
 }
 
+export async function handleAutofillSaveContext(): Promise<AutofillSaveContextResponse> {
+  const session = await readSession();
+  const profile = await readProfile();
+  if (!session || !profile) {
+    return { status: "signed-out" };
+  }
+  const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
+  if (!fresh?.passwordShareC) {
+    return { status: "locked" };
+  }
+  const workspaceId = await readStoredCurrentWorkspaceId(session.user_id);
+  if (!workspaceId) {
+    return { status: "locked" };
+  }
+  try {
+    const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+    const [workspaces, vaults] = await Promise.all([
+      core.listWorkspaces(),
+      core.listWorkspaceVaults(workspaceId),
+    ]);
+    const workspace = workspaces.find((item) => item.id === workspaceId);
+    const options = vaults.map((vault) => ({
+      vaultId: vault.id,
+      name: vault.name,
+      icon: vault.icon || (vault.isPersonal ? "👤" : "💼"),
+      isPersonal: Boolean(vault.isPersonal),
+    }));
+    const defaultVault = vaults.find((vault) => vault.isPersonal) ?? vaults[0];
+    if (!defaultVault) {
+      return { status: "locked" };
+    }
+    await touchExtensionUnlockSession(session.user_id);
+    return {
+      status: "ok",
+      workspaceId,
+      workspaceName: workspace?.name?.trim() || "Workspace",
+      vaults: options,
+      defaultVaultId: defaultVault.id,
+    };
+  } catch {
+    return { status: "locked" };
+  }
+}
+
 export async function handleAutofillSave(input: {
   pageUrl: string;
   websiteUrl: string;
   title: string;
   username: string;
   password: string;
+  vaultId?: string;
 }): Promise<AutofillSaveResponse> {
   const session = await readSession();
   const profile = await readProfile();
@@ -278,7 +324,10 @@ export async function handleAutofillSave(input: {
     await initExtensionCrypto();
     const core = createCoreClient(profile.apiBaseUrl, session.access_token);
     const vaults = await core.listWorkspaceVaults(workspaceId);
-    const personal = vaults.find((vault) => vault.isPersonal) ?? vaults[0];
+    const personal =
+      (input.vaultId ? vaults.find((vault) => vault.id === input.vaultId) : undefined) ??
+      vaults.find((vault) => vault.isPersonal) ??
+      vaults[0];
     if (!personal) {
       return { status: "error", message: "NO_VAULT" };
     }
@@ -488,6 +537,7 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.unlock ||
     type === AUTOFILL_MSG.unlocked ||
     type === AUTOFILL_MSG.save ||
+    type === AUTOFILL_MSG.saveContext ||
     type === AUTOFILL_MSG.siteIcon ||
     type === AUTOFILL_MSG.openAndFill ||
     type === AUTOFILL_MSG.applyFill

@@ -4,6 +4,7 @@ export const AUTOFILL_MSG = {
   unlock: "okkey.autofill.unlock",
   unlocked: "okkey.autofill.unlocked",
   save: "okkey.autofill.save",
+  saveContext: "okkey.autofill.saveContext",
   siteIcon: "okkey.autofill.siteIcon",
   openAndFill: "okkey.autofill.openAndFill",
   applyFill: "okkey.autofill.applyFill",
@@ -34,6 +35,24 @@ export type AutofillSaveResponse =
   | { status: "exists" }
   | { status: "error"; message: string }
   | { status: "ok"; itemId: string };
+
+export type AutofillSaveVaultOption = {
+  vaultId: string;
+  name: string;
+  icon: string;
+  isPersonal: boolean;
+};
+
+export type AutofillSaveContextResponse =
+  | { status: "signed-out" }
+  | { status: "locked" }
+  | {
+      status: "ok";
+      workspaceId: string;
+      workspaceName: string;
+      vaults: AutofillSaveVaultOption[];
+      defaultVaultId: string;
+    };
 
 export type AutofillOpenAndFillResponse =
   | { status: "signed-out" }
@@ -67,6 +86,11 @@ export type AutofillSaveMessage = {
   title: string;
   username: string;
   password: string;
+  vaultId?: string;
+};
+
+export type AutofillSaveContextMessage = {
+  type: typeof AUTOFILL_MSG.saveContext;
 };
 
 export type AutofillSiteIconMessage = {
@@ -96,6 +120,7 @@ export type AutofillRuntimeMessage =
   | AutofillUnlockMessage
   | AutofillUnlockedMessage
   | AutofillSaveMessage
+  | AutofillSaveContextMessage
   | AutofillSiteIconMessage
   | AutofillOpenAndFillMessage
   | AutofillApplyFillMessage;
