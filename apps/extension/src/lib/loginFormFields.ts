@@ -1,54 +1,24 @@
+import {
+  attrBlob,
+  classifyLoginInput as classifyLoginInputImpl,
+  collectInputHints,
+  type AutofillInputHints,
+} from "./autofillFieldClassify.ts";
+
 export type LoginFieldKind = "username" | "password" | "otp";
 
+export {
+  classifyAutofillInput,
+  collectInputHints,
+  collectPageFieldKinds,
+  type AutofillFieldKind,
+  type AutofillInputHints,
+} from "./autofillFieldClassify.ts";
+
 const OTP_NAME = /one[-_]?time|otp|totp|2fa|mfa|authenticator|verification[-_]?code|auth[-_]?code|^code$/i;
-const USER_NAME = /user(name)?|login|email|e-mail|account|identifier|id$/i;
 
-function attrBlob(el: {
-  name?: string;
-  id?: string;
-  autocomplete?: string;
-  placeholder?: string;
-  ariaLabel?: string;
-}): string {
-  return [el.name, el.id, el.autocomplete, el.placeholder, el.ariaLabel].filter(Boolean).join(" ");
-}
-
-export function classifyLoginInput(input: {
-  type: string;
-  name?: string;
-  id?: string;
-  autocomplete?: string;
-  placeholder?: string;
-  ariaLabel?: string;
-  inputMode?: string;
-  maxLength?: number;
-}): LoginFieldKind | null {
-  const type = input.type.toLowerCase();
-  const ac = (input.autocomplete ?? "").toLowerCase();
-  if (type === "password") {
-    if (ac.includes("one-time") || OTP_NAME.test(attrBlob(input))) {
-      return "otp";
-    }
-    return "password";
-  }
-  if (type === "hidden" || type === "submit" || type === "button" || type === "checkbox" || type === "radio") {
-    return null;
-  }
-  if (
-    ac.includes("one-time-code") ||
-    ac === "otp" ||
-    OTP_NAME.test(attrBlob(input)) ||
-    (input.inputMode === "numeric" && (input.maxLength === 6 || input.maxLength === 8) && OTP_NAME.test(attrBlob(input)))
-  ) {
-    return "otp";
-  }
-  if (type === "email" || ac.includes("username") || ac.includes("email") || USER_NAME.test(attrBlob(input))) {
-    return "username";
-  }
-  if (type === "text" || type === "tel") {
-    return USER_NAME.test(attrBlob(input)) ? "username" : null;
-  }
-  return null;
+export function classifyLoginInput(input: AutofillInputHints): LoginFieldKind | null {
+  return classifyLoginInputImpl(input);
 }
 
 export function isVisibleFillableElement(el: HTMLInputElement | HTMLTextAreaElement): boolean {
@@ -77,13 +47,7 @@ function isSingleDigitOtpCandidate(input: HTMLInputElement): boolean {
   if (pattern === "\\d" || pattern === "[0-9]" || pattern === "[0-9]*") {
     return true;
   }
-  return OTP_NAME.test(attrBlob({
-    name: input.name,
-    id: input.id,
-    autocomplete: input.autocomplete,
-    placeholder: input.placeholder,
-    ariaLabel: input.getAttribute("aria-label") ?? undefined,
-  }));
+  return OTP_NAME.test(attrBlob(collectInputHints(input)));
 }
 
 /** Collect adjacent maxlength=1 boxes (typical 4–8 OTP digits) under the same parent. */
@@ -124,16 +88,8 @@ export function findLoginFields(root: ParentNode): {
     if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node)) {
       continue;
     }
-    const kind = classifyLoginInput({
-      type: node.type,
-      name: node.name,
-      id: node.id,
-      autocomplete: node.autocomplete,
-      placeholder: node.placeholder,
-      ariaLabel: node.getAttribute("aria-label") ?? undefined,
-      inputMode: node.inputMode,
-      maxLength: node.maxLength,
-    });
+    const hints = collectInputHints(node);
+    const kind = classifyLoginInput(hints);
     if (kind === "username") {
       username.push(node);
       classified.add(node);
@@ -250,6 +206,43 @@ export function fillLoginForm(
   if (payload.totp) {
     fillOtpFields(fields.otp, payload.totp);
   }
+}
+
+/**
+ * Fill page inputs from a semantic value map (personal / card / bank / …).
+ * Login username/password/otp should go through {@link fillLoginForm} when category is login.
+ */
+export function fillAutofillValues(
+  root: ParentNode,
+  values: Partial<Record<string, string>>,
+): number {
+  let filled = 0;
+  const nodes = Array.from(root.querySelectorAll("input"));
+  for (const node of nodes) {
+    if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node)) {
+      continue;
+    }
+    const kind = classifyAutofillInput(collectInputHints(node));
+    if (!kind) {
+      continue;
+    }
+    let value = values[kind] ?? "";
+    if (!value && (kind === "email" || kind === "username")) {
+      value = values.email || values.username || "";
+    }
+    if (!value && kind === "name") {
+      value = [values["given-name"], values["additional-name"], values["family-name"]]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+    }
+    if (!value) {
+      continue;
+    }
+    fillInputValue(node, value);
+    filled += 1;
+  }
+  return filled;
 }
 
 function inputFilled(el: HTMLInputElement): boolean {

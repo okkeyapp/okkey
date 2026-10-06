@@ -35,6 +35,15 @@ export {
   type ReadableItemField,
 } from "./item-field-extract.js";
 export {
+  AUTOFILL_ITEM_CATEGORIES,
+  categoriesForFieldKinds,
+  extractAutofillValues,
+  isAutofillItemCategory,
+  suggestionSubtitleFromValues,
+  type AutofillItemCategory,
+  type AutofillValueKey,
+} from "./item-autofill-extract.js";
+export {
   collectItemUrlMatchInputs,
   itemHasUrlMatchingTab,
   itemUrlFieldsMatchTab,

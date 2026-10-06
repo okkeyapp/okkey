@@ -29,6 +29,8 @@ export type AutofillSuggestion = {
   itemId: string;
   title: string;
   username: string;
+  /** Vault category id (`login`, `personal_data`, …). */
+  categoryId?: string;
   /** Stored vault favicon as a data URL; omit to render initials (no generic globe). */
   iconUrl?: string;
 };
@@ -38,11 +40,22 @@ export type AutofillQueryResponse =
   | { status: "locked" }
   | { status: "ok"; suggestions: AutofillSuggestion[] };
 
+export type AutofillFillValues = Record<string, string>;
+
 export type AutofillFillResponse =
   | { status: "signed-out" }
   | { status: "locked" }
   | { status: "not-found" }
-  | { status: "ok"; fill: { username: string; password: string; totp?: string } };
+  | {
+      status: "ok";
+      fill: {
+        username: string;
+        password: string;
+        totp?: string;
+        categoryId: string;
+        values: AutofillFillValues;
+      };
+    };
 
 export type AutofillSaveResponse =
   | { status: "signed-out" }
@@ -78,6 +91,8 @@ export type AutofillOpenAndFillResponse =
 export type AutofillQueryMessage = {
   type: typeof AUTOFILL_MSG.query;
   pageUrl: string;
+  /** Detected semantic field kinds on the page / focused form (drives non-login suggestions). */
+  fieldKinds?: string[];
 };
 
 export type AutofillFillMessage = {

@@ -19,7 +19,10 @@ import {
 import { resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   captureLoginCredentials,
-  classifyLoginInput,
+  classifyAutofillInput,
+  collectInputHints,
+  collectPageFieldKinds,
+  fillAutofillValues,
   fillLoginFormAndMaybeSubmit,
   findLoginFields,
   isVisibleFillableElement,
@@ -75,8 +78,12 @@ function domainTitle(): string {
   return location.hostname.replace(/^www\./i, "") || location.hostname;
 }
 
-async function queryMatches(): Promise<AutofillQueryResponse> {
-  return browser.runtime.sendMessage({ type: AUTOFILL_MSG.query, pageUrl: pageUrl() });
+async function queryMatches(fieldKinds?: string[]): Promise<AutofillQueryResponse> {
+  return browser.runtime.sendMessage({
+    type: AUTOFILL_MSG.query,
+    pageUrl: pageUrl(),
+    ...(fieldKinds && fieldKinds.length > 0 ? { fieldKinds } : {}),
+  });
 }
 
 async function fillItem(itemId: string): Promise<AutofillFillResponse> {
@@ -159,14 +166,14 @@ export default defineContentScript({
       { autocomplete: string | null; readonly: boolean }
     >();
 
-    function suppressNativeAutocomplete(input: HTMLInputElement, kind: "username" | "password" | "otp"): void {
+    function suppressNativeAutocomplete(input: HTMLInputElement, kind: string): void {
       if (!suppressedFields.has(input)) {
         suppressedFields.set(input, {
           autocomplete: input.getAttribute("autocomplete"),
           readonly: input.readOnly,
         });
       }
-      if (kind === "password") {
+      if (kind === "password" || kind === "db-password" || kind === "crypto-pin" || kind === "crypto-passphrase") {
         input.setAttribute("autocomplete", "new-password");
       } else {
         input.setAttribute("autocomplete", "off");
@@ -1074,6 +1081,22 @@ export default defineContentScript({
       }
     }
 
+    function fieldKindsForQuery(focused?: HTMLInputElement | null): string[] {
+      const pageKinds = collectPageFieldKinds(document);
+      if (!focused) {
+        return pageKinds;
+      }
+      const focusedKind = classifyAutofillInput(collectInputHints(focused));
+      if (focusedKind && !pageKinds.includes(focusedKind)) {
+        return [focusedKind, ...pageKinds];
+      }
+      if (focusedKind) {
+        // Put focused kind first so category ranking prefers it.
+        return [focusedKind, ...pageKinds.filter((k) => k !== focusedKind)];
+      }
+      return pageKinds;
+    }
+
     async function onToggleClick(): Promise<void> {
       if (!activeInput) {
         return;
@@ -1086,7 +1109,7 @@ export default defineContentScript({
       }
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches();
+        response = await queryMatches(fieldKindsForQuery(activeInput));
       } catch {
         return;
       }
@@ -1127,7 +1150,7 @@ export default defineContentScript({
       activeInput = input;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches();
+        response = await queryMatches(fieldKindsForQuery(input));
       } catch {
         hideOverlay();
         return;
@@ -1305,20 +1328,29 @@ export default defineContentScript({
       }
       markFilledByOkkey();
       hideOverlay();
-      const outcome = fillLoginFormAndMaybeSubmit(document, result.fill);
-      if (outcome.submitted) {
-        hideOverlay();
-      }
-      if (result.fill.totp) {
-        const fields = findLoginFields(document);
-        if (fields.otp.length === 0) {
-          watchForOtp(itemId, result.fill.totp);
-        } else {
-          setTimeout(() => {
-            submitLoginFormIfReady(document);
-          }, 120);
+      const isLogin = !result.fill.categoryId || result.fill.categoryId === "login";
+      if (isLogin) {
+        const outcome = fillLoginFormAndMaybeSubmit(document, result.fill);
+        if (outcome.submitted) {
+          hideOverlay();
         }
+        if (result.fill.totp) {
+          const fields = findLoginFields(document);
+          if (fields.otp.length === 0) {
+            watchForOtp(itemId, result.fill.totp);
+          } else {
+            setTimeout(() => {
+              submitLoginFormIfReady(document);
+            }, 120);
+          }
+        }
+        return;
       }
+      fillAutofillValues(document, {
+        ...result.fill.values,
+        ...(result.fill.username ? { username: result.fill.username, email: result.fill.username } : {}),
+        ...(result.fill.password ? { password: result.fill.password } : {}),
+      });
     }
 
     async function confirmSave(): Promise<void> {
@@ -1411,16 +1443,7 @@ export default defineContentScript({
         if (!(target instanceof HTMLInputElement) || !isVisibleFillableElement(target)) {
           return;
         }
-        const kind = classifyLoginInput({
-          type: target.type,
-          name: target.name,
-          id: target.id,
-          autocomplete: target.autocomplete,
-          placeholder: target.placeholder,
-          ariaLabel: target.getAttribute("aria-label") ?? undefined,
-          inputMode: target.inputMode,
-          maxLength: target.maxLength,
-        });
+        const kind = classifyAutofillInput(collectInputHints(target));
         if (!kind) {
           return;
         }

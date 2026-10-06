@@ -1,14 +1,19 @@
 import { encryptAttachmentPayload } from "@okkey/crypto";
 import { ITEM_CATEGORY_LOGIN, createPresetItemPlaintextV2, generateEntityId } from "@okkey/types";
 import {
+  categoriesForFieldKinds,
   createWorkspaceVaultItemsReadController,
   downloadKeyFieldFileAttachmentBytes,
+  extractAutofillValues,
   extractLoginAutofillSecrets,
+  isAutofillItemCategory,
   keyFieldFileValueFromFaviconId,
   listCachedWorkspaceVaultItems,
   loginItemMatchesTab,
   resolveVaultItemEncryptionKey,
+  suggestionSubtitleFromValues,
   totpCodeFromSecret,
+  type AutofillItemCategory,
 } from "@okkey/vault";
 
 import { createCoreClient } from "./api";
@@ -181,7 +186,38 @@ async function matchingLoginItems(userId: string, pageUrl: string) {
   );
 }
 
-export async function handleAutofillQuery(pageUrl: string): Promise<AutofillQueryResponse> {
+async function matchingAutofillItems(
+  userId: string,
+  pageUrl: string,
+  fieldKinds: readonly string[] | undefined,
+) {
+  const workspaceId = await readStoredCurrentWorkspaceId(userId);
+  if (!workspaceId) {
+    return [];
+  }
+  const kinds = fieldKinds && fieldKinds.length > 0 ? fieldKinds : ["username", "password"];
+  const categories = categoriesForFieldKinds(kinds);
+  const items = await listCachedWorkspaceVaultItems({ userId, workspaceId });
+  return items.filter((item) => {
+    if (item.deleted || item.archived || !isAutofillItemCategory(item.categoryId)) {
+      return false;
+    }
+    const category = item.categoryId as AutofillItemCategory;
+    if (!categories.includes(category)) {
+      return false;
+    }
+    if (category === "login") {
+      return loginItemMatchesTab(item, pageUrl);
+    }
+    const values = extractAutofillValues(item);
+    return Object.keys(values).length > 0;
+  });
+}
+
+export async function handleAutofillQuery(
+  pageUrl: string,
+  fieldKinds?: string[],
+): Promise<AutofillQueryResponse> {
   const auth = await resolveUnlockUserId();
   if (!auth) {
     return { status: "signed-out" };
@@ -189,16 +225,22 @@ export async function handleAutofillQuery(pageUrl: string): Promise<AutofillQuer
   if (!auth.unlocked) {
     return { status: "locked" };
   }
-  const items = await matchingLoginItems(auth.userId, pageUrl);
+  const items = await matchingAutofillItems(auth.userId, pageUrl, fieldKinds);
   await touchExtensionUnlockSession(auth.userId);
   const suggestions = await Promise.all(
     items.map(async (item) => {
-      const secrets = extractLoginAutofillSecrets(item);
+      const values = extractAutofillValues(item);
+      const loginSecrets =
+        item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
+      if (loginSecrets?.username) {
+        values.username = values.username || loginSecrets.username;
+      }
       const iconUrl = await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId);
       return {
         itemId: item.itemId,
         title: item.title || item.itemId,
-        username: secrets?.username ?? "",
+        username: suggestionSubtitleFromValues(item.categoryId, values),
+        categoryId: item.categoryId,
         ...(iconUrl ? { iconUrl } : {}),
       };
     }),
@@ -217,17 +259,47 @@ export async function handleAutofillFill(itemId: string, pageUrl: string): Promi
   if (!auth.unlocked) {
     return { status: "locked" };
   }
-  const items = await matchingLoginItems(auth.userId, pageUrl);
-  const item = items.find((candidate) => candidate.itemId === itemId);
+  const workspaceId = await readStoredCurrentWorkspaceId(auth.userId);
+  if (!workspaceId) {
+    return { status: "not-found" };
+  }
+  const cached = await listCachedWorkspaceVaultItems({ userId: auth.userId, workspaceId });
+  const item = cached.find(
+    (candidate) =>
+      candidate.itemId === itemId &&
+      !candidate.deleted &&
+      !candidate.archived &&
+      isAutofillItemCategory(candidate.categoryId),
+  );
   if (!item) {
     return { status: "not-found" };
   }
-  const secrets = extractLoginAutofillSecrets(item);
-  if (!secrets) {
+  if (item.categoryId === ITEM_CATEGORY_LOGIN && !loginItemMatchesTab(item, pageUrl)) {
     return { status: "not-found" };
   }
+
+  const values = extractAutofillValues(item);
+  const secrets =
+    item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
+
+  let username = values.username || values.email || "";
+  let password = values.password || values["db-password"] || "";
+  if (secrets) {
+    username = secrets.username || username;
+    password = secrets.password || password;
+    if (secrets.username) {
+      values.username = secrets.username;
+    }
+    if (secrets.password) {
+      values.password = secrets.password;
+    }
+    if (secrets.username && !values.email) {
+      values.email = secrets.username;
+    }
+  }
+
   let totp: string | undefined;
-  if (secrets.totpSecretBase32) {
+  if (secrets?.totpSecretBase32) {
     totp =
       (await totpCodeFromSecret({
         secretBase32: secrets.totpSecretBase32,
@@ -235,13 +307,20 @@ export async function handleAutofillFill(itemId: string, pageUrl: string): Promi
         digits: secrets.totpDigits,
       })) ?? undefined;
   }
+
+  if (!username && !password && !totp && Object.keys(values).length === 0) {
+    return { status: "not-found" };
+  }
+
   await touchExtensionUnlockSession(auth.userId);
   return {
     status: "ok",
     fill: {
-      username: secrets.username,
-      password: secrets.password,
+      username,
+      password,
       ...(totp ? { totp } : {}),
+      categoryId: item.categoryId,
+      values: { ...values },
     },
   };
 }
