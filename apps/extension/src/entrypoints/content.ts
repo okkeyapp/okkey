@@ -23,6 +23,7 @@ import {
   fillLoginFormAndMaybeSubmit,
   findLoginFields,
   isVisibleFillableElement,
+  resolveAutofillAnchorInput,
   submitLoginFormIfReady,
 } from "../lib/loginFormFields";
 
@@ -98,6 +99,8 @@ export default defineContentScript({
     let activeInput: HTMLInputElement | null = null;
     /** Skip save prompt shortly after Okkey filled credentials. */
     let filledByOkkeyUntil = 0;
+    /** After login submit, do not auto-open unlock-list (noisy on OTP step). */
+    let suppressUnlockListUntil = 0;
     let pendingSave: { username: string; password: string } | null = null;
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
@@ -258,6 +261,8 @@ export default defineContentScript({
             display: flex;
             flex-direction: column;
             gap: 16px;
+            /* Vault menu must paint outside the card; do not clip it. */
+            overflow: visible;
           }
           .panel-unlock-list {
             width: 360px;
@@ -388,21 +393,44 @@ export default defineContentScript({
             appearance: none;
           }
           button.icon-btn img { width: 16px; height: 16px; display: block; }
+          /* Match packages/ui Popup dialog close (size-8, muted → hover muted bg + ring). */
           button.close-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 16px;
-            height: 16px;
+            width: 32px;
+            height: 32px;
+            margin: -8px -8px -8px 0;
             border: 0;
+            border-radius: 6px;
             background: transparent;
             padding: 0;
             cursor: pointer;
-            opacity: 0.7;
             flex-shrink: 0;
             appearance: none;
+            outline: none;
+            transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
           }
-          button.close-btn img { width: 16px; height: 16px; display: block; }
+          button.close-btn img {
+            width: 16px;
+            height: 16px;
+            display: block;
+            opacity: 0.7;
+            transition: opacity 150ms ease;
+          }
+          button.close-btn:hover {
+            background: hsl(var(--ok-hover));
+          }
+          button.close-btn:hover img {
+            opacity: 1;
+          }
+          button.close-btn:focus-visible {
+            background: hsl(var(--ok-hover));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary));
+          }
+          button.close-btn:focus-visible img {
+            opacity: 1;
+          }
           .save-header {
             display: flex;
             align-items: center;
@@ -431,12 +459,16 @@ export default defineContentScript({
             width: 100%;
           }
           .save-card {
+            position: relative;
+            z-index: 2;
             width: 100%;
             background: hsl(var(--ok-row-muted));
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible;
           }
           .save-card .row { pointer-events: none; cursor: default; }
+          /* Pencil must remain clickable despite non-interactive preview row. */
+          .save-card .row .icon-btn { pointer-events: auto; }
           .save-card .row.editing { pointer-events: auto; }
           .rename-wrap {
             flex: 1;
@@ -541,7 +573,9 @@ export default defineContentScript({
             left: 16px;
             right: 16px;
             top: calc(100% - 2px);
-            z-index: 2;
+            z-index: 20;
+            max-height: min(240px, calc(100vh - 24px));
+            overflow-y: auto;
             background: hsl(var(--ok-bg));
             border: 1px solid hsl(var(--ok-primary) / 0.35);
             border-radius: 8px;
@@ -568,6 +602,8 @@ export default defineContentScript({
           }
           .vault-menu button:hover { background: hsl(var(--ok-hover)); }
           .save-actions {
+            position: relative;
+            z-index: 1;
             display: flex;
             justify-content: flex-end;
             width: 100%;
@@ -843,6 +879,10 @@ export default defineContentScript({
         .join("")}</div></div>`;
     }
 
+    function toggleAnchorInput(input: HTMLInputElement): HTMLInputElement {
+      return resolveAutofillAnchorInput(input);
+    }
+
     function toggleRectForInput(input: HTMLElement): { left: number; top: number } {
       const rect = input.getBoundingClientRect();
       const size = 20;
@@ -971,10 +1011,9 @@ export default defineContentScript({
         return;
       }
       const theme = await resolveOverlayThemeCss();
-      const togglePos =
-        activeInput && document.contains(activeInput)
-          ? toggleRectForInput(activeInput)
-          : null;
+      const anchorInput =
+        activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
+      const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
       const showToggle = Boolean(togglePos && !pendingSave && overlayMode !== "unlock-save");
 
       let panelMarkup = "";
@@ -1026,8 +1065,8 @@ export default defineContentScript({
           overlayMode === "unlock-save"
         ) {
           positionSavePanel(panel);
-        } else if (activeInput && document.contains(activeInput)) {
-          positionPanelNearInput(panel, activeInput);
+        } else if (anchorInput && document.contains(anchorInput)) {
+          positionPanelNearInput(panel, anchorInput);
         }
       }
       if (opts?.showToggleOnly && !panelMarkup && !tooltipMarkup && !toggleMarkup) {
@@ -1102,6 +1141,13 @@ export default defineContentScript({
       }
       if (response.status === "locked") {
         cachedSuggestions = [];
+        if (Date.now() < suppressUnlockListUntil) {
+          // Post-submit / OTP step: keep the toggle, skip the noisy unlock card.
+          listOpen = false;
+          overlayMode = "hidden";
+          await paintOverlay({ showToggleOnly: true });
+          return;
+        }
         listOpen = true;
         overlayMode = "unlock-list";
         await paintOverlay();
@@ -1335,6 +1381,12 @@ export default defineContentScript({
     }
 
     function onCredentialsSubmitted(): void {
+      suppressUnlockListUntil = Date.now() + 12_000;
+      if (overlayMode === "unlock-list" || overlayMode === "list") {
+        listOpen = false;
+        overlayMode = "hidden";
+        void paintOverlay({ showToggleOnly: true });
+      }
       if (wasFilledByOkkey()) {
         return;
       }

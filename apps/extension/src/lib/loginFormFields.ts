@@ -62,6 +62,54 @@ export function isVisibleFillableElement(el: HTMLInputElement | HTMLTextAreaElem
   return el.getClientRects().length > 0;
 }
 
+function isSingleDigitOtpCandidate(input: HTMLInputElement): boolean {
+  if (input.maxLength !== 1) {
+    return false;
+  }
+  const type = input.type.toLowerCase();
+  if (type !== "text" && type !== "tel" && type !== "number" && type !== "password") {
+    return false;
+  }
+  if (input.inputMode === "numeric" || input.inputMode === "decimal") {
+    return true;
+  }
+  const pattern = input.getAttribute("pattern") ?? "";
+  if (pattern === "\\d" || pattern === "[0-9]" || pattern === "[0-9]*") {
+    return true;
+  }
+  return OTP_NAME.test(attrBlob({
+    name: input.name,
+    id: input.id,
+    autocomplete: input.autocomplete,
+    placeholder: input.placeholder,
+    ariaLabel: input.getAttribute("aria-label") ?? undefined,
+  }));
+}
+
+/** Collect adjacent maxlength=1 boxes (typical 4–8 OTP digits) under the same parent. */
+function collectDigitOtpGroups(inputs: HTMLInputElement[]): HTMLInputElement[] {
+  const byParent = new Map<ParentNode, HTMLInputElement[]>();
+  for (const input of inputs) {
+    if (!isSingleDigitOtpCandidate(input)) {
+      continue;
+    }
+    const parent = input.parentElement;
+    if (!parent) {
+      continue;
+    }
+    const list = byParent.get(parent) ?? [];
+    list.push(input);
+    byParent.set(parent, list);
+  }
+  const found: HTMLInputElement[] = [];
+  for (const group of byParent.values()) {
+    if (group.length >= 4 && group.length <= 8) {
+      found.push(...group);
+    }
+  }
+  return found;
+}
+
 export function findLoginFields(root: ParentNode): {
   username: HTMLInputElement[];
   password: HTMLInputElement[];
@@ -71,6 +119,7 @@ export function findLoginFields(root: ParentNode): {
   const password: HTMLInputElement[] = [];
   const otp: HTMLInputElement[] = [];
   const nodes = Array.from(root.querySelectorAll("input"));
+  const classified = new Set<HTMLInputElement>();
   for (const node of nodes) {
     if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node)) {
       continue;
@@ -87,13 +136,42 @@ export function findLoginFields(root: ParentNode): {
     });
     if (kind === "username") {
       username.push(node);
+      classified.add(node);
     } else if (kind === "password") {
       password.push(node);
+      classified.add(node);
     } else if (kind === "otp") {
       otp.push(node);
+      classified.add(node);
+    }
+  }
+  if (otp.length <= 1) {
+    const digitGroup = collectDigitOtpGroups(
+      nodes.filter(
+        (node): node is HTMLInputElement =>
+          node instanceof HTMLInputElement &&
+          isVisibleFillableElement(node) &&
+          !classified.has(node),
+      ),
+    );
+    if (digitGroup.length >= 4) {
+      otp.push(...digitGroup);
     }
   }
   return { username, password, otp };
+}
+
+/** Anchor toggle/panel to the first OTP digit when focusing a multi-box group. */
+export function resolveAutofillAnchorInput(active: HTMLInputElement): HTMLInputElement {
+  const doc = active.ownerDocument;
+  if (!doc) {
+    return active;
+  }
+  const fields = findLoginFields(doc);
+  if (fields.otp.length > 1 && fields.otp.includes(active)) {
+    return fields.otp[0] ?? active;
+  }
+  return active;
 }
 
 function nativeValueSetter(el: HTMLInputElement | HTMLTextAreaElement): ((v: string) => void) | undefined {
@@ -121,6 +199,39 @@ export function fillInputValue(el: HTMLInputElement | HTMLTextAreaElement, value
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+/** Split a TOTP string across OTP inputs (1 digit per box when multi-box). */
+export function otpValuesForFields(totp: string, fieldCount: number, maxLengths: number[]): string[] {
+  if (fieldCount <= 0 || !totp) {
+    return [];
+  }
+  const digitBoxes =
+    fieldCount > 1 &&
+    (maxLengths.every((max) => max === 1) || fieldCount === totp.length);
+  if (digitBoxes) {
+    return Array.from({ length: fieldCount }, (_, i) => totp.charAt(i) || "");
+  }
+  return Array.from({ length: fieldCount }, () => totp);
+}
+
+function fillOtpFields(otpFields: HTMLInputElement[], totp: string): void {
+  if (otpFields.length === 0 || !totp) {
+    return;
+  }
+  const values = otpValuesForFields(
+    totp,
+    otpFields.length,
+    otpFields.map((el) => el.maxLength),
+  );
+  for (let i = 0; i < otpFields.length; i += 1) {
+    const el = otpFields[i];
+    const value = values[i];
+    if (!el || value === undefined) {
+      continue;
+    }
+    fillInputValue(el, value);
+  }
+}
+
 export function fillLoginForm(
   root: ParentNode,
   payload: { username: string; password: string; totp?: string },
@@ -137,9 +248,7 @@ export function fillLoginForm(
     }
   }
   if (payload.totp) {
-    for (const el of fields.otp) {
-      fillInputValue(el, payload.totp);
-    }
+    fillOtpFields(fields.otp, payload.totp);
   }
 }
 
