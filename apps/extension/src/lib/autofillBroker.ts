@@ -1,9 +1,10 @@
 import { encryptAttachmentPayload } from "@okkey/crypto";
 import { ITEM_CATEGORY_LOGIN, createPresetItemPlaintextV2, generateEntityId } from "@okkey/types";
 import {
-  collectItemUrls,
   createWorkspaceVaultItemsReadController,
+  downloadKeyFieldFileAttachmentBytes,
   extractLoginAutofillSecrets,
+  keyFieldFileValueFromFaviconId,
   listCachedWorkspaceVaultItems,
   loginItemMatchesTab,
   resolveVaultItemEncryptionKey,
@@ -18,6 +19,7 @@ import {
   type AutofillQueryResponse,
   type AutofillRuntimeMessage,
   type AutofillSaveResponse,
+  type AutofillSiteIconResponse,
 } from "./autofillMessages";
 import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "./extensionVaultSession";
 import { initExtensionCrypto } from "./initExtensionCrypto";
@@ -58,12 +60,10 @@ export async function handleAutofillQuery(pageUrl: string): Promise<AutofillQuer
   }
   const items = await matchingLoginItems(auth.userId, pageUrl);
   await touchExtensionUnlockSession(auth.userId);
-  return {
-    status: "ok",
-    suggestions: items.map((item) => {
+  const suggestions = await Promise.all(
+    items.map(async (item) => {
       const secrets = extractLoginAutofillSecrets(item);
-      const firstUrl = collectItemUrls(item)[0];
-      const iconUrl = firstUrl ? googleFaviconUrl(firstUrl) : undefined;
+      const iconUrl = await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId);
       return {
         itemId: item.itemId,
         title: item.title || item.itemId,
@@ -71,6 +71,10 @@ export async function handleAutofillQuery(pageUrl: string): Promise<AutofillQuer
         ...(iconUrl ? { iconUrl } : {}),
       };
     }),
+  );
+  return {
+    status: "ok",
+    suggestions,
   };
 }
 
@@ -111,14 +115,44 @@ export async function handleAutofillFill(itemId: string, pageUrl: string): Promi
   };
 }
 
-function googleFaviconUrl(websiteUrl: string): string | undefined {
+const faviconDataUrlCache = new Map<string, string>();
+
+function pngToDataUrl(bytes: Uint8Array): string {
+  return `data:image/png;base64,${bytesToBase64(bytes)}`;
+}
+
+async function storedFaviconDataUrl(
+  vaultId: string,
+  itemId: string,
+  faviconId: string | undefined,
+): Promise<string | undefined> {
+  if (!faviconId) {
+    return undefined;
+  }
+  const cacheKey = `${vaultId}:${itemId}:${faviconId}`;
+  const cached = faviconDataUrlCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const session = await readSession();
+  const profile = await readProfile();
+  const auth = session ? await readExtensionUnlockSessionIfFresh(session.user_id) : null;
+  if (!session || !profile || !auth?.vaultKey) {
+    return undefined;
+  }
   try {
-    const href = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`;
-    const host = new URL(href).hostname;
-    if (!host) {
-      return undefined;
-    }
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+    await initExtensionCrypto();
+    const downloaded = await downloadKeyFieldFileAttachmentBytes({
+      apiBaseUrl: profile.apiBaseUrl.replace(/\/$/, ""),
+      accessToken: session.access_token,
+      vaultId,
+      itemId,
+      vaultKey: auth.vaultKey,
+      file: keyFieldFileValueFromFaviconId(faviconId),
+    });
+    const dataUrl = pngToDataUrl(downloaded.plaintext);
+    faviconDataUrlCache.set(cacheKey, dataUrl);
+    return dataUrl;
   } catch {
     return undefined;
   }
@@ -158,6 +192,23 @@ async function previewFaviconPng(apiBaseUrl: string, accessToken: string, urls: 
   } catch {
     return null;
   }
+}
+
+export async function handleAutofillSiteIcon(websiteUrl: string): Promise<AutofillSiteIconResponse> {
+  const session = await readSession();
+  const profile = await readProfile();
+  if (!session || !profile) {
+    return { status: "signed-out" };
+  }
+  const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
+  if (!fresh?.passwordShareC) {
+    return { status: "locked" };
+  }
+  const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, [websiteUrl]);
+  if (!png || png.byteLength === 0) {
+    return { status: "missing" };
+  }
+  return { status: "ok", iconUrl: pngToDataUrl(png) };
 }
 
 async function uploadFaviconAttachment(input: {
@@ -437,6 +488,7 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.unlock ||
     type === AUTOFILL_MSG.unlocked ||
     type === AUTOFILL_MSG.save ||
+    type === AUTOFILL_MSG.siteIcon ||
     type === AUTOFILL_MSG.openAndFill ||
     type === AUTOFILL_MSG.applyFill
   );

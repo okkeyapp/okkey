@@ -4,6 +4,7 @@ export const AUTOFILL_MSG = {
   unlock: "okkey.autofill.unlock",
   unlocked: "okkey.autofill.unlocked",
   save: "okkey.autofill.save",
+  siteIcon: "okkey.autofill.siteIcon",
   openAndFill: "okkey.autofill.openAndFill",
   applyFill: "okkey.autofill.applyFill",
 } as const;
@@ -12,6 +13,7 @@ export type AutofillSuggestion = {
   itemId: string;
   title: string;
   username: string;
+  /** Stored vault favicon as a data URL; omit to render initials (no generic globe). */
   iconUrl?: string;
 };
 
@@ -67,6 +69,15 @@ export type AutofillSaveMessage = {
   password: string;
 };
 
+export type AutofillSiteIconMessage = {
+  type: typeof AUTOFILL_MSG.siteIcon;
+  websiteUrl: string;
+};
+
+export type AutofillSiteIconResponse =
+  | { status: "signed-out" | "locked" | "missing" }
+  | { status: "ok"; iconUrl: string };
+
 export type AutofillOpenAndFillMessage = {
   type: typeof AUTOFILL_MSG.openAndFill;
   itemId: string;
@@ -85,5 +96,6 @@ export type AutofillRuntimeMessage =
   | AutofillUnlockMessage
   | AutofillUnlockedMessage
   | AutofillSaveMessage
+  | AutofillSiteIconMessage
   | AutofillOpenAndFillMessage
   | AutofillApplyFillMessage;

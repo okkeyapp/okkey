@@ -5,7 +5,9 @@ import {
   type AutofillFillResponse,
   type AutofillQueryResponse,
   type AutofillSaveResponse,
+  type AutofillSiteIconResponse,
 } from "../lib/autofillMessages";
+import { resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   captureLoginCredentials,
   classifyLoginInput,
@@ -92,7 +94,7 @@ export default defineContentScript({
       host.setAttribute("data-okkey-autofill", "true");
       host.style.all = "initial";
       host.style.position = "fixed";
-      host.style.zIndex = "2147483646";
+      host.style.zIndex = "2147483647";
       host.style.pointerEvents = "none";
       shadow = host.attachShadow({ mode: "closed" });
       document.documentElement.appendChild(host);
@@ -104,40 +106,108 @@ export default defineContentScript({
         host.style.display = "none";
         host.style.pointerEvents = "none";
       }
+      if (!pendingSave) {
+        restoreNativeAutocomplete();
+      }
+    }
+
+    const suppressedFields = new Map<
+      HTMLInputElement,
+      { autocomplete: string | null; readonly: boolean }
+    >();
+
+    function suppressNativeAutocomplete(input: HTMLInputElement, kind: "username" | "password" | "otp"): void {
+      if (!suppressedFields.has(input)) {
+        suppressedFields.set(input, {
+          autocomplete: input.getAttribute("autocomplete"),
+          readonly: input.readOnly,
+        });
+      }
+      if (kind === "password") {
+        input.setAttribute("autocomplete", "new-password");
+      } else {
+        input.setAttribute("autocomplete", "off");
+      }
+      input.setAttribute("data-lpignore", "true");
+      input.setAttribute("data-1p-ignore", "true");
+      input.setAttribute("data-bwignore", "true");
+      if (input.form) {
+        if (!input.form.dataset.okkeyAcOrig) {
+          input.form.dataset.okkeyAcOrig = input.form.getAttribute("autocomplete") ?? "";
+        }
+        input.form.setAttribute("autocomplete", "off");
+      }
+      if (!input.readOnly) {
+        input.readOnly = true;
+        requestAnimationFrame(() => {
+          input.readOnly = false;
+          input.focus();
+        });
+      }
+    }
+
+    function restoreNativeAutocomplete(): void {
+      for (const [input, orig] of suppressedFields) {
+        if (orig.autocomplete == null) {
+          input.removeAttribute("autocomplete");
+        } else {
+          input.setAttribute("autocomplete", orig.autocomplete);
+        }
+        input.readOnly = orig.readonly;
+        input.removeAttribute("data-lpignore");
+        input.removeAttribute("data-1p-ignore");
+        input.removeAttribute("data-bwignore");
+        if (input.form?.dataset.okkeyAcOrig != null) {
+          const formOrig = input.form.dataset.okkeyAcOrig;
+          if (formOrig) {
+            input.form.setAttribute("autocomplete", formOrig);
+          } else {
+            input.form.removeAttribute("autocomplete");
+          }
+          delete input.form.dataset.okkeyAcOrig;
+        }
+      }
+      suppressedFields.clear();
     }
 
     function suggestionsSuppressed(): boolean {
       return wasFilledByOkkey();
     }
 
-    function panelBaseStyles(minWidth: number): string {
+    function panelBaseStyles(minWidth: number, themeCssVars: string): string {
       const fontStack =
-        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", ui-sans-serif, sans-serif';
       return `
-          :host { all: initial; }
-          .panel {
+          :host {
             all: initial;
+            ${themeCssVars}
+            font-family: ${fontStack} !important;
+            color: hsl(var(--ok-fg));
+            line-height: 20px;
+            -webkit-font-smoothing: antialiased;
+          }
+          .panel {
             display: block;
             pointer-events: auto;
             box-sizing: border-box;
             min-width: ${Math.max(220, minWidth)}px;
             max-width: 360px;
-            font-family: ${fontStack};
+            font-family: ${fontStack} !important;
             font-size: 14px;
             line-height: 20px;
-            color: #0f172a;
-            background: #fff;
+            color: hsl(var(--ok-fg));
+            background: hsl(var(--ok-bg));
             border: 0;
             border-radius: 8px;
             box-shadow:
-              0 0 0 1px rgba(15, 23, 42, 0.12),
-              0 10px 30px rgba(15, 23, 42, 0.12);
+              0 0 0 1px rgba(var(--ok-shadow), 0.12),
+              0 10px 30px rgba(var(--ok-shadow), 0.12);
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
           }
           .panel, .panel *, .panel *::before, .panel *::after {
             box-sizing: border-box;
-            font-family: inherit !important;
+            font-family: ${fontStack} !important;
           }
           .list {
             display: flex;
@@ -159,12 +229,12 @@ export default defineContentScript({
             padding: 0 12px;
             margin: 0;
             cursor: pointer;
-            color: #0f172a;
+            color: hsl(var(--ok-fg));
             appearance: none;
             -webkit-appearance: none;
           }
           button.row:hover, button.row:focus-visible {
-            background: hsl(210 40% 96.1% / 0.6);
+            background: hsl(var(--ok-hover));
             outline: none;
           }
           .row-icon {
@@ -203,7 +273,7 @@ export default defineContentScript({
             font-size: 14px;
             font-weight: 500;
             line-height: 20px;
-            color: #0f172a;
+            color: hsl(var(--ok-fg));
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -213,7 +283,7 @@ export default defineContentScript({
             font-size: 14px;
             font-weight: 400;
             line-height: 20px;
-            color: #64748b;
+            color: hsl(var(--ok-muted));
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -233,19 +303,21 @@ export default defineContentScript({
             -webkit-appearance: none;
           }
           button.cta {
-            background: #0f172a;
-            color: #fff;
+            background: hsl(var(--ok-primary));
+            color: hsl(var(--ok-primary-fg));
           }
-          button.cta:hover { background: #1e293b; }
+          button.cta:hover {
+            filter: brightness(0.92);
+          }
           button.secondary {
             background: transparent;
-            color: #0f172a;
-            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.14);
+            color: hsl(var(--ok-fg));
+            box-shadow: 0 0 0 1px rgba(var(--ok-shadow), 0.14);
           }
-          button.secondary:hover { background: #f8fafc; }
+          button.secondary:hover { background: hsl(var(--ok-muted-bg)); }
           .empty, .save-body {
             padding: 12px 16px;
-            color: #64748b;
+            color: hsl(var(--ok-muted));
             font-size: 14px;
             line-height: 20px;
           }
@@ -254,7 +326,7 @@ export default defineContentScript({
             font-size: 16px;
             font-weight: 600;
             line-height: 24px;
-            color: #0f172a;
+            color: hsl(var(--ok-fg));
           }
           .save-actions {
             display: flex;
@@ -297,7 +369,11 @@ export default defineContentScript({
       });
     }
 
-    function renderPanel(html: string, anchor: HTMLElement | null, opts?: { fixedCenter?: boolean }): void {
+    async function renderPanel(
+      html: string,
+      anchor: HTMLElement | null,
+      opts?: { fixedCenter?: boolean },
+    ): Promise<void> {
       const root = ensureOverlay();
       if (!host) {
         return;
@@ -315,8 +391,9 @@ export default defineContentScript({
         host.style.left = `${Math.max(8, rect.left)}px`;
         host.style.top = `${rect.bottom + 6}px`;
       }
+      const theme = await resolveOverlayThemeCss();
       root.innerHTML = `
-        <style>${panelBaseStyles(minWidth)}</style>
+        <style>${panelBaseStyles(minWidth, theme.cssVars)}</style>
         <div class="panel">${html}</div>
       `;
       wirePanelClicks(root);
@@ -391,8 +468,71 @@ export default defineContentScript({
             </button>`;
     }
 
-    function faviconUrlForDomain(): string {
-      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(location.hostname)}&sz=64`;
+    function recordPreviewRowHtml(input: {
+      title: string;
+      username: string;
+      website: string;
+      iconUrl?: string;
+    }): string {
+      const letters = monogram(input.title);
+      const iconInner = input.iconUrl
+        ? `<img src="${escapeHtml(input.iconUrl)}" alt="" />`
+        : escapeHtml(letters);
+      const metaParts = [input.username, input.website].filter((part) => part.trim().length > 0);
+      const meta = metaParts.length
+        ? `<span class="row-meta">${escapeHtml(metaParts.join(" · "))}</span>`
+        : "";
+      return `<div class="row" style="pointer-events:none">
+              <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
+              <span class="row-text">
+                <span class="row-title">${escapeHtml(input.title)}</span>
+                ${meta}
+              </span>
+            </div>`;
+    }
+
+    function showSavePrompt(
+      creds: { username: string; password: string },
+      locked: boolean,
+      iconUrl?: string,
+    ): void {
+      pendingSave = creds;
+      const preview = recordPreviewRowHtml({
+        title: domainTitle(),
+        username: creds.username,
+        website: websiteUrl(),
+        iconUrl,
+      });
+      const body = locked
+        ? `${preview ? `<div class="list" style="padding-top:8px">${preview}</div>` : ""}
+           <div class="empty">${strings.saveLocked}</div>
+           <button type="button" class="cta" data-unlock="1" style="margin:0 16px 16px;width:calc(100% - 32px)">${strings.unlockCta}</button>`
+        : `<div class="save-body">${strings.saveBody}</div>
+           <div class="list" style="padding-top:0">${preview}</div>
+           <div class="save-actions">
+             <button type="button" class="secondary" data-save-cancel="1">${strings.saveCancel}</button>
+             <button type="button" class="cta" data-save-confirm="1">${strings.saveConfirm}</button>
+           </div>`;
+      void renderPanel(
+        `<div class="save-title">${strings.saveTitle}</div>${body}`,
+        null,
+        { fixedCenter: true },
+      );
+    }
+
+    async function hydrateSavePromptIcon(creds: { username: string; password: string }, locked: boolean): Promise<void> {
+      try {
+        const result = (await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.siteIcon,
+          websiteUrl: websiteUrl(),
+        })) as AutofillSiteIconResponse;
+        if (pendingSave !== creds || result.status !== "ok") {
+          return;
+        }
+        showSavePrompt(creds, locked, result.iconUrl);
+      } catch {
+        /* keep initials */
+      }
     }
 
     async function showForInput(input: HTMLInputElement): Promise<void> {
@@ -416,7 +556,7 @@ export default defineContentScript({
         return;
       }
       if (response.status === "locked") {
-        renderPanel(
+        void renderPanel(
           `<div class="list">
              <div class="empty">${strings.unlockTitle}</div>
              <button type="button" class="cta" data-unlock="1" style="margin:0 8px 8px;width:calc(100% - 16px)">${strings.unlockCta}</button>
@@ -431,7 +571,7 @@ export default defineContentScript({
         return;
       }
       const rows = suggestions.map((item) => suggestionRowHtml(item)).join("");
-      renderPanel(`<div class="list">${rows}</div>`, input);
+      void renderPanel(`<div class="list">${rows}</div>`, input);
     }
 
     function escapeHtml(value: string): string {
@@ -497,33 +637,6 @@ export default defineContentScript({
       }
     }
 
-    function showSavePrompt(creds: { username: string; password: string }, locked: boolean): void {
-      pendingSave = creds;
-      const icon = `<span class="row-icon"><img src="${faviconUrlForDomain()}" alt="" /></span>`;
-      const body = locked
-        ? `<div class="empty">${strings.saveLocked}</div>
-           <button type="button" class="cta" data-unlock="1" style="margin:0 16px 16px;width:calc(100% - 32px)">${strings.unlockCta}</button>`
-        : `<div class="save-body">${strings.saveBody}</div>
-           <div class="list" style="padding-top:0">
-             <div class="row" style="pointer-events:none">
-               ${icon}
-               <span class="row-text">
-                 <span class="row-title">${escapeHtml(domainTitle())}</span>
-                 <span class="row-meta">${escapeHtml(creds.username || "—")}</span>
-               </span>
-             </div>
-           </div>
-           <div class="save-actions">
-             <button type="button" class="secondary" data-save-cancel="1">${strings.saveCancel}</button>
-             <button type="button" class="cta" data-save-confirm="1">${strings.saveConfirm}</button>
-           </div>`;
-      renderPanel(
-        `<div class="save-title">${strings.saveTitle}</div>${body}`,
-        null,
-        { fixedCenter: true },
-      );
-    }
-
     async function confirmSave(): Promise<void> {
       if (!pendingSave) {
         return;
@@ -539,6 +652,7 @@ export default defineContentScript({
       })) as AutofillSaveResponse;
       if (result.status === "locked") {
         showSavePrompt(creds, true);
+        void hydrateSavePromptIcon(creds, true);
         void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
         return;
       }
@@ -568,12 +682,14 @@ export default defineContentScript({
       }
       if (response.status === "locked") {
         showSavePrompt(creds, true);
+        void hydrateSavePromptIcon(creds, true);
         return;
       }
       if (response.suggestions.length > 0) {
         return;
       }
       showSavePrompt(creds, false);
+      void hydrateSavePromptIcon(creds, false);
     }
 
     function onCredentialsSubmitted(): void {
@@ -613,6 +729,7 @@ export default defineContentScript({
         if (!kind) {
           return;
         }
+        suppressNativeAutocomplete(target, kind);
         window.clearTimeout(hideTimer);
         void showForInput(target);
       },

@@ -9,6 +9,11 @@ export type AppShellLayoutProps = {
   title: string;
   description?: ReactNode;
   children: ReactNode;
+  /**
+   * Auth bootstrap: hide header/footer and center `children` in the viewport.
+   * Use for the first-paint loader, then render the normal shell with content.
+   */
+  busy?: boolean;
   /** Logo mark above the title */
   logo?: ReactNode;
   /** Absolute top-left chrome (e.g. back link on legal pages). */
@@ -36,6 +41,7 @@ export default function AppShellLayout({
   frameClassName,
   headerClassName,
   childrenClassName,
+  busy = false,
 }: AppShellLayoutProps) {
   const { locale, setLocale, t } = useLocale();
 
@@ -43,55 +49,70 @@ export default function AppShellLayout({
     copyright ?? t("web.shell.copyright", { year: new Date().getFullYear() });
 
   return (
-    <div className="relative isolate min-h-screen overflow-x-hidden bg-background text-foreground">
+    <div className="relative isolate min-h-dvh min-h-screen overflow-x-hidden bg-background text-foreground">
       <BodyGradient />
 
       {topLeft != null ? <div className="absolute left-10 top-10 z-10">{topLeft}</div> : null}
 
-      <div className="absolute right-10 top-10 z-10">
-        <Select value={locale} onValueChange={(v) => setLocale(v as WebLocale)} variant="inline">
-          <SelectTrigger aria-label={t("web.shell.language.ariaLabel")} className="text-sm font-medium text-foreground">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {WEB_LOCALES.map((code) => (
-              <SelectItem key={code} value={code}>
-                {getWebLocaleNativeName(code)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {busy ? null : (
+        <div className="absolute right-10 top-10 z-10">
+          <Select value={locale} onValueChange={(v) => setLocale(v as WebLocale)} variant="inline">
+            <SelectTrigger aria-label={t("web.shell.language.ariaLabel")} className="text-sm font-medium text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WEB_LOCALES.map((code) => (
+                <SelectItem key={code} value={code}>
+                  {getWebLocaleNativeName(code)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-      <div className="relative flex min-h-screen flex-col py-10">
+      <div className="relative flex min-h-dvh min-h-screen flex-col">
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <div
             className={cn(
-              "flex min-h-0 flex-1 flex-col items-center justify-center py-6",
-              frameClassName ?? "px-10",
+              "flex min-h-full flex-1 flex-col items-center justify-center",
+              busy ? "px-10 py-10" : "py-10 pb-20",
+              !busy && (frameClassName ?? "px-10"),
             )}
           >
-            <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
-              <header
-                className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
+            {busy ? (
+              <div
+                className={cn("flex w-full flex-col items-center justify-center", childrenClassName)}
+                role="status"
+                aria-busy="true"
               >
-                {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
-                <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
-                  {title}
-                </h1>
-                {description != null && description !== "" ? (
-                  <p className="okkey-body text-center text-copy-secondary">{description}</p>
-                ) : null}
-              </header>
+                {children}
+              </div>
+            ) : (
+              <div className={cn("flex w-full flex-col items-center gap-6", contentClassName ?? "max-w-sm")}>
+                <header
+                  className={cn("flex w-full flex-col items-center gap-2 text-center", headerClassName)}
+                >
+                  {logo != null ? <div className="mb-2 shrink-0">{logo}</div> : null}
+                  <h1 data-testid="app-shell-title" className="okkey-heading-xl w-full text-center">
+                    {title}
+                  </h1>
+                  {description != null && description !== "" ? (
+                    <p className="okkey-body text-center text-copy-secondary">{description}</p>
+                  ) : null}
+                </header>
 
-              <div className={cn("w-full", childrenClassName)}>{children}</div>
-            </div>
+                <div className={cn("w-full", childrenClassName)}>{children}</div>
+              </div>
+            )}
           </div>
         </div>
 
-        <footer className="okkey-body mt-8 shrink-0 px-10 text-center text-copy-secondary">
-          {resolvedCopyright}
-        </footer>
+        {busy ? null : (
+          <footer className="pointer-events-none absolute inset-x-0 bottom-8 okkey-body px-10 text-center text-copy-secondary">
+            {resolvedCopyright}
+          </footer>
+        )}
       </div>
 
       <div

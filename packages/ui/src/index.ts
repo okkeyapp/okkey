@@ -263,6 +263,7 @@ export {
 export {
   ACCENT_TINT_STORAGE_KEY,
   applySemanticAccentTint,
+  accentPrimaryHslTriplet,
   clearSemanticAccentTintInline,
   readAccentTintEnabled,
   writeAccentTintEnabled,

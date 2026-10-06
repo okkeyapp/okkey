@@ -6,6 +6,7 @@ import {
   handleAutofillOpenAndFill,
   handleAutofillQuery,
   handleAutofillSave,
+  handleAutofillSiteIcon,
   isAutofillRuntimeMessage,
   openExtensionUnlockPrompt,
 } from "../lib/autofillBroker";
@@ -42,6 +43,9 @@ export default defineBackground(() => {
         username: message.username,
         password: message.password,
       });
+    }
+    if (message.type === AUTOFILL_MSG.siteIcon) {
+      return handleAutofillSiteIcon(message.websiteUrl);
     }
     if (message.type === AUTOFILL_MSG.openAndFill) {
       return handleAutofillOpenAndFill(message.itemId, message.url);
