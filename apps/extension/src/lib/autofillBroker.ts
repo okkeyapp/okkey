@@ -1,6 +1,7 @@
 import { encryptAttachmentPayload } from "@okkey/crypto";
 import { ITEM_CATEGORY_LOGIN, createPresetItemPlaintextV2, generateEntityId } from "@okkey/types";
 import {
+  collectItemUrls,
   createWorkspaceVaultItemsReadController,
   extractLoginAutofillSecrets,
   listCachedWorkspaceVaultItems,
@@ -61,10 +62,13 @@ export async function handleAutofillQuery(pageUrl: string): Promise<AutofillQuer
     status: "ok",
     suggestions: items.map((item) => {
       const secrets = extractLoginAutofillSecrets(item);
+      const firstUrl = collectItemUrls(item)[0];
+      const iconUrl = firstUrl ? googleFaviconUrl(firstUrl) : undefined;
       return {
         itemId: item.itemId,
         title: item.title || item.itemId,
         username: secrets?.username ?? "",
+        ...(iconUrl ? { iconUrl } : {}),
       };
     }),
   };
@@ -105,6 +109,19 @@ export async function handleAutofillFill(itemId: string, pageUrl: string): Promi
       ...(totp ? { totp } : {}),
     },
   };
+}
+
+function googleFaviconUrl(websiteUrl: string): string | undefined {
+  try {
+    const href = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`;
+    const host = new URL(href).hostname;
+    if (!host) {
+      return undefined;
+    }
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+  } catch {
+    return undefined;
+  }
 }
 
 function domainTitleFromUrl(websiteUrl: string): string {

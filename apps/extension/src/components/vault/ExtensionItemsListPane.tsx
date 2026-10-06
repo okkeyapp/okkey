@@ -372,7 +372,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                     type="button"
                                     className={cn(
                                       "pointer-events-none absolute inset-y-0 right-0 z-10",
-                                      "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-border p-0",
+                                      "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-black/10 p-0 dark:border-white/10",
                                       // Solid mid-tone between row bg and hover (no translucent muted/60).
                                       "bg-[color-mix(in_srgb,#e2e8f0_45%,hsl(var(--background))_55%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--background))_45%)] text-foreground",
                                       "opacity-0 transition-[opacity,background-color,border-color]",

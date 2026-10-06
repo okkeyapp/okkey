@@ -107,7 +107,10 @@ function nativeValueSetter(el: HTMLInputElement | HTMLTextAreaElement): ((v: str
 }
 
 export function fillInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
-  el.focus();
+  // Do not focus filled fields: focusing them re-opens the suggestion dropdown.
+  if (el.value === value) {
+    return;
+  }
   const set = nativeValueSetter(el);
   if (set) {
     set(value);

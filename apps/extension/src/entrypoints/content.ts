@@ -102,17 +102,29 @@ export default defineContentScript({
     function hideOverlay(): void {
       if (host) {
         host.style.display = "none";
+        host.style.pointerEvents = "none";
       }
     }
 
+    function suggestionsSuppressed(): boolean {
+      return wasFilledByOkkey();
+    }
+
     function panelBaseStyles(minWidth: number): string {
+      const fontStack =
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
       return `
           :host { all: initial; }
           .panel {
+            all: initial;
+            display: block;
             pointer-events: auto;
+            box-sizing: border-box;
             min-width: ${Math.max(220, minWidth)}px;
             max-width: 360px;
-            font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family: ${fontStack};
+            font-size: 14px;
+            line-height: 20px;
             color: #0f172a;
             background: #fff;
             border: 0;
@@ -121,6 +133,11 @@ export default defineContentScript({
               0 0 0 1px rgba(15, 23, 42, 0.12),
               0 10px 30px rgba(15, 23, 42, 0.12);
             overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+          }
+          .panel, .panel *, .panel *::before, .panel *::after {
+            box-sizing: border-box;
+            font-family: inherit !important;
           }
           .list {
             display: flex;
@@ -140,24 +157,30 @@ export default defineContentScript({
             border-radius: 8px;
             background: transparent;
             padding: 0 12px;
+            margin: 0;
             cursor: pointer;
-            color: inherit;
+            color: #0f172a;
+            appearance: none;
+            -webkit-appearance: none;
           }
           button.row:hover, button.row:focus-visible {
-            background: rgba(148, 163, 184, 0.28);
+            background: hsl(210 40% 96.1% / 0.6);
             outline: none;
           }
           .row-icon {
             width: 32px;
             height: 32px;
             border-radius: 8px;
-            background: #f1f5f9;
-            color: #64748b;
+            background: #64748b;
+            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
+            letter-spacing: -0.025em;
+            line-height: 1;
+            text-transform: uppercase;
             flex-shrink: 0;
             overflow: hidden;
           }
@@ -165,6 +188,7 @@ export default defineContentScript({
             width: 100%;
             height: 100%;
             object-fit: cover;
+            display: block;
           }
           .row-text {
             min-width: 0;
@@ -172,17 +196,22 @@ export default defineContentScript({
             display: flex;
             flex-direction: column;
             justify-content: center;
+            min-height: 40px;
           }
           .row-title {
+            display: block;
             font-size: 14px;
             font-weight: 500;
             line-height: 20px;
+            color: #0f172a;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
           }
           .row-meta {
+            display: block;
             font-size: 14px;
+            font-weight: 400;
             line-height: 20px;
             color: #64748b;
             white-space: nowrap;
@@ -200,6 +229,8 @@ export default defineContentScript({
             padding: 0 12px;
             cursor: pointer;
             font: inherit;
+            appearance: none;
+            -webkit-appearance: none;
           }
           button.cta {
             background: #0f172a;
@@ -291,9 +322,73 @@ export default defineContentScript({
       wirePanelClicks(root);
     }
 
+    const MONOGRAM_COLORS = [
+      "#ef4444",
+      "#f97316",
+      "#f59e0b",
+      "#eab308",
+      "#84cc16",
+      "#22c55e",
+      "#10b981",
+      "#14b8a6",
+      "#06b6d4",
+      "#0ea5e9",
+      "#3b82f6",
+      "#6366f1",
+      "#8b5cf6",
+      "#a855f7",
+      "#d946ef",
+      "#ec4899",
+      "#f43f5e",
+      "#64748b",
+    ] as const;
+
     function monogram(title: string): string {
-      const ch = title.trim().charAt(0);
-      return ch ? ch.toUpperCase() : "?";
+      const trimmed = title.trim();
+      if (!trimmed) {
+        return "?";
+      }
+      const words = trimmed.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      if (words.length >= 2) {
+        const a = words[0]?.[0];
+        const b = words[1]?.[0];
+        if (a && b) {
+          return (a + b).toLocaleUpperCase();
+        }
+      }
+      return trimmed.slice(0, 2).toLocaleUpperCase();
+    }
+
+    function monogramBackground(text: string): string {
+      const first = text.trim().charAt(0).toUpperCase();
+      const code = first.charCodeAt(0);
+      if (code >= 65 && code <= 90) {
+        return MONOGRAM_COLORS[(code - 65) % MONOGRAM_COLORS.length] ?? MONOGRAM_COLORS[0];
+      }
+      return MONOGRAM_COLORS[0];
+    }
+
+    function suggestionRowHtml(item: {
+      itemId: string;
+      title: string;
+      username: string;
+      iconUrl?: string;
+    }): string {
+      const letters = monogram(item.title);
+      const iconInner = item.iconUrl
+        ? `<img src="${escapeHtml(item.iconUrl)}" alt="" />`
+        : escapeHtml(letters);
+      const meta = item.username
+        ? `<span class="row-meta">${escapeHtml(item.username)}</span>`
+        : "";
+      const titleOnlyStyle = item.username ? "" : ` style="min-height:0"`;
+      return `<button type="button" class="row" data-item="${escapeHtml(item.itemId)}">
+              <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
+              <span class="row-text"${titleOnlyStyle}>
+                <span class="row-title">${escapeHtml(item.title)}</span>
+                ${meta}
+              </span>
+            </button>`;
     }
 
     function faviconUrlForDomain(): string {
@@ -301,6 +396,10 @@ export default defineContentScript({
     }
 
     async function showForInput(input: HTMLInputElement): Promise<void> {
+      if (suggestionsSuppressed()) {
+        hideOverlay();
+        return;
+      }
       activeInput = input;
       let response: AutofillQueryResponse;
       try {
@@ -309,7 +408,7 @@ export default defineContentScript({
         hideOverlay();
         return;
       }
-      if (activeInput !== input) {
+      if (suggestionsSuppressed() || activeInput !== input) {
         return;
       }
       if (response.status === "signed-out") {
@@ -331,18 +430,7 @@ export default defineContentScript({
         hideOverlay();
         return;
       }
-      const rows = suggestions
-        .map(
-          (item) =>
-            `<button type="button" class="row" data-item="${item.itemId}">
-              <span class="row-icon">${escapeHtml(monogram(item.title))}</span>
-              <span class="row-text">
-                <span class="row-title">${escapeHtml(item.title)}</span>
-                ${item.username ? `<span class="row-meta">${escapeHtml(item.username)}</span>` : `<span class="row-meta"></span>`}
-              </span>
-            </button>`,
-        )
-        .join("");
+      const rows = suggestions.map((item) => suggestionRowHtml(item)).join("");
       renderPanel(`<div class="list">${rows}</div>`, input);
     }
 
@@ -367,6 +455,7 @@ export default defineContentScript({
         }
         fillLoginFormAndMaybeSubmit(document, { username: "", password: "", totp });
         markFilledByOkkey();
+        hideOverlay();
         otpObserver?.disconnect();
         otpObserver = null;
         pendingTotpItemId = null;
@@ -389,7 +478,11 @@ export default defineContentScript({
         return;
       }
       markFilledByOkkey();
-      fillLoginFormAndMaybeSubmit(document, result.fill);
+      hideOverlay();
+      const outcome = fillLoginFormAndMaybeSubmit(document, result.fill);
+      if (outcome.submitted) {
+        hideOverlay();
+      }
       if (result.fill.totp) {
         // If OTP was not on this step, watch for the next screen.
         const fields = findLoginFields(document);
@@ -497,6 +590,12 @@ export default defineContentScript({
     document.addEventListener(
       "focusin",
       (event) => {
+        if (suggestionsSuppressed()) {
+          if (!pendingSave) {
+            hideOverlay();
+          }
+          return;
+        }
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || !isVisibleFillableElement(target)) {
           return;
@@ -566,6 +665,9 @@ export default defineContentScript({
       if (message.type === AUTOFILL_MSG.unlocked) {
         if (pendingSave) {
           void maybeOfferSave(pendingSave);
+          return;
+        }
+        if (suggestionsSuppressed()) {
           return;
         }
         if (activeInput && document.activeElement === activeInput) {

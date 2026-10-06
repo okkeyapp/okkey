@@ -270,11 +270,8 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         canCreateCapsule={!archived && !deleted}
         openInWebLabel={t("extension.vault.openInWeb")}
         onOpenInWeb={onOpenInWeb}
-        openWebsiteLabel={
-          firstWebsiteUrl
-            ? t(item.categoryId === ITEM_CATEGORY_LOGIN ? "extension.vault.openAndFill" : "extension.vault.open")
-            : undefined
-        }
+        openWebsiteLabel={firstWebsiteUrl ? t("extension.vault.open") : undefined}
+        openWebsiteTooltip={firstWebsiteUrl ? t("extension.vault.openAndFill") : undefined}
         onOpenWebsite={firstWebsiteUrl ? () => void handleOpenWebsite() : undefined}
       />
 

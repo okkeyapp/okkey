@@ -12,6 +12,7 @@ export type AutofillSuggestion = {
   itemId: string;
   title: string;
   username: string;
+  iconUrl?: string;
 };
 
 export type AutofillQueryResponse =
