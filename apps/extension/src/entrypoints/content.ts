@@ -640,7 +640,7 @@ export default defineContentScript({
             box-sizing: border-box;
             max-width: min(220px, calc(100vw - 16px));
             padding: 6px 10px;
-            border-radius: 8px;
+            border-radius: 6px;
             background: hsl(var(--ok-fg));
             color: hsl(var(--ok-bg));
             font-size: 12px;
@@ -651,7 +651,21 @@ export default defineContentScript({
             white-space: normal;
             overflow-wrap: anywhere;
             word-break: break-word;
-            transform: translate(-50%, calc(-100% - 8px));
+            /* 8px gap + 5px arrow height — matches packages/ui Tooltip sideOffset + Arrow */
+            transform: translate(-50%, calc(-100% - 13px));
+          }
+          .tooltip-arrow {
+            /* Visual twin of packages/ui TooltipPrimitive.Arrow (11×5, fill-foreground) */
+            position: absolute;
+            left: calc(50% + var(--ok-tooltip-arrow-offset, 0px));
+            bottom: 0;
+            width: 0;
+            height: 0;
+            transform: translate(-50%, 100%) translateY(-1px);
+            border-left: 5.5px solid transparent;
+            border-right: 5.5px solid transparent;
+            border-top: 5px solid hsl(var(--ok-fg));
+            pointer-events: none;
           }
       `;
     }
@@ -1010,7 +1024,7 @@ export default defineContentScript({
             : null;
       const tooltipMarkup =
         tooltipText && togglePos
-          ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px">${escapeHtml(tooltipText)}</div>`
+          ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px"><span class="tooltip-arrow" aria-hidden="true"></span>${escapeHtml(tooltipText)}</div>`
           : "";
 
       const toggleMarkup =
@@ -1027,7 +1041,8 @@ export default defineContentScript({
       focusRenameInput(root);
 
       const tip = root.querySelector(".tooltip");
-      if (tip instanceof HTMLElement) {
+      if (tip instanceof HTMLElement && togglePos) {
+        const buttonCenter = togglePos.left + 10;
         const rect = tip.getBoundingClientRect();
         const half = rect.width / 2;
         const minCenter = 8 + half;
@@ -1035,6 +1050,8 @@ export default defineContentScript({
         const currentCenter = rect.left + half;
         const clamped = Math.min(Math.max(currentCenter, minCenter), maxCenter);
         tip.style.left = `${clamped}px`;
+        // Keep arrow aimed at the Okkey toggle when the tip is edge-clamped.
+        tip.style.setProperty("--ok-tooltip-arrow-offset", `${buttonCenter - clamped}px`);
       }
 
       const panel = root.querySelector(".panel");
@@ -1075,7 +1092,8 @@ export default defineContentScript({
       if (!activeInput) {
         return;
       }
-      if (listOpen && (overlayMode === "list" || overlayMode === "unlock-tooltip")) {
+      // Unlock-tooltip clicks open the vault unlock UI (not toggle-closed).
+      if (listOpen && overlayMode === "list") {
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
@@ -1092,9 +1110,11 @@ export default defineContentScript({
         return;
       }
       if (response.status === "locked") {
-        listOpen = true;
+        listOpen = false;
         overlayMode = "unlock-tooltip";
         await paintOverlay();
+        // Content scripts cannot call action.openPopup — route via background.
+        void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
         return;
       }
       cachedSuggestions = response.suggestions;
