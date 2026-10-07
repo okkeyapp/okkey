@@ -36,6 +36,7 @@ import {
   submitLoginFormIfReady,
   watchAndFillAutofillValues,
 } from "../lib/loginFormFields";
+import { pageHasBlockingOverlayUi } from "../lib/pageBlockingOverlayUi";
 
 type OverlayMode =
   | "hidden"
@@ -109,25 +110,6 @@ async function fillItem(
     pageUrl: pageUrl(),
     ...(fillOverrides && Object.keys(fillOverrides).length > 0 ? { fillOverrides } : {}),
   });
-}
-
-/** Radix Select/Menu/Popover portals — overlay paint/scroll must not disturb them. */
-function pageHasBlockingOverlayUi(): boolean {
-  try {
-    return Boolean(
-      document.querySelector(
-        [
-          "[data-radix-select-content]",
-          "[data-radix-menu-content]",
-          "[data-radix-dropdown-menu-content]",
-          "[data-radix-popover-content]",
-          '[role="listbox"][data-state="open"]',
-        ].join(","),
-      ),
-    );
-  } catch {
-    return false;
-  }
 }
 
 async function fetchSaveContext(): Promise<AutofillSaveContextResponse> {
@@ -262,7 +244,18 @@ export default defineContentScript({
         input.readOnly = true;
         requestAnimationFrame(() => {
           input.readOnly = false;
-          input.focus();
+          // Do not steal focus back from an open Select / datepicker dropdown.
+          if (pageHasBlockingOverlayUi()) {
+            return;
+          }
+          if (document.activeElement !== input) {
+            return;
+          }
+          try {
+            input.focus({ preventScroll: true });
+          } catch {
+            /* ignore */
+          }
         });
       }
     }
@@ -1140,12 +1133,10 @@ export default defineContentScript({
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
       try {
-        // Never mutate overlay DOM while Radix Select/Menu is open — list paint after
-        // a slow autofill query (~1s) was closing Select via focus/resize side-effects.
+        // Never mutate overlay DOM while Select/Menu/datepicker is open — list paint
+        // after a slow autofill query (~1s) closes them via focus/resize/DismissableLayer.
         if (pageHasBlockingOverlayUi() && !pendingSave) {
-          if (opts?.showToggleOnly || overlayMode === "hidden" || overlayMode === "list") {
-            return;
-          }
+          return;
         }
         const root = ensureOverlay();
         if (!host) {
@@ -1325,20 +1316,23 @@ export default defineContentScript({
       try {
         response = await queryMatches(fieldKindsForQuery(input));
       } catch {
-        if (activeInput === input) {
+        // Do not repaint if focus left for Select / datepicker while the query failed.
+        if (
+          activeInput === input &&
+          document.activeElement === input &&
+          !pageHasBlockingOverlayUi()
+        ) {
           listOpen = false;
           overlayMode = "hidden";
           await paintOverlay({ showToggleOnly: true });
         }
         return;
       }
-      // Focus may have moved to Radix Select / another control while the query ran (~1s).
+      // Focus may have moved to month/year Select (or another control) while the
+      // autofill query ran (~1s). Never repaint in that case — overlay DOM mutation
+      // closes Radix Select (resize/blur/DismissableLayer), even when the open
+      // dropdown was briefly missed by the blocking-UI selector.
       if (activeInput !== input || document.activeElement !== input || pageHasBlockingOverlayUi()) {
-        if (activeInput === input && document.contains(input) && !pageHasBlockingOverlayUi()) {
-          listOpen = false;
-          overlayMode = "hidden";
-          await paintOverlay({ showToggleOnly: true });
-        }
         return;
       }
       if (suggestionsListSuppressed()) {
