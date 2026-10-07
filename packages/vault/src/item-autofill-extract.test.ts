@@ -33,6 +33,21 @@ describe("categoriesForFieldKinds", () => {
     assert.deepEqual(categoriesForFieldKinds(["db-server"]), ["database"]);
     assert.deepEqual(categoriesForFieldKinds(["crypto-address"]), ["crypto_wallet"]);
   });
+
+  it("email primary never mixes credit_card/bank from sibling page kinds", () => {
+    const emailNextToCard = categoriesForFieldKinds([
+      "email",
+      "cc-number",
+      "cc-exp",
+      "cc-csc",
+    ]);
+    assert.deepEqual(emailNextToCard, ["login", "personal_data"]);
+    assert.ok(!emailNextToCard.includes("credit_card"));
+    assert.ok(!emailNextToCard.includes("bank_account"));
+
+    assert.deepEqual(categoriesForFieldKinds(["cc-number", "email", "cc-exp"]), ["credit_card"]);
+    assert.deepEqual(categoriesForFieldKinds(["iban", "email"]), ["bank_account"]);
+  });
 });
 
 describe("extractAutofillValues", () => {

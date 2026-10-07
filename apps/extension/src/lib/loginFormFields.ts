@@ -11,6 +11,7 @@ export {
   classifyAutofillInput,
   collectInputHints,
   collectPageFieldKinds,
+  suggestionFieldKindsForFocus,
   type AutofillFieldKind,
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";

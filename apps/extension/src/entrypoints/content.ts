@@ -21,6 +21,7 @@ import { resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   captureLoginCredentials,
   classifyAutofillInput,
+  suggestionFieldKindsForFocus,
   collectInputHints,
   collectPageFieldKinds,
   fillAutofillValues,
@@ -1130,18 +1131,11 @@ export default defineContentScript({
 
     function fieldKindsForQuery(focused?: HTMLInputElement | null): string[] {
       const pageKinds = collectPageFieldKinds(document);
-      if (!focused) {
-        return pageKinds;
-      }
-      const focusedKind = classifyAutofillInput(collectInputHints(focused));
-      if (focusedKind && !pageKinds.includes(focusedKind)) {
-        return [focusedKind, ...pageKinds];
-      }
-      if (focusedKind) {
-        // Put focused kind first so category ranking prefers it.
-        return [focusedKind, ...pageKinds.filter((k) => k !== focusedKind)];
-      }
-      return pageKinds;
+      const focusedKind = focused
+        ? classifyAutofillInput(collectInputHints(focused))
+        : null;
+      // Focused field only — never union sibling card/email kinds into one query.
+      return suggestionFieldKindsForFocus(focusedKind, pageKinds);
     }
 
     async function onToggleClick(): Promise<void> {

@@ -341,3 +341,18 @@ export function collectPageFieldKinds(root: ParentNode): AutofillFieldKind[] {
   }
   return [...kinds];
 }
+
+/**
+ * Field kinds sent to the autofill suggestion query.
+ * When a field is focused, only that field's kind is used so sibling inputs
+ * (e.g. cardNumber next to email on checkout) cannot mix suggestion types.
+ */
+export function suggestionFieldKindsForFocus(
+  focusedKind: AutofillFieldKind | null | undefined,
+  pageKinds: readonly AutofillFieldKind[],
+): AutofillFieldKind[] {
+  if (focusedKind) {
+    return [focusedKind];
+  }
+  return [...pageKinds];
+}

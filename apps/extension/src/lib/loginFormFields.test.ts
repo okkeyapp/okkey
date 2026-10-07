@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { classifyAutofillInput, classifyLoginInput } from "./autofillFieldClassify.ts";
+import {
+  classifyAutofillInput,
+  classifyLoginInput,
+  suggestionFieldKindsForFocus,
+} from "./autofillFieldClassify.ts";
 import { otpValuesForFields } from "./loginFormFields.ts";
 
 describe("classifyLoginInput email heuristics", () => {
@@ -41,6 +45,44 @@ describe("classifyAutofillInput non-login types", () => {
     assert.equal(classifyAutofillInput({ type: "text", name: "cvc", autocomplete: "cc-csc" }), "cc-csc");
     assert.equal(classifyAutofillInput({ type: "text", name: "cardExpiry" }), "cc-exp");
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "cc-name" }), "cc-name");
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "cardNumber",
+        id: "cardNumber",
+        inputMode: "numeric",
+        placeholder: "0000 0000 0000 0000",
+      }),
+      "cc-number",
+    );
+  });
+
+  it("Robokassa/GamePush checkout: email stays email next to card fields", () => {
+    assert.equal(
+      classifyAutofillInput({
+        type: "email",
+        inputMode: "email",
+        name: "EMail",
+        autocomplete: "off",
+        placeholder: "Email for receipt (required)",
+      }),
+      "email",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "email",
+        id: "pre-filled-email",
+        autocomplete: "email",
+      }),
+      "email",
+    );
+  });
+
+  it("suggestion kinds for focused email ignore sibling card kinds", () => {
+    const pageKinds = ["email", "cc-number", "cc-exp", "cc-csc"] as const;
+    assert.deepEqual(suggestionFieldKindsForFocus("email", pageKinds), ["email"]);
+    assert.deepEqual(suggestionFieldKindsForFocus("cc-number", pageKinds), ["cc-number"]);
+    assert.deepEqual(suggestionFieldKindsForFocus(null, pageKinds), [...pageKinds]);
   });
 
   it("detects personal / address fields", () => {

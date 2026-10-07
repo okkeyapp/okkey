@@ -327,10 +327,17 @@ export function suggestionSubtitleFromValues(
   return values.email || values.username || "";
 }
 
-/** Map detected page field kinds → vault categories that can fill them. */
+/**
+ * Map detected field kinds → vault categories that can fill them.
+ *
+ * Only the primary (first) kind is used. Callers put the focused field kind
+ * first; sibling fields on the same page must not widen suggestions (e.g. an
+ * email input next to cardNumber must never surface credit_card / bank items).
+ */
 export function categoriesForFieldKinds(kinds: readonly string[]): AutofillItemCategory[] {
   const out = new Set<AutofillItemCategory>();
-  for (const kind of kinds) {
+  const primary = kinds.length > 0 ? [kinds[0]!] : kinds;
+  for (const kind of primary) {
     if (LOGIN_KEYS.has(kind)) {
       out.add("login");
     }
