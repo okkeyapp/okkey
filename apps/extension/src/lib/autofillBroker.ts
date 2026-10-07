@@ -4,6 +4,7 @@ import {
   categoriesForFieldKinds,
   createWorkspaceVaultItemsReadController,
   downloadKeyFieldFileAttachmentBytes,
+  extractAutofillEmailCandidates,
   extractAutofillValues,
   extractLoginAutofillSecrets,
   isAutofillItemCategory,
@@ -228,31 +229,60 @@ export async function handleAutofillQuery(
   }
   const items = await matchingAutofillItems(auth.userId, pageUrl, fieldKinds);
   await touchExtensionUnlockSession(auth.userId);
-  const suggestions = await Promise.all(
-    items.map(async (item) => {
-      const values = extractAutofillValues(item);
-      const loginSecrets =
-        item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
-      if (loginSecrets?.username) {
-        values.username = values.username || loginSecrets.username;
-      }
-      const iconUrl = await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId);
-      return {
-        itemId: item.itemId,
-        title: item.title || item.itemId,
-        username: suggestionSubtitleFromValues(item.categoryId, values),
-        categoryId: item.categoryId,
-        ...(iconUrl ? { iconUrl } : {}),
-      };
-    }),
-  );
+  const wantsEmailField = (fieldKinds ?? []).some((kind) => kind === "email" || kind === "username");
+  const suggestions = (
+    await Promise.all(
+      items.map(async (item) => {
+        const values = extractAutofillValues(item);
+        const loginSecrets =
+          item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
+        if (loginSecrets?.username) {
+          values.username = values.username || loginSecrets.username;
+        }
+        const title = item.title || item.itemId;
+        const isLogin = item.categoryId === ITEM_CATEGORY_LOGIN;
+        // Login keeps website favicon; other categories use list-style category tiles in CS.
+        const iconUrl = isLogin
+          ? await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId)
+          : undefined;
+
+        if (wantsEmailField && item.categoryId === "personal_data") {
+          const emails = extractAutofillEmailCandidates(item);
+          if (emails.length > 1) {
+            return emails.map((email) => ({
+              itemId: item.itemId,
+              title,
+              username: email,
+              categoryId: item.categoryId,
+              suggestionKey: `${item.itemId}:email:${email.toLowerCase()}`,
+              fillOverrides: { email },
+            }));
+          }
+        }
+
+        return [
+          {
+            itemId: item.itemId,
+            title,
+            username: suggestionSubtitleFromValues(item.categoryId, values),
+            categoryId: item.categoryId,
+            ...(iconUrl ? { iconUrl } : {}),
+          },
+        ];
+      }),
+    )
+  ).flat();
   return {
     status: "ok",
     suggestions,
   };
 }
 
-export async function handleAutofillFill(itemId: string, pageUrl: string): Promise<AutofillFillResponse> {
+export async function handleAutofillFill(
+  itemId: string,
+  pageUrl: string,
+  fillOverrides?: Record<string, string>,
+): Promise<AutofillFillResponse> {
   const auth = await resolveUnlockUserId();
   if (!auth) {
     return { status: "signed-out" };
@@ -279,7 +309,20 @@ export async function handleAutofillFill(itemId: string, pageUrl: string): Promi
     return { status: "not-found" };
   }
 
-  const values = extractAutofillValues(item);
+  const values: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(extractAutofillValues(item))) {
+    if (typeof raw === "string" && raw.trim()) {
+      values[key] = raw.trim();
+    }
+  }
+  if (fillOverrides) {
+    for (const [key, raw] of Object.entries(fillOverrides)) {
+      const trimmed = typeof raw === "string" ? raw.trim() : "";
+      if (trimmed) {
+        values[key] = trimmed;
+      }
+    }
+  }
   const secrets =
     item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
 
@@ -321,7 +364,7 @@ export async function handleAutofillFill(itemId: string, pageUrl: string): Promi
       password,
       ...(totp ? { totp } : {}),
       categoryId: item.categoryId,
-      values: { ...values },
+      values,
     },
   };
 }

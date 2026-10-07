@@ -32,8 +32,15 @@ export type AutofillSuggestion = {
   username: string;
   /** Vault category id (`login`, `personal_data`, …). */
   categoryId?: string;
-  /** Stored vault favicon as a data URL; omit to render initials (no generic globe). */
+  /**
+   * Login-only: stored vault favicon as a data URL.
+   * Non-login categories render category color+glyph in the content script.
+   */
   iconUrl?: string;
+  /** Distinguishes expanded rows (e.g. multiple emails from one personal_data item). */
+  suggestionKey?: string;
+  /** Merge into fill values when this row is chosen (e.g. a specific email). */
+  fillOverrides?: Record<string, string>;
 };
 
 export type AutofillQueryResponse =
@@ -113,6 +120,7 @@ export type AutofillFillMessage = {
   type: typeof AUTOFILL_MSG.fill;
   itemId: string;
   pageUrl: string;
+  fillOverrides?: Record<string, string>;
 };
 
 export type AutofillUnlockMessage = {

@@ -13,6 +13,10 @@ import {
   type AutofillSuggestion,
 } from "../lib/autofillMessages";
 import {
+  autofillCategoryIconColor,
+  autofillCategoryIconSvgHtml,
+} from "../lib/autofillCategoryIcon";
+import {
   interFontFaceCss,
   OVERLAY_FONT_STACK,
   overlayIconUrl,
@@ -95,8 +99,35 @@ async function queryMatches(fieldKinds?: string[]): Promise<AutofillQueryRespons
   });
 }
 
-async function fillItem(itemId: string): Promise<AutofillFillResponse> {
-  return browser.runtime.sendMessage({ type: AUTOFILL_MSG.fill, itemId, pageUrl: pageUrl() });
+async function fillItem(
+  itemId: string,
+  fillOverrides?: Record<string, string>,
+): Promise<AutofillFillResponse> {
+  return browser.runtime.sendMessage({
+    type: AUTOFILL_MSG.fill,
+    itemId,
+    pageUrl: pageUrl(),
+    ...(fillOverrides && Object.keys(fillOverrides).length > 0 ? { fillOverrides } : {}),
+  });
+}
+
+/** Radix Select/Menu/Popover portals — overlay paint/scroll must not disturb them. */
+function pageHasBlockingOverlayUi(): boolean {
+  try {
+    return Boolean(
+      document.querySelector(
+        [
+          "[data-radix-select-content]",
+          "[data-radix-menu-content]",
+          "[data-radix-dropdown-menu-content]",
+          "[data-radix-popover-content]",
+          '[role="listbox"][data-state="open"]',
+        ].join(","),
+      ),
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function fetchSaveContext(): Promise<AutofillSaveContextResponse> {
@@ -138,8 +169,17 @@ export default defineContentScript({
       filledByOkkeyUntil = Date.now() + 15_000;
     }
 
+    function clearFilledByOkkey(): void {
+      filledByOkkeyUntil = 0;
+    }
+
     function wasFilledByOkkey(): boolean {
       return Date.now() < filledByOkkeyUntil;
+    }
+
+    /** After fill: suppress auto-list only — toggle stays visible. */
+    function suggestionsListSuppressed(): boolean {
+      return wasFilledByOkkey();
     }
 
     let overlayWired = false;
@@ -167,8 +207,10 @@ export default defineContentScript({
       }
       host = document.createElement("div");
       host.setAttribute("data-okkey-autofill", "true");
+      // Zero-size host: avoid a full-viewport layer that can disturb Radix Select /
+      // DismissableLayer (pointer-events / focus / resize). Children use position:fixed.
       host.style.cssText =
-        "all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none;display:none;";
+        "all:initial;position:fixed;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483647;pointer-events:none;display:none;";
       shadow = host.attachShadow({ mode: "closed" });
       document.documentElement.appendChild(host);
       return shadow;
@@ -247,10 +289,6 @@ export default defineContentScript({
         }
       }
       suppressedFields.clear();
-    }
-
-    function suggestionsSuppressed(): boolean {
-      return wasFilledByOkkey();
     }
 
     function panelBaseStyles(themeCssVars: string): string {
@@ -347,6 +385,13 @@ export default defineContentScript({
             height: 100%;
             object-fit: cover;
             display: block;
+          }
+          .row-icon svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+            color: #fff;
+            flex-shrink: 0;
           }
           .row-text {
             min-width: 0;
@@ -791,14 +836,26 @@ export default defineContentScript({
 
     function suggestionRowHtml(item: AutofillSuggestion): string {
       const letters = monogram(item.title);
-      const iconInner = item.iconUrl
-        ? `<img src="${escapeHtml(item.iconUrl)}" alt="" />`
-        : escapeHtml(letters);
+      const categorySvg = autofillCategoryIconSvgHtml(item.categoryId);
+      const categoryColor = autofillCategoryIconColor(item.categoryId);
+      let iconInner: string;
+      let iconBg: string;
+      if (categorySvg && categoryColor) {
+        iconInner = categorySvg;
+        iconBg = categoryColor;
+      } else if (item.iconUrl) {
+        iconInner = `<img src="${escapeHtml(item.iconUrl)}" alt="" />`;
+        iconBg = monogramBackground(letters);
+      } else {
+        iconInner = escapeHtml(letters);
+        iconBg = monogramBackground(letters);
+      }
       const meta = item.username
         ? `<span class="row-meta">${escapeHtml(item.username)}</span>`
         : "";
-      return `<button type="button" class="row" data-item="${escapeHtml(item.itemId)}">
-              <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
+      const suggestionKey = item.suggestionKey || item.itemId;
+      return `<button type="button" class="row" data-item="${escapeHtml(item.itemId)}" data-suggestion-key="${escapeHtml(suggestionKey)}">
+              <span class="row-icon" style="background:${iconBg}">${iconInner}</span>
               <span class="row-text">
                 <span class="row-title">${escapeHtml(item.title)}</span>
                 ${meta}
@@ -1038,7 +1095,16 @@ export default defineContentScript({
         }
         const row = target.closest("[data-item]");
         if (row instanceof HTMLElement && row.dataset.item) {
-          void applyFillForItem(row.dataset.item).then(() => hideOverlay());
+          const key = row.dataset.suggestionKey;
+          const match =
+            (key
+              ? cachedSuggestions.find((s) => (s.suggestionKey || s.itemId) === key)
+              : undefined) ?? cachedSuggestions.find((s) => s.itemId === row.dataset.item);
+          void applyFillForItem(row.dataset.item, match?.fillOverrides).then(() => {
+            listOpen = false;
+            overlayMode = "hidden";
+            void paintOverlay({ showToggleOnly: true });
+          });
         }
       });
     }
@@ -1074,18 +1140,33 @@ export default defineContentScript({
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
       try {
+        // Never mutate overlay DOM while Radix Select/Menu is open — list paint after
+        // a slow autofill query (~1s) was closing Select via focus/resize side-effects.
+        if (pageHasBlockingOverlayUi() && !pendingSave) {
+          if (opts?.showToggleOnly || overlayMode === "hidden" || overlayMode === "list") {
+            return;
+          }
+        }
         const root = ensureOverlay();
         if (!host) {
           return;
         }
         const cssVars = await themeCssVars();
+        if (pageHasBlockingOverlayUi() && !pendingSave) {
+          return;
+        }
         const anchorInput =
           activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
         const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
         const showToggle = Boolean(togglePos && !pendingSave && overlayMode !== "unlock-save");
 
         let panelMarkup = "";
-        if (overlayMode === "list" && cachedSuggestions.length > 0) {
+        const allowListPanel =
+          overlayMode === "list" &&
+          cachedSuggestions.length > 0 &&
+          !opts?.showToggleOnly &&
+          !pageHasBlockingOverlayUi();
+        if (allowListPanel) {
           panelMarkup = listHtml(cachedSuggestions);
         } else if (overlayMode === "save" || overlayMode === "save-rename") {
           panelMarkup = savePanelHtml(false);
@@ -1155,6 +1236,9 @@ export default defineContentScript({
     /** Reposition overlay without throwing into page scroll/resize handlers. */
     function safeRepaintOverlay(opts?: { showToggleOnly?: boolean }): void {
       try {
+        if (pageHasBlockingOverlayUi()) {
+          return;
+        }
         if (!host || host.style.display === "none") {
           return;
         }
@@ -1184,6 +1268,11 @@ export default defineContentScript({
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
+        return;
+      }
+      // Explicit toggle open after a fill — allow suggestions again.
+      clearFilledByOkkey();
+      if (pageHasBlockingOverlayUi()) {
         return;
       }
       let response: AutofillQueryResponse;
@@ -1224,19 +1313,38 @@ export default defineContentScript({
     }
 
     async function showForInput(input: HTMLInputElement): Promise<void> {
-      if (suggestionsSuppressed()) {
-        hideOverlay();
+      activeInput = input;
+      // After Okkey fill: keep the round toggle, do not auto-open the list until clear/toggle.
+      if (suggestionsListSuppressed()) {
+        listOpen = false;
+        overlayMode = "hidden";
+        await paintOverlay({ showToggleOnly: true });
         return;
       }
-      activeInput = input;
       let response: AutofillQueryResponse;
       try {
         response = await queryMatches(fieldKindsForQuery(input));
       } catch {
-        hideOverlay();
+        if (activeInput === input) {
+          listOpen = false;
+          overlayMode = "hidden";
+          await paintOverlay({ showToggleOnly: true });
+        }
         return;
       }
-      if (suggestionsSuppressed() || activeInput !== input) {
+      // Focus may have moved to Radix Select / another control while the query ran (~1s).
+      if (activeInput !== input || document.activeElement !== input || pageHasBlockingOverlayUi()) {
+        if (activeInput === input && document.contains(input) && !pageHasBlockingOverlayUi()) {
+          listOpen = false;
+          overlayMode = "hidden";
+          await paintOverlay({ showToggleOnly: true });
+        }
+        return;
+      }
+      if (suggestionsListSuppressed()) {
+        listOpen = false;
+        overlayMode = "hidden";
+        await paintOverlay({ showToggleOnly: true });
         return;
       }
       if (response.status === "signed-out") {
@@ -1412,7 +1520,9 @@ export default defineContentScript({
         }
         fillLoginFormAndMaybeSubmit(document, { username: "", password: "", totp });
         markFilledByOkkey();
-        hideOverlay();
+        listOpen = false;
+        overlayMode = "hidden";
+        void paintOverlay({ showToggleOnly: true });
         otpObserver?.disconnect();
         otpObserver = null;
         pendingTotpItemId = null;
@@ -1426,8 +1536,11 @@ export default defineContentScript({
       }, 30_000);
     }
 
-    async function applyFillForItem(itemId: string): Promise<void> {
-      const result = await fillItem(itemId);
+    async function applyFillForItem(
+      itemId: string,
+      fillOverrides?: Record<string, string>,
+    ): Promise<void> {
+      const result = await fillItem(itemId, fillOverrides);
       if (result.status !== "ok") {
         if (result.status === "locked") {
           void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
@@ -1435,12 +1548,17 @@ export default defineContentScript({
         return;
       }
       markFilledByOkkey();
-      hideOverlay();
+      listOpen = false;
+      overlayMode = "hidden";
+      // Keep toggle on the filled field (do not hideOverlay).
+      void paintOverlay({ showToggleOnly: true });
       const isLogin = !result.fill.categoryId || result.fill.categoryId === "login";
       if (isLogin) {
         const outcome = fillLoginFormAndMaybeSubmit(document, result.fill);
         if (outcome.submitted) {
-          hideOverlay();
+          listOpen = false;
+          overlayMode = "hidden";
+          void paintOverlay({ showToggleOnly: true });
         }
         if (result.fill.totp) {
           const fields = findLoginFields(document);
@@ -1458,6 +1576,7 @@ export default defineContentScript({
         ...result.fill.values,
         ...(result.fill.username ? { username: result.fill.username, email: result.fill.username } : {}),
         ...(result.fill.password ? { password: result.fill.password } : {}),
+        ...(fillOverrides ?? {}),
       };
       const isCreditCard = result.fill.categoryId === "credit_card";
       fillAutofillValues(document, fillValues, {
@@ -1603,10 +1722,6 @@ export default defineContentScript({
         ) {
           return;
         }
-        if (suggestionsSuppressed()) {
-          hideOverlay();
-          return;
-        }
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || !isVisibleFillableElement(target)) {
           return;
@@ -1617,6 +1732,10 @@ export default defineContentScript({
         }
         suppressNativeAutocomplete(target, kind);
         window.clearTimeout(hideTimer);
+        // Empty focused field after user cleared a fill — re-open suggestions immediately.
+        if (target.value.trim().length === 0 && suggestionsListSuppressed()) {
+          clearFilledByOkkey();
+        }
         void showForInput(target);
       },
       true,
@@ -1632,11 +1751,15 @@ export default defineContentScript({
           if (overlayMode === "empty-tooltip") {
             return;
           }
+          if (pageHasBlockingOverlayUi()) {
+            return;
+          }
           // Keep toggle while field may still be "active"; hide panels/tooltips on blur.
           listOpen = false;
           if (
             overlayMode === "list" ||
-            overlayMode === "unlock-tooltip"
+            overlayMode === "unlock-tooltip" ||
+            (activeInput && document.contains(activeInput))
           ) {
             overlayMode = "hidden";
             void paintOverlay({ showToggleOnly: true });
@@ -1648,12 +1771,50 @@ export default defineContentScript({
       true,
     );
 
+    const onAutofillFieldEdited = (event: Event): void => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+      if (document.activeElement !== target) {
+        return;
+      }
+      if (!isVisibleFillableElement(target)) {
+        return;
+      }
+      const kind = classifyAutofillInput(collectInputHints(target));
+      if (!kind) {
+        return;
+      }
+      activeInput = target;
+      if (target.value.trim().length > 0) {
+        // Filled (by us or user) — keep toggle, close list if open.
+        if (listOpen || overlayMode === "list") {
+          listOpen = false;
+          overlayMode = "hidden";
+          void paintOverlay({ showToggleOnly: true });
+        } else if (host?.style.display === "block") {
+          void paintOverlay({ showToggleOnly: true });
+        }
+        return;
+      }
+      // Cleared while focused — re-show suggestions without blur→focus.
+      clearFilledByOkkey();
+      window.clearTimeout(hideTimer);
+      void showForInput(target);
+    };
+    document.addEventListener("input", onAutofillFieldEdited, true);
+    document.addEventListener("change", onAutofillFieldEdited, true);
+
     document.addEventListener(
       "scroll",
       () => {
         // Capture-phase scroll fires for floating-ui / Radix Select positioning.
         // Must never throw or force async storage work that breaks page UI.
         try {
+          if (pageHasBlockingOverlayUi()) {
+            return;
+          }
           if (pendingSave) {
             return;
           }
@@ -1679,6 +1840,9 @@ export default defineContentScript({
 
     window.addEventListener("resize", () => {
       try {
+        if (pageHasBlockingOverlayUi()) {
+          return;
+        }
         if (host?.style.display === "block") {
           safeRepaintOverlay();
         }
@@ -1770,11 +1934,14 @@ export default defineContentScript({
           void maybeOfferSave(pendingSave);
           return undefined;
         }
-        if (suggestionsSuppressed()) {
+        if (suggestionsListSuppressed()) {
+          if (activeInput && document.contains(activeInput)) {
+            void paintOverlay({ showToggleOnly: true });
+          }
           return undefined;
         }
         // Popup unlock steals focus — refresh from retained field, not activeElement.
-        if (activeInput && document.contains(activeInput)) {
+        if (activeInput && document.contains(activeInput) && !pageHasBlockingOverlayUi()) {
           try {
             activeInput.focus({ preventScroll: true });
           } catch {

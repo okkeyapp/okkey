@@ -37,6 +37,7 @@ export {
 export {
   AUTOFILL_ITEM_CATEGORIES,
   categoriesForFieldKinds,
+  extractAutofillEmailCandidates,
   extractAutofillValues,
   isAutofillItemCategory,
   suggestionSubtitleFromValues,

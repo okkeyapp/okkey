@@ -35,7 +35,7 @@ export default defineBackground(() => {
       return handleAutofillQuery(message.pageUrl, message.fieldKinds);
     }
     if (message.type === AUTOFILL_MSG.fill) {
-      return handleAutofillFill(message.itemId, message.pageUrl);
+      return handleAutofillFill(message.itemId, message.pageUrl, message.fillOverrides);
     }
     if (message.type === AUTOFILL_MSG.unlock) {
       return openExtensionUnlockPrompt().then(() => ({ ok: true }));

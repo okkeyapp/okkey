@@ -255,6 +255,73 @@ function expandAddressField(map: Partial<Record<AutofillValueKey, string>>, raw:
   put(map, "country", address.country);
 }
 
+function looksLikeEmailAddress(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 254) {
+    return false;
+  }
+  // Practical check — vault UI email fields already validate more strictly.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+function fieldLabelSuggestsEmail(label: string | undefined): boolean {
+  if (!label) {
+    return false;
+  }
+  const normalized = label.trim().toLowerCase().replace(/\s+/g, "");
+  if (!normalized) {
+    return false;
+  }
+  return (
+    normalized.includes("email") ||
+    normalized.includes("e-mail") ||
+    normalized.includes("emeil") ||
+    normalized.includes("mail") ||
+    normalized.includes("почт") ||
+    normalized.includes("электрон")
+  );
+}
+
+/**
+ * All distinct email values on an item: preset email / work-email plus custom
+ * fields with type email (or email-like label + address-shaped value).
+ */
+export function extractAutofillEmailCandidates(item: ItemPlaintextV2): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string) => {
+    const value = raw.trim();
+    if (!value || seen.has(value.toLowerCase())) {
+      return;
+    }
+    if (!looksLikeEmailAddress(value)) {
+      return;
+    }
+    seen.add(value.toLowerCase());
+    out.push(value);
+  };
+
+  for (const field of item.fields) {
+    const text = fieldPlainString(field);
+    if (!text) {
+      continue;
+    }
+    const mapped = FIELD_ID_TO_KEY[field.id];
+    if (mapped === "email" || field.id === "email" || field.id === "work-email") {
+      push(text);
+      continue;
+    }
+    if (field.type === "email") {
+      push(text);
+      continue;
+    }
+    if (fieldLabelSuggestsEmail(field.label) && looksLikeEmailAddress(text)) {
+      push(text);
+    }
+  }
+  return out;
+}
+
 /** Extract semantic fill values from any supported vault item category. */
 export function extractAutofillValues(item: ItemPlaintextV2): Partial<Record<AutofillValueKey, string>> {
   const map: Partial<Record<AutofillValueKey, string>> = {};
@@ -274,10 +341,19 @@ export function extractAutofillValues(item: ItemPlaintextV2): Partial<Record<Aut
     }
 
     const key = FIELD_ID_TO_KEY[field.id];
-    if (!key) {
+    if (key) {
+      put(map, key, fieldPlainString(field));
       continue;
     }
-    put(map, key, fieldPlainString(field));
+
+    // Custom email fields (user-added) — first wins in the flat map; full list
+    // via {@link extractAutofillEmailCandidates}.
+    if (field.type === "email" || fieldLabelSuggestsEmail(field.label)) {
+      const text = fieldPlainString(field);
+      if (looksLikeEmailAddress(text)) {
+        put(map, "email", text);
+      }
+    }
   }
 
   if (!map.name) {

@@ -5,6 +5,7 @@ import { ITEM_PLAINTEXT_SCHEMA_VERSION_V2, type ItemPlaintextV2 } from "@okkey/t
 
 import {
   categoriesForFieldKinds,
+  extractAutofillEmailCandidates,
   extractAutofillValues,
   suggestionSubtitleFromValues,
 } from "./item-autofill-extract.ts";
@@ -105,6 +106,47 @@ describe("extractAutofillValues", () => {
     assert.equal(values["postal-code"], "101000");
     assert.equal(values.country, "RU");
     assert.equal(values.name, "Саша Иванов");
+  });
+
+  it("collects standard + custom email fields as separate candidates", () => {
+    const emails = extractAutofillEmailCandidates(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "email",
+            type: "email",
+            sectionId: "personal-data",
+            order: 0,
+            value: { kind: "text", text: "a@example.com" },
+          },
+          {
+            id: "fld_custom_1",
+            type: "email",
+            sectionId: "personal-data",
+            order: 1,
+            label: "emeil",
+            value: { kind: "text", text: "work@okkey.app" },
+          },
+          {
+            id: "fld_custom_2",
+            type: "text",
+            sectionId: "personal-data",
+            order: 2,
+            label: "Email secondary",
+            value: { kind: "text", text: "extra@example.org" },
+          },
+          {
+            id: "phone",
+            type: "text",
+            sectionId: "personal-data",
+            order: 3,
+            value: { kind: "text", text: "+79990001122" },
+          },
+        ],
+      }),
+    );
+    assert.deepEqual(emails, ["a@example.com", "work@okkey.app", "extra@example.org"]);
   });
 
   it("extracts credit card and bank fields", () => {
