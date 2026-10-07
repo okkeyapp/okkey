@@ -1,7 +1,16 @@
+import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "wxt";
 
 const repoRoot = path.resolve(__dirname, "../..");
+const cryptoWasmSrc = path.resolve(repoRoot, "packages/crypto/dist/okkey_crypto_engine_bg.wasm");
+const cryptoWasmPublic = path.resolve(__dirname, "public/okkey_crypto_engine_bg.wasm");
+
+function syncCryptoWasmPublicAsset(): void {
+  // Background SW must fetch a real extension URL (not Vite data: inline) under MV3 CSP.
+  fs.mkdirSync(path.dirname(cryptoWasmPublic), { recursive: true });
+  fs.copyFileSync(cryptoWasmSrc, cryptoWasmPublic);
+}
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -10,6 +19,11 @@ export default defineConfig({
   outDir: "output",
   imports: false,
   manifestVersion: 3,
+  hooks: {
+    "build:before"() {
+      syncCryptoWasmPublicAsset();
+    },
+  },
   suppressWarnings: {
     firefoxDataCollection: true,
   },
@@ -69,6 +83,10 @@ export default defineConfig({
   vite: () => ({
     // Same as apps/web: emit `.wasm` as build assets (required for crypto unlock).
     assetsInclude: ["**/*.wasm"],
+    // Never inline wasm as data: URLs — MV3 SW CSP blocks fetch(data:application/wasm).
+    build: {
+      assetsInlineLimit: 0,
+    },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

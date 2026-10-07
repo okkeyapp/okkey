@@ -377,6 +377,11 @@ export default defineContentScript({
             box-shadow: 0 1px 1px rgba(0,0,0,0.1);
           }
           button.cta:hover { filter: brightness(0.95); }
+          button.cta:focus-visible {
+            outline: none;
+            filter: brightness(0.95);
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4), 0 1px 1px rgba(0,0,0,0.1);
+          }
           button.cta img { width: 16px; height: 16px; display: block; }
           button.icon-btn {
             display: inline-flex;
@@ -391,8 +396,18 @@ export default defineContentScript({
             cursor: pointer;
             flex-shrink: 0;
             appearance: none;
+            outline: none;
+            transition: background-color 150ms ease, box-shadow 150ms ease, filter 150ms ease;
           }
           button.icon-btn img { width: 16px; height: 16px; display: block; }
+          button.icon-btn:hover {
+            filter: brightness(0.96);
+            background: hsl(var(--ok-hover));
+          }
+          button.icon-btn:focus-visible {
+            background: hsl(var(--ok-hover));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary));
+          }
           /* Match packages/ui Popup dialog close (size-8, muted → hover muted bg + ring). */
           button.close-btn {
             display: inline-flex;
@@ -466,7 +481,12 @@ export default defineContentScript({
             border-radius: 8px;
             overflow: visible;
           }
-          .save-card .row { pointer-events: none; cursor: default; }
+          .save-card .row {
+            pointer-events: none;
+            cursor: default;
+            /* Keep preview row height stable when switching to rename input. */
+            min-height: 48px;
+          }
           /* Pencil must remain clickable despite non-interactive preview row. */
           .save-card .row .icon-btn { pointer-events: auto; }
           .save-card .row.editing { pointer-events: auto; }
@@ -476,6 +496,7 @@ export default defineContentScript({
             display: flex;
             align-items: center;
             height: 32px;
+            min-height: 32px;
             background: hsl(var(--ok-bg));
             border: 1px solid hsl(var(--ok-primary));
             border-radius: 8px;
@@ -509,8 +530,15 @@ export default defineContentScript({
             padding: 0;
             flex-shrink: 0;
             appearance: none;
+            outline: none;
+            transition: filter 150ms ease, box-shadow 150ms ease;
           }
           .rename-check img { width: 16px; height: 16px; display: block; }
+          .rename-check:hover { filter: brightness(0.95); }
+          .rename-check:focus-visible {
+            filter: brightness(0.95);
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+          }
           .save-divider {
             height: 1px;
             width: 100%;
@@ -552,6 +580,15 @@ export default defineContentScript({
             color: hsl(var(--ok-fg));
             appearance: none;
             max-width: 100%;
+            outline: none;
+            transition: background-color 150ms ease, box-shadow 150ms ease;
+          }
+          button.vault-picker:hover {
+            background: hsl(var(--ok-hover));
+          }
+          button.vault-picker:focus-visible {
+            background: hsl(var(--ok-hover));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           button.vault-picker .vault-name {
             font-size: 14px;
@@ -599,8 +636,16 @@ export default defineContentScript({
             color: hsl(var(--ok-fg));
             text-align: left;
             appearance: none;
+            outline: none;
           }
-          .vault-menu button:hover { background: hsl(var(--ok-hover)); }
+          .vault-menu button:hover,
+          .vault-menu button:focus-visible {
+            background: hsl(var(--ok-hover));
+          }
+          .vault-menu button[aria-selected="true"] {
+            background: hsl(var(--ok-hover));
+            font-weight: 500;
+          }
           .save-actions {
             position: relative;
             z-index: 1;
@@ -785,15 +830,16 @@ export default defineContentScript({
       const vault = selectedVault();
       const icon = vault?.icon || "💼";
       const name = vault?.name || strings.vaultFallback;
+      const selectedId = vault?.vaultId ?? saveVaultId;
       const menu = vaultMenuOpen
-        ? `<div class="vault-menu">${saveVaults
-            .map(
-              (option) =>
-                `<button type="button" data-vault-id="${escapeHtml(option.vaultId)}">
+        ? `<div class="vault-menu" role="listbox">${saveVaults
+            .map((option) => {
+              const selected = option.vaultId === selectedId;
+              return `<button type="button" role="option" data-vault-id="${escapeHtml(option.vaultId)}" aria-selected="${selected ? "true" : "false"}">
                    <span>${escapeHtml(option.icon || "💼")}</span>
                    <span>${escapeHtml(option.name)}</span>
-                 </button>`,
-            )
+                 </button>`;
+            })
             .join("")}</div>`
         : "";
       return `<div class="vault-row">
@@ -908,6 +954,10 @@ export default defineContentScript({
         if (!(target instanceof Element)) {
           return;
         }
+        // Allow text inputs to take focus / caret; still keep page fields from stealing.
+        if (target.closest("input, textarea, select, [contenteditable]")) {
+          return;
+        }
         if (target.closest(".panel, .toggle, .tooltip")) {
           event.preventDefault();
         }
@@ -979,7 +1029,13 @@ export default defineContentScript({
         return;
       }
       renameInput.focus();
-      renameInput.select();
+      // Caret at end so the user can append; do not select-all / wipe on type.
+      const end = renameInput.value.length;
+      try {
+        renameInput.setSelectionRange(end, end);
+      } catch {
+        /* ignore */
+      }
       renameInput.onkeydown = (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
@@ -1267,15 +1323,28 @@ export default defineContentScript({
       });
     }
 
+    function syncRenameDraftFromDom(): void {
+      if (!shadow || !saveEditing) {
+        return;
+      }
+      const input = shadow.querySelector("[data-rename-input]");
+      if (input instanceof HTMLInputElement) {
+        saveTitleDraft = input.value;
+      }
+    }
+
     async function hydrateSaveContext(): Promise<void> {
       try {
         const ctx = await fetchSaveContext();
         if (!pendingSave || ctx.status !== "ok") {
           return;
         }
+        syncRenameDraftFromDom();
         saveWorkspaceName = ctx.workspaceName;
         saveVaults = ctx.vaults;
-        saveVaultId = ctx.defaultVaultId;
+        if (!saveVaultId) {
+          saveVaultId = ctx.defaultVaultId;
+        }
         await paintOverlay();
       } catch {
         /* keep fallbacks */
@@ -1291,6 +1360,7 @@ export default defineContentScript({
         if (pendingSave !== creds || result.status !== "ok") {
           return;
         }
+        syncRenameDraftFromDom();
         saveIconUrl = result.iconUrl;
         await paintOverlay();
       } catch {
@@ -1366,16 +1436,22 @@ export default defineContentScript({
       }
       const creds = pendingSave;
       const title = saveTitleDraft.trim() || domainTitle();
-      const result = (await browser.runtime.sendMessage({
-        type: AUTOFILL_MSG.save,
-        pageUrl: pageUrl(),
-        websiteUrl: websiteUrl(),
-        title,
-        username: creds.username,
-        password: creds.password,
-        vaultId: savePromptKind === "create" ? saveVaultId || undefined : undefined,
-        itemId: savePromptKind === "update" ? pendingUpdateItemId || undefined : undefined,
-      })) as AutofillSaveResponse;
+      let result: AutofillSaveResponse;
+      try {
+        result = (await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.save,
+          pageUrl: pageUrl(),
+          websiteUrl: websiteUrl(),
+          title,
+          username: creds.username,
+          password: creds.password,
+          vaultId: savePromptKind === "create" ? saveVaultId || undefined : undefined,
+          itemId: savePromptKind === "update" ? pendingUpdateItemId || undefined : undefined,
+        })) as AutofillSaveResponse;
+      } catch (err: unknown) {
+        console.error("[okkey] autofill save failed", err);
+        return;
+      }
       if (result.status === "locked") {
         showSavePrompt(creds, true, {
           kind: savePromptKind,
@@ -1401,6 +1477,10 @@ export default defineContentScript({
         savePromptKind = "create";
         void clearPendingSaveOffer();
         hideOverlay();
+        return;
+      }
+      if (result.status === "error") {
+        console.error("[okkey] autofill save error", result.message);
       }
     }
 
@@ -1471,10 +1551,17 @@ export default defineContentScript({
     document.addEventListener(
       "focusin",
       (event) => {
+        // Save prompt stays until X / successful save — page input focus must not dismiss it.
+        if (
+          pendingSave ||
+          overlayMode === "save" ||
+          overlayMode === "save-rename" ||
+          overlayMode === "unlock-save"
+        ) {
+          return;
+        }
         if (suggestionsSuppressed()) {
-          if (!pendingSave) {
-            hideOverlay();
-          }
+          hideOverlay();
           return;
         }
         const target = event.target;
