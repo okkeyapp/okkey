@@ -1714,15 +1714,16 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener((message) => {
       if (!message || typeof message !== "object" || !("type" in message)) {
-        return;
+        return undefined;
       }
       if (message.type === AUTOFILL_MSG.unlocked) {
         if (pendingSave) {
+          // Fire-and-forget: ack sync so the message channel closes cleanly.
           void maybeOfferSave(pendingSave);
-          return;
+          return undefined;
         }
         if (suggestionsSuppressed()) {
-          return;
+          return undefined;
         }
         // Popup unlock steals focus — refresh from retained field, not activeElement.
         if (activeInput && document.contains(activeInput)) {
@@ -1733,14 +1734,18 @@ export default defineContentScript({
           }
           void showForInput(activeInput);
         }
-        return;
+        return undefined;
       }
       if (message.type === AUTOFILL_MSG.applyFill) {
         const itemId = (message as { itemId?: string }).itemId;
         if (typeof itemId === "string" && itemId) {
-          void applyFillForItem(itemId);
+          // Return a Promise so MV3 keeps the channel open until fill finishes
+          // (avoids "async response… channel closed" when sender awaits sendMessage).
+          return applyFillForItem(itemId).then(() => ({ ok: true as const }));
         }
+        return Promise.resolve({ ok: false as const });
       }
+      return undefined;
     });
 
     if (pendingTotpItemId) {

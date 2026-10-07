@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type Context,
   type MutableRefObject,
   type ReactNode,
 } from "react";
@@ -134,7 +135,39 @@ export type AuthVaultContextValue = {
   retryDeviceRegistration: () => Promise<void>;
 };
 
-const AuthVaultContext = createContext<AuthVaultContextValue | null>(null);
+/**
+ * HMR-safe Context identity. Vite Fast Refresh can re-evaluate this module while
+ * children still hold a stale module binding; a new createContext() then makes
+ * useAuthVault() miss the Provider ("must be used within AuthVaultProvider").
+ * Pin the Context object on globalThis (and import.meta.hot.data) so Provider and
+ * consumers always share the same identity across soft refreshes.
+ */
+const AUTH_VAULT_CONTEXT_GLOBAL_KEY = "__okkey_AuthVaultContext__" as const;
+
+type AuthVaultContextGlobal = typeof globalThis & {
+  [AUTH_VAULT_CONTEXT_GLOBAL_KEY]?: Context<AuthVaultContextValue | null>;
+};
+
+function createAuthVaultContext(): Context<AuthVaultContextValue | null> {
+  const fromHot = import.meta.hot?.data?.authVaultContext as
+    | Context<AuthVaultContextValue | null>
+    | undefined;
+  if (fromHot) {
+    return fromHot;
+  }
+  const g = globalThis as AuthVaultContextGlobal;
+  if (!g[AUTH_VAULT_CONTEXT_GLOBAL_KEY]) {
+    g[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = createContext<AuthVaultContextValue | null>(null);
+  }
+  return g[AUTH_VAULT_CONTEXT_GLOBAL_KEY];
+}
+
+const AuthVaultContext = createAuthVaultContext();
+
+if (import.meta.hot) {
+  import.meta.hot.data.authVaultContext = AuthVaultContext;
+  (globalThis as AuthVaultContextGlobal)[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = AuthVaultContext;
+}
 
 function useActivityListeners(touch: () => void): void {
   useEffect(() => {
