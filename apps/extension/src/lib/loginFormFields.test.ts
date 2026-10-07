@@ -6,7 +6,12 @@ import {
   classifyLoginInput,
   suggestionFieldKindsForFocus,
 } from "./autofillFieldClassify.ts";
-import { otpValuesForFields } from "./loginFormFields.ts";
+import {
+  applySimpleMaska,
+  digitsOnly,
+  otpValuesForFields,
+  resolveFillValueForInput,
+} from "./loginFormFields.ts";
 
 describe("classifyLoginInput email heuristics", () => {
   it("classifies type=email and autocomplete email", () => {
@@ -135,5 +140,47 @@ describe("otpValuesForFields", () => {
 
   it("fills the full code into a single OTP field", () => {
     assert.deepEqual(otpValuesForFields("123456", 1, [6]), ["123456"]);
+  });
+});
+
+describe("maska-aware credit card fill formatting", () => {
+  it("formats Robokassa card / exp / cvc masks from raw vault values", () => {
+    assert.equal(applySimpleMaska("4111111111111111", "#### #### #### #### ###"), "4111 1111 1111 1111");
+    assert.equal(applySimpleMaska("4111 1111 1111 1111", "#### #### #### #### ###"), "4111 1111 1111 1111");
+    assert.equal(applySimpleMaska("12/30", "##/##"), "12/30");
+    assert.equal(applySimpleMaska("12 / 30", "##/##"), "12/30");
+    assert.equal(applySimpleMaska("1230", "##/##"), "12/30");
+    assert.equal(applySimpleMaska("123", "###"), "123");
+    assert.equal(digitsOnly("4111 1111 1111 1111"), "4111111111111111");
+  });
+
+  it("resolveFillValueForInput reads data-maska like Robokassa checkout", () => {
+    const withMask = (mask: string) => ({
+      getAttribute: (name: string) => (name === "data-maska" ? mask : null),
+    });
+    assert.equal(resolveFillValueForInput(withMask("#### #### #### #### ###"), "4111111111111111"), "4111 1111 1111 1111");
+    assert.equal(resolveFillValueForInput(withMask("##/##"), "12 / 30"), "12/30");
+    assert.equal(resolveFillValueForInput(withMask("###"), "123"), "123");
+    assert.equal(resolveFillValueForInput(withMask(""), "4111111111111111"), "4111111111111111");
+  });
+
+  it("classifies Robokassa validTo / cvc fields for deferred fill", () => {
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "validTo",
+        id: "validTo",
+        autocomplete: "cc-exp",
+      }),
+      "cc-exp",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "cvc",
+        id: "cvc",
+      }),
+      "cc-csc",
+    );
   });
 });

@@ -1,5 +1,6 @@
 import {
   attrBlob,
+  classifyAutofillInput,
   classifyLoginInput as classifyLoginInputImpl,
   collectInputHints,
   type AutofillInputHints,
@@ -141,19 +142,119 @@ function nativeValueSetter(el: HTMLInputElement | HTMLTextAreaElement): ((v: str
     : undefined;
 }
 
-export function fillInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
-  // Do not focus filled fields: focusing them re-opens the suggestion dropdown.
-  if (el.value === value) {
-    return;
+/** Digits-only view of a string (card / exp / cvc comparisons). */
+export function digitsOnly(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+/**
+ * Apply a maska-style pattern (`#` = digit, other chars = literals) to a raw value.
+ * Example: `#### ####` + `41111111` → `4111 1111`; `##/##` + `12/30` → `12/30`.
+ */
+export function applySimpleMaska(value: string, mask: string): string {
+  const digits = digitsOnly(value);
+  if (!mask || !mask.includes("#")) {
+    return value;
   }
+  let digitIndex = 0;
+  let out = "";
+  for (const ch of mask) {
+    if (digitIndex >= digits.length) {
+      break;
+    }
+    if (ch === "#") {
+      out += digits[digitIndex]!;
+      digitIndex += 1;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/** Prefer data-maska / data-mask formatting when the page uses maska (Robokassa, etc.). */
+export function resolveFillValueForInput(
+  el: Pick<Element, "getAttribute"> | HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+): string {
+  const mask =
+    typeof el.getAttribute === "function"
+      ? (el.getAttribute("data-maska") ?? el.getAttribute("data-mask") ?? "")
+      : "";
+  if (mask.includes("#")) {
+    return applySimpleMaska(value, mask);
+  }
+  return value;
+}
+
+function setInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   const set = nativeValueSetter(el);
   if (set) {
     set(value);
   } else {
     el.value = value;
   }
-  el.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, data: value }));
+}
+
+function dispatchFillEvents(el: HTMLInputElement | HTMLTextAreaElement, value: string, inputType: string): void {
+  try {
+    el.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        inputType,
+        data: value,
+      }),
+    );
+  } catch {
+    /* older engines may lack beforeinput InputEvent fields */
+  }
+  el.dispatchEvent(
+    new InputEvent("input", {
+      bubbles: true,
+      composed: true,
+      inputType,
+      data: value,
+    }),
+  );
   el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/**
+ * Write a value into a page input the way controlled / maska fields expect:
+ * native value setter + beforeinput/input (insertFromPaste), with char-by-char fallback.
+ * Do not focus: focusing re-opens the suggestion dropdown.
+ */
+export function fillInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  const next = resolveFillValueForInput(el, value);
+  if (!next) {
+    return;
+  }
+  // Exact match only — digits-equal but unformatted still needs maska spacing (e.g. #### ####).
+  if (el.value === next) {
+    return;
+  }
+
+  if (el.value) {
+    setInputValue(el, "");
+    dispatchFillEvents(el, "", "deleteContentBackward");
+  }
+
+  setInputValue(el, next);
+  dispatchFillEvents(el, next, "insertFromPaste");
+
+  // Maska / Vue sometimes ignore bulk paste — type the formatted value instead.
+  if (digitsOnly(el.value) !== digitsOnly(next)) {
+    setInputValue(el, "");
+    dispatchFillEvents(el, "", "deleteContentBackward");
+    let built = "";
+    for (const ch of next) {
+      built += ch;
+      setInputValue(el, built);
+      dispatchFillEvents(el, ch, "insertText");
+    }
+  }
 }
 
 /** Split a TOTP string across OTP inputs (1 digit per box when multi-box). */
@@ -209,6 +310,64 @@ export function fillLoginForm(
   }
 }
 
+const CREDIT_CARD_FIELD_KINDS = new Set(["cc-number", "cc-exp", "cc-csc", "cc-name"]);
+
+function isDisabledOrReadonly(el: HTMLInputElement | HTMLTextAreaElement): boolean {
+  return el.disabled || el.readOnly;
+}
+
+function isTypeHiddenInput(el: HTMLInputElement): boolean {
+  return el.type.toLowerCase() === "hidden";
+}
+
+/**
+ * Whether an input may receive autofill.
+ * Credit-card fields on Robokassa-like checkouts often live in `display:none` wrappers
+ * until the number is entered — still fill them when present in the DOM.
+ */
+export function isAutofillTargetElement(
+  el: HTMLInputElement,
+  kind: string | null,
+  options?: { allowHiddenCreditCard?: boolean; onlyEmpty?: boolean },
+): boolean {
+  if (isTypeHiddenInput(el) || isDisabledOrReadonly(el)) {
+    return false;
+  }
+  if (options?.onlyEmpty && el.value.trim().length > 0) {
+    return false;
+  }
+  const allowHiddenCc =
+    Boolean(options?.allowHiddenCreditCard) && kind != null && CREDIT_CARD_FIELD_KINDS.has(kind);
+  if (allowHiddenCc) {
+    return true;
+  }
+  return isVisibleFillableElement(el);
+}
+
+function resolveAutofillValueForKind(
+  kind: string,
+  values: Partial<Record<string, string>>,
+): string {
+  let value = values[kind] ?? "";
+  if (!value && (kind === "email" || kind === "username")) {
+    value = values.email || values.username || "";
+  }
+  if (!value && kind === "name") {
+    value = [values["given-name"], values["additional-name"], values["family-name"]]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  return value;
+}
+
+export type FillAutofillValuesOptions = {
+  /** Fill cc-* inputs even when currently not visible (display:none wrapper). */
+  allowHiddenCreditCard?: boolean;
+  /** Skip inputs that already have a non-empty value (used by deferred watchers). */
+  onlyEmpty?: boolean;
+};
+
 /**
  * Fill page inputs from a semantic value map (personal / card / bank / …).
  * Login username/password/otp should go through {@link fillLoginForm} when category is login.
@@ -216,34 +375,108 @@ export function fillLoginForm(
 export function fillAutofillValues(
   root: ParentNode,
   values: Partial<Record<string, string>>,
+  options?: FillAutofillValuesOptions,
 ): number {
   let filled = 0;
   const nodes = Array.from(root.querySelectorAll("input"));
   for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node)) {
+    if (!(node instanceof HTMLInputElement)) {
       continue;
     }
     const kind = classifyAutofillInput(collectInputHints(node));
     if (!kind) {
       continue;
     }
-    let value = values[kind] ?? "";
-    if (!value && (kind === "email" || kind === "username")) {
-      value = values.email || values.username || "";
+    if (!isAutofillTargetElement(node, kind, options)) {
+      continue;
     }
-    if (!value && kind === "name") {
-      value = [values["given-name"], values["additional-name"], values["family-name"]]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-    }
+    const value = resolveAutofillValueForKind(kind, values);
     if (!value) {
       continue;
     }
+    const before = node.value;
     fillInputValue(node, value);
-    filled += 1;
+    if (node.value !== before && digitsOnly(node.value).length > 0) {
+      filled += 1;
+    } else if (digitsOnly(node.value) === digitsOnly(value) && digitsOnly(value).length > 0) {
+      filled += 1;
+    }
   }
   return filled;
+}
+
+export type WatchAutofillFillOptions = {
+  timeoutMs?: number;
+  /** Semantic kinds to keep trying (default: credit-card). */
+  kinds?: readonly string[];
+};
+
+/**
+ * After filling a card number, exp/cvc often mount or become visible.
+ * Keep applying remaining values for a short window (empty targets only).
+ */
+export function watchAndFillAutofillValues(
+  root: ParentNode,
+  values: Partial<Record<string, string>>,
+  options?: WatchAutofillFillOptions,
+): () => void {
+  const timeoutMs = options?.timeoutMs ?? 10_000;
+  const kindFilter = new Set(options?.kinds ?? ["cc-number", "cc-exp", "cc-csc", "cc-name"]);
+  const filteredValues: Partial<Record<string, string>> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (kindFilter.has(key) && value) {
+      filteredValues[key] = value;
+    }
+  }
+
+  const tryFill = (): number =>
+    fillAutofillValues(root, filteredValues, {
+      allowHiddenCreditCard: true,
+      onlyEmpty: true,
+    });
+
+  tryFill();
+
+  const observeTarget =
+    root instanceof Document
+      ? root.documentElement
+      : root instanceof Element
+        ? root
+        : null;
+  if (!observeTarget) {
+    return () => undefined;
+  }
+
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const observer = new MutationObserver(() => {
+    if (idleTimer != null) {
+      clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(() => {
+      tryFill();
+    }, 50);
+  });
+  observer.observe(observeTarget, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["style", "class", "hidden"],
+  });
+
+  const stopTimer = setTimeout(() => {
+    observer.disconnect();
+    if (idleTimer != null) {
+      clearTimeout(idleTimer);
+    }
+  }, timeoutMs);
+
+  return () => {
+    observer.disconnect();
+    clearTimeout(stopTimer);
+    if (idleTimer != null) {
+      clearTimeout(idleTimer);
+    }
+  };
 }
 
 function inputFilled(el: HTMLInputElement): boolean {

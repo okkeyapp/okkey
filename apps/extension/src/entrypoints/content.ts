@@ -30,6 +30,7 @@ import {
   isVisibleFillableElement,
   resolveAutofillAnchorInput,
   submitLoginFormIfReady,
+  watchAndFillAutofillValues,
 } from "../lib/loginFormFields";
 
 type OverlayMode =
@@ -121,6 +122,7 @@ export default defineContentScript({
     let savePromptKind: SavePromptKind = "create";
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
+    let stopCreditCardFillWatch: (() => void) | null = null;
     let overlayMode: OverlayMode = "hidden";
     let listOpen = false;
     let cachedSuggestions: AutofillSuggestion[] = [];
@@ -1417,11 +1419,23 @@ export default defineContentScript({
         }
         return;
       }
-      fillAutofillValues(document, {
+      const fillValues = {
         ...result.fill.values,
         ...(result.fill.username ? { username: result.fill.username, email: result.fill.username } : {}),
         ...(result.fill.password ? { password: result.fill.password } : {}),
+      };
+      const isCreditCard = result.fill.categoryId === "credit_card";
+      fillAutofillValues(document, fillValues, {
+        allowHiddenCreditCard: isCreditCard,
       });
+      // Robokassa/GamePush: exp/cvc mount or become visible only after card number is set.
+      if (isCreditCard) {
+        stopCreditCardFillWatch?.();
+        stopCreditCardFillWatch = watchAndFillAutofillValues(document, fillValues, {
+          timeoutMs: 12_000,
+          kinds: ["cc-number", "cc-exp", "cc-csc", "cc-name"],
+        });
+      }
     }
 
     async function confirmSave(): Promise<void> {
