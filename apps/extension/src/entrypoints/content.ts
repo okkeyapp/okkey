@@ -17,7 +17,7 @@ import {
   OVERLAY_FONT_STACK,
   overlayIconUrl,
 } from "../lib/overlayAssets";
-import { resolveOverlayThemeCss } from "../lib/overlayTheme";
+import { defaultOverlayThemeCss, resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   captureLoginCredentials,
   classifyAutofillInput,
@@ -143,6 +143,23 @@ export default defineContentScript({
     }
 
     let overlayWired = false;
+    /** Cached theme CSS — avoid storage reads on every scroll/resize. */
+    let cachedThemeCss = defaultOverlayThemeCss().cssVars;
+    let themeCssResolved = false;
+
+    async function themeCssVars(): Promise<string> {
+      if (themeCssResolved) {
+        return cachedThemeCss;
+      }
+      try {
+        const theme = await resolveOverlayThemeCss();
+        cachedThemeCss = theme.cssVars;
+        themeCssResolved = true;
+        return cachedThemeCss;
+      } catch {
+        return cachedThemeCss;
+      }
+    }
 
     function ensureOverlay(): ShadowRoot {
       if (host && shadow) {
@@ -1056,78 +1073,96 @@ export default defineContentScript({
     }
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
-      const root = ensureOverlay();
-      if (!host) {
-        return;
-      }
-      const theme = await resolveOverlayThemeCss();
-      const anchorInput =
-        activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
-      const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
-      const showToggle = Boolean(togglePos && !pendingSave && overlayMode !== "unlock-save");
+      try {
+        const root = ensureOverlay();
+        if (!host) {
+          return;
+        }
+        const cssVars = await themeCssVars();
+        const anchorInput =
+          activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
+        const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
+        const showToggle = Boolean(togglePos && !pendingSave && overlayMode !== "unlock-save");
 
-      let panelMarkup = "";
-      if (overlayMode === "list" && cachedSuggestions.length > 0) {
-        panelMarkup = listHtml(cachedSuggestions);
-      } else if (overlayMode === "save" || overlayMode === "save-rename") {
-        panelMarkup = savePanelHtml(false);
-      } else if (overlayMode === "unlock-save") {
-        panelMarkup = savePanelHtml(true);
-      }
+        let panelMarkup = "";
+        if (overlayMode === "list" && cachedSuggestions.length > 0) {
+          panelMarkup = listHtml(cachedSuggestions);
+        } else if (overlayMode === "save" || overlayMode === "save-rename") {
+          panelMarkup = savePanelHtml(false);
+        } else if (overlayMode === "unlock-save") {
+          panelMarkup = savePanelHtml(true);
+        }
 
-      const tooltipText =
-        overlayMode === "empty-tooltip"
-          ? strings.emptyTooltip
-          : overlayMode === "unlock-tooltip"
-            ? strings.unlockTooltip
-            : null;
-      const tooltipMarkup =
-        tooltipText && togglePos
-          ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px"><span class="tooltip-arrow" aria-hidden="true"></span>${escapeHtml(tooltipText)}</div>`
-          : "";
+        const tooltipText =
+          overlayMode === "empty-tooltip"
+            ? strings.emptyTooltip
+            : overlayMode === "unlock-tooltip"
+              ? strings.unlockTooltip
+              : null;
+        const tooltipMarkup =
+          tooltipText && togglePos
+            ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px"><span class="tooltip-arrow" aria-hidden="true"></span>${escapeHtml(tooltipText)}</div>`
+            : "";
 
-      const toggleMarkup =
-        showToggle && togglePos
-          ? `<button type="button" class="toggle" data-toggle="1" style="left:${togglePos.left}px;top:${togglePos.top}px" aria-label="Okkey">
+        const toggleMarkup =
+          showToggle && togglePos
+            ? `<button type="button" class="toggle" data-toggle="1" style="left:${togglePos.left}px;top:${togglePos.top}px" aria-label="Okkey">
                <img src="${escapeHtml(overlayIconUrl("okkey-mark"))}" alt="" />
              </button>`
-          : "";
+            : "";
 
-      host.style.display = "block";
-      host.style.pointerEvents = "none";
-      root.innerHTML = `<style>${panelBaseStyles(theme.cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
-      wireOverlayOnce(root);
-      focusRenameInput(root);
+        host.style.display = "block";
+        host.style.pointerEvents = "none";
+        root.innerHTML = `<style>${panelBaseStyles(cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
+        wireOverlayOnce(root);
+        focusRenameInput(root);
 
-      const tip = root.querySelector(".tooltip");
-      if (tip instanceof HTMLElement && togglePos) {
-        const buttonCenter = togglePos.left + 10;
-        const rect = tip.getBoundingClientRect();
-        const half = rect.width / 2;
-        const minCenter = 8 + half;
-        const maxCenter = window.innerWidth - 8 - half;
-        const currentCenter = rect.left + half;
-        const clamped = Math.min(Math.max(currentCenter, minCenter), maxCenter);
-        tip.style.left = `${clamped}px`;
-        // Keep arrow aimed at the Okkey toggle when the tip is edge-clamped.
-        tip.style.setProperty("--ok-tooltip-arrow-offset", `${buttonCenter - clamped}px`);
-      }
-
-      const panel = root.querySelector(".panel");
-      if (panel instanceof HTMLElement) {
-        panel.style.pointerEvents = "auto";
-        if (
-          overlayMode === "save" ||
-          overlayMode === "save-rename" ||
-          overlayMode === "unlock-save"
-        ) {
-          positionSavePanel(panel);
-        } else if (anchorInput && document.contains(anchorInput)) {
-          positionPanelNearInput(panel, anchorInput);
+        const tip = root.querySelector(".tooltip");
+        if (tip instanceof HTMLElement && togglePos) {
+          const buttonCenter = togglePos.left + 10;
+          const rect = tip.getBoundingClientRect();
+          const half = rect.width / 2;
+          const minCenter = 8 + half;
+          const maxCenter = window.innerWidth - 8 - half;
+          const currentCenter = rect.left + half;
+          const clamped = Math.min(Math.max(currentCenter, minCenter), maxCenter);
+          tip.style.left = `${clamped}px`;
+          // Keep arrow aimed at the Okkey toggle when the tip is edge-clamped.
+          tip.style.setProperty("--ok-tooltip-arrow-offset", `${buttonCenter - clamped}px`);
         }
+
+        const panel = root.querySelector(".panel");
+        if (panel instanceof HTMLElement) {
+          panel.style.pointerEvents = "auto";
+          if (
+            overlayMode === "save" ||
+            overlayMode === "save-rename" ||
+            overlayMode === "unlock-save"
+          ) {
+            positionSavePanel(panel);
+          } else if (anchorInput && document.contains(anchorInput)) {
+            positionPanelNearInput(panel, anchorInput);
+          }
+        }
+        if (opts?.showToggleOnly && !panelMarkup && !tooltipMarkup && !toggleMarkup) {
+          hideOverlay();
+        }
+      } catch {
+        /* Never let overlay paint failures disrupt page UI (Select/focus). */
       }
-      if (opts?.showToggleOnly && !panelMarkup && !tooltipMarkup && !toggleMarkup) {
-        hideOverlay();
+    }
+
+    /** Reposition overlay without throwing into page scroll/resize handlers. */
+    function safeRepaintOverlay(opts?: { showToggleOnly?: boolean }): void {
+      try {
+        if (!host || host.style.display === "none") {
+          return;
+        }
+        void paintOverlay(opts).catch(() => {
+          /* ignore */
+        });
+      } catch {
+        /* ignore */
       }
     }
 
@@ -1616,26 +1651,39 @@ export default defineContentScript({
     document.addEventListener(
       "scroll",
       () => {
-        if (overlayMode === "hidden" && !activeInput) {
-          return;
+        // Capture-phase scroll fires for floating-ui / Radix Select positioning.
+        // Must never throw or force async storage work that breaks page UI.
+        try {
+          if (pendingSave) {
+            return;
+          }
+          if (!host || host.style.display === "none") {
+            return;
+          }
+          if (overlayMode === "hidden" && !activeInput) {
+            return;
+          }
+          if (overlayMode === "unlock-tooltip") {
+            safeRepaintOverlay();
+            return;
+          }
+          safeRepaintOverlay({
+            showToggleOnly: overlayMode === "hidden" || overlayMode === "empty-tooltip",
+          });
+        } catch {
+          /* ignore — page Select/focus must keep working */
         }
-        if (pendingSave) {
-          return;
-        }
-        if (overlayMode === "unlock-tooltip") {
-          void paintOverlay();
-          return;
-        }
-        void paintOverlay({
-          showToggleOnly: overlayMode === "hidden" || overlayMode === "empty-tooltip",
-        });
       },
       true,
     );
 
     window.addEventListener("resize", () => {
-      if (host?.style.display === "block") {
-        void paintOverlay();
+      try {
+        if (host?.style.display === "block") {
+          safeRepaintOverlay();
+        }
+      } catch {
+        /* ignore */
       }
     });
 

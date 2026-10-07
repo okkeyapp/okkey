@@ -36,9 +36,11 @@ export type OverlayThemeCss = {
   dark: boolean;
 };
 
-export async function resolveOverlayThemeCss(): Promise<OverlayThemeCss> {
-  const stored = await readExtensionThemePreference();
-  const preference = normalizeThemePreference(stored.theme ?? DEFAULT_THEME_PREFERENCE);
+function buildOverlayThemeCss(input: {
+  theme: string | null;
+  accent: string | null;
+}): OverlayThemeCss {
+  const preference = normalizeThemePreference(input.theme ?? DEFAULT_THEME_PREFERENCE);
   let dark: boolean;
   if (preference === "dark") {
     dark = true;
@@ -48,7 +50,7 @@ export async function resolveOverlayThemeCss(): Promise<OverlayThemeCss> {
     dark = typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
   }
   const accentId =
-    stored.accent && ACCENT_IDS.has(stored.accent) ? stored.accent : DEFAULT_ACCENT_ID;
+    input.accent && ACCENT_IDS.has(input.accent) ? input.accent : DEFAULT_ACCENT_ID;
   const primary = accentPrimaryHslTriplet(dark ? "dark" : "light", accentId);
   const tokens = dark ? DARK : LIGHT;
   const cssVars = `
@@ -64,4 +66,18 @@ export async function resolveOverlayThemeCss(): Promise<OverlayThemeCss> {
     --ok-shadow: ${tokens.shadow};
   `;
   return { cssVars, dark };
+}
+
+/** Defaults when storage is unavailable (content-script partial browser API). */
+export function defaultOverlayThemeCss(): OverlayThemeCss {
+  return buildOverlayThemeCss({ theme: null, accent: null });
+}
+
+export async function resolveOverlayThemeCss(): Promise<OverlayThemeCss> {
+  try {
+    const stored = await readExtensionThemePreference();
+    return buildOverlayThemeCss({ theme: stored.theme, accent: stored.accent });
+  } catch {
+    return defaultOverlayThemeCss();
+  }
 }
