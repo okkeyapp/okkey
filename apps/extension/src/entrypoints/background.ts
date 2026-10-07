@@ -9,6 +9,7 @@ import {
   handleAutofillQuery,
   handleAutofillSave,
   handleAutofillSaveContext,
+  handleAutofillSaveOffer,
   handleAutofillSiteIcon,
   isAutofillRuntimeMessage,
   markPendingSaveInteracted,
@@ -50,6 +51,14 @@ export default defineBackground(() => {
         username: message.username,
         password: message.password,
         vaultId: message.vaultId,
+        itemId: message.itemId,
+      });
+    }
+    if (message.type === AUTOFILL_MSG.saveOffer) {
+      return handleAutofillSaveOffer({
+        pageUrl: message.pageUrl,
+        username: message.username,
+        password: message.password,
       });
     }
     if (message.type === AUTOFILL_MSG.saveContext) {

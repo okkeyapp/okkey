@@ -26,6 +26,7 @@ import {
   type AutofillQueryResponse,
   type AutofillRuntimeMessage,
   type AutofillSaveContextResponse,
+  type AutofillSaveOfferResponse,
   type AutofillSaveResponse,
   type AutofillSiteIconResponse,
 } from "./autofillMessages";
@@ -459,6 +460,65 @@ async function uploadFaviconAttachment(input: {
   }
 }
 
+function usernamesEqual(a: string, b: string): boolean {
+  return a.trim().localeCompare(b.trim(), undefined, { sensitivity: "accent" }) === 0;
+}
+
+export async function handleAutofillSaveOffer(input: {
+  pageUrl: string;
+  username: string;
+  password: string;
+}): Promise<AutofillSaveOfferResponse> {
+  const auth = await resolveUnlockUserId();
+  if (!auth) {
+    return { status: "signed-out" };
+  }
+  if (!auth.unlocked) {
+    return { status: "locked" };
+  }
+  const existing = await matchingLoginItems(auth.userId, input.pageUrl);
+  if (existing.length === 0) {
+    return { status: "save" };
+  }
+
+  let usernameMatch: (typeof existing)[number] | null = null;
+  let fallback: (typeof existing)[number] | null = null;
+
+  for (const item of existing) {
+    const secrets = extractLoginAutofillSecrets(item);
+    if (!secrets) {
+      if (!fallback) {
+        fallback = item;
+      }
+      continue;
+    }
+    const sameUser = usernamesEqual(secrets.username, input.username);
+    const samePass = secrets.password === input.password;
+    if (sameUser && samePass) {
+      await touchExtensionUnlockSession(auth.userId);
+      return { status: "none" };
+    }
+    if (sameUser && !usernameMatch) {
+      usernameMatch = item;
+    } else if (!fallback) {
+      fallback = item;
+    }
+  }
+
+  const target = usernameMatch ?? fallback ?? existing[0];
+  if (!target) {
+    return { status: "save" };
+  }
+  await touchExtensionUnlockSession(auth.userId);
+  const iconUrl = await storedFaviconDataUrl(target.vaultId, target.itemId, target.faviconId);
+  return {
+    status: "update",
+    itemId: target.itemId,
+    title: target.title || target.itemId,
+    ...(iconUrl ? { iconUrl } : {}),
+  };
+}
+
 export async function handleAutofillSaveContext(): Promise<AutofillSaveContextResponse> {
   const session = await readSession();
   const profile = await readProfile();
@@ -510,6 +570,7 @@ export async function handleAutofillSave(input: {
   username: string;
   password: string;
   vaultId?: string;
+  itemId?: string;
 }): Promise<AutofillSaveResponse> {
   const session = await readSession();
   const profile = await readProfile();
@@ -520,26 +581,23 @@ export async function handleAutofillSave(input: {
   if (!fresh?.passwordShareC) {
     return { status: "locked" };
   }
-  const existing = await matchingLoginItems(session.user_id, input.pageUrl);
-  if (existing.length > 0) {
-    return { status: "exists" };
-  }
   const workspaceId = await readStoredCurrentWorkspaceId(session.user_id);
   const bundle = await readExtensionVaultBundle(session.user_id);
   if (!workspaceId || !bundle?.encrypted_private_key?.payload) {
     return { status: "error", message: "VAULT_NOT_READY" };
   }
+
+  if (!input.itemId) {
+    const existing = await matchingLoginItems(session.user_id, input.pageUrl);
+    if (existing.length > 0) {
+      return { status: "exists" };
+    }
+  }
+
   try {
     await initExtensionCrypto();
     const core = createCoreClient(profile.apiBaseUrl, session.access_token);
     const vaults = await core.listWorkspaceVaults(workspaceId);
-    const personal =
-      (input.vaultId ? vaults.find((vault) => vault.id === input.vaultId) : undefined) ??
-      vaults.find((vault) => vault.isPersonal) ??
-      vaults[0];
-    if (!personal) {
-      return { status: "error", message: "NO_VAULT" };
-    }
     const controller = createWorkspaceVaultItemsReadController({
       core,
       userId: session.user_id,
@@ -550,6 +608,47 @@ export async function handleAutofillSave(input: {
     });
     try {
       await controller.refresh();
+
+      if (input.itemId) {
+        const existingItem = controller.getItemById(input.itemId);
+        if (
+          !existingItem ||
+          existingItem.deleted ||
+          existingItem.archived ||
+          existingItem.categoryId !== ITEM_CATEGORY_LOGIN
+        ) {
+          return { status: "error", message: "ITEM_NOT_FOUND" };
+        }
+        const title = (input.title || existingItem.title || domainTitleFromUrl(input.websiteUrl)).trim() || "Login";
+        const updated = {
+          ...existingItem,
+          title,
+          updatedAtMs: Date.now(),
+          fields: existingItem.fields.map((field) => {
+            if (
+              (field.id === "login" || field.type === "email") &&
+              field.value.kind === "text"
+            ) {
+              return { ...field, value: { kind: "text" as const, text: input.username } };
+            }
+            if (field.value.kind === "password") {
+              return { ...field, value: { kind: "password" as const, password: input.password } };
+            }
+            return field;
+          }),
+        };
+        await controller.updateItem(updated);
+        await touchExtensionUnlockSession(session.user_id);
+        return { status: "ok", itemId: existingItem.itemId };
+      }
+
+      const personal =
+        (input.vaultId ? vaults.find((vault) => vault.id === input.vaultId) : undefined) ??
+        vaults.find((vault) => vault.isPersonal) ??
+        vaults[0];
+      if (!personal) {
+        return { status: "error", message: "NO_VAULT" };
+      }
       const itemId = generateEntityId();
       const title = (input.title || domainTitleFromUrl(input.websiteUrl)).trim() || "Login";
       let item = createPresetItemPlaintextV2({
@@ -746,6 +845,7 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.unlock ||
     type === AUTOFILL_MSG.unlocked ||
     type === AUTOFILL_MSG.save ||
+    type === AUTOFILL_MSG.saveOffer ||
     type === AUTOFILL_MSG.saveContext ||
     type === AUTOFILL_MSG.siteIcon ||
     type === AUTOFILL_MSG.openAndFill ||

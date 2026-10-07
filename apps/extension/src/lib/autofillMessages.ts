@@ -4,6 +4,7 @@ export const AUTOFILL_MSG = {
   unlock: "okkey.autofill.unlock",
   unlocked: "okkey.autofill.unlocked",
   save: "okkey.autofill.save",
+  saveOffer: "okkey.autofill.saveOffer",
   saveContext: "okkey.autofill.saveContext",
   siteIcon: "okkey.autofill.siteIcon",
   openAndFill: "okkey.autofill.openAndFill",
@@ -64,6 +65,19 @@ export type AutofillSaveResponse =
   | { status: "error"; message: string }
   | { status: "ok"; itemId: string };
 
+/** Decide whether to offer save, update an existing URL-match login, or stay silent. */
+export type AutofillSaveOfferResponse =
+  | { status: "signed-out" }
+  | { status: "locked" }
+  | { status: "none" }
+  | { status: "save" }
+  | {
+      status: "update";
+      itemId: string;
+      title: string;
+      iconUrl?: string;
+    };
+
 export type AutofillSaveVaultOption = {
   vaultId: string;
   name: string;
@@ -117,6 +131,15 @@ export type AutofillSaveMessage = {
   username: string;
   password: string;
   vaultId?: string;
+  /** When set, update this existing login instead of creating a new one. */
+  itemId?: string;
+};
+
+export type AutofillSaveOfferMessage = {
+  type: typeof AUTOFILL_MSG.saveOffer;
+  pageUrl: string;
+  username: string;
+  password: string;
 };
 
 export type AutofillSaveContextMessage = {
@@ -174,6 +197,7 @@ export type AutofillRuntimeMessage =
   | AutofillUnlockMessage
   | AutofillUnlockedMessage
   | AutofillSaveMessage
+  | AutofillSaveOfferMessage
   | AutofillSaveContextMessage
   | AutofillSiteIconMessage
   | AutofillOpenAndFillMessage

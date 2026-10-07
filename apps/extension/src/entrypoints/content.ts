@@ -6,6 +6,7 @@ import {
   type AutofillPendingSaveGetResponse,
   type AutofillQueryResponse,
   type AutofillSaveContextResponse,
+  type AutofillSaveOfferResponse,
   type AutofillSaveResponse,
   type AutofillSaveVaultOption,
   type AutofillSiteIconResponse,
@@ -33,33 +34,39 @@ import {
 type OverlayMode =
   | "hidden"
   | "list"
-  | "unlock-list"
+  | "unlock-tooltip"
   | "empty-tooltip"
   | "save"
   | "save-rename"
   | "unlock-save";
 
+type SavePromptKind = "create" | "update";
+
 function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
   return ru
     ? {
-        unlockTitle: "Сейф закрыт",
-        unlockBody: "Разблокируйте для автозаполнения",
         unlockCta: "Разблокировать Okkey",
+        unlockTooltip: "Разблокируйте Okkey",
         saveTitle: "Сохранить учётную запись?",
+        updateTitle: "Обновить пароль/логин в записи?",
         saveUnlockBody: "Чтобы сохранить учётную запись, сначала нужно разблокировать Okkey.",
+        updateUnlockBody: "Чтобы обновить учётную запись, сначала нужно разблокировать Okkey.",
         saveConfirm: "Сохранить",
+        updateConfirm: "Обновить",
         emptyTooltip: "Нет элементов для автозаполнения",
         workspaceFallback: "Workspace",
         vaultFallback: "Сейф",
       }
     : {
-        unlockTitle: "Vault locked",
-        unlockBody: "Unlock to autofill",
         unlockCta: "Unlock Okkey",
+        unlockTooltip: "Unlock Okkey",
         saveTitle: "Save this login?",
+        updateTitle: "Update login or password?",
         saveUnlockBody: "To save this login, unlock Okkey first.",
+        updateUnlockBody: "To update this login, unlock Okkey first.",
         saveConfirm: "Save",
+        updateConfirm: "Update",
         emptyTooltip: "No items to autofill",
         workspaceFallback: "Workspace",
         vaultFallback: "Vault",
@@ -106,9 +113,11 @@ export default defineContentScript({
     let activeInput: HTMLInputElement | null = null;
     /** Skip save prompt shortly after Okkey filled credentials. */
     let filledByOkkeyUntil = 0;
-    /** After login submit, do not auto-open unlock-list (noisy on OTP step). */
-    let suppressUnlockListUntil = 0;
+    /** After login submit, do not auto-open unlock tooltip (noisy on OTP step). */
+    let suppressUnlockTooltipUntil = 0;
     let pendingSave: { username: string; password: string } | null = null;
+    let pendingUpdateItemId: string | null = null;
+    let savePromptKind: SavePromptKind = "create";
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
     let overlayMode: OverlayMode = "hidden";
@@ -250,13 +259,11 @@ export default defineContentScript({
             font-weight: 400;
             line-height: 20px;
             color: hsl(var(--ok-fg));
-            background:
-              linear-gradient(hsl(var(--ok-bg)), hsl(var(--ok-bg))) padding-box,
-              linear-gradient(135deg, hsl(var(--ok-primary)) 0%, #f472b6 100%) border-box;
-            border: 1px solid transparent;
+            background: hsl(var(--ok-bg));
+            border: 0;
             border-radius: 12px;
             box-shadow:
-              0 0 0 1px rgba(var(--ok-shadow), 0.08),
+              0 0 0 1px rgba(var(--ok-shadow), 0.14),
               0 2px 3px rgba(var(--ok-shadow), 0.16);
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
@@ -270,20 +277,6 @@ export default defineContentScript({
             gap: 16px;
             /* Vault menu must paint outside the card; do not clip it. */
             overflow: visible;
-          }
-          .panel-unlock-list {
-            width: 360px;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            align-items: stretch;
-          }
-          .unlock-list-top {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            width: 100%;
           }
           .list {
             display: flex;
@@ -615,22 +608,6 @@ export default defineContentScript({
             justify-content: flex-end;
             width: 100%;
           }
-          .unlock-list-logo {
-            width: 32px;
-            height: 32px;
-            flex-shrink: 0;
-            display: block;
-          }
-          .unlock-list-copy {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            flex: 1;
-            min-width: 0;
-          }
-          .unlock-list-copy .save-title { line-height: 28px; }
-          .unlock-list-copy .save-body { margin: 0; }
-          .cta-full { width: 100%; }
           .toggle {
             pointer-events: auto;
             position: fixed;
@@ -818,17 +795,21 @@ export default defineContentScript({
     }
 
     function savePanelHtml(locked: boolean): string {
+      const isUpdate = savePromptKind === "update";
+      const titleText = isUpdate ? strings.updateTitle : strings.saveTitle;
+      const unlockBody = isUpdate ? strings.updateUnlockBody : strings.saveUnlockBody;
+      const confirmText = isUpdate ? strings.updateConfirm : strings.saveConfirm;
       if (locked) {
         return `<div class="panel panel-save">
           <div class="save-header">
             <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock"))}" alt="" />
-            <span class="save-title">${escapeHtml(strings.saveTitle)}</span>
+            <span class="save-title">${escapeHtml(titleText)}</span>
             <span class="spacer"></span>
             <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
               <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
             </button>
           </div>
-          <div class="save-body">${escapeHtml(strings.saveUnlockBody)}</div>
+          <div class="save-body">${escapeHtml(unlockBody)}</div>
           <div class="save-actions">
             <button type="button" class="cta" data-unlock="1">
               <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
@@ -844,10 +825,14 @@ export default defineContentScript({
         iconUrl: saveIconUrl,
         editing: saveEditing,
       });
+      const vaultBlock = isUpdate
+        ? ""
+        : `<hr class="save-divider" />
+          ${vaultPickerHtml()}`;
       return `<div class="panel panel-save">
         <div class="save-header">
           <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
-          <span class="save-title">${escapeHtml(strings.saveTitle)}</span>
+          <span class="save-title">${escapeHtml(titleText)}</span>
           <span class="spacer"></span>
           <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
             <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
@@ -855,28 +840,11 @@ export default defineContentScript({
         </div>
         <div class="save-card">
           ${preview}
-          <hr class="save-divider" />
-          ${vaultPickerHtml()}
+          ${vaultBlock}
         </div>
         <div class="save-actions">
-          <button type="button" class="cta" data-save-confirm="1">${escapeHtml(strings.saveConfirm)}</button>
+          <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
         </div>
-      </div>`;
-    }
-
-    function unlockListHtml(): string {
-      return `<div class="panel panel-unlock-list">
-        <div class="unlock-list-top">
-          <img class="unlock-list-logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock-compact"))}" alt="" />
-          <div class="unlock-list-copy">
-            <div class="save-title">${escapeHtml(strings.unlockTitle)}</div>
-            <div class="save-body">${escapeHtml(strings.unlockBody)}</div>
-          </div>
-        </div>
-        <button type="button" class="cta cta-full" data-unlock="1">
-          <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
-          <span>${escapeHtml(strings.unlockCta)}</span>
-        </button>
       </div>`;
     }
 
@@ -945,6 +913,8 @@ export default defineContentScript({
         }
         if (target.closest("[data-save-cancel]")) {
           pendingSave = null;
+          pendingUpdateItemId = null;
+          savePromptKind = "create";
           saveEditing = false;
           void clearPendingSaveOffer();
           hideOverlay();
@@ -1026,17 +996,21 @@ export default defineContentScript({
       let panelMarkup = "";
       if (overlayMode === "list" && cachedSuggestions.length > 0) {
         panelMarkup = listHtml(cachedSuggestions);
-      } else if (overlayMode === "unlock-list") {
-        panelMarkup = unlockListHtml();
       } else if (overlayMode === "save" || overlayMode === "save-rename") {
         panelMarkup = savePanelHtml(false);
       } else if (overlayMode === "unlock-save") {
         panelMarkup = savePanelHtml(true);
       }
 
+      const tooltipText =
+        overlayMode === "empty-tooltip"
+          ? strings.emptyTooltip
+          : overlayMode === "unlock-tooltip"
+            ? strings.unlockTooltip
+            : null;
       const tooltipMarkup =
-        overlayMode === "empty-tooltip" && togglePos
-          ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px">${escapeHtml(strings.emptyTooltip)}</div>`
+        tooltipText && togglePos
+          ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px">${escapeHtml(tooltipText)}</div>`
           : "";
 
       const toggleMarkup =
@@ -1101,7 +1075,7 @@ export default defineContentScript({
       if (!activeInput) {
         return;
       }
-      if (listOpen && (overlayMode === "list" || overlayMode === "unlock-list")) {
+      if (listOpen && (overlayMode === "list" || overlayMode === "unlock-tooltip")) {
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
@@ -1119,7 +1093,7 @@ export default defineContentScript({
       }
       if (response.status === "locked") {
         listOpen = true;
-        overlayMode = "unlock-list";
+        overlayMode = "unlock-tooltip";
         await paintOverlay();
         return;
       }
@@ -1164,15 +1138,15 @@ export default defineContentScript({
       }
       if (response.status === "locked") {
         cachedSuggestions = [];
-        if (Date.now() < suppressUnlockListUntil) {
-          // Post-submit / OTP step: keep the toggle, skip the noisy unlock card.
+        if (Date.now() < suppressUnlockTooltipUntil) {
+          // Post-submit / OTP step: keep the toggle, skip the unlock tooltip.
           listOpen = false;
           overlayMode = "hidden";
           await paintOverlay({ showToggleOnly: true });
           return;
         }
-        listOpen = true;
-        overlayMode = "unlock-list";
+        listOpen = false;
+        overlayMode = "unlock-tooltip";
         await paintOverlay();
         return;
       }
@@ -1188,20 +1162,33 @@ export default defineContentScript({
       await paintOverlay();
     }
 
-    function showSavePrompt(creds: { username: string; password: string }, locked: boolean): void {
+    function showSavePrompt(
+      creds: { username: string; password: string },
+      locked: boolean,
+      opts?: { kind?: SavePromptKind; itemId?: string; title?: string; iconUrl?: string },
+    ): void {
       pendingSave = creds;
+      savePromptKind = opts?.kind ?? "create";
+      pendingUpdateItemId = savePromptKind === "update" ? opts?.itemId ?? null : null;
       listOpen = false;
       saveEditing = false;
       vaultMenuOpen = false;
-      if (!saveTitleDraft) {
+      if (opts?.title) {
+        saveTitleDraft = opts.title;
+      } else if (!saveTitleDraft) {
         saveTitleDraft = domainTitle();
+      }
+      if (opts?.iconUrl) {
+        saveIconUrl = opts.iconUrl;
       }
       overlayMode = locked ? "unlock-save" : "save";
       void paintOverlay();
-      if (!locked) {
+      if (!locked && savePromptKind === "create") {
         void hydrateSaveContext();
       }
-      void hydrateSavePromptIcon(creds);
+      if (!opts?.iconUrl) {
+        void hydrateSavePromptIcon(creds);
+      }
     }
 
     async function clearPendingSaveOffer(): Promise<void> {
@@ -1366,15 +1353,23 @@ export default defineContentScript({
         title,
         username: creds.username,
         password: creds.password,
-        vaultId: saveVaultId || undefined,
+        vaultId: savePromptKind === "create" ? saveVaultId || undefined : undefined,
+        itemId: savePromptKind === "update" ? pendingUpdateItemId || undefined : undefined,
       })) as AutofillSaveResponse;
       if (result.status === "locked") {
-        showSavePrompt(creds, true);
+        showSavePrompt(creds, true, {
+          kind: savePromptKind,
+          itemId: pendingUpdateItemId || undefined,
+          title: saveTitleDraft,
+          iconUrl: saveIconUrl,
+        });
         void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
         return;
       }
       if (result.status === "ok" || result.status === "exists") {
         pendingSave = null;
+        pendingUpdateItemId = null;
+        savePromptKind = "create";
         saveIconUrl = undefined;
         void clearPendingSaveOffer();
         hideOverlay();
@@ -1382,6 +1377,8 @@ export default defineContentScript({
       }
       if (result.status === "signed-out") {
         pendingSave = null;
+        pendingUpdateItemId = null;
+        savePromptKind = "create";
         void clearPendingSaveOffer();
         hideOverlay();
       }
@@ -1391,9 +1388,14 @@ export default defineContentScript({
       if (wasFilledByOkkey()) {
         return;
       }
-      let response: AutofillQueryResponse;
+      let response: AutofillSaveOfferResponse;
       try {
-        response = await queryMatches();
+        response = (await browser.runtime.sendMessage({
+          type: AUTOFILL_MSG.saveOffer,
+          pageUrl: pageUrl(),
+          username: creds.username,
+          password: creds.password,
+        })) as AutofillSaveOfferResponse;
       } catch {
         return;
       }
@@ -1402,19 +1404,35 @@ export default defineContentScript({
         return;
       }
       if (response.status === "locked") {
-        showSavePrompt(creds, true);
+        // Kind (save vs update) is resolved after unlock when secrets are available.
+        showSavePrompt(creds, true, { kind: "create" });
         return;
       }
-      if (response.suggestions.length > 0) {
+      if (response.status === "none") {
+        pendingSave = null;
+        pendingUpdateItemId = null;
+        savePromptKind = "create";
         void clearPendingSaveOffer();
+        if (overlayMode === "save" || overlayMode === "save-rename" || overlayMode === "unlock-save") {
+          hideOverlay();
+        }
         return;
       }
-      showSavePrompt(creds, false);
+      if (response.status === "update") {
+        showSavePrompt(creds, false, {
+          kind: "update",
+          itemId: response.itemId,
+          title: response.title,
+          iconUrl: response.iconUrl,
+        });
+        return;
+      }
+      showSavePrompt(creds, false, { kind: "create" });
     }
 
     function onCredentialsSubmitted(): void {
-      suppressUnlockListUntil = Date.now() + 12_000;
-      if (overlayMode === "unlock-list" || overlayMode === "list") {
+      suppressUnlockTooltipUntil = Date.now() + 12_000;
+      if (overlayMode === "unlock-tooltip" || overlayMode === "list") {
         listOpen = false;
         overlayMode = "hidden";
         void paintOverlay({ showToggleOnly: true });
@@ -1464,9 +1482,12 @@ export default defineContentScript({
           if (overlayMode === "empty-tooltip") {
             return;
           }
-          // Keep toggle while field may still be "active"; hide panels on blur.
+          // Keep toggle while field may still be "active"; hide panels/tooltips on blur.
           listOpen = false;
-          if (overlayMode === "list" || overlayMode === "unlock-list") {
+          if (
+            overlayMode === "list" ||
+            overlayMode === "unlock-tooltip"
+          ) {
             overlayMode = "hidden";
             void paintOverlay({ showToggleOnly: true });
             return;
@@ -1486,7 +1507,13 @@ export default defineContentScript({
         if (pendingSave) {
           return;
         }
-        void paintOverlay({ showToggleOnly: overlayMode === "hidden" || overlayMode === "empty-tooltip" });
+        if (overlayMode === "unlock-tooltip") {
+          void paintOverlay();
+          return;
+        }
+        void paintOverlay({
+          showToggleOnly: overlayMode === "hidden" || overlayMode === "empty-tooltip",
+        });
       },
       true,
     );
@@ -1582,7 +1609,13 @@ export default defineContentScript({
         if (suggestionsSuppressed()) {
           return;
         }
-        if (activeInput && document.activeElement === activeInput) {
+        // Popup unlock steals focus — refresh from retained field, not activeElement.
+        if (activeInput && document.contains(activeInput)) {
+          try {
+            activeInput.focus({ preventScroll: true });
+          } catch {
+            /* ignore */
+          }
           void showForInput(activeInput);
         }
         return;
