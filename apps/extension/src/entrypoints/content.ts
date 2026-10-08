@@ -36,7 +36,7 @@ import {
   submitLoginFormIfReady,
   watchAndFillAutofillValues,
 } from "../lib/loginFormFields";
-import { pageHasBlockingOverlayUi } from "../lib/pageBlockingOverlayUi";
+import { shouldFreezeOverlayUpdates } from "../lib/pageBlockingOverlayUi";
 
 type OverlayMode =
   | "hidden"
@@ -168,6 +168,47 @@ export default defineContentScript({
     /** Cached theme CSS — avoid storage reads on every scroll/resize. */
     let cachedThemeCss = defaultOverlayThemeCss().cssVars;
     let themeCssResolved = false;
+    /** Monotonic id so late autofill query results never paint after focus left / Select opened. */
+    let overlayQueryGeneration = 0;
+    /**
+     * Sticky freeze while Radix Select / datepicker dropdown is open.
+     * Debounced clear survives brief unmounts during floating-ui reposition (~Select close race).
+     */
+    let overlayUpdatesFrozen = false;
+    let overlayFreezeClearTimer = 0;
+
+    function refreshOverlayFreeze(): boolean {
+      try {
+        if (shouldFreezeOverlayUpdates()) {
+          overlayUpdatesFrozen = true;
+          window.clearTimeout(overlayFreezeClearTimer);
+          overlayFreezeClearTimer = 0;
+          return true;
+        }
+      } catch {
+        /* ignore */
+      }
+      if (overlayUpdatesFrozen) {
+        if (overlayFreezeClearTimer === 0) {
+          overlayFreezeClearTimer = window.setTimeout(() => {
+            overlayFreezeClearTimer = 0;
+            try {
+              if (!shouldFreezeOverlayUpdates()) {
+                overlayUpdatesFrozen = false;
+              }
+            } catch {
+              overlayUpdatesFrozen = false;
+            }
+          }, 320);
+        }
+        return true;
+      }
+      return false;
+    }
+
+    function isOverlayUpdateFrozen(): boolean {
+      return refreshOverlayFreeze();
+    }
 
     async function themeCssVars(): Promise<string> {
       if (themeCssResolved) {
@@ -245,7 +286,7 @@ export default defineContentScript({
         requestAnimationFrame(() => {
           input.readOnly = false;
           // Do not steal focus back from an open Select / datepicker dropdown.
-          if (pageHasBlockingOverlayUi()) {
+          if (isOverlayUpdateFrozen()) {
             return;
           }
           if (document.activeElement !== input) {
@@ -413,6 +454,7 @@ export default defineContentScript({
             overflow: hidden;
             text-overflow: ellipsis;
           }
+          /* Match packages/ui Button variant=default (primary) hover/focus/active/disabled. */
           button.cta {
             display: inline-flex;
             align-items: center;
@@ -432,13 +474,26 @@ export default defineContentScript({
             -webkit-appearance: none;
             background: hsl(var(--ok-primary));
             color: hsl(var(--ok-primary-fg));
-            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
-          }
-          button.cta:hover { filter: brightness(0.95); }
-          button.cta:focus-visible {
+            box-shadow: none;
             outline: none;
-            filter: brightness(0.95);
-            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4), 0 1px 1px rgba(0,0,0,0.1);
+            transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+          }
+          button.cta:hover {
+            background: hsl(var(--ok-primary) / 0.85);
+          }
+          button.cta:active {
+            background: hsl(var(--ok-primary));
+            color: hsl(var(--ok-primary-fg));
+          }
+          button.cta:focus-visible {
+            background: hsl(var(--ok-primary) / 0.85);
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+          }
+          button.cta:disabled,
+          button.cta[disabled] {
+            opacity: 0.5;
+            pointer-events: none;
+            cursor: default;
           }
           button.cta img { width: 16px; height: 16px; display: block; }
           button.icon-btn {
@@ -459,12 +514,13 @@ export default defineContentScript({
           }
           button.icon-btn img { width: 16px; height: 16px; display: block; }
           button.icon-btn:hover {
-            filter: brightness(0.96);
-            background: hsl(var(--ok-hover));
+            filter: brightness(0.9);
+            background: hsl(var(--ok-edit-btn));
           }
           button.icon-btn:focus-visible {
-            background: hsl(var(--ok-hover));
-            box-shadow: 0 0 0 2px hsl(var(--ok-primary));
+            filter: brightness(0.9);
+            background: hsl(var(--ok-edit-btn));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           /* Match packages/ui Popup dialog close (size-8, muted → hover muted bg + ring). */
           button.close-btn {
@@ -641,11 +697,11 @@ export default defineContentScript({
             outline: none;
             transition: background-color 150ms ease, box-shadow 150ms ease;
           }
-          button.vault-picker:hover {
+          button.vault-picker:hover,
+          button.vault-picker:focus-visible {
             background: hsl(var(--ok-hover));
           }
           button.vault-picker:focus-visible {
-            background: hsl(var(--ok-hover));
             box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           button.vault-picker .vault-name {
@@ -1086,6 +1142,12 @@ export default defineContentScript({
           void paintOverlay();
           return;
         }
+        // Click empty space in the save panel closes vault dropdown without applying a choice.
+        if (vaultMenuOpen && target.closest(".panel-save") && !target.closest(".vault-menu")) {
+          vaultMenuOpen = false;
+          void paintOverlay();
+          return;
+        }
         const row = target.closest("[data-item]");
         if (row instanceof HTMLElement && row.dataset.item) {
           const key = row.dataset.suggestionKey;
@@ -1133,9 +1195,9 @@ export default defineContentScript({
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
       try {
-        // Never mutate overlay DOM while Select/Menu/datepicker is open — list paint
-        // after a slow autofill query (~1s) closes them via focus/resize/DismissableLayer.
-        if (pageHasBlockingOverlayUi() && !pendingSave) {
+        // Full no-op while Select / datepicker dropdown is open — late paint after a
+        // slow autofill query (~1s) closes them via focus/resize/DismissableLayer.
+        if (isOverlayUpdateFrozen() && !pendingSave) {
           return;
         }
         const root = ensureOverlay();
@@ -1143,7 +1205,7 @@ export default defineContentScript({
           return;
         }
         const cssVars = await themeCssVars();
-        if (pageHasBlockingOverlayUi() && !pendingSave) {
+        if (isOverlayUpdateFrozen() && !pendingSave) {
           return;
         }
         const anchorInput =
@@ -1156,7 +1218,7 @@ export default defineContentScript({
           overlayMode === "list" &&
           cachedSuggestions.length > 0 &&
           !opts?.showToggleOnly &&
-          !pageHasBlockingOverlayUi();
+          !isOverlayUpdateFrozen();
         if (allowListPanel) {
           panelMarkup = listHtml(cachedSuggestions);
         } else if (overlayMode === "save" || overlayMode === "save-rename") {
@@ -1227,7 +1289,7 @@ export default defineContentScript({
     /** Reposition overlay without throwing into page scroll/resize handlers. */
     function safeRepaintOverlay(opts?: { showToggleOnly?: boolean }): void {
       try {
-        if (pageHasBlockingOverlayUi()) {
+        if (isOverlayUpdateFrozen()) {
           return;
         }
         if (!host || host.style.display === "none") {
@@ -1263,13 +1325,17 @@ export default defineContentScript({
       }
       // Explicit toggle open after a fill — allow suggestions again.
       clearFilledByOkkey();
-      if (pageHasBlockingOverlayUi()) {
+      if (isOverlayUpdateFrozen()) {
         return;
       }
+      const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
         response = await queryMatches(fieldKindsForQuery(activeInput));
       } catch {
+        return;
+      }
+      if (queryGen !== overlayQueryGeneration || isOverlayUpdateFrozen()) {
         return;
       }
       if (response.status === "signed-out") {
@@ -1305,6 +1371,11 @@ export default defineContentScript({
 
     async function showForInput(input: HTMLInputElement): Promise<void> {
       activeInput = input;
+      // While datepicker / Select is open — do not start or apply query-driven overlays.
+      if (isOverlayUpdateFrozen()) {
+        return;
+      }
+      const queryGen = ++overlayQueryGeneration;
       // After Okkey fill: keep the round toggle, do not auto-open the list until clear/toggle.
       if (suggestionsListSuppressed()) {
         listOpen = false;
@@ -1318,9 +1389,10 @@ export default defineContentScript({
       } catch {
         // Do not repaint if focus left for Select / datepicker while the query failed.
         if (
+          queryGen === overlayQueryGeneration &&
           activeInput === input &&
           document.activeElement === input &&
-          !pageHasBlockingOverlayUi()
+          !isOverlayUpdateFrozen()
         ) {
           listOpen = false;
           overlayMode = "hidden";
@@ -1332,7 +1404,12 @@ export default defineContentScript({
       // autofill query ran (~1s). Never repaint in that case — overlay DOM mutation
       // closes Radix Select (resize/blur/DismissableLayer), even when the open
       // dropdown was briefly missed by the blocking-UI selector.
-      if (activeInput !== input || document.activeElement !== input || pageHasBlockingOverlayUi()) {
+      if (
+        queryGen !== overlayQueryGeneration ||
+        activeInput !== input ||
+        document.activeElement !== input ||
+        isOverlayUpdateFrozen()
+      ) {
         return;
       }
       if (suggestionsListSuppressed()) {
@@ -1716,6 +1793,10 @@ export default defineContentScript({
         ) {
           return;
         }
+        // Select / datepicker open — full no-op (no suppress, no query, no paint).
+        if (isOverlayUpdateFrozen()) {
+          return;
+        }
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || !isVisibleFillableElement(target)) {
           return;
@@ -1745,7 +1826,7 @@ export default defineContentScript({
           if (overlayMode === "empty-tooltip") {
             return;
           }
-          if (pageHasBlockingOverlayUi()) {
+          if (isOverlayUpdateFrozen()) {
             return;
           }
           // Keep toggle while field may still be "active"; hide panels/tooltips on blur.
@@ -1771,6 +1852,9 @@ export default defineContentScript({
         return;
       }
       if (document.activeElement !== target) {
+        return;
+      }
+      if (isOverlayUpdateFrozen()) {
         return;
       }
       if (!isVisibleFillableElement(target)) {
@@ -1806,7 +1890,7 @@ export default defineContentScript({
         // Capture-phase scroll fires for floating-ui / Radix Select positioning.
         // Must never throw or force async storage work that breaks page UI.
         try {
-          if (pageHasBlockingOverlayUi()) {
+          if (isOverlayUpdateFrozen()) {
             return;
           }
           if (pendingSave) {
@@ -1834,7 +1918,7 @@ export default defineContentScript({
 
     window.addEventListener("resize", () => {
       try {
-        if (pageHasBlockingOverlayUi()) {
+        if (isOverlayUpdateFrozen()) {
           return;
         }
         if (host?.style.display === "block") {
@@ -1844,6 +1928,22 @@ export default defineContentScript({
         /* ignore */
       }
     });
+
+    // Track Select / datepicker open state so late query results stay no-op even if
+    // the dropdown briefly fails a one-shot querySelector during reposition.
+    try {
+      const freezeObserver = new MutationObserver(() => {
+        refreshOverlayFreeze();
+      });
+      freezeObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-state", "aria-expanded", "data-radix-select-viewport"],
+      });
+    } catch {
+      /* ignore */
+    }
 
     document.addEventListener(
       "pointerdown",
@@ -1935,7 +2035,7 @@ export default defineContentScript({
           return undefined;
         }
         // Popup unlock steals focus — refresh from retained field, not activeElement.
-        if (activeInput && document.contains(activeInput) && !pageHasBlockingOverlayUi()) {
+        if (activeInput && document.contains(activeInput) && !isOverlayUpdateFrozen()) {
           try {
             activeInput.focus({ preventScroll: true });
           } catch {

@@ -69,7 +69,11 @@ function CalendarMonthYearCaption({ calendarMonth }: MonthCaptionProps) {
         <SelectTrigger className="h-8 w-[9.5rem]" aria-label="Choose the month">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent
+          // Keep focus inside the caption Selects; autofocus / overlay focus
+          // restore must not dismiss month/year while the listbox is open.
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
           {monthOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
@@ -81,7 +85,7 @@ function CalendarMonthYearCaption({ calendarMonth }: MonthCaptionProps) {
         <SelectTrigger className="h-8 w-[5.5rem]" aria-label="Choose the year">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent onCloseAutoFocus={(event) => event.preventDefault()}>
           {yearOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}

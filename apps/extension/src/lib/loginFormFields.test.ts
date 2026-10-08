@@ -25,7 +25,33 @@ describe("classifyLoginInput email heuristics", () => {
     assert.equal(classifyLoginInput({ type: "text", name: "e_mail" }), "username");
     assert.equal(classifyLoginInput({ type: "text", name: "user_email" }), "username");
     assert.equal(classifyLoginInput({ type: "text", id: "EmailAddress" }), "username");
-    assert.equal(classifyLoginInput({ type: "search", name: "contact_email" }), "username");
+  });
+
+  it("ignores search fields even when name looks like email", () => {
+    assert.equal(classifyLoginInput({ type: "search", name: "contact_email" }), null);
+    assert.equal(classifyLoginInput({ type: "text", name: "search", placeholder: "Search" }), null);
+    assert.equal(classifyLoginInput({ type: "text", autocomplete: "search", name: "q" }), null);
+    assert.equal(classifyLoginInput({ type: "text", role: "searchbox", name: "q" }), null);
+  });
+
+  it("does not treat OTP / one-time password boxes as password", () => {
+    assert.equal(
+      classifyLoginInput({ type: "password", name: "otp", autocomplete: "one-time-code" }),
+      "otp",
+    );
+    assert.equal(
+      classifyLoginInput({ type: "password", name: "code", maxLength: 1, inputMode: "numeric" }),
+      "otp",
+    );
+    assert.equal(classifyLoginInput({ type: "password", name: "password" }), "password");
+  });
+
+  it("denies captcha / comment / filter fields", () => {
+    assert.equal(classifyAutofillInput({ type: "text", name: "captcha" }), null);
+    assert.equal(classifyAutofillInput({ type: "text", name: "comment" }), null);
+    assert.equal(classifyAutofillInput({ type: "text", name: "filter" }), null);
+    assert.equal(classifyAutofillInput({ type: "checkbox", name: "remember" }), null);
+    assert.equal(classifyAutofillInput({ type: "file", name: "avatar" }), null);
   });
 
   it("classifies placeholder / aria / label / inputMode email", () => {

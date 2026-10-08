@@ -54,10 +54,17 @@ export type AutofillInputHints = {
   labelText?: string;
   inputMode?: string;
   maxLength?: number;
+  role?: string;
 };
 
 const OTP_NAME =
   /one[-_]?time|otp|totp|2fa|mfa|authenticator|verification[-_]?code|auth[-_]?code|^code$/i;
+
+/** Fields that must never receive autofill / Okkey toggle. */
+const DENYLIST_HINT =
+  /\b(search|filter|query|find|look[-_]?up|комментар|comment|message|chat|captcha|recaptcha|csrf|token(?![-_]?auth)|honeypot|website[-_]?url|promo[-_]?code|coupon|newsletter|subscribe)\b/i;
+
+const SEARCH_HINT = /\b(search|найти|поиск|искать|filter|фильтр)\b/i;
 
 /** Email / mail heuristics (EN + RU + common variants). */
 const EMAIL_HINT =
@@ -146,6 +153,55 @@ function firstMatch(
 }
 
 /**
+ * True when the field must not show Okkey autofill UI / receive fills
+ * (search, filter, captcha, comments, non-text controls, etc.).
+ */
+export function isDeniedAutofillField(input: AutofillInputHints): boolean {
+  const type = (input.type || "text").toLowerCase();
+  if (
+    type === "hidden" ||
+    type === "submit" ||
+    type === "button" ||
+    type === "checkbox" ||
+    type === "radio" ||
+    type === "file" ||
+    type === "image" ||
+    type === "reset" ||
+    type === "range" ||
+    type === "color" ||
+    type === "search"
+  ) {
+    return true;
+  }
+
+  const ac = (input.autocomplete ?? "").toLowerCase().trim();
+  if (acToken(ac, "search") || ac.split(/\s+/).some((part) => part === "search" || part.endsWith("-search"))) {
+    return true;
+  }
+
+  const blob = attrBlob(input);
+  const role = input.role?.toLowerCase();
+  if (role === "searchbox" || role === "switch" || role === "checkbox" || role === "radio") {
+    return true;
+  }
+  if (SEARCH_HINT.test(blob) || DENYLIST_HINT.test(blob)) {
+    // Allow real identity fields that only mention deny-words inside a longer unrelated phrase
+    // via explicit email/username/password autocomplete.
+    if (
+      acToken(ac, "email") ||
+      acToken(ac, "username") ||
+      acToken(ac, "current-password") ||
+      acToken(ac, "new-password") ||
+      ac.includes("one-time")
+    ) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Classify a page input for autofill (login + personal / finance / docs / db / crypto).
  * Returns null when the field is not a known autofill target.
  */
@@ -154,12 +210,17 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
   const ac = (input.autocomplete ?? "").toLowerCase().trim();
   const blob = attrBlob(input);
 
-  if (type === "hidden" || type === "submit" || type === "button" || type === "checkbox" || type === "radio" || type === "file" || type === "image" || type === "reset") {
+  if (isDeniedAutofillField(input)) {
     return null;
   }
 
   if (type === "password") {
-    if (ac.includes("one-time") || OTP_NAME.test(blob)) {
+    // OTP often uses type=password on multi-box / one-time fields — never treat as password.
+    if (ac.includes("one-time") || ac === "one-time-code" || OTP_NAME.test(blob)) {
+      return "otp";
+    }
+    // Single-digit password boxes are almost always OTP digit groups, not a password field.
+    if (input.maxLength === 1 && (input.inputMode === "numeric" || input.inputMode === "decimal")) {
       return "otp";
     }
     if (DB_PASS.test(blob)) {
@@ -173,9 +234,12 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
 
   if (
     ac.includes("one-time-code") ||
+    ac.includes("one-time") ||
     ac === "otp" ||
     OTP_NAME.test(blob) ||
-    (input.inputMode === "numeric" && (input.maxLength === 6 || input.maxLength === 8) && OTP_NAME.test(blob))
+    (input.inputMode === "numeric" &&
+      (input.maxLength === 6 || input.maxLength === 8) &&
+      OTP_NAME.test(blob))
   ) {
     return "otp";
   }
@@ -324,6 +388,7 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
     labelText: labelText || undefined,
     inputMode: el.inputMode,
     maxLength: el.maxLength,
+    role: el.getAttribute("role") ?? undefined,
   };
 }
 

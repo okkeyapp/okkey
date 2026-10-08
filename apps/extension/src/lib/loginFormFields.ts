@@ -86,8 +86,23 @@ export function findLoginFields(root: ParentNode): {
   const otp: HTMLInputElement[] = [];
   const nodes = Array.from(root.querySelectorAll("input"));
   const classified = new Set<HTMLInputElement>();
+
+  // Prefer multi-box OTP groups first so type=password digit boxes never get password fill.
+  const digitGroup = collectDigitOtpGroups(
+    nodes.filter(
+      (node): node is HTMLInputElement =>
+        node instanceof HTMLInputElement && isVisibleFillableElement(node),
+    ),
+  );
+  if (digitGroup.length >= 4) {
+    for (const node of digitGroup) {
+      otp.push(node);
+      classified.add(node);
+    }
+  }
+
   for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node)) {
+    if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node) || classified.has(node)) {
       continue;
     }
     const hints = collectInputHints(node);
@@ -101,19 +116,6 @@ export function findLoginFields(root: ParentNode): {
     } else if (kind === "otp") {
       otp.push(node);
       classified.add(node);
-    }
-  }
-  if (otp.length <= 1) {
-    const digitGroup = collectDigitOtpGroups(
-      nodes.filter(
-        (node): node is HTMLInputElement =>
-          node instanceof HTMLInputElement &&
-          isVisibleFillableElement(node) &&
-          !classified.has(node),
-      ),
-    );
-    if (digitGroup.length >= 4) {
-      otp.push(...digitGroup);
     }
   }
   return { username, password, otp };

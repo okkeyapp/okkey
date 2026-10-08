@@ -36,6 +36,26 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
       return;
     }
 
+    // Repositioning while a Radix Select (month/year caption) is open remounts /
+    // dismisses the listbox via focus + DismissableLayer. Skip until it closes.
+    try {
+      if (
+        typeof document !== "undefined" &&
+        document.querySelector(
+          [
+            "[data-radix-select-viewport]",
+            '[role="listbox"][data-state="open"]',
+            '[role="combobox"][data-state="open"]',
+            '[aria-expanded="true"][aria-haspopup="listbox"]',
+          ].join(","),
+        )
+      ) {
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+
     const next = computeKeyFieldPortaledOverlayPosition({
       anchorRect: anchor.getBoundingClientRect(),
       panelRect: panel.getBoundingClientRect(),
