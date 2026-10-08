@@ -67,21 +67,18 @@ function isRuLocale(locale: string): boolean {
   return locale.trim().toLowerCase().startsWith("ru");
 }
 
-function hasRuRegionSuffix(value: string): boolean {
-  return /\b(обл\.?|область|край|респ\.?|республика|округ|ао)\b/i.test(value);
-}
-
 function formatRuState(state: string): string {
   const trimmed = state.trim();
   if (!trimmed) {
     return "";
   }
-  if (hasRuRegionSuffix(trimmed)) {
-    return trimmed
-      .replace(/\bобласть\b/gi, "обл.")
-      .replace(/\bреспублика\b/gi, "респ.");
-  }
-  return `${trimmed} обл.`;
+  // Avoid `\b` — it does not treat Cyrillic as word characters in JS.
+  return trimmed
+    .replace(/\s*область\.?/gi, "")
+    .replace(/\s*обл\.?/gi, "")
+    .replace(/республика/gi, "респ.")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function formatRuCity(city: string): string {
