@@ -11,7 +11,7 @@
       "import": "./dist/index.js",
       "default": "./src/index.ts"
     },
-    "./key-field-address": {
+    "./lib/key-field-address": {
       "types": "./dist/lib/key-field-address.d.ts",
       "import": "./dist/lib/key-field-address.js",
       "default": "./src/lib/key-field-address.ts"

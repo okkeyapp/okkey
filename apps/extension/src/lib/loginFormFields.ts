@@ -1,7 +1,7 @@
 import {
   formatKeyFieldAddressCopyValue,
   type KeyFieldAddressValue,
-} from "@okkey/ui/key-field-address";
+} from "@okkey/ui/lib/key-field-address";
 
 import {
   attrBlob,

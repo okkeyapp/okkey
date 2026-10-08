@@ -2,7 +2,7 @@ import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
 import {
   formatKeyFieldAddressCopyValue,
   parseKeyFieldAddressValue,
-} from "@okkey/ui/key-field-address";
+} from "@okkey/ui/lib/key-field-address";
 
 /** Semantic autofill keys shared with the extension content script. */
 export type AutofillValueKey =
