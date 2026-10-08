@@ -148,6 +148,8 @@ export default defineContentScript({
   main() {
     // Never paint autofill overlays on the Okkey vault web app — they close
     // Radix month/year Selects inside item edit datepickers (~1s query/paint).
+    // Re-check at paint time too: dialog close can leave orphan toggles if the
+    // early return was skipped by a stale build or odd local origin.
     if (isOkkeyWebAppOrigin()) {
       return;
     }
@@ -289,6 +291,23 @@ export default defineContentScript({
       if (!pendingSave) {
         restoreNativeAutocomplete();
       }
+    }
+
+    /** True when focus landed on the page shell (body/main) after dialog teardown. */
+    function isNonFieldFocusTarget(el: Element | null): boolean {
+      if (!el) {
+        return true;
+      }
+      if (el === document.body || el === document.documentElement) {
+        return true;
+      }
+      const tag = el.tagName;
+      return tag === "MAIN" || tag === "BODY" || tag === "HTML";
+    }
+
+    function clearActiveInputAndHide(): void {
+      activeInput = null;
+      hideOverlay();
     }
 
     const suppressedFields = new Map<
@@ -1081,8 +1100,24 @@ export default defineContentScript({
       return resolveAutofillAnchorInput(input);
     }
 
-    function toggleRectForInput(input: HTMLElement): { left: number; top: number } {
+    function toggleRectForInput(input: HTMLElement): { left: number; top: number } | null {
+      if (!document.contains(input)) {
+        return null;
+      }
       const rect = input.getBoundingClientRect();
+      // Detached / closing dialog nodes often report 0×0 or sit at viewport center
+      // briefly — never paint an orphan toggle from those coords.
+      if (rect.width < 2 || rect.height < 2) {
+        return null;
+      }
+      if (
+        rect.bottom < 0 ||
+        rect.right < 0 ||
+        rect.top > window.innerHeight ||
+        rect.left > window.innerWidth
+      ) {
+        return null;
+      }
       const size = 20;
       return {
         left: Math.max(4, rect.right - size - 8),
@@ -1338,6 +1373,11 @@ export default defineContentScript({
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
       try {
+        // Defense in depth: never paint on Okkey web even if main() early-return was skipped.
+        if (isOkkeyWebAppOrigin()) {
+          clearActiveInputAndHide();
+          return;
+        }
         // Full no-op while Select / datepicker dropdown is open — late paint after a
         // slow autofill query (~1s) closes them via focus/resize/DismissableLayer.
         if (isOverlayUpdateFrozen() && !pendingSave) {
@@ -1351,9 +1391,24 @@ export default defineContentScript({
         if (isOverlayUpdateFrozen() && !pendingSave) {
           return;
         }
+        if (isOkkeyWebAppOrigin()) {
+          clearActiveInputAndHide();
+          return;
+        }
         const anchorInput =
           activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
         const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
+        // After dialog close, activeInput may still be set but no longer a valid anchor —
+        // drop the orphan instead of leaving a floating toggle (often at prior center coords).
+        if (
+          !pendingSave &&
+          opts?.showToggleOnly &&
+          overlayMode === "hidden" &&
+          (!anchorInput || !togglePos)
+        ) {
+          clearActiveInputAndHide();
+          return;
+        }
         const showToggle = Boolean(togglePos && !pendingSave && overlayMode !== "unlock-save");
 
         let panelMarkup = "";
@@ -1979,6 +2034,10 @@ export default defineContentScript({
     document.addEventListener(
       "focusin",
       (event) => {
+        if (isOkkeyWebAppOrigin()) {
+          clearActiveInputAndHide();
+          return;
+        }
         // Save prompt stays until X / successful save — page input focus must not dismiss it.
         if (
           pendingSave ||
@@ -1994,6 +2053,11 @@ export default defineContentScript({
         }
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || !isVisibleFillableElement(target)) {
+          // Focus moved to body/main/non-input (e.g. dialog closed) — drop any orphan toggle.
+          if (target instanceof Element && isNonFieldFocusTarget(target)) {
+            window.clearTimeout(hideTimer);
+            clearActiveInputAndHide();
+          }
           return;
         }
         const kind = classifyAutofillInput(collectInputHints(target));
@@ -2024,6 +2088,21 @@ export default defineContentScript({
           if (isOverlayUpdateFrozen()) {
             return;
           }
+          if (isOkkeyWebAppOrigin()) {
+            clearActiveInputAndHide();
+            return;
+          }
+          const focused = document.activeElement instanceof Element ? document.activeElement : null;
+          // Dialog close / save: focus lands on body or main — never keep a floating toggle.
+          if (isNonFieldFocusTarget(focused)) {
+            clearActiveInputAndHide();
+            return;
+          }
+          // Anchor removed with the dialog — hide instead of painting at stale center coords.
+          if (!activeInput || !document.contains(activeInput) || !isVisibleFillableElement(activeInput)) {
+            clearActiveInputAndHide();
+            return;
+          }
           // Keep toggle while field may still be "active"; hide panels/tooltips on blur.
           listOpen = false;
           if (
@@ -2035,7 +2114,7 @@ export default defineContentScript({
             void paintOverlay({ showToggleOnly: true });
             return;
           }
-          hideOverlay();
+          clearActiveInputAndHide();
         }, 180);
       },
       true,

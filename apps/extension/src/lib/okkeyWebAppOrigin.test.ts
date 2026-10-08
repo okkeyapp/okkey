@@ -29,6 +29,15 @@ describe("isOkkeyWebAppOrigin", () => {
     );
     assert.equal(
       isOkkeyWebAppOrigin({
+        hostname: "[::1]",
+        port: "5173",
+        protocol: "http:",
+        origin: "http://[::1]:5173",
+      }),
+      true,
+    );
+    assert.equal(
+      isOkkeyWebAppOrigin({
         hostname: "example.com",
         port: "",
         protocol: "https:",

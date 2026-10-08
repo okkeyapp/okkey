@@ -78,6 +78,8 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
     }
     case "recovery-codes":
       return { kind: "unknown", declaredType: "recovery-codes", raw };
+    case "address":
+      return { kind: "unknown", declaredType: "address", raw };
     case "text":
     case "email":
     case "phone":

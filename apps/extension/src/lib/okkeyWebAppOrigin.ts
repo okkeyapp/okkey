@@ -20,8 +20,19 @@ export function isOkkeyWebAppOrigin(
   }
 
   // Local Vite web (default apps/web) — extension must not overlay vault UI.
-  if ((host === "localhost" || host === "127.0.0.1") && (loc.port === "5173" || loc.port === "3000")) {
-    return true;
+  // Also match IPv6 loopback and missing port in edge cases via origin parse.
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") {
+    if (loc.port === "5173" || loc.port === "3000") {
+      return true;
+    }
+    try {
+      const originPort = new URL(loc.origin).port;
+      if (originPort === "5173" || originPort === "3000") {
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   return false;

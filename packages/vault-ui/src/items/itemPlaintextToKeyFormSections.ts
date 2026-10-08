@@ -107,6 +107,10 @@ function stringValueFromField(field: ItemFieldV2): string {
       if (field.value.declaredType === "select") {
         return selectFieldValueFromRaw(field.value.raw);
       }
+      // address (and other JSON/text unknowns) store the form value in `raw`.
+      if (typeof field.value.raw === "string") {
+        return field.value.raw;
+      }
       return "";
     default:
       return "";

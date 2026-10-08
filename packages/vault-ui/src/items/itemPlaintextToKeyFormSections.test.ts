@@ -740,6 +740,61 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       editableLabel: true,
     });
   });
+
+  it("round-trips address KeyField JSON through save and edit reopen", () => {
+    const addressValue = JSON.stringify({
+      street: "Nevsky 1",
+      city: "Saint Petersburg",
+      state: "",
+      postalCode: "191186",
+      country: "RU",
+    });
+
+    const sections = getDefaultSectionsForCategory("personal_data", messages).map((section) => {
+      if (section.id !== "personal-data") {
+        return section;
+      }
+
+      return {
+        ...section,
+        fields: section.fields.map((field) =>
+          field.id === "address" ? { ...field, value: addressValue } : field,
+        ),
+      };
+    });
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-personal-address-1",
+      vaultId: "vault-1",
+      title: "Address Person",
+      categoryId: "personal_data",
+      nowMs: 1,
+    });
+
+    const stored = item.fields.find((field) => field.id === "address");
+    expect(stored).toMatchObject({
+      type: "address",
+      value: { kind: "unknown", declaredType: "address", raw: addressValue },
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const addressField = restoredForEdit
+      .find((section) => section.id === "personal-data")
+      ?.fields.find((field) => field.id === "address");
+
+    expect(addressField).toMatchObject({
+      type: "address",
+      value: addressValue,
+    });
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(
+      restoredForCard
+        .find((section) => section.id === "personal-data")
+        ?.fields.find((field) => field.id === "address")?.value,
+    ).toBe(addressValue);
+  });
 });
 
 describe("itemPlaintextToKeyFormSections passport", () => {
