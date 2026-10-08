@@ -128,14 +128,18 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
     return () => observer.disconnect();
   }, [open, updatePosition]);
 
+  const placement = coords?.placement ?? "bottom";
+  const contextValue = React.useMemo<KeyFieldPortaledOverlayContextValue>(
+    () => ({
+      placement,
+      portaled: true,
+    }),
+    [placement],
+  );
+
   if (!open || typeof document === "undefined") {
     return null;
   }
-
-  const contextValue: KeyFieldPortaledOverlayContextValue = {
-    placement: coords?.placement ?? "bottom",
-    portaled: true,
-  };
 
   return createPortal(
     <KeyFieldPortaledOverlayContext.Provider value={contextValue}>
