@@ -109,11 +109,22 @@ export type AutofillOpenAndFillResponse =
   | { status: "error"; message: string }
   | { status: "ok" };
 
+/** Form intent from content-script heuristics (`login` | `register` | …). */
+export type AutofillFormTypeMessage =
+  | "login"
+  | "register"
+  | "checkout"
+  | "identity"
+  | "search"
+  | "unknown";
+
 export type AutofillQueryMessage = {
   type: typeof AUTOFILL_MSG.query;
   pageUrl: string;
   /** Detected semantic field kinds on the page / focused form (drives non-login suggestions). */
   fieldKinds?: string[];
+  /** Form-type heuristics — filters categories (e.g. login never suggests personal_data). */
+  formType?: AutofillFormTypeMessage;
 };
 
 export type AutofillFillMessage = {

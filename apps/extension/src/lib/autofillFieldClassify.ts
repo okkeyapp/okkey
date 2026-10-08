@@ -91,7 +91,8 @@ const POSTAL = /postal|zip|postcode|индекс/i;
 const COUNTRY = /\bcountry\b|стран[аы]|nationality|гражданств|issuing[-_]?country/i;
 
 const CC_NUMBER = /cc[-_]?number|card[-_]?number|cardnumber|pan\b|номер\s*карт/i;
-const CC_EXP = /cc[-_]?exp|expir|card[-_]?exp|срок\s*действ|месяц.*год|mm\s*\/?\s*yy/i;
+/** Card expiry — do not match date placeholders like `dd/mm/yyyy` (see `(?!y)`). */
+const CC_EXP = /cc[-_]?exp|expir|card[-_]?exp|срок\s*действ|месяц.*год|\bmm\s*\/\s*yy(?!y)/i;
 const CC_CSC = /cc[-_]?csc|cc[-_]?cvv|cvc|cvv|security[-_]?code|код\s*безопас/i;
 const CC_NAME = /cc[-_]?name|card[-_]?holder|cardholder|имя\s*владельц|держател/i;
 
@@ -262,6 +263,11 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
     EMAIL_HINT.test(blob)
   ) {
     return "email";
+  }
+
+  // Birthday before card-expiry: placeholders like `dd/mm/yyyy` used to match CC_EXP's mm/yy.
+  if (acToken(ac, "bday") || ac.includes("bday") || BDAY_HINT.test(blob)) {
+    return "bday";
   }
 
   const cc = firstMatch(blob, ac, [

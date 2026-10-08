@@ -209,4 +209,39 @@ describe("maska-aware credit card fill formatting", () => {
       "cc-csc",
     );
   });
+
+  it("does not classify birth-date placeholders as cc-exp", () => {
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        autocomplete: "bday",
+        ariaLabel: "дата рождения",
+        placeholder: "dd/mm/yyyy",
+      }),
+      "bday",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        ariaLabel: "дата рождения",
+        placeholder: "dd.mm.yyyy",
+      }),
+      "bday",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        placeholder: "dd/mm/yyyy",
+      }),
+      null,
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "cardExpiry",
+        placeholder: "mm/yy",
+      }),
+      "cc-exp",
+    );
+  });
 });

@@ -23,12 +23,30 @@ import {
 } from "../lib/overlayAssets";
 import { defaultOverlayThemeCss, resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
+  detectFormTypeForInput,
+  isPasswordGeneratorField,
+  isUsernameGeneratorField,
+  type AutofillFormType,
+} from "../lib/autofillFormDetect";
+import {
+  createPasswordGeneratorState,
+  createUsernameGeneratorState,
+  generatorOverlayCss,
+  generatorOverlayStrings,
+  generatorPanelHtml,
+  regenerateGeneratorState,
+  updatePasswordGeneratorSettings,
+  updateUsernameGeneratorSettings,
+  type GeneratorOverlayState,
+} from "../lib/autofillGeneratorOverlay";
+import {
   captureLoginCredentials,
   classifyAutofillInput,
   suggestionFieldKindsForFocus,
   collectInputHints,
   collectPageFieldKinds,
   fillAutofillValues,
+  fillInputValue,
   fillLoginFormAndMaybeSubmit,
   findLoginFields,
   isVisibleFillableElement,
@@ -36,6 +54,7 @@ import {
   submitLoginFormIfReady,
   watchAndFillAutofillValues,
 } from "../lib/loginFormFields";
+import { isOkkeyWebAppOrigin } from "../lib/okkeyWebAppOrigin";
 import { shouldFreezeOverlayUpdates } from "../lib/pageBlockingOverlayUi";
 
 type OverlayMode =
@@ -45,7 +64,9 @@ type OverlayMode =
   | "empty-tooltip"
   | "save"
   | "save-rename"
-  | "unlock-save";
+  | "unlock-save"
+  | "password-generator"
+  | "username-generator";
 
 type SavePromptKind = "create" | "update";
 
@@ -92,11 +113,15 @@ function domainTitle(): string {
   return location.hostname.replace(/^www\./i, "") || location.hostname;
 }
 
-async function queryMatches(fieldKinds?: string[]): Promise<AutofillQueryResponse> {
+async function queryMatches(
+  fieldKinds?: string[],
+  formType?: AutofillFormType,
+): Promise<AutofillQueryResponse> {
   return browser.runtime.sendMessage({
     type: AUTOFILL_MSG.query,
     pageUrl: pageUrl(),
     ...(fieldKinds && fieldKinds.length > 0 ? { fieldKinds } : {}),
+    ...(formType ? { formType } : {}),
   });
 }
 
@@ -121,6 +146,12 @@ export default defineContentScript({
   allFrames: true,
   runAt: "document_idle",
   main() {
+    // Never paint autofill overlays on the Okkey vault web app — they close
+    // Radix month/year Selects inside item edit datepickers (~1s query/paint).
+    if (isOkkeyWebAppOrigin()) {
+      return;
+    }
+
     const strings = overlayStrings();
     let host: HTMLDivElement | null = null;
     let shadow: ShadowRoot | null = null;
@@ -139,6 +170,10 @@ export default defineContentScript({
     let overlayMode: OverlayMode = "hidden";
     let listOpen = false;
     let cachedSuggestions: AutofillSuggestion[] = [];
+    let generatorState: GeneratorOverlayState | null = null;
+    const genStrings = generatorOverlayStrings(
+      (navigator.language || "").toLowerCase().startsWith("ru"),
+    );
     let saveTitleDraft = "";
     let saveEditing = false;
     let saveVaults: AutofillSaveVaultOption[] = [];
@@ -243,6 +278,7 @@ export default defineContentScript({
       overlayMode = "hidden";
       listOpen = false;
       vaultMenuOpen = false;
+      generatorState = null;
       if (host) {
         host.style.display = "none";
         host.style.pointerEvents = "none";
@@ -328,6 +364,7 @@ export default defineContentScript({
     function panelBaseStyles(themeCssVars: string): string {
       return `
           ${interFontFaceCss()}
+          ${generatorOverlayCss()}
           :host {
             ${themeCssVars}
             font-family: ${OVERLAY_FONT_STACK} !important;
@@ -1164,6 +1201,112 @@ export default defineContentScript({
       });
     }
 
+    function insertGeneratedValue(value: string): void {
+      if (!activeInput || !value) {
+        return;
+      }
+      const kind = classifyAutofillInput(collectInputHints(activeInput));
+      fillInputValue(activeInput, value);
+      // Register: fill password + confirm/repeat with the same generated password.
+      if (kind === "password") {
+        const fields = findLoginFields(activeInput.form ?? document);
+        for (const el of fields.password) {
+          if (el !== activeInput) {
+            fillInputValue(el, value);
+          }
+        }
+      }
+      markFilledByOkkey();
+      generatorState = null;
+      listOpen = false;
+      overlayMode = "hidden";
+      void paintOverlay({ showToggleOnly: true });
+    }
+
+    function wireGeneratorPanel(root: ShadowRoot): void {
+      const panel = root.querySelector("[data-generator]");
+      if (!(panel instanceof HTMLElement) || !generatorState) {
+        return;
+      }
+
+      const regen = panel.querySelector("[data-gen-regen]");
+      if (regen instanceof HTMLElement) {
+        regen.onclick = () => {
+          if (!generatorState) {
+            return;
+          }
+          generatorState = regenerateGeneratorState(generatorState);
+          void paintOverlay();
+        };
+      }
+
+      const cancel = panel.querySelector("[data-gen-cancel]");
+      if (cancel instanceof HTMLElement) {
+        cancel.onclick = () => {
+          generatorState = null;
+          listOpen = false;
+          overlayMode = "hidden";
+          void paintOverlay({ showToggleOnly: true });
+        };
+      }
+
+      const insert = panel.querySelector("[data-gen-insert]");
+      if (insert instanceof HTMLElement) {
+        insert.onclick = () => {
+          if (!generatorState) {
+            return;
+          }
+          insertGeneratedValue(generatorState.value);
+        };
+      }
+
+      for (const checkbox of panel.querySelectorAll<HTMLInputElement>("[data-gen-setting]")) {
+        checkbox.onchange = () => {
+          if (!generatorState) {
+            return;
+          }
+          const key = checkbox.dataset.genSetting;
+          if (!key) {
+            return;
+          }
+          if (generatorState.kind === "password") {
+            generatorState = updatePasswordGeneratorSettings(generatorState, {
+              [key]: checkbox.checked,
+            });
+          } else {
+            generatorState = updateUsernameGeneratorSettings(generatorState, {
+              [key]: checkbox.checked,
+            });
+          }
+          void paintOverlay();
+        };
+      }
+
+      const lengthInput = panel.querySelector<HTMLInputElement>("[data-gen-length]");
+      if (lengthInput && generatorState.kind === "password") {
+        lengthInput.onchange = () => {
+          if (!generatorState || generatorState.kind !== "password") {
+            return;
+          }
+          generatorState = updatePasswordGeneratorSettings(generatorState, {
+            length: Number(lengthInput.value),
+          });
+          void paintOverlay();
+        };
+      }
+    }
+
+    function openGeneratorForField(
+      kind: "password" | "username",
+    ): void {
+      generatorState =
+        kind === "password" ? createPasswordGeneratorState() : createUsernameGeneratorState();
+      cachedSuggestions = [];
+      listOpen = false;
+      overlayMode = kind === "password" ? "password-generator" : "username-generator";
+      void paintOverlay();
+    }
+
     function focusRenameInput(root: ShadowRoot): void {
       const renameInput = root.querySelector("[data-rename-input]");
       if (!(renameInput instanceof HTMLInputElement)) {
@@ -1219,8 +1362,15 @@ export default defineContentScript({
           cachedSuggestions.length > 0 &&
           !opts?.showToggleOnly &&
           !isOverlayUpdateFrozen();
+        const allowGeneratorPanel =
+          (overlayMode === "password-generator" || overlayMode === "username-generator") &&
+          generatorState != null &&
+          !opts?.showToggleOnly &&
+          !isOverlayUpdateFrozen();
         if (allowListPanel) {
           panelMarkup = listHtml(cachedSuggestions);
+        } else if (allowGeneratorPanel && generatorState) {
+          panelMarkup = generatorPanelHtml(generatorState, genStrings);
         } else if (overlayMode === "save" || overlayMode === "save-rename") {
           panelMarkup = savePanelHtml(false);
         } else if (overlayMode === "unlock-save") {
@@ -1250,6 +1400,7 @@ export default defineContentScript({
         root.innerHTML = `<style>${panelBaseStyles(cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
         wireOverlayOnce(root);
         focusRenameInput(root);
+        wireGeneratorPanel(root);
 
         const tip = root.querySelector(".tooltip");
         if (tip instanceof HTMLElement && togglePos) {
@@ -1312,6 +1463,37 @@ export default defineContentScript({
       return suggestionFieldKindsForFocus(focusedKind, pageKinds);
     }
 
+    function resolveFormType(focused?: HTMLInputElement | null): AutofillFormType {
+      if (!focused) {
+        return "unknown";
+      }
+      try {
+        return detectFormTypeForInput(focused, { urlPath: location.pathname });
+      } catch {
+        return "unknown";
+      }
+    }
+
+    /**
+     * Register password / username → generator popup instead of vault suggestions.
+     * Returns true when a generator was opened (caller should skip vault query).
+     */
+    function maybeOpenRegisterGenerator(input: HTMLInputElement, formType: AutofillFormType): boolean {
+      if (formType !== "register") {
+        return false;
+      }
+      const kind = classifyAutofillInput(collectInputHints(input));
+      if (isPasswordGeneratorField(kind)) {
+        openGeneratorForField("password");
+        return true;
+      }
+      if (isUsernameGeneratorField(kind)) {
+        openGeneratorForField("username");
+        return true;
+      }
+      return false;
+    }
+
     async function onToggleClick(): Promise<void> {
       if (!activeInput) {
         return;
@@ -1328,10 +1510,14 @@ export default defineContentScript({
       if (isOverlayUpdateFrozen()) {
         return;
       }
+      const formType = resolveFormType(activeInput);
+      if (maybeOpenRegisterGenerator(activeInput, formType)) {
+        return;
+      }
       const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches(fieldKindsForQuery(activeInput));
+        response = await queryMatches(fieldKindsForQuery(activeInput), formType);
       } catch {
         return;
       }
@@ -1375,17 +1561,26 @@ export default defineContentScript({
       if (isOverlayUpdateFrozen()) {
         return;
       }
-      const queryGen = ++overlayQueryGeneration;
+      const formType = resolveFormType(input);
       // After Okkey fill: keep the round toggle, do not auto-open the list until clear/toggle.
       if (suggestionsListSuppressed()) {
         listOpen = false;
         overlayMode = "hidden";
+        generatorState = null;
         await paintOverlay({ showToggleOnly: true });
         return;
       }
+      if (formType === "search") {
+        hideOverlay();
+        return;
+      }
+      if (maybeOpenRegisterGenerator(input, formType)) {
+        return;
+      }
+      const queryGen = ++overlayQueryGeneration;
       let response: AutofillQueryResponse;
       try {
-        response = await queryMatches(fieldKindsForQuery(input));
+        response = await queryMatches(fieldKindsForQuery(input), formType);
       } catch {
         // Do not repaint if focus left for Select / datepicker while the query failed.
         if (

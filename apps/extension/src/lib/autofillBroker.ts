@@ -188,17 +188,68 @@ async function matchingLoginItems(userId: string, pageUrl: string) {
   );
 }
 
+function filterCategoriesByFormType(
+  categories: AutofillItemCategory[],
+  formType: string | undefined,
+  fieldKinds: readonly string[],
+): AutofillItemCategory[] {
+  const focused = fieldKinds[0] ?? null;
+  if (formType === "search") {
+    return [];
+  }
+  if (formType === "login") {
+    return categories.filter((id) => id === "login");
+  }
+  if (formType === "register") {
+    // Password / username on register use generators in the content script.
+    if (focused === "password" || focused === "username") {
+      return [];
+    }
+    return categories.filter((id) => id === "personal_data");
+  }
+  if (formType === "checkout") {
+    if (
+      focused === "cc-number" ||
+      focused === "cc-exp" ||
+      focused === "cc-csc" ||
+      focused === "cc-name"
+    ) {
+      return categories.filter((id) => id === "credit_card");
+    }
+    if (
+      focused === "iban" ||
+      focused === "swift" ||
+      focused === "bank-account-number" ||
+      focused === "bank-name" ||
+      focused === "bank-account-holder"
+    ) {
+      return categories.filter((id) => id === "bank_account");
+    }
+    if (focused === "email" || focused === "username") {
+      return categories.filter((id) => id === "personal_data");
+    }
+  }
+  if (formType === "identity") {
+    return categories.filter((id) => id === "personal_data" || id === "passport");
+  }
+  return categories;
+}
+
 async function matchingAutofillItems(
   userId: string,
   pageUrl: string,
   fieldKinds: readonly string[] | undefined,
+  formType?: string,
 ) {
   const workspaceId = await readStoredCurrentWorkspaceId(userId);
   if (!workspaceId) {
     return [];
   }
   const kinds = fieldKinds && fieldKinds.length > 0 ? fieldKinds : ["username", "password"];
-  const categories = categoriesForFieldKinds(kinds);
+  const categories = filterCategoriesByFormType(categoriesForFieldKinds(kinds), formType, kinds);
+  if (categories.length === 0) {
+    return [];
+  }
   const items = await listCachedWorkspaceVaultItems({ userId, workspaceId });
   return items.filter((item) => {
     if (item.deleted || item.archived || !isAutofillItemCategory(item.categoryId)) {
@@ -219,6 +270,7 @@ async function matchingAutofillItems(
 export async function handleAutofillQuery(
   pageUrl: string,
   fieldKinds?: string[],
+  formType?: string,
 ): Promise<AutofillQueryResponse> {
   const auth = await resolveUnlockUserId();
   if (!auth) {
@@ -227,7 +279,7 @@ export async function handleAutofillQuery(
   if (!auth.unlocked) {
     return { status: "locked" };
   }
-  const items = await matchingAutofillItems(auth.userId, pageUrl, fieldKinds);
+  const items = await matchingAutofillItems(auth.userId, pageUrl, fieldKinds, formType);
   await touchExtensionUnlockSession(auth.userId);
   const wantsEmailField = (fieldKinds ?? []).some((kind) => kind === "email" || kind === "username");
   const suggestions = (

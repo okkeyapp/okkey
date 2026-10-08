@@ -32,7 +32,7 @@ export default defineBackground(() => {
       return undefined;
     }
     if (message.type === AUTOFILL_MSG.query) {
-      return handleAutofillQuery(message.pageUrl, message.fieldKinds);
+      return handleAutofillQuery(message.pageUrl, message.fieldKinds, message.formType);
     }
     if (message.type === AUTOFILL_MSG.fill) {
       return handleAutofillFill(message.itemId, message.pageUrl, message.fillOverrides);
