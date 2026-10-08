@@ -173,6 +173,8 @@ export type KeyFormEditorProps = {
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
   datePickerLocale?: Locale;
+  /** BCP 47 locale for address country labels (same Intl source as settings region). */
+  countryLocale?: string;
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   /** When false, file field type is hidden and existing file fields cannot be cleared or re-uploaded. */
   allowFileFields?: boolean;
@@ -1644,6 +1646,7 @@ type SortableFieldProps = {
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
   datePickerLocale?: Locale;
+  countryLocale?: string;
   selectConfigureMode?: boolean;
   valuePlaceholder?: string;
 };
@@ -1700,6 +1703,7 @@ function SortableField({
   fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
   surfaceRounding,
   datePickerLocale,
+  countryLocale,
   selectConfigureMode = false,
   valuePlaceholder,
 }: SortableFieldProps) {
@@ -1828,6 +1832,7 @@ function SortableField({
       fileClearEnabled={fileClearEnabled}
       valuePlaceholder={valuePlaceholder ?? messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       datePickerLocale={datePickerLocale}
+      countryLocale={countryLocale}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
     </div>
@@ -1907,6 +1912,7 @@ export function KeyFormEditor({
   onRecoveryCodesValueChange,
   showValidation = false,
   datePickerLocale,
+  countryLocale = "en",
   onFileUpload,
   onFileOpen,
   onFileActivate,
@@ -3041,7 +3047,7 @@ export function KeyFormEditor({
       return;
     }
 
-    const url = buildKeyFieldAddressMapsUrl(parseKeyFieldAddressValue(field.value));
+    const url = buildKeyFieldAddressMapsUrl(parseKeyFieldAddressValue(field.value), countryLocale);
     const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
     if (openedWindow) {
       openedWindow.opener = null;
@@ -3186,7 +3192,7 @@ export function KeyFormEditor({
     }
 
     if (field.type === "address" && typeof field.value === "string") {
-      return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value));
+      return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value), countryLocale);
     }
 
     if (field.type === "recovery-codes" && typeof field.value === "string") {
@@ -3409,6 +3415,7 @@ export function KeyFormEditor({
         onValueFocus={shouldOpenGeneratorOnFocus(field) ? () => openPasswordGenerator(field.id) : undefined}
         passwordGeneratorTrigger={isSecretLikeField(field)}
         datePickerLocale={datePickerLocale}
+        countryLocale={countryLocale}
         selectConfigureMode={isSelectOptionsEditMode}
         valuePlaceholder={isSelectOptionsEditMode ? messages.selectOptionsPlaceholder : undefined}
       />
@@ -3473,6 +3480,7 @@ export function KeyFormEditor({
         fileUploadHintLabels={fileUploadHintLabels}
         valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
         datePickerLocale={datePickerLocale}
+        countryLocale={countryLocale}
         reorderable
         meta={metaForKeyField(field, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)}
         actions={renderActions(section, field)}

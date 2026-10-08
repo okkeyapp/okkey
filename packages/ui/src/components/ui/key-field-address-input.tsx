@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { parseKeyFieldAddressValue, serializeKeyFieldAddressValue, type KeyFieldAddressValue } from "../../lib/key-field-address.js";
 import { isKeyFieldAddressInteractionTarget } from "../../lib/key-field-address-interaction.js";
-import { keyFieldCountries } from "../../lib/key-field-countries.js";
+import { getKeyFieldCountries } from "../../lib/key-field-countries.js";
 import { cn } from "../../lib/utils.js";
 import {
   SearchableSelect,
@@ -24,6 +24,8 @@ export type KeyFieldAddressInputProps = {
   fieldPlaceholders?: Record<AddressFieldKey, string>;
   searchCountriesPlaceholder?: string;
   noCountriesFoundMessage?: string;
+  /** BCP 47 locale for Intl.DisplayNames country labels (same source as settings region). */
+  countryLocale?: string;
 };
 
 type AddressFieldKey = keyof KeyFieldAddressValue;
@@ -48,8 +50,10 @@ export function KeyFieldAddressInput({
   fieldPlaceholders,
   searchCountriesPlaceholder = "Search countries",
   noCountriesFoundMessage = "No countries found",
+  countryLocale = "en",
 }: KeyFieldAddressInputProps) {
   const address = React.useMemo(() => parseKeyFieldAddressValue(value), [value]);
+  const countries = React.useMemo(() => getKeyFieldCountries(countryLocale), [countryLocale]);
   const addressFieldPlaceholders = fieldPlaceholders ?? defaultAddressFieldPlaceholders;
   const panelRef = React.useRef<HTMLDivElement>(null);
   const cityInputRef = React.useRef<HTMLInputElement>(null);
@@ -238,14 +242,14 @@ export function KeyFieldAddressInput({
         variant="inline"
         searchPlaceholder={searchCountriesPlaceholder}
         searchEmptyMessage={noCountriesFoundMessage}
-        selectedLabel={address.country ? keyFieldCountries.find((country) => country.code === address.country)?.name : undefined}
+        selectedLabel={address.country ? countries.find((country) => country.code === address.country)?.name : undefined}
       >
         <SearchableSelectTrigger
           ref={countryTriggerRef}
           className="h-5 w-full min-w-0 justify-start text-sm font-normal [&>span:last-child]:hidden"
         />
         <SearchableSelectContent align="start" className="w-[min(100vw-2rem,20rem)]" data-key-field-address-popover>
-          {keyFieldCountries.map((country) => (
+          {countries.map((country) => (
             <SearchableSelectItem
               key={country.code}
               value={country.code}

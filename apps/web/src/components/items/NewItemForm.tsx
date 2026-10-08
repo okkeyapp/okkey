@@ -649,6 +649,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         fieldTypes={keyFormFieldTypes}
         messages={keyFormMessages}
         datePickerLocale={datePickerLocale}
+        countryLocale={locale}
         onSectionsChange={setFormSections}
         onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
         onFileUpload={handleFileUpload}

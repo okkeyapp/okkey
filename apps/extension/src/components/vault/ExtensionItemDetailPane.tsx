@@ -299,6 +299,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
               initialSections={formSections}
               fieldTypes={keyFormFieldTypes}
               messages={messagesWithCopy}
+              countryLocale={locale}
               onFileOpen={handleFileOpen}
               onCopyText={handleCopyAction}
             />

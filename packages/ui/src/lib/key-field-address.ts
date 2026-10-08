@@ -45,7 +45,10 @@ export function parseKeyFieldAddressValue(value: string): KeyFieldAddressValue {
   }
 }
 
-export function formatKeyFieldAddressCopyValue(value: KeyFieldAddressValue): string {
+export function formatKeyFieldAddressCopyValue(
+  value: KeyFieldAddressValue,
+  locale = "en",
+): string {
   const parts: string[] = [];
   const street = value.street.trim();
   const city = value.city.trim();
@@ -66,14 +69,17 @@ export function formatKeyFieldAddressCopyValue(value: KeyFieldAddressValue): str
     parts.push(postalCode);
   }
   if (country) {
-    parts.push(getKeyFieldCountryName(country));
+    parts.push(getKeyFieldCountryName(country, locale));
   }
 
   return parts.join(", ");
 }
 
-export function buildKeyFieldAddressMapsUrl(value: KeyFieldAddressValue): string {
-  const query = formatKeyFieldAddressCopyValue(value);
+export function buildKeyFieldAddressMapsUrl(
+  value: KeyFieldAddressValue,
+  locale = "en",
+): string {
+  const query = formatKeyFieldAddressCopyValue(value, locale);
   if (!query) {
     return "https://www.google.com/maps";
   }

@@ -34,7 +34,12 @@ export {
   serializeKeyFieldAddressValue,
   type KeyFieldAddressValue,
 } from "./lib/key-field-address.js";
-export { getKeyFieldCountryName, keyFieldCountries, type KeyFieldCountryOption } from "./lib/key-field-countries.js";
+export {
+  getKeyFieldCountries,
+  getKeyFieldCountryName,
+  keyFieldCountries,
+  type KeyFieldCountryOption,
+} from "./lib/key-field-countries.js";
 export {
   emptyKeyFieldRecoveryCodesValue,
   getFirstUnusedKeyFieldRecoveryCode,
