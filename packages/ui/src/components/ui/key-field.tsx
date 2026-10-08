@@ -1326,6 +1326,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onFocus={handleDateInputFocus}
                     onBlur={handleDateInputBlur}
                     placeholder={valuePlaceholder}
+                    aria-label={label}
+                    autoComplete={/bday|birth|рожд|dob/i.test(label) ? "bday" : undefined}
                   />
                 ) : (
                   <input

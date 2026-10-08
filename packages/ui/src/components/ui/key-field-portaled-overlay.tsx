@@ -23,6 +23,28 @@ export const KeyFieldPortaledOverlayContext = React.createContext<KeyFieldPortal
   portaled: false,
 });
 
+const OPEN_SELECT_SELECTOR = [
+  "[data-radix-select-viewport]",
+  '[role="listbox"][data-state="open"]',
+  '[role="combobox"][data-state="open"]',
+  '[aria-expanded="true"][aria-haspopup="listbox"]',
+].join(",");
+
+function pageHasOpenSelect(): boolean {
+  try {
+    return typeof document !== "undefined" && Boolean(document.querySelector(OPEN_SELECT_SELECTOR));
+  } catch {
+    return false;
+  }
+}
+
+function coordsEqual(
+  a: { top: number; left: number; placement: KeyFieldOverlayPlacement } | null,
+  b: { top: number; left: number; placement: KeyFieldOverlayPlacement },
+): boolean {
+  return Boolean(a && a.top === b.top && a.left === b.left && a.placement === b.placement);
+}
+
 export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldPortaledOverlayProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const [coords, setCoords] = React.useState<{ top: number; left: number; placement: KeyFieldOverlayPlacement } | null>(
@@ -38,29 +60,15 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
 
     // Repositioning while a Radix Select (month/year caption) is open remounts /
     // dismisses the listbox via focus + DismissableLayer. Skip until it closes.
-    try {
-      if (
-        typeof document !== "undefined" &&
-        document.querySelector(
-          [
-            "[data-radix-select-viewport]",
-            '[role="listbox"][data-state="open"]',
-            '[role="combobox"][data-state="open"]',
-            '[aria-expanded="true"][aria-haspopup="listbox"]',
-          ].join(","),
-        )
-      ) {
-        return;
-      }
-    } catch {
-      /* ignore */
+    if (pageHasOpenSelect()) {
+      return;
     }
 
     const next = computeKeyFieldPortaledOverlayPosition({
       anchorRect: anchor.getBoundingClientRect(),
       panelRect: panel.getBoundingClientRect(),
     });
-    setCoords(next);
+    setCoords((prev) => (coordsEqual(prev, next) ? prev : next));
   }, [anchorRef]);
 
   React.useLayoutEffect(() => {
@@ -95,8 +103,11 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
     };
   }, [anchorRef, open, updatePosition]);
 
+  // Reposition once when overlay children change size (e.g. calendar month switch).
+  // Do NOT depend on `coords` — that previously caused an infinite setCoords loop
+  // that closed month/year Selects via DismissableLayer after ~1s of churn.
   React.useLayoutEffect(() => {
-    if (!open || !coords) {
+    if (!open) {
       return undefined;
     }
 
@@ -104,7 +115,7 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
       updatePosition();
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [children, coords, open, updatePosition]);
+  }, [children, open, updatePosition]);
 
   if (!open || typeof document === "undefined") {
     return null;
