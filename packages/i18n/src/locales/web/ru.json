@@ -838,6 +838,8 @@
   "web.keyForm.crackTime.decades": "Десятилетия",
   "web.keyForm.crackTime.centuries": "Века",
   "web.keyForm.crackTime.forever": "Никогда",
+  "web.keyForm.address.apartment": "Квартира",
+  "web.keyForm.address.house": "Дом",
   "web.keyForm.address.street": "Улица",
   "web.keyForm.address.city": "Город",
   "web.keyForm.address.state": "Регион",

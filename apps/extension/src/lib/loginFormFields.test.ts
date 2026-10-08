@@ -121,6 +121,11 @@ describe("classifyAutofillInput non-login types", () => {
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "family-name" }), "family-name");
     assert.equal(classifyAutofillInput({ type: "tel", autocomplete: "tel" }), "tel");
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "street-address" }), "street-address");
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "address-line1" }), "street-address");
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "address-line2" }), "address-apartment");
+    assert.equal(classifyAutofillInput({ type: "text", name: "apartment" }), "address-apartment");
+    assert.equal(classifyAutofillInput({ type: "text", name: "house" }), "address-house");
+    assert.equal(classifyAutofillInput({ type: "text", name: "address" }), "address");
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "postal-code" }), "postal-code");
     assert.equal(classifyAutofillInput({ type: "text", name: "city" }), "address-level2");
   });

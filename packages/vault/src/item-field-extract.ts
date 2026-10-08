@@ -1,4 +1,8 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
+import {
+  formatKeyFieldAddressCopyValue,
+  parseKeyFieldAddressValue,
+} from "@okkey/ui/key-field-address";
 
 export type ExtensionItemListRecord = {
   id: string;
@@ -28,7 +32,7 @@ function isSecretItemField(field: ItemFieldV2): boolean {
   return field.value.kind === "unknown" && field.value.declaredType === "secret";
 }
 
-function itemFieldDisplayValue(field: ItemFieldV2): string {
+function itemFieldDisplayValue(field: ItemFieldV2, locale = "en"): string {
   switch (field.value.kind) {
     case "text":
       return field.value.text.trim();
@@ -42,12 +46,32 @@ function itemFieldDisplayValue(field: ItemFieldV2): string {
       return field.value.password.trim();
     case "file":
       return field.value.name?.trim() ?? "";
+    case "unknown":
+      if (field.value.declaredType === "address" && typeof field.value.raw === "string") {
+        return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value.raw), locale);
+      }
+      return "";
     default:
       return "";
   }
 }
 
 function isItemFieldFilled(field: ItemFieldV2): boolean {
+  if (field.value.kind === "unknown" && field.value.declaredType === "address") {
+    if (typeof field.value.raw !== "string") {
+      return false;
+    }
+    const address = parseKeyFieldAddressValue(field.value.raw);
+    return [
+      address.apartment,
+      address.house,
+      address.street,
+      address.city,
+      address.state,
+      address.postalCode,
+      address.country,
+    ].some((part) => part.trim().length > 0);
+  }
   return itemFieldDisplayValue(field).length > 0;
 }
 
@@ -82,12 +106,15 @@ function orderedItemFields(item: ItemPlaintextV2): ItemFieldV2[] {
   return [...ordered, ...orphanFields];
 }
 
-export function readFirstNonSecretFilledFieldDescription(item: ItemPlaintextV2): string {
+export function readFirstNonSecretFilledFieldDescription(
+  item: ItemPlaintextV2,
+  locale = "en",
+): string {
   for (const field of orderedItemFields(item)) {
     if (!isItemFieldFilled(field) || isSecretItemField(field)) {
       continue;
     }
-    const displayValue = itemFieldDisplayValue(field);
+    const displayValue = itemFieldDisplayValue(field, locale);
     if (displayValue.length > 0) {
       return displayValue;
     }
@@ -95,13 +122,16 @@ export function readFirstNonSecretFilledFieldDescription(item: ItemPlaintextV2):
   return "";
 }
 
-export function itemPlaintextToExtensionListRecord(item: ItemPlaintextV2): ExtensionItemListRecord {
+export function itemPlaintextToExtensionListRecord(
+  item: ItemPlaintextV2,
+  locale = "en",
+): ExtensionItemListRecord {
   return {
     id: item.itemId,
     vaultId: item.vaultId,
     categoryId: item.categoryId,
     title: item.title,
-    description: readFirstNonSecretFilledFieldDescription(item),
+    description: readFirstNonSecretFilledFieldDescription(item, locale),
     urls: collectItemUrls(item),
     tags: [...(item.tags ?? [])],
     updatedAtMs: item.updatedAtMs,

@@ -764,7 +764,7 @@ export function VaultPopup(props: VaultPopupProps) {
 
   const listRecords = useMemo((): ExtensionListRow[] => {
     const records: ExtensionListRow[] = items.map((item) => {
-      const base = itemPlaintextToExtensionListRecord(item);
+      const base = itemPlaintextToExtensionListRecord(item, locale);
       return {
         ...base,
         date: new Date(item.updatedAtMs),
@@ -810,6 +810,7 @@ export function VaultPopup(props: VaultPopupProps) {
     itemFavoriteByItemId,
     itemFolderByItemId,
     items,
+    locale,
     search,
     sort,
     suggestionsActive,

@@ -5,11 +5,24 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./key-field-address": {
+      "types": "./dist/lib/key-field-address.d.ts",
+      "import": "./dist/lib/key-field-address.js",
+      "default": "./src/lib/key-field-address.ts"
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.4",

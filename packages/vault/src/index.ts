@@ -43,6 +43,7 @@ export {
   suggestionSubtitleFromValues,
   type AutofillItemCategory,
   type AutofillValueKey,
+  type ExtractAutofillValuesOptions,
 } from "./item-autofill-extract.js";
 export {
   collectItemUrlMatchInputs,

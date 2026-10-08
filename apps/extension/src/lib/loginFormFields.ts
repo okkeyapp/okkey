@@ -1,4 +1,9 @@
 import {
+  formatKeyFieldAddressCopyValue,
+  type KeyFieldAddressValue,
+} from "@okkey/ui/key-field-address";
+
+import {
   attrBlob,
   classifyAutofillInput,
   classifyLoginInput as classifyLoginInputImpl,
@@ -346,11 +351,78 @@ export function isAutofillTargetElement(
   return isVisibleFillableElement(el);
 }
 
+const ADDRESS_FILL_KINDS = new Set([
+  "address",
+  "street-address",
+  "address-house",
+  "address-apartment",
+  "address-level1",
+  "address-level2",
+  "postal-code",
+  "country",
+]);
+
+/** Prefer page lang, then navigator — used for one-line address autofill. */
+export function resolvePageAddressLocale(doc: Document = document): string {
+  const lang = doc.documentElement.lang?.trim() || navigator.language?.trim() || "en";
+  return lang;
+}
+
+/**
+ * Rebuild `values.address` from structured parts using the page/UI locale.
+ * Structured street/city/… keys stay unchanged for multi-field fill.
+ */
+export function applyPageLocaleAddressFormat(
+  values: Partial<Record<string, string>>,
+  locale?: string,
+): Partial<Record<string, string>> {
+  const address: KeyFieldAddressValue = {
+    apartment: values["address-apartment"] ?? "",
+    house: values["address-house"] ?? "",
+    street: values["street-address"] ?? "",
+    city: values["address-level2"] ?? "",
+    state: values["address-level1"] ?? "",
+    postalCode: values["postal-code"] ?? "",
+    country: values.country ?? "",
+  };
+  const hasPart = [
+    address.apartment,
+    address.house,
+    address.street,
+    address.city,
+    address.state,
+    address.postalCode,
+    address.country,
+  ].some((part) => part.trim().length > 0);
+  if (!hasPart) {
+    return values;
+  }
+  const formatted = formatKeyFieldAddressCopyValue(address, locale || resolvePageAddressLocale());
+  if (!formatted) {
+    return values;
+  }
+  return { ...values, address: formatted };
+}
+
 function resolveAutofillValueForKind(
   kind: string,
   values: Partial<Record<string, string>>,
+  options?: { useFormattedAddress?: boolean },
 ): string {
+  if (
+    options?.useFormattedAddress &&
+    (kind === "address" || kind === "street-address")
+  ) {
+    const formatted = values.address?.trim() || "";
+    if (formatted) {
+      return formatted;
+    }
+  }
+
   let value = values[kind] ?? "";
+  if (!value && kind === "address") {
+    value = values.address || values["street-address"] || "";
+  }
   if (!value && (kind === "email" || kind === "username")) {
     value = values.email || values.username || "";
   }
@@ -373,6 +445,9 @@ export type FillAutofillValuesOptions = {
 /**
  * Fill page inputs from a semantic value map (personal / card / bank / …).
  * Login username/password/otp should go through {@link fillLoginForm} when category is login.
+ *
+ * Address: separate street/city/state/zip/country/house/apt fields get structured values;
+ * a single address / street-address field on the page gets the locale-formatted one-liner.
  */
 export function fillAutofillValues(
   root: ParentNode,
@@ -381,6 +456,21 @@ export function fillAutofillValues(
 ): number {
   let filled = 0;
   const nodes = Array.from(root.querySelectorAll("input"));
+  const addressKindsOnPage = new Set<string>();
+  for (const node of nodes) {
+    if (!(node instanceof HTMLInputElement)) {
+      continue;
+    }
+    const kind = classifyAutofillInput(collectInputHints(node));
+    if (kind && ADDRESS_FILL_KINDS.has(kind) && isAutofillTargetElement(node, kind, options)) {
+      addressKindsOnPage.add(kind);
+    }
+  }
+  const soleAddressKind =
+    addressKindsOnPage.size === 1 ? [...addressKindsOnPage][0] : undefined;
+  const useFormattedAddress =
+    soleAddressKind === "address" || soleAddressKind === "street-address";
+
   for (const node of nodes) {
     if (!(node instanceof HTMLInputElement)) {
       continue;
@@ -392,13 +482,15 @@ export function fillAutofillValues(
     if (!isAutofillTargetElement(node, kind, options)) {
       continue;
     }
-    const value = resolveAutofillValueForKind(kind, values);
+    const value = resolveAutofillValueForKind(kind, values, { useFormattedAddress });
     if (!value) {
       continue;
     }
     const before = node.value;
     fillInputValue(node, value);
-    if (node.value !== before && digitsOnly(node.value).length > 0) {
+    if (node.value !== before && node.value.length > 0) {
+      filled += 1;
+    } else if (node.value === value && value.length > 0) {
       filled += 1;
     } else if (digitsOnly(node.value) === digitsOnly(value) && digitsOnly(value).length > 0) {
       filled += 1;

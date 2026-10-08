@@ -19,6 +19,7 @@ import {
 } from "@okkey/types";
 
 import type { ItemsListRecord } from "../components/workspace/ItemsListLeftPane";
+import { useLocale } from "../locale/LocaleContext";
 import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import { withItemArchivedState } from "./itemArchive";
@@ -86,6 +87,7 @@ export function useWorkspaceItemsState(input: {
     maxFileSizeMb = DEFAULT_MAX_FILE_SIZE_MB,
     filesInItemsEnabled = true,
   } = input;
+  const { locale } = useLocale();
   const fileUploadConstraints = useMemo(
     () => buildKeyFieldFileUploadConstraints(allowedFileExtensions, maxFileSizeMb),
     [allowedFileExtensions, maxFileSizeMb],
@@ -128,11 +130,12 @@ export function useWorkspaceItemsState(input: {
         itemPlaintextToListRecord(item, {
           folderId: itemFolderRef.current.get(item.itemId) ?? null,
           favorite: itemFavoriteRef.current.has(item.itemId),
+          locale,
         }),
       ),
     );
     setSyncVersion((version) => version + 1);
-  }, [isDeletedItemWithinRetention]);
+  }, [isDeletedItemWithinRetention, locale]);
 
   useEffect(() => {
     controllerRef.current?.dispose();

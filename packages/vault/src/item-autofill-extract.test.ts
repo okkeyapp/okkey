@@ -87,7 +87,9 @@ describe("extractAutofillValues", () => {
               kind: "unknown",
               declaredType: "address",
               raw: JSON.stringify({
-                street: "Tverskaya 1",
+                apartment: "12",
+                house: "1",
+                street: "Tverskaya",
                 city: "Moscow",
                 state: "",
                 postalCode: "101000",
@@ -101,11 +103,46 @@ describe("extractAutofillValues", () => {
     assert.equal(values["given-name"], "Саша");
     assert.equal(values["family-name"], "Иванов");
     assert.equal(values.email, "a@example.com");
-    assert.equal(values["street-address"], "Tverskaya 1");
+    assert.equal(values["street-address"], "Tverskaya");
+    assert.equal(values["address-house"], "1");
+    assert.equal(values["address-apartment"], "12");
     assert.equal(values["address-level2"], "Moscow");
     assert.equal(values["postal-code"], "101000");
     assert.equal(values.country, "RU");
+    assert.equal(values.address, "Apt 12, 1 Tverskaya, Moscow, 101000, Russia");
     assert.equal(values.name, "Саша Иванов");
+
+    const ruValues = extractAutofillValues(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "address",
+            type: "address",
+            sectionId: "personal-data",
+            order: 0,
+            value: {
+              kind: "unknown",
+              declaredType: "address",
+              raw: JSON.stringify({
+                apartment: "187",
+                house: "39A",
+                street: "Октябрьская",
+                city: "Москва",
+                state: "Московская",
+                postalCode: "909123",
+                country: "RU",
+              }),
+            },
+          },
+        ],
+      }),
+      { locale: "ru" },
+    );
+    assert.equal(
+      ruValues.address,
+      "909123, Россия, Московская обл., г. Москва, ул. Октябрьская, д. 39A, кв. 187",
+    );
   });
 
   it("collects standard + custom email fields as separate candidates", () => {

@@ -1,4 +1,8 @@
 import type { ItemFieldV2, ItemPlaintextV2 } from "@okkey/types";
+import {
+  formatKeyFieldAddressCopyValue,
+  parseKeyFieldAddressValue,
+} from "@okkey/ui/key-field-address";
 
 /** Semantic autofill keys shared with the extension content script. */
 export type AutofillValueKey =
@@ -14,7 +18,10 @@ export type AutofillValueKey =
   | "sex"
   | "organization"
   | "organization-title"
+  | "address"
   | "street-address"
+  | "address-house"
+  | "address-apartment"
   | "address-level1"
   | "address-level2"
   | "postal-code"
@@ -116,7 +123,10 @@ const PERSONAL_KEYS = new Set<string>([
   "organization-title",
 ]);
 const ADDRESS_KEYS = new Set<string>([
+  "address",
   "street-address",
+  "address-house",
+  "address-apartment",
   "address-level1",
   "address-level2",
   "postal-code",
@@ -176,38 +186,6 @@ function secretValueFromRaw(raw: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-type AddressParts = {
-  street: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-};
-
-function parseAddressRaw(raw: string): AddressParts {
-  const empty: AddressParts = { street: "", city: "", state: "", postalCode: "", country: "" };
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return empty;
-  }
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (!parsed || typeof parsed !== "object") {
-      return empty;
-    }
-    const record = parsed as Partial<Record<keyof AddressParts, unknown>>;
-    return {
-      street: typeof record.street === "string" ? record.street : "",
-      city: typeof record.city === "string" ? record.city : "",
-      state: typeof record.state === "string" ? record.state : "",
-      postalCode: typeof record.postalCode === "string" ? record.postalCode : "",
-      country: typeof record.country === "string" ? record.country : "",
-    };
-  } catch {
-    return empty;
-  }
-}
-
 function fieldPlainString(field: ItemFieldV2): string {
   switch (field.value.kind) {
     case "text":
@@ -246,13 +224,23 @@ function put(map: Partial<Record<AutofillValueKey, string>>, key: AutofillValueK
   map[key] = trimmed;
 }
 
-function expandAddressField(map: Partial<Record<AutofillValueKey, string>>, raw: string): void {
-  const address = parseAddressRaw(raw);
+function expandAddressField(
+  map: Partial<Record<AutofillValueKey, string>>,
+  raw: string,
+  locale = "en",
+): void {
+  const address = parseKeyFieldAddressValue(raw);
   put(map, "street-address", address.street);
+  put(map, "address-house", address.house);
+  put(map, "address-apartment", address.apartment);
   put(map, "address-level2", address.city);
   put(map, "address-level1", address.state);
   put(map, "postal-code", address.postalCode);
   put(map, "country", address.country);
+  const formatted = formatKeyFieldAddressCopyValue(address, locale);
+  if (formatted) {
+    put(map, "address", formatted);
+  }
 }
 
 function looksLikeEmailAddress(value: string): boolean {
@@ -322,9 +310,18 @@ export function extractAutofillEmailCandidates(item: ItemPlaintextV2): string[] 
   return out;
 }
 
+export type ExtractAutofillValuesOptions = {
+  /** BCP 47 locale for one-line address formatting (page or vault UI locale). */
+  locale?: string;
+};
+
 /** Extract semantic fill values from any supported vault item category. */
-export function extractAutofillValues(item: ItemPlaintextV2): Partial<Record<AutofillValueKey, string>> {
+export function extractAutofillValues(
+  item: ItemPlaintextV2,
+  options?: ExtractAutofillValuesOptions,
+): Partial<Record<AutofillValueKey, string>> {
   const map: Partial<Record<AutofillValueKey, string>> = {};
+  const locale = options?.locale?.trim() || "en";
 
   for (const field of item.fields) {
     if (field.id === "address" || field.type === "address") {
@@ -335,7 +332,7 @@ export function extractAutofillValues(item: ItemPlaintextV2): Partial<Record<Aut
             ? field.value.text
             : "";
       if (raw) {
-        expandAddressField(map, raw);
+        expandAddressField(map, raw, locale);
       }
       continue;
     }

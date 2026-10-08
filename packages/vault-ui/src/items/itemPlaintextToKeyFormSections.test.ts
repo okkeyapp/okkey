@@ -656,7 +656,6 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       "first-name",
       "last-name",
       "middle-name",
-      "initials",
       "gender",
       "birth-date",
       "phone",
@@ -721,7 +720,6 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       "first-name",
       "last-name",
       "middle-name",
-      "initials",
       "gender",
       "birth-date",
       "phone",
@@ -743,7 +741,9 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
 
   it("round-trips address KeyField JSON through save and edit reopen", () => {
     const addressValue = JSON.stringify({
-      street: "Nevsky 1",
+      apartment: "5",
+      house: "1",
+      street: "Nevsky",
       city: "Saint Petersburg",
       state: "",
       postalCode: "191186",

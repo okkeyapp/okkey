@@ -286,6 +286,8 @@ export type KeyFieldProps = Omit<
   controlButtonClassName?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
   addressFieldPlaceholders?: {
+    apartment: string;
+    house: string;
     street: string;
     city: string;
     state: string;

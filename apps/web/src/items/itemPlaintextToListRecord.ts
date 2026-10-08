@@ -12,7 +12,7 @@ function collectUrls(item: ItemPlaintextV2): string[] {
 
 export function itemPlaintextToListRecord(
   item: ItemPlaintextV2,
-  input: { folderId: string | null; favorite: boolean },
+  input: { folderId: string | null; favorite: boolean; locale?: string },
 ): ItemsListRecord {
   return {
     id: item.itemId,
@@ -22,7 +22,7 @@ export function itemPlaintextToListRecord(
     urls: collectUrls(item),
     ...(item.faviconId ? { faviconId: item.faviconId } : {}),
     title: item.title,
-    description: readItemListRecordDescription(item),
+    description: readItemListRecordDescription(item, input.locale ?? "en"),
     tags: [...(item.tags ?? [])],
     date: new Date(item.updatedAtMs),
     favorite: input.favorite,

@@ -13,7 +13,10 @@ export type AutofillFieldKind =
   | "sex"
   | "organization"
   | "organization-title"
+  | "address"
   | "street-address"
+  | "address-house"
+  | "address-apartment"
   | "address-level1"
   | "address-level2"
   | "postal-code"
@@ -84,7 +87,13 @@ const ORG_HINT = /organization|company|employer|компани|организа�
 const ORG_TITLE = /organization[-_]?title|job[-_]?title|position|title|должност|позици/i;
 
 const STREET =
-  /\b(street|address[-_]?line\d?|address\d?|addr\d?)\b|улиц|(?<!электронн\S*\s)(?<!эл\.?\s)адрес(?!\s*кошель)/i;
+  /\b(street|address[-_]?line1|addr(?:ess)?[-_]?1)\b|улиц/i;
+/** Single one-line address field (not street / city / house / apt specifically). */
+const ADDRESS_FULL =
+  /\b(street[-_]?address|address(?![-_]?(?:line|level|house|apartment|apt|unit|flat))\b|addr(?![-_]?\d))\b|(?<!электронн\S*\s)(?<!эл\.?\s)адрес(?!\s*(?:кошель|дома|квартир))/i;
+const HOUSE = /\b(house|building|bldg|дом)\b|address[-_]?house/i;
+const APARTMENT =
+  /\b(apartment|appt?|unit|suite|flat|кв\.?|квартир|офис)\b|address[-_]?line2|address[-_]?apartment/i;
 const CITY = /address[-_]?level[-_]?2|\bcity\b|\btown\b|suburb|город/i;
 const STATE = /address[-_]?level[-_]?1|\bstate\b|province|region|област|регион|край/i;
 const POSTAL = /postal|zip|postcode|индекс/i;
@@ -281,7 +290,11 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
   }
 
   const address = firstMatch(blob, ac, [
-    { key: "street-address", ac: ["street-address", "address-line1", "address-line2"], re: STREET },
+    { key: "address-apartment", ac: ["address-line2", "address-level3"], re: APARTMENT },
+    { key: "address-house", ac: undefined, re: HOUSE },
+    // street-address / address-line1 → street component (full one-liner decided at fill time)
+    { key: "street-address", ac: ["street-address", "address-line1"], re: STREET },
+    { key: "address", ac: undefined, re: ADDRESS_FULL },
     { key: "address-level2", ac: "address-level2", re: CITY },
     { key: "address-level1", ac: "address-level1", re: STATE },
     { key: "postal-code", ac: "postal-code", re: POSTAL },

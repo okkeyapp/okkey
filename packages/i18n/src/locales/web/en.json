@@ -838,6 +838,8 @@
   "web.keyForm.crackTime.decades": "Decades",
   "web.keyForm.crackTime.centuries": "Centuries",
   "web.keyForm.crackTime.forever": "Never",
+  "web.keyForm.address.apartment": "Apartment",
+  "web.keyForm.address.house": "House / building",
   "web.keyForm.address.street": "Street",
   "web.keyForm.address.city": "City/Town/Suburb",
   "web.keyForm.address.state": "State/Province",

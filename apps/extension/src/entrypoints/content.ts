@@ -40,6 +40,7 @@ import {
   type GeneratorOverlayState,
 } from "../lib/autofillGeneratorOverlay";
 import {
+  applyPageLocaleAddressFormat,
   captureLoginCredentials,
   classifyAutofillInput,
   suggestionFieldKindsForFocus,
@@ -51,6 +52,7 @@ import {
   findLoginFields,
   isVisibleFillableElement,
   resolveAutofillAnchorInput,
+  resolvePageAddressLocale,
   submitLoginFormIfReady,
   watchAndFillAutofillValues,
 } from "../lib/loginFormFields";
@@ -1893,12 +1895,15 @@ export default defineContentScript({
         }
         return;
       }
-      const fillValues = {
-        ...result.fill.values,
-        ...(result.fill.username ? { username: result.fill.username, email: result.fill.username } : {}),
-        ...(result.fill.password ? { password: result.fill.password } : {}),
-        ...(fillOverrides ?? {}),
-      };
+      const fillValues = applyPageLocaleAddressFormat(
+        {
+          ...result.fill.values,
+          ...(result.fill.username ? { username: result.fill.username, email: result.fill.username } : {}),
+          ...(result.fill.password ? { password: result.fill.password } : {}),
+          ...(fillOverrides ?? {}),
+        },
+        resolvePageAddressLocale(document),
+      );
       const isCreditCard = result.fill.categoryId === "credit_card";
       fillAutofillValues(document, fillValues, {
         allowHiddenCreditCard: isCreditCard,
