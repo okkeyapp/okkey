@@ -188,6 +188,33 @@ function useActivityListeners(touch: () => void): void {
   }, [touch]);
 }
 
+function deviceApproversEqual(a: DeviceListItemDto[], b: DeviceListItemDto[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      !left ||
+      !right ||
+      left.device_id !== right.device_id ||
+      left.device_name !== right.device_name ||
+      left.status !== right.status ||
+      left.platform !== right.platform ||
+      left.is_current !== right.is_current ||
+      left.approval_expires_at !== right.approval_expires_at ||
+      left.blocked_until !== right.blocked_until
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function IdleLockWatcher({
   enabled,
   idleMs,
@@ -936,7 +963,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       );
       setCurrentDeviceId(snapshot.deviceId);
       currentDeviceIdRef.current = snapshot.deviceId;
-      setDeviceApprovers(snapshot.approverDevices);
+      // Poll returns a fresh array every 2s; keep previous reference when equal so
+      // AuthVault context consumers (item forms / datepicker) do not re-render on a tick.
+      setDeviceApprovers((prev) =>
+        deviceApproversEqual(prev, snapshot.approverDevices) ? prev : snapshot.approverDevices,
+      );
       // Revoke/block from another browser must drop local unlock immediately.
       if (snapshot.status !== "trusted" && vaultUnlockedRef.current) {
         lockVault();
