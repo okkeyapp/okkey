@@ -7,8 +7,11 @@ export function isKeyFieldDatePickerInteractionTarget(element: Element | null | 
     element.closest("[data-key-field-date-picker-panel]") ||
       element.closest("[data-radix-select-viewport]") ||
       element.closest("[data-radix-select-content]") ||
+      element.closest("[data-slot='popover-content']") ||
+      element.closest("[data-radix-popover-content]") ||
       element.closest("[data-radix-popper-content-wrapper]") ||
       element.closest('[role="listbox"]') ||
+      element.closest('[role="option"]') ||
       element.closest('[role="combobox"][data-state="open"]') ||
       element.closest('[role="combobox"][aria-expanded="true"]') ||
       element.closest('[aria-expanded="true"][aria-haspopup="listbox"]'),

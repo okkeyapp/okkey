@@ -5,9 +5,10 @@
  * Notes:
  * - Radix Select Content does **not** set `data-radix-select-content`; the open
  *   portal exposes `data-radix-select-viewport` + `role="listbox"`.
- * - Calendar month/year (`CalendarMonthYearCaption`) are Radix Selects, often
- *   portaled outside `[data-key-field-date-picker-panel]` / Popover — e.g. birth
- *   date («дата рождения») in the personal-data item edit popup.
+ * - Calendar month/year (`CalendarMonthYearCaption`) use Popover listboxes
+ *   (same family as country SearchableSelect), portaled outside
+ *   `[data-key-field-date-picker-panel]` — e.g. birth date («дата рождения»)
+ *   in the personal-data item edit popup. Older builds used Radix Select.
  * - Do **not** treat a generic `role="dialog"` as blocking: Okkey item edit and
  *   many login modals are dialogs, and autofill must still work inside them.
  * - While Select / datepicker / menu dropdowns are open, content-script overlay

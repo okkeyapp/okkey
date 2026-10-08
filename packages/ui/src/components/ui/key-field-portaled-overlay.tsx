@@ -25,6 +25,8 @@ export const KeyFieldPortaledOverlayContext = React.createContext<KeyFieldPortal
 
 const OPEN_SELECT_SELECTOR = [
   "[data-radix-select-viewport]",
+  "[data-slot='popover-content']",
+  "[data-radix-popover-content]",
   '[role="listbox"][data-state="open"]',
   '[role="combobox"][data-state="open"]',
   '[aria-expanded="true"][aria-haspopup="listbox"]',
@@ -58,8 +60,8 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
       return;
     }
 
-    // Repositioning while a Radix Select (month/year caption) is open remounts /
-    // dismisses the listbox via focus + DismissableLayer. Skip until it closes.
+    // Repositioning while month/year (or other) listbox menus are open can
+    // dismiss them via focus / DismissableLayer. Skip until they close.
     if (pageHasOpenSelect()) {
       return;
     }
@@ -103,19 +105,28 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
     };
   }, [anchorRef, open, updatePosition]);
 
-  // Reposition once when overlay children change size (e.g. calendar month switch).
-  // Do NOT depend on `coords` — that previously caused an infinite setCoords loop
-  // that closed month/year Selects via DismissableLayer after ~1s of churn.
+  // Reposition when the panel's box changes (calendar month switch, etc.).
+  // Prefer ResizeObserver over a `children` identity dep — parent re-renders used
+  // to re-fire positioning while month/year menus were open.
   React.useLayoutEffect(() => {
     if (!open) {
       return undefined;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
+    const panel = panelRef.current;
+    if (!panel || typeof ResizeObserver === "undefined") {
+      const frameId = window.requestAnimationFrame(() => {
+        updatePosition();
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    const observer = new ResizeObserver(() => {
       updatePosition();
     });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [children, open, updatePosition]);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [open, updatePosition]);
 
   if (!open || typeof document === "undefined") {
     return null;
