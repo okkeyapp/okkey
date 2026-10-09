@@ -1709,7 +1709,7 @@
   "extension.autofill.unlockTitle": "Сейф закрыт",
   "extension.autofill.unlockCta": "Разблокировать",
   "extension.autofill.usernameGenerator": "Генератор логина",
-  "extension.autofill.noItems": "Записей нет",
+  "extension.autofill.noItems": "Нет элементов для автозаполнения",
   "extension.authCallback.documentTitle": "Расширение Okkey — Сессия готова",
   "extension.authCallback.title": "Расширение Okkey",
   "extension.authCallback.completing": "Завершаем вход…",

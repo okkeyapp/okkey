@@ -80,7 +80,7 @@ function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
   const locale = ru ? "ru" : "en";
   let usernameGeneratorCta = ru ? "Генератор логина" : "Username generator";
-  let emptyTooltip = ru ? "Записей нет" : "No items";
+  let emptyTooltip = ru ? "Нет элементов для автозаполнения" : "No items to autofill";
   try {
     usernameGeneratorCta = formatWebMessage(locale, "extension.autofill.usernameGenerator");
   } catch {
@@ -1073,6 +1073,8 @@ export default defineContentScript({
           }
           .toggle.toggle-pill {
             width: 42px;
+            height: 22px;
+            border-radius: 11px;
             background: #f1f5f9;
             border: 1px solid #b1b8bd;
             box-shadow: none;
@@ -1080,7 +1082,8 @@ export default defineContentScript({
           .toggle-side {
             position: absolute;
             left: 2px;
-            top: 3px;
+            top: 50%;
+            transform: translateY(-50%);
             width: 16px;
             height: 16px;
             display: flex;
@@ -1092,6 +1095,10 @@ export default defineContentScript({
             width: 16px;
             height: 16px;
             display: block;
+          }
+          .toggle-side img.toggle-lock {
+            width: 12px;
+            height: 12px;
           }
           .toggle-chevron {
             transition: transform 180ms ease;
@@ -1409,7 +1416,7 @@ export default defineContentScript({
       ) {
         return null;
       }
-      const height = 24;
+      const height = kind === "empty" ? 24 : 22;
       const width = kind === "empty" ? 24 : 42;
       return {
         left: Math.max(4, rect.right - width - 8),
@@ -1422,15 +1429,18 @@ export default defineContentScript({
     function toggleButtonHtml(
       kind: AutofillToggleKind,
       pos: { left: number; top: number },
+      /** When set, paint chevron at this rotate state first (for open↔closed CSS transition). */
+      chevronFrom?: "open" | "closed",
     ): string {
       const mark = `<span class="toggle-mark"><img src="${escapeHtml(overlayIconUrl("okkey-mark"))}" alt="" /></span>`;
       if (kind === "empty") {
         return `<button type="button" class="toggle toggle-empty" data-toggle="1" data-toggle-kind="empty" style="left:${pos.left}px;top:${pos.top}px" aria-label="Okkey">${mark}</button>`;
       }
-      const openClass = kind === "open" ? " toggle-open" : "";
+      const chevronKind = chevronFrom ?? (kind === "open" ? "open" : "closed");
+      const openClass = chevronKind === "open" ? " toggle-open" : "";
       const sideImg =
         kind === "locked"
-          ? `<img src="${escapeHtml(overlayIconUrl("lucide-lock"))}" alt="" />`
+          ? `<img class="toggle-lock" src="${escapeHtml(overlayIconUrl("lucide-lock"))}" alt="" />`
           : `<img class="toggle-chevron" src="${escapeHtml(overlayIconUrl("lucide-chevron-down"))}" alt="" />`;
       return `<button type="button" class="toggle toggle-pill${openClass}" data-toggle="1" data-toggle-kind="${kind}" style="left:${pos.left}px;top:${pos.top}px" aria-label="Okkey" aria-expanded="${kind === "open" ? "true" : "false"}">
         <span class="toggle-side">${sideImg}</span>
@@ -1890,8 +1900,23 @@ export default defineContentScript({
             ? `<div class="tooltip" style="left:${togglePos.left + togglePos.width / 2}px;top:${togglePos.top}px"><span class="tooltip-arrow" aria-hidden="true"></span>${escapeHtml(tooltipText)}</div>`
             : "";
 
+        // Full HTML replace would skip CSS transform transition — paint from prior
+        // chevron angle first, then flip class on the next frame.
+        const prevToggle = root.querySelector("[data-toggle='1']");
+        const prevKind = prevToggle?.getAttribute("data-toggle-kind");
+        const animateChevron =
+          showToggle &&
+          (toggleKind === "open" || toggleKind === "closed") &&
+          (prevKind === "open" || prevKind === "closed") &&
+          prevKind !== toggleKind;
         const toggleMarkup =
-          showToggle && togglePos ? toggleButtonHtml(toggleKind, togglePos) : "";
+          showToggle && togglePos
+            ? toggleButtonHtml(
+                toggleKind,
+                togglePos,
+                animateChevron ? (prevKind as "open" | "closed") : undefined,
+              )
+            : "";
 
         host.style.display = "block";
         host.style.pointerEvents = "none";
@@ -1899,6 +1924,21 @@ export default defineContentScript({
         wireOverlayOnce(root);
         focusRenameInput(root);
         wireGeneratorPanel(root);
+
+        if (animateChevron) {
+          const btn = root.querySelector("[data-toggle='1']");
+          if (btn instanceof HTMLElement) {
+            void btn.offsetWidth;
+            requestAnimationFrame(() => {
+              if (paintGen !== overlayPaintGeneration) {
+                return;
+              }
+              btn.classList.toggle("toggle-open", toggleKind === "open");
+              btn.setAttribute("data-toggle-kind", toggleKind);
+              btn.setAttribute("aria-expanded", toggleKind === "open" ? "true" : "false");
+            });
+          }
+        }
 
         const tip = root.querySelector(".tooltip");
         if (tip instanceof HTMLElement && togglePos) {
