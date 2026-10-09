@@ -44,6 +44,21 @@ describe("detectAutofillFormType", () => {
     assert.equal(type, "login");
   });
 
+  it("demoqa Book Store register stays register despite Back to Login", () => {
+    const type: AutofillFormType = detectAutofillFormType(
+      signals({
+        fieldKinds: ["given-name", "family-name", "username", "password"],
+        passwordFields: [passwordHints({ id: "password", autocomplete: "off" })],
+        hasConfirmPassword: false,
+        hasNewPasswordAc: false,
+        hasCurrentPasswordAc: false,
+        formTextBlob: "userForm Register to Book Store Register Back to Login",
+        urlPath: "/register",
+      }),
+    );
+    assert.equal(type, "register");
+  });
+
   it("detects login without strong wording when shape is classic", () => {
     assert.equal(
       detectAutofillFormType(

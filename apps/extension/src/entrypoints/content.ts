@@ -211,6 +211,8 @@ export default defineContentScript({
     let themeCssResolved = false;
     /** Monotonic id so late autofill query results never paint after focus left / Select opened. */
     let overlayQueryGeneration = 0;
+    /** Monotonic id so a stale async paint (e.g. post-fill showToggleOnly) cannot clobber a newer generator/list. */
+    let overlayPaintGeneration = 0;
     /**
      * Sticky freeze while Radix Select / datepicker dropdown is open.
      * Debounced clear survives brief unmounts during floating-ui reposition (~Select close race).
@@ -295,6 +297,21 @@ export default defineContentScript({
       if (!pendingSave) {
         restoreNativeAutocomplete();
       }
+    }
+
+    /**
+     * Like isVisibleFillableElement, but ignores readOnly — suppressNativeAutocomplete
+     * briefly sets readOnly on focus, which must not abort generator / overlay paint.
+     */
+    function isPageVisibleAutofillInput(el: HTMLInputElement): boolean {
+      if (el.disabled) {
+        return false;
+      }
+      const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+      if (style && (style.visibility === "hidden" || style.display === "none")) {
+        return false;
+      }
+      return el.getClientRects().length > 0;
     }
 
     /** True when focus landed on the page shell (body/main) after dialog teardown. */
@@ -1376,6 +1393,7 @@ export default defineContentScript({
     }
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
+      const paintGen = ++overlayPaintGeneration;
       try {
         // Defense in depth: never paint on Okkey web even if main() early-return was skipped.
         if (isOkkeyWebAppOrigin()) {
@@ -1392,6 +1410,10 @@ export default defineContentScript({
           return;
         }
         const cssVars = await themeCssVars();
+        // A newer paintOverlay started while we awaited theme — drop this stale paint.
+        if (paintGen !== overlayPaintGeneration) {
+          return;
+        }
         if (isOverlayUpdateFrozen() && !pendingSave) {
           return;
         }
@@ -1399,6 +1421,11 @@ export default defineContentScript({
           clearActiveInputAndHide();
           return;
         }
+        // Stale post-fill / blur `showToggleOnly` must not wipe an open generator panel.
+        const generatorOpen =
+          (overlayMode === "password-generator" || overlayMode === "username-generator") &&
+          generatorState != null;
+        const showToggleOnly = Boolean(opts?.showToggleOnly) && !generatorOpen;
         const anchorInput =
           activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
         const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
@@ -1406,7 +1433,7 @@ export default defineContentScript({
         // drop the orphan instead of leaving a floating toggle (often at prior center coords).
         if (
           !pendingSave &&
-          opts?.showToggleOnly &&
+          showToggleOnly &&
           overlayMode === "hidden" &&
           (!anchorInput || !togglePos)
         ) {
@@ -1419,13 +1446,9 @@ export default defineContentScript({
         const allowListPanel =
           overlayMode === "list" &&
           cachedSuggestions.length > 0 &&
-          !opts?.showToggleOnly &&
+          !showToggleOnly &&
           !isOverlayUpdateFrozen();
-        const allowGeneratorPanel =
-          (overlayMode === "password-generator" || overlayMode === "username-generator") &&
-          generatorState != null &&
-          !opts?.showToggleOnly &&
-          !isOverlayUpdateFrozen();
+        const allowGeneratorPanel = generatorOpen && !showToggleOnly && !isOverlayUpdateFrozen();
         if (allowListPanel) {
           panelMarkup = listHtml(cachedSuggestions);
         } else if (allowGeneratorPanel && generatorState) {
@@ -1488,7 +1511,7 @@ export default defineContentScript({
             positionPanelNearInput(panel, anchorInput);
           }
         }
-        if (opts?.showToggleOnly && !panelMarkup && !tooltipMarkup && !toggleMarkup) {
+        if (showToggleOnly && !panelMarkup && !tooltipMarkup && !toggleMarkup) {
           hideOverlay();
         }
       } catch {
@@ -1633,19 +1656,21 @@ export default defineContentScript({
       }
       const formType = formTypeOverride ?? resolveFormType(input);
       activeFormType = formType;
+      if (formType === "search") {
+        hideOverlay();
+        return;
+      }
+      // Register password/username generators must open even after a personal_data fill
+      // (suggestionsListSuppressed only blocks vault suggestion lists, not generators).
+      if (maybeOpenRegisterGenerator(input, formType)) {
+        return;
+      }
       // After Okkey fill: keep the round toggle, do not auto-open the list until clear/toggle.
       if (suggestionsListSuppressed()) {
         listOpen = false;
         overlayMode = "hidden";
         generatorState = null;
         await paintOverlay({ showToggleOnly: true });
-        return;
-      }
-      if (formType === "search") {
-        hideOverlay();
-        return;
-      }
-      if (maybeOpenRegisterGenerator(input, formType)) {
         return;
       }
       const queryGen = ++overlayQueryGeneration;
@@ -2076,7 +2101,7 @@ export default defineContentScript({
           return;
         }
         const target = event.target;
-        if (!(target instanceof HTMLInputElement) || !isVisibleFillableElement(target)) {
+        if (!(target instanceof HTMLInputElement) || !isPageVisibleAutofillInput(target)) {
           // Focus moved to body/main/non-input (e.g. dialog closed) — drop any orphan toggle.
           if (target instanceof Element && isNonFieldFocusTarget(target)) {
             window.clearTimeout(hideTimer);
@@ -2135,7 +2160,9 @@ export default defineContentScript({
             return;
           }
           // Anchor removed with the dialog — hide instead of painting at stale center coords.
-          if (!activeInput || !document.contains(activeInput) || !isVisibleFillableElement(activeInput)) {
+          // Use page-visible check (not isVisibleFillableElement) so brief readOnly suppress
+          // does not tear down an open password generator.
+          if (!activeInput || !document.contains(activeInput) || !isPageVisibleAutofillInput(activeInput)) {
             clearActiveInputAndHide();
             return;
           }

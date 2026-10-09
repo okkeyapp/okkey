@@ -46,6 +46,14 @@ const REGISTER_TEXT =
 const LOGIN_TEXT =
   /\b(sign[-_\s]?in|log[-_\s]?in|log[-_\s]?on|auth(enticate)?|войти|вход|авторизац)\b/i;
 
+/** “Back to Login” / “Go to login” on a register form must not count as a login signal. */
+const BACK_TO_LOGIN_TEXT =
+  /\b((back|go|goto|return)\s+to\s+log[-_\s]?in|назад\s+(ко?\s+)?входу|к\s+входу)\b/gi;
+
+function textSuggestsLogin(text: string): boolean {
+  return LOGIN_TEXT.test(text.replace(BACK_TO_LOGIN_TEXT, " "));
+}
+
 const CHECKOUT_TEXT =
   /\b(checkout|payment|billing|pay\b|корзин|оплат|платеж|checkout)\b/i;
 
@@ -223,7 +231,7 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
 
   // Explicit login wording wins over bare identity when a single password is present.
   if (hasPassword && hasUser && passwordCount === 1 && !signals.hasConfirmPassword) {
-    if (LOGIN_TEXT.test(text) || !REGISTER_TEXT.test(text)) {
+    if (textSuggestsLogin(text) || !REGISTER_TEXT.test(text)) {
       return "login";
     }
   }
