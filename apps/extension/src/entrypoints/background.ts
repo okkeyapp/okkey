@@ -12,6 +12,7 @@ import {
   handleAutofillSaveOffer,
   handleAutofillSiteIcon,
   isAutofillRuntimeMessage,
+  markPendingSaveDismissed,
   markPendingSaveInteracted,
   openExtensionUnlockPrompt,
   setPendingSaveOffer,
@@ -100,10 +101,17 @@ export default defineBackground(() => {
       }
       return clearPendingSaveOffer(tabId).then(() => ({ ok: true }));
     }
+    if (message.type === AUTOFILL_MSG.pendingSaveDismiss) {
+      if (tabId == null) {
+        return Promise.resolve({ ok: true });
+      }
+      return markPendingSaveDismissed(tabId).then(() => ({ ok: true }));
+    }
     if (message.type === AUTOFILL_MSG.pendingSaveMarkInteracted) {
       if (tabId == null) {
         return Promise.resolve({ ok: true });
       }
+      // No-op (legacy): destination clicks must not suppress post-redirect restore.
       return markPendingSaveInteracted(tabId, message.currentUrl).then(() => ({ ok: true }));
     }
     return undefined;

@@ -13,6 +13,11 @@ export const AUTOFILL_MSG = {
   pendingSaveSet: "okkey.autofill.pendingSave.set",
   pendingSaveGet: "okkey.autofill.pendingSave.get",
   pendingSaveClear: "okkey.autofill.pendingSave.clear",
+  /** Explicit save-prompt dismiss (X) — do not restore after redirect. */
+  pendingSaveDismiss: "okkey.autofill.pendingSave.dismiss",
+  /**
+   * @deprecated No-op. Destination pointer/key used to mark interacted and killed restore.
+   */
   pendingSaveMarkInteracted: "okkey.autofill.pendingSave.markInteracted",
 } as const;
 
@@ -29,8 +34,17 @@ export type AutofillPendingSavePayload = {
   /** Form intent at capture time (`login` | `register` | …). */
   formType?: string;
   createdAt: number;
-  /** User interacted on a post-redirect destination page — do not show. */
-  interacted: boolean;
+  /**
+   * Explicit dismiss (X) before/after redirect — do not restore the offer.
+   * Ordinary clicks/typing on the destination must NOT set this (that killed restore).
+   * Prefer `pendingSaveClear` on dismiss; this flag is a belt-and-suspenders signal.
+   */
+  dismissed?: boolean;
+  /**
+   * @deprecated Use `dismissed` / clear. Kept for session payloads written by older builds.
+   * Treated like `dismissed` when reading.
+   */
+  interacted?: boolean;
   /** Fingerprint of the last shown offer (dedupe re-query after redirect). */
   offeredKey?: string;
 };
@@ -215,6 +229,10 @@ export type AutofillPendingSaveClearMessage = {
   type: typeof AUTOFILL_MSG.pendingSaveClear;
 };
 
+export type AutofillPendingSaveDismissMessage = {
+  type: typeof AUTOFILL_MSG.pendingSaveDismiss;
+};
+
 export type AutofillPendingSaveMarkInteractedMessage = {
   type: typeof AUTOFILL_MSG.pendingSaveMarkInteracted;
   currentUrl: string;
@@ -238,4 +256,5 @@ export type AutofillRuntimeMessage =
   | AutofillPendingSaveSetMessage
   | AutofillPendingSaveGetMessage
   | AutofillPendingSaveClearMessage
+  | AutofillPendingSaveDismissMessage
   | AutofillPendingSaveMarkInteractedMessage;

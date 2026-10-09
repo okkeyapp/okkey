@@ -109,6 +109,7 @@ export async function setPendingSaveOffer(
     prev.username === input.username &&
     prev.password === input.password &&
     normalizeSaveUrl(prev.captureUrl) === normalizeSaveUrl(input.captureUrl);
+  // Fresh stage always clears dismiss — user submitted creds again.
   pendingSaveByTab.set(tabId, {
     username: input.username,
     password: input.password,
@@ -116,11 +117,16 @@ export async function setPendingSaveOffer(
     websiteUrl: input.websiteUrl || input.captureUrl,
     formType: input.formType,
     createdAt: sameCreds && prev ? prev.createdAt : Date.now(),
+    dismissed: false,
     interacted: false,
     // Keep offeredKey so redirect restore can dedupe a second identical offer query.
     ...(sameCreds && prev?.offeredKey ? { offeredKey: prev.offeredKey } : {}),
   });
   await persistPendingSaveSession();
+}
+
+function isPendingSaveDismissed(pending: AutofillPendingSavePayload): boolean {
+  return Boolean(pending.dismissed || pending.interacted);
 }
 
 export async function getPendingSaveOffer(tabId: number): Promise<AutofillPendingSaveGetResponse> {
@@ -131,6 +137,12 @@ export async function getPendingSaveOffer(tabId: number): Promise<AutofillPendin
       pendingSaveByTab.delete(tabId);
       await persistPendingSaveSession();
     }
+    return { status: "none" };
+  }
+  // Dismissed offers stay in the map briefly so restore can see the flag, then drop.
+  if (isPendingSaveDismissed(pending)) {
+    pendingSaveByTab.delete(tabId);
+    await persistPendingSaveSession();
     return { status: "none" };
   }
   return { status: "ok", pending };
@@ -144,7 +156,11 @@ export async function clearPendingSaveOffer(tabId: number): Promise<void> {
   await persistPendingSaveSession();
 }
 
-export async function markPendingSaveInteracted(tabId: number, currentUrl: string): Promise<void> {
+/**
+ * Explicit dismiss (save-prompt X). Survives in-flight navigations better than a bare clear
+ * when the content script is torn down mid-message — still prefer clearPendingSaveOffer.
+ */
+export async function markPendingSaveDismissed(tabId: number): Promise<void> {
   await hydratePendingSaveSession();
   const pending = pendingSaveByTab.get(tabId);
   if (!pending || !isPendingSaveFresh(pending)) {
@@ -154,20 +170,18 @@ export async function markPendingSaveInteracted(tabId: number, currentUrl: strin
     }
     return;
   }
-  if (pending.interacted) {
-    return;
-  }
-  /** Only cancel on destination pages (after redirects away from the login URL). */
-  if (normalizePendingUrl(currentUrl) === normalizePendingUrl(pending.captureUrl)) {
-    return;
-  }
+  pending.dismissed = true;
   pending.interacted = true;
   pendingSaveByTab.set(tabId, pending);
   await persistPendingSaveSession();
 }
 
-function normalizePendingUrl(url: string): string {
-  return normalizeSaveUrl(url);
+/** @deprecated Destination clicks must not dismiss — use markPendingSaveDismissed / clear. */
+export async function markPendingSaveInteracted(tabId: number, _currentUrl: string): Promise<void> {
+  // No-op: marking "interacted" on any destination pointer/key was clearing the
+  // post-redirect save prompt before restore could paint.
+  void tabId;
+  void _currentUrl;
 }
 
 function primaryLoginWebsiteUrl(item: {
@@ -1052,6 +1066,7 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.pendingSaveSet ||
     type === AUTOFILL_MSG.pendingSaveGet ||
     type === AUTOFILL_MSG.pendingSaveClear ||
+    type === AUTOFILL_MSG.pendingSaveDismiss ||
     type === AUTOFILL_MSG.pendingSaveMarkInteracted
   );
 }

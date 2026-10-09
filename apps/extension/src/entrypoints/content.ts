@@ -1584,10 +1584,12 @@ export default defineContentScript({
         }
         if (target.closest("[data-save-cancel]")) {
           pendingSave = null;
+          lastSaveOfferKey = null;
           pendingUpdateItemId = null;
           savePromptKind = "create";
           saveEditing = false;
-          void clearPendingSaveOffer();
+          // Dismiss must survive redirect — do not restore on the next page.
+          void dismissPendingSaveOffer();
           hideOverlay();
           return;
         }
@@ -2381,6 +2383,15 @@ export default defineContentScript({
       }
     }
 
+    async function dismissPendingSaveOffer(): Promise<void> {
+      try {
+        await browser.runtime.sendMessage({ type: AUTOFILL_MSG.pendingSaveDismiss });
+      } catch {
+        /* ignore */
+      }
+      void clearPendingSaveOffer();
+    }
+
     async function persistPendingSaveOffer(creds: PendingSaveCreds): Promise<void> {
       try {
         await browser.runtime.sendMessage({
@@ -2396,19 +2407,52 @@ export default defineContentScript({
       }
     }
 
-    async function markDestinationInteracted(): Promise<void> {
-      try {
-        await browser.runtime.sendMessage({
-          type: AUTOFILL_MSG.pendingSaveMarkInteracted,
-          currentUrl: pageUrl(),
-        });
-      } catch {
-        /* ignore */
+    /**
+     * Rebuild pending creds + persist to the background tab map / session storage.
+     * Must run in capture phase (before navigation unload) so restore can find the offer.
+     */
+    function stagePendingSaveFromSnapshot(
+      form: HTMLFormElement | null,
+      snapshot: { username: string; password: string; captureUrl: string },
+    ): PendingSaveCreds | null {
+      const formType = resolveSaveOfferFormType(form);
+      if (
+        formType === "checkout" ||
+        formType === "search" ||
+        formType === "identity"
+      ) {
+        return null;
       }
+      if (!isSaveOfferFormType(formType) && formType !== "unknown") {
+        return null;
+      }
+      const isRegister = formType === "register";
+      if (wasFilledByOkkey() && !isRegister) {
+        return null;
+      }
+      const creds: PendingSaveCreds = {
+        username: snapshot.username,
+        password: snapshot.password,
+        captureUrl: snapshot.captureUrl,
+        websiteUrl: websiteUrlForSaveOffer(snapshot.captureUrl, formType),
+        formType,
+      };
+      pendingSave = creds;
+      // Fire-and-forget is OK here only because we also await persist in offer path;
+      // capture-phase kickoff maximizes chance the SW receives it before unload.
+      void persistPendingSaveOffer(creds);
+      return creds;
     }
 
     async function restorePendingSaveOffer(): Promise<void> {
       if (window !== window.top) {
+        return;
+      }
+      // Already showing this offer (SPA) — keep it.
+      if (
+        pendingSave &&
+        (overlayMode === "save" || overlayMode === "save-rename" || overlayMode === "unlock-save")
+      ) {
         return;
       }
       let response: AutofillPendingSaveGetResponse;
@@ -2422,7 +2466,7 @@ export default defineContentScript({
       if (response.status !== "ok") {
         return;
       }
-      if (response.pending.interacted) {
+      if (response.pending.dismissed || response.pending.interacted) {
         return;
       }
       const pending: PendingSaveCreds = {
@@ -2432,7 +2476,16 @@ export default defineContentScript({
         websiteUrl: response.pending.websiteUrl || response.pending.captureUrl,
         formType: (response.pending.formType as AutofillFormType) || "unknown",
       };
+      pendingSave = pending;
       await maybeOfferSave(pending, { allowAfterOkkeyFill: true });
+    }
+
+    /** Full navigations race SW hydration / CS inject — retry a few times. */
+    function scheduleRestorePendingSaveOffer(): void {
+      void restorePendingSaveOffer();
+      window.setTimeout(() => void restorePendingSaveOffer(), 50);
+      window.setTimeout(() => void restorePendingSaveOffer(), 250);
+      window.setTimeout(() => void restorePendingSaveOffer(), 800);
     }
 
     function syncRenameDraftFromDom(): void {
@@ -2800,8 +2853,11 @@ export default defineContentScript({
       };
       // Hold early so focusout hide (180ms) cannot race past async saveOffer.
       pendingSave = creds;
-      void persistPendingSaveOffer(creds);
-      void maybeOfferSave(creds, { allowAfterOkkeyFill: isRegister });
+      void (async () => {
+        // Await persist so a fast full-page redirect still finds pending in session.
+        await persistPendingSaveOffer(creds);
+        await maybeOfferSave(creds, { allowAfterOkkeyFill: isRegister });
+      })();
     }
 
     /**
@@ -3019,61 +3075,16 @@ export default defineContentScript({
     }
 
     document.addEventListener(
-      "pointerdown",
-      (event) => {
-        if (window !== window.top) {
-          return;
-        }
-        const target = event.target;
-        if (target instanceof Element) {
-          if (host?.contains(target)) {
-            return;
-          }
-          if (target.closest?.("[data-okkey-autofill]")) {
-            return;
-          }
-        }
-        void markDestinationInteracted();
-      },
-      true,
-    );
-
-    document.addEventListener(
-      "keydown",
-      (event) => {
-        if (window !== window.top) {
-          return;
-        }
-        if (event.metaKey || event.ctrlKey || event.altKey) {
-          return;
-        }
-        // Ignore pure modifiers / navigation that often accompany redirects.
-        if (
-          event.key === "Shift" ||
-          event.key === "Tab" ||
-          event.key === "Escape" ||
-          event.key === "Meta" ||
-          event.key === "Control" ||
-          event.key === "Alt"
-        ) {
-          return;
-        }
-        const target = event.target;
-        if (target instanceof Element && host?.contains(target)) {
-          return;
-        }
-        void markDestinationInteracted();
-      },
-      true,
-    );
-
-    document.addEventListener(
       "submit",
       (event) => {
         const form = event.target instanceof HTMLFormElement ? event.target : null;
         // Capture-phase snapshot — page submit handlers may clear inputs before bubble.
-        const creds = snapshotCredentialsForOffer(form);
-        onCredentialsSubmitted(form, creds);
+        const snapshot = snapshotCredentialsForOffer(form);
+        // Stage into background *now* (before unload) so post-redirect restore works.
+        if (snapshot) {
+          stagePendingSaveFromSnapshot(form, snapshot);
+        }
+        onCredentialsSubmitted(form, snapshot);
       },
       true,
     );
@@ -3094,12 +3105,14 @@ export default defineContentScript({
         const form =
           control.closest("form") ??
           (activeInput?.form && document.contains(activeInput) ? activeInput.form : null);
-        // Capture NOW (capture phase, before demoqa/AJAX handlers). Defer only the offer UI.
-        const creds = snapshotCredentialsForOffer(form);
-        if (!creds) {
+        // Capture + persist NOW (capture phase, before demoqa/AJAX / navigation).
+        const snapshot = snapshotCredentialsForOffer(form);
+        if (!snapshot) {
           return;
         }
-        setTimeout(() => onCredentialsSubmitted(form, creds), 0);
+        stagePendingSaveFromSnapshot(form, snapshot);
+        // Defer only the offer UI so page click handlers can run first.
+        setTimeout(() => onCredentialsSubmitted(form, snapshot), 0);
       },
       true,
     );
@@ -3152,7 +3165,8 @@ export default defineContentScript({
       void pendingTotpItemId;
     }
 
-    void restorePendingSaveOffer();
+    // Full-page post-login redirect: CS reinjects → pull pending from SW session by tabId.
+    scheduleRestorePendingSaveOffer();
 
     // Autofocus / restored focus often happens before this script runs — no focusin fires.
     bootstrapFocusedAutofillField();
@@ -3172,12 +3186,14 @@ export default defineContentScript({
         void maybeOfferSave(pendingSave, { allowAfterOkkeyFill: true });
         return;
       }
-      void restorePendingSaveOffer();
+      scheduleRestorePendingSaveOffer();
       // SPA navigations may leave autofocus set without a new focusin.
       bootstrapFocusedAutofillField();
     };
     window.addEventListener("popstate", onPossibleNavigation);
     window.addEventListener("pageshow", (event) => {
+      // Always try restore on pageshow (incl. bfcache) — URL may be unchanged after POST redirect.
+      scheduleRestorePendingSaveOffer();
       onPossibleNavigation();
       // bfcache restore: field may still be focused with no focus event.
       if (event.persisted) {
