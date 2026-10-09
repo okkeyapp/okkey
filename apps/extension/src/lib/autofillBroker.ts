@@ -201,8 +201,8 @@ function filterCategoriesByFormType(
     return categories.filter((id) => id === "login");
   }
   if (formType === "register") {
-    // Password / username on register use generators in the content script.
-    if (focused === "password" || focused === "username") {
+    // Password → generator only (content script). Username → nickname from personal_data.
+    if (focused === "password") {
       return [];
     }
     return categories.filter((id) => id === "personal_data");
@@ -298,6 +298,29 @@ export async function handleAutofillQuery(
         const iconUrl = isLogin
           ? await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId)
           : undefined;
+
+        // Register username field: only suggest personal_data rows that have a nickname
+        // (mapped to values.username). Email-only records fall through to the generator.
+        if (
+          formType === "register" &&
+          focusedKind === "username" &&
+          item.categoryId === "personal_data"
+        ) {
+          const nickname = (values.username ?? "").trim();
+          if (!nickname) {
+            return [];
+          }
+          return [
+            {
+              itemId: item.itemId,
+              title,
+              username: nickname,
+              categoryId: item.categoryId,
+              suggestionKey: `${item.itemId}:nickname`,
+              fillOverrides: { username: nickname },
+            },
+          ];
+        }
 
         if (wantsEmailField && item.categoryId === "personal_data") {
           const emails = extractAutofillEmailCandidates(item);

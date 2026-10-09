@@ -385,8 +385,8 @@ export function categoriesAllowedForFormType(
     return ["login"];
   }
   if (formType === "register") {
-    // Generators handle password/username; vault suggestions = personal_data for the rest.
-    if (fieldKind === "password" || fieldKind === "username") {
+    // Password → generator only. Username → nickname suggestions (personal_data) or generator.
+    if (fieldKind === "password") {
       return [];
     }
     return ["personal_data"];

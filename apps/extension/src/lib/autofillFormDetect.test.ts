@@ -250,9 +250,9 @@ describe("categoriesAllowedForFormType", () => {
     assert.deepEqual(categoriesAllowedForFormType("login", "password"), ["login"]);
   });
 
-  it("register suppresses vault suggestions on password/username (generators)", () => {
+  it("register: password has no vault cats; username allows personal_data nicknames", () => {
     assert.deepEqual(categoriesAllowedForFormType("register", "password"), []);
-    assert.deepEqual(categoriesAllowedForFormType("register", "username"), []);
+    assert.deepEqual(categoriesAllowedForFormType("register", "username"), ["personal_data"]);
     assert.deepEqual(categoriesAllowedForFormType("register", "email"), ["personal_data"]);
     assert.deepEqual(categoriesAllowedForFormType("register", "given-name"), ["personal_data"]);
   });

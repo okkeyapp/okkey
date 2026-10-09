@@ -1,4 +1,5 @@
 import { defineContentScript } from "wxt/utils/define-content-script";
+import { formatWebMessage } from "@okkey/i18n";
 
 import {
   AUTOFILL_MSG,
@@ -77,6 +78,13 @@ type SavePromptKind = "create" | "update";
 
 function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
+  const locale = ru ? "ru" : "en";
+  let usernameGeneratorCta = ru ? "Генератор логина" : "Username generator";
+  try {
+    usernameGeneratorCta = formatWebMessage(locale, "extension.autofill.usernameGenerator");
+  } catch {
+    /* bundle may lag until @okkey/i18n rebuild */
+  }
   return ru
     ? {
         unlockCta: "Разблокировать Okkey",
@@ -90,6 +98,7 @@ function overlayStrings() {
         emptyTooltip: "Нет элементов для автозаполнения",
         workspaceFallback: "Workspace",
         vaultFallback: "Сейф",
+        usernameGeneratorCta,
       }
     : {
         unlockCta: "Unlock Okkey",
@@ -103,6 +112,7 @@ function overlayStrings() {
         emptyTooltip: "No items to autofill",
         workspaceFallback: "Workspace",
         vaultFallback: "Vault",
+        usernameGeneratorCta,
       };
 }
 
@@ -176,6 +186,8 @@ export default defineContentScript({
     let stopCreditCardFillWatch: (() => void) | null = null;
     let overlayMode: OverlayMode = "hidden";
     let listOpen = false;
+    /** When true, suggestion list shows separator + «Генератор логина» CTA (register username). */
+    let listOffersUsernameGenerator = false;
     let cachedSuggestions: AutofillSuggestion[] = [];
     let generatorState: GeneratorOverlayState | null = null;
     /** True while pointer is down on the generator length slider (custom drag). */
@@ -320,6 +332,7 @@ export default defineContentScript({
     function hideOverlay(): void {
       overlayMode = "hidden";
       listOpen = false;
+      listOffersUsernameGenerator = false;
       vaultMenuOpen = false;
       generatorState = null;
       generatorSliderActive = false;
@@ -489,6 +502,41 @@ export default defineContentScript({
             flex-direction: column;
             gap: 0;
             padding: 8px;
+          }
+          .list-sep {
+            height: 1px;
+            margin: 8px 0;
+            border: 0;
+            background: hsla(var(--ok-fg) / 0.12);
+          }
+          button.list-gen-cta {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 36px;
+            margin: 0;
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            color: hsl(var(--ok-fg));
+            font: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
+            cursor: pointer;
+            appearance: none;
+            outline: none;
+            transition: background-color 150ms ease, box-shadow 150ms ease;
+          }
+          button.list-gen-cta:hover {
+            background: hsl(var(--ok-hover));
+          }
+          button.list-gen-cta:focus,
+          button.list-gen-cta:focus-visible {
+            background: hsl(var(--ok-hover));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           button.row, .row {
             display: flex;
@@ -1149,9 +1197,12 @@ export default defineContentScript({
     }
 
     function listHtml(suggestions: AutofillSuggestion[]): string {
-      return `<div class="panel"><div class="list">${suggestions
-        .map((item) => suggestionRowHtml(item))
-        .join("")}</div></div>`;
+      const rows = suggestions.map((item) => suggestionRowHtml(item)).join("");
+      const generatorCta = listOffersUsernameGenerator
+        ? `<hr class="list-sep" role="separator" />
+           <button type="button" class="list-gen-cta" data-open-username-generator="1">${escapeHtml(strings.usernameGeneratorCta)}</button>`
+        : "";
+      return `<div class="panel"><div class="list">${rows}${generatorCta}</div></div>`;
     }
 
     function toggleAnchorInput(input: HTMLInputElement): HTMLInputElement {
@@ -1233,6 +1284,13 @@ export default defineContentScript({
           void onToggleClick();
           return;
         }
+        if (target.closest("[data-open-username-generator]")) {
+          window.clearTimeout(hideTimer);
+          listOffersUsernameGenerator = false;
+          openGeneratorForField("username");
+          keepPageFieldFocused();
+          return;
+        }
         if (target.closest("[data-unlock]")) {
           void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
           return;
@@ -1293,6 +1351,7 @@ export default defineContentScript({
               : undefined) ?? cachedSuggestions.find((s) => s.itemId === row.dataset.item);
           void applyFillForItem(row.dataset.item, match?.fillOverrides).then(() => {
             listOpen = false;
+            listOffersUsernameGenerator = false;
             overlayMode = "hidden";
             void paintOverlay({ showToggleOnly: true });
           });
@@ -1513,6 +1572,7 @@ export default defineContentScript({
         kind === "password" ? createPasswordGeneratorState() : createUsernameGeneratorState();
       cachedSuggestions = [];
       listOpen = false;
+      listOffersUsernameGenerator = false;
       overlayMode = kind === "password" ? "password-generator" : "username-generator";
       void paintOverlay();
     }
@@ -1710,8 +1770,19 @@ export default defineContentScript({
       }
     }
 
+    function isRegisterUsernameField(
+      input: HTMLInputElement,
+      formType: AutofillFormType,
+    ): boolean {
+      if (formType !== "register") {
+        return false;
+      }
+      return isUsernameGeneratorField(classifyAutofillInput(collectInputHints(input)));
+    }
+
     /**
-     * Register password / username → generator popup instead of vault suggestions.
+     * Register password → generator. Username waits for nickname query (see
+     * {@link applyRegisterUsernameSuggestions}); opens generator only when none.
      * Returns true when a generator was opened (caller should skip vault query).
      */
     function maybeOpenRegisterGenerator(input: HTMLInputElement, formType: AutofillFormType): boolean {
@@ -1720,11 +1791,21 @@ export default defineContentScript({
         openGeneratorForField("password");
         return true;
       }
-      if (formType === "register" && isUsernameGeneratorField(kind)) {
-        openGeneratorForField("username");
-        return true;
-      }
       return false;
+    }
+
+    /** After vault query on register username: nickname list + CTA, or generator. */
+    function applyRegisterUsernameSuggestions(suggestions: AutofillSuggestion[]): void {
+      if (suggestions.length === 0) {
+        listOffersUsernameGenerator = false;
+        openGeneratorForField("username");
+        return;
+      }
+      cachedSuggestions = suggestions;
+      listOffersUsernameGenerator = true;
+      listOpen = true;
+      overlayMode = "list";
+      void paintOverlay().then(() => keepPageFieldFocused());
     }
 
     async function onToggleClick(): Promise<void> {
@@ -1782,7 +1863,12 @@ export default defineContentScript({
         return;
       }
       cachedSuggestions = response.suggestions;
+      if (isRegisterUsernameField(activeInput, formType)) {
+        applyRegisterUsernameSuggestions(cachedSuggestions);
+        return;
+      }
       if (cachedSuggestions.length === 0) {
+        listOffersUsernameGenerator = false;
         listOpen = false;
         overlayMode = "empty-tooltip";
         await paintOverlay();
@@ -1795,6 +1881,7 @@ export default defineContentScript({
         }, 2200);
         return;
       }
+      listOffersUsernameGenerator = false;
       listOpen = true;
       overlayMode = "list";
       await paintOverlay();
@@ -1883,12 +1970,18 @@ export default defineContentScript({
         return;
       }
       cachedSuggestions = response.suggestions;
+      if (isRegisterUsernameField(input, formType)) {
+        applyRegisterUsernameSuggestions(cachedSuggestions);
+        return;
+      }
       if (cachedSuggestions.length === 0) {
+        listOffersUsernameGenerator = false;
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
         return;
       }
+      listOffersUsernameGenerator = false;
       listOpen = true;
       overlayMode = "list";
       await paintOverlay();
@@ -2330,6 +2423,7 @@ export default defineContentScript({
           // Generator: close when focus genuinely left the field + autofill UI.
           if (isGeneratorOverlayOpen()) {
             generatorState = null;
+            clearGeneratorCopyFeedback();
             listOpen = false;
             overlayMode = "hidden";
             void paintOverlay({ showToggleOnly: true });
