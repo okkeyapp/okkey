@@ -89,6 +89,20 @@ export default defineConfig(({ mode }) => {
     enterpriseRoot,
     "packages/recovery-crypto/dist/okkey_enterprise_recovery_crypto.js",
   );
+  const enterpriseRecoveryCryptoStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-recovery-crypto-stub.ts",
+  );
+  const enterpriseTypesStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-types-stub.ts",
+  );
+  const enterpriseApiStubPath = path.resolve(
+    __dirname,
+    "./src/account-recovery-features/stubs/enterprise-api-stub.ts",
+  );
+  const enterpriseTypesPath = path.resolve(enterpriseRoot, "packages/types/src");
+  const enterpriseApiPath = path.resolve(enterpriseRoot, "packages/api/src");
 
   return {
     plugins: [react()],
@@ -148,10 +162,12 @@ export default defineConfig(({ mode }) => {
         "@okkey-enterprise/account-recovery": enterpriseModules
           ? enterpriseAccountRecoveryPath
           : enterpriseAccountRecoveryStubPath,
-        "@okkey-enterprise/recovery-crypto": enterpriseRecoveryCryptoPath,
+        "@okkey-enterprise/recovery-crypto": enterpriseModules
+          ? enterpriseRecoveryCryptoPath
+          : enterpriseRecoveryCryptoStubPath,
         "@okkey-enterprise/recovery-crypto-wasm": enterpriseRecoveryCryptoWasmPath,
-        "@okkey-enterprise/types": path.resolve(enterpriseRoot, "packages/types/src"),
-        "@okkey-enterprise/api": path.resolve(enterpriseRoot, "packages/api/src"),
+        "@okkey-enterprise/types": enterpriseModules ? enterpriseTypesPath : enterpriseTypesStubPath,
+        "@okkey-enterprise/api": enterpriseModules ? enterpriseApiPath : enterpriseApiStubPath,
         "@okkey/popup-query": path.resolve(__dirname, "./src/routes/popupQuery.ts"),
         "date-fns": path.resolve(__dirname, "../../node_modules/date-fns"),
         "react-router-dom": path.resolve(__dirname, "../../node_modules/react-router-dom"),

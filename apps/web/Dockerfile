@@ -31,12 +31,14 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_APP_ENV=${VITE_APP_ENV}
 
 # --ignore-scripts: avoid @okkey/extension `wxt prepare` (entrypoints not in image).
+# vite build only: Core image has no okkey-enterprise sibling; tsc -b would fail on
+# enterprise path aliases that Vite stubs at bundle time.
 RUN node scripts/ensure-crypto-wasm-dist.mjs \
   && yarn install --frozen-lockfile --ignore-scripts \
   && yarn build:wasm \
   && yarn build:ts-sdk \
   && yarn build:i18n \
-  && yarn build:web
+  && yarn --cwd apps/web vite build
 
 FROM nginx:1.27-alpine AS runtime
 COPY apps/web/docker/nginx.conf /etc/nginx/conf.d/default.conf
