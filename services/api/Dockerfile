@@ -27,8 +27,10 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/extension/package.json apps/extension/package.json
 COPY services/api services/api
 
+# --ignore-scripts: workspace includes apps/extension (wxt postinstall); we only
+# ship package.json for lockfile resolution and must not run extension prepare.
 RUN node scripts/ensure-crypto-wasm-dist.mjs \
-  && yarn install --frozen-lockfile \
+  && yarn install --frozen-lockfile --ignore-scripts \
   && yarn build:wasm \
   && yarn build:ts-sdk \
   && yarn build:email

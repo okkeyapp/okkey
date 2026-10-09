@@ -30,8 +30,9 @@ ARG VITE_APP_ENV=production
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_APP_ENV=${VITE_APP_ENV}
 
+# --ignore-scripts: avoid @okkey/extension `wxt prepare` (entrypoints not in image).
 RUN node scripts/ensure-crypto-wasm-dist.mjs \
-  && yarn install --frozen-lockfile \
+  && yarn install --frozen-lockfile --ignore-scripts \
   && yarn build:wasm \
   && yarn build:ts-sdk \
   && yarn build:i18n \
