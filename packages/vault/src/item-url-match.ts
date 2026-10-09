@@ -1,4 +1,18 @@
-export type UrlAutofillScope = "entire-site" | "exact-url" | "none";
+import { ITEM_CATEGORY_LOGIN, type ItemPlaintextV2, type UrlAutofillScope } from "@okkey/types";
+
+export type { UrlAutofillScope };
+
+export function parseUrlAutofillScope(raw: unknown): UrlAutofillScope {
+  if (raw === "exact-url" || raw === "none" || raw === "entire-site") {
+    return raw;
+  }
+  return "entire-site";
+}
+
+export type ItemUrlMatchInput = {
+  url: string;
+  urlAutofillScope?: UrlAutofillScope | string | null;
+};
 
 function tryParseUrl(raw: string): URL | null {
   const trimmed = raw.trim();
@@ -16,10 +30,20 @@ function tryParseUrl(raw: string): URL | null {
   }
 }
 
+function normalizePathname(pathname: string): string {
+  if (!pathname || pathname === "/") {
+    return "/";
+  }
+  return pathname.replace(/\/+$/, "") || "/";
+}
+
+function normalizeHost(host: string): string {
+  return host.replace(/^www\./i, "").toLowerCase();
+}
+
 /**
  * Match tab URL against an item URL field using autofill scope rules.
  * `exact-url` = origin + pathname (no query/hash) — plan §10 decision.
- * Until scope is persisted in plaintext (E4), callers should default to `entire-site`.
  */
 export function itemUrlMatchesTab(
   tabUrl: string,
@@ -35,16 +59,14 @@ export function itemUrlMatchesTab(
     return false;
   }
   if (scope === "exact-url") {
-    return tab.origin === item.origin && tab.pathname === item.pathname;
+    return tab.origin === item.origin && normalizePathname(tab.pathname) === normalizePathname(item.pathname);
   }
-  // entire-site: host match (ignore www.)
-  const normalizeHost = (host: string) => host.replace(/^www\./i, "").toLowerCase();
   return normalizeHost(tab.hostname) === normalizeHost(item.hostname);
 }
 
 /**
  * Autofill helper: no tab constraint / empty URLs → treat as match (do not hide).
- * Prefer {@link itemHasUrlMatchingTab} when filtering to tab-matching suggestions.
+ * Prefer {@link itemHasUrlMatchingTab} / {@link itemUrlFieldsMatchTab} for strict matching.
  */
 export function itemUrlsMatchTab(
   tabUrl: string | null | undefined,
@@ -67,4 +89,50 @@ export function itemHasUrlMatchingTab(
     return false;
   }
   return itemUrls.some((url) => itemUrlMatchesTab(tabUrl, url, scope));
+}
+
+/** True when the tab matches at least one URL field using that field's own `urlAutofillScope`. */
+export function itemUrlFieldsMatchTab(
+  tabUrl: string | null | undefined,
+  fields: readonly ItemUrlMatchInput[],
+): boolean {
+  if (!tabUrl?.trim()) {
+    return false;
+  }
+  return fields.some((field) => {
+    const url = field.url.trim();
+    if (!url) {
+      return false;
+    }
+    return itemUrlMatchesTab(tabUrl, url, parseUrlAutofillScope(field.urlAutofillScope));
+  });
+}
+
+export function collectItemUrlMatchInputs(item: ItemPlaintextV2): ItemUrlMatchInput[] {
+  const out: ItemUrlMatchInput[] = [];
+  for (const field of item.fields) {
+    if (field.type !== "url" || field.value.kind !== "url") {
+      continue;
+    }
+    const url = field.value.url.trim();
+    if (!url) {
+      continue;
+    }
+    out.push({
+      url,
+      urlAutofillScope: parseUrlAutofillScope(field.value.urlAutofillScope),
+    });
+  }
+  return out;
+}
+
+/** Login/password items only: tab matches at least one «Вебсайт URL» by that field's scope. */
+export function loginItemMatchesTab(
+  item: ItemPlaintextV2,
+  tabUrl: string | null | undefined,
+): boolean {
+  if (item.categoryId !== ITEM_CATEGORY_LOGIN || item.deleted) {
+    return false;
+  }
+  return itemUrlFieldsMatchTab(tabUrl, collectItemUrlMatchInputs(item));
 }

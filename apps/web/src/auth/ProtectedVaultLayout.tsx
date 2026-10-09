@@ -36,7 +36,7 @@ export default function ProtectedVaultLayout() {
   if (hasExtensionAuthPending()) {
     return (
       <div
-        className="flex min-h-[50vh] w-full items-center justify-center okkey-body text-copy-secondary"
+        className="flex min-h-dvh min-h-screen w-full items-center justify-center okkey-body text-copy-secondary"
         role="status"
         aria-busy="true"
       >
@@ -52,7 +52,7 @@ export default function ProtectedVaultLayout() {
   ) {
     return (
       <div
-        className="flex min-h-[50vh] w-full items-center justify-center okkey-body text-copy-secondary"
+        className="flex min-h-dvh min-h-screen w-full items-center justify-center okkey-body text-copy-secondary"
         role="status"
         aria-busy="true"
       >

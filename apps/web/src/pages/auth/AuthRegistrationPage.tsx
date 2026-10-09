@@ -314,14 +314,8 @@ export default function AuthRegistrationPage() {
 
   if (step === "enrolling") {
     return (
-      <AppShellLayout
-        title={t("auth.registration.recovery.title")}
-        description={t("auth.registration.recovery.preparing")}
-        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      >
-        <div className="flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-border bg-background p-8 shadow-sm">
-          <Spinner aria-label={t("auth.registration.recovery.preparing")} />
-        </div>
+      <AppShellLayout title={t("auth.registration.recovery.title")} busy>
+        <Spinner aria-label={t("auth.registration.recovery.preparing")} />
       </AppShellLayout>
     );
   }

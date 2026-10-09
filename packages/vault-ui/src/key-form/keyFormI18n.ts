@@ -103,6 +103,8 @@ export type KeyFormEditorMessages = {
   };
   urlAutofillScope: Record<KeyFormUrlAutofillScope, string>;
   address: {
+    apartment: string;
+    house: string;
     street: string;
     city: string;
     state: string;
@@ -205,6 +207,7 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "personalBirthDate",
   "personalPhone",
   "personalEmail",
+  "personalNickname",
   "personalAddress",
   "personalWorkCompany",
   "personalWorkDepartment",
@@ -365,6 +368,8 @@ export function createKeyFormEditorMessages(locale: WebLocale): KeyFormEditorMes
       none: t("web.keyForm.urlAutofill.none"),
     },
     address: {
+      apartment: t("web.keyForm.address.apartment"),
+      house: t("web.keyForm.address.house"),
       street: t("web.keyForm.address.street"),
       city: t("web.keyForm.address.city"),
       state: t("web.keyForm.address.state"),

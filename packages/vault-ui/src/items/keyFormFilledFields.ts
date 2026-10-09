@@ -16,9 +16,15 @@ function hasRecoveryCodesContent(value: string): boolean {
 
 function hasAddressContent(value: string): boolean {
   const address = parseKeyFieldAddressValue(value);
-  return [address.street, address.city, address.state, address.postalCode, address.country].some(
-    (part) => part.trim().length > 0,
-  );
+  return [
+    address.apartment,
+    address.house,
+    address.street,
+    address.city,
+    address.state,
+    address.postalCode,
+    address.country,
+  ].some((part) => part.trim().length > 0);
 }
 
 export function isKeyFormFieldFilled(field: KeyFormEditorField): boolean {

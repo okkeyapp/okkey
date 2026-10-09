@@ -25,24 +25,45 @@ export {
 } from "./workspace-item-search.js";
 export {
   collectItemUrls,
+  extractLoginAutofillSecrets,
   extractReadableItemFields,
+  isLoginOrPasswordCopyField,
   itemPlaintextToExtensionListRecord,
   readFirstNonSecretFilledFieldDescription,
   type ExtensionItemListRecord,
+  type LoginAutofillSecrets,
   type ReadableItemField,
 } from "./item-field-extract.js";
 export {
+  AUTOFILL_ITEM_CATEGORIES,
+  categoriesForFieldKinds,
+  extractAutofillEmailCandidates,
+  extractAutofillValues,
+  isAutofillItemCategory,
+  suggestionSubtitleFromValues,
+  type AutofillItemCategory,
+  type AutofillValueKey,
+  type ExtractAutofillValuesOptions,
+} from "./item-autofill-extract.js";
+export {
+  collectItemUrlMatchInputs,
   itemHasUrlMatchingTab,
+  itemUrlFieldsMatchTab,
   itemUrlMatchesTab,
   itemUrlsMatchTab,
+  loginItemMatchesTab,
+  parseUrlAutofillScope,
+  type ItemUrlMatchInput,
   type UrlAutofillScope,
 } from "./item-url-match.js";
+export { totpCodeFromSecret } from "./item-totp.js";
 export {
   resolveVaultItemEncryptionKey,
   type VaultIdentityKeys,
 } from "./resolve-vault-item-key.js";
 export {
   createWorkspaceVaultItemsReadController,
+  listCachedWorkspaceVaultItems,
   type WorkspaceVaultItemsReadController,
   type VaultItemActivityWireEntry,
 } from "./workspace-vault-items-read.js";

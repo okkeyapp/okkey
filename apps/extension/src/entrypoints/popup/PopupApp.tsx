@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
 
 import { Toaster } from "../../components/toaster";
+import { AUTOFILL_MSG } from "../../lib/autofillMessages";
 import { createCoreClient } from "../../lib/api";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
 import {
@@ -157,6 +158,7 @@ export function PopupApp() {
   const [encryptedPrivateKeyPayload, setEncryptedPrivateKeyPayload] = useState<string | null>(null);
   const [vaultIdleLockMs, setVaultIdleLockMs] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
+  const masterPasswordInputRef = useRef<HTMLInputElement>(null);
   const unlockSecretsRef = useRef<UnlockWithMasterPasswordResult | null>(null);
 
   const t = useCallback(
@@ -243,6 +245,9 @@ export function PopupApp() {
     setMasterPassword("");
     void applyExtensionStoredTheme();
     setScreen("vault");
+    void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlocked }).catch(() => {
+      /* popup may be the only listener besides SW */
+    });
     return true;
   }, []);
 
@@ -399,6 +404,32 @@ export function PopupApp() {
     }, 0);
     return () => window.clearTimeout(id);
   }, [screen, hostMode]);
+
+  // Locked vault: put caret in master password on open, but do not steal focus
+  // if the user (or assistive tech) already focused something else in the popup.
+  useEffect(() => {
+    if (screen !== "unlock") {
+      return;
+    }
+    const id = window.setTimeout(() => {
+      const input = masterPasswordInputRef.current;
+      if (!input) {
+        return;
+      }
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        active !== document.documentElement &&
+        active !== input &&
+        document.documentElement.contains(active)
+      ) {
+        return;
+      }
+      input.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [screen]);
 
   useEffect(() => {
     if ((screen !== "pending" && screen !== "blocked") || !profile || !session) {
@@ -586,6 +617,9 @@ export function PopupApp() {
         });
         void applyExtensionStoredTheme();
         setScreen("vault");
+        void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlocked }).catch(() => {
+          /* best-effort */
+        });
         void core.recordVaultUnlock().catch(() => {
           /* best-effort */
         });
@@ -909,6 +943,7 @@ export function PopupApp() {
               {t("unlock.masterPassword")}
             </label>
             <Input
+              ref={masterPasswordInputRef}
               id="unlock-master-password"
               name="password"
               type="password"

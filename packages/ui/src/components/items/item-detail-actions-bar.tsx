@@ -252,6 +252,8 @@ export type ItemDetailActionsBarProps = {
   /** Login/password: open first website URL (primary CTA). */
   openWebsiteLabel?: string;
   onOpenWebsite?: () => void;
+  /** Tooltip for the open-website CTA (visible label may be shorter). */
+  openWebsiteTooltip?: string;
   className?: string;
 };
 
@@ -283,6 +285,7 @@ export function ItemDetailActionsBar({
   onOpenInWeb,
   openWebsiteLabel,
   onOpenWebsite,
+  openWebsiteTooltip,
   className,
 }: ItemDetailActionsBarProps) {
   const favoriteTooltip = favorite
@@ -329,16 +332,37 @@ export function ItemDetailActionsBar({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {leadingContent}
         {showOpenWebsite ? (
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            className={openWebsiteButtonClassName}
-            onClick={onOpenWebsite}
-          >
-            <IconExternalLink16 />
-            <span>{openWebsiteLabel}</span>
-          </Button>
+          openWebsiteTooltip ? (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className={openWebsiteButtonClassName}
+                    aria-label={openWebsiteTooltip}
+                    onClick={onOpenWebsite}
+                  >
+                    <IconExternalLink16 />
+                    <span>{openWebsiteLabel}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{openWebsiteTooltip}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className={openWebsiteButtonClassName}
+              onClick={onOpenWebsite}
+            >
+              <IconExternalLink16 />
+              <span>{openWebsiteLabel}</span>
+            </Button>
+          )
         ) : null}
       </div>
 

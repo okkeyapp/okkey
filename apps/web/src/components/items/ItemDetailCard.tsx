@@ -410,6 +410,7 @@ export default function ItemDetailCard({ itemId, vaults, workspaceId: workspaceI
             fieldTypes={keyFormFieldTypes}
             messages={keyFormMessages}
             datePickerLocale={datePickerLocale}
+            countryLocale={locale}
             onRecoveryCodesValueChange={handleRecoveryCodesValueChange}
             onFileOpen={handleFileOpen}
             fileUploadConstraints={fileUploadConstraints}

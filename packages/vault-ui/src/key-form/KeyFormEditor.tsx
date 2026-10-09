@@ -92,6 +92,7 @@ import {
   getPasswordStrength,
   passwordStrengthTextClassName,
 } from "../lib/passwordStrength.js";
+import { KeyFormPasswordGeneratorPanel } from "./KeyFormPasswordGeneratorPanel.js";
 import {
   getSecretKind,
   isConfigurableSecretField,
@@ -173,14 +174,16 @@ export type KeyFormEditorProps = {
   /** When true, empty required fields are marked invalid. */
   showValidation?: boolean;
   datePickerLocale?: Locale;
+  /** BCP 47 locale for address country labels (same Intl source as settings region). */
+  countryLocale?: string;
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   /** When false, file field type is hidden and existing file fields cannot be cleared or re-uploaded. */
   allowFileFields?: boolean;
   /**
    * Optional override for copying field text (not URL open / recovery-code specials).
-   * Used by extension clipboard-clear policy.
+   * Used by extension clipboard-clear policy and copy-guard.
    */
-  onCopyText?: (value: string) => void | Promise<void>;
+  onCopyText?: (value: string, field: Pick<KeyFormEditorField, "id" | "type">) => void | Promise<void>;
 };
 
 export type RecoveryCodesValueChange = {
@@ -1644,6 +1647,7 @@ type SortableFieldProps = {
   fileUploadConstraints?: KeyFieldFileUploadConstraints;
   surfaceRounding?: ReturnType<typeof getKeyFieldSurfaceRounding>;
   datePickerLocale?: Locale;
+  countryLocale?: string;
   selectConfigureMode?: boolean;
   valuePlaceholder?: string;
 };
@@ -1700,6 +1704,7 @@ function SortableField({
   fileUploadConstraints = defaultKeyFieldFileUploadConstraints,
   surfaceRounding,
   datePickerLocale,
+  countryLocale,
   selectConfigureMode = false,
   valuePlaceholder,
 }: SortableFieldProps) {
@@ -1828,6 +1833,7 @@ function SortableField({
       fileClearEnabled={fileClearEnabled}
       valuePlaceholder={valuePlaceholder ?? messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
       datePickerLocale={datePickerLocale}
+      countryLocale={countryLocale}
       dragHandleProps={mode === "edit" && reorderable ? { ...attributes, ...listeners } : undefined}
     />
     </div>
@@ -1907,6 +1913,7 @@ export function KeyFormEditor({
   onRecoveryCodesValueChange,
   showValidation = false,
   datePickerLocale,
+  countryLocale = "en",
   onFileUpload,
   onFileOpen,
   onFileActivate,
@@ -2380,137 +2387,21 @@ export function KeyFormEditor({
       return null;
     }
 
-    const options: Array<{ key: keyof PasswordGeneratorSettings; label: string }> = [
-      { key: "uppercase", label: messages.passwordGenerator.uppercase },
-      { key: "lowercase", label: messages.passwordGenerator.lowercase },
-      { key: "numbers", label: messages.passwordGenerator.numbers },
-      { key: "symbols", label: messages.passwordGenerator.symbols },
-    ];
-    const generatedStrength = getPasswordStrength(generatedPassword);
-    const crackTimeKey = estimatePasswordCrackTimeKey(generatedPassword);
-
     return (
       <KeyFieldOverlayPanel data-password-generator-panel className="w-[420px]">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 rounded-lg bg-secondary p-3">
-            <div className="flex items-center justify-between gap-4">
-              {options.map((option) => (
-                <label
-                  key={option.key}
-                  className="flex cursor-pointer select-none items-center gap-2 text-sm text-foreground"
-                >
-                  <Checkbox
-                    checked={passwordGeneratorSettings[option.key]}
-                    onCheckedChange={(checked) => updatePasswordGeneratorSetting(option.key, checked === true)}
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </div>
-
-            <Separator className="-mx-3 w-auto self-stretch bg-border" />
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-medium text-foreground">
-                  {formatKeyFormMessage(messages.passwordGenerator.charactersTemplate, {
-                    count: passwordGeneratorLength,
-                  })}
-                </span>
-                <span className="text-xs text-muted-foreground">{messages.passwordGenerator.lengthRange}</span>
-              </div>
-              <Slider
-                value={[passwordGeneratorLength]}
-                min={4}
-                max={128}
-                step={1}
-                onValueChange={(value) => updatePasswordGeneratorLength(value[0] ?? passwordGeneratorLength)}
-                aria-label={messages.passwordGenerator.lengthAria}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-            <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold leading-5 text-foreground">
-              {renderGeneratedPassword(generatedPassword)}
-            </span>
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="iconSm"
-                    className={cn(
-                      "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
-                      section.variant === "additional" && "hover:!bg-secondary",
-                    )}
-                    aria-label={messages.passwordGenerator.copyGeneratedAria}
-                    onClick={copyGeneratedPassword}
-                  >
-                    {isGeneratedPasswordCopied ? <CopySuccessIcon className="size-4" /> : <CopyIcon className="size-4" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{isGeneratedPasswordCopied ? messages.copied : messages.copy}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="iconSm"
-                    className={cn(
-                      "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
-                      section.variant === "additional" && "hover:!bg-secondary",
-                    )}
-                    aria-label={messages.passwordGenerator.regenerateAria}
-                    onClick={regeneratePassword}
-                  >
-                    <RegeneratePasswordIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{messages.passwordGenerator.regenerate}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 px-3 text-sm">
-            <span className="min-w-0 truncate text-muted-foreground">
-              {messages.passwordGenerator.strength}{" "}
-              {generatedStrength ? (
-                <span className={cn("font-medium", passwordStrengthTextClassName[generatedStrength.labelKey])}>
-                  {messages.passwordStrengthLabels[generatedStrength.labelKey]}
-                </span>
-              ) : (
-                <span className="font-medium text-muted-foreground">
-                  {messages.passwordStrengthLabels.weak}
-                </span>
-              )}
-            </span>
-            <span className="shrink-0 text-muted-foreground">
-              {messages.passwordGenerator.crackTime}{" "}
-              <span
-                className={cn(
-                  "font-medium",
-                  generatedStrength
-                    ? passwordStrengthTextClassName[generatedStrength.labelKey]
-                    : "text-muted-foreground",
-                )}
-              >
-                {messages.crackTimeLabels[crackTimeKey]}
-              </span>
-            </span>
-          </div>
-
-          <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={closePasswordGenerator}>
-              {messages.passwordGenerator.cancel}
-            </Button>
-            <Button type="button" onClick={() => insertGeneratedPassword(section.id, field.id)}>
-              {messages.passwordGenerator.insert}
-            </Button>
-          </div>
-        </div>
+        <KeyFormPasswordGeneratorPanel
+          messages={messages}
+          settings={passwordGeneratorSettings}
+          length={passwordGeneratorLength}
+          generatedPassword={generatedPassword}
+          additionalSectionHover={section.variant === "additional"}
+          onSettingChange={updatePasswordGeneratorSetting}
+          onLengthChange={updatePasswordGeneratorLength}
+          onRegenerate={regeneratePassword}
+          onCopy={copyGeneratedPassword}
+          onCancel={closePasswordGenerator}
+          onInsert={() => insertGeneratedPassword(section.id, field.id)}
+        />
       </KeyFieldOverlayPanel>
     );
   }
@@ -3041,7 +2932,7 @@ export function KeyFormEditor({
       return;
     }
 
-    const url = buildKeyFieldAddressMapsUrl(parseKeyFieldAddressValue(field.value));
+    const url = buildKeyFieldAddressMapsUrl(parseKeyFieldAddressValue(field.value), countryLocale);
     const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
     if (openedWindow) {
       openedWindow.opener = null;
@@ -3186,7 +3077,7 @@ export function KeyFormEditor({
     }
 
     if (field.type === "address" && typeof field.value === "string") {
-      return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value));
+      return formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(field.value), countryLocale);
     }
 
     if (field.type === "recovery-codes" && typeof field.value === "string") {
@@ -3393,7 +3284,7 @@ export function KeyFormEditor({
               ? openWebsite
               : onCopyText
                 ? (value) => {
-                    void onCopyText(value);
+                    void onCopyText(value, { id: field.id, type: field.type });
                   }
                 : undefined
         }
@@ -3409,6 +3300,7 @@ export function KeyFormEditor({
         onValueFocus={shouldOpenGeneratorOnFocus(field) ? () => openPasswordGenerator(field.id) : undefined}
         passwordGeneratorTrigger={isSecretLikeField(field)}
         datePickerLocale={datePickerLocale}
+        countryLocale={countryLocale}
         selectConfigureMode={isSelectOptionsEditMode}
         valuePlaceholder={isSelectOptionsEditMode ? messages.selectOptionsPlaceholder : undefined}
       />
@@ -3473,6 +3365,7 @@ export function KeyFormEditor({
         fileUploadHintLabels={fileUploadHintLabels}
         valuePlaceholder={messages.fieldPlaceholders[fieldValuePlaceholderKey(field)]}
         datePickerLocale={datePickerLocale}
+        countryLocale={countryLocale}
         reorderable
         meta={metaForKeyField(field, section.variant, messages, typeof fieldValue === "string" ? fieldValue : undefined, mode)}
         actions={renderActions(section, field)}

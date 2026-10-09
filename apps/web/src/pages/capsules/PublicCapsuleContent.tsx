@@ -147,6 +147,7 @@ export default function PublicCapsuleContent({
           fieldTypes={keyFormFieldTypes}
           messages={keyFormMessages}
           datePickerLocale={datePickerLocale}
+          countryLocale={locale}
           onFileOpen={handleItemFileOpen}
         />
       </div>
@@ -168,6 +169,7 @@ export default function PublicCapsuleContent({
           fieldTypes={keyFormFieldTypes}
           messages={keyFormMessages}
           datePickerLocale={datePickerLocale}
+          countryLocale={locale}
         />
       </div>
     );
@@ -188,6 +190,7 @@ export default function PublicCapsuleContent({
           fieldTypes={keyFormFieldTypes}
           messages={keyFormMessages}
           datePickerLocale={datePickerLocale}
+          countryLocale={locale}
           onFileOpen={handleFileOpen}
         />
       </div>

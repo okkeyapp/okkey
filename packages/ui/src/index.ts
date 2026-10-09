@@ -30,11 +30,17 @@ export {
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
   formatKeyFieldAddressCopyValue,
+  normalizeKeyFieldAddressState,
   parseKeyFieldAddressValue,
   serializeKeyFieldAddressValue,
   type KeyFieldAddressValue,
 } from "./lib/key-field-address.js";
-export { getKeyFieldCountryName, keyFieldCountries, type KeyFieldCountryOption } from "./lib/key-field-countries.js";
+export {
+  getKeyFieldCountries,
+  getKeyFieldCountryName,
+  keyFieldCountries,
+  type KeyFieldCountryOption,
+} from "./lib/key-field-countries.js";
 export {
   emptyKeyFieldRecoveryCodesValue,
   getFirstUnusedKeyFieldRecoveryCode,
@@ -263,6 +269,7 @@ export {
 export {
   ACCENT_TINT_STORAGE_KEY,
   applySemanticAccentTint,
+  accentPrimaryHslTriplet,
   clearSemanticAccentTintInline,
   readAccentTintEnabled,
   writeAccentTintEnabled,

@@ -49,7 +49,11 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
         raw: serializeKeyFieldSecretRaw(field.secretKind ?? "password", raw),
       };
     case "url":
-      return { kind: "url", url: raw };
+      return {
+        kind: "url",
+        url: raw,
+        urlAutofillScope: field.urlAutofillScope ?? "entire-site",
+      };
     case "totp":
       return { kind: "totp", secretBase32: raw, periodSeconds: 30, digits: 6 };
     case "multiline-text": {
@@ -74,6 +78,8 @@ function fieldValueFromForm(field: KeyFormEditorField): ItemFieldV2["value"] {
     }
     case "recovery-codes":
       return { kind: "unknown", declaredType: "recovery-codes", raw };
+    case "address":
+      return { kind: "unknown", declaredType: "address", raw };
     case "text":
     case "email":
     case "phone":

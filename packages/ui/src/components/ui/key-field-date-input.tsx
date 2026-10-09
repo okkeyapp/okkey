@@ -11,6 +11,9 @@ export type KeyFieldDateInputProps = {
   className?: string;
   inputRef?: React.Ref<HTMLInputElement>;
   placeholder?: string;
+  /** Accessible name — also used by autofill heuristics (label is not a native <label>). */
+  "aria-label"?: string;
+  autoComplete?: string;
 };
 
 export function KeyFieldDateInput({
@@ -21,6 +24,8 @@ export function KeyFieldDateInput({
   className,
   inputRef,
   placeholder = keyFieldDateDisplayFormat.toLowerCase(),
+  "aria-label": ariaLabel,
+  autoComplete,
 }: KeyFieldDateInputProps) {
   return (
     <input
@@ -28,6 +33,8 @@ export function KeyFieldDateInput({
       value={value}
       placeholder={placeholder}
       inputMode="numeric"
+      aria-label={ariaLabel}
+      autoComplete={autoComplete}
       onChange={(event) => onValueChange(event.target.value)}
       onFocus={onFocus}
       onBlur={onBlur}

@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { parseKeyFieldAddressValue, serializeKeyFieldAddressValue, type KeyFieldAddressValue } from "../../lib/key-field-address.js";
 import { isKeyFieldAddressInteractionTarget } from "../../lib/key-field-address-interaction.js";
-import { keyFieldCountries } from "../../lib/key-field-countries.js";
+import { getKeyFieldCountries } from "../../lib/key-field-countries.js";
 import { cn } from "../../lib/utils.js";
 import {
   SearchableSelect,
@@ -24,13 +24,25 @@ export type KeyFieldAddressInputProps = {
   fieldPlaceholders?: Record<AddressFieldKey, string>;
   searchCountriesPlaceholder?: string;
   noCountriesFoundMessage?: string;
+  /** BCP 47 locale for Intl.DisplayNames country labels (same source as settings region). */
+  countryLocale?: string;
 };
 
 type AddressFieldKey = keyof KeyFieldAddressValue;
 
-const addressFieldOrder: AddressFieldKey[] = ["street", "city", "state", "postalCode"];
+/** Apartment + house first, then street → city → state → postal; country is the select below. */
+const addressFieldOrder: AddressFieldKey[] = [
+  "apartment",
+  "house",
+  "street",
+  "city",
+  "state",
+  "postalCode",
+];
 
 const defaultAddressFieldPlaceholders: Record<AddressFieldKey, string> = {
+  apartment: "Apartment",
+  house: "House / building",
   street: "Street",
   city: "City/Town/Suburb",
   state: "State/Province",
@@ -48,10 +60,14 @@ export function KeyFieldAddressInput({
   fieldPlaceholders,
   searchCountriesPlaceholder = "Search countries",
   noCountriesFoundMessage = "No countries found",
+  countryLocale = "en",
 }: KeyFieldAddressInputProps) {
   const address = React.useMemo(() => parseKeyFieldAddressValue(value), [value]);
+  const countries = React.useMemo(() => getKeyFieldCountries(countryLocale), [countryLocale]);
   const addressFieldPlaceholders = fieldPlaceholders ?? defaultAddressFieldPlaceholders;
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const houseInputRef = React.useRef<HTMLInputElement>(null);
+  const localStreetInputRef = React.useRef<HTMLInputElement>(null);
   const cityInputRef = React.useRef<HTMLInputElement>(null);
   const stateInputRef = React.useRef<HTMLInputElement>(null);
   const postalCodeInputRef = React.useRef<HTMLInputElement>(null);
@@ -157,23 +173,36 @@ export function KeyFieldAddressInput({
     );
   }
 
+  function inputRefForField(field: AddressFieldKey): React.Ref<HTMLInputElement> | undefined {
+    switch (field) {
+      case "apartment":
+        // Parent passes valueInputRef as streetInputRef for edit-focus; apartment is first.
+        return streetInputRef;
+      case "house":
+        return houseInputRef;
+      case "street":
+        return localStreetInputRef;
+      case "city":
+        return cityInputRef;
+      case "state":
+        return stateInputRef;
+      case "postalCode":
+        return postalCodeInputRef;
+      default:
+        return undefined;
+    }
+  }
+
   function focusAddressField(field: AddressFieldKey) {
-    if (field === "street") {
+    if (field === "apartment") {
       focusInputRef(streetInputRef ?? { current: null });
       return;
     }
 
-    if (field === "city") {
-      cityInputRef.current?.focus();
-      return;
+    const ref = inputRefForField(field);
+    if (ref && typeof ref !== "function") {
+      ref.current?.focus();
     }
-
-    if (field === "state") {
-      stateInputRef.current?.focus();
-      return;
-    }
-
-    postalCodeInputRef.current?.focus();
   }
 
   function focusCountryField(openDropdown = false) {
@@ -221,7 +250,7 @@ export function KeyFieldAddressInput({
       {addressFieldOrder.map((field) => (
         <input
           key={field}
-          ref={field === "street" ? streetInputRef : field === "city" ? cityInputRef : field === "state" ? stateInputRef : postalCodeInputRef}
+          ref={inputRefForField(field)}
           value={address[field]}
           placeholder={addressFieldPlaceholders[field]}
           onChange={(event) => updateAddressField(field, event.target.value)}
@@ -238,14 +267,14 @@ export function KeyFieldAddressInput({
         variant="inline"
         searchPlaceholder={searchCountriesPlaceholder}
         searchEmptyMessage={noCountriesFoundMessage}
-        selectedLabel={address.country ? keyFieldCountries.find((country) => country.code === address.country)?.name : undefined}
+        selectedLabel={address.country ? countries.find((country) => country.code === address.country)?.name : undefined}
       >
         <SearchableSelectTrigger
           ref={countryTriggerRef}
           className="h-5 w-full min-w-0 justify-start text-sm font-normal [&>span:last-child]:hidden"
         />
         <SearchableSelectContent align="start" className="w-[min(100vw-2rem,20rem)]" data-key-field-address-popover>
-          {keyFieldCountries.map((country) => (
+          {countries.map((country) => (
             <SearchableSelectItem
               key={country.code}
               value={country.code}

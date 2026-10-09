@@ -286,6 +286,8 @@ export type KeyFieldProps = Omit<
   controlButtonClassName?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
   addressFieldPlaceholders?: {
+    apartment: string;
+    house: string;
     street: string;
     city: string;
     state: string;
@@ -294,6 +296,8 @@ export type KeyFieldProps = Omit<
   };
   addressSearchCountriesPlaceholder?: string;
   addressNoCountriesFoundMessage?: string;
+  /** BCP 47 locale for address country labels (Intl.DisplayNames region). */
+  countryLocale?: string;
   recoveryCodesPlaceholder?: string;
   fileUploadLabel?: string;
   fileClearLabel?: string;
@@ -368,6 +372,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       addressFieldPlaceholders,
       addressSearchCountriesPlaceholder,
       addressNoCountriesFoundMessage,
+      countryLocale = "en",
       recoveryCodesPlaceholder,
       fileUploadLabel,
       fileClearLabel = "Delete file",
@@ -422,7 +427,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
       : (children ?? value);
     const formattedAddressValue =
       addressValue && typeof stringValue === "string"
-        ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue))
+        ? formatKeyFieldAddressCopyValue(parseKeyFieldAddressValue(stringValue), countryLocale)
         : "";
     const parsedRecoveryCodesValue =
       recoveryCodesValue && typeof stringValue === "string"
@@ -1314,6 +1319,7 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                       addressSearchCountriesPlaceholder
                     }
                     noCountriesFoundMessage={addressNoCountriesFoundMessage}
+                    countryLocale={countryLocale}
                   />
                 ) : dateValue ? (
                   <KeyFieldDateInput
@@ -1326,6 +1332,8 @@ export const KeyField = React.forwardRef<HTMLDivElement, KeyFieldProps>(
                     onFocus={handleDateInputFocus}
                     onBlur={handleDateInputBlur}
                     placeholder={valuePlaceholder}
+                    aria-label={label}
+                    autoComplete={/bday|birth|рожд|dob/i.test(label) ? "bday" : undefined}
                   />
                 ) : (
                   <input

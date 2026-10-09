@@ -66,4 +66,14 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 - **E0:** popup shell + background SW, Chromium/Firefox builds.
 - **E1:** Server URL, web+PKCE session, device pending/approve.
 - **E2 (this phase):** Local MP unlock, sync read, workspace switch, search/filter, item read/copy + copy-guard, web deep links, vault UI parity with web mobile shell.
-- **Not yet (E3+):** delete/favorite mutations in-extension, PIN setup UI, autofill / content scripts.
+- **E3:** delete/favorite mutations, device settings (theme/PIN).
+- **E4 (this phase):** persist `urlAutofillScope` on login «Вебсайт URL»; content-script autofill (login + password + TOTP); copy-guard in popup; host permissions `<all_urls>`; save-password prompt MVP; auto-submit after fill / open-and-fill.
+- **Not yet (E4.1+):** password generator on page.
+
+## E4 — Autofill
+
+1. Rebuild: `yarn workspace @okkey/extension build:chromium` → `apps/extension/output/chrome-mv3`.
+2. `chrome://extensions` → Okkey → **Reload** (or Load unpacked → that folder).
+3. In **web**, create a **Логин/пароль** item with username/password, optional TOTP, and website URLs using all three scopes (`на всём сайте` / `только на этом URL` / `без автозаполнения`). Save.
+4. Unlock the extension, open a matching site, focus login/password/OTP → pick the item from the Okkey overlay. Locked vault shows **Разблокировать**.
+5. Copy login/password in the popup on a tab that does **not** match any website URL → **Отмена** / **Копировать** (copy writes immediately).

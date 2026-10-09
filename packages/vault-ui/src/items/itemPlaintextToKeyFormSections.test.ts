@@ -656,11 +656,11 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       "first-name",
       "last-name",
       "middle-name",
-      "initials",
       "gender",
       "birth-date",
       "phone",
       "email",
+      "nickname",
       "address",
     ]);
     expect(defaults[0]?.fields.every((field) => field.deletable === false && field.editableLabel === false)).toBe(true);
@@ -721,11 +721,11 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       "first-name",
       "last-name",
       "middle-name",
-      "initials",
       "gender",
       "birth-date",
       "phone",
       "email",
+      "nickname",
       "address",
       "custom-note",
     ]);
@@ -739,6 +739,63 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       deletable: true,
       editableLabel: true,
     });
+  });
+
+  it("round-trips address KeyField JSON through save and edit reopen", () => {
+    const addressValue = JSON.stringify({
+      apartment: "5",
+      house: "1",
+      street: "Nevsky",
+      city: "Saint Petersburg",
+      state: "",
+      postalCode: "191186",
+      country: "RU",
+    });
+
+    const sections = getDefaultSectionsForCategory("personal_data", messages).map((section) => {
+      if (section.id !== "personal-data") {
+        return section;
+      }
+
+      return {
+        ...section,
+        fields: section.fields.map((field) =>
+          field.id === "address" ? { ...field, value: addressValue } : field,
+        ),
+      };
+    });
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-personal-address-1",
+      vaultId: "vault-1",
+      title: "Address Person",
+      categoryId: "personal_data",
+      nowMs: 1,
+    });
+
+    const stored = item.fields.find((field) => field.id === "address");
+    expect(stored).toMatchObject({
+      type: "address",
+      value: { kind: "unknown", declaredType: "address", raw: addressValue },
+    });
+
+    const restoredForEdit = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const addressField = restoredForEdit
+      .find((section) => section.id === "personal-data")
+      ?.fields.find((field) => field.id === "address");
+
+    expect(addressField).toMatchObject({
+      type: "address",
+      value: addressValue,
+    });
+
+    const restoredForCard = itemPlaintextToKeyFormSections(item, messages);
+    expect(
+      restoredForCard
+        .find((section) => section.id === "personal-data")
+        ?.fields.find((field) => field.id === "address")?.value,
+    ).toBe(addressValue);
   });
 });
 
@@ -1000,3 +1057,54 @@ describe("itemPlaintextToKeyFormSections secure_files", () => {
     });
   });
 });
+
+describe("urlAutofillScope persist", () => {
+  it("round-trips exact-url and none on website fields", () => {
+    const sections = getDefaultSectionsForCategory("login", messages).map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => {
+        if (field.id === "login") {
+          return { ...field, value: "user@example.com" };
+        }
+        if (field.id === "password") {
+          return { ...field, value: "secret" };
+        }
+        if (field.id === "website-1") {
+          return { ...field, value: "https://github.com/login", urlAutofillScope: "exact-url" as const };
+        }
+        return field;
+      }),
+    }));
+    sections
+      .find((section) => section.id === "websites")
+      ?.fields.push({
+        id: "website-2",
+        type: "url",
+        label: "URL",
+        value: "https://evil.example",
+        urlAutofillScope: "none",
+        editableLabel: true,
+        deletable: true,
+      });
+
+    const item = keyFormSectionsToItemPlaintext({
+      sections,
+      itemId: "item-login-scope-1",
+      vaultId: "vault-1",
+      title: "GitHub",
+      categoryId: "login",
+      nowMs: 1,
+    });
+
+    const website1 = item.fields.find((field) => field.id === "website-1");
+    const website2 = item.fields.find((field) => field.id === "website-2");
+    expect(website1?.value).toMatchObject({ kind: "url", urlAutofillScope: "exact-url" });
+    expect(website2?.value).toMatchObject({ kind: "url", urlAutofillScope: "none" });
+
+    const restored = itemPlaintextToKeyFormSections(item, messages, { includeEmptyFields: true });
+    const websites = restored.find((section) => section.id === "websites");
+    expect(websites?.fields.find((field) => field.id === "website-1")?.urlAutofillScope).toBe("exact-url");
+    expect(websites?.fields.find((field) => field.id === "website-2")?.urlAutofillScope).toBe("none");
+  });
+});
+

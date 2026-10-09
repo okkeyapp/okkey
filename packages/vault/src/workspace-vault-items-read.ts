@@ -6,6 +6,7 @@ import {
   applyItemPlaintextToReplayMap,
 } from "@okkey/sync";
 import {
+  buildItemCreateAppendRequest,
   buildItemSyncMetadataFromPlaintext,
   buildItemUpdateAppendRequest,
 } from "@okkey/sync/item-sync";
@@ -288,8 +289,22 @@ export type WorkspaceVaultItemsReadController = {
   getItemCreatedByUserId: (itemId: string) => string | null | undefined;
   /** Soft-delete / archive / field updates via ITEM_UPDATE append. */
   updateItem: (item: ItemPlaintextV2) => Promise<string>;
+  /** Create login (and other) items via ITEM_CREATE append. */
+  createItem: (item: ItemPlaintextV2) => Promise<string>;
   dispose: () => void;
 };
+
+/** Read already-materialized vault items from IndexedDB (autofill; no network). */
+export async function listCachedWorkspaceVaultItems(input: {
+  userId: string;
+  workspaceId: string;
+}): Promise<ItemPlaintextV2[]> {
+  const cached = await readCachedState(input.userId, input.workspaceId);
+  if (!cached) {
+    return [];
+  }
+  return [...cached.values()].flatMap((state) => [...state.items.values()]);
+}
 
 /** Vault items sync (event log replay + IndexedDB cache) with update mutations for E3+. */
 export function createWorkspaceVaultItemsReadController(input: {
@@ -419,6 +434,21 @@ export function createWorkspaceVaultItemsReadController(input: {
       const vaultKey = await resolveVaultKey(item.vaultId);
       const request = buildItemSyncMetadataFromPlaintext(
         await buildItemUpdateAppendRequest(
+          vaultKey,
+          item,
+          state.lastAppliedVersion,
+          generateEntityId(),
+        ),
+        item,
+      );
+      await enqueue(request, item.vaultId);
+      return item.itemId;
+    },
+    createItem: async (item) => {
+      const state = ensureVaultState(item.vaultId);
+      const vaultKey = await resolveVaultKey(item.vaultId);
+      const request = buildItemSyncMetadataFromPlaintext(
+        await buildItemCreateAppendRequest(
           vaultKey,
           item,
           state.lastAppliedVersion,

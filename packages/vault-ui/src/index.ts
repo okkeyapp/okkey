@@ -10,6 +10,13 @@ export {
 } from "./key-form/KeyFormEditor.js";
 
 export {
+  KeyFormPasswordGeneratorPanel,
+  renderKeyFormGeneratedPassword,
+  type KeyFormPasswordGeneratorPanelProps,
+  type KeyFormPasswordGeneratorSettings,
+} from "./key-form/KeyFormPasswordGeneratorPanel.js";
+
+export {
   createKeyFormEditorMessages,
   createLocalizedKeyFieldTypes,
   filterKeyFieldTypesForFilesEnabled,
@@ -211,3 +218,4 @@ export {
 
 export { SetupPinPopup } from "./settings/SetupPinPopup.js";
 export { DeleteItemsConfirmPopup } from "./settings/DeleteItemsConfirmPopup.js";
+export { CopyGuardConfirmPopup } from "./settings/CopyGuardConfirmPopup.js";

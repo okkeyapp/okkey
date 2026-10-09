@@ -32,6 +32,67 @@ export function isHostSuitableForFaviconLookup(host: string): boolean {
   return normalized.includes(".");
 }
 
+/** Second-level labels that share the registrable domain with a third label (`bbc.co.uk`). */
+const MULTI_PART_PUBLIC_SUFFIX = new Set(["co", "com", "net", "org", "gov", "ac", "edu"]);
+
+/** eTLD+1 for favicon fallback (`d3v.zendesk.com` → `zendesk.com`). */
+export function registrableDomainFromHost(host: string): string | null {
+  const labels = host
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .split(".")
+    .filter(Boolean);
+  if (labels.length < 2) {
+    return null;
+  }
+  if (labels.length >= 3 && MULTI_PART_PUBLIC_SUFFIX.has(labels[labels.length - 2] ?? "")) {
+    return labels.slice(-3).join(".");
+  }
+  return labels.slice(-2).join(".");
+}
+
+/**
+ * Lookup keys in UI order: full URL → origin → https://eTLD+1.
+ * Google s2 uses `domain=`; each key is tried until a non-generic icon is found.
+ */
+export function expandFaviconLookupKeys(urls: readonly string[]): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  const push = (key: string) => {
+    const trimmed = key.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    const host = parseHostFromUrl(trimmed);
+    if (!host || !isHostSuitableForFaviconLookup(host)) {
+      return;
+    }
+    seen.add(trimmed);
+    keys.push(trimmed);
+  };
+
+  for (const raw of urls) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      continue;
+    }
+    push(trimmed);
+    try {
+      const href = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`;
+      const parsed = new URL(href);
+      push(parsed.origin);
+      const host = parsed.hostname.replace(/^www\./i, "");
+      const root = registrableDomainFromHost(host);
+      if (root) {
+        push(`https://${root}`);
+      }
+    } catch {
+      /* skip malformed */
+    }
+  }
+  return keys;
+}
+
 /** Suitable hosts in URL list order (first match per URL). */
 export function hostsFromUrls(urls: readonly string[]): string[] {
   const out: string[] = [];
@@ -137,12 +198,13 @@ export async function fetchRemoteFaviconBytes(host: string): Promise<Uint8Array 
 }
 
 /**
- * Walk URLs in list order; return bytes for the first host whose favicon is not generic/empty.
+ * Walk expanded lookup keys (full URL, origin, eTLD+1) in order.
+ * Skip Google's generic globe; only then does the client fall back to initials.
  */
 export async function fetchRemoteFaviconBytesFromUrls(urls: readonly string[]): Promise<Uint8Array | null> {
-  const hosts = hostsFromUrls(urls);
-  for (const host of hosts) {
-    const bytes = await fetchRemoteFaviconBytes(host);
+  const keys = expandFaviconLookupKeys(urls);
+  for (const key of keys) {
+    const bytes = await fetchImageBytes(buildGoogleFaviconUrl(key));
     if (!bytes) {
       continue;
     }

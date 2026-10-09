@@ -22,6 +22,19 @@ function createDemoRecoveryCodesValue(): string {
 export function createInitialKeyFormSections(): KeyFormEditorSection[] {
   return [
     {
+      id: "personal",
+      variant: "primary",
+      fields: [
+        {
+          id: "birth-date",
+          type: "date",
+          label: "дата рождения",
+          value: "15.03.1990",
+          copyValue: "15.03.1990",
+        },
+      ],
+    },
+    {
       id: "credentials",
       variant: "primary",
       fields: [
