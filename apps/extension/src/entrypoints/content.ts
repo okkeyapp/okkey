@@ -48,6 +48,10 @@ import {
 } from "../lib/autofillGeneratorOverlay";
 import { resolveFocusedAutofillKind } from "../lib/autofillFieldClassify";
 import {
+  captureFormPageUrl,
+  websiteUrlForSaveOffer,
+} from "../lib/autofillSaveUrls";
+import {
   applyPageLocaleAddressFormat,
   captureLoginCredentials,
   classifyAutofillInput,
@@ -79,6 +83,17 @@ type OverlayMode =
   | "username-generator";
 
 type SavePromptKind = "create" | "update";
+
+/** Credentials + capture-time URLs for the save-login prompt (survives redirects). */
+type PendingSaveCreds = {
+  username: string;
+  password: string;
+  /** Form page URL at capture (`origin + pathname`). */
+  captureUrl: string;
+  /** Website to store on the item (login form URL, or origin/ for register). */
+  websiteUrl: string;
+  formType: AutofillFormType;
+};
 
 function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
@@ -130,15 +145,23 @@ function overlayStrings() {
 type AutofillToggleKind = "empty" | "locked" | "open" | "closed";
 
 function pageUrl(): string {
-  return location.origin + location.pathname;
+  return captureFormPageUrl(location);
 }
 
-function websiteUrl(): string {
-  return location.origin + location.pathname;
+function domainTitleFromCapture(captureUrl: string): string {
+  try {
+    return new URL(captureUrl).hostname.replace(/^www\./i, "") || location.hostname;
+  } catch {
+    return location.hostname.replace(/^www\./i, "") || location.hostname;
+  }
 }
 
 function domainTitle(): string {
   return location.hostname.replace(/^www\./i, "") || location.hostname;
+}
+
+function pendingOfferKey(creds: PendingSaveCreds): string {
+  return `${creds.username}\n${creds.password}\n${creds.captureUrl}\n${creds.websiteUrl}`;
 }
 
 async function queryMatches(
@@ -191,7 +214,9 @@ export default defineContentScript({
     let filledByOkkeyUntil = 0;
     /** After login submit, do not auto-open unlock tooltip (noisy on OTP step). */
     let suppressUnlockTooltipUntil = 0;
-    let pendingSave: { username: string; password: string } | null = null;
+    let pendingSave: PendingSaveCreds | null = null;
+    /** Dedupe identical saveOffer while the prompt is already up (SPA redirect churn). */
+    let lastSaveOfferKey: string | null = null;
     let pendingUpdateItemId: string | null = null;
     let savePromptKind: SavePromptKind = "create";
     let pendingTotpItemId: string | null = null;
@@ -1245,28 +1270,64 @@ export default defineContentScript({
       return MONOGRAM_COLORS[0];
     }
 
-    function suggestionRowHtml(item: AutofillSuggestion): string {
-      const letters = monogram(item.title);
-      const categorySvg = autofillCategoryIconSvgHtml(item.categoryId);
-      const categoryColor = autofillCategoryIconColor(item.categoryId);
-      let iconInner: string;
-      let iconBg: string;
+    /**
+     * Match web `Favicon`: real image → transparent tile; colored monogram only when
+     * there is no image (or the image fails to load).
+     */
+    function rowIconHtml(input: {
+      title: string;
+      iconUrl?: string;
+      categoryId?: string;
+    }): string {
+      const letters = monogram(input.title);
+      const fallbackBg = monogramBackground(letters);
+      const categorySvg = input.categoryId
+        ? autofillCategoryIconSvgHtml(input.categoryId)
+        : null;
+      const categoryColor = input.categoryId
+        ? autofillCategoryIconColor(input.categoryId)
+        : null;
       if (categorySvg && categoryColor) {
-        iconInner = categorySvg;
-        iconBg = categoryColor;
-      } else if (item.iconUrl) {
-        iconInner = `<img src="${escapeHtml(item.iconUrl)}" alt="" />`;
-        iconBg = monogramBackground(letters);
-      } else {
-        iconInner = escapeHtml(letters);
-        iconBg = monogramBackground(letters);
+        return `<span class="row-icon" style="background:${categoryColor}">${categorySvg}</span>`;
       }
+      if (input.iconUrl) {
+        // Transparent tile while image loads (web Favicon); colored monogram only on error.
+        return `<span class="row-icon" style="background:transparent" data-icon-fallback="${escapeHtml(letters)}" data-icon-fallback-bg="${escapeHtml(fallbackBg)}"><img src="${escapeHtml(input.iconUrl)}" alt="" data-row-favicon="1" /></span>`;
+      }
+      return `<span class="row-icon" style="background:${fallbackBg}">${escapeHtml(letters)}</span>`;
+    }
+
+    function wireRowFaviconFallbacks(rootEl: ParentNode): void {
+      for (const img of rootEl.querySelectorAll<HTMLImageElement>("img[data-row-favicon]")) {
+        if (img.dataset.faviconWired === "1") {
+          continue;
+        }
+        img.dataset.faviconWired = "1";
+        const applyFallback = () => {
+          const tile = img.parentElement;
+          if (!(tile instanceof HTMLElement) || !tile.classList.contains("row-icon")) {
+            return;
+          }
+          const letters = tile.getAttribute("data-icon-fallback") || "?";
+          const bg = tile.getAttribute("data-icon-fallback-bg") || "#64748b";
+          tile.style.background = bg;
+          tile.textContent = letters;
+        };
+        img.addEventListener("error", applyFallback);
+        // Cached broken images may already be in error state before the listener attaches.
+        if (img.complete && img.naturalWidth === 0) {
+          applyFallback();
+        }
+      }
+    }
+
+    function suggestionRowHtml(item: AutofillSuggestion): string {
       const meta = item.username
         ? `<span class="row-meta">${escapeHtml(item.username)}</span>`
         : "";
       const suggestionKey = item.suggestionKey || item.itemId;
       return `<button type="button" class="row" data-item="${escapeHtml(item.itemId)}" data-suggestion-key="${escapeHtml(suggestionKey)}">
-              <span class="row-icon" style="background:${iconBg}">${iconInner}</span>
+              ${rowIconHtml({ title: item.title, iconUrl: item.iconUrl, categoryId: item.categoryId })}
               <span class="row-text">
                 <span class="row-title">${escapeHtml(item.title)}</span>
                 ${meta}
@@ -1280,13 +1341,10 @@ export default defineContentScript({
       iconUrl?: string;
       editing?: boolean;
     }): string {
-      const letters = monogram(input.title);
-      const iconInner = input.iconUrl
-        ? `<img src="${escapeHtml(input.iconUrl)}" alt="" />`
-        : escapeHtml(letters);
+      const icon = rowIconHtml({ title: input.title, iconUrl: input.iconUrl });
       if (input.editing) {
         return `<div class="row editing">
-              <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
+              ${icon}
               <div class="rename-wrap">
                 <input type="text" data-rename-input value="${escapeHtml(input.title)}" />
                 <button type="button" class="rename-check" data-rename-confirm="1" aria-label="OK">
@@ -1299,7 +1357,7 @@ export default defineContentScript({
         ? `<span class="row-meta">${escapeHtml(input.username)}</span>`
         : "";
       return `<div class="row">
-              <span class="row-icon" style="background:${monogramBackground(letters)}">${iconInner}</span>
+              ${icon}
               <span class="row-text">
                 <span class="row-title">${escapeHtml(input.title)}</span>
                 ${meta}
@@ -1939,6 +1997,7 @@ export default defineContentScript({
         wireOverlayOnce(root);
         focusRenameInput(root);
         wireGeneratorPanel(root);
+        wireRowFaviconFallbacks(root);
 
         if (animateChevron) {
           const btn = root.querySelector("[data-toggle='1']");
@@ -2285,11 +2344,12 @@ export default defineContentScript({
     }
 
     function showSavePrompt(
-      creds: { username: string; password: string },
+      creds: PendingSaveCreds,
       locked: boolean,
       opts?: { kind?: SavePromptKind; itemId?: string; title?: string; iconUrl?: string },
     ): void {
       pendingSave = creds;
+      lastSaveOfferKey = pendingOfferKey(creds);
       savePromptKind = opts?.kind ?? "create";
       pendingUpdateItemId = savePromptKind === "update" ? opts?.itemId ?? null : null;
       listOpen = false;
@@ -2298,7 +2358,7 @@ export default defineContentScript({
       if (opts?.title) {
         saveTitleDraft = opts.title;
       } else if (!saveTitleDraft) {
-        saveTitleDraft = domainTitle();
+        saveTitleDraft = domainTitleFromCapture(creds.captureUrl);
       }
       if (opts?.iconUrl) {
         saveIconUrl = opts.iconUrl;
@@ -2321,13 +2381,15 @@ export default defineContentScript({
       }
     }
 
-    async function persistPendingSaveOffer(creds: { username: string; password: string }): Promise<void> {
+    async function persistPendingSaveOffer(creds: PendingSaveCreds): Promise<void> {
       try {
         await browser.runtime.sendMessage({
           type: AUTOFILL_MSG.pendingSaveSet,
           username: creds.username,
           password: creds.password,
-          captureUrl: pageUrl(),
+          captureUrl: creds.captureUrl,
+          websiteUrl: creds.websiteUrl,
+          formType: creds.formType,
         });
       } catch {
         /* ignore */
@@ -2363,13 +2425,14 @@ export default defineContentScript({
       if (response.pending.interacted) {
         return;
       }
-      await maybeOfferSave(
-        {
-          username: response.pending.username,
-          password: response.pending.password,
-        },
-        { allowAfterOkkeyFill: true },
-      );
+      const pending: PendingSaveCreds = {
+        username: response.pending.username,
+        password: response.pending.password,
+        captureUrl: response.pending.captureUrl,
+        websiteUrl: response.pending.websiteUrl || response.pending.captureUrl,
+        formType: (response.pending.formType as AutofillFormType) || "unknown",
+      };
+      await maybeOfferSave(pending, { allowAfterOkkeyFill: true });
     }
 
     function syncRenameDraftFromDom(): void {
@@ -2400,11 +2463,11 @@ export default defineContentScript({
       }
     }
 
-    async function hydrateSavePromptIcon(creds: { username: string; password: string }): Promise<void> {
+    async function hydrateSavePromptIcon(creds: PendingSaveCreds): Promise<void> {
       try {
         const result = (await browser.runtime.sendMessage({
           type: AUTOFILL_MSG.siteIcon,
-          websiteUrl: websiteUrl(),
+          websiteUrl: creds.websiteUrl,
         })) as AutofillSiteIconResponse;
         if (pendingSave !== creds || result.status !== "ok") {
           return;
@@ -2546,13 +2609,14 @@ export default defineContentScript({
         return;
       }
       const creds = pendingSave;
-      const title = saveTitleDraft.trim() || domainTitle();
+      const title = saveTitleDraft.trim() || domainTitleFromCapture(creds.captureUrl);
       let result: AutofillSaveResponse;
       try {
         result = (await browser.runtime.sendMessage({
           type: AUTOFILL_MSG.save,
-          pageUrl: pageUrl(),
-          websiteUrl: websiteUrl(),
+          // Always the capture-time URLs — never the post-login redirect location.
+          pageUrl: creds.captureUrl,
+          websiteUrl: creds.websiteUrl,
           title,
           username: creds.username,
           password: creds.password,
@@ -2575,6 +2639,7 @@ export default defineContentScript({
       }
       if (result.status === "ok" || result.status === "exists") {
         pendingSave = null;
+        lastSaveOfferKey = null;
         pendingUpdateItemId = null;
         savePromptKind = "create";
         saveIconUrl = undefined;
@@ -2584,6 +2649,7 @@ export default defineContentScript({
       }
       if (result.status === "signed-out") {
         pendingSave = null;
+        lastSaveOfferKey = null;
         pendingUpdateItemId = null;
         savePromptKind = "create";
         void clearPendingSaveOffer();
@@ -2596,18 +2662,27 @@ export default defineContentScript({
     }
 
     async function maybeOfferSave(
-      creds: { username: string; password: string },
+      creds: PendingSaveCreds,
       opts?: { allowAfterOkkeyFill?: boolean },
     ): Promise<void> {
       // Vault autofill of an existing login must not re-prompt; register / generator fills may.
       if (wasFilledByOkkey() && !opts?.allowAfterOkkeyFill) {
         return;
       }
+      const offerKey = pendingOfferKey(creds);
+      // Already showing this exact offer (e.g. SPA URL churn) — do not re-query / flicker.
+      if (
+        lastSaveOfferKey === offerKey &&
+        (overlayMode === "save" || overlayMode === "save-rename" || overlayMode === "unlock-save")
+      ) {
+        return;
+      }
       let response: AutofillSaveOfferResponse;
       try {
         response = (await browser.runtime.sendMessage({
           type: AUTOFILL_MSG.saveOffer,
-          pageUrl: pageUrl(),
+          pageUrl: creds.captureUrl,
+          websiteUrl: creds.websiteUrl,
           username: creds.username,
           password: creds.password,
         })) as AutofillSaveOfferResponse;
@@ -2625,6 +2700,7 @@ export default defineContentScript({
       }
       if (response.status === "none") {
         pendingSave = null;
+        lastSaveOfferKey = null;
         pendingUpdateItemId = null;
         savePromptKind = "create";
         void clearPendingSaveOffer();
@@ -2672,12 +2748,11 @@ export default defineContentScript({
      * After login or register submit — offer create/update Login item.
      * Register also fires when the user used Okkey's password generator (`wasFilledByOkkey`).
      *
-     * @param prefilledCreds Snapshot from the capture-phase click/submit handler. Required for
-     *   SPA register CTAs (`type="button"`) that mutate/clear the form before setTimeout(0).
+     * @param snapshot Capture-phase username/password + form URL (before redirect / form clear).
      */
     function onCredentialsSubmitted(
       form?: HTMLFormElement | null,
-      prefilledCreds?: { username: string; password: string } | null,
+      snapshot?: { username: string; password: string; captureUrl: string } | null,
     ): void {
       suppressUnlockTooltipUntil = Date.now() + 12_000;
       if (overlayMode === "unlock-tooltip" || overlayMode === "list") {
@@ -2700,29 +2775,53 @@ export default defineContentScript({
         return;
       }
       const scope: ParentNode = form ?? document;
-      let creds = prefilledCreds ?? captureLoginCredentials(scope);
-      if (!creds && form) {
-        creds = captureLoginCredentials(document);
-      }
-      if (!creds) {
-        return;
+      let username = snapshot?.username ?? "";
+      let password = snapshot?.password ?? "";
+      if (!password) {
+        const raw = captureLoginCredentials(scope) ?? (form ? captureLoginCredentials(document) : null);
+        if (!raw) {
+          return;
+        }
+        username = raw.username;
+        password = raw.password;
       }
       // Prefer offering on explicit login/register; unknown still offers when creds exist.
       if (!isSaveOfferFormType(formType) && formType !== "unknown") {
         return;
       }
+      // Prefer capture-phase URL; fall back only if snapshot missing (should be rare).
+      const captureUrl = snapshot?.captureUrl || captureFormPageUrl(location);
+      const creds: PendingSaveCreds = {
+        username,
+        password,
+        captureUrl,
+        websiteUrl: websiteUrlForSaveOffer(captureUrl, formType),
+        formType,
+      };
       // Hold early so focusout hide (180ms) cannot race past async saveOffer.
       pendingSave = creds;
       void persistPendingSaveOffer(creds);
       void maybeOfferSave(creds, { allowAfterOkkeyFill: isRegister });
     }
 
-    /** Snapshot username/password during capture phase (before page click handlers run). */
+    /**
+     * Snapshot username/password + form URL during capture phase (before page handlers /
+     * redirects run). Same timing as the demoqa register fix.
+     */
     function snapshotCredentialsForOffer(
       form: HTMLFormElement | null,
-    ): { username: string; password: string } | null {
+    ): { username: string; password: string; captureUrl: string } | null {
       const scope: ParentNode = form ?? document;
-      return captureLoginCredentials(scope) ?? (form ? captureLoginCredentials(document) : null);
+      const raw =
+        captureLoginCredentials(scope) ?? (form ? captureLoginCredentials(document) : null);
+      if (!raw) {
+        return null;
+      }
+      return {
+        username: raw.username,
+        password: raw.password,
+        captureUrl: captureFormPageUrl(location),
+      };
     }
 
     document.addEventListener(

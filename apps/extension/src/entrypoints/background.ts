@@ -57,6 +57,7 @@ export default defineBackground(() => {
     if (message.type === AUTOFILL_MSG.saveOffer) {
       return handleAutofillSaveOffer({
         pageUrl: message.pageUrl,
+        websiteUrl: message.websiteUrl || message.pageUrl,
         username: message.username,
         password: message.password,
       });
@@ -83,6 +84,8 @@ export default defineBackground(() => {
         username: message.username,
         password: message.password,
         captureUrl: message.captureUrl,
+        websiteUrl: message.websiteUrl || message.captureUrl,
+        formType: message.formType,
       }).then(() => ({ ok: true }));
     }
     if (message.type === AUTOFILL_MSG.pendingSaveGet) {

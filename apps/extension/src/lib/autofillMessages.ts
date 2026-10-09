@@ -19,11 +19,20 @@ export const AUTOFILL_MSG = {
 export type AutofillPendingSavePayload = {
   username: string;
   password: string;
-  /** Page URL where credentials were captured (login form). */
+  /** Page URL where credentials were captured (login/register form). */
   captureUrl: string;
+  /**
+   * Website URL to store on the Login item (login form URL, or site home for register).
+   * Survives post-login redirects — never use the destination URL.
+   */
+  websiteUrl: string;
+  /** Form intent at capture time (`login` | `register` | …). */
+  formType?: string;
   createdAt: number;
   /** User interacted on a post-redirect destination page — do not show. */
   interacted: boolean;
+  /** Fingerprint of the last shown offer (dedupe re-query after redirect). */
+  offeredKey?: string;
 };
 
 export type AutofillSuggestion = {
@@ -156,7 +165,10 @@ export type AutofillSaveMessage = {
 
 export type AutofillSaveOfferMessage = {
   type: typeof AUTOFILL_MSG.saveOffer;
+  /** Capture-time page URL (for matching existing logins). */
   pageUrl: string;
+  /** Website URL that would be written on save (compared for update offers). */
+  websiteUrl: string;
   username: string;
   password: string;
 };
@@ -191,6 +203,8 @@ export type AutofillPendingSaveSetMessage = {
   username: string;
   password: string;
   captureUrl: string;
+  websiteUrl: string;
+  formType?: string;
 };
 
 export type AutofillPendingSaveGetMessage = {

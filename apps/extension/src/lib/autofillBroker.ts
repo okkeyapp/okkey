@@ -19,6 +19,7 @@ import {
 
 import { createCoreClient } from "./api";
 import { EMAIL_OTP_URL } from "./autofillFieldClassify";
+import { normalizeSaveUrl, saveUrlsEqual } from "./autofillSaveUrls";
 import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
@@ -65,7 +66,10 @@ async function hydratePendingSaveSession(): Promise<void> {
       if (now - pending.createdAt > PENDING_SAVE_TTL_MS) {
         continue;
       }
-      pendingSaveByTab.set(tabId, pending);
+      pendingSaveByTab.set(tabId, {
+        ...pending,
+        websiteUrl: pending.websiteUrl || pending.captureUrl,
+      });
     }
   } catch {
     /* session storage unavailable */
@@ -90,15 +94,31 @@ function isPendingSaveFresh(pending: AutofillPendingSavePayload): boolean {
 
 export async function setPendingSaveOffer(
   tabId: number,
-  input: { username: string; password: string; captureUrl: string },
+  input: {
+    username: string;
+    password: string;
+    captureUrl: string;
+    websiteUrl: string;
+    formType?: string;
+  },
 ): Promise<void> {
   await hydratePendingSaveSession();
+  const prev = pendingSaveByTab.get(tabId);
+  const sameCreds =
+    prev &&
+    prev.username === input.username &&
+    prev.password === input.password &&
+    normalizeSaveUrl(prev.captureUrl) === normalizeSaveUrl(input.captureUrl);
   pendingSaveByTab.set(tabId, {
     username: input.username,
     password: input.password,
     captureUrl: input.captureUrl,
-    createdAt: Date.now(),
+    websiteUrl: input.websiteUrl || input.captureUrl,
+    formType: input.formType,
+    createdAt: sameCreds && prev ? prev.createdAt : Date.now(),
     interacted: false,
+    // Keep offeredKey so redirect restore can dedupe a second identical offer query.
+    ...(sameCreds && prev?.offeredKey ? { offeredKey: prev.offeredKey } : {}),
   });
   await persistPendingSaveSession();
 }
@@ -147,12 +167,18 @@ export async function markPendingSaveInteracted(tabId: number, currentUrl: strin
 }
 
 function normalizePendingUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, "") || parsed.origin;
-  } catch {
-    return url;
+  return normalizeSaveUrl(url);
+}
+
+function primaryLoginWebsiteUrl(item: {
+  fields: { type: string; value: { kind: string; url?: string } }[];
+}): string {
+  for (const field of item.fields) {
+    if (field.type === "url" && field.value.kind === "url" && field.value.url?.trim()) {
+      return field.value.url.trim();
+    }
   }
+  return "";
 }
 
 export function wirePendingSaveTabCleanup(): void {
@@ -608,6 +634,7 @@ function usernamesEqual(a: string, b: string): boolean {
 
 export async function handleAutofillSaveOffer(input: {
   pageUrl: string;
+  websiteUrl: string;
   username: string;
   password: string;
 }): Promise<AutofillSaveOfferResponse> {
@@ -618,7 +645,17 @@ export async function handleAutofillSaveOffer(input: {
   if (!auth.unlocked) {
     return { status: "locked" };
   }
-  const existing = await matchingLoginItems(auth.userId, input.pageUrl);
+  // Match against capture-time URL (and website URL) — not the post-redirect page.
+  const matchUrl = input.pageUrl || input.websiteUrl;
+  const existing = [...(await matchingLoginItems(auth.userId, matchUrl))];
+  if (input.websiteUrl && !saveUrlsEqual(input.websiteUrl, matchUrl)) {
+    const byWebsite = await matchingLoginItems(auth.userId, input.websiteUrl);
+    for (const item of byWebsite) {
+      if (!existing.some((e) => e.itemId === item.itemId)) {
+        existing.push(item);
+      }
+    }
+  }
   if (existing.length === 0) {
     return { status: "save" };
   }
@@ -636,10 +673,17 @@ export async function handleAutofillSaveOffer(input: {
     }
     const sameUser = usernamesEqual(secrets.username, input.username);
     const samePass = secrets.password === input.password;
-    if (sameUser && samePass) {
+    const itemUrl = primaryLoginWebsiteUrl(item);
+    const sameUrl =
+      !itemUrl ||
+      saveUrlsEqual(itemUrl, input.websiteUrl) ||
+      saveUrlsEqual(itemUrl, input.pageUrl);
+    // Identical creds + URL → nothing to do.
+    if (sameUser && samePass && sameUrl) {
       await touchExtensionUnlockSession(auth.userId);
       return { status: "none" };
     }
+    // Same username (password and/or URL differ) → prefer update over create.
     if (sameUser && !usernameMatch) {
       usernameMatch = item;
     } else if (!fallback) {
@@ -762,6 +806,7 @@ export async function handleAutofillSave(input: {
           return { status: "error", message: "ITEM_NOT_FOUND" };
         }
         const title = (input.title || existingItem.title || domainTitleFromUrl(input.websiteUrl)).trim() || "Login";
+        let websiteUpdated = false;
         const updated = {
           ...existingItem,
           title,
@@ -775,6 +820,18 @@ export async function handleAutofillSave(input: {
             }
             if (field.value.kind === "password") {
               return { ...field, value: { kind: "password" as const, password: input.password } };
+            }
+            if (field.type === "url" && field.value.kind === "url" && !websiteUpdated) {
+              websiteUpdated = true;
+              const scope = field.value.urlAutofillScope || "entire-site";
+              return {
+                ...field,
+                value: {
+                  kind: "url" as const,
+                  url: input.websiteUrl,
+                  urlAutofillScope: scope,
+                },
+              };
             }
             return field;
           }),
