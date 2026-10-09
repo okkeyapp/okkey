@@ -6,7 +6,10 @@
 **/.data
 apps/desktop
 apps/mobile
-apps/extension/dist
+# Extension is a yarn workspace member (package.json only copied in Dockerfiles).
+# Exclude sources so builds never depend on wxt entrypoints.
+apps/extension/**
+!apps/extension/package.json
 docs
 **/*.md
 !services/worker/README.md

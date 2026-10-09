@@ -5,7 +5,7 @@ FROM node:${NODE_VERSION}-bookworm AS builder
 WORKDIR /src
 
 COPY package.json yarn.lock ./
-COPY scripts/ensure-crypto-wasm-dist.mjs scripts/ensure-crypto-wasm-dist.mjs
+COPY scripts scripts
 COPY packages packages
 COPY rust rust
 COPY rust-toolchain.toml rust-toolchain.toml
