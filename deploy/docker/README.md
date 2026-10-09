@@ -17,7 +17,10 @@ This will:
 
 Then open **http://localhost:8080** (web) and check **http://localhost:4000/health** (API).
 
-> Images are published to GHCR on git tags / workflow dispatch. Until a release tag exists, set `OKKEY_IMAGE_TAG` to a digest/tag you built, or build locally (see below).
+> First CI publish (PR #19): tag `v0.0.0-pr19.3` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.3` (also `:v0.0.0-pr19.3`).  
+> Workflow: https://github.com/okkeyapp/okkey/actions/runs/37924403393  
+> Set `OKKEY_IMAGE_TAG=0.0.0-pr19.3` in `.env` (default in `.env.example`).  
+> `workflow_dispatch` appears in the Actions UI only after `publish-images.yml` is on the default branch (`main`). Until then, push a `v*` tag on a commit that contains the workflow.
 
 ## Manual install
 
