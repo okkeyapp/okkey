@@ -40,18 +40,27 @@ export type AutofillFormSignals = {
   urlPath: string;
 };
 
+/**
+ * Unicode-aware edges — JS `\b` is ASCII-only, so RU «Вход»/«Войти» never matched.
+ * Lookbehind/ahead treat letters (any script), digits, and `_` as word chars.
+ */
 const REGISTER_TEXT =
-  /\b(sign[-_\s]?up|register|registration|create[-_\s]?account|join[-_\s]?now|get[-_\s]?started|регистрац|зарегистрир|создать\s*аккаунт|создай(те)?\s*аккаунт|завести\s*аккаунт)\b/i;
+  /(?<![\p{L}\p{N}_])(?:sign[-_\s]?up|register|registration|create[-_\s]?account|join[-_\s]?now|get[-_\s]?started|регистрац\p{L}*|зарегистрир\p{L}*|создать\s*аккаунт|создай(?:те)?\s*аккаунт|завести\s*аккаунт)(?![\p{L}\p{N}_])/iu;
 
 const LOGIN_TEXT =
-  /\b(sign[-_\s]?in|log[-_\s]?in|log[-_\s]?on|auth(enticate)?|войти|вход|авторизац)\b/i;
+  /(?<![\p{L}\p{N}_])(?:sign[-_\s]?in|log[-_\s]?in|log[-_\s]?on|auth(?:enticate)?|войти|вход(?:[аеу]|ите)?|авторизац\p{L}*)(?![\p{L}\p{N}_])/iu;
 
 /** “Back to Login” / “Go to login” on a register form must not count as a login signal. */
 const BACK_TO_LOGIN_TEXT =
-  /\b((back|go|goto|return)\s+to\s+log[-_\s]?in|назад\s+(ко?\s+)?входу|к\s+входу)\b/gi;
+  /(?<![\p{L}\p{N}_])(?:(?:back|go|goto|return)\s+to\s+log[-_\s]?in|назад\s+(?:ко?\s+)?входу|к\s+входу)(?![\p{L}\p{N}_])/giu;
+
+/** Strong login cue even when password uses autocomplete=new-password (Shopify, etc.). */
+const FORGOT_PASSWORD_TEXT =
+  /(?<![\p{L}\p{N}_])(?:forgot(?:\s+\w+){0,3}\s+password|password\s+reset|забыл[аи]?\s+парол\p{L}*|восстанов(?:ить|ление)\s+парол\p{L}*)(?![\p{L}\p{N}_])/iu;
 
 function textSuggestsLogin(text: string): boolean {
-  return LOGIN_TEXT.test(text.replace(BACK_TO_LOGIN_TEXT, " "));
+  const cleaned = text.replace(BACK_TO_LOGIN_TEXT, " ");
+  return LOGIN_TEXT.test(cleaned) || FORGOT_PASSWORD_TEXT.test(cleaned);
 }
 
 const CHECKOUT_TEXT =
@@ -133,10 +142,38 @@ function collectNearbyText(form: Element | null, doc: Document): string {
         }
       }
     }
+    // “Forgot password?” is a strong login cue (plain <a>, not a submit button).
+    const links = root?.querySelectorAll?.("a[href]");
+    if (links) {
+      for (const link of Array.from(links).slice(0, 12)) {
+        const label = link.textContent?.trim() ?? "";
+        if (label && FORGOT_PASSWORD_TEXT.test(label)) {
+          parts.push(label);
+        }
+      }
+    }
   } catch {
     /* ignore */
   }
   return parts.filter(Boolean).join(" ");
+}
+
+/**
+ * Hidden username/email (e.g. Shopify `#account_email`) still identify login forms
+ * even when the visible identifier is plain text / readonly chrome.
+ */
+function hiddenCredentialKind(hints: AutofillInputHints): AutofillFieldKind | null {
+  if ((hints.type || "").toLowerCase() !== "hidden") {
+    return null;
+  }
+  const ac = (hints.autocomplete ?? "").toLowerCase().trim();
+  if (acToken(ac, "email") || ac.includes("email")) {
+    return "email";
+  }
+  if (acToken(ac, "username") || ac.includes("username")) {
+    return "username";
+  }
+  return null;
 }
 
 /**
@@ -154,10 +191,15 @@ export function collectAutofillFormSignals(
     if (!(node instanceof HTMLInputElement)) {
       continue;
     }
+    const hints = collectInputHints(node);
+    const hiddenKind = hiddenCredentialKind(hints);
+    if (hiddenKind) {
+      fieldKinds.push(hiddenKind);
+      continue;
+    }
     if (!isVisibleInput(node)) {
       continue;
     }
-    const hints = collectInputHints(node);
     if (isDeniedAutofillField(hints) && node.type.toLowerCase() !== "password") {
       continue;
     }
@@ -197,10 +239,11 @@ export function collectAutofillFormSignals(
  * Priority (high → low):
  * 1. search
  * 2. checkout/payment (card fields)
- * 3. register (confirm password / new-password / signup text / identity+password)
- * 4. login (single password + username/email)
- * 5. identity/profile (personal fields, no password)
- * 6. unknown
+ * 3. strong login cues (login wording / forgot-password /login path) over new-password alone
+ * 4. register (confirm password / new-password / signup text / identity+password)
+ * 5. login (single password + username/email)
+ * 6. identity/profile (personal fields, no password)
+ * 7. unknown
  */
 export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFormType {
   const text = `${signals.formTextBlob} ${signals.urlPath}`;
@@ -210,6 +253,10 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
   const hasCard = [...kinds].some((k) => CC_KINDS.has(k));
   const hasIdentity = [...kinds].some((k) => IDENTITY_KINDS.has(k));
   const passwordCount = signals.passwordFields.length;
+  const loginCue = textSuggestsLogin(text);
+  const registerCue = REGISTER_TEXT.test(text);
+  const classicLoginShape =
+    hasPassword && hasUser && passwordCount === 1 && !signals.hasConfirmPassword;
 
   if (SEARCH_TEXT.test(text) && !hasPassword && !hasCard) {
     return "search";
@@ -219,19 +266,25 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
     return "checkout";
   }
 
+  // Shopify /login etc.: sites often set autocomplete=new-password on a real login field.
+  // Strong login cues + classic shape beat new-password-alone register heuristics.
+  if (classicLoginShape && loginCue && !registerCue) {
+    return "login";
+  }
+
   const registerByShape =
     signals.hasConfirmPassword ||
     (signals.hasNewPasswordAc && passwordCount >= 1 && !signals.hasCurrentPasswordAc) ||
     (signals.hasNewPasswordAc && signals.hasConfirmPassword) ||
     (hasPassword && hasIdentity && passwordCount >= 1);
 
-  if (registerByShape || (REGISTER_TEXT.test(text) && hasPassword)) {
+  if (registerByShape || (registerCue && hasPassword)) {
     return "register";
   }
 
   // Explicit login wording wins over bare identity when a single password is present.
-  if (hasPassword && hasUser && passwordCount === 1 && !signals.hasConfirmPassword) {
-    if (textSuggestsLogin(text) || !REGISTER_TEXT.test(text)) {
+  if (classicLoginShape) {
+    if (loginCue || !registerCue) {
       return "login";
     }
   }

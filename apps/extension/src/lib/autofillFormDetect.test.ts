@@ -107,6 +107,75 @@ describe("detectAutofillFormType", () => {
     );
   });
 
+  /**
+   * Shopify accounts.shopify.com/login-like fixture:
+   * form#login_form.login-primary, h1 «Вход», submit «Войти», «Забыли пароль?»,
+   * hidden #account_email autocomplete=username, #account_password autocomplete=new-password.
+   * Strong login cues must beat new-password-alone → login suggestions, not generator.
+   */
+  it("Shopify-like login (RU): new-password + Вход/Войти/forgot stays login", () => {
+    assert.equal(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["username", "password"],
+          passwordFields: [
+            passwordHints({
+              id: "account_password",
+              name: "account[password]",
+              autocomplete: "new-password",
+            }),
+          ],
+          hasConfirmPassword: false,
+          hasNewPasswordAc: true,
+          hasCurrentPasswordAc: false,
+          formTextBlob:
+            "login_form login-primary Вход Войти Забыли пароль?",
+          urlPath: "/login",
+        }),
+      ),
+      "login",
+    );
+  });
+
+  it("Shopify-like login (EN): new-password + Sign in / Forgot password stays login", () => {
+    assert.equal(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["email", "password"],
+          passwordFields: [
+            passwordHints({
+              id: "account_password",
+              autocomplete: "new-password",
+            }),
+          ],
+          hasConfirmPassword: false,
+          hasNewPasswordAc: true,
+          hasCurrentPasswordAc: false,
+          formTextBlob:
+            "login_form login-primary Sign in Log in Forgot your password?",
+          urlPath: "/login",
+        }),
+      ),
+      "login",
+    );
+  });
+
+  it("RU login heading «Вход» is recognized (unicode word edges)", () => {
+    assert.equal(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["email", "password"],
+          passwordFields: [passwordHints({ autocomplete: "new-password" })],
+          hasNewPasswordAc: true,
+          hasConfirmPassword: false,
+          formTextBlob: "Вход Войти",
+          urlPath: "/accounts/login",
+        }),
+      ),
+      "login",
+    );
+  });
+
   it("detects register: identity fields + password", () => {
     assert.equal(
       detectAutofillFormType(
