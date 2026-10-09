@@ -88,12 +88,22 @@ const GIVEN_NAME = /given[-_]?name|first[-_]?name|fname|forename|имя(?!\s*п�
 const FAMILY_NAME = /family[-_]?name|last[-_]?name|surname|lname|фамил/i;
 const ADDITIONAL_NAME = /additional[-_]?name|middle[-_]?name|отчеств/i;
 /**
- * Full / legal name (autocomplete=name, label «Name*», id/name ≈ name).
- * Bare `name` must not steal first/last/user/nick — those rules run earlier / later.
- * `(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)` matches "Name*", "name-input", name="name".
+ * Strong person-name cues (full/legal/display). Bare «Name» alone is handled separately
+ * so entity labels like «Ruleset Name» do not become personal_data.
  */
-const FULL_NAME =
-  /\b(full[-_\s]?name|display[-_\s]?name|legal[-_\s]?name|имя\s*и\s*фамил|\bфио\b)\b|(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)/i;
+const PERSON_FULL_NAME_STRONG =
+  /\b(full[-_\s]?name|display[-_\s]?name|legal[-_\s]?name|your[-_\s]?name|имя\s*и\s*фамил|полное\s*имя|\bфио\b)\b/i;
+/**
+ * Bare `name` token: label «Name*», id/name ≈ name / name-input.
+ * Must not steal first/last/user/nick — those rules run earlier.
+ */
+const BARE_NAME_TOKEN = /(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)/i;
+/**
+ * Non-person entity «… Name» (GitHub rulesets, repos, workflows, runners, orgs, …).
+ * When present, bare/strong-name heuristics must not classify as personal name.
+ */
+const NON_PERSON_NAME_CONTEXT =
+  /\b(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace|branch|label|tag|variable|secret|environment|service|server|host(?:name)?|cluster|namespace|package|module|app(?:lication)?|product|file|folder|director(?:y|ies)|group|role|policy|permission|channel|bot|webhook|job|pipeline|artifact|bucket|schema|table|column|token|certificate|domain|site|page|section|field|form|item|resource|instance|container|image|volume|queue|topic|subscription|campaign|event|meeting|invoice|order|sku|subject|title|репозитор|проект|организац|набор\s*правил|рабоч\w*\s*процесс)\b[-_\s]*(?:name|название|имя)\b|\b(?:name|название|имя)\b[-_\s]*(?:of\s+)?(?:the\s+)?(?:ruleset|repositor(?:y|ies)|repos?|workflow|runner|organization|organisation|\borg\b|project|team|workspace)\b/i;
 const TEL_HINT = /\b(phone|mobile|tel|cellphone|телефон|мобил)/i;
 const BDAY_HINT = /bday|birth[-_]?date|date[-_]?of[-_]?birth|\bdob\b|дата\s*рожд/i;
 const SEX_HINT = /\bsex\b|\bgender\b|пол\b/i;
@@ -155,6 +165,44 @@ function acToken(ac: string, token: string): boolean {
     const p = part.toLowerCase();
     return p === token || p.endsWith(`-${token}`) || p.startsWith(`${token}-`);
   });
+}
+
+/** Exact `autocomplete=name` (not given-name / family-name / cc-name — those use other tokens). */
+function acExactName(ac: string): boolean {
+  const otherNameKinds = new Set([
+    "given-name",
+    "family-name",
+    "additional-name",
+    "cc-name",
+    "username",
+    "nickname",
+  ]);
+  return ac.split(/\s+/).some((part) => {
+    const p = part.toLowerCase();
+    if (p === "name") {
+      return true;
+    }
+    // Rare compound tokens like `billing-name`; skip known non-person name kinds.
+    return p.endsWith("-name") && !otherNameKinds.has(p);
+  });
+}
+
+/**
+ * Person full-name field: autocomplete=name, strong cues (Full name / ФИО), or bare «Name»
+ * without an entity prefix (Ruleset / Repository / Workflow / …).
+ */
+export function isPersonFullNameField(blob: string, autocomplete = ""): boolean {
+  const ac = autocomplete.trim().toLowerCase();
+  if (acExactName(ac)) {
+    return true;
+  }
+  if (NON_PERSON_NAME_CONTEXT.test(blob)) {
+    return false;
+  }
+  if (PERSON_FULL_NAME_STRONG.test(blob)) {
+    return true;
+  }
+  return BARE_NAME_TOKEN.test(blob);
 }
 
 function firstMatch(
@@ -360,7 +408,6 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
     { key: "given-name", ac: "given-name", re: GIVEN_NAME },
     { key: "family-name", ac: "family-name", re: FAMILY_NAME },
     { key: "additional-name", ac: "additional-name", re: ADDITIONAL_NAME },
-    { key: "name", ac: "name", re: FULL_NAME },
     { key: "tel", ac: ["tel", "tel-national", "tel-local"], re: TEL_HINT },
     { key: "bday", ac: ["bday", "bday-day", "bday-month", "bday-year"], re: BDAY_HINT },
     { key: "sex", ac: "sex", re: SEX_HINT },
@@ -369,6 +416,10 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
   ]);
   if (personal) {
     return personal;
+  }
+  // After given/family/additional: full name only with person cues / bare Name (not Ruleset Name).
+  if (isPersonFullNameField(blob, ac)) {
+    return "name";
   }
 
   if (acToken(ac, "username") || ac.includes("username") || USER_NAME.test(blob)) {

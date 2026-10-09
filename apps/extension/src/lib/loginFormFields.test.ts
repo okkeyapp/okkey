@@ -114,11 +114,60 @@ describe("classifyAutofillInput non-login types", () => {
       classifyAutofillInput({ type: "text", id: "name-input", labelText: "Name" }),
       "name",
     );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Full name" }),
+      "name",
+    );
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "given-name" }), "given-name");
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "family-name" }), "family-name");
     // Must not steal username / first-name.
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "username" }), "username");
     assert.equal(classifyAutofillInput({ type: "text", name: "first-name" }), "given-name");
+  });
+
+  it("does not treat entity Name labels as personal name (GitHub ruleset etc.)", () => {
+    // GitHub settings → Ruleset Name (required) — not a person's name.
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        labelText: "Ruleset Name *",
+        ariaLabel: "Ruleset Name",
+      }),
+      null,
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        id: "ruleset-name",
+        labelText: "Ruleset Name",
+      }),
+      null,
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Repository name" }),
+      null,
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Workflow name" }),
+      null,
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "runner-name", labelText: "Runner Name" }),
+      null,
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", labelText: "Project name" }),
+      null,
+    );
+    // Explicit autocomplete=name still wins even with a noisy label.
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        autocomplete: "name",
+        labelText: "Ruleset Name",
+      }),
+      "name",
+    );
   });
 
   it("detects credit card fields", () => {
