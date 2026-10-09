@@ -882,8 +882,13 @@ export default defineContentScript({
           .save-card .row {
             pointer-events: none;
             cursor: default;
-            /* Keep preview row height stable when switching to rename input. */
-            min-height: 48px;
+            /*
+             * Fixed height = padding 8+8 + title(20)+meta(18). Rename mode drops
+             * meta but must not shrink the popup (align-items centers the input).
+             */
+            height: 54px;
+            min-height: 54px;
+            box-sizing: border-box;
           }
           /* Pencil must remain clickable despite non-interactive preview row. */
           .save-card .row .icon-btn { pointer-events: auto; }
@@ -895,6 +900,7 @@ export default defineContentScript({
             align-items: center;
             height: 32px;
             min-height: 32px;
+            max-height: 32px;
             background: hsl(var(--ok-bg));
             border: 1px solid hsl(var(--ok-primary));
             border-radius: 8px;
@@ -982,10 +988,15 @@ export default defineContentScript({
             transition: background-color 150ms ease, box-shadow 150ms ease;
           }
           button.vault-picker:hover,
-          button.vault-picker:focus-visible {
+          button.vault-picker:focus-visible,
+          button.vault-picker[aria-expanded="true"],
+          button.vault-picker[data-state="open"] {
             background: hsl(var(--ok-hover));
           }
-          button.vault-picker:focus-visible {
+          /* Match packages/ui SelectTrigger open/focus primary ring. */
+          button.vault-picker:focus-visible,
+          button.vault-picker[aria-expanded="true"],
+          button.vault-picker[data-state="open"] {
             box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           button.vault-picker .vault-name {
@@ -1318,7 +1329,7 @@ export default defineContentScript({
       return `<div class="vault-row">
         <span class="vault-ws">${escapeHtml(saveWorkspaceName || strings.workspaceFallback)}</span>
         <span class="vault-arrow">→</span>
-        <button type="button" class="vault-picker" data-vault-toggle="1">
+        <button type="button" class="vault-picker" data-vault-toggle="1" aria-expanded="${vaultMenuOpen ? "true" : "false"}" data-state="${vaultMenuOpen ? "open" : "closed"}">
           <span>${escapeHtml(icon)}</span>
           <span class="vault-name">${escapeHtml(name)}</span>
           <img class="chevron" src="${escapeHtml(overlayIconUrl("lucide-chevron-down"))}" alt="" />
