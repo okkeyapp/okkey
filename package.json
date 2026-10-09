@@ -82,7 +82,7 @@
     "build:extension:firefox": "yarn --cwd apps/extension build:firefox",
     "zip:extension:chromium": "yarn --cwd apps/extension zip:chromium",
     "zip:extension:firefox": "yarn --cwd apps/extension zip:firefox",
-    "dev:worker": "echo 'TODO: add worker dev command' && exit 1",
+    "dev:worker": "node --experimental-strip-types services/api/src/worker.ts",
     "infra:down": "./scripts/infra.sh down",
     "infra:logs": "./scripts/infra.sh logs",
     "infra:ps": "./scripts/infra.sh ps",

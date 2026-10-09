@@ -1,54 +1,85 @@
 # Self Hosting
 
-Okkey supports self-hosted deployment.
+Okkey supports self-hosted deployment so organisations can run Core on their own infrastructure.
 
-This allows companies to run Okkey on their own infrastructure.
+Client-side encryption is unchanged: the server administrator **cannot read vault data**.
+
+---
+
+## Self-host in 5 minutes
+
+Preferred path — **no monorepo clone**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+```
+
+Full guide, manual compose, TLS notes, and image tags:
+
+→ [`deploy/docker/README.md`](../../deploy/docker/README.md)
 
 ---
 
 ## Deployment Methods
 
 Supported:
-- Docker
-- Docker Compose
-- Kubernetes
+
+- Docker / Docker Compose (MVP install artifact under `deploy/docker/`)
+- Kubernetes (planned; not in this MVP)
 
 ---
 
 ## Required Services
 
 Self-hosted installation includes:
-- okkey-api
-- postgres
-- redis
-- object storage
+
+- `okkey-api` (`ghcr.io/okkeyapp/api`) — HTTP API; runs SQL migrations on start
+- `okkey-worker` (`ghcr.io/okkeyapp/worker`) — background jobs (item purge, capsule cleanup)
+- `okkey-web` (`ghcr.io/okkeyapp/web`) — web UI
+- PostgreSQL 16
+- Redis 7
+- S3-compatible object storage (MinIO in the default compose)
+
+See also [`docs/deploy_targets.md`](../deploy_targets.md) and [`services/worker/README.md`](../../services/worker/README.md).
 
 ---
 
 ## Example Docker Setup
-```text
-docker compose up -d
+
+Production (published images):
+
+```bash
+cd ~/okkey   # or OKKEY_INSTALL_DIR
+docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
-This starts:
-- okkey-api
-- postgres
-- redis
-- minio
+Local development infrastructure only (Postgres / Redis / MinIO — **not** the app images):
+
+```bash
+cp .env.example .env
+yarn infra:up
+```
 
 ---
 
 ## Configuration
 
 Main environment variables:
+
 ```text
 DATABASE_URL
 REDIS_URL
 S3_ENDPOINT
 S3_ACCESS_KEY
 S3_SECRET_KEY
-JWT_SECRET
+JWT_SECRET          # alias; SESSION_SECRET preferred
+SESSION_SECRET
+PUBLIC_APP_URL
+OKKEY_API_PUBLIC_URL  # browser-facing API origin for the web container
+CORS_ORIGIN
 ```
+
+`install.sh` generates strong `JWT_SECRET` / `SESSION_SECRET` / DB / MinIO passwords into `.env`.
 
 ---
 
@@ -65,11 +96,8 @@ GEOIP_AUTO_UPDATE=true
 TRUSTED_PROXY_HOPS=1
 ```
 
-The optional `geoip-updater` service downloads DB-IP City Lite into a shared persistent volume,
-validates it, then atomically replaces the current file. Start the Compose profile with
-`docker compose --profile geoip up -d`. The API must mount the same volume read-only.
-Administrators may disable auto-update and provide any compatible MMDB at `GEOIP_DB_PATH`.
-When disabled or unavailable, approval continues with country/city shown as Unknown.
+The optional `geoip-updater` service (repo-root compose profile `geoip`) downloads DB-IP City Lite into a shared volume.
+The production MVP compose leaves GeoIP off by default (`GEOIP_ENABLED=false`).
 
 DB-IP City Lite data is licensed under CC BY 4.0; interfaces displaying its location data must
 link to https://db-ip.com.
@@ -79,12 +107,14 @@ link to https://db-ip.com.
 ## Storage
 
 PostgreSQL:
+
 - metadata
 - events
 - users
 - devices
 
 Object storage:
+
 - attachments
 - encrypted files
 
@@ -92,36 +122,41 @@ Object storage:
 
 ## Updates
 
-Update is performed via:
-
-```text
-docker pull okkey/api
-docker compose up -d
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env pull
+docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
+
+Images:
+
+- `ghcr.io/okkeyapp/api`
+- `ghcr.io/okkeyapp/web`
+- `ghcr.io/okkeyapp/worker`
+
+Tagged from git `v*` releases (+ `latest`). CI: `.github/workflows/publish-images.yml`.
 
 ---
 
 ## Database Migrations
 
-On update, the following are automatically executed:
-```text
-database migrations
-```
+On API (and worker) start, SQL files under `services/api/migrations/` are applied in order and recorded in `schema_migrations`.
 
 ---
 
 ## Enterprise Features
 
-Self-hosted version can support:
+Self-hosted Core can be extended (separate `okkey-enterprise` repo) with:
+
 - SSO
-- LDAP
-- SCIM
+- LDAP / SCIM
 - audit logs
 - custom domains
+
+Enterprise is not required to run Core.
 
 ---
 
 ## Security in Self Hosted Mode
 
-Even in self-hosting, encryption remains client-side!
+Even in self-hosting, encryption remains client-side.
 Server administrator **cannot read vault data**.

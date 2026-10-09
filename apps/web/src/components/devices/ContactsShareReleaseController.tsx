@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
+import { getApiBaseUrl } from "../../api/client";
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { readVaultBundle } from "../../auth/localVaultBundle";
 import { readStoredLocale } from "../../locale/localeStorage";
@@ -27,11 +28,7 @@ import {
 } from "../workspace/settings/vaults/vaultAccessHelpers";
 
 function apiBase(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL;
-  if (typeof raw === "string" && raw.trim() && raw !== "undefined") {
-    return raw.trim().replace(/\/$/, "");
-  }
-  return "http://localhost:4000";
+  return getApiBaseUrl();
 }
 
 function isExpired(expiresAt: string): boolean {

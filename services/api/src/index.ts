@@ -24,6 +24,10 @@ import { ItemCategoryPreferencesService } from "./item-category-preferences/serv
 import { CapsuleDefaultsService } from "./capsule-defaults/service.ts";
 import { ItemTemplatesService } from "./item-templates/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
+import {
+  shouldRunBackgroundJobsInApiProcess,
+  startBackgroundJobs,
+} from "./jobs/background-jobs.ts";
 import { WorkspaceSettingsService } from "./workspace-settings/service.ts";
 import { PlanChangeRequestService } from "./plan-change-request/service.ts";
 import { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
@@ -35,6 +39,7 @@ import {
   KeyFieldFileStorage,
   loadKeyFieldFileStorageConfigFromEnv,
 } from "./storage/key-field-file-storage.ts";
+import { applySqlMigrations } from "./storage/migrate.ts";
 import { ItemFaviconService } from "./favicon/service.ts";
 import { AttachmentService } from "./attachments/service.ts";
 import { AccountRecoveryService } from "./account-recovery/service.ts";
@@ -45,6 +50,7 @@ async function main(): Promise<void> {
   initEntityIdGenerator(config.snowflakeNodeId);
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
+  await applySqlMigrations(storage.postgres, { logger });
   const emailSender = await createEmailSender(config, logger);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
@@ -277,29 +283,24 @@ async function main(): Promise<void> {
     });
   });
 
-  const purgeIntervalMs = 60 * 60 * 1000;
-  const purgeTimer = setInterval(() => {
-    void itemPurgeService.purgeExpiredSoftDeletes().catch((error: unknown) => {
-      logger.error("deleted items purge failed", {
-        error: error instanceof Error ? error.message : "unknown error",
-      });
+  const runJobsInApi = shouldRunBackgroundJobsInApiProcess(config.nodeEnv);
+  const backgroundJobs = runJobsInApi
+    ? startBackgroundJobs({
+        itemPurgeService,
+        capsuleService,
+        logger,
+        runImmediately: false,
+      })
+    : null;
+  if (!runJobsInApi) {
+    logger.info("background jobs disabled in API process (use okkey-worker)", {
+      hint: "Set RUN_BACKGROUND_JOBS=true to run jobs in-process, or start the worker container",
     });
-  }, purgeIntervalMs);
-  purgeTimer.unref();
-
-  const capsuleCleanupTimer = setInterval(() => {
-    void capsuleService.purgeDueCapsules().catch((error: unknown) => {
-      logger.error("capsule cleanup failed", {
-        error: error instanceof Error ? error.message : "unknown error",
-      });
-    });
-  }, 60_000);
-  capsuleCleanupTimer.unref();
+  }
 
   const shutdown = async () => {
     logger.info("api server stopping");
-    clearInterval(purgeTimer);
-    clearInterval(capsuleCleanupTimer);
+    backgroundJobs?.stop();
     server.close();
     await storage.close();
   };
