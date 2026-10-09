@@ -186,8 +186,6 @@ export function generatorOverlayStrings(ru: boolean): GeneratorOverlayStrings {
   };
 }
 
-const COPY_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10.6667 8.60004V11.4C10.6667 13.7334 9.73334 14.6667 7.40001 14.6667H4.60001C2.26668 14.6667 1.33334 13.7334 1.33334 11.4V8.60004C1.33334 6.26671 2.26668 5.33337 4.60001 5.33337H7.40001C9.73334 5.33337 10.6667 6.26671 10.6667 8.60004Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.6667 4.60004V7.40004C14.6667 9.73337 13.7333 10.6667 11.4 10.6667H10.6667V8.60004C10.6667 6.26671 9.73334 5.33337 7.40001 5.33337H5.33334V4.60004C5.33334 2.26671 6.26668 1.33337 8.60001 1.33337H11.4C13.7333 1.33337 14.6667 2.26671 14.6667 4.60004Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
 const REGEN_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.32263 2.00631 4.71265 2.66082 3.50667 3.82667L2 5.33333M5.33333 5.33333H2V2M2 8C2 9.5913 2.63214 11.1174 3.75736 12.2426C4.88258 13.3679 6.4087 14 8 14C9.67737 13.9937 11.2874 13.3392 12.4933 12.1733L14 10.6667M14 14V10.6667H10.6667" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 /** Extra CSS rules for generator panels (append to overlay stylesheet). */
@@ -303,11 +301,23 @@ export function generatorOverlayCss(): string {
             appearance: none;
             outline: none;
             padding: 0;
+            transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
           }
-          .gen-icon-btn:hover,
+          .gen-icon-btn:hover {
+            background: hsl(var(--ok-hover));
+            color: hsl(var(--ok-fg));
+          }
+          .gen-icon-btn:focus,
           .gen-icon-btn:focus-visible {
             background: hsl(var(--ok-hover));
             color: hsl(var(--ok-fg));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+          }
+          .gen-opt input:focus,
+          .gen-opt input:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+            border-radius: 2px;
           }
           .gen-metrics {
             display: flex;
@@ -339,6 +349,7 @@ export function generatorOverlayCss(): string {
             cursor: pointer;
             appearance: none;
             outline: none;
+            transition: background-color 150ms ease, filter 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
           }
           .gen-actions button.gen-cancel {
             background: transparent;
@@ -348,6 +359,11 @@ export function generatorOverlayCss(): string {
           .gen-actions button.gen-cancel:hover {
             background: hsl(var(--ok-hover));
           }
+          .gen-actions button.gen-cancel:focus,
+          .gen-actions button.gen-cancel:focus-visible {
+            background: hsl(var(--ok-hover));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+          }
           .gen-actions button.gen-insert {
             background: hsl(var(--ok-primary));
             color: hsl(var(--ok-primary-fg));
@@ -355,7 +371,51 @@ export function generatorOverlayCss(): string {
           .gen-actions button.gen-insert:hover {
             filter: brightness(0.95);
           }
+          .gen-actions button.gen-insert:focus,
+          .gen-actions button.gen-insert:focus-visible {
+            filter: brightness(0.95);
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+          }
 `;
+}
+
+/** In-place DOM refresh so range drag is not killed by remounting the panel. */
+export function syncGeneratorPanelDom(
+  panel: HTMLElement,
+  state: GeneratorOverlayState,
+  strings: GeneratorOverlayStrings,
+): void {
+  const valueEl = panel.querySelector("[data-gen-value]");
+  if (valueEl instanceof HTMLElement) {
+    valueEl.innerHTML =
+      state.kind === "password" ? coloredPasswordHtml(state.value) : escapeHtml(state.value);
+  }
+
+  if (state.kind !== "password") {
+    return;
+  }
+
+  const length = state.preferences.length;
+  const lengthInput = panel.querySelector<HTMLInputElement>("[data-gen-length]");
+  if (lengthInput && lengthInput.value !== String(length)) {
+    lengthInput.value = String(length);
+  }
+
+  const lengthLabel = panel.querySelector("[data-gen-length-label]");
+  if (lengthLabel instanceof HTMLElement) {
+    lengthLabel.textContent = formatKeyFormMessage(strings.charactersTemplate, { count: length });
+  }
+
+  const metrics = panel.querySelector(".gen-metrics");
+  if (!(metrics instanceof HTMLElement)) {
+    return;
+  }
+  const strength = getPasswordStrength(state.value);
+  const crackKey = estimatePasswordCrackTimeKey(state.value);
+  const strengthKey = strength?.labelKey ?? "weak";
+  const strengthColor = STRENGTH_COLOR[strengthKey];
+  metrics.innerHTML = `<span>${escapeHtml(strings.strength)} <span class="gen-metrics-value" style="color:${strengthColor}">${escapeHtml(strings.strengthLabels[strengthKey])}</span></span>
+      <span>${escapeHtml(strings.crackTime)} <span class="gen-metrics-value" style="color:${strengthColor}">${escapeHtml(strings.crackTimeLabels[crackKey] ?? crackKey)}</span></span>`;
 }
 
 export function generatorPanelHtml(
@@ -417,7 +477,6 @@ export function generatorPanelHtml(
     ${settingsHtml}
     <div class="gen-output">
       <div class="gen-value" data-gen-value>${valueHtml}</div>
-      <button type="button" class="gen-icon-btn" data-gen-copy="1" title="${escapeHtml(strings.copy)}" aria-label="${escapeHtml(strings.copy)}">${COPY_ICON}</button>
       <button type="button" class="gen-icon-btn" data-gen-regen="1" title="${escapeHtml(strings.regenerate)}" aria-label="${escapeHtml(strings.regenerate)}">${REGEN_ICON}</button>
     </div>
     ${metricsHtml}

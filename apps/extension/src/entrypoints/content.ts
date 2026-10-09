@@ -35,6 +35,7 @@ import {
   generatorOverlayStrings,
   generatorPanelHtml,
   regenerateGeneratorState,
+  syncGeneratorPanelDom,
   updatePasswordGeneratorSettings,
   updateUsernameGeneratorSettings,
   type GeneratorOverlayState,
@@ -175,11 +176,34 @@ export default defineContentScript({
     let listOpen = false;
     let cachedSuggestions: AutofillSuggestion[] = [];
     let generatorState: GeneratorOverlayState | null = null;
+    /** True while pointer is down on the generator length slider (custom drag). */
+    let generatorSliderActive = false;
     /** Form type detected before autocomplete suppress (stable for the focused field). */
     let activeFormType: AutofillFormType = "unknown";
     const genStrings = generatorOverlayStrings(
       (navigator.language || "").toLowerCase().startsWith("ru"),
     );
+
+    function keepPageFieldFocused(): void {
+      if (!activeInput || !document.contains(activeInput)) {
+        return;
+      }
+      if (document.activeElement === activeInput) {
+        return;
+      }
+      try {
+        activeInput.focus({ preventScroll: true });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function isGeneratorOverlayOpen(): boolean {
+      return (
+        (overlayMode === "password-generator" || overlayMode === "username-generator") &&
+        generatorState != null
+      );
+    }
     let saveTitleDraft = "";
     let saveEditing = false;
     let saveVaults: AutofillSaveVaultOption[] = [];
@@ -287,6 +311,7 @@ export default defineContentScript({
       listOpen = false;
       vaultMenuOpen = false;
       generatorState = null;
+      generatorSliderActive = false;
       if (host) {
         host.style.display = "none";
         host.style.pointerEvents = "none";
@@ -1173,19 +1198,18 @@ export default defineContentScript({
         if (!(target instanceof Element)) {
           return;
         }
-        // Generator / save panel clicks must not blur the page field — otherwise focusout
-        // dismisses the overlay. Allow caret only in the save-rename text field.
-        // Range sliders need native mousedown (drag); focusout logic keeps the generator open.
+        // Panel / toggle clicks must not steal focus from the page autofill field.
+        // Allow caret only in the save-rename text field. Length slider uses custom
+        // pointer drag (also preventDefault) so the page input keeps focus.
         if (target.closest("[data-rename-input], textarea, [contenteditable='true']")) {
-          return;
-        }
-        if (target.closest("input[type='range']")) {
-          window.clearTimeout(hideTimer);
           return;
         }
         if (target.closest(".panel, .toggle, .tooltip")) {
           window.clearTimeout(hideTimer);
           event.preventDefault();
+          if (isGeneratorOverlayOpen()) {
+            keepPageFieldFocused();
+          }
         }
       });
       root.addEventListener("click", (event) => {
@@ -1300,20 +1324,7 @@ export default defineContentScript({
             return;
           }
           generatorState = regenerateGeneratorState(generatorState);
-          void paintOverlay();
-        };
-      }
-
-      const copyBtn = panel.querySelector("[data-gen-copy]");
-      if (copyBtn instanceof HTMLElement) {
-        copyBtn.onclick = () => {
-          window.clearTimeout(hideTimer);
-          if (!generatorState?.value) {
-            return;
-          }
-          void navigator.clipboard.writeText(generatorState.value).catch(() => {
-            /* ignore */
-          });
+          void paintOverlay().then(() => keepPageFieldFocused());
         };
       }
 
@@ -1356,25 +1367,83 @@ export default defineContentScript({
               [key]: checkbox.checked,
             });
           }
-          void paintOverlay();
+          void paintOverlay().then(() => keepPageFieldFocused());
         };
       }
 
       const lengthInput = panel.querySelector<HTMLInputElement>("[data-gen-length]");
       if (lengthInput && generatorState.kind === "password") {
-        const applyLength = () => {
+        const applyLengthFromInput = () => {
           window.clearTimeout(hideTimer);
           if (!generatorState || generatorState.kind !== "password") {
             return;
           }
+          const nextLength = Number(lengthInput.value);
+          if (!Number.isFinite(nextLength) || nextLength === generatorState.preferences.length) {
+            syncGeneratorPanelDom(panel, generatorState, genStrings);
+            return;
+          }
+          // Update state + live DOM only — remounting via paintOverlay kills range drag.
           generatorState = updatePasswordGeneratorSettings(generatorState, {
-            length: Number(lengthInput.value),
+            length: nextLength,
           });
-          void paintOverlay();
+          syncGeneratorPanelDom(panel, generatorState, genStrings);
         };
-        lengthInput.oninput = applyLength;
-        lengthInput.onchange = applyLength;
+
+        const setLengthFromClientX = (clientX: number) => {
+          const rect = lengthInput.getBoundingClientRect();
+          if (rect.width <= 0) {
+            return;
+          }
+          const min = Number(lengthInput.min);
+          const max = Number(lengthInput.max);
+          const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+          const next = Math.round(min + ratio * (max - min));
+          lengthInput.value = String(next);
+          applyLengthFromInput();
+        };
+
+        const endSliderDrag = () => {
+          if (!generatorSliderActive) {
+            return;
+          }
+          generatorSliderActive = false;
+          keepPageFieldFocused();
+        };
+
+        // Custom pointer drag: mousedown preventDefault keeps focus on the page field,
+        // so native range drag cannot run — we map pointer X → value ourselves.
+        lengthInput.onpointerdown = (event) => {
+          if (event.button !== 0) {
+            return;
+          }
+          window.clearTimeout(hideTimer);
+          generatorSliderActive = true;
+          try {
+            lengthInput.setPointerCapture(event.pointerId);
+          } catch {
+            /* ignore */
+          }
+          setLengthFromClientX(event.clientX);
+          keepPageFieldFocused();
+        };
+        lengthInput.onpointermove = (event) => {
+          if (!generatorSliderActive) {
+            return;
+          }
+          setLengthFromClientX(event.clientX);
+        };
+        lengthInput.onpointerup = endSliderDrag;
+        lengthInput.onpointercancel = endSliderDrag;
+        // Keyboard / a11y still use native input events (no remount).
+        lengthInput.oninput = applyLengthFromInput;
+        lengthInput.onchange = () => {
+          applyLengthFromInput();
+          keepPageFieldFocused();
+        };
       }
+
+      keepPageFieldFocused();
     }
 
     function openGeneratorForField(
@@ -2177,25 +2246,22 @@ export default defineContentScript({
           }
           // Interacting with overlay controls (closed shadow → activeElement is the host).
           if (host && focused && (focused === host || host.contains(focused))) {
+            if (isGeneratorOverlayOpen()) {
+              keepPageFieldFocused();
+            }
             return;
           }
-          // Generator checkboxes/slider briefly move focus to body when the panel re-paints.
-          // Keep the generator open unless focus moved to a *different* page autofill input.
-          if (
-            overlayMode === "password-generator" ||
-            overlayMode === "username-generator"
-          ) {
-            if (
-              focused instanceof HTMLInputElement &&
-              focused !== activeInput &&
-              isPageVisibleAutofillInput(focused) &&
-              classifyAutofillInput(collectInputHints(focused))
-            ) {
-              generatorState = null;
-              listOpen = false;
-              overlayMode = "hidden";
-              void paintOverlay({ showToggleOnly: true });
-            }
+          // Length slider custom drag / brief repaint: keep open and restore field focus.
+          if (isGeneratorOverlayOpen() && generatorSliderActive) {
+            keepPageFieldFocused();
+            return;
+          }
+          // Generator: close when focus genuinely left the field + autofill UI.
+          if (isGeneratorOverlayOpen()) {
+            generatorState = null;
+            listOpen = false;
+            overlayMode = "hidden";
+            void paintOverlay({ showToggleOnly: true });
             return;
           }
           // Dialog close / save: focus lands on body or main — never keep a floating toggle.
