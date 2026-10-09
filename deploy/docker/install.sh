@@ -79,7 +79,12 @@ else
 fi
 
 log "==> Pulling images and starting stack"
-docker compose -f "./${COMPOSE_FILE_NAME}" --env-file .env pull
+# OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
+if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
+  log "==> Skipping pull (OKKEY_SKIP_PULL=1)"
+else
+  docker compose -f "./${COMPOSE_FILE_NAME}" --env-file .env pull
+fi
 docker compose -f "./${COMPOSE_FILE_NAME}" --env-file .env up -d
 
 log ""

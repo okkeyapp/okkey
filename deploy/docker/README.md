@@ -42,7 +42,8 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | `worker` | `ghcr.io/okkeyapp/worker` | Item purge, capsule cleanup, **email queue consumer** |
 | `postgres` | `postgres:16-alpine` | Metadata / events |
 | `redis` | `redis:7-alpine` | Sessions / cache / locks / **email queue** |
-| `minio` | MinIO | S3-compatible attachments |
+| `minio` | `pgsty/minio` | S3-compatible attachments (MinIO Community rebuild; upstream Hub/Quay images are gone) |
+| `minio-init` | `amazon/aws-cli` | Creates the S3 bucket once at start |
 
 API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the worker owns periodic jobs and outbound mail. See [`services/worker/README.md`](../../services/worker/README.md).
 
@@ -78,6 +79,14 @@ OKKEY_API_IMAGE=ghcr.io/okkeyapp/api
 OKKEY_WEB_IMAGE=ghcr.io/okkeyapp/web
 OKKEY_WORKER_IMAGE=ghcr.io/okkeyapp/worker
 ```
+
+Install without hitting the registry:
+
+```bash
+OKKEY_SKIP_PULL=1 ./deploy/docker/install.sh
+```
+
+GHCR packages for `okkeyapp/{api,web,worker}` must be **public** (or your Docker login needs `read:packages`). Anonymous pull returns 401/403 while they stay private.
 
 ## Dev infrastructure
 
