@@ -7,18 +7,23 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (default: latest for dispatch, or git tag)"
+        description: "Image tag to push (e.g. pr19-test). Default: branch-sha style via 'dev'."
         required: false
-        default: "latest"
+        default: "dev"
       push_latest:
-        description: "Also tag as latest"
+        description: "Also tag as latest (avoid for test tags)"
         required: false
         type: boolean
-        default: true
+        default: false
+      platforms:
+        description: "Comma-separated platforms (e.g. linux/amd64 or linux/amd64,linux/arm64)"
+        required: false
+        default: "linux/amd64"
 
 permissions:
   contents: read
   packages: write
+  actions: write # GHA cache for buildx
 
 env:
   REGISTRY: ghcr.io
@@ -62,31 +67,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve tags
+      - name: Resolve tags and platforms
         id: meta
         shell: bash
         run: |
           set -euo pipefail
           IMAGE="${REGISTRY}/${OWNER}/${{ matrix.image }}"
           TAGS=""
+          PLATFORMS="linux/amd64,linux/arm64"
+
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
             TAGS="${IMAGE}:${VERSION}"
-            # Also push the raw tag name (v1.2.3) for clarity
             TAGS="${TAGS},${IMAGE}:${GITHUB_REF_NAME}"
-            if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Promote :latest only for clean semver releases (v1.2.3), never for pre-releases.
+            if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               TAGS="${TAGS},${IMAGE}:latest"
+              PLATFORMS="linux/amd64,linux/arm64"
+            else
+              # Faster first/pre-release publishes (qemu multi-arch is slow/fragile).
+              PLATFORMS="linux/amd64"
             fi
           else
             DISPATCH_TAG="${{ github.event.inputs.tag }}"
-            TAGS="${IMAGE}:${DISPATCH_TAG:-latest}"
+            DISPATCH_TAG="${DISPATCH_TAG:-dev}"
+            TAGS="${IMAGE}:${DISPATCH_TAG}"
             if [[ "${{ github.event.inputs.push_latest }}" == "true" && "${DISPATCH_TAG}" != "latest" ]]; then
               TAGS="${TAGS},${IMAGE}:latest"
             fi
+            INPUT_PLATFORMS="${{ github.event.inputs.platforms }}"
+            PLATFORMS="${INPUT_PLATFORMS:-linux/amd64}"
           fi
+
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "platforms=${PLATFORMS}" >> "$GITHUB_OUTPUT"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "Resolved tags: ${TAGS}"
+          echo "Platforms: ${PLATFORMS}"
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -94,9 +111,10 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           target: ${{ matrix.target }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.meta.outputs.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           build-args: |
