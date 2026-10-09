@@ -89,11 +89,18 @@ export function savePasswordGeneratorPreferences(preferences: PasswordGeneratorP
   }
 }
 
+const PASSWORD_SETTING_KEYS = Object.keys(
+  DEFAULT_PASSWORD_GENERATOR_SETTINGS,
+) as Array<keyof PasswordGeneratorSettings>;
+
 /** Cryptographically random password with at least one char from each enabled set. */
 export function generatePassword(settings: PasswordGeneratorSettings, length: number): string {
-  const enabledSets = (Object.keys(settings) as Array<keyof PasswordGeneratorSettings>)
-    .filter((key) => settings[key])
-    .map((key) => PASSWORD_GENERATOR_CHARACTER_SETS[key]);
+  // Only iterate the boolean setting keys — callers often pass Preferences which also
+  // has numeric `length`. Object.keys(preferences) would include it, look up
+  // PASSWORD_GENERATOR_CHARACTER_SETS["length"] → undefined, then crash on set.length.
+  const enabledSets = PASSWORD_SETTING_KEYS.filter((key) => settings[key]).map(
+    (key) => PASSWORD_GENERATOR_CHARACTER_SETS[key],
+  );
   const pool = enabledSets.join("");
 
   if (!pool) {
@@ -103,7 +110,7 @@ export function generatePassword(settings: PasswordGeneratorSettings, length: nu
   const targetLength = Math.max(length, enabledSets.length);
   const values = new Uint32Array(targetLength);
   window.crypto.getRandomValues(values);
-  const requiredCharacters = enabledSets.map((set, index) => set[values[index] % set.length]!);
+  const requiredCharacters = enabledSets.map((set, index) => set[values[index]! % set.length]!);
   const remainingCharacters = Array.from(
     values.slice(enabledSets.length),
     (value) => pool[value % pool.length]!,
