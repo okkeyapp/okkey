@@ -376,6 +376,89 @@ export default defineContentScript({
       return tag === "MAIN" || tag === "BODY" || tag === "HTML";
     }
 
+    /** Pierce open shadow roots — autofocus may land inside a custom element. */
+    function deepActiveElement(root: Document | ShadowRoot = document): Element | null {
+      let active: Element | null = root.activeElement;
+      while (active instanceof Element) {
+        const shadow = "shadowRoot" in active ? (active as HTMLElement).shadowRoot : null;
+        if (shadow?.activeElement) {
+          active = shadow.activeElement;
+          continue;
+        }
+        break;
+      }
+      return active;
+    }
+
+    function isAutofillDropdownOpen(): boolean {
+      return (
+        listOpen ||
+        overlayMode === "list" ||
+        overlayMode === "password-generator" ||
+        overlayMode === "username-generator" ||
+        overlayMode === "unlock-tooltip" ||
+        overlayMode === "empty-tooltip"
+      );
+    }
+
+    function resolveFocusedAutofillInput(): HTMLInputElement | null {
+      const focused = deepActiveElement();
+      if (!(focused instanceof HTMLInputElement) || !isPageVisibleAutofillInput(focused)) {
+        return null;
+      }
+      if (!classifyAutofillInput(collectInputHints(focused))) {
+        return null;
+      }
+      return focused;
+    }
+
+    /**
+     * Same path as focusin — used when the field is already focused before the
+     * content script attaches (autofocus / restored focus) or after vault unlock.
+     */
+    function activateAutofillForInput(input: HTMLInputElement): void {
+      if (isOkkeyWebAppOrigin()) {
+        return;
+      }
+      if (
+        pendingSave ||
+        overlayMode === "save" ||
+        overlayMode === "save-rename" ||
+        overlayMode === "unlock-save"
+      ) {
+        return;
+      }
+      if (isOverlayUpdateFrozen()) {
+        return;
+      }
+      if (!isPageVisibleAutofillInput(input)) {
+        return;
+      }
+      const kind = classifyAutofillInput(collectInputHints(input));
+      if (!kind) {
+        return;
+      }
+      activeFormType = resolveFormType(input);
+      suppressNativeAutocomplete(input, kind);
+      window.clearTimeout(hideTimer);
+      if (input.value.trim().length === 0 && suggestionsListSuppressed()) {
+        clearFilledByOkkey();
+      }
+      void showForInput(input, activeFormType);
+    }
+
+    /** If an autofill field already has focus, open suggestions/generator without waiting for focusin. */
+    function bootstrapFocusedAutofillField(): void {
+      if (isAutofillDropdownOpen()) {
+        return;
+      }
+      const input = resolveFocusedAutofillInput();
+      if (!input) {
+        return;
+      }
+      activateAutofillForInput(input);
+    }
+
     function clearActiveInputAndHide(): void {
       activeInput = null;
       hideOverlay();
@@ -2349,19 +2432,6 @@ export default defineContentScript({
           clearActiveInputAndHide();
           return;
         }
-        // Save prompt stays until X / successful save — page input focus must not dismiss it.
-        if (
-          pendingSave ||
-          overlayMode === "save" ||
-          overlayMode === "save-rename" ||
-          overlayMode === "unlock-save"
-        ) {
-          return;
-        }
-        // Select / datepicker open — full no-op (no suppress, no query, no paint).
-        if (isOverlayUpdateFrozen()) {
-          return;
-        }
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || !isPageVisibleAutofillInput(target)) {
           // Focus moved to body/main/non-input (e.g. dialog closed) — drop any orphan toggle.
@@ -2371,20 +2441,7 @@ export default defineContentScript({
           }
           return;
         }
-        const kind = classifyAutofillInput(collectInputHints(target));
-        if (!kind) {
-          return;
-        }
-        // Resolve form type before mutating autocomplete (suppress sets password → new-password,
-        // which would otherwise mis-detect login forms as register).
-        activeFormType = resolveFormType(target);
-        suppressNativeAutocomplete(target, kind);
-        window.clearTimeout(hideTimer);
-        // Empty focused field after user cleared a fill — re-open suggestions immediately.
-        if (target.value.trim().length === 0 && suggestionsListSuppressed()) {
-          clearFilledByOkkey();
-        }
-        void showForInput(target, activeFormType);
+        activateAutofillForInput(target);
       },
       true,
     );
@@ -2651,14 +2708,18 @@ export default defineContentScript({
           }
           return undefined;
         }
-        // Popup unlock steals focus — refresh from retained field, not activeElement.
-        if (activeInput && document.contains(activeInput) && !isOverlayUpdateFrozen()) {
+        // Prefer retained field; else whatever is focused now (autofocus before CS ready).
+        const unlockTarget =
+          activeInput && document.contains(activeInput)
+            ? activeInput
+            : resolveFocusedAutofillInput();
+        if (unlockTarget && !isOverlayUpdateFrozen()) {
           try {
-            activeInput.focus({ preventScroll: true });
+            unlockTarget.focus({ preventScroll: true });
           } catch {
             /* ignore */
           }
-          void showForInput(activeInput);
+          activateAutofillForInput(unlockTarget);
         }
         return undefined;
       }
@@ -2680,6 +2741,12 @@ export default defineContentScript({
 
     void restorePendingSaveOffer();
 
+    // Autofocus / restored focus often happens before this script runs — no focusin fires.
+    bootstrapFocusedAutofillField();
+    requestAnimationFrame(() => {
+      bootstrapFocusedAutofillField();
+    });
+
     let lastSeenUrl = pageUrl();
     const onPossibleNavigation = (): void => {
       const next = pageUrl();
@@ -2693,9 +2760,17 @@ export default defineContentScript({
         return;
       }
       void restorePendingSaveOffer();
+      // SPA navigations may leave autofocus set without a new focusin.
+      bootstrapFocusedAutofillField();
     };
     window.addEventListener("popstate", onPossibleNavigation);
-    window.addEventListener("pageshow", onPossibleNavigation);
+    window.addEventListener("pageshow", (event) => {
+      onPossibleNavigation();
+      // bfcache restore: field may still be focused with no focus event.
+      if (event.persisted) {
+        bootstrapFocusedAutofillField();
+      }
+    });
     const originalPushState = history.pushState.bind(history);
     const originalReplaceState = history.replaceState.bind(history);
     history.pushState = (...args: Parameters<History["pushState"]>) => {
