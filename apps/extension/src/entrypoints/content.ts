@@ -1173,11 +1173,18 @@ export default defineContentScript({
         if (!(target instanceof Element)) {
           return;
         }
-        // Allow text inputs to take focus / caret; still keep page fields from stealing.
-        if (target.closest("input, textarea, select, [contenteditable]")) {
+        // Generator / save panel clicks must not blur the page field — otherwise focusout
+        // dismisses the overlay. Allow caret only in the save-rename text field.
+        // Range sliders need native mousedown (drag); focusout logic keeps the generator open.
+        if (target.closest("[data-rename-input], textarea, [contenteditable='true']")) {
+          return;
+        }
+        if (target.closest("input[type='range']")) {
+          window.clearTimeout(hideTimer);
           return;
         }
         if (target.closest(".panel, .toggle, .tooltip")) {
+          window.clearTimeout(hideTimer);
           event.preventDefault();
         }
       });
@@ -1318,6 +1325,7 @@ export default defineContentScript({
 
       for (const checkbox of panel.querySelectorAll<HTMLInputElement>("[data-gen-setting]")) {
         checkbox.onchange = () => {
+          window.clearTimeout(hideTimer);
           if (!generatorState) {
             return;
           }
@@ -1340,15 +1348,23 @@ export default defineContentScript({
 
       const lengthInput = panel.querySelector<HTMLInputElement>("[data-gen-length]");
       if (lengthInput && generatorState.kind === "password") {
-        lengthInput.onchange = () => {
+        const applyLength = () => {
+          window.clearTimeout(hideTimer);
           if (!generatorState || generatorState.kind !== "password") {
             return;
           }
           generatorState = updatePasswordGeneratorSettings(generatorState, {
             length: Number(lengthInput.value),
           });
+          // Update label in-place when possible; full repaint refreshes the preview value.
+          const label = panel.querySelector("[data-gen-length-label]");
+          if (label) {
+            label.textContent = String(generatorState.preferences.length);
+          }
           void paintOverlay();
         };
+        lengthInput.oninput = applyLength;
+        lengthInput.onchange = applyLength;
       }
     }
 
@@ -2150,8 +2166,27 @@ export default defineContentScript({
           if (focused === activeInput) {
             return;
           }
-          // Interacting with overlay controls (generator checkboxes, length, etc.).
+          // Interacting with overlay controls (closed shadow → activeElement is the host).
           if (host && focused && (focused === host || host.contains(focused))) {
+            return;
+          }
+          // Generator checkboxes/slider briefly move focus to body when the panel re-paints.
+          // Keep the generator open unless focus moved to a *different* page autofill input.
+          if (
+            overlayMode === "password-generator" ||
+            overlayMode === "username-generator"
+          ) {
+            if (
+              focused instanceof HTMLInputElement &&
+              focused !== activeInput &&
+              isPageVisibleAutofillInput(focused) &&
+              classifyAutofillInput(collectInputHints(focused))
+            ) {
+              generatorState = null;
+              listOpen = false;
+              overlayMode = "hidden";
+              void paintOverlay({ showToggleOnly: true });
+            }
             return;
           }
           // Dialog close / save: focus lands on body or main — never keep a floating toggle.
@@ -2171,8 +2206,6 @@ export default defineContentScript({
           generatorState = null;
           if (
             overlayMode === "list" ||
-            overlayMode === "password-generator" ||
-            overlayMode === "username-generator" ||
             overlayMode === "unlock-tooltip" ||
             (activeInput && document.contains(activeInput))
           ) {

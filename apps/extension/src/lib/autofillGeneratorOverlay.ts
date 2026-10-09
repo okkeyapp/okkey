@@ -168,16 +168,19 @@ export function generatorOverlayStrings(ru: boolean): GeneratorOverlayStrings {
 export function generatorOverlayCss(): string {
   return `
           .panel.panel-gen {
-            width: min(420px, calc(100vw - 16px));
-            padding: 12px;
-            gap: 10px;
+            display: flex;
+            flex-direction: column;
             align-items: stretch;
+            width: min(420px, calc(100vw - 16px));
+            padding: 16px;
+            gap: 16px;
           }
           .gen-title {
             font-size: 14px;
             font-weight: 600;
             line-height: 20px;
             color: hsl(var(--ok-fg));
+            margin: 0;
           }
           .gen-output {
             display: flex;
@@ -186,8 +189,8 @@ export function generatorOverlayCss(): string {
             border: 1px solid hsla(var(--ok-fg) / 0.12);
             border-radius: 8px;
             background: hsl(var(--ok-bg));
-            padding: 8px 10px;
-            min-height: 40px;
+            padding: 10px 12px;
+            min-height: 44px;
           }
           .gen-value {
             flex: 1;
@@ -225,8 +228,8 @@ export function generatorOverlayCss(): string {
           .gen-opts {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px 12px;
-            padding: 10px;
+            gap: 10px 14px;
+            padding: 12px;
             border-radius: 8px;
             background: hsl(var(--ok-row-muted));
           }
@@ -262,7 +265,8 @@ export function generatorOverlayCss(): string {
             display: flex;
             justify-content: flex-end;
             gap: 8px;
-            margin-top: 2px;
+            margin: 0;
+            padding-top: 0;
           }
           .gen-actions button {
             border-radius: 8px;
