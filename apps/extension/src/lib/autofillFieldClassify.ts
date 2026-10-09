@@ -79,7 +79,13 @@ const USER_NAME =
 const GIVEN_NAME = /given[-_]?name|first[-_]?name|fname|forename|имя(?!\s*пользовател)|имя\b/i;
 const FAMILY_NAME = /family[-_]?name|last[-_]?name|surname|lname|фамил/i;
 const ADDITIONAL_NAME = /additional[-_]?name|middle[-_]?name|отчеств/i;
-const FULL_NAME = /^(full[-_]?name|displayname|display[-_]?name|имя\s*и\s*фамил)|card[-_]?holder|holder[-_]?name|account[-_]?holder/i;
+/**
+ * Full / legal name (autocomplete=name, label «Name*», id/name ≈ name).
+ * Bare `name` must not steal first/last/user/nick — those rules run earlier / later.
+ * `(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)` matches "Name*", "name-input", name="name".
+ */
+const FULL_NAME =
+  /\b(full[-_\s]?name|display[-_\s]?name|legal[-_\s]?name|имя\s*и\s*фамил|\bфио\b)\b|(?:^|[^a-z0-9])name(?:[^a-z0-9]|$)/i;
 const TEL_HINT = /\b(phone|mobile|tel|cellphone|телефон|мобил)/i;
 const BDAY_HINT = /bday|birth[-_]?date|date[-_]?of[-_]?birth|\bdob\b|дата\s*рожд/i;
 const SEX_HINT = /\bsex\b|\bgender\b|пол\b/i;
@@ -397,11 +403,21 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
       .join(" ");
     labelText = `${labelText} ${extra}`.trim();
   }
+  // Prefer content attribute — some pages set autocomplete=name while the IDL is empty/"on".
+  const autocompleteAttr = el.getAttribute("autocomplete")?.trim() || undefined;
+  const autocompleteIdl = el.autocomplete?.trim() || undefined;
+  const autocomplete =
+    autocompleteAttr && autocompleteAttr !== "on" && autocompleteAttr !== "off"
+      ? autocompleteAttr
+      : autocompleteIdl && autocompleteIdl !== "on" && autocompleteIdl !== "off"
+        ? autocompleteIdl
+        : autocompleteAttr || autocompleteIdl || undefined;
+
   return {
     type: el.type,
     name: el.name,
     id: el.id,
-    autocomplete: el.autocomplete,
+    autocomplete,
     placeholder: el.placeholder,
     ariaLabel: el.getAttribute("aria-label") ?? undefined,
     labelText: labelText || undefined,

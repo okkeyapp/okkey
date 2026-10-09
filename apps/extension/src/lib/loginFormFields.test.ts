@@ -71,6 +71,54 @@ describe("classifyLoginInput email heuristics", () => {
 });
 
 describe("classifyAutofillInput non-login types", () => {
+  it("maps autocomplete=name and Name labels to full name (personal_data)", () => {
+    // Register fieldset: Name* autocomplete=name (and label-only / name-input fallbacks).
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        autocomplete: "name",
+        labelText: "Name* (required)",
+        id: "name-input",
+      }),
+      "name",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "name", labelText: "Name*" }),
+      "name",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", id: "name-input", labelText: "Name" }),
+      "name",
+    );
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "given-name" }), "given-name");
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "family-name" }), "family-name");
+    // Must not steal username / first-name.
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "username" }), "username");
+    assert.equal(classifyAutofillInput({ type: "text", name: "first-name" }), "given-name");
+  });
+
+  it("fills name kind from full-name or joined first+last", () => {
+    assert.equal(
+      resolveAutofillValueForKindForTests("name", { name: "Саша Иванов" }),
+      "Саша Иванов",
+    );
+    assert.equal(
+      resolveAutofillValueForKindForTests("name", {
+        "given-name": "Саша",
+        "family-name": "Иванов",
+      }),
+      "Саша Иванов",
+    );
+    assert.equal(
+      resolveAutofillValueForKindForTests("name", {
+        "given-name": "Саша",
+        "additional-name": "П.",
+        "family-name": "Иванов",
+      }),
+      "Саша П. Иванов",
+    );
+  });
+
   it("detects credit card fields", () => {
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "cc-number" }), "cc-number");
     assert.equal(classifyAutofillInput({ type: "text", name: "cvc", autocomplete: "cc-csc" }), "cc-csc");

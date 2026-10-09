@@ -469,6 +469,7 @@ function resolveAutofillValueForKind(
     value = values.username || values.email || "";
   }
   if (!value && kind === "name") {
+    // autocomplete=name / full-name: prefer vault full-name, else join first + middle + last.
     value = [values["given-name"], values["additional-name"], values["family-name"]]
       .filter(Boolean)
       .join(" ")
