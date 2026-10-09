@@ -358,6 +358,10 @@ export function detectFormTypeForRoot(
 const AUTH_SUBMIT_TEXT =
   /(?<![\p{L}\p{N}_])(?:sign[-_\s]?up|sign[-_\s]?in|log[-_\s]?in|log[-_\s]?on|register|registration|create[-_\s]?account|create|continue|next|submit|join|войти|вход(?:[аеу]|ите)?|регистрац\p{L}*|зарегистрир\p{L}*|создать(?:\s*аккаунт)?|продолжить|далее|отправить)(?![\p{L}\p{N}_])/iu;
 
+/** id/name heuristics — demoqa `#register`, Shopify login buttons, etc. */
+const AUTH_SUBMIT_ID_NAME =
+  /^(?:btn[-_]?)?(?:register|registration|signup|sign[-_]?up|signin|sign[-_]?in|login|log[-_]?in|create[-_]?account|submit)$/i;
+
 /**
  * True for native submit controls, or type=button / role=button with login/register CTA
  * label near a password field (covers SPA register without form.submit).
@@ -375,7 +379,18 @@ export function isAuthCredentialSubmitControl(el: Element): boolean {
       el.getAttribute("aria-label") ||
       ""
     ).trim();
-  if (!label || !AUTH_SUBMIT_TEXT.test(label)) {
+  // “Back to Login” contains “login” but must not trigger a save offer.
+  // Reset lastIndex — BACK_TO_LOGIN_TEXT is /g and .test() is sticky.
+  if (label) {
+    BACK_TO_LOGIN_TEXT.lastIndex = 0;
+    if (BACK_TO_LOGIN_TEXT.test(label)) {
+      return false;
+    }
+  }
+  const idOrName = el.id || el.getAttribute("name") || "";
+  const labelMatch = Boolean(label && AUTH_SUBMIT_TEXT.test(label));
+  const idMatch = Boolean(idOrName && AUTH_SUBMIT_ID_NAME.test(idOrName));
+  if (!labelMatch && !idMatch) {
     return false;
   }
   const form = el.closest("form");

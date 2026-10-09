@@ -2621,9 +2621,7 @@ export default defineContentScript({
     }
 
     function resolveSaveOfferFormType(form: HTMLFormElement | null): AutofillFormType {
-      if (activeFormType === "login" || activeFormType === "register") {
-        return activeFormType;
-      }
+      // Prefer the submitted form over stale focus-time type (login↔register SPA).
       try {
         if (form) {
           return detectFormTypeForRoot(form, document, {
@@ -2634,17 +2632,28 @@ export default defineContentScript({
         if (activeInput && document.contains(activeInput)) {
           return detectFormTypeForInput(activeInput, { urlPath: location.pathname });
         }
+        if (activeFormType === "login" || activeFormType === "register") {
+          return activeFormType;
+        }
         return detectFormTypeForRoot(document, document, { urlPath: location.pathname });
       } catch {
-        return "unknown";
+        return activeFormType === "login" || activeFormType === "register"
+          ? activeFormType
+          : "unknown";
       }
     }
 
     /**
      * After login or register submit — offer create/update Login item.
      * Register also fires when the user used Okkey's password generator (`wasFilledByOkkey`).
+     *
+     * @param prefilledCreds Snapshot from the capture-phase click/submit handler. Required for
+     *   SPA register CTAs (`type="button"`) that mutate/clear the form before setTimeout(0).
      */
-    function onCredentialsSubmitted(form?: HTMLFormElement | null): void {
+    function onCredentialsSubmitted(
+      form?: HTMLFormElement | null,
+      prefilledCreds?: { username: string; password: string } | null,
+    ): void {
       suppressUnlockTooltipUntil = Date.now() + 12_000;
       if (overlayMode === "unlock-tooltip" || overlayMode === "list") {
         listOpen = false;
@@ -2666,7 +2675,7 @@ export default defineContentScript({
         return;
       }
       const scope: ParentNode = form ?? document;
-      let creds = captureLoginCredentials(scope);
+      let creds = prefilledCreds ?? captureLoginCredentials(scope);
       if (!creds && form) {
         creds = captureLoginCredentials(document);
       }
@@ -2677,8 +2686,18 @@ export default defineContentScript({
       if (!isSaveOfferFormType(formType) && formType !== "unknown") {
         return;
       }
+      // Hold early so focusout hide (180ms) cannot race past async saveOffer.
+      pendingSave = creds;
       void persistPendingSaveOffer(creds);
       void maybeOfferSave(creds, { allowAfterOkkeyFill: isRegister });
+    }
+
+    /** Snapshot username/password during capture phase (before page click handlers run). */
+    function snapshotCredentialsForOffer(
+      form: HTMLFormElement | null,
+    ): { username: string; password: string } | null {
+      const scope: ParentNode = form ?? document;
+      return captureLoginCredentials(scope) ?? (form ? captureLoginCredentials(document) : null);
     }
 
     document.addEventListener(
@@ -2928,7 +2947,9 @@ export default defineContentScript({
       "submit",
       (event) => {
         const form = event.target instanceof HTMLFormElement ? event.target : null;
-        onCredentialsSubmitted(form);
+        // Capture-phase snapshot — page submit handlers may clear inputs before bubble.
+        const creds = snapshotCredentialsForOffer(form);
+        onCredentialsSubmitted(form, creds);
       },
       true,
     );
@@ -2949,7 +2970,12 @@ export default defineContentScript({
         const form =
           control.closest("form") ??
           (activeInput?.form && document.contains(activeInput) ? activeInput.form : null);
-        setTimeout(() => onCredentialsSubmitted(form), 0);
+        // Capture NOW (capture phase, before demoqa/AJAX handlers). Defer only the offer UI.
+        const creds = snapshotCredentialsForOffer(form);
+        if (!creds) {
+          return;
+        }
+        setTimeout(() => onCredentialsSubmitted(form, creds), 0);
       },
       true,
     );
