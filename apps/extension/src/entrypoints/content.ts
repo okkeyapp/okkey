@@ -1295,11 +1295,25 @@ export default defineContentScript({
       const regen = panel.querySelector("[data-gen-regen]");
       if (regen instanceof HTMLElement) {
         regen.onclick = () => {
+          window.clearTimeout(hideTimer);
           if (!generatorState) {
             return;
           }
           generatorState = regenerateGeneratorState(generatorState);
           void paintOverlay();
+        };
+      }
+
+      const copyBtn = panel.querySelector("[data-gen-copy]");
+      if (copyBtn instanceof HTMLElement) {
+        copyBtn.onclick = () => {
+          window.clearTimeout(hideTimer);
+          if (!generatorState?.value) {
+            return;
+          }
+          void navigator.clipboard.writeText(generatorState.value).catch(() => {
+            /* ignore */
+          });
         };
       }
 
@@ -1356,11 +1370,6 @@ export default defineContentScript({
           generatorState = updatePasswordGeneratorSettings(generatorState, {
             length: Number(lengthInput.value),
           });
-          // Update label in-place when possible; full repaint refreshes the preview value.
-          const label = panel.querySelector("[data-gen-length-label]");
-          if (label) {
-            label.textContent = String(generatorState.preferences.length);
-          }
           void paintOverlay();
         };
         lengthInput.oninput = applyLength;

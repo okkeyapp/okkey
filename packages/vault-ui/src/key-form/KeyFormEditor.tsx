@@ -92,6 +92,7 @@ import {
   getPasswordStrength,
   passwordStrengthTextClassName,
 } from "../lib/passwordStrength.js";
+import { KeyFormPasswordGeneratorPanel } from "./KeyFormPasswordGeneratorPanel.js";
 import {
   getSecretKind,
   isConfigurableSecretField,
@@ -2386,137 +2387,21 @@ export function KeyFormEditor({
       return null;
     }
 
-    const options: Array<{ key: keyof PasswordGeneratorSettings; label: string }> = [
-      { key: "uppercase", label: messages.passwordGenerator.uppercase },
-      { key: "lowercase", label: messages.passwordGenerator.lowercase },
-      { key: "numbers", label: messages.passwordGenerator.numbers },
-      { key: "symbols", label: messages.passwordGenerator.symbols },
-    ];
-    const generatedStrength = getPasswordStrength(generatedPassword);
-    const crackTimeKey = estimatePasswordCrackTimeKey(generatedPassword);
-
     return (
       <KeyFieldOverlayPanel data-password-generator-panel className="w-[420px]">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 rounded-lg bg-secondary p-3">
-            <div className="flex items-center justify-between gap-4">
-              {options.map((option) => (
-                <label
-                  key={option.key}
-                  className="flex cursor-pointer select-none items-center gap-2 text-sm text-foreground"
-                >
-                  <Checkbox
-                    checked={passwordGeneratorSettings[option.key]}
-                    onCheckedChange={(checked) => updatePasswordGeneratorSetting(option.key, checked === true)}
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </div>
-
-            <Separator className="-mx-3 w-auto self-stretch bg-border" />
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-medium text-foreground">
-                  {formatKeyFormMessage(messages.passwordGenerator.charactersTemplate, {
-                    count: passwordGeneratorLength,
-                  })}
-                </span>
-                <span className="text-xs text-muted-foreground">{messages.passwordGenerator.lengthRange}</span>
-              </div>
-              <Slider
-                value={[passwordGeneratorLength]}
-                min={4}
-                max={128}
-                step={1}
-                onValueChange={(value) => updatePasswordGeneratorLength(value[0] ?? passwordGeneratorLength)}
-                aria-label={messages.passwordGenerator.lengthAria}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-            <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold leading-5 text-foreground">
-              {renderGeneratedPassword(generatedPassword)}
-            </span>
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="iconSm"
-                    className={cn(
-                      "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
-                      section.variant === "additional" && "hover:!bg-secondary",
-                    )}
-                    aria-label={messages.passwordGenerator.copyGeneratedAria}
-                    onClick={copyGeneratedPassword}
-                  >
-                    {isGeneratedPasswordCopied ? <CopySuccessIcon className="size-4" /> : <CopyIcon className="size-4" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{isGeneratedPasswordCopied ? messages.copied : messages.copy}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="iconSm"
-                    className={cn(
-                      "size-8 min-h-8 min-w-8 text-muted-foreground hover:text-foreground",
-                      section.variant === "additional" && "hover:!bg-secondary",
-                    )}
-                    aria-label={messages.passwordGenerator.regenerateAria}
-                    onClick={regeneratePassword}
-                  >
-                    <RegeneratePasswordIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{messages.passwordGenerator.regenerate}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 px-3 text-sm">
-            <span className="min-w-0 truncate text-muted-foreground">
-              {messages.passwordGenerator.strength}{" "}
-              {generatedStrength ? (
-                <span className={cn("font-medium", passwordStrengthTextClassName[generatedStrength.labelKey])}>
-                  {messages.passwordStrengthLabels[generatedStrength.labelKey]}
-                </span>
-              ) : (
-                <span className="font-medium text-muted-foreground">
-                  {messages.passwordStrengthLabels.weak}
-                </span>
-              )}
-            </span>
-            <span className="shrink-0 text-muted-foreground">
-              {messages.passwordGenerator.crackTime}{" "}
-              <span
-                className={cn(
-                  "font-medium",
-                  generatedStrength
-                    ? passwordStrengthTextClassName[generatedStrength.labelKey]
-                    : "text-muted-foreground",
-                )}
-              >
-                {messages.crackTimeLabels[crackTimeKey]}
-              </span>
-            </span>
-          </div>
-
-          <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={closePasswordGenerator}>
-              {messages.passwordGenerator.cancel}
-            </Button>
-            <Button type="button" onClick={() => insertGeneratedPassword(section.id, field.id)}>
-              {messages.passwordGenerator.insert}
-            </Button>
-          </div>
-        </div>
+        <KeyFormPasswordGeneratorPanel
+          messages={messages}
+          settings={passwordGeneratorSettings}
+          length={passwordGeneratorLength}
+          generatedPassword={generatedPassword}
+          additionalSectionHover={section.variant === "additional"}
+          onSettingChange={updatePasswordGeneratorSetting}
+          onLengthChange={updatePasswordGeneratorLength}
+          onRegenerate={regeneratePassword}
+          onCopy={copyGeneratedPassword}
+          onCancel={closePasswordGenerator}
+          onInsert={() => insertGeneratedPassword(section.id, field.id)}
+        />
       </KeyFieldOverlayPanel>
     );
   }

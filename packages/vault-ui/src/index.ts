@@ -10,6 +10,13 @@ export {
 } from "./key-form/KeyFormEditor.js";
 
 export {
+  KeyFormPasswordGeneratorPanel,
+  renderKeyFormGeneratedPassword,
+  type KeyFormPasswordGeneratorPanelProps,
+  type KeyFormPasswordGeneratorSettings,
+} from "./key-form/KeyFormPasswordGeneratorPanel.js";
+
+export {
   createKeyFormEditorMessages,
   createLocalizedKeyFieldTypes,
   filterKeyFieldTypesForFilesEnabled,

@@ -1,7 +1,17 @@
 /**
- * Compact password / username generator panels for the autofill overlay
- * (ported from web KeyFormEditor /tools/generator — vanilla HTML for the CS shadow root).
+ * Autofill overlay password / username generator panels.
+ * Password layout mirrors {@link KeyFormPasswordGeneratorPanel} from `@okkey/vault-ui`
+ * (KeyFormEditor web popup): settings → value → strength → actions.
  */
+
+import {
+  createKeyFormEditorMessages,
+  estimatePasswordCrackTimeKey,
+  formatKeyFormMessage,
+  getPasswordStrength,
+  type PasswordStrengthLabelKey,
+} from "@okkey/vault-ui";
+import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 
 import {
   DEFAULT_PASSWORD_GENERATOR_LENGTH,
@@ -106,6 +116,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Match KeyFormEditor / KeyFormPasswordGeneratorPanel: digits lime, symbols orange. */
 function coloredPasswordHtml(password: string): string {
   return Array.from(password)
     .map((ch) => {
@@ -117,52 +128,67 @@ function coloredPasswordHtml(password: string): string {
     .join("");
 }
 
+const STRENGTH_COLOR: Record<PasswordStrengthLabelKey, string> = {
+  weak: "hsl(0 72% 51%)",
+  fair: "hsl(32 95% 44%)",
+  good: "hsl(32 95% 44%)",
+  strong: "hsl(84 81% 44%)",
+  excellent: "hsl(85 85% 35%)",
+};
+
+function resolveLocale(ru: boolean): WebLocale {
+  return ru ? "ru" : "en";
+}
+
 export type GeneratorOverlayStrings = {
   insert: string;
   cancel: string;
   regenerate: string;
+  copy: string;
+  copied: string;
   uppercase: string;
   lowercase: string;
   numbers: string;
   symbols: string;
-  length: string;
+  charactersTemplate: string;
+  lengthRange: string;
+  lengthAria: string;
   capitalize: string;
   includeNumber: string;
-  passwordTitle: string;
-  usernameTitle: string;
+  strength: string;
+  crackTime: string;
+  strengthLabels: Record<PasswordStrengthLabelKey, string>;
+  crackTimeLabels: Record<string, string>;
 };
 
 export function generatorOverlayStrings(ru: boolean): GeneratorOverlayStrings {
-  return ru
-    ? {
-        insert: "Вставить",
-        cancel: "Отмена",
-        regenerate: "Обновить",
-        uppercase: "A-Z",
-        lowercase: "a-z",
-        numbers: "0-9",
-        symbols: "!@#",
-        length: "Длина",
-        capitalize: "С заглавной",
-        includeNumber: "С числом",
-        passwordTitle: "Генератор пароля",
-        usernameTitle: "Генератор имени пользователя",
-      }
-    : {
-        insert: "Insert",
-        cancel: "Cancel",
-        regenerate: "Regenerate",
-        uppercase: "A-Z",
-        lowercase: "a-z",
-        numbers: "0-9",
-        symbols: "!@#",
-        length: "Length",
-        capitalize: "Capitalize",
-        includeNumber: "Include number",
-        passwordTitle: "Password generator",
-        usernameTitle: "Username generator",
-      };
+  const locale = resolveLocale(ru);
+  const messages = createKeyFormEditorMessages(locale);
+  return {
+    insert: messages.passwordGenerator.insert,
+    cancel: messages.passwordGenerator.cancel,
+    regenerate: messages.passwordGenerator.regenerate,
+    copy: messages.copy,
+    copied: messages.copied,
+    uppercase: messages.passwordGenerator.uppercase,
+    lowercase: messages.passwordGenerator.lowercase,
+    numbers: messages.passwordGenerator.numbers,
+    symbols: messages.passwordGenerator.symbols,
+    charactersTemplate: messages.passwordGenerator.charactersTemplate,
+    lengthRange: messages.passwordGenerator.lengthRange,
+    lengthAria: messages.passwordGenerator.lengthAria,
+    capitalize: formatWebMessage(locale, "web.tools.generator.username.capitalize"),
+    includeNumber: formatWebMessage(locale, "web.tools.generator.username.includeNumber"),
+    strength: messages.passwordGenerator.strength,
+    crackTime: messages.passwordGenerator.crackTime,
+    strengthLabels: { ...messages.passwordStrengthLabels },
+    crackTimeLabels: { ...messages.crackTimeLabels },
+  };
 }
+
+const COPY_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10.6667 8.60004V11.4C10.6667 13.7334 9.73334 14.6667 7.40001 14.6667H4.60001C2.26668 14.6667 1.33334 13.7334 1.33334 11.4V8.60004C1.33334 6.26671 2.26668 5.33337 4.60001 5.33337H7.40001C9.73334 5.33337 10.6667 6.26671 10.6667 8.60004Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.6667 4.60004V7.40004C14.6667 9.73337 13.7333 10.6667 11.4 10.6667H10.6667V8.60004C10.6667 6.26671 9.73334 5.33337 7.40001 5.33337H5.33334V4.60004C5.33334 2.26671 6.26668 1.33337 8.60001 1.33337H11.4C13.7333 1.33337 14.6667 2.26671 14.6667 4.60004Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+const REGEN_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M14 8C14 6.4087 13.3679 4.88258 12.2426 3.75736C11.1174 2.63214 9.5913 2 8 2C6.32263 2.00631 4.71265 2.66082 3.50667 3.82667L2 5.33333M5.33333 5.33333H2V2M2 8C2 9.5913 2.63214 11.1174 3.75736 12.2426C4.88258 13.3679 6.4087 14 8 14C9.67737 13.9937 11.2874 13.3392 12.4933 12.1733L14 10.6667M14 14V10.6667H10.6667" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 /** Extra CSS rules for generator panels (append to overlay stylesheet). */
 export function generatorOverlayCss(): string {
@@ -172,15 +198,73 @@ export function generatorOverlayCss(): string {
             flex-direction: column;
             align-items: stretch;
             width: min(420px, calc(100vw - 16px));
-            padding: 16px;
-            gap: 16px;
+            padding: 12px;
+            gap: 12px;
           }
-          .gen-title {
+          .gen-settings {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            background: hsl(var(--ok-row-muted));
+          }
+          .gen-charsets {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+          }
+          .gen-opt {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 400;
             line-height: 20px;
             color: hsl(var(--ok-fg));
-            margin: 0;
+            cursor: pointer;
+            user-select: none;
+          }
+          .gen-opt input {
+            width: 16px;
+            height: 16px;
+            accent-color: hsl(var(--ok-primary));
+            cursor: pointer;
+          }
+          .gen-sep {
+            height: 1px;
+            margin: 0 -12px;
+            background: hsla(var(--ok-fg) / 0.12);
+          }
+          .gen-length {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+          }
+          .gen-length-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 14px;
+            line-height: 20px;
+          }
+          .gen-length-label {
+            font-weight: 500;
+            color: hsl(var(--ok-fg));
+          }
+          .gen-length-range {
+            font-size: 12px;
+            font-weight: 400;
+            color: hsl(var(--ok-muted));
+          }
+          .gen-length input[type="range"] {
+            width: 100%;
+            accent-color: hsl(var(--ok-primary));
+            cursor: pointer;
           }
           .gen-output {
             display: flex;
@@ -189,24 +273,24 @@ export function generatorOverlayCss(): string {
             border: 1px solid hsla(var(--ok-fg) / 0.12);
             border-radius: 8px;
             background: hsl(var(--ok-bg));
-            padding: 10px 12px;
-            min-height: 44px;
+            padding: 8px 12px;
+            min-height: 40px;
           }
           .gen-value {
             flex: 1;
             min-width: 0;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
-            line-height: 18px;
+            line-height: 20px;
             word-break: break-all;
             color: hsl(var(--ok-fg));
           }
-          .gen-ch.gen-num { color: #3b82f6; }
-          .gen-ch.gen-sym { color: #22c55e; }
+          .gen-ch.gen-num { color: #65a30d; }
+          .gen-ch.gen-sym { color: #ea580c; }
           .gen-icon-btn {
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             border: 0;
             border-radius: 6px;
             background: transparent;
@@ -216,65 +300,42 @@ export function generatorOverlayCss(): string {
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            font-size: 14px;
             appearance: none;
             outline: none;
+            padding: 0;
           }
           .gen-icon-btn:hover,
           .gen-icon-btn:focus-visible {
             background: hsl(var(--ok-hover));
             color: hsl(var(--ok-fg));
           }
-          .gen-opts {
+          .gen-metrics {
             display: flex;
-            flex-wrap: wrap;
-            gap: 10px 14px;
-            padding: 12px;
-            border-radius: 8px;
-            background: hsl(var(--ok-row-muted));
-          }
-          .gen-opt {
-            display: inline-flex;
             align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            font-weight: 500;
-            color: hsl(var(--ok-fg));
-            cursor: pointer;
-            user-select: none;
-          }
-          .gen-opt input { accent-color: hsl(var(--ok-primary)); }
-          .gen-length {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            width: 100%;
-          }
-          .gen-length-row {
-            display: flex;
             justify-content: space-between;
-            font-size: 12px;
-            font-weight: 500;
-            color: hsl(var(--ok-fg));
+            gap: 12px;
+            padding: 0 12px;
+            font-size: 14px;
+            line-height: 20px;
+            color: hsl(var(--ok-muted));
           }
-          .gen-length input[type="range"] {
-            width: 100%;
-            accent-color: hsl(var(--ok-primary));
+          .gen-metrics-value {
+            font-weight: 500;
           }
           .gen-actions {
             display: flex;
             justify-content: flex-end;
             gap: 8px;
-            margin: 0;
-            padding-top: 0;
+            margin-top: 12px;
           }
           .gen-actions button {
             border-radius: 8px;
             border: 0;
-            padding: 8px 14px;
+            padding: 8px 16px;
             font: inherit;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 500;
+            line-height: 20px;
             cursor: pointer;
             appearance: none;
             outline: none;
@@ -301,11 +362,11 @@ export function generatorPanelHtml(
   state: GeneratorOverlayState,
   strings: GeneratorOverlayStrings,
 ): string {
-  const title = state.kind === "password" ? strings.passwordTitle : strings.usernameTitle;
+  let settingsHtml = "";
+  let metricsHtml = "";
   const valueHtml =
     state.kind === "password" ? coloredPasswordHtml(state.value) : escapeHtml(state.value);
 
-  let optionsHtml = "";
   if (state.kind === "password") {
     const s = state.preferences;
     const opts: Array<{ key: keyof PasswordGeneratorSettings; label: string; checked: boolean }> = [
@@ -314,33 +375,52 @@ export function generatorPanelHtml(
       { key: "numbers", label: strings.numbers, checked: s.numbers },
       { key: "symbols", label: strings.symbols, checked: s.symbols },
     ];
-    optionsHtml = `<div class="gen-opts" data-gen-opts="password">
-      ${opts
-        .map(
-          (o) =>
-            `<label class="gen-opt"><input type="checkbox" data-gen-setting="${o.key}" ${o.checked ? "checked" : ""} /><span>${escapeHtml(o.label)}</span></label>`,
-        )
-        .join("")}
-      <div class="gen-length">
-        <div class="gen-length-row"><span>${escapeHtml(strings.length)}</span><span data-gen-length-label>${s.length}</span></div>
-        <input type="range" data-gen-length min="${PASSWORD_GENERATOR_LENGTH_MIN}" max="${PASSWORD_GENERATOR_LENGTH_MAX}" value="${s.length}" />
+    const charactersLabel = formatKeyFormMessage(strings.charactersTemplate, { count: s.length });
+    settingsHtml = `<div class="gen-settings">
+      <div class="gen-charsets">
+        ${opts
+          .map(
+            (o) =>
+              `<label class="gen-opt"><input type="checkbox" data-gen-setting="${o.key}" ${o.checked ? "checked" : ""} /><span>${escapeHtml(o.label)}</span></label>`,
+          )
+          .join("")}
       </div>
+      <div class="gen-sep" role="separator"></div>
+      <div class="gen-length">
+        <div class="gen-length-row">
+          <span class="gen-length-label" data-gen-length-label>${escapeHtml(charactersLabel)}</span>
+          <span class="gen-length-range">${escapeHtml(strings.lengthRange)}</span>
+        </div>
+        <input type="range" data-gen-length min="${PASSWORD_GENERATOR_LENGTH_MIN}" max="${PASSWORD_GENERATOR_LENGTH_MAX}" value="${s.length}" aria-label="${escapeHtml(strings.lengthAria)}" />
+      </div>
+    </div>`;
+
+    const strength = getPasswordStrength(state.value);
+    const crackKey = estimatePasswordCrackTimeKey(state.value);
+    const strengthKey = strength?.labelKey ?? "weak";
+    const strengthColor = STRENGTH_COLOR[strengthKey];
+    metricsHtml = `<div class="gen-metrics">
+      <span>${escapeHtml(strings.strength)} <span class="gen-metrics-value" style="color:${strengthColor}">${escapeHtml(strings.strengthLabels[strengthKey])}</span></span>
+      <span>${escapeHtml(strings.crackTime)} <span class="gen-metrics-value" style="color:${strengthColor}">${escapeHtml(strings.crackTimeLabels[crackKey] ?? crackKey)}</span></span>
     </div>`;
   } else {
     const p = state.preferences;
-    optionsHtml = `<div class="gen-opts" data-gen-opts="username">
-      <label class="gen-opt"><input type="checkbox" data-gen-setting="capitalize" ${p.capitalize ? "checked" : ""} /><span>${escapeHtml(strings.capitalize)}</span></label>
-      <label class="gen-opt"><input type="checkbox" data-gen-setting="includeNumber" ${p.includeNumber ? "checked" : ""} /><span>${escapeHtml(strings.includeNumber)}</span></label>
+    settingsHtml = `<div class="gen-settings">
+      <div class="gen-charsets">
+        <label class="gen-opt"><input type="checkbox" data-gen-setting="capitalize" ${p.capitalize ? "checked" : ""} /><span>${escapeHtml(strings.capitalize)}</span></label>
+        <label class="gen-opt"><input type="checkbox" data-gen-setting="includeNumber" ${p.includeNumber ? "checked" : ""} /><span>${escapeHtml(strings.includeNumber)}</span></label>
+      </div>
     </div>`;
   }
 
   return `<div class="panel panel-gen" data-generator="${state.kind}">
-    <div class="gen-title">${escapeHtml(title)}</div>
+    ${settingsHtml}
     <div class="gen-output">
       <div class="gen-value" data-gen-value>${valueHtml}</div>
-      <button type="button" class="gen-icon-btn" data-gen-regen="1" title="${escapeHtml(strings.regenerate)}" aria-label="${escapeHtml(strings.regenerate)}">↻</button>
+      <button type="button" class="gen-icon-btn" data-gen-copy="1" title="${escapeHtml(strings.copy)}" aria-label="${escapeHtml(strings.copy)}">${COPY_ICON}</button>
+      <button type="button" class="gen-icon-btn" data-gen-regen="1" title="${escapeHtml(strings.regenerate)}" aria-label="${escapeHtml(strings.regenerate)}">${REGEN_ICON}</button>
     </div>
-    ${optionsHtml}
+    ${metricsHtml}
     <div class="gen-actions">
       <button type="button" class="gen-cancel" data-gen-cancel="1">${escapeHtml(strings.cancel)}</button>
       <button type="button" class="gen-insert" data-gen-insert="1">${escapeHtml(strings.insert)}</button>
