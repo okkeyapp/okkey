@@ -24,8 +24,8 @@ import {
 import { defaultOverlayThemeCss, resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   detectFormTypeForInput,
-  isPasswordGeneratorField,
   isUsernameGeneratorField,
+  shouldOpenPasswordGenerator,
   type AutofillFormType,
 } from "../lib/autofillFormDetect";
 import {
@@ -175,6 +175,8 @@ export default defineContentScript({
     let listOpen = false;
     let cachedSuggestions: AutofillSuggestion[] = [];
     let generatorState: GeneratorOverlayState | null = null;
+    /** Form type detected before autocomplete suppress (stable for the focused field). */
+    let activeFormType: AutofillFormType = "unknown";
     const genStrings = generatorOverlayStrings(
       (navigator.language || "").toLowerCase().startsWith("ru"),
     );
@@ -1536,15 +1538,12 @@ export default defineContentScript({
      * Returns true when a generator was opened (caller should skip vault query).
      */
     function maybeOpenRegisterGenerator(input: HTMLInputElement, formType: AutofillFormType): boolean {
-      if (formType !== "register") {
-        return false;
-      }
       const kind = classifyAutofillInput(collectInputHints(input));
-      if (isPasswordGeneratorField(kind)) {
+      if (shouldOpenPasswordGenerator(formType, kind, input)) {
         openGeneratorForField("password");
         return true;
       }
-      if (isUsernameGeneratorField(kind)) {
+      if (formType === "register" && isUsernameGeneratorField(kind)) {
         openGeneratorForField("username");
         return true;
       }
@@ -1562,12 +1561,23 @@ export default defineContentScript({
         await paintOverlay({ showToggleOnly: true });
         return;
       }
+      // Toggle closes an open generator the same way as the suggestion list.
+      if (
+        overlayMode === "password-generator" ||
+        overlayMode === "username-generator"
+      ) {
+        generatorState = null;
+        listOpen = false;
+        overlayMode = "hidden";
+        await paintOverlay({ showToggleOnly: true });
+        return;
+      }
       // Explicit toggle open after a fill — allow suggestions again.
       clearFilledByOkkey();
       if (isOverlayUpdateFrozen()) {
         return;
       }
-      const formType = resolveFormType(activeInput);
+      const formType = activeFormType !== "unknown" ? activeFormType : resolveFormType(activeInput);
       if (maybeOpenRegisterGenerator(activeInput, formType)) {
         return;
       }
@@ -1612,13 +1622,17 @@ export default defineContentScript({
       await paintOverlay();
     }
 
-    async function showForInput(input: HTMLInputElement): Promise<void> {
+    async function showForInput(
+      input: HTMLInputElement,
+      formTypeOverride?: AutofillFormType,
+    ): Promise<void> {
       activeInput = input;
       // While datepicker / Select is open — do not start or apply query-driven overlays.
       if (isOverlayUpdateFrozen()) {
         return;
       }
-      const formType = resolveFormType(input);
+      const formType = formTypeOverride ?? resolveFormType(input);
+      activeFormType = formType;
       // After Okkey fill: keep the round toggle, do not auto-open the list until clear/toggle.
       if (suggestionsListSuppressed()) {
         listOpen = false;
@@ -1898,7 +1912,12 @@ export default defineContentScript({
       const fillValues = applyPageLocaleAddressFormat(
         {
           ...result.fill.values,
-          ...(result.fill.username ? { username: result.fill.username, email: result.fill.username } : {}),
+          ...(result.fill.username ? { username: result.fill.username } : {}),
+          // Login-style items may use username as email; personal_data keeps email separate
+          // so nickname does not overwrite the email field.
+          ...(result.fill.username && !result.fill.values?.email
+            ? { email: result.fill.username }
+            : {}),
           ...(result.fill.password ? { password: result.fill.password } : {}),
           ...(fillOverrides ?? {}),
         },
@@ -2069,13 +2088,16 @@ export default defineContentScript({
         if (!kind) {
           return;
         }
+        // Resolve form type before mutating autocomplete (suppress sets password → new-password,
+        // which would otherwise mis-detect login forms as register).
+        activeFormType = resolveFormType(target);
         suppressNativeAutocomplete(target, kind);
         window.clearTimeout(hideTimer);
         // Empty focused field after user cleared a fill — re-open suggestions immediately.
         if (target.value.trim().length === 0 && suggestionsListSuppressed()) {
           clearFilledByOkkey();
         }
-        void showForInput(target);
+        void showForInput(target, activeFormType);
       },
       true,
     );
@@ -2098,6 +2120,15 @@ export default defineContentScript({
             return;
           }
           const focused = document.activeElement instanceof Element ? document.activeElement : null;
+          // Still on the autofill field (focus moved to another field whose focusin already ran,
+          // or focus never left) — keep list / generator panels open.
+          if (focused === activeInput) {
+            return;
+          }
+          // Interacting with overlay controls (generator checkboxes, length, etc.).
+          if (host && focused && (focused === host || host.contains(focused))) {
+            return;
+          }
           // Dialog close / save: focus lands on body or main — never keep a floating toggle.
           if (isNonFieldFocusTarget(focused)) {
             clearActiveInputAndHide();
@@ -2110,8 +2141,11 @@ export default defineContentScript({
           }
           // Keep toggle while field may still be "active"; hide panels/tooltips on blur.
           listOpen = false;
+          generatorState = null;
           if (
             overlayMode === "list" ||
+            overlayMode === "password-generator" ||
+            overlayMode === "username-generator" ||
             overlayMode === "unlock-tooltip" ||
             (activeInput && document.contains(activeInput))
           ) {

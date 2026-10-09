@@ -26,6 +26,7 @@ export const PERSONAL_DATA_PRESET_FIELD_IDS = [
   "birth-date",
   "phone",
   "email",
+  "nickname",
   "address",
 ] as const;
 
@@ -789,6 +790,14 @@ function getPersonalDataDefaultSections(messages: KeyFormEditorMessages): KeyFor
           id: "email",
           type: "email",
           label: messages.fieldLabels.personalEmail,
+          value: "",
+          editableLabel: false,
+          deletable: false,
+        },
+        {
+          id: "nickname",
+          type: "text",
+          label: messages.fieldLabels.personalNickname,
           value: "",
           editableLabel: false,
           deletable: false,

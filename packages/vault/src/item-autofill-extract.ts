@@ -69,6 +69,7 @@ const FIELD_ID_TO_KEY: Record<string, AutofillValueKey> = {
   password: "password",
   email: "email",
   "work-email": "email",
+  nickname: "username",
   "first-name": "given-name",
   "last-name": "family-name",
   "middle-name": "additional-name",
@@ -112,6 +113,7 @@ const FIELD_ID_TO_KEY: Record<string, AutofillValueKey> = {
 const LOGIN_KEYS = new Set<string>(["username", "password", "otp", "email"]);
 const PERSONAL_KEYS = new Set<string>([
   "email",
+  "username",
   "given-name",
   "family-name",
   "additional-name",
@@ -363,9 +365,43 @@ export function extractAutofillValues(
   return map;
 }
 
+function valueForFocusedKind(
+  values: Partial<Record<AutofillValueKey, string>>,
+  focusedKind: string | null | undefined,
+): string {
+  if (!focusedKind) {
+    return "";
+  }
+  const direct = values[focusedKind as AutofillValueKey];
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+  if (focusedKind === "username") {
+    return values.username || values.email || "";
+  }
+  if (focusedKind === "email") {
+    return values.email || "";
+  }
+  if (focusedKind === "name") {
+    return (
+      values.name ||
+      [values["given-name"], values["additional-name"], values["family-name"]].filter(Boolean).join(" ")
+    );
+  }
+  if (focusedKind === "address" || focusedKind === "street-address") {
+    return values.address || values["street-address"] || "";
+  }
+  return "";
+}
+
+/**
+ * Subtitle under a suggestion title. For personal_data, prefer the value that
+ * matches the focused page field (e.g. given-name → first name).
+ */
 export function suggestionSubtitleFromValues(
   categoryId: string,
   values: Partial<Record<AutofillValueKey, string>>,
+  focusedKind?: string | null,
 ): string {
   if (categoryId === "login") {
     return values.username || values.email || "";
@@ -379,7 +415,11 @@ export function suggestionSubtitleFromValues(
     return values["cc-name"] || "";
   }
   if (categoryId === "personal_data") {
-    return values.email || values.name || values.tel || "";
+    const fromFocus = valueForFocusedKind(values, focusedKind);
+    if (fromFocus) {
+      return fromFocus;
+    }
+    return values.email || values.username || values.name || values.tel || "";
   }
   if (categoryId === "bank_account") {
     return values.iban || values["bank-account-number"] || values["bank-name"] || "";

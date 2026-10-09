@@ -103,6 +103,9 @@ describe("extractAutofillValues", () => {
     assert.equal(values["given-name"], "Саша");
     assert.equal(values["family-name"], "Иванов");
     assert.equal(values.email, "a@example.com");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "given-name"), "Саша");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "email"), "a@example.com");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values), "a@example.com");
     assert.equal(values["street-address"], "Tverskaya");
     assert.equal(values["address-house"], "1");
     assert.equal(values["address-apartment"], "12");
@@ -143,6 +146,42 @@ describe("extractAutofillValues", () => {
       ruValues.address,
       "909123, Россия, Московская обл., г. Москва, ул. Октябрьская, д. 39A, кв. 187",
     );
+  });
+
+  it("maps nickname to username and prefers it in personal_data subtitle fallback", () => {
+    const values = extractAutofillValues(
+      item({
+        categoryId: "personal_data",
+        fields: [
+          {
+            id: "nickname",
+            type: "text",
+            sectionId: "personal-data",
+            order: 0,
+            value: { kind: "text", text: "sasha_n" },
+          },
+          {
+            id: "email",
+            type: "email",
+            sectionId: "personal-data",
+            order: 1,
+            value: { kind: "text", text: "a@example.com" },
+          },
+          {
+            id: "first-name",
+            type: "text",
+            sectionId: "personal-data",
+            order: 2,
+            value: { kind: "text", text: "Александр" },
+          },
+        ],
+      }),
+    );
+    assert.equal(values.username, "sasha_n");
+    assert.equal(values.email, "a@example.com");
+    assert.equal(values["given-name"], "Александр");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "username"), "sasha_n");
+    assert.equal(suggestionSubtitleFromValues("personal_data", values, "given-name"), "Александр");
   });
 
   it("collects standard + custom email fields as separate candidates", () => {

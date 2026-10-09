@@ -5,6 +5,7 @@ import {
   categoriesAllowedForFormType,
   detectAutofillFormType,
   isPasswordGeneratorField,
+  shouldOpenPasswordGenerator,
   isUsernameGeneratorField,
   type AutofillFormSignals,
   type AutofillFormType,
@@ -188,5 +189,11 @@ describe("generator field helpers", () => {
     assert.equal(isUsernameGeneratorField("email"), false);
     assert.equal(isPasswordGeneratorField("password"), true);
     assert.equal(isPasswordGeneratorField("email"), false);
+  });
+
+  it("opens password generator on register and confirm-password contexts", () => {
+    assert.equal(shouldOpenPasswordGenerator("register", "password"), true);
+    assert.equal(shouldOpenPasswordGenerator("login", "password"), false);
+    assert.equal(shouldOpenPasswordGenerator("unknown", "email"), false);
   });
 });

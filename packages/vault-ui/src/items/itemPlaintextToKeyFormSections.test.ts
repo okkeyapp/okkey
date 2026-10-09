@@ -660,6 +660,7 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       "birth-date",
       "phone",
       "email",
+      "nickname",
       "address",
     ]);
     expect(defaults[0]?.fields.every((field) => field.deletable === false && field.editableLabel === false)).toBe(true);
@@ -724,6 +725,7 @@ describe("itemPlaintextToKeyFormSections personal_data", () => {
       "birth-date",
       "phone",
       "email",
+      "nickname",
       "address",
       "custom-note",
     ]);

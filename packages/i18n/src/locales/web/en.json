@@ -689,6 +689,7 @@
   "web.keyForm.fieldLabels.personalBirthDate": "date of birth",
   "web.keyForm.fieldLabels.personalPhone": "phone",
   "web.keyForm.fieldLabels.personalEmail": "email",
+  "web.keyForm.fieldLabels.personalNickname": "nickname",
   "web.keyForm.fieldLabels.personalAddress": "address",
   "web.keyForm.fieldLabels.personalWorkCompany": "company",
   "web.keyForm.fieldLabels.personalWorkDepartment": "department",

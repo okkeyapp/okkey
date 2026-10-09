@@ -105,11 +105,25 @@ function collectNearbyText(form: Element | null, doc: Document): string {
     parts.push(form.id, form.name, form.action, form.className, form.getAttribute("aria-label") ?? "");
   }
   try {
-    const heading = (form ?? doc.body)?.querySelector?.(
+    const root = form ?? doc.body;
+    const heading = root?.querySelector?.(
       "h1, h2, h3, [role='heading'], legend, .title, .form-title",
     );
     if (heading?.textContent) {
       parts.push(heading.textContent);
+    }
+    // Submit / CTA labels often say “Sign up” / «Регистрация» when headings do not.
+    const buttons = root?.querySelectorAll?.(
+      "button, [type='submit'], input[type='submit'], a[role='button']",
+    );
+    if (buttons) {
+      for (const btn of Array.from(buttons).slice(0, 8)) {
+        const label =
+          (btn instanceof HTMLInputElement ? btn.value : btn.textContent)?.trim() ?? "";
+        if (label) {
+          parts.push(label);
+        }
+      }
     }
   } catch {
     /* ignore */
@@ -269,10 +283,29 @@ export function isUsernameGeneratorField(kind: AutofillFieldKind | null): boolea
 }
 
 /**
- * Password (incl. confirm) on register → password generator.
+ * Password field kind that should open the password generator (register / new-password contexts).
  */
 export function isPasswordGeneratorField(kind: AutofillFieldKind | null): boolean {
   return kind === "password";
+}
+
+/** True when the focused password field is a confirm/repeat password control. */
+export function shouldOpenPasswordGenerator(
+  formType: AutofillFormType,
+  kind: AutofillFieldKind | null,
+  input?: HTMLInputElement | null,
+): boolean {
+  if (!isPasswordGeneratorField(kind)) {
+    return false;
+  }
+  if (formType === "register") {
+    return true;
+  }
+  // Confirm/repeat password is always a generator context, even if form type is ambiguous.
+  if (input && isConfirmPasswordField(input)) {
+    return true;
+  }
+  return false;
 }
 
 /**

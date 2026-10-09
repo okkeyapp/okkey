@@ -281,6 +281,7 @@ export async function handleAutofillQuery(
   }
   const items = await matchingAutofillItems(auth.userId, pageUrl, fieldKinds, formType);
   await touchExtensionUnlockSession(auth.userId);
+  const focusedKind = fieldKinds?.[0] ?? null;
   const wantsEmailField = (fieldKinds ?? []).some((kind) => kind === "email" || kind === "username");
   const suggestions = (
     await Promise.all(
@@ -316,7 +317,7 @@ export async function handleAutofillQuery(
           {
             itemId: item.itemId,
             title,
-            username: suggestionSubtitleFromValues(item.categoryId, values),
+            username: suggestionSubtitleFromValues(item.categoryId, values, focusedKind),
             categoryId: item.categoryId,
             ...(iconUrl ? { iconUrl } : {}),
           },
@@ -378,6 +379,7 @@ export async function handleAutofillFill(
   const secrets =
     item.categoryId === ITEM_CATEGORY_LOGIN ? extractLoginAutofillSecrets(item) : null;
 
+  // personal_data: nickname maps to username; prefer it over email for username fills.
   let username = values.username || values.email || "";
   let password = values.password || values["db-password"] || "";
   if (secrets) {

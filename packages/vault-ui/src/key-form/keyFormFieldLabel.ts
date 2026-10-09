@@ -56,6 +56,7 @@ const PRESET_FIELD_LABEL_KEYS: Record<string, string> = {
   "first-name": "personalFirstName",
   "last-name": "personalLastName",
   "middle-name": "personalMiddleName",
+  nickname: "personalNickname",
   initials: "personalInitials",
   "work-company": "personalWorkCompany",
   "work-department": "personalWorkDepartment",
@@ -81,6 +82,7 @@ const SECTION_FIELD_LABEL_KEYS: Record<string, Record<string, string>> = {
     "birth-date": "personalBirthDate",
     phone: "personalPhone",
     email: "personalEmail",
+    nickname: "personalNickname",
     address: "personalAddress",
   },
   [PASSPORT_SECTION_ID]: {

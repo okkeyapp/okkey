@@ -207,6 +207,7 @@ const KEY_FORM_EXTRA_FIELD_LABEL_ONLY_KEYS = [
   "personalBirthDate",
   "personalPhone",
   "personalEmail",
+  "personalNickname",
   "personalAddress",
   "personalWorkCompany",
   "personalWorkDepartment",

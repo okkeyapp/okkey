@@ -689,6 +689,7 @@
   "web.keyForm.fieldLabels.personalBirthDate": "дата рождения",
   "web.keyForm.fieldLabels.personalPhone": "телефон",
   "web.keyForm.fieldLabels.personalEmail": "емейл",
+  "web.keyForm.fieldLabels.personalNickname": "никнейм",
   "web.keyForm.fieldLabels.personalAddress": "адрес",
   "web.keyForm.fieldLabels.personalWorkCompany": "компания",
   "web.keyForm.fieldLabels.personalWorkDepartment": "отдел",

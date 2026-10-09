@@ -423,8 +423,12 @@ function resolveAutofillValueForKind(
   if (!value && kind === "address") {
     value = values.address || values["street-address"] || "";
   }
-  if (!value && (kind === "email" || kind === "username")) {
+  if (!value && kind === "email") {
     value = values.email || values.username || "";
+  }
+  if (!value && kind === "username") {
+    // Prefer nickname (mapped to username) over email for personal_data fills.
+    value = values.username || values.email || "";
   }
   if (!value && kind === "name") {
     value = [values["given-name"], values["additional-name"], values["family-name"]]
