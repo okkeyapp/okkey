@@ -694,13 +694,38 @@ export function fillLoginFormAndMaybeSubmit(
   return { filled: true, submitted };
 }
 
-/** Read username/password currently in the page (for save-password capture). */
+function autocompleteIncludes(el: HTMLInputElement, token: string): boolean {
+  const ac = (el.getAttribute("autocomplete") || el.autocomplete || "").toLowerCase();
+  return ac.split(/\s+/).some((part) => {
+    const p = part.trim();
+    return p === token || p.endsWith(`-${token}`) || p.startsWith(`${token}-`);
+  });
+}
+
+/**
+ * Read username/password currently in the page (for save-password capture).
+ * Register: prefers `new-password` over confirm/repeat; username may be email.
+ */
 export function captureLoginCredentials(root: ParentNode): { username: string; password: string } | null {
   const fields = findLoginFields(root);
-  const password = fields.password[0]?.value?.trim() ?? "";
+  let password = "";
+  for (const el of fields.password) {
+    const value = el.value?.trim() ?? "";
+    if (!value) {
+      continue;
+    }
+    if (autocompleteIncludes(el, "new-password")) {
+      password = value;
+      break;
+    }
+    if (!password) {
+      password = value;
+    }
+  }
   if (!password) {
     return null;
   }
-  const username = fields.username[0]?.value?.trim() ?? "";
+  const username =
+    fields.username.map((el) => el.value?.trim() ?? "").find((value) => value.length > 0) ?? "";
   return { username, password };
 }

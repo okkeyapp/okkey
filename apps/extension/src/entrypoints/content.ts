@@ -25,6 +25,9 @@ import {
 import { defaultOverlayThemeCss, resolveOverlayThemeCss } from "../lib/overlayTheme";
 import {
   detectFormTypeForInput,
+  detectFormTypeForRoot,
+  isAuthCredentialSubmitControl,
+  isSaveOfferFormType,
   isUsernameGeneratorField,
   shouldOpenPasswordGenerator,
   type AutofillFormType,
@@ -2356,10 +2359,13 @@ export default defineContentScript({
       if (response.pending.interacted) {
         return;
       }
-      await maybeOfferSave({
-        username: response.pending.username,
-        password: response.pending.password,
-      });
+      await maybeOfferSave(
+        {
+          username: response.pending.username,
+          password: response.pending.password,
+        },
+        { allowAfterOkkeyFill: true },
+      );
     }
 
     function syncRenameDraftFromDom(): void {
@@ -2564,8 +2570,12 @@ export default defineContentScript({
       }
     }
 
-    async function maybeOfferSave(creds: { username: string; password: string }): Promise<void> {
-      if (wasFilledByOkkey()) {
+    async function maybeOfferSave(
+      creds: { username: string; password: string },
+      opts?: { allowAfterOkkeyFill?: boolean },
+    ): Promise<void> {
+      // Vault autofill of an existing login must not re-prompt; register / generator fills may.
+      if (wasFilledByOkkey() && !opts?.allowAfterOkkeyFill) {
         return;
       }
       let response: AutofillSaveOfferResponse;
@@ -2610,22 +2620,65 @@ export default defineContentScript({
       showSavePrompt(creds, false, { kind: "create" });
     }
 
-    function onCredentialsSubmitted(): void {
+    function resolveSaveOfferFormType(form: HTMLFormElement | null): AutofillFormType {
+      if (activeFormType === "login" || activeFormType === "register") {
+        return activeFormType;
+      }
+      try {
+        if (form) {
+          return detectFormTypeForRoot(form, document, {
+            urlPath: location.pathname,
+            formEl: form,
+          });
+        }
+        if (activeInput && document.contains(activeInput)) {
+          return detectFormTypeForInput(activeInput, { urlPath: location.pathname });
+        }
+        return detectFormTypeForRoot(document, document, { urlPath: location.pathname });
+      } catch {
+        return "unknown";
+      }
+    }
+
+    /**
+     * After login or register submit — offer create/update Login item.
+     * Register also fires when the user used Okkey's password generator (`wasFilledByOkkey`).
+     */
+    function onCredentialsSubmitted(form?: HTMLFormElement | null): void {
       suppressUnlockTooltipUntil = Date.now() + 12_000;
       if (overlayMode === "unlock-tooltip" || overlayMode === "list") {
         listOpen = false;
         overlayMode = "hidden";
         void paintOverlay({ showToggleOnly: true });
       }
-      if (wasFilledByOkkey()) {
+      const formType = resolveSaveOfferFormType(form ?? null);
+      // Skip checkout / search / identity; allow login, register, and ambiguous unknown
+      // (unknown keeps prior login-page behavior when heuristics miss).
+      if (
+        formType === "checkout" ||
+        formType === "search" ||
+        formType === "identity"
+      ) {
         return;
       }
-      const creds = captureLoginCredentials(document);
+      const isRegister = formType === "register";
+      if (wasFilledByOkkey() && !isRegister) {
+        return;
+      }
+      const scope: ParentNode = form ?? document;
+      let creds = captureLoginCredentials(scope);
+      if (!creds && form) {
+        creds = captureLoginCredentials(document);
+      }
       if (!creds) {
         return;
       }
+      // Prefer offering on explicit login/register; unknown still offers when creds exist.
+      if (!isSaveOfferFormType(formType) && formType !== "unknown") {
+        return;
+      }
       void persistPendingSaveOffer(creds);
-      void maybeOfferSave(creds);
+      void maybeOfferSave(creds, { allowAfterOkkeyFill: isRegister });
     }
 
     document.addEventListener(
@@ -2873,8 +2926,9 @@ export default defineContentScript({
 
     document.addEventListener(
       "submit",
-      () => {
-        onCredentialsSubmitted();
+      (event) => {
+        const form = event.target instanceof HTMLFormElement ? event.target : null;
+        onCredentialsSubmitted(form);
       },
       true,
     );
@@ -2886,11 +2940,16 @@ export default defineContentScript({
         if (!(target instanceof Element)) {
           return;
         }
-        const control = target.closest('button[type="submit"], input[type="submit"], button:not([type])');
-        if (!control) {
+        const control = target.closest(
+          'button, input[type="submit"], input[type="button"], [role="button"]',
+        );
+        if (!control || !isAuthCredentialSubmitControl(control)) {
           return;
         }
-        setTimeout(() => onCredentialsSubmitted(), 0);
+        const form =
+          control.closest("form") ??
+          (activeInput?.form && document.contains(activeInput) ? activeInput.form : null);
+        setTimeout(() => onCredentialsSubmitted(form), 0);
       },
       true,
     );
@@ -2902,7 +2961,8 @@ export default defineContentScript({
       if (message.type === AUTOFILL_MSG.unlocked) {
         if (pendingSave) {
           // Fire-and-forget: ack sync so the message channel closes cleanly.
-          void maybeOfferSave(pendingSave);
+          // Pending offers (incl. register + generator) must survive wasFilledByOkkey.
+          void maybeOfferSave(pendingSave, { allowAfterOkkeyFill: true });
           return undefined;
         }
         if (suggestionsListSuppressed()) {
@@ -2958,8 +3018,8 @@ export default defineContentScript({
       }
       lastSeenUrl = next;
       if (pendingSave) {
-        // Keep local offer; re-paint after SPA redirect away from the login form.
-        void maybeOfferSave(pendingSave);
+        // Keep local offer; re-paint after SPA redirect away from the login/register form.
+        void maybeOfferSave(pendingSave, { allowAfterOkkeyFill: true });
         return;
       }
       void restorePendingSaveOffer();

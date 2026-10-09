@@ -5,6 +5,7 @@ import {
   categoriesAllowedForFormType,
   detectAutofillFormType,
   isPasswordGeneratorField,
+  isSaveOfferFormType,
   shouldOpenPasswordGenerator,
   isUsernameGeneratorField,
   type AutofillFormSignals,
@@ -279,5 +280,16 @@ describe("generator field helpers", () => {
     assert.equal(shouldOpenPasswordGenerator("register", "password"), true);
     assert.equal(shouldOpenPasswordGenerator("login", "password"), false);
     assert.equal(shouldOpenPasswordGenerator("unknown", "email"), false);
+  });
+});
+
+describe("isSaveOfferFormType", () => {
+  it("allows login and register only", () => {
+    assert.equal(isSaveOfferFormType("login"), true);
+    assert.equal(isSaveOfferFormType("register"), true);
+    assert.equal(isSaveOfferFormType("checkout"), false);
+    assert.equal(isSaveOfferFormType("search"), false);
+    assert.equal(isSaveOfferFormType("identity"), false);
+    assert.equal(isSaveOfferFormType("unknown"), false);
   });
 });

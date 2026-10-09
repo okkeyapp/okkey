@@ -331,6 +331,67 @@ export function detectFormTypeForInput(
   return detectAutofillFormType(signals);
 }
 
+/**
+ * Resolve form type for a `<form>` (or document) — used on submit / register CTA click.
+ */
+export function detectFormTypeForRoot(
+  root: ParentNode,
+  doc: Document,
+  options?: { urlPath?: string; formEl?: Element | null },
+): AutofillFormType {
+  const formEl =
+    options?.formEl ?? (root instanceof HTMLFormElement ? root : root.querySelector?.("form"));
+  const urlPath =
+    options?.urlPath ??
+    (() => {
+      try {
+        return doc.defaultView?.location?.pathname ?? "";
+      } catch {
+        return "";
+      }
+    })();
+  const formTextBlob = collectNearbyText(formEl instanceof Element ? formEl : null, doc);
+  return detectAutofillFormType(collectAutofillFormSignals(root, { urlPath, formTextBlob }));
+}
+
+/** Login / register CTAs that are often `type="button"` (SPA) instead of submit. */
+const AUTH_SUBMIT_TEXT =
+  /(?<![\p{L}\p{N}_])(?:sign[-_\s]?up|sign[-_\s]?in|log[-_\s]?in|log[-_\s]?on|register|registration|create[-_\s]?account|create|continue|next|submit|join|войти|вход(?:[аеу]|ите)?|регистрац\p{L}*|зарегистрир\p{L}*|создать(?:\s*аккаунт)?|продолжить|далее|отправить)(?![\p{L}\p{N}_])/iu;
+
+/**
+ * True for native submit controls, or type=button / role=button with login/register CTA
+ * label near a password field (covers SPA register without form.submit).
+ */
+export function isAuthCredentialSubmitControl(el: Element): boolean {
+  if (el.matches('button[type="submit"], input[type="submit"], button:not([type])')) {
+    return true;
+  }
+  if (!el.matches('button[type="button"], input[type="button"], [role="button"]')) {
+    return false;
+  }
+  const label =
+    (
+      (el instanceof HTMLInputElement ? el.value : el.textContent) ||
+      el.getAttribute("aria-label") ||
+      ""
+    ).trim();
+  if (!label || !AUTH_SUBMIT_TEXT.test(label)) {
+    return false;
+  }
+  const form = el.closest("form");
+  const root: ParentNode = form ?? el.ownerDocument;
+  try {
+    return Boolean(root.querySelector?.('input[type="password"]'));
+  } catch {
+    return false;
+  }
+}
+
+/** Forms where we offer the save-login prompt after submit. */
+export function isSaveOfferFormType(formType: AutofillFormType): boolean {
+  return formType === "login" || formType === "register";
+}
+
 /** True when the focused field is a confirm/repeat password on a register form. */
 export function isConfirmPasswordField(input: HTMLInputElement): boolean {
   return isConfirmPasswordHints(collectInputHints(input));
