@@ -60,6 +60,23 @@ describe("detectAutofillFormType", () => {
     assert.equal(type, "register");
   });
 
+  it("npm email-OTP step (otp field, no password) stays login funnel not register", () => {
+    assert.equal(
+      detectAutofillFormType(
+        signals({
+          fieldKinds: ["otp"],
+          passwordFields: [],
+          hasConfirmPassword: false,
+          hasNewPasswordAc: false,
+          hasCurrentPasswordAc: false,
+          formTextBlob: "Enter One-time Password. One-Time Password Login",
+          urlPath: "/login/email-otp",
+        }),
+      ),
+      "login",
+    );
+  });
+
   it("detects login without strong wording when shape is classic", () => {
     assert.equal(
       detectAutofillFormType(

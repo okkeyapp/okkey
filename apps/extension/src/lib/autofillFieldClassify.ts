@@ -60,8 +60,16 @@ export type AutofillInputHints = {
   role?: string;
 };
 
+/**
+ * OTP / email one-time password (not vault password).
+ * Includes npm-style `login_otp` / `name=otp` / «One-Time Password» / email-otp.
+ */
 const OTP_NAME =
-  /one[-_]?time|otp|totp|2fa|mfa|authenticator|verification[-_]?code|auth[-_]?code|^code$/i;
+  /one[-_\s]?time(?:[-_\s]?pass(?:word|code)?)?|email[-_]?otp|login[-_]?otp|otp|totp|2fa|mfa|authenticator|verification[-_]?code|auth[-_]?code|passcode|^code$/i;
+
+/** URL path/query cues for email-OTP / 2FA steps (npm `/login/email-otp`, etc.). */
+export const EMAIL_OTP_URL =
+  /email[-_]?otp|(?:^|\/)otp(?:\/|$|\?)|one[-_]?time|two[-_]?factor|\b2fa\b|\bmfa\b|verify(?:[-_]?code)?/i;
 
 /** Fields that must never receive autofill / Okkey toggle. */
 const DENYLIST_HINT =
@@ -248,14 +256,16 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
     return "password";
   }
 
+  const numericOtp =
+    input.inputMode === "numeric" || input.inputMode === "decimal" || type === "tel" || type === "number";
   if (
     ac.includes("one-time-code") ||
     ac.includes("one-time") ||
     ac === "otp" ||
     OTP_NAME.test(blob) ||
-    (input.inputMode === "numeric" &&
-      (input.maxLength === 6 || input.maxLength === 8) &&
-      OTP_NAME.test(blob))
+    // Numeric code boxes: OTP copy is enough (maxLength optional — npm has none).
+    (numericOtp && OTP_NAME.test(blob)) ||
+    (numericOtp && (input.maxLength === 6 || input.maxLength === 8) && /code|pass/i.test(blob))
   ) {
     return "otp";
   }
@@ -455,4 +465,49 @@ export function suggestionFieldKindsForFocus(
     return [focusedKind];
   }
   return [...pageKinds];
+}
+
+/**
+ * Extra OTP detection when classify returns null but the page is clearly an
+ * email-OTP / 2FA step (URL + numeric/text code field).
+ */
+export function looksLikeEmailOtpField(
+  input: AutofillInputHints,
+  pageUrl: string,
+): boolean {
+  if (classifyAutofillInput(input) === "otp") {
+    return true;
+  }
+  if (!EMAIL_OTP_URL.test(pageUrl)) {
+    return false;
+  }
+  const type = (input.type || "text").toLowerCase();
+  if (type !== "text" && type !== "tel" && type !== "number" && type !== "password") {
+    return false;
+  }
+  if (isDeniedAutofillField(input)) {
+    return false;
+  }
+  const blob = attrBlob(input);
+  const numeric =
+    input.inputMode === "numeric" || input.inputMode === "decimal" || type === "tel" || type === "number";
+  // On email-otp URLs, a numeric field or any OTP-ish copy is the code input.
+  return numeric || OTP_NAME.test(blob) || /pass(?:word|code)|code/i.test(blob);
+}
+
+/**
+ * Resolve the focused field kind for suggestion queries, including email-OTP URL fallback.
+ */
+export function resolveFocusedAutofillKind(
+  input: AutofillInputHints,
+  pageUrl?: string,
+): AutofillFieldKind | null {
+  const kind = classifyAutofillInput(input);
+  if (kind) {
+    return kind;
+  }
+  if (pageUrl && looksLikeEmailOtpField(input, pageUrl)) {
+    return "otp";
+  }
+  return null;
 }

@@ -18,6 +18,7 @@ import {
 } from "@okkey/vault";
 
 import { createCoreClient } from "./api";
+import { EMAIL_OTP_URL } from "./autofillFieldClassify";
 import {
   AUTOFILL_MSG,
   type AutofillFillResponse,
@@ -194,6 +195,11 @@ function filterCategoriesByFormType(
   fieldKinds: readonly string[],
 ): AutofillItemCategory[] {
   const focused = fieldKinds[0] ?? null;
+  // Email OTP / one-time code field: never surface password-oriented personal_data mix.
+  // Login items are further filtered to TOTP-capable only in matchingAutofillItems.
+  if (focused === "otp") {
+    return categories.filter((id) => id === "login");
+  }
   if (formType === "search") {
     return [];
   }
@@ -245,11 +251,19 @@ async function matchingAutofillItems(
   if (!workspaceId) {
     return [];
   }
-  const kinds = fieldKinds && fieldKinds.length > 0 ? fieldKinds : ["username", "password"];
+  const focusedKind = fieldKinds?.[0] ?? null;
+  // Empty kinds on an email-OTP URL must not fall back to username+password.
+  const kinds =
+    fieldKinds && fieldKinds.length > 0
+      ? fieldKinds
+      : EMAIL_OTP_URL.test(pageUrl)
+        ? ["otp"]
+        : ["username", "password"];
   const categories = filterCategoriesByFormType(categoriesForFieldKinds(kinds), formType, kinds);
   if (categories.length === 0) {
     return [];
   }
+  const otpFocus = focusedKind === "otp" || (kinds.length === 1 && kinds[0] === "otp");
   const items = await listCachedWorkspaceVaultItems({ userId, workspaceId });
   return items.filter((item) => {
     if (item.deleted || item.archived || !isAutofillItemCategory(item.categoryId)) {
@@ -260,7 +274,15 @@ async function matchingAutofillItems(
       return false;
     }
     if (category === "login") {
-      return loginItemMatchesTab(item, pageUrl);
+      if (!loginItemMatchesTab(item, pageUrl)) {
+        return false;
+      }
+      // OTP field: only logins with a TOTP secret — never offer vault password fill.
+      if (otpFocus) {
+        const secrets = extractLoginAutofillSecrets(item);
+        return Boolean(secrets?.totpSecretBase32?.trim());
+      }
+      return true;
     }
     const values = extractAutofillValues(item);
     return Object.keys(values).length > 0;

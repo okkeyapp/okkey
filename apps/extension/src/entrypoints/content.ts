@@ -46,6 +46,7 @@ import {
   updateUsernameGeneratorSettings,
   type GeneratorOverlayState,
 } from "../lib/autofillGeneratorOverlay";
+import { resolveFocusedAutofillKind } from "../lib/autofillFieldClassify";
 import {
   applyPageLocaleAddressFormat,
   captureLoginCredentials,
@@ -2009,7 +2010,10 @@ export default defineContentScript({
     function fieldKindsForQuery(focused?: HTMLInputElement | null): string[] {
       const pageKinds = collectPageFieldKinds(document);
       const focusedKind = focused
-        ? classifyAutofillInput(collectInputHints(focused))
+        ? resolveFocusedAutofillKind(
+            collectInputHints(focused),
+            `${location.pathname}${location.search}`,
+          )
         : null;
       // Focused field only — never union sibling card/email kinds into one query.
       return suggestionFieldKindsForFocus(focusedKind, pageKinds);
@@ -2469,6 +2473,27 @@ export default defineContentScript({
       };
       const isLogin = !result.fill.categoryId || result.fill.categoryId === "login";
       if (isLogin) {
+        const focusedKind = activeInput
+          ? resolveFocusedAutofillKind(
+              collectInputHints(activeInput),
+              `${location.pathname}${location.search}`,
+            )
+          : null;
+        // OTP / email one-time field: fill TOTP only — never vault password.
+        if (focusedKind === "otp") {
+          if (!result.fill.totp) {
+            return;
+          }
+          fillLoginFormAndMaybeSubmit(
+            document,
+            { username: "", password: "", totp: result.fill.totp },
+            fillOpts,
+          );
+          setTimeout(() => {
+            submitLoginFormIfReady(document);
+          }, 120);
+          return;
+        }
         const outcome = fillLoginFormAndMaybeSubmit(document, result.fill, fillOpts);
         if (outcome.submitted) {
           listOpen = false;

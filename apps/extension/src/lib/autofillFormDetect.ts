@@ -249,6 +249,7 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
   const text = `${signals.formTextBlob} ${signals.urlPath}`;
   const kinds = new Set(signals.fieldKinds);
   const hasPassword = kinds.has("password");
+  const hasOtp = kinds.has("otp");
   const hasUser = kinds.has("username") || kinds.has("email");
   const hasCard = [...kinds].some((k) => CC_KINDS.has(k));
   const hasIdentity = [...kinds].some((k) => IDENTITY_KINDS.has(k));
@@ -264,6 +265,17 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
 
   if (hasCard || CHECKOUT_TEXT.test(text)) {
     return "checkout";
+  }
+
+  // Email OTP / one-time password step (npm `/login/email-otp`): not a password form.
+  // Keep as login funnel for URL matching, but callers must not suggest vault passwords
+  // when the focused kind is `otp` (see autofillBroker matchingAutofillItems).
+  if (hasOtp && !hasPassword) {
+    const otpStepCopy =
+      /one[-_\s]?time|email[-_]?otp|(?:^|\/)otp(?:\/|$|\?)|\b2fa\b|\bmfa\b|passcode/i.test(text);
+    if (otpStepCopy || (hasOtp && !hasUser && !hasIdentity)) {
+      return "login";
+    }
   }
 
   // Shopify /login etc.: sites often set autocomplete=new-password on a real login field.

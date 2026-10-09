@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   classifyAutofillInput,
   classifyLoginInput,
+  looksLikeEmailOtpField,
+  resolveFocusedAutofillKind,
   suggestionFieldKindsForFocus,
 } from "./autofillFieldClassify.ts";
 import {
@@ -44,6 +46,28 @@ describe("classifyLoginInput email heuristics", () => {
       "otp",
     );
     assert.equal(classifyLoginInput({ type: "password", name: "password" }), "password");
+  });
+
+  it("npm email-OTP: login_otp + One-Time Password is otp, not username/password", () => {
+    // https://www.npmjs.com/login/email-otp — type=text, autocomplete=off, inputmode=numeric
+    const npmOtp = {
+      type: "text",
+      id: "login_otp",
+      name: "otp",
+      autocomplete: "off",
+      inputMode: "numeric",
+      labelText: "One-Time Password",
+    };
+    assert.equal(classifyAutofillInput(npmOtp), "otp");
+    assert.equal(classifyLoginInput(npmOtp), "otp");
+    assert.equal(
+      resolveFocusedAutofillKind(npmOtp, "/login/email-otp?next=/"),
+      "otp",
+    );
+    assert.equal(looksLikeEmailOtpField(npmOtp, "/login/email-otp"), true);
+    // Must not fall through to USER_NAME via id `login_*`.
+    assert.notEqual(classifyAutofillInput(npmOtp), "username");
+    assert.notEqual(classifyAutofillInput(npmOtp), "password");
   });
 
   it("denies captcha / comment / filter fields", () => {
