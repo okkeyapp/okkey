@@ -25,8 +25,8 @@ export type BackgroundJobsDeps = {
  * - `item-purge` — hard-delete soft-deleted vault items past retention (and their attachments)
  * - `capsule-cleanup` — delete capsules past `delete_at` and their object-storage files
  *
- * Transactional email is still sent from the API process (sync / fire-and-forget).
- * A Redis-backed email/outbox consumer can plug in here later without changing the API surface.
+ * Transactional email is delivered by the Redis email queue consumer in `worker.ts`
+ * (`okkey:email:queue`) when `EMAIL_DELIVERY_MODE=queue`.
  */
 export function startBackgroundJobs(deps: BackgroundJobsDeps): BackgroundJobHandles {
   const itemPurgeIntervalMs = deps.itemPurgeIntervalMs ?? 60 * 60 * 1000;

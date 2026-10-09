@@ -35,17 +35,19 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | Service | Image | Role |
 |---------|-------|------|
 | `web` | `ghcr.io/okkeyapp/web` | SPA (nginx); `OKKEY_API_PUBLIC_URL` → `/config.js` |
-| `api` | `ghcr.io/okkeyapp/api` | HTTP API + SQL migrations on start |
-| `worker` | `ghcr.io/okkeyapp/worker` | Background jobs: item purge, capsule cleanup |
+| `api` | `ghcr.io/okkeyapp/api` | HTTP API + SQL migrations on start; enqueues email to Redis |
+| `worker` | `ghcr.io/okkeyapp/worker` | Item purge, capsule cleanup, **email queue consumer** |
 | `postgres` | `postgres:16-alpine` | Metadata / events |
-| `redis` | `redis:7-alpine` | Sessions / cache / locks |
+| `redis` | `redis:7-alpine` | Sessions / cache / locks / **email queue** |
 | `minio` | MinIO | S3-compatible attachments |
 
-API runs with `RUN_BACKGROUND_JOBS=false`; the worker owns periodic jobs. See [`services/worker/README.md`](../../services/worker/README.md).
+API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the worker owns periodic jobs and outbound mail. See [`services/worker/README.md`](../../services/worker/README.md).
 
 ## Email
 
-Default `EMAIL_PROVIDER=logger` (codes appear in API logs). For real mail set SMTP vars in `.env` (see `.env.example` and [`docs/backend-email.md`](../../docs/backend-email.md)).
+Default `EMAIL_PROVIDER=logger` (codes appear in **worker** logs when queued). For real mail set SMTP vars in `.env` (see `.env.example` and [`docs/backend-email.md`](../../docs/backend-email.md)).
+
+Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:email:dead`. Keep the worker up or mail will sit in the queue.
 
 ## TLS / domain
 

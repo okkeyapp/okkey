@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { DeviceService } from "./device/service.ts";
-import { createEmailSender, EmailTemplateService } from "./email/service.ts";
+import { createOutboundEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
 import { ExtensionAuthService } from "./extension-auth/service.ts";
@@ -51,12 +51,16 @@ async function main(): Promise<void> {
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
   await applySqlMigrations(storage.postgres, { logger });
-  const emailSender = await createEmailSender(config, logger);
+  const emailSender = await createOutboundEmailSender(config, logger, storage.redis);
   const emailTemplates = new EmailTemplateService(emailSender, {
     from: config.emailFrom,
     defaultLocale: config.defaultEmailLocale,
     publicAppBaseUrl: config.publicAppBaseUrl,
     logger,
+  });
+  logger.info("email outbound ready", {
+    provider: config.emailProvider,
+    deliveryMode: config.emailDeliveryMode,
   });
   const authService = new AuthService({
     redis: storage.redis,

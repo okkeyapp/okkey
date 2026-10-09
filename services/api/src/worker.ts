@@ -1,5 +1,7 @@
 /**
- * Okkey worker process — background jobs (item purge, capsule cleanup).
+ * Okkey worker process — background jobs + Redis email queue consumer.
+ *
+ * Jobs: item purge, capsule cleanup, email delivery (`okkey:email:queue`).
  *
  * Run locally: `yarn dev:worker` (loads `services/api/.env` via loadConfig;
  * optional overrides in `services/worker/.env` are loaded first if present).
@@ -14,6 +16,8 @@ import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { loadConfig } from "./config.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
+import { startEmailQueueConsumer } from "./email/queue.ts";
+import { createTransportEmailSender } from "./email/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { startBackgroundJobs } from "./jobs/background-jobs.ts";
 import { createLogger } from "./logger.ts";
@@ -99,14 +103,24 @@ async function main(): Promise<void> {
     logger,
   });
 
+  const emailTransport = await createTransportEmailSender(config, logger);
+  const emailConsumer = startEmailQueueConsumer({
+    redis: storage.redis,
+    transport: emailTransport,
+    logger,
+  });
+
   logger.info("worker started", {
     nodeEnv: config.nodeEnv,
-    jobs: ["item-purge", "capsule-cleanup"],
+    jobs: ["item-purge", "capsule-cleanup", "email-queue"],
+    emailProvider: config.emailProvider,
+    emailDeliveryMode: config.emailDeliveryMode,
   });
 
   const shutdown = async () => {
     logger.info("worker stopping");
     jobs.stop();
+    await emailConsumer.stop();
     await storage.close();
   };
 

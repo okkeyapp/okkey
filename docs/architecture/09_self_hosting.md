@@ -34,7 +34,7 @@ Supported:
 Self-hosted installation includes:
 
 - `okkey-api` (`ghcr.io/okkeyapp/api`) — HTTP API; runs SQL migrations on start
-- `okkey-worker` (`ghcr.io/okkeyapp/worker`) — background jobs (item purge, capsule cleanup)
+- `okkey-worker` (`ghcr.io/okkeyapp/worker`) — background jobs (item purge, capsule cleanup, Redis email queue)
 - `okkey-web` (`ghcr.io/okkeyapp/web`) — web UI
 - PostgreSQL 16
 - Redis 7
