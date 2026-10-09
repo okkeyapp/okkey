@@ -503,9 +503,12 @@ export default defineContentScript({
             gap: 0;
             padding: 8px;
           }
+          /* Edge-to-edge under suggestion rows (outside .list padding). */
           .list-sep {
+            display: block;
+            width: 100%;
             height: 1px;
-            margin: 8px 0;
+            margin: 0;
             border: 0;
             background: hsla(var(--ok-fg) / 0.12);
           }
@@ -514,11 +517,11 @@ export default defineContentScript({
             align-items: center;
             justify-content: center;
             width: 100%;
-            min-height: 36px;
+            min-height: 40px;
             margin: 0;
-            padding: 8px 12px;
+            padding: 10px 12px;
             border: 0;
-            border-radius: 8px;
+            border-radius: 0;
             background: transparent;
             color: hsl(var(--ok-fg));
             font: inherit;
@@ -536,7 +539,7 @@ export default defineContentScript({
           button.list-gen-cta:focus,
           button.list-gen-cta:focus-visible {
             background: hsl(var(--ok-hover));
-            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
+            box-shadow: inset 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           button.row, .row {
             display: flex;
@@ -1198,11 +1201,12 @@ export default defineContentScript({
 
     function listHtml(suggestions: AutofillSuggestion[]): string {
       const rows = suggestions.map((item) => suggestionRowHtml(item)).join("");
-      const generatorCta = listOffersUsernameGenerator
+      const generatorFooter = listOffersUsernameGenerator
         ? `<hr class="list-sep" role="separator" />
            <button type="button" class="list-gen-cta" data-open-username-generator="1">${escapeHtml(strings.usernameGeneratorCta)}</button>`
         : "";
-      return `<div class="panel"><div class="list">${rows}${generatorCta}</div></div>`;
+      // Separator + CTA sit outside `.list` padding so they run edge-to-edge on the panel.
+      return `<div class="panel"><div class="list">${rows}</div>${generatorFooter}</div>`;
     }
 
     function toggleAnchorInput(input: HTMLInputElement): HTMLInputElement {
