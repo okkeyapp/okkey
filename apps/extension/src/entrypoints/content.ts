@@ -29,8 +29,10 @@ import {
   type AutofillFormType,
 } from "../lib/autofillFormDetect";
 import {
+  applyGeneratorCopyButtonFeedback,
   createPasswordGeneratorState,
   createUsernameGeneratorState,
+  GENERATOR_COPY_FEEDBACK_MS,
   generatorOverlayCss,
   generatorOverlayStrings,
   generatorPanelHtml,
@@ -178,6 +180,9 @@ export default defineContentScript({
     let generatorState: GeneratorOverlayState | null = null;
     /** True while pointer is down on the generator length slider (custom drag). */
     let generatorSliderActive = false;
+    /** Copy-success icon feedback deadline (survives panel remounts). */
+    let generatorCopiedUntil = 0;
+    let generatorCopyResetTimer = 0;
     /** Form type detected before autocomplete suppress (stable for the focused field). */
     let activeFormType: AutofillFormType = "unknown";
     const genStrings = generatorOverlayStrings(
@@ -306,12 +311,19 @@ export default defineContentScript({
       return shadow;
     }
 
+    function clearGeneratorCopyFeedback(): void {
+      generatorCopiedUntil = 0;
+      window.clearTimeout(generatorCopyResetTimer);
+      generatorCopyResetTimer = 0;
+    }
+
     function hideOverlay(): void {
       overlayMode = "hidden";
       listOpen = false;
       vaultMenuOpen = false;
       generatorState = null;
       generatorSliderActive = false;
+      clearGeneratorCopyFeedback();
       if (host) {
         host.style.display = "none";
         host.style.pointerEvents = "none";
@@ -1294,17 +1306,22 @@ export default defineContentScript({
       }
       const kind = classifyAutofillInput(collectInputHints(activeInput));
       fillInputValue(activeInput, value);
-      // Register: fill password + confirm/repeat with the same generated password.
+      // Register: fill empty password + confirm/repeat with the same generated password.
       if (kind === "password") {
         const fields = findLoginFields(activeInput.form ?? document);
         for (const el of fields.password) {
-          if (el !== activeInput) {
-            fillInputValue(el, value);
+          if (el === activeInput) {
+            continue;
           }
+          if (el.value.trim().length > 0) {
+            continue;
+          }
+          fillInputValue(el, value);
         }
       }
       markFilledByOkkey();
       generatorState = null;
+      clearGeneratorCopyFeedback();
       listOpen = false;
       overlayMode = "hidden";
       void paintOverlay({ showToggleOnly: true });
@@ -1314,6 +1331,48 @@ export default defineContentScript({
       const panel = root.querySelector("[data-generator]");
       if (!(panel instanceof HTMLElement) || !generatorState) {
         return;
+      }
+
+      const copyBtn = panel.querySelector("[data-gen-copy]");
+      if (copyBtn instanceof HTMLElement) {
+        const remainingMs = generatorCopiedUntil - Date.now();
+        if (remainingMs > 0) {
+          applyGeneratorCopyButtonFeedback(copyBtn, true, genStrings);
+          window.clearTimeout(generatorCopyResetTimer);
+          generatorCopyResetTimer = window.setTimeout(() => {
+            generatorCopiedUntil = 0;
+            generatorCopyResetTimer = 0;
+            const live = root.querySelector("[data-gen-copy]");
+            if (live instanceof HTMLElement) {
+              applyGeneratorCopyButtonFeedback(live, false, genStrings);
+            }
+            keepPageFieldFocused();
+          }, remainingMs);
+        }
+
+        copyBtn.onclick = () => {
+          window.clearTimeout(hideTimer);
+          if (!generatorState?.value) {
+            return;
+          }
+          const value = generatorState.value;
+          void navigator.clipboard.writeText(value).catch(() => {
+            /* ignore */
+          });
+          applyGeneratorCopyButtonFeedback(copyBtn, true, genStrings);
+          window.clearTimeout(generatorCopyResetTimer);
+          generatorCopiedUntil = Date.now() + GENERATOR_COPY_FEEDBACK_MS;
+          generatorCopyResetTimer = window.setTimeout(() => {
+            generatorCopiedUntil = 0;
+            generatorCopyResetTimer = 0;
+            const live = root.querySelector("[data-gen-copy]");
+            if (live instanceof HTMLElement) {
+              applyGeneratorCopyButtonFeedback(live, false, genStrings);
+            }
+            keepPageFieldFocused();
+          }, GENERATOR_COPY_FEEDBACK_MS);
+          keepPageFieldFocused();
+        };
       }
 
       const regen = panel.querySelector("[data-gen-regen]");
@@ -1332,6 +1391,7 @@ export default defineContentScript({
       if (cancel instanceof HTMLElement) {
         cancel.onclick = () => {
           generatorState = null;
+          clearGeneratorCopyFeedback();
           listOpen = false;
           overlayMode = "hidden";
           void paintOverlay({ showToggleOnly: true });
@@ -1684,6 +1744,7 @@ export default defineContentScript({
         overlayMode === "username-generator"
       ) {
         generatorState = null;
+        clearGeneratorCopyFeedback();
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
@@ -1974,7 +2035,11 @@ export default defineContentScript({
         if (fields.otp.length === 0) {
           return;
         }
-        fillLoginFormAndMaybeSubmit(document, { username: "", password: "", totp });
+        fillLoginFormAndMaybeSubmit(
+          document,
+          { username: "", password: "", totp },
+          { onlyEmpty: true, forceFill: activeInput },
+        );
         markFilledByOkkey();
         listOpen = false;
         overlayMode = "hidden";
@@ -2008,9 +2073,14 @@ export default defineContentScript({
       overlayMode = "hidden";
       // Keep toggle on the filled field (do not hideOverlay).
       void paintOverlay({ showToggleOnly: true });
+      // Focused field always overwrites; other form fields only when empty.
+      const fillOpts = {
+        onlyEmpty: true as const,
+        forceFill: activeInput,
+      };
       const isLogin = !result.fill.categoryId || result.fill.categoryId === "login";
       if (isLogin) {
-        const outcome = fillLoginFormAndMaybeSubmit(document, result.fill);
+        const outcome = fillLoginFormAndMaybeSubmit(document, result.fill, fillOpts);
         if (outcome.submitted) {
           listOpen = false;
           overlayMode = "hidden";
@@ -2045,6 +2115,7 @@ export default defineContentScript({
       const isCreditCard = result.fill.categoryId === "credit_card";
       fillAutofillValues(document, fillValues, {
         allowHiddenCreditCard: isCreditCard,
+        ...fillOpts,
       });
       // Robokassa/GamePush: exp/cvc mount or become visible only after card number is set.
       if (isCreditCard) {

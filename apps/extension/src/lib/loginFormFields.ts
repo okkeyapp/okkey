@@ -278,7 +278,11 @@ export function otpValuesForFields(totp: string, fieldCount: number, maxLengths:
   return Array.from({ length: fieldCount }, () => totp);
 }
 
-function fillOtpFields(otpFields: HTMLInputElement[], totp: string): void {
+function fillOtpFields(
+  otpFields: HTMLInputElement[],
+  totp: string,
+  options?: Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill">,
+): void {
   if (otpFields.length === 0 || !totp) {
     return;
   }
@@ -293,27 +297,39 @@ function fillOtpFields(otpFields: HTMLInputElement[], totp: string): void {
     if (!el || value === undefined) {
       continue;
     }
+    if (shouldSkipNonEmptyField(el, options)) {
+      continue;
+    }
     fillInputValue(el, value);
   }
 }
 
+export type FillLoginFormOptions = Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill">;
+
 export function fillLoginForm(
   root: ParentNode,
   payload: { username: string; password: string; totp?: string },
+  options?: FillLoginFormOptions,
 ): void {
   const fields = findLoginFields(root);
   if (payload.username) {
     for (const el of fields.username) {
+      if (shouldSkipNonEmptyField(el, options)) {
+        continue;
+      }
       fillInputValue(el, payload.username);
     }
   }
   if (payload.password) {
     for (const el of fields.password) {
+      if (shouldSkipNonEmptyField(el, options)) {
+        continue;
+      }
       fillInputValue(el, payload.password);
     }
   }
   if (payload.totp) {
-    fillOtpFields(fields.otp, payload.totp);
+    fillOtpFields(fields.otp, payload.totp, options);
   }
 }
 
@@ -327,6 +343,28 @@ function isTypeHiddenInput(el: HTMLInputElement): boolean {
   return el.type.toLowerCase() === "hidden";
 }
 
+export type AutofillFillTargetOptions = {
+  /** Fill cc-* inputs even when currently not visible (display:none wrapper). */
+  allowHiddenCreditCard?: boolean;
+  /** Skip inputs that already have a non-empty value (unless {@link forceFill}). */
+  onlyEmpty?: boolean;
+  /** Always overwrite this element even when {@link onlyEmpty} (focused page field). */
+  forceFill?: HTMLInputElement | HTMLTextAreaElement | null;
+};
+
+function shouldSkipNonEmptyField(
+  el: HTMLInputElement | HTMLTextAreaElement,
+  options?: Pick<AutofillFillTargetOptions, "onlyEmpty" | "forceFill">,
+): boolean {
+  if (!options?.onlyEmpty) {
+    return false;
+  }
+  if (options.forceFill === el) {
+    return false;
+  }
+  return el.value.trim().length > 0;
+}
+
 /**
  * Whether an input may receive autofill.
  * Credit-card fields on Robokassa-like checkouts often live in `display:none` wrappers
@@ -335,12 +373,12 @@ function isTypeHiddenInput(el: HTMLInputElement): boolean {
 export function isAutofillTargetElement(
   el: HTMLInputElement,
   kind: string | null,
-  options?: { allowHiddenCreditCard?: boolean; onlyEmpty?: boolean },
+  options?: AutofillFillTargetOptions,
 ): boolean {
   if (isTypeHiddenInput(el) || isDisabledOrReadonly(el)) {
     return false;
   }
-  if (options?.onlyEmpty && el.value.trim().length > 0) {
+  if (shouldSkipNonEmptyField(el, options)) {
     return false;
   }
   const allowHiddenCc =
@@ -439,12 +477,7 @@ function resolveAutofillValueForKind(
   return value;
 }
 
-export type FillAutofillValuesOptions = {
-  /** Fill cc-* inputs even when currently not visible (display:none wrapper). */
-  allowHiddenCreditCard?: boolean;
-  /** Skip inputs that already have a non-empty value (used by deferred watchers). */
-  onlyEmpty?: boolean;
-};
+export type FillAutofillValuesOptions = AutofillFillTargetOptions;
 
 /**
  * Fill page inputs from a semantic value map (personal / card / bank / …).
@@ -653,8 +686,9 @@ export function submitLoginFormIfReady(root: ParentNode): boolean {
 export function fillLoginFormAndMaybeSubmit(
   root: ParentNode,
   payload: { username: string; password: string; totp?: string },
+  options?: FillLoginFormOptions,
 ): { filled: boolean; submitted: boolean } {
-  fillLoginForm(root, payload);
+  fillLoginForm(root, payload, options);
   const submitted = submitLoginFormIfReady(root);
   return { filled: true, submitted };
 }
