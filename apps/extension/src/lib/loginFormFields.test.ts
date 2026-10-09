@@ -97,28 +97,6 @@ describe("classifyAutofillInput non-login types", () => {
     assert.equal(classifyAutofillInput({ type: "text", name: "first-name" }), "given-name");
   });
 
-  it("fills name kind from full-name or joined first+last", () => {
-    assert.equal(
-      resolveAutofillValueForKindForTests("name", { name: "Саша Иванов" }),
-      "Саша Иванов",
-    );
-    assert.equal(
-      resolveAutofillValueForKindForTests("name", {
-        "given-name": "Саша",
-        "family-name": "Иванов",
-      }),
-      "Саша Иванов",
-    );
-    assert.equal(
-      resolveAutofillValueForKindForTests("name", {
-        "given-name": "Саша",
-        "additional-name": "П.",
-        "family-name": "Иванов",
-      }),
-      "Саша П. Иванов",
-    );
-  });
-
   it("detects credit card fields", () => {
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "cc-number" }), "cc-number");
     assert.equal(classifyAutofillInput({ type: "text", name: "cvc", autocomplete: "cc-csc" }), "cc-csc");

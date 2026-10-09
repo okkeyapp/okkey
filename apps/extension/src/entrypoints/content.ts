@@ -80,8 +80,14 @@ function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
   const locale = ru ? "ru" : "en";
   let usernameGeneratorCta = ru ? "Генератор логина" : "Username generator";
+  let emptyTooltip = ru ? "Записей нет" : "No items";
   try {
     usernameGeneratorCta = formatWebMessage(locale, "extension.autofill.usernameGenerator");
+  } catch {
+    /* bundle may lag until @okkey/i18n rebuild */
+  }
+  try {
+    emptyTooltip = formatWebMessage(locale, "extension.autofill.noItems");
   } catch {
     /* bundle may lag until @okkey/i18n rebuild */
   }
@@ -95,7 +101,7 @@ function overlayStrings() {
         updateUnlockBody: "Чтобы обновить учётную запись, сначала нужно разблокировать Okkey.",
         saveConfirm: "Сохранить",
         updateConfirm: "Обновить",
-        emptyTooltip: "Нет элементов для автозаполнения",
+        emptyTooltip,
         workspaceFallback: "Workspace",
         vaultFallback: "Сейф",
         usernameGeneratorCta,
@@ -109,12 +115,15 @@ function overlayStrings() {
         updateUnlockBody: "To update this login, unlock Okkey first.",
         saveConfirm: "Save",
         updateConfirm: "Update",
-        emptyTooltip: "No items to autofill",
+        emptyTooltip,
         workspaceFallback: "Workspace",
         vaultFallback: "Vault",
         usernameGeneratorCta,
       };
 }
+
+/** Visual state of the in-field Okkey toggle (Figma 1215:4374). */
+type AutofillToggleKind = "empty" | "locked" | "open" | "closed";
 
 function pageUrl(): string {
   return location.origin + location.pathname;
@@ -197,9 +206,35 @@ export default defineContentScript({
     let generatorCopyResetTimer = 0;
     /** Form type detected before autocomplete suppress (stable for the focused field). */
     let activeFormType: AutofillFormType = "unknown";
+    /**
+     * Last vault query outcome for the focused field — drives toggle chrome when the
+     * dropdown is closed (empty round vs chevron-right vs lock).
+     */
+    let toggleVaultStatus: "unknown" | "locked" | "empty" | "ready" = "unknown";
     const genStrings = generatorOverlayStrings(
       (navigator.language || "").toLowerCase().startsWith("ru"),
     );
+
+    function resolveToggleKind(): AutofillToggleKind {
+      if (overlayMode === "unlock-tooltip" || toggleVaultStatus === "locked") {
+        return "locked";
+      }
+      if (
+        overlayMode === "list" ||
+        overlayMode === "password-generator" ||
+        overlayMode === "username-generator"
+      ) {
+        return "open";
+      }
+      if (overlayMode === "empty-tooltip" || toggleVaultStatus === "empty") {
+        return "empty";
+      }
+      if (toggleVaultStatus === "ready") {
+        return "closed";
+      }
+      // Before first query: show closed chevron so click can open / discover state.
+      return "closed";
+    }
 
     function keepPageFieldFocused(): void {
       if (!activeInput || !document.contains(activeInput)) {
@@ -336,6 +371,7 @@ export default defineContentScript({
       vaultMenuOpen = false;
       generatorState = null;
       generatorSliderActive = false;
+      toggleVaultStatus = "unknown";
       clearGeneratorCopyFeedback();
       if (host) {
         host.style.display = "none";
@@ -1015,26 +1051,82 @@ export default defineContentScript({
             justify-content: flex-end;
             width: 100%;
           }
+          /* Figma 1215:4374 — 24×24 mark; 42×24 pill when lock/chevron present. */
           .toggle {
             pointer-events: auto;
             position: fixed;
-            width: 20px;
-            height: 20px;
-            border-radius: 40px;
-            border: 1px solid #fff;
-            background: hsl(var(--ok-primary));
-            box-shadow:
-              0 0 0 1px rgba(0,0,0,0.08),
-              0 1px 3px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+            height: 24px;
+            width: 24px;
             padding: 0;
+            margin: 0;
+            border: 0;
+            border-radius: 12px;
+            background: transparent;
             cursor: pointer;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-end;
             appearance: none;
             z-index: 2;
+            outline: none;
           }
-          .toggle img {
+          .toggle.toggle-pill {
+            width: 42px;
+            background: #f1f5f9;
+            border: 1px solid #b1b8bd;
+            box-shadow: none;
+          }
+          .toggle-side {
+            position: absolute;
+            left: 2px;
+            top: 3px;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+          }
+          .toggle-side img {
+            width: 16px;
+            height: 16px;
+            display: block;
+          }
+          .toggle-chevron {
+            transition: transform 180ms ease;
+            transform: rotate(-90deg); /* right when closed */
+          }
+          .toggle.toggle-open .toggle-chevron {
+            transform: rotate(0deg); /* down when open */
+          }
+          .toggle-mark {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 22px;
+            height: 22px;
+            border-radius: 40px;
+            border: 1px solid #f1f5f9;
+            background: hsl(var(--ok-primary));
+            box-shadow: 0 0 0 1px #b1b8bd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+          }
+          .toggle:not(.toggle-pill) .toggle-mark {
+            right: auto;
+            left: 0;
+            width: 24px;
+            height: 24px;
+            border: 1px solid #fff;
+            box-shadow:
+              0 0 0 1px rgba(0,0,0,0.08),
+              0 1px 3px rgba(0,0,0,0.1);
+          }
+          .toggle-mark img {
             width: 11.5px;
             height: 14.2px;
             display: block;
@@ -1296,7 +1388,10 @@ export default defineContentScript({
       return resolveAutofillAnchorInput(input);
     }
 
-    function toggleRectForInput(input: HTMLElement): { left: number; top: number } | null {
+    function toggleRectForInput(
+      input: HTMLElement,
+      kind: AutofillToggleKind = resolveToggleKind(),
+    ): { left: number; top: number; width: number; height: number } | null {
       if (!document.contains(input)) {
         return null;
       }
@@ -1314,11 +1409,33 @@ export default defineContentScript({
       ) {
         return null;
       }
-      const size = 20;
+      const height = 24;
+      const width = kind === "empty" ? 24 : 42;
       return {
-        left: Math.max(4, rect.right - size - 8),
-        top: rect.top + (rect.height - size) / 2,
+        left: Math.max(4, rect.right - width - 8),
+        top: rect.top + (rect.height - height) / 2,
+        width,
+        height,
       };
+    }
+
+    function toggleButtonHtml(
+      kind: AutofillToggleKind,
+      pos: { left: number; top: number },
+    ): string {
+      const mark = `<span class="toggle-mark"><img src="${escapeHtml(overlayIconUrl("okkey-mark"))}" alt="" /></span>`;
+      if (kind === "empty") {
+        return `<button type="button" class="toggle toggle-empty" data-toggle="1" data-toggle-kind="empty" style="left:${pos.left}px;top:${pos.top}px" aria-label="Okkey">${mark}</button>`;
+      }
+      const openClass = kind === "open" ? " toggle-open" : "";
+      const sideImg =
+        kind === "locked"
+          ? `<img src="${escapeHtml(overlayIconUrl("lucide-lock"))}" alt="" />`
+          : `<img class="toggle-chevron" src="${escapeHtml(overlayIconUrl("lucide-chevron-down"))}" alt="" />`;
+      return `<button type="button" class="toggle toggle-pill${openClass}" data-toggle="1" data-toggle-kind="${kind}" style="left:${pos.left}px;top:${pos.top}px" aria-label="Okkey" aria-expanded="${kind === "open" ? "true" : "false"}">
+        <span class="toggle-side">${sideImg}</span>
+        ${mark}
+      </button>`;
     }
 
     function positionPanelNearInput(panel: HTMLElement, input: HTMLElement): void {
@@ -1660,6 +1777,7 @@ export default defineContentScript({
       cachedSuggestions = [];
       listOpen = false;
       listOffersUsernameGenerator = false;
+      toggleVaultStatus = "ready";
       overlayMode = kind === "password" ? "password-generator" : "username-generator";
       void paintOverlay();
     }
@@ -1727,9 +1845,10 @@ export default defineContentScript({
           (overlayMode === "password-generator" || overlayMode === "username-generator") &&
           generatorState != null;
         const showToggleOnly = Boolean(opts?.showToggleOnly) && !generatorOpen;
+        const toggleKind = resolveToggleKind();
         const anchorInput =
           activeInput && document.contains(activeInput) ? toggleAnchorInput(activeInput) : null;
-        const togglePos = anchorInput ? toggleRectForInput(anchorInput) : null;
+        const togglePos = anchorInput ? toggleRectForInput(anchorInput, toggleKind) : null;
         // After dialog close, activeInput may still be set but no longer a valid anchor —
         // drop the orphan instead of leaving a floating toggle (often at prior center coords).
         if (
@@ -1768,15 +1887,11 @@ export default defineContentScript({
               : null;
         const tooltipMarkup =
           tooltipText && togglePos
-            ? `<div class="tooltip" style="left:${togglePos.left + 10}px;top:${togglePos.top}px"><span class="tooltip-arrow" aria-hidden="true"></span>${escapeHtml(tooltipText)}</div>`
+            ? `<div class="tooltip" style="left:${togglePos.left + togglePos.width / 2}px;top:${togglePos.top}px"><span class="tooltip-arrow" aria-hidden="true"></span>${escapeHtml(tooltipText)}</div>`
             : "";
 
         const toggleMarkup =
-          showToggle && togglePos
-            ? `<button type="button" class="toggle" data-toggle="1" style="left:${togglePos.left}px;top:${togglePos.top}px" aria-label="Okkey">
-               <img src="${escapeHtml(overlayIconUrl("okkey-mark"))}" alt="" />
-             </button>`
-            : "";
+          showToggle && togglePos ? toggleButtonHtml(toggleKind, togglePos) : "";
 
         host.style.display = "block";
         host.style.pointerEvents = "none";
@@ -1787,7 +1902,7 @@ export default defineContentScript({
 
         const tip = root.querySelector(".tooltip");
         if (tip instanceof HTMLElement && togglePos) {
-          const buttonCenter = togglePos.left + 10;
+          const buttonCenter = togglePos.left + togglePos.width / 2;
           const rect = tip.getBoundingClientRect();
           const half = rect.width / 2;
           const minCenter = 8 + half;
@@ -1899,14 +2014,41 @@ export default defineContentScript({
       if (!activeInput) {
         return;
       }
-      // Unlock-tooltip clicks open the vault unlock UI (not toggle-closed).
+      const kind = resolveToggleKind();
+
+      // Empty round mark: tooltip only — never open a dropdown.
+      if (kind === "empty" || overlayMode === "empty-tooltip") {
+        toggleVaultStatus = "empty";
+        listOpen = false;
+        overlayMode = "empty-tooltip";
+        await paintOverlay();
+        window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+          if (overlayMode === "empty-tooltip") {
+            overlayMode = "hidden";
+            void paintOverlay({ showToggleOnly: true });
+          }
+        }, 2200);
+        return;
+      }
+
+      // Lock pill: open extension master-password unlock.
+      if (kind === "locked" || overlayMode === "unlock-tooltip") {
+        toggleVaultStatus = "locked";
+        listOpen = false;
+        overlayMode = "unlock-tooltip";
+        await paintOverlay();
+        void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
+        return;
+      }
+
+      // Chevron open → close list / generator (arrow rotates back to right).
       if (listOpen && overlayMode === "list") {
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
         return;
       }
-      // Toggle closes an open generator the same way as the suggestion list.
       if (
         overlayMode === "password-generator" ||
         overlayMode === "username-generator"
@@ -1918,13 +2060,15 @@ export default defineContentScript({
         await paintOverlay({ showToggleOnly: true });
         return;
       }
-      // Explicit toggle open after a fill — allow suggestions again.
+
+      // Chevron closed → open dropdown (query / generator).
       clearFilledByOkkey();
       if (isOverlayUpdateFrozen()) {
         return;
       }
       const formType = activeFormType !== "unknown" ? activeFormType : resolveFormType(activeInput);
       if (maybeOpenRegisterGenerator(activeInput, formType)) {
+        toggleVaultStatus = "ready";
         return;
       }
       const queryGen = ++overlayQueryGeneration;
@@ -1942,19 +2086,21 @@ export default defineContentScript({
         return;
       }
       if (response.status === "locked") {
+        toggleVaultStatus = "locked";
         listOpen = false;
         overlayMode = "unlock-tooltip";
         await paintOverlay();
-        // Content scripts cannot call action.openPopup — route via background.
         void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
         return;
       }
       cachedSuggestions = response.suggestions;
       if (isRegisterUsernameField(activeInput, formType)) {
         applyRegisterUsernameSuggestions(cachedSuggestions);
+        toggleVaultStatus = "ready";
         return;
       }
       if (cachedSuggestions.length === 0) {
+        toggleVaultStatus = "empty";
         listOffersUsernameGenerator = false;
         listOpen = false;
         overlayMode = "empty-tooltip";
@@ -1968,6 +2114,7 @@ export default defineContentScript({
         }, 2200);
         return;
       }
+      toggleVaultStatus = "ready";
       listOffersUsernameGenerator = false;
       listOpen = true;
       overlayMode = "list";
@@ -1992,9 +2139,10 @@ export default defineContentScript({
       // Register password/username generators must open even after a personal_data fill
       // (suggestionsListSuppressed only blocks vault suggestion lists, not generators).
       if (maybeOpenRegisterGenerator(input, formType)) {
+        toggleVaultStatus = "ready";
         return;
       }
-      // After Okkey fill: keep the round toggle, do not auto-open the list until clear/toggle.
+      // After Okkey fill: keep the toggle, do not auto-open the list until clear/toggle.
       if (suggestionsListSuppressed()) {
         listOpen = false;
         overlayMode = "hidden";
@@ -2043,9 +2191,10 @@ export default defineContentScript({
         return;
       }
       if (response.status === "locked") {
+        toggleVaultStatus = "locked";
         cachedSuggestions = [];
         if (Date.now() < suppressUnlockTooltipUntil) {
-          // Post-submit / OTP step: keep the toggle, skip the unlock tooltip.
+          // Post-submit / OTP step: keep the lock toggle, skip the unlock tooltip.
           listOpen = false;
           overlayMode = "hidden";
           await paintOverlay({ showToggleOnly: true });
@@ -2059,15 +2208,18 @@ export default defineContentScript({
       cachedSuggestions = response.suggestions;
       if (isRegisterUsernameField(input, formType)) {
         applyRegisterUsernameSuggestions(cachedSuggestions);
+        toggleVaultStatus = "ready";
         return;
       }
       if (cachedSuggestions.length === 0) {
+        toggleVaultStatus = "empty";
         listOffersUsernameGenerator = false;
         listOpen = false;
         overlayMode = "hidden";
         await paintOverlay({ showToggleOnly: true });
         return;
       }
+      toggleVaultStatus = "ready";
       listOffersUsernameGenerator = false;
       listOpen = true;
       overlayMode = "list";

@@ -1709,6 +1709,7 @@
   "extension.autofill.unlockTitle": "Vault locked",
   "extension.autofill.unlockCta": "Unlock",
   "extension.autofill.usernameGenerator": "Username generator",
+  "extension.autofill.noItems": "No items",
   "extension.authCallback.documentTitle": "Okkey extension — Session ready",
   "extension.authCallback.title": "Okkey extension",
   "extension.authCallback.completing": "Completing sign-in…",

@@ -13,6 +13,7 @@ export function overlayIconUrl(
     | "okkey-logo-lock-compact"
     | "lucide-x"
     | "lucide-unlock"
+    | "lucide-lock"
     | "lucide-chevron-down"
     | "tabler-pencil"
     | "tabler-check"
