@@ -19,11 +19,12 @@ const ruAddress = (overrides: Partial<KeyFieldAddressValue> = {}): KeyFieldAddre
   ...overrides,
 });
 
-describe("normalizeKeyFieldAddressState", () => {
-  it("strips область / обл. / обл suffixes", () => {
+describe("normalizeKeyFieldAddressState (view helper)", () => {
+  it("strips trailing область / обл. / обл suffixes", () => {
     expect(normalizeKeyFieldAddressState("Московская область")).toBe("Московская");
     expect(normalizeKeyFieldAddressState("Московская обл.")).toBe("Московская");
     expect(normalizeKeyFieldAddressState("Московская обл")).toBe("Московская");
+    expect(normalizeKeyFieldAddressState("Нижний Новгород обл.")).toBe("Нижний Новгород");
     expect(normalizeKeyFieldAddressState("Московская")).toBe("Московская");
   });
 
@@ -33,14 +34,17 @@ describe("normalizeKeyFieldAddressState", () => {
 });
 
 describe("parse/serialize KeyFieldAddressValue state", () => {
-  it("normalizes state on parse (display) and serialize (save)", () => {
-    const parsed = parseKeyFieldAddressValue(
-      JSON.stringify(ruAddress({ state: "Московская область" })),
-    );
-    expect(parsed.state).toBe("Московская");
+  it("preserves область / обл. in the field value (no strip on parse/serialize)", () => {
+    const withOblast = ruAddress({ state: "Московская область" });
+    const parsed = parseKeyFieldAddressValue(JSON.stringify(withOblast));
+    expect(parsed.state).toBe("Московская область");
 
-    const serialized = serializeKeyFieldAddressValue(ruAddress({ state: "Московская обл." }));
-    expect(JSON.parse(serialized).state).toBe("Московская");
+    const withObl = ruAddress({ state: "Нижний Новгород обл." });
+    const serialized = serializeKeyFieldAddressValue(withObl);
+    expect(JSON.parse(serialized).state).toBe("Нижний Новгород обл.");
+
+    const roundTrip = parseKeyFieldAddressValue(serialized);
+    expect(roundTrip.state).toBe("Нижний Новгород обл.");
   });
 });
 
@@ -51,21 +55,40 @@ describe("formatKeyFieldAddressCopyValue (ru)", () => {
     );
   });
 
-  it("does not duplicate обл. when state already has область / обл.", () => {
+  it("strips trailing область / обл. then adds single обл. (no duplicate)", () => {
     expect(formatKeyFieldAddressCopyValue(ruAddress({ state: "Московская область" }), "ru")).toBe(
       "909123, Россия, Московская обл., г. Москва, ул. Октябрьская, д. 39A, кв. 187",
     );
     expect(formatKeyFieldAddressCopyValue(ruAddress({ state: "Московская обл." }), "ru")).toBe(
       "909123, Россия, Московская обл., г. Москва, ул. Октябрьская, д. 39A, кв. 187",
     );
+    expect(
+      formatKeyFieldAddressCopyValue(
+        ruAddress({
+          state: "Нижний Новгород обл.",
+          city: "Шахнуья",
+          street: "Тургенева",
+          house: "40А",
+          apartment: "1",
+          postalCode: "606910",
+        }),
+        "ru",
+      ),
+    ).toBe("606910, Россия, Нижний Новгород обл., г. Шахнуья, ул. Тургенева, д. 40А, кв. 1");
   });
 
   it("keeps non-область region markers", () => {
     expect(formatKeyFieldAddressCopyValue(ruAddress({ state: "Краснодарский край" }), "ru")).toContain(
       "Краснодарский край",
     );
+    expect(formatKeyFieldAddressCopyValue(ruAddress({ state: "Краснодарский край" }), "ru")).not.toContain(
+      "обл.",
+    );
     expect(formatKeyFieldAddressCopyValue(ruAddress({ state: "Республика Татарстан" }), "ru")).toContain(
       "респ. Татарстан",
+    );
+    expect(formatKeyFieldAddressCopyValue(ruAddress({ state: "Республика Татарстан" }), "ru")).not.toContain(
+      "обл.",
     );
   });
 });

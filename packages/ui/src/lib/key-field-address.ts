@@ -29,29 +29,25 @@ function readAddressPart(
 }
 
 /**
- * Strip RU oblast suffixes from the region/state field value (storage + input display).
- * One-line formatting re-adds `обл.` separately via {@link formatKeyFieldAddressCopyValue}.
+ * Strip trailing RU oblast suffixes from a region value for one-line view formatting only.
+ * Edit/input field must keep the raw value — do not use this on parse/serialize/onChange.
+ * `область` is matched before `обл` so we do not leave a dangling `асть`.
  */
 export function normalizeKeyFieldAddressState(state: string): string {
-  // `область` before `обл` so we do not leave a dangling `асть`.
   return state
-    .replace(/\s*область\.?/gi, "")
-    .replace(/\s*обл\.?/gi, "")
+    .replace(/\s*(?:область|обл\.?)\s*$/i, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
 export function serializeKeyFieldAddressValue(value: KeyFieldAddressValue): string {
-  return JSON.stringify({
-    ...value,
-    state: normalizeKeyFieldAddressState(value.state),
-  });
+  return JSON.stringify(value);
 }
 
 /**
  * Parse stored address JSON. Missing `house` / `apartment` (legacy) become "".
  * Non-JSON raw returns empty structured value (compatibility with older plain text).
- * Region/state is normalized (obl./область suffixes stripped) for field display.
+ * Region/state is kept as stored (no oblast-suffix strip — that is view-only).
  */
 export function parseKeyFieldAddressValue(value: string): KeyFieldAddressValue {
   const trimmed = value.trim();
@@ -71,7 +67,7 @@ export function parseKeyFieldAddressValue(value: string): KeyFieldAddressValue {
       house: readAddressPart(record, "house"),
       street: readAddressPart(record, "street"),
       city: readAddressPart(record, "city"),
-      state: normalizeKeyFieldAddressState(readAddressPart(record, "state")),
+      state: readAddressPart(record, "state"),
       postalCode: readAddressPart(record, "postalCode"),
       country: readAddressPart(record, "country"),
     };
