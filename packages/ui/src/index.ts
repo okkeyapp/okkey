@@ -30,6 +30,7 @@ export {
   buildKeyFieldAddressMapsUrl,
   emptyKeyFieldAddressValue,
   formatKeyFieldAddressCopyValue,
+  normalizeKeyFieldAddressState,
   parseKeyFieldAddressValue,
   serializeKeyFieldAddressValue,
   type KeyFieldAddressValue,

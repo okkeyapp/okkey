@@ -28,13 +28,30 @@ function readAddressPart(
   return typeof value === "string" ? value : "";
 }
 
+/**
+ * Strip RU oblast suffixes from the region/state field value (storage + input display).
+ * One-line formatting re-adds `обл.` separately via {@link formatKeyFieldAddressCopyValue}.
+ */
+export function normalizeKeyFieldAddressState(state: string): string {
+  // `область` before `обл` so we do not leave a dangling `асть`.
+  return state
+    .replace(/\s*область\.?/gi, "")
+    .replace(/\s*обл\.?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function serializeKeyFieldAddressValue(value: KeyFieldAddressValue): string {
-  return JSON.stringify(value);
+  return JSON.stringify({
+    ...value,
+    state: normalizeKeyFieldAddressState(value.state),
+  });
 }
 
 /**
  * Parse stored address JSON. Missing `house` / `apartment` (legacy) become "".
  * Non-JSON raw returns empty structured value (compatibility with older plain text).
+ * Region/state is normalized (obl./область suffixes stripped) for field display.
  */
 export function parseKeyFieldAddressValue(value: string): KeyFieldAddressValue {
   const trimmed = value.trim();
@@ -54,7 +71,7 @@ export function parseKeyFieldAddressValue(value: string): KeyFieldAddressValue {
       house: readAddressPart(record, "house"),
       street: readAddressPart(record, "street"),
       city: readAddressPart(record, "city"),
-      state: readAddressPart(record, "state"),
+      state: normalizeKeyFieldAddressState(readAddressPart(record, "state")),
       postalCode: readAddressPart(record, "postalCode"),
       country: readAddressPart(record, "country"),
     };
@@ -67,18 +84,24 @@ function isRuLocale(locale: string): boolean {
   return locale.trim().toLowerCase().startsWith("ru");
 }
 
-function formatRuState(state: string): string {
-  const trimmed = state.trim();
-  if (!trimmed) {
-    return "";
-  }
+/** Non-oblast RU region type markers — do not append `обл.` for these. */
+function hasRuNonOblastRegionMarker(value: string): boolean {
   // Avoid `\b` — it does not treat Cyrillic as word characters in JS.
-  return trimmed
-    .replace(/\s*область\.?/gi, "")
-    .replace(/\s*обл\.?/gi, "")
+  return /(?:^|\s)(?:край|респ\.?|республика|округ|ао)(?:\s|$)/i.test(value) || /респ\./i.test(value);
+}
+
+function formatRuState(state: string): string {
+  const cleaned = normalizeKeyFieldAddressState(state)
     .replace(/республика/gi, "респ.")
     .replace(/\s{2,}/g, " ")
     .trim();
+  if (!cleaned) {
+    return "";
+  }
+  if (hasRuNonOblastRegionMarker(cleaned)) {
+    return cleaned;
+  }
+  return `${cleaned} обл.`;
 }
 
 function formatRuCity(city: string): string {
