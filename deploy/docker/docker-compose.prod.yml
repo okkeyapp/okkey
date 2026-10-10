@@ -1,0 +1,180 @@
+# Okkey Core — production self-host stack (image: only, no build).
+# Install: see install.sh / README.md
+name: okkey
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - okkey-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - okkey-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Official minio/minio + minio/mc left Docker Hub (2026-09); Quay anonymous pulls
+  # also 401. pgsty/minio is a drop-in Community rebuild (same CLI/env/health).
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - okkey-minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: amazon/aws-cli:2.17.0
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        export AWS_ACCESS_KEY_ID="$${MINIO_ROOT_USER}"
+        export AWS_SECRET_ACCESS_KEY="$${MINIO_ROOT_PASSWORD}"
+        export AWS_DEFAULT_REGION="$${S3_REGION:-us-east-1}"
+        if aws --endpoint-url http://minio:9000 s3api head-bucket --bucket "$${S3_BUCKET}" 2>/dev/null; then
+          echo "bucket $${S3_BUCKET} already exists"
+        else
+          aws --endpoint-url http://minio:9000 s3 mb "s3://$${S3_BUCKET}"
+          echo "created bucket $${S3_BUCKET}"
+        fi
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-us-east-1}
+    restart: "no"
+
+  api:
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DEPLOY_ENV: prod
+      PORT: "4000"
+      RUN_BACKGROUND_JOBS: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_FORCE_PATH_STYLE: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-logger}
+      EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-queue}
+      EMAIL_DEFAULT_LOCALE: ${EMAIL_DEFAULT_LOCALE:-en}
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+      EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
+      EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Okkey}
+      WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
+      OKKEY_DEPLOYMENT_MODE: self_hosted
+      GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DEPLOY_ENV: prod
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_FORCE_PATH_STYLE: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-logger}
+      EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-queue}
+      EMAIL_DEFAULT_LOCALE: ${EMAIL_DEFAULT_LOCALE:-en}
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+      EMAIL_SMTP_SECURE: ${EMAIL_SMTP_SECURE:-false}
+      EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
+
+  web:
+    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      OKKEY_API_PUBLIC_URL: ${OKKEY_API_PUBLIC_URL}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  okkey-postgres:
+  okkey-redis:
+  okkey-minio:

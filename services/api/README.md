@@ -32,6 +32,17 @@ Minimal backend scaffold for Okkey Core.
   - `GET /vaults/:vaultId/events?afterVersion=0` (same)
   - `POST /vaults/:vaultId/events` (same)
 
+## Worker / background jobs
+
+Production self-host runs jobs in a separate process (`services/api/src/worker.ts`, image `ghcr.io/okkeyapp/worker`):
+
+- soft-deleted item hard-purge (hourly)
+- expired capsule cleanup (every 60s)
+
+Locally: `yarn dev:worker`. See [`services/worker/README.md`](../worker/README.md).
+
+SQL migrations under `migrations/` apply automatically on API (and worker) start via `schema_migrations`.
+
 ## Local run
 
 1. Prepare env:
