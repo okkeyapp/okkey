@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/cursor/self-host-doc
 
 The installer also falls back to `cursor/self-host-docker-2ea1` if `OKKEY_REF=dev` 404s, so plain `| bash` from that URL usually works after this fix is pushed.
 
-`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.3` (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.3`). If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
+`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.4` (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4`). If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
 
 **After merge to `dev`:**
 
@@ -45,8 +45,9 @@ On a fresh install the `users` table is empty. Open the web UI, enter an email, 
 
 `POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
-> First CI publish (PR #19): tag `v0.0.0-pr19.3` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.3` (also `:v0.0.0-pr19.3`).  
-> Workflow: https://github.com/okkeyapp/okkey/actions/runs/37924403393  
+> Latest CI publish (PR #19): tag `v0.0.0-pr19.4` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4` (also `:v0.0.0-pr19.4`; includes first-run bootstrap).  
+> Workflow: https://github.com/okkeyapp/okkey/actions/runs/38037326395  
+> Prior: `v0.0.0-pr19.3` → https://github.com/okkeyapp/okkey/actions/runs/37924403393  
 > `workflow_dispatch` appears in the Actions UI only after `publish-images.yml` is on the default branch (`main`). Until then, push a `v*` tag on a commit that contains the workflow.
 
 ## Manual install
@@ -57,7 +58,7 @@ mkdir -p ~/okkey && cd ~/okkey
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
-# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; keep OKKEY_IMAGE_TAG=0.0.0-pr19.3 until a release tag
+# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; keep OKKEY_IMAGE_TAG=0.0.0-pr19.4 until a release tag
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
