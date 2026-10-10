@@ -4,14 +4,36 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 
 ## One-command install
 
+**Until PR #19 is merged to `dev`**, use this one-liner (note: `OKKEY_REF=…` must be on the **right** of `|` so the installer process sees it — `VAR=x curl | bash` does **not** pass `VAR` into `bash`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/cursor/self-host-docker-2ea1/deploy/docker/install.sh \
+  | OKKEY_REF=cursor/self-host-docker-2ea1 bash
+```
+
+The installer also falls back to `cursor/self-host-docker-2ea1` if `OKKEY_REF=dev` 404s, so plain `| bash` from that URL usually works after this fix is pushed.
+
+`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.3` (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.3`). If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
+
+**After merge to `dev`:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 ```
 
+Optional env:
+
+| Variable | Purpose |
+|----------|---------|
+| `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`) |
+| `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
+| `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`) |
+| `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
+
 This will:
 
 1. Create `~/okkey` (override with `OKKEY_INSTALL_DIR`)
-2. Download `docker-compose.prod.yml` + `.env.example`
+2. Download `docker-compose.prod.yml` + `.env.example` from `OKKEY_REF`
 3. Generate `JWT_SECRET`, `SESSION_SECRET`, Postgres and MinIO passwords
 4. `docker compose pull && up -d`
 
@@ -19,17 +41,17 @@ Then open **http://localhost:8080** (web) and check **http://localhost:4000/heal
 
 > First CI publish (PR #19): tag `v0.0.0-pr19.3` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.3` (also `:v0.0.0-pr19.3`).  
 > Workflow: https://github.com/okkeyapp/okkey/actions/runs/37924403393  
-> Set `OKKEY_IMAGE_TAG=0.0.0-pr19.3` in `.env` (default in `.env.example`).  
 > `workflow_dispatch` appears in the Actions UI only after `publish-images.yml` is on the default branch (`main`). Until then, push a `v*` tag on a commit that contains the workflow.
 
 ## Manual install
 
 ```bash
+REF=cursor/self-host-docker-2ea1   # or `dev` after merge
 mkdir -p ~/okkey && cd ~/okkey
-curl -fsSL -O https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/docker-compose.prod.yml
-curl -fsSL -O https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/.env.example
+curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
+curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
-# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
+# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; keep OKKEY_IMAGE_TAG=0.0.0-pr19.3 until a release tag
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
