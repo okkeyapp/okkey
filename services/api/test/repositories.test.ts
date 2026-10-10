@@ -89,6 +89,17 @@ test("UsersRepository.create maps inserted row", async () => {
   assert.match(db.queries[0].sql, /INSERT INTO users/);
 });
 
+test("UsersRepository.hasAnyUsers maps EXISTS result", async () => {
+  const empty = new FakeDb();
+  empty.enqueueResult([{ exists: false }]);
+  assert.equal(await new UsersRepository(empty).hasAnyUsers(), false);
+  assert.match(empty.queries[0].sql, /EXISTS\(SELECT 1 FROM users/);
+
+  const populated = new FakeDb();
+  populated.enqueueResult([{ exists: true }]);
+  assert.equal(await new UsersRepository(populated).hasAnyUsers(), true);
+});
+
 test("WorkspacesRepository.listByOwner returns mapped workspaces", async () => {
   const db = new FakeDb();
   db.enqueueResult([

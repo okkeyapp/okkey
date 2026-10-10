@@ -37,7 +37,13 @@ This will:
 3. Generate `JWT_SECRET`, `SESSION_SECRET`, Postgres and MinIO passwords
 4. `docker compose pull && up -d`
 
-Then open **http://localhost:8080** (web) and check **http://localhost:4000/health** (API).
+Then open **http://localhost:8080** (web) and check **http://localhost:4000/health** (API). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
+
+## First-run (empty database)
+
+On a fresh install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped** and you go straight to the registration form (no SMTP needed for the first account).
+
+`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
 > First CI publish (PR #19): tag `v0.0.0-pr19.3` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.3` (also `:v0.0.0-pr19.3`).  
 > Workflow: https://github.com/okkeyapp/okkey/actions/runs/37924403393  

@@ -138,14 +138,38 @@ docker compose -f "./${COMPOSE_FILE_NAME}" --env-file .env up -d
 
 web_port="$(grep -E '^WEB_PORT=' .env 2>/dev/null | cut -d= -f2- || true)"
 api_port="$(grep -E '^API_PORT=' .env 2>/dev/null | cut -d= -f2- || true)"
+public_app_url="$(grep -E '^PUBLIC_APP_URL=' .env 2>/dev/null | cut -d= -f2- || true)"
 web_port="${web_port:-8080}"
 api_port="${api_port:-4000}"
+if [[ -n "${public_app_url}" ]]; then
+  web_url="${public_app_url}"
+else
+  web_url="http://localhost:${web_port}"
+fi
 
+print_okkey_banner() {
+  cat <<'EOF'
+
+ #######  ##    ## ##    ## ######## ##    ##
+##     ## ##   ##  ##   ##  ##        ##  ##
+##     ## ##  ##   ##  ##   ##         ####
+##     ## #####    #####    ######      ##
+##     ## ##  ##   ##  ##   ##          ##
+##     ## ##   ##  ##   ##  ##          ##
+ #######  ##    ## ##    ## ########    ##
+
+EOF
+}
+
+print_okkey_banner
+log "Install succeeded — Okkey is ready."
 log ""
-log "Okkey is starting."
-log "  Web UI:  http://localhost:${web_port}"
-log "  API:     http://localhost:${api_port}/health"
+log "  Open:  ${web_url}"
+log "  API:   http://localhost:${api_port}/health"
 log ""
 log "Files: ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME}  ${OKKEY_INSTALL_DIR}/.env"
 log "Logs:  docker compose -f ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME} logs -f"
 log "Docs:  https://github.com/okkeyapp/okkey/blob/${OKKEY_REF}/deploy/docker/README.md"
+log ""
+log "First-run: with an empty database, enter your email and create the first account"
+log "without OTP (no SMTP needed). Later users use normal email verification."

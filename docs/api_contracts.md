@@ -68,6 +68,8 @@ Flow: **start** → (optional **resend**) → **confirm** → receive `authState
 
 Starts login: creates a short-lived challenge, sends code to email (provider-dependent).
 
+**Self-host first-run:** when the `users` table is empty, Core does **not** send OTP mail. The response includes `bootstrapRequired: true` and `authStateId` so the client can open registration immediately (no SMTP required for the first account). Once any user exists, this endpoint returns to the normal email OTP flow.
+
 **Auth:** none.
 
 **Request body:**
@@ -81,9 +83,12 @@ Starts login: creates a short-lived challenge, sends code to email (provider-dep
 
 | Field | Type | Description |
 |--------|------|-------------|
-| `challengeId` | string | Opaque id for resend/confirm. |
+| `challengeId` | string | Opaque id for resend/confirm. Empty string when `bootstrapRequired`. |
 | `expiresAt` | string | Challenge expiry (ISO-8601 UTC). |
 | `resendAvailableAt` | string | Earliest time resend is allowed (ISO-8601 UTC). |
+| `bootstrapRequired` | boolean | Optional. `true` when zero users — skip OTP UI. |
+| `authStateId` | string | Optional. Present with `bootstrapRequired`; use for `POST /auth/register/complete`. |
+| `nextStep` | string | Optional. `"registration"` when `bootstrapRequired`. |
 
 **Errors:**
 

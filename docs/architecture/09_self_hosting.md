@@ -18,6 +18,8 @@ Full guide, manual compose, TLS notes, and image tags:
 
 → [`deploy/docker/README.md`](../../deploy/docker/README.md)
 
+**First-run:** with an empty `users` table, email login skips OTP (`bootstrapRequired` on `POST /auth/email/start`) so the first admin can register without SMTP. Once any user exists, normal email OTP applies.
+
 ---
 
 ## Deployment Methods
