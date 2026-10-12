@@ -1648,6 +1648,7 @@
   "workspaces.createPopup.submit": "Create",
   "workspaces.createPopup.creating": "Creating…",
   "web.workspaceSettings.plan.request.emailLabel": "Contact email",
+  "web.workspaceSettings.plan.request.memberCountLabel": "Number of workspace members",
   "web.workspaceSettings.plan.request.invalidEmail": "Enter a valid email.",
   "web.workspaceSettings.plan.request.errorTitle": "Could not send",
   "web.workspaceSettings.plan.request.errorGeneric": "Could not send the request. Try again later.",

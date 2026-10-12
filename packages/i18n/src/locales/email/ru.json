@@ -70,6 +70,7 @@
   "email.planChangeRequest.contactEmail": "Email для связи: {email}",
   "email.planChangeRequest.accountEmail": "Email аккаунта: {email}",
   "email.planChangeRequest.locale": "Язык: {locale}",
+  "email.planChangeRequest.workspaceMemberCount": "Количество участников пространства: {count}",
   "email.planChangeRequest.region": "Регион: {region}",
   "email.planChangeRequest.actor": "Пользователь: {userId}"
 }

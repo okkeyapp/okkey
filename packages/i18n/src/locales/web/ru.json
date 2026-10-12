@@ -1648,6 +1648,7 @@
   "workspaces.createPopup.submit": "Создать",
   "workspaces.createPopup.creating": "Создание…",
   "web.workspaceSettings.plan.request.emailLabel": "Email для связи",
+  "web.workspaceSettings.plan.request.memberCountLabel": "Количество участников пространства",
   "web.workspaceSettings.plan.request.invalidEmail": "Укажите корректный email.",
   "web.workspaceSettings.plan.request.errorTitle": "Не удалось отправить",
   "web.workspaceSettings.plan.request.errorGeneric": "Не удалось отправить заявку. Попробуйте позже.",
