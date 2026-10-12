@@ -278,6 +278,8 @@ export default defineContentScript({
     let pendingUpdateItemId: string | null = null;
     let pendingUpdateChangedFields: AutofillUpdateFieldKey[] = [];
     let savePromptKind: SavePromptKind = "create";
+    /** True while Save/Update footer CTA awaits async commit (blocks double-submit). */
+    let saveConfirmBusy = false;
     let saveFormMounted = false;
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
@@ -467,6 +469,7 @@ export default defineContentScript({
       generatorState = null;
       generatorSliderActive = false;
       toggleVaultStatus = "unknown";
+      saveConfirmBusy = false;
       clearGeneratorCopyFeedback();
       unmountSavePromptKeyForm();
       saveFormMounted = false;
@@ -876,7 +879,19 @@ export default defineContentScript({
             pointer-events: none;
             cursor: default;
           }
-          button.cta img { width: 16px; height: 16px; display: block; }
+          button.cta img,
+          button.cta .cta-spinner {
+            width: 16px;
+            height: 16px;
+            display: block;
+            flex-shrink: 0;
+          }
+          button.cta .cta-spinner {
+            animation: okkey-cta-spin 0.75s linear infinite;
+          }
+          @keyframes okkey-cta-spin {
+            to { transform: rotate(360deg); }
+          }
           button.icon-btn {
             display: inline-flex;
             align-items: center;
@@ -1632,6 +1647,38 @@ export default defineContentScript({
       </div>`;
     }
 
+    /** Inline spinner matching @okkey/ui Spinner (16px / currentColor for primary CTA). */
+    function ctaSpinnerHtml(): string {
+      return `<svg class="cta-spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3A9 9 0 0 1 21 12"/></svg>`;
+    }
+
+    function saveConfirmCtaHtml(confirmText: string): string {
+      const busyAttrs = saveConfirmBusy ? ` disabled aria-busy="true"` : "";
+      const spinner = saveConfirmBusy ? ctaSpinnerHtml() : "";
+      return `<button type="button" class="cta" data-save-confirm="1"${busyAttrs}>${spinner}<span>${escapeHtml(confirmText)}</span></button>`;
+    }
+
+    /** In-place busy chrome so save-form React mount is not remounted on every paint. */
+    function applySaveConfirmBusyDom(): void {
+      if (!shadow) {
+        return;
+      }
+      const btn = shadow.querySelector("[data-save-confirm]");
+      if (!(btn instanceof HTMLButtonElement)) {
+        return;
+      }
+      btn.disabled = saveConfirmBusy;
+      if (saveConfirmBusy) {
+        btn.setAttribute("aria-busy", "true");
+        if (!btn.querySelector(".cta-spinner")) {
+          btn.insertAdjacentHTML("afterbegin", ctaSpinnerHtml());
+        }
+      } else {
+        btn.removeAttribute("aria-busy");
+        btn.querySelector(".cta-spinner")?.remove();
+      }
+    }
+
     function savePathSecondaryHtml(isUpdate: boolean, formMode = false): string {
       if (isUpdate) {
         const fields = `<span class="update-fields">${escapeHtml(
@@ -1685,7 +1732,7 @@ export default defineContentScript({
           </div>
           <div class="save-form-body" data-key-form-root></div>
           <div class="save-actions">
-            <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
+            ${saveConfirmCtaHtml(confirmText)}
           </div>
           <div data-key-form-portal></div>
         </div>`;
@@ -1712,7 +1759,7 @@ export default defineContentScript({
           <div data-save-path>${secondaryBlock}</div>
         </div>
         <div class="save-actions">
-          <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
+          ${saveConfirmCtaHtml(confirmText)}
         </div>
       </div>`;
     }
@@ -1856,6 +1903,7 @@ export default defineContentScript({
           pendingUpdateItemId = null;
           pendingUpdateChangedFields = [];
           savePromptKind = "create";
+          saveConfirmBusy = false;
           closeSaveKeyForm();
           // Dismiss must survive redirect — do not restore on the next page.
           void dismissPendingSaveOffer();
@@ -1863,11 +1911,23 @@ export default defineContentScript({
           return;
         }
         if (target.closest("[data-save-confirm]")) {
-          if (overlayMode === "save-form") {
-            void confirmSaveForm();
+          if (saveConfirmBusy) {
             return;
           }
-          void confirmSave();
+          void (async () => {
+            saveConfirmBusy = true;
+            applySaveConfirmBusyDom();
+            try {
+              if (overlayMode === "save-form") {
+                await confirmSaveForm();
+              } else {
+                await confirmSave();
+              }
+            } finally {
+              saveConfirmBusy = false;
+              applySaveConfirmBusyDom();
+            }
+          })();
           return;
         }
         if (target.closest("[data-open-key-form]")) {

@@ -986,8 +986,9 @@ export function PopupApp() {
                 </div>
               ) : null}
 
-              <Button type="submit" className="w-full" disabled={busy}>
-                {busy ? <Spinner className="size-4" /> : t("auth.email.submit")}
+              <Button type="submit" className="w-full" disabled={busy} aria-busy={busy || undefined}>
+                {busy ? <Spinner className="size-4" /> : null}
+                {t("auth.email.submit")}
               </Button>
             </form>
           </AuthShell>
@@ -1090,7 +1091,12 @@ export function PopupApp() {
             ) : null}
 
             {rejected ? (
-              <Button type="button" disabled={retrying} onClick={() => void onRetryRegistration()}>
+              <Button
+                type="button"
+                disabled={retrying}
+                aria-busy={retrying || undefined}
+                onClick={() => void onRetryRegistration()}
+              >
                 {retrying ? <Spinner className="size-4" /> : null}
                 {t("web.devicePending.retry")}
               </Button>
@@ -1266,8 +1272,10 @@ export function PopupApp() {
             variant="default"
             className="w-full"
             disabled={unlockSubmitDisabled}
+            aria-busy={unlockBusy || undefined}
           >
-            {unlockBusy ? <Spinner className="size-4" /> : t("unlock.submit")}
+            {unlockBusy ? <Spinner className="size-4" /> : null}
+            {t("unlock.submit")}
           </Button>
         </form>
       </AuthShell>
