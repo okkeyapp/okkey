@@ -280,6 +280,12 @@ export default defineContentScript({
     let savePromptKind: SavePromptKind = "create";
     /** True while Save/Update footer CTA awaits async commit (blocks double-submit). */
     let saveConfirmBusy = false;
+    /**
+     * Compact save / save-form footer requested dismiss after a successful commit.
+     * Held until the busy chrome has painted for SAVE_CONFIRM_MIN_BUSY_MS so a fast
+     * runtime round-trip still shows disabled + spinner on `[data-save-confirm]`.
+     */
+    let savePromptDismissAfterBusy = false;
     let saveFormMounted = false;
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
@@ -470,6 +476,7 @@ export default defineContentScript({
       generatorSliderActive = false;
       toggleVaultStatus = "unknown";
       saveConfirmBusy = false;
+      savePromptDismissAfterBusy = false;
       clearGeneratorCopyFeedback();
       unmountSavePromptKeyForm();
       saveFormMounted = false;
@@ -1647,35 +1654,87 @@ export default defineContentScript({
       </div>`;
     }
 
+    /** Min time the overlay footer Save/Update CTA stays in busy chrome (even if save is instant). */
+    const SAVE_CONFIRM_MIN_BUSY_MS = 300;
+
+    function sleepMs(ms: number): Promise<void> {
+      return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+      });
+    }
+
+    /** Yield one animation frame so disabled + spinner paint before the async save path. */
+    function nextPaintFrame(): Promise<void> {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    }
+
     /** Inline spinner matching @okkey/ui Spinner (16px / currentColor for primary CTA). */
     function ctaSpinnerHtml(): string {
       return `<svg class="cta-spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3A9 9 0 0 1 21 12"/></svg>`;
     }
 
+    /** Overlay footer CTA in `.save-actions` (compact save card + save-form) — not popup Button. */
     function saveConfirmCtaHtml(confirmText: string): string {
-      const busyAttrs = saveConfirmBusy ? ` disabled aria-busy="true"` : "";
+      const busyAttrs = saveConfirmBusy
+        ? ` disabled aria-busy="true" aria-disabled="true"`
+        : "";
       const spinner = saveConfirmBusy ? ctaSpinnerHtml() : "";
       return `<button type="button" class="cta" data-save-confirm="1"${busyAttrs}>${spinner}<span>${escapeHtml(confirmText)}</span></button>`;
     }
 
-    /** In-place busy chrome so save-form React mount is not remounted on every paint. */
+    /** In-place busy chrome on overlay footer `[data-save-confirm]` (avoids remounting save-form). */
     function applySaveConfirmBusyDom(): void {
       if (!shadow) {
         return;
       }
-      const btn = shadow.querySelector("[data-save-confirm]");
+      // Footer Save/Update in `.panel-save .save-actions` (compact card or save-form).
+      const btn = shadow.querySelector(".save-actions [data-save-confirm]");
       if (!(btn instanceof HTMLButtonElement)) {
         return;
       }
       btn.disabled = saveConfirmBusy;
       if (saveConfirmBusy) {
         btn.setAttribute("aria-busy", "true");
+        btn.setAttribute("aria-disabled", "true");
         if (!btn.querySelector(".cta-spinner")) {
           btn.insertAdjacentHTML("afterbegin", ctaSpinnerHtml());
         }
       } else {
         btn.removeAttribute("aria-busy");
+        btn.removeAttribute("aria-disabled");
         btn.querySelector(".cta-spinner")?.remove();
+      }
+    }
+
+    async function runSaveConfirmWithBusyChrome(
+      work: () => Promise<void>,
+    ): Promise<void> {
+      if (saveConfirmBusy) {
+        return;
+      }
+      saveConfirmBusy = true;
+      savePromptDismissAfterBusy = false;
+      applySaveConfirmBusyDom();
+      // Force a paint so opacity/spinner are visible before await returns.
+      await nextPaintFrame();
+      const busyStartedAt = Date.now();
+      try {
+        await work();
+      } finally {
+        const remain = SAVE_CONFIRM_MIN_BUSY_MS - (Date.now() - busyStartedAt);
+        if (remain > 0) {
+          await sleepMs(remain);
+        }
+        const shouldDismiss = savePromptDismissAfterBusy;
+        savePromptDismissAfterBusy = false;
+        saveConfirmBusy = false;
+        if (shouldDismiss) {
+          hideOverlay();
+        } else {
+          applySaveConfirmBusyDom();
+        }
       }
     }
 
@@ -1904,30 +1963,22 @@ export default defineContentScript({
           pendingUpdateChangedFields = [];
           savePromptKind = "create";
           saveConfirmBusy = false;
+          savePromptDismissAfterBusy = false;
           closeSaveKeyForm();
           // Dismiss must survive redirect — do not restore on the next page.
           void dismissPendingSaveOffer();
           hideOverlay();
           return;
         }
+        // Overlay footer Save/Update (`.save-actions [data-save-confirm]`), compact card or save-form.
         if (target.closest("[data-save-confirm]")) {
-          if (saveConfirmBusy) {
-            return;
-          }
-          void (async () => {
-            saveConfirmBusy = true;
-            applySaveConfirmBusyDom();
-            try {
-              if (overlayMode === "save-form") {
-                await confirmSaveForm();
-              } else {
-                await confirmSave();
-              }
-            } finally {
-              saveConfirmBusy = false;
-              applySaveConfirmBusyDom();
+          void runSaveConfirmWithBusyChrome(async () => {
+            if (overlayMode === "save-form") {
+              await confirmSaveForm();
+            } else {
+              await confirmSave();
             }
-          })();
+          });
           return;
         }
         if (target.closest("[data-open-key-form]")) {
@@ -2223,7 +2274,8 @@ export default defineContentScript({
       saveIconUrl = undefined;
       saveIconLoading = false;
       void clearPendingSaveOffer();
-      hideOverlay();
+      // Defer hide so overlay footer busy chrome can stay visible for min duration.
+      savePromptDismissAfterBusy = true;
     }
 
     function onSaveFormLocked(): void {
@@ -3216,7 +3268,8 @@ export default defineContentScript({
         saveIconUrl = undefined;
         saveIconLoading = false;
         void clearPendingSaveOffer();
-        hideOverlay();
+        // Defer hide so compact-card footer Save can show busy chrome ≥300ms.
+        savePromptDismissAfterBusy = true;
         return;
       }
       if (result.status === "signed-out") {
@@ -3226,7 +3279,7 @@ export default defineContentScript({
         pendingUpdateChangedFields = [];
         savePromptKind = "create";
         void clearPendingSaveOffer();
-        hideOverlay();
+        savePromptDismissAfterBusy = true;
         return;
       }
       if (result.status === "error") {
