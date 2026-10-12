@@ -121,7 +121,34 @@ export function pickLoginIdentifierFields(usernameFields: HTMLInputElement[]): H
   return usernameFields.filter((el) => loginIdentifierPriority(el) === best);
 }
 
-export function findLoginFields(root: ParentNode): {
+export type FindLoginFieldsOptions = {
+  /**
+   * When false, only light-DOM `input` nodes (no open-shadow walk).
+   * Use on submit/capture so persist can race a full-page redirect.
+   */
+  includeOpenShadow?: boolean;
+};
+
+function listLoginInputNodes(
+  root: ParentNode,
+  options?: FindLoginFieldsOptions,
+): HTMLInputElement[] {
+  if (options?.includeOpenShadow === false) {
+    try {
+      return Array.from(root.querySelectorAll("input")).filter(
+        (el): el is HTMLInputElement => el instanceof HTMLInputElement,
+      );
+    } catch {
+      return [];
+    }
+  }
+  return queryAutofillInputs(root);
+}
+
+export function findLoginFields(
+  root: ParentNode,
+  options?: FindLoginFieldsOptions,
+): {
   username: HTMLInputElement[];
   password: HTMLInputElement[];
   otp: HTMLInputElement[];
@@ -129,7 +156,7 @@ export function findLoginFields(root: ParentNode): {
   const username: HTMLInputElement[] = [];
   const password: HTMLInputElement[] = [];
   const otp: HTMLInputElement[] = [];
-  const nodes = queryAutofillInputs(root);
+  const nodes = listLoginInputNodes(root, options);
   const classified = new Set<HTMLInputElement>();
 
   // Prefer multi-box OTP groups first so type=password digit boxes never get password fill.
@@ -742,9 +769,15 @@ function autocompleteIncludes(el: HTMLInputElement, token: string): boolean {
 /**
  * Read username/password currently in the page (for save-password capture).
  * Register: prefers `new-password` over confirm/repeat; username may be email.
+ *
+ * Light-DOM only by default — submit/click capture must finish before navigation
+ * unload drops the pending-save SW message (full shadow walk is too slow on big pages).
  */
-export function captureLoginCredentials(root: ParentNode): { username: string; password: string } | null {
-  const fields = findLoginFields(root);
+export function captureLoginCredentials(
+  root: ParentNode,
+  options?: FindLoginFieldsOptions,
+): { username: string; password: string } | null {
+  const fields = findLoginFields(root, { includeOpenShadow: false, ...options });
   let password = "";
   for (const el of fields.password) {
     const value = el.value?.trim() ?? "";

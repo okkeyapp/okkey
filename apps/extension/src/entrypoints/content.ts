@@ -2812,24 +2812,51 @@ export default defineContentScript({
     /**
      * Rebuild pending creds + persist to the background tab map / session storage.
      * Must run in capture phase (before navigation unload) so restore can find the offer.
+     *
+     * Persist kicks off BEFORE form-type heuristics — detectFormType walks the DOM and
+     * used to delay the SW message past unload after Bitwarden-style collect changes.
      */
     function stagePendingSaveFromSnapshot(
       form: HTMLFormElement | null,
       snapshot: { username: string; password: string; captureUrl: string },
     ): PendingSaveCreds | null {
+      // Cheap timestamp gate — do not stage autofilled logins (register handled below).
+      const filledByOkkey = wasFilledByOkkey();
+      const early: PendingSaveCreds = {
+        username: snapshot.username,
+        password: snapshot.password,
+        captureUrl: snapshot.captureUrl,
+        websiteUrl: snapshot.captureUrl,
+        formType: "unknown",
+      };
+      if (!filledByOkkey) {
+        // Stage immediately with capture URL — refine formType/websiteUrl after heuristics.
+        pendingSave = early;
+        // Fire-and-forget ASAP — unload races this message on full-page login redirects.
+        void persistPendingSaveOffer(early);
+      }
+
       const formType = resolveSaveOfferFormType(form);
+      const dropStaged = (): null => {
+        if (!filledByOkkey) {
+          pendingSave = null;
+          void clearPendingSaveOffer();
+        }
+        return null;
+      };
       if (
         formType === "checkout" ||
         formType === "search" ||
         formType === "identity"
       ) {
-        return null;
+        return dropStaged();
       }
       if (!isSaveOfferFormType(formType) && formType !== "unknown") {
-        return null;
+        return dropStaged();
       }
       const isRegister = formType === "register";
-      if (wasFilledByOkkey() && !isRegister) {
+      // Vault autofill of an existing login must not re-prompt; register / generator may.
+      if (filledByOkkey && !isRegister) {
         return null;
       }
       const creds: PendingSaveCreds = {
@@ -2840,8 +2867,8 @@ export default defineContentScript({
         formType,
       };
       pendingSave = creds;
-      // Fire-and-forget is OK here only because we also await persist in offer path;
-      // capture-phase kickoff maximizes chance the SW receives it before unload.
+      // Refine websiteUrl/formType (register → origin/). Same creds → keeps createdAt.
+      // Also covers register-after-generator (skipped the early persist above).
       void persistPendingSaveOffer(creds);
       return creds;
     }
