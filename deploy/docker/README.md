@@ -60,6 +60,42 @@ On a fresh install the `users` table is empty. Open the web UI, enter an email, 
 
 `POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
+## Crypto profiles (registration)
+
+The web client registers with `password_kdf_params_version: 1` (identity blob is crypto v2). API policy:
+
+| `DEPLOY_ENV` | Default allowed profiles | Notes |
+|--------------|--------------------------|--------|
+| `dev` (self-host default) | `1,2` | Required for current web registration |
+| `stage` / `prod` | `2` only | Rejects kdf v1 with `CRYPTO_PROFILE_NOT_ALLOWED` |
+
+Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLLOUT_MODE` from `.env` (defaults `dev` / `1,2` / `compat`). You cannot set `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` with `DEPLOY_ENV=prod` — the process exits on boot.
+
+### Workaround (existing install showing «Профиль шифрования не разрешён»)
+
+1. Refresh compose (old files hardcode `DEPLOY_ENV: prod`):
+
+```bash
+REF=cursor/self-host-docker-2ea1
+curl -fsSL -o ~/okkey/docker-compose.prod.yml \
+  "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
+```
+
+2. Add to `~/okkey/.env` (or merge from `.env.example`):
+
+```bash
+DEPLOY_ENV=dev
+CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2
+CRYPTO_ROLLOUT_MODE=compat
+```
+
+3. Recreate api + worker (no new image tag required):
+
+```bash
+cd ~/okkey
+docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate api worker
+```
+
 > Latest CI publish (PR #19): tag `v0.0.0-pr19.4` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4` (also `:v0.0.0-pr19.4`; includes first-run bootstrap).  
 > Workflow: https://github.com/okkeyapp/okkey/actions/runs/38037326395  
 > Prior: `v0.0.0-pr19.3` → https://github.com/okkeyapp/okkey/actions/runs/37924403393  

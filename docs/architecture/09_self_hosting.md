@@ -20,6 +20,8 @@ Full guide, manual compose, TLS notes, and image tags:
 
 **First-run:** with an empty `users` table, email login skips OTP (`bootstrapRequired` on `POST /auth/email/start`) so the first admin can register without SMTP. Once any user exists, normal email OTP applies.
 
+**Crypto policy:** self-host compose defaults to `DEPLOY_ENV=dev` and `CRYPTO_ALLOWED_PROFILE_VERSIONS=1,2` so web registration (`password_kdf_params_version=1`) succeeds. `DEPLOY_ENV=prod` only allows profile `2` and returns `CRYPTO_PROFILE_NOT_ALLOWED`. See [`deploy/docker/README.md`](../../deploy/docker/README.md).
+
 ---
 
 ## Deployment Methods
