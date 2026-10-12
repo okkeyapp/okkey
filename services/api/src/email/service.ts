@@ -12,6 +12,11 @@ import {
 } from "./catalog.ts";
 import { EmailTemplateError } from "./errors.ts";
 import { resolveEmailLocaleForRecipient, type EmailLocaleHintsInput } from "./locale.ts";
+import {
+  QueuedEmailSender,
+  type EmailDeliveryMode,
+  type EmailQueueRedis,
+} from "./queue.ts";
 import { SesEmailSender } from "./ses-sender.ts";
 
 export interface EmailMessage {
@@ -220,7 +225,19 @@ export class HttpApiEmailSender implements EmailSender {
   }
 }
 
-export async function createEmailSender(
+export type CreateEmailSenderOptions = {
+  /**
+   * `transport` — real provider (SMTP/SES/logger/http-api). Used by the worker consumer.
+   * `outbound` — API path: Redis queue when `emailDeliveryMode=queue`, else same as transport.
+   */
+  role?: "transport" | "outbound";
+  redis?: EmailQueueRedis;
+  /** Override config.emailDeliveryMode (tests). */
+  deliveryMode?: EmailDeliveryMode;
+};
+
+/** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
+export async function createTransportEmailSender(
   config: ApiConfig,
   logger: Logger,
 ): Promise<EmailSender> {
@@ -263,6 +280,42 @@ export async function createEmailSender(
     default:
       throw new Error(`unsupported email provider: ${config.emailProvider}`);
   }
+}
+
+/**
+ * Outbound sender for the API process.
+ * In `queue` mode enqueues rendered messages to Redis; worker delivers via transport.
+ * In `sync` mode (default outside production) sends immediately — fine for local logger + tests.
+ */
+export async function createOutboundEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+  redis: EmailQueueRedis,
+): Promise<EmailSender> {
+  if (config.emailDeliveryMode === "queue") {
+    return new QueuedEmailSender(redis, logger);
+  }
+  return createTransportEmailSender(config, logger);
+}
+
+/** @deprecated Prefer {@link createTransportEmailSender} or {@link createOutboundEmailSender}. */
+export async function createEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+  options: CreateEmailSenderOptions = {},
+): Promise<EmailSender> {
+  const role = options.role ?? "transport";
+  if (role === "outbound") {
+    if (!options.redis) {
+      throw new Error("redis is required when createEmailSender role=outbound");
+    }
+    const mode = options.deliveryMode ?? config.emailDeliveryMode;
+    if (mode === "queue") {
+      return new QueuedEmailSender(options.redis, logger);
+    }
+    return createTransportEmailSender(config, logger);
+  }
+  return createTransportEmailSender(config, logger);
 }
 
 function toHintsInput(

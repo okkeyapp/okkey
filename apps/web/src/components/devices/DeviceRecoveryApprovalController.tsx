@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { toast } from "sonner";
 
 import accountRecoveryModule from "@okkey-enterprise/account-recovery";
+import { getApiBaseUrl } from "../../api/client";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { formatDeviceClientOs, formatDeviceTitle } from "../../auth/browserEnvironment";
 import { IconCheck16, IconNotNow16 } from "../items/itemCategoryIcons";
@@ -53,11 +54,7 @@ function formatAbsoluteDate(iso: string, locale: string): string {
 }
 
 function apiBase(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL;
-  if (typeof raw === "string" && raw.trim() && raw !== "undefined") {
-    return raw.trim().replace(/\/$/, "");
-  }
-  return "http://localhost:4000";
+  return getApiBaseUrl();
 }
 
 function isForbiddenRecoveryError(err: unknown): boolean {

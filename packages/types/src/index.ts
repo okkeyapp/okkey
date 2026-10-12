@@ -842,6 +842,13 @@ export interface EmailAuthStartResponse {
   challengeId: string;
   expiresAt: string;
   resendAvailableAt: string;
+  /**
+   * When true (zero users on this instance), skip OTP and open registration with `authStateId`.
+   * Self-host first-run only; omitted once any user exists (normal email OTP).
+   */
+  bootstrapRequired?: boolean;
+  authStateId?: string;
+  nextStep?: "registration";
 }
 
 /** `POST /auth/email/confirm` success body. */

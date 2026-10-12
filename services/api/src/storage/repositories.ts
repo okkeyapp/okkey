@@ -129,6 +129,14 @@ export class UsersRepository {
     return rows[0] ? mapUser(rows[0]) : null;
   }
 
+  /** True when at least one user row exists (self-host first-run uses the inverse). */
+  async hasAnyUsers(): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      "SELECT EXISTS(SELECT 1 FROM users LIMIT 1) AS exists",
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
   async updateEmail(userId: string, email: string): Promise<UserRecord | null> {
     try {
       const rows = await this.db.query<

@@ -49,7 +49,7 @@ export interface AuthServiceDeps {
     incr(key: string): Promise<number>;
     expire(key: string, seconds: number): Promise<boolean>;
   };
-  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled">;
+  users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers">;
   emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   config: ApiConfig;
   now?: () => Date;
@@ -69,6 +69,13 @@ export interface EmailStartResult {
   challengeId: string;
   expiresAt: string;
   resendAvailableAt: string;
+  /**
+   * When true (zero users on this instance), skip OTP and register with `authStateId`.
+   * Self-host first-run; normal email OTP resumes once any user exists.
+   */
+  bootstrapRequired?: boolean;
+  authStateId?: string;
+  nextStep?: "registration";
 }
 
 export interface EmailResendInput {
@@ -119,7 +126,10 @@ export function authStateRedisKey(id: string): string {
 
 export class AuthService {
   private readonly redis: AuthServiceDeps["redis"];
-  private readonly users: Pick<UsersRepository, "findByEmail" | "isTwoFactorEnabled">;
+  private readonly users: Pick<
+    UsersRepository,
+    "findByEmail" | "isTwoFactorEnabled" | "hasAnyUsers"
+  >;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
   private readonly config: ApiConfig;
   private readonly now: () => Date;
@@ -140,6 +150,24 @@ export class AuthService {
     const email = normalizeEmail(input.email);
     if (!isValidEmail(email)) {
       throw new AuthError("AUTH_EMAIL_INVALID", 400, "invalid email");
+    }
+
+    // Self-host first-run: empty users table → skip OTP / SMTP and mint registration auth state.
+    if (!(await this.users.hasAnyUsers())) {
+      await this.consumeStartRateLimits(email, input.requestIp);
+      const authStateId = await this.createRegistrationAuthState(email);
+      const now = this.now();
+      const expiresAt = new Date(
+        now.getTime() + this.config.registrationAuthStateTtlSeconds * 1000,
+      ).toISOString();
+      return {
+        challengeId: "",
+        expiresAt,
+        resendAvailableAt: expiresAt,
+        bootstrapRequired: true,
+        authStateId,
+        nextStep: "registration",
+      };
     }
 
     const mappedId = await this.redis.get(emailActiveChallengeKey(email));
@@ -322,21 +350,26 @@ export class AuthService {
     const existingUser: UserRecord | null = await this.users.findByEmail(
       challenge.email,
     );
-    const pendingTwoFactor = Boolean(
-      existingUser && (await this.users.isTwoFactorEnabled(existingUser.id)),
-    );
+    if (!existingUser) {
+      const authStateId = await this.createRegistrationAuthState(challenge.email);
+      return {
+        authStateId,
+        userExists: false,
+        nextStep: "registration",
+      };
+    }
+
+    const pendingTwoFactor = await this.users.isTwoFactorEnabled(existingUser.id);
     const authState: AuthStatePayload = {
       id: this.generateId(),
       email: challenge.email,
-      userId: existingUser?.id ?? null,
+      userId: existingUser.id,
       createdAt: this.now().toISOString(),
       ...(pendingTwoFactor ? { pendingTwoFactor: true } : {}),
     };
-    const authStateTtlSeconds = existingUser
-      ? pendingTwoFactor
-        ? this.config.authPendingTwoFactorTtlSeconds
-        : this.config.authCodeTtlSeconds
-      : this.config.registrationAuthStateTtlSeconds;
+    const authStateTtlSeconds = pendingTwoFactor
+      ? this.config.authPendingTwoFactorTtlSeconds
+      : this.config.authCodeTtlSeconds;
     await this.redis.setWithTtl(
       authStateRedisKey(authState.id),
       JSON.stringify(authState),
@@ -345,13 +378,25 @@ export class AuthService {
 
     return {
       authStateId: authState.id,
-      userExists: Boolean(existingUser),
-      nextStep: existingUser
-        ? pendingTwoFactor
-          ? "two_factor"
-          : "device_check"
-        : "registration",
+      userExists: true,
+      nextStep: pendingTwoFactor ? "two_factor" : "device_check",
     };
+  }
+
+  /** Mint Redis auth state for registration (email already trusted — OTP confirm or first-run). */
+  private async createRegistrationAuthState(email: string): Promise<string> {
+    const authState: AuthStatePayload = {
+      id: this.generateId(),
+      email,
+      userId: null,
+      createdAt: this.now().toISOString(),
+    };
+    await this.redis.setWithTtl(
+      authStateRedisKey(authState.id),
+      JSON.stringify(authState),
+      this.config.registrationAuthStateTtlSeconds,
+    );
+    return authState.id;
   }
 
   /**

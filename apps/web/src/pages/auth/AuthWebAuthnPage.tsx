@@ -28,6 +28,7 @@ import {
 } from "../../auth/accountWebAuthnCapability";
 import { useLocale } from "../../locale/LocaleContext";
 import {
+  ACCOUNT_NEW_PATH,
   AUTH_EMAIL_PATH,
   AUTH_OTP_PATH,
   AUTH_TWO_FACTOR_PATH,
@@ -66,6 +67,7 @@ export default function AuthWebAuthnPage() {
     authClient,
     updateLocalProfile,
     setEmailChallenge,
+    setRegistrationAuthStateId,
     setTwoFactorAuthStateId,
     applyAccessTokenResponse,
   } = useAuthVault();
@@ -181,6 +183,11 @@ export default function AuthWebAuthnPage() {
     try {
       const start = await authClient.startEmailLogin(pending.email, locale);
       updateLocalProfile({ email: pending.email });
+      if (start.bootstrapRequired && start.authStateId) {
+        setRegistrationAuthStateId(start.authStateId);
+        navigate(ACCOUNT_NEW_PATH, { replace: true });
+        return;
+      }
       setEmailChallenge(pending.email, start.challengeId, start.resendAvailableAt);
       writePendingLoginDiscover({ ...pending, primary: "email" });
       writeLastLoginMethodHint({ email: pending.email, primary: "email" });

@@ -5,6 +5,16 @@ import { readStoredLocale } from "../locale/localeStorage";
 
 const DEFAULT_API_BASE = "http://localhost:4000";
 
+type OkkeyRuntimeConfig = {
+  apiBaseUrl?: string;
+};
+
+declare global {
+  interface Window {
+    __OKKEY_RUNTIME__?: OkkeyRuntimeConfig;
+  }
+}
+
 /**
  * Resolves the Core API origin. Rejects env typos like the literal string "undefined"
  * (relative fetch would hit the Vite dev server and return HTML instead of JSON).
@@ -41,9 +51,18 @@ export function resolveApiBaseUrl(
   }
 }
 
+function runtimeApiBaseUrl(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  const value = window.__OKKEY_RUNTIME__?.apiBaseUrl;
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+}
+
 export function getApiBaseUrl(): string {
   const warn = import.meta.env.DEV ? (msg: string) => console.warn(`[okkey] ${msg}`) : undefined;
-  return resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, warn);
+  // Prefer Docker/self-host runtime config over build-time Vite env.
+  return resolveApiBaseUrl(runtimeApiBaseUrl() ?? import.meta.env.VITE_API_BASE_URL, warn);
 }
 
 export function createPublicApiClient(): ApiClient {

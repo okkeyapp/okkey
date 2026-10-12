@@ -13,6 +13,20 @@ type RedisClientLike = {
   del(key: string): Promise<number>;
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<boolean>;
+  lPush(key: string, ...values: string[]): Promise<number>;
+  rPop(key: string): Promise<string | null>;
+  brPop(
+    key: string,
+    timeoutSeconds: number,
+  ): Promise<{ key: string; element: string } | null>;
+  zAdd(key: string, members: { score: number; value: string } | Array<{ score: number; value: string }>): Promise<number>;
+  zRangeByScore(
+    key: string,
+    min: number | string,
+    max: number | string,
+    options?: { LIMIT?: { offset: number; count: number } },
+  ): Promise<string[]>;
+  zRem(key: string, ...members: string[]): Promise<number>;
 };
 
 export class RedisCache {
@@ -115,6 +129,62 @@ export class RedisCache {
 
   async close(): Promise<void> {
     await this.client.disconnect();
+  }
+
+  async lPush(key: string, ...values: string[]): Promise<number> {
+    try {
+      return await this.client.lPush(key, ...values);
+    } catch (error) {
+      throw new StorageQueryError("redis lPush failed", error);
+    }
+  }
+
+  async rPop(key: string): Promise<string | null> {
+    try {
+      return await this.client.rPop(key);
+    } catch (error) {
+      throw new StorageQueryError("redis rPop failed", error);
+    }
+  }
+
+  async brPop(key: string, timeoutSeconds: number): Promise<string | null> {
+    try {
+      const result = await this.client.brPop(key, timeoutSeconds);
+      return result?.element ?? null;
+    } catch (error) {
+      throw new StorageQueryError("redis brPop failed", error);
+    }
+  }
+
+  async zAdd(key: string, score: number, member: string): Promise<number> {
+    try {
+      return await this.client.zAdd(key, { score, value: member });
+    } catch (error) {
+      throw new StorageQueryError("redis zAdd failed", error);
+    }
+  }
+
+  async zRangeByScore(
+    key: string,
+    min: number,
+    max: number,
+    limit: number,
+  ): Promise<string[]> {
+    try {
+      return await this.client.zRangeByScore(key, min, max, {
+        LIMIT: { offset: 0, count: limit },
+      });
+    } catch (error) {
+      throw new StorageQueryError("redis zRangeByScore failed", error);
+    }
+  }
+
+  async zRem(key: string, ...members: string[]): Promise<number> {
+    try {
+      return await this.client.zRem(key, ...members);
+    } catch (error) {
+      throw new StorageQueryError("redis zRem failed", error);
+    }
   }
 }
 

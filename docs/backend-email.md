@@ -13,6 +13,7 @@ Transactional email uses:
 | `EMAIL_FROM` | `From` header |
 | `EMAIL_DEFAULT_LOCALE` | Instance default when user/header/body do not specify a language (`en` or `ru`) |
 | `EMAIL_PROVIDER` | `logger` \| `smtp` \| `ses` \| `http-api` |
+| `EMAIL_DELIVERY_MODE` | `sync` \| `queue` — see below |
 | `PUBLIC_APP_URL` | Base URL for invite and other CTA links (required to send workspace invites) |
 | `OKKEY_SALES_EMAIL` | Sales inbox for `POST /workspaces/:id/plan-change-requests` (manual plan upgrades). Default: `aleksandr-zoryn@ya.ru` in development/test, `hello@okkey.io` otherwise. SaaS operators typically set this in `okkey-enterprise/backend/.env`. |
 
@@ -21,6 +22,17 @@ See `services/api/.env.example` for SMTP, SES, and HTTP API variables and commen
 **Transports are protocols, not vendors.** Personal mailboxes and Unisender Go / Postmark / Resend / OVH all use `smtp`. AWS SES and SES-compatible APIs (including Yandex Cloud Postbox) use `ses` with a replaceable `EMAIL_SES_ENDPOINT`. Do not put a vendor mailbox password in production SaaS env; prefer transactional SMTP or SES.
 
 Personal SMTP risks: provider rate limits, spam folders, account blocks, mailbox password in `.env`. Fine for a single self-hosted user; not for a team product.
+
+## Delivery: sync vs Redis queue
+
+Templates are always rendered in the API process. The **transport** step depends on `EMAIL_DELIVERY_MODE`:
+
+| Mode | Default | Behavior |
+|------|---------|----------|
+| `sync` | `NODE_ENV` ≠ `production` | API calls SMTP/SES/logger immediately (good for local `yarn dev:api` + `EMAIL_PROVIDER=logger`) |
+| `queue` | `NODE_ENV=production` | API `LPUSH`es the rendered message to Redis `okkey:email:queue`; **okkey-worker** `BRPOP`s, sends via the same `EMAIL_PROVIDER`, retries on `okkey:email:delayed`, dead-letters to `okkey:email:dead` |
+
+Self-host compose sets `EMAIL_DELIVERY_MODE=queue` and runs the worker. Details: [`services/worker/README.md`](../services/worker/README.md).
 
 ## Locale selection
 

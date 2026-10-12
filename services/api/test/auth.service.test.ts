@@ -62,6 +62,8 @@ const baseConfig: ApiConfig = createTestApiConfig();
 function setupAuthService(params?: {
   configOverrides?: Partial<ApiConfig>;
   existingUser?: boolean;
+  /** When false, mimics fresh self-host install (zero users). Default: true (SaaS / subsequent users). */
+  hasAnyUsers?: boolean;
   twoFactorEnabledForExisting?: boolean;
   generatedCode?: string;
 }) {
@@ -71,6 +73,7 @@ function setupAuthService(params?: {
   const sentEmails: Array<{ to: string; code: string; locale?: string }> = [];
   const config = { ...baseConfig, ...(params?.configOverrides ?? {}) };
   const generatedCode = params?.generatedCode ?? "123456";
+  const hasAnyUsers = params?.hasAnyUsers ?? true;
 
   let nextId = 1;
   const service = new AuthService({
@@ -93,6 +96,7 @@ function setupAuthService(params?: {
             params?.twoFactorEnabledForExisting &&
             userId === "u1",
         ),
+      hasAnyUsers: async () => hasAnyUsers,
     },
     emailTemplates: {
       sendAuthEmailCode: async (input) => {
@@ -125,6 +129,28 @@ test("startEmailLogin sends normalized email and 6-digit code", async () => {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "user@example.com");
   assert.equal(sentEmails[0].code, "654321");
+  assert.equal(result.bootstrapRequired, undefined);
+});
+
+test("startEmailLogin first-run (empty DB) skips OTP and returns bootstrapRequired", async () => {
+  const { service, sentEmails, redis } = setupAuthService({ hasAnyUsers: false });
+
+  const result = await service.startEmailLogin({
+    email: "Admin@Example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(result.bootstrapRequired, true);
+  assert.equal(result.nextStep, "registration");
+  assert.ok(result.authStateId);
+  assert.equal(result.challengeId, "");
+  assert.equal(sentEmails.length, 0);
+
+  const raw = await redis.get(`auth:state:${result.authStateId}`);
+  assert.ok(raw);
+  const state = JSON.parse(raw) as { email: string; userId: string | null };
+  assert.equal(state.email, "admin@example.com");
+  assert.equal(state.userId, null);
 });
 
 test("startEmailLogin reuses active challenge for same email without sending again", async () => {

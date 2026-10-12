@@ -1,5 +1,15 @@
 # Okkey Core
 
+## Self-host in 5 minutes
+
+One-command Docker install (no monorepo clone):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+```
+
+Details: [`deploy/docker/README.md`](deploy/docker/README.md) · architecture notes: [`docs/architecture/09_self_hosting.md`](docs/architecture/09_self_hosting.md)
+
 ## Quickstart (Hybrid dev)
 
 1. Copy root environment file for infrastructure.

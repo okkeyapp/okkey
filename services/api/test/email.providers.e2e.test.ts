@@ -76,6 +76,7 @@ async function startApiForEmailProvider(config: ApiConfig): Promise<{
     users: {
       findByEmail: async () => null,
       isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => true,
     },
     emailTemplates: templateService,
     config,

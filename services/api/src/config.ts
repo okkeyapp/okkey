@@ -14,6 +14,7 @@ import {
   applyEnterpriseBackendEnvToProcess,
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
+import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -72,6 +73,11 @@ export interface ApiConfig {
    */
   salesEmail: string;
   emailProvider: EmailProvider;
+  /**
+   * `sync` — send in-process (local/dev default).
+   * `queue` — API enqueues to Redis; worker delivers (production / self-host default).
+   */
+  emailDeliveryMode: EmailDeliveryMode;
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;
@@ -408,6 +414,7 @@ export function loadConfig(): ApiConfig {
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",
     salesEmail: resolveSalesEmail(nodeEnv, process.env.OKKEY_SALES_EMAIL),
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
+    emailDeliveryMode: resolveEmailDeliveryMode(nodeEnv, process.env.EMAIL_DELIVERY_MODE),
     smtpHost: process.env.EMAIL_SMTP_HOST ?? "localhost",
     smtpPort: parsePositiveInt(process.env.EMAIL_SMTP_PORT, 1025),
     smtpSecure: parseBoolean(process.env.EMAIL_SMTP_SECURE, false),
