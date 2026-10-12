@@ -95,6 +95,61 @@ export {
 } from "./lib/passwordStrength.js";
 
 export {
+  DEFAULT_PASSWORD_GENERATOR_SETTINGS,
+  DEFAULT_PASSWORD_GENERATOR_LENGTH,
+  PASSWORD_GENERATOR_STORAGE_KEY,
+  PASSWORD_GENERATOR_CHARACTER_SETS,
+  PASSWORD_GENERATOR_LENGTH_MIN,
+  PASSWORD_GENERATOR_LENGTH_MAX,
+  normalizePasswordGeneratorPreferences,
+  loadPasswordGeneratorPreferences,
+  savePasswordGeneratorPreferences,
+  generatePassword,
+  getGeneratedPasswordCharKind,
+  type PasswordGeneratorSettings,
+  type PasswordGeneratorPreferences,
+  type GeneratedPasswordCharKind,
+} from "./lib/passwordGenerator.js";
+
+export {
+  DEFAULT_PASSPHRASE_GENERATOR_PREFERENCES,
+  PASSPHRASE_WORD_COUNT_MIN,
+  PASSPHRASE_WORD_COUNT_MAX,
+  PASSPHRASE_GENERATOR_STORAGE_KEY,
+  normalizePassphraseGeneratorPreferences,
+  loadPassphraseGeneratorPreferences,
+  savePassphraseGeneratorPreferences,
+  generatePassphrase,
+  type PassphraseGeneratorPreferences,
+} from "./lib/passphraseGenerator.js";
+
+export {
+  DEFAULT_USERNAME_GENERATOR_PREFERENCES,
+  USERNAME_GENERATOR_STORAGE_KEY,
+  normalizeUsernameGeneratorPreferences,
+  loadUsernameGeneratorPreferences,
+  saveUsernameGeneratorPreferences,
+  generateUsername,
+  type UsernameGeneratorPreferences,
+} from "./lib/usernameGenerator.js";
+
+export { EFF_LARGE_WORD_LIST } from "./lib/effLargeWordList.js";
+
+export {
+  GeneratorSection,
+  type GeneratorMode,
+  type GeneratorSectionProps,
+} from "./generator/GeneratorSection.js";
+
+export {
+  GeneratorPasswordTabIcon,
+  GeneratorPassphraseTabIcon,
+  GeneratorUsernameTabIcon,
+  GeneratorRefreshIcon,
+  GeneratorExternalLinkIcon,
+} from "./generator/generatorIcons.js";
+
+export {
   ITEM_CATEGORY_GROUP_PERSONAL,
   ITEM_CATEGORY_GROUP_AUTHORIZATION,
   ITEM_CATEGORY_GROUP_FINANCE,

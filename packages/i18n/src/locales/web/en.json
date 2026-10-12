@@ -1705,6 +1705,7 @@
   "extension.vault.copyGuardConfirm": "Copy",
   "extension.vault.changeServer": "Change server",
   "extension.vault.createRecord": "Create item",
+  "extension.vault.openGenerator": "Generator",
   "extension.vault.openInWeb": "Open in web",
   "extension.vault.toast.favoriteAdded": "Added to favorites",
   "extension.vault.toast.favoriteRemoved": "Removed from favorites",

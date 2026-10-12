@@ -1705,6 +1705,7 @@
   "extension.vault.copyGuardConfirm": "Копировать",
   "extension.vault.changeServer": "Сменить сервер",
   "extension.vault.createRecord": "Создать запись",
+  "extension.vault.openGenerator": "Генератор",
   "extension.vault.openInWeb": "Открыть в web",
   "extension.vault.toast.favoriteAdded": "Добавлено в избранное",
   "extension.vault.toast.favoriteRemoved": "Удалено из избранного",
