@@ -81,8 +81,11 @@ const SEARCH_HINT = /\b(search|найти|поиск|искать|filter|фил�
 const EMAIL_HINT =
   /e[-_.\s]?mail|emailaddress|mail(addr|to)?|user[-_]?mail|эл\.?\s*почт|электронн[а-яёa-z]*\s*почт|почт[аеуы]?|е[-]?мейл|имейл|courriel/i;
 
+/** Login / account identifier — nickname is identity (`autocomplete=nickname`), not this list. */
 const USER_NAME =
-  /user(name)?|login|account|identifier|userid|user[-_]?id|nickname|логин|пользовател|учётн|учетн/i;
+  /user(name)?|login|account|identifier|userid|user[-_]?id|логин|пользовател|учётн|учетн/i;
+/** Identity nickname (personal_data); maps to vault username, never login.username source. */
+const NICKNAME_HINT = /\bnick(?:[-_]?name)?\b|псевдоним|никнейм/i;
 
 const GIVEN_NAME = /given[-_]?name|first[-_]?name|fname|forename|имя(?!\s*пользовател)|имя\b/i;
 const FAMILY_NAME = /family[-_]?name|last[-_]?name|surname|lname|фамил/i;
@@ -422,6 +425,11 @@ export function classifyAutofillInput(input: AutofillInputHints): AutofillFieldK
     return "name";
   }
 
+  // Identity nickname → username kind for personal_data fill (not login cipher username).
+  if (acToken(ac, "nickname") || NICKNAME_HINT.test(blob)) {
+    return "username";
+  }
+
   if (acToken(ac, "username") || ac.includes("username") || USER_NAME.test(blob)) {
     return "username";
   }
@@ -445,6 +453,71 @@ export function classifyLoginInput(input: AutofillInputHints): "username" | "pas
   return null;
 }
 
+/** Nearby label / heading text to the left or above the input (BW-style richer labels). */
+function nearbyLabelText(el: HTMLInputElement): string {
+  const parts: string[] = [];
+  const dataLabel =
+    el.getAttribute("data-label") ||
+    el.getAttribute("data-field-label") ||
+    el.dataset?.label ||
+    "";
+  if (dataLabel) {
+    parts.push(dataLabel);
+  }
+  try {
+    const prev = el.previousElementSibling;
+    if (prev && /^(LABEL|SPAN|DIV|P|STRONG|B)$/i.test(prev.tagName)) {
+      const text = prev.textContent?.trim() ?? "";
+      if (text && text.length < 120) {
+        parts.push(text);
+      }
+    }
+    // Closest fieldset legend / form heading above this input.
+    const fieldset = el.closest("fieldset");
+    const legend = fieldset?.querySelector(":scope > legend");
+    if (legend?.textContent) {
+      parts.push(legend.textContent);
+    }
+  } catch {
+    /* ignore */
+  }
+  return parts.join(" ").trim();
+}
+
+/**
+ * Query fillable inputs under root, including open shadow roots (cheap BFS).
+ * Same-origin iframes stay out of scope — routed by their own content script.
+ */
+export function queryAutofillInputs(root: ParentNode): HTMLInputElement[] {
+  const found: HTMLInputElement[] = [];
+  const visit = (node: ParentNode): void => {
+    const list =
+      typeof (node as ParentNode & { querySelectorAll?: unknown }).querySelectorAll === "function"
+        ? Array.from((node as ParentNode).querySelectorAll("input"))
+        : [];
+    for (const el of list) {
+      if (el instanceof HTMLInputElement) {
+        found.push(el);
+      }
+    }
+    const hosts =
+      typeof (node as ParentNode & { querySelectorAll?: unknown }).querySelectorAll === "function"
+        ? Array.from((node as ParentNode).querySelectorAll("*"))
+        : [];
+    for (const host of hosts) {
+      if (!(host instanceof Element)) {
+        continue;
+      }
+      const shadow = (host as HTMLElement).shadowRoot;
+      if (shadow) {
+        visit(shadow);
+      }
+    }
+  };
+  visit(root);
+  return found;
+}
+
 export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
   let labelText = "";
   try {
@@ -463,6 +536,10 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
       .map((id) => el.ownerDocument.getElementById(id)?.textContent ?? "")
       .join(" ");
     labelText = `${labelText} ${extra}`.trim();
+  }
+  const nearby = nearbyLabelText(el);
+  if (nearby) {
+    labelText = `${labelText} ${nearby}`.trim();
   }
   // Prefer content attribute — some pages set autocomplete=name while the IDL is empty/"on".
   const autocompleteAttr = el.getAttribute("autocomplete")?.trim() || undefined;
@@ -490,11 +567,7 @@ export function collectInputHints(el: HTMLInputElement): AutofillInputHints {
 
 export function collectPageFieldKinds(root: ParentNode): AutofillFieldKind[] {
   const kinds = new Set<AutofillFieldKind>();
-  const nodes = Array.from(root.querySelectorAll("input"));
-  for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement)) {
-      continue;
-    }
+  for (const node of queryAutofillInputs(root)) {
     const kind = classifyAutofillInput(collectInputHints(node));
     if (kind) {
       kinds.add(kind);

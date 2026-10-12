@@ -361,25 +361,26 @@ export async function handleAutofillQuery(
           ? await storedFaviconDataUrl(item.vaultId, item.itemId, item.faviconId)
           : undefined;
 
-        // Register username field: only suggest personal_data rows that have a nickname
-        // (mapped to values.username). Email-only records fall through to the generator.
+        // Register username: nickname from personal_data if present, else email (not generator-only).
         if (
           formType === "register" &&
           focusedKind === "username" &&
           item.categoryId === "personal_data"
         ) {
           const nickname = (values.username ?? "").trim();
-          if (!nickname) {
+          const email = (values.email ?? "").trim();
+          const fillValue = nickname || email;
+          if (!fillValue) {
             return [];
           }
           return [
             {
               itemId: item.itemId,
               title,
-              username: nickname,
+              username: fillValue,
               categoryId: item.categoryId,
-              suggestionKey: `${item.itemId}:nickname`,
-              fillOverrides: { username: nickname },
+              suggestionKey: `${item.itemId}:${nickname ? "nickname" : "email"}`,
+              fillOverrides: { username: fillValue },
             },
           ];
         }

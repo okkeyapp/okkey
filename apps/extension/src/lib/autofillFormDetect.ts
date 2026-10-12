@@ -2,6 +2,7 @@ import {
   classifyAutofillInput,
   collectInputHints,
   isDeniedAutofillField,
+  queryAutofillInputs,
   type AutofillFieldKind,
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";
@@ -74,6 +75,10 @@ const SEARCH_TEXT = /\b(search|поиск|найти|filter|фильтр)\b/i;
 const CONFIRM_PASSWORD =
   /\b(confirm|repeat|re[-_]?type|re[-_]?enter|verify|подтверд|повтор|ещё\s*раз|еще\s*раз|пароль\s*ещё|пароль\s*еще)\b/i;
 
+/** Account-creation keywords on field / siblings (BW AccountCreationFieldKeywords). */
+const ACCOUNT_CREATION_PASSWORD =
+  /\b(new[-_\s]?password|create[-_\s]?password|choose[-_\s]?password|set[-_\s]?password|confirm[-_\s]?password|repeat[-_\s]?password|создай(?:те)?\s*парол|новый\s*парол|придумай(?:те)?\s*парол)\b/i;
+
 const CC_KINDS = new Set<AutofillFieldKind>(["cc-number", "cc-exp", "cc-csc", "cc-name"]);
 const IDENTITY_KINDS = new Set<AutofillFieldKind>([
   "given-name",
@@ -116,6 +121,64 @@ function isConfirmPasswordHints(hints: AutofillInputHints): boolean {
   return CONFIRM_PASSWORD.test(hintBlob(hints));
 }
 
+function isPasswordLikeHints(hints: AutofillInputHints): boolean {
+  return (hints.type || "").toLowerCase() === "password";
+}
+
+/**
+ * BW-style: password field for account creation / change
+ * (`new-password` or AccountCreation keywords). `current-password` wins as not-new.
+ */
+export function isNewPasswordField(
+  hints: AutofillInputHints,
+  siblings: readonly AutofillInputHints[] = [],
+): boolean {
+  if (!isPasswordLikeHints(hints) || classifyAutofillInput(hints) !== "password") {
+    return false;
+  }
+  const ac = (hints.autocomplete ?? "").toLowerCase();
+  if (acToken(ac, "current-password")) {
+    return false;
+  }
+  if (acToken(ac, "new-password") || ACCOUNT_CREATION_PASSWORD.test(hintBlob(hints))) {
+    return true;
+  }
+  // Sibling confirm/new-password on the same form → this password is also "new" context.
+  return siblings.some((sib) => {
+    if (sib === hints) {
+      return false;
+    }
+    const sibAc = (sib.autocomplete ?? "").toLowerCase();
+    return (
+      acToken(sibAc, "new-password") ||
+      isConfirmPasswordHints(sib) ||
+      ACCOUNT_CREATION_PASSWORD.test(hintBlob(sib))
+    );
+  });
+}
+
+/**
+ * BW-style: login / current password.
+ * Explicit `current-password`, or password-like without new-password / account-creation cues.
+ * Sibling new-password alone does not flip a current-password field.
+ */
+export function isCurrentPasswordField(
+  hints: AutofillInputHints,
+  siblings: readonly AutofillInputHints[] = [],
+): boolean {
+  if (!isPasswordLikeHints(hints) || classifyAutofillInput(hints) !== "password") {
+    return false;
+  }
+  const ac = (hints.autocomplete ?? "").toLowerCase();
+  if (acToken(ac, "current-password")) {
+    return true;
+  }
+  if (isNewPasswordField(hints, siblings)) {
+    return false;
+  }
+  return true;
+}
+
 function collectNearbyText(form: Element | null, doc: Document): string {
   const parts: string[] = [];
   if (form instanceof HTMLFormElement) {
@@ -123,11 +186,17 @@ function collectNearbyText(form: Element | null, doc: Document): string {
   }
   try {
     const root = form ?? doc.body;
-    const heading = root?.querySelector?.(
-      "h1, h2, h3, [role='heading'], legend, .title, .form-title",
+    // Prefer ancestor headings (h1–h6) — BW htmlAncestorHeadings signal.
+    const headings = root?.querySelectorAll?.(
+      "h1, h2, h3, h4, h5, h6, [role='heading'], legend, .title, .form-title",
     );
-    if (heading?.textContent) {
-      parts.push(heading.textContent);
+    if (headings) {
+      for (const heading of Array.from(headings).slice(0, 6)) {
+        const text = heading.textContent?.trim() ?? "";
+        if (text) {
+          parts.push(text);
+        }
+      }
     }
     // Submit / CTA labels often say “Sign up” / «Регистрация» when headings do not.
     const buttons = root?.querySelectorAll?.(
@@ -185,12 +254,9 @@ export function collectAutofillFormSignals(
 ): AutofillFormSignals {
   const fieldKinds: AutofillFieldKind[] = [];
   const passwordFields: AutofillInputHints[] = [];
-  const nodes = Array.from(root.querySelectorAll("input"));
+  const nodes = queryAutofillInputs(root);
 
   for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement)) {
-      continue;
-    }
     const hints = collectInputHints(node);
     const hiddenKind = hiddenCredentialKind(hints);
     if (hiddenKind) {
@@ -215,11 +281,9 @@ export function collectAutofillFormSignals(
 
   const hasConfirmPassword =
     passwordFields.length >= 2 || passwordFields.some((hints) => isConfirmPasswordHints(hints));
-  const hasNewPasswordAc = passwordFields.some((hints) =>
-    acToken((hints.autocomplete ?? "").toLowerCase(), "new-password"),
-  );
+  const hasNewPasswordAc = passwordFields.some((hints) => isNewPasswordField(hints, passwordFields));
   const hasCurrentPasswordAc = passwordFields.some((hints) =>
-    acToken((hints.autocomplete ?? "").toLowerCase(), "current-password"),
+    isCurrentPasswordField(hints, passwordFields),
   );
 
   return {
@@ -281,6 +345,16 @@ export function detectAutofillFormType(signals: AutofillFormSignals): AutofillFo
   // Shopify /login etc.: sites often set autocomplete=new-password on a real login field.
   // Strong login cues + classic shape beat new-password-alone register heuristics.
   if (classicLoginShape && loginCue && !registerCue) {
+    return "login";
+  }
+
+  // Prefer current/login passwords over registration when both roles appear (BW prefer login).
+  if (
+    classicLoginShape &&
+    signals.hasCurrentPasswordAc &&
+    !signals.hasConfirmPassword &&
+    !registerCue
+  ) {
     return "login";
   }
 

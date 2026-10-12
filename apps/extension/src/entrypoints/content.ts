@@ -3074,6 +3074,44 @@ export default defineContentScript({
       /* ignore */
     }
 
+    // Debounced DOM collect refresh (BW: attributeFilter without `class` — SPA class storms).
+    try {
+      let collectDebounce: ReturnType<typeof setTimeout> | null = null;
+      const COLLECT_DEBOUNCE_MS = 500;
+      const onDomCollectMutation = (): void => {
+        if (collectDebounce != null) {
+          clearTimeout(collectDebounce);
+        }
+        collectDebounce = setTimeout(() => {
+          collectDebounce = null;
+          if (pendingSave || isOverlayUpdateFrozen()) {
+            return;
+          }
+          // Re-bind autofill when SPA mounts login/OTP fields after navigation.
+          bootstrapFocusedAutofillField();
+        }, COLLECT_DEBOUNCE_MS);
+      };
+      const collectObserver = new MutationObserver(onDomCollectMutation);
+      collectObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: [
+          "style",
+          "hidden",
+          "disabled",
+          "type",
+          "name",
+          "id",
+          "autocomplete",
+          "aria-label",
+          "placeholder",
+        ],
+      });
+    } catch {
+      /* ignore */
+    }
+
     document.addEventListener(
       "submit",
       (event) => {

@@ -11,6 +11,7 @@ import {
 import {
   applySimpleMaska,
   digitsOnly,
+  loginIdentifierPriorityFromHints,
   otpValuesForFields,
   resolveFillValueForInput,
 } from "./loginFormFields.ts";
@@ -242,6 +243,21 @@ describe("classifyAutofillInput non-login types", () => {
   it("maps email semantic kind separately from username", () => {
     assert.equal(classifyAutofillInput({ type: "email" }), "email");
     assert.equal(classifyAutofillInput({ type: "text", autocomplete: "username" }), "username");
+  });
+
+  it("maps autocomplete=nickname to username kind (identity, not login cue alone)", () => {
+    assert.equal(classifyAutofillInput({ type: "text", autocomplete: "nickname" }), "username");
+    assert.equal(classifyAutofillInput({ type: "text", name: "nickname", labelText: "Nickname" }), "username");
+  });
+});
+
+describe("login identifier priority", () => {
+  it("ranks username > email > tel for login.username fill", () => {
+    const user = loginIdentifierPriorityFromHints({ type: "text", autocomplete: "username" });
+    const email = loginIdentifierPriorityFromHints({ type: "email", autocomplete: "email" });
+    const tel = loginIdentifierPriorityFromHints({ type: "tel", autocomplete: "tel" });
+    assert.ok(user < email);
+    assert.ok(email < tel);
   });
 });
 

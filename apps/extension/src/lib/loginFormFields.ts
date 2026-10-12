@@ -8,6 +8,7 @@ import {
   classifyAutofillInput,
   classifyLoginInput as classifyLoginInputImpl,
   collectInputHints,
+  queryAutofillInputs,
   type AutofillInputHints,
 } from "./autofillFieldClassify.ts";
 
@@ -17,6 +18,7 @@ export {
   classifyAutofillInput,
   collectInputHints,
   collectPageFieldKinds,
+  queryAutofillInputs,
   suggestionFieldKindsForFocus,
   type AutofillFieldKind,
   type AutofillInputHints,
@@ -81,6 +83,44 @@ function collectDigitOtpGroups(inputs: HTMLInputElement[]): HTMLInputElement[] {
   return found;
 }
 
+/**
+ * Login.username fill priority (BW LOGIN_IDENTIFIER_PRIORITY): username > email > phone.
+ * Lower number = higher priority.
+ */
+export function loginIdentifierPriorityFromHints(hints: AutofillInputHints): number {
+  const ac = (hints.autocomplete ?? "").toLowerCase();
+  const kind = classifyAutofillInput(hints);
+  const acParts = ac.split(/\s+/).map((p) => p.trim());
+  const hasAc = (token: string) =>
+    acParts.some((p) => p === token || p.endsWith(`-${token}`) || p.startsWith(`${token}-`));
+  if (kind === "username" || hasAc("username")) {
+    return 0;
+  }
+  if (kind === "email" || hasAc("email") || (hints.type || "").toLowerCase() === "email") {
+    return 1;
+  }
+  if (kind === "tel" || hasAc("tel") || (hints.type || "").toLowerCase() === "tel") {
+    return 2;
+  }
+  return 3;
+}
+
+export function loginIdentifierPriority(el: HTMLInputElement): number {
+  return loginIdentifierPriorityFromHints(collectInputHints(el));
+}
+
+/** Prefer highest-priority identifier fields; skip lower tiers when a better one exists. */
+export function pickLoginIdentifierFields(usernameFields: HTMLInputElement[]): HTMLInputElement[] {
+  if (usernameFields.length <= 1) {
+    return usernameFields;
+  }
+  let best = 3;
+  for (const el of usernameFields) {
+    best = Math.min(best, loginIdentifierPriority(el));
+  }
+  return usernameFields.filter((el) => loginIdentifierPriority(el) === best);
+}
+
 export function findLoginFields(root: ParentNode): {
   username: HTMLInputElement[];
   password: HTMLInputElement[];
@@ -89,15 +129,12 @@ export function findLoginFields(root: ParentNode): {
   const username: HTMLInputElement[] = [];
   const password: HTMLInputElement[] = [];
   const otp: HTMLInputElement[] = [];
-  const nodes = Array.from(root.querySelectorAll("input"));
+  const nodes = queryAutofillInputs(root);
   const classified = new Set<HTMLInputElement>();
 
   // Prefer multi-box OTP groups first so type=password digit boxes never get password fill.
   const digitGroup = collectDigitOtpGroups(
-    nodes.filter(
-      (node): node is HTMLInputElement =>
-        node instanceof HTMLInputElement && isVisibleFillableElement(node),
-    ),
+    nodes.filter((node) => isVisibleFillableElement(node)),
   );
   if (digitGroup.length >= 4) {
     for (const node of digitGroup) {
@@ -107,7 +144,7 @@ export function findLoginFields(root: ParentNode): {
   }
 
   for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement) || !isVisibleFillableElement(node) || classified.has(node)) {
+    if (!isVisibleFillableElement(node) || classified.has(node)) {
       continue;
     }
     const hints = collectInputHints(node);
@@ -312,8 +349,12 @@ export function fillLoginForm(
   options?: FillLoginFormOptions,
 ): void {
   const fields = findLoginFields(root);
+  // OTP first — never let password fill touch OTP digit / one-time-code boxes.
+  if (payload.totp) {
+    fillOtpFields(fields.otp, payload.totp, options);
+  }
   if (payload.username) {
-    for (const el of fields.username) {
+    for (const el of pickLoginIdentifierFields(fields.username)) {
       if (shouldSkipNonEmptyField(el, options)) {
         continue;
       }
@@ -327,9 +368,6 @@ export function fillLoginForm(
       }
       fillInputValue(el, payload.password);
     }
-  }
-  if (payload.totp) {
-    fillOtpFields(fields.otp, payload.totp, options);
   }
 }
 
@@ -462,11 +500,15 @@ function resolveAutofillValueForKind(
     value = values.address || values["street-address"] || "";
   }
   if (!value && kind === "email") {
-    value = values.email || values.username || "";
+    // Email field: prefer email; do not push nickname into email inputs.
+    value = values.email || "";
   }
   if (!value && kind === "username") {
-    // Prefer nickname (mapped to username) over email for personal_data fills.
-    value = values.username || values.email || "";
+    // Prefer nickname (mapped to username) over email; then phone (BW priority).
+    value = values.username || values.email || values.tel || "";
+  }
+  if (!value && kind === "tel") {
+    value = values.tel || "";
   }
   if (!value && kind === "name") {
     // autocomplete=name / full-name: prefer vault full-name, else join first + middle + last.
@@ -493,12 +535,9 @@ export function fillAutofillValues(
   options?: FillAutofillValuesOptions,
 ): number {
   let filled = 0;
-  const nodes = Array.from(root.querySelectorAll("input"));
+  const nodes = queryAutofillInputs(root);
   const addressKindsOnPage = new Set<string>();
   for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement)) {
-      continue;
-    }
     const kind = classifyAutofillInput(collectInputHints(node));
     if (kind && ADDRESS_FILL_KINDS.has(kind) && isAutofillTargetElement(node, kind, options)) {
       addressKindsOnPage.add(kind);
@@ -510,9 +549,6 @@ export function fillAutofillValues(
     soleAddressKind === "address" || soleAddressKind === "street-address";
 
   for (const node of nodes) {
-    if (!(node instanceof HTMLInputElement)) {
-      continue;
-    }
     const kind = classifyAutofillInput(collectInputHints(node));
     if (!kind) {
       continue;
@@ -588,11 +624,12 @@ export function watchAndFillAutofillValues(
       tryFill();
     }, 50);
   });
+  // Intentionally omit `class` — SPA class churn storms MutationObserver (BW pattern).
   observer.observe(observeTarget, {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["style", "class", "hidden"],
+    attributeFilter: ["style", "hidden", "disabled", "type", "name", "id", "autocomplete"],
   });
 
   const stopTimer = setTimeout(() => {

@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   categoriesAllowedForFormType,
   detectAutofillFormType,
+  isCurrentPasswordField,
+  isNewPasswordField,
   isPasswordGeneratorField,
   isSaveOfferFormType,
   shouldOpenPasswordGenerator,
@@ -29,6 +31,30 @@ function signals(partial: Partial<AutofillFormSignals> & { fieldKinds: AutofillF
 function passwordHints(extra: Partial<AutofillInputHints> = {}): AutofillInputHints {
   return { type: "password", name: "password", ...extra };
 }
+
+describe("isCurrentPasswordField / isNewPasswordField", () => {
+  it("treats autocomplete=new-password as new; current-password as current", () => {
+    const neo = passwordHints({ autocomplete: "new-password" });
+    const cur = passwordHints({ autocomplete: "current-password" });
+    assert.equal(isNewPasswordField(neo), true);
+    assert.equal(isCurrentPasswordField(neo), false);
+    assert.equal(isCurrentPasswordField(cur), true);
+    assert.equal(isNewPasswordField(cur), false);
+  });
+
+  it("sibling confirm/new-password marks the other password as new context", () => {
+    const primary = passwordHints({ name: "password" });
+    const confirm = passwordHints({ name: "password_confirm", autocomplete: "new-password" });
+    assert.equal(isNewPasswordField(primary, [primary, confirm]), true);
+    assert.equal(isCurrentPasswordField(primary, [primary, confirm]), false);
+  });
+
+  it("bare password without creation cues is current (login)", () => {
+    const bare = passwordHints({ name: "password", autocomplete: "off" });
+    assert.equal(isCurrentPasswordField(bare), true);
+    assert.equal(isNewPasswordField(bare), false);
+  });
+});
 
 describe("detectAutofillFormType", () => {
   it("detects login: single password + username/email", () => {
