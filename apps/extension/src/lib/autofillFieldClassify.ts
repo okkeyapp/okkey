@@ -193,6 +193,7 @@ function acExactName(ac: string): boolean {
 /**
  * Person full-name field: autocomplete=name, strong cues (Full name / ФИО), or bare «Name»
  * without an entity prefix (Ruleset / Repository / Workflow / …).
+ * Username / nickname cues beat bare name="name" / id=*name* (e.g. npm signup Username).
  */
 export function isPersonFullNameField(blob: string, autocomplete = ""): boolean {
   const ac = autocomplete.trim().toLowerCase();
@@ -204,6 +205,16 @@ export function isPersonFullNameField(blob: string, autocomplete = ""): boolean 
   }
   if (PERSON_FULL_NAME_STRONG.test(blob)) {
     return true;
+  }
+  // Label/aria «Username» / login cues win over bare name attr (signup_name / name="name").
+  if (
+    acToken(ac, "username") ||
+    acToken(ac, "nickname") ||
+    ac.includes("username") ||
+    USER_NAME.test(blob) ||
+    NICKNAME_HINT.test(blob)
+  ) {
+    return false;
   }
   return BARE_NAME_TOKEN.test(blob);
 }

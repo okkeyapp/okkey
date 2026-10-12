@@ -126,6 +126,50 @@ describe("classifyAutofillInput non-login types", () => {
     assert.equal(classifyAutofillInput({ type: "text", name: "first-name" }), "given-name");
   });
 
+  it("npm signup Username beats bare name=name / signup_name (not full name)", () => {
+    // https://www.npmjs.com/signup — label Username, attr name="name", id signup_name.
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        id: "signup_name",
+        name: "name",
+        labelText: "Username *",
+      }),
+      "username",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "name",
+        ariaLabel: "Username",
+      }),
+      "username",
+    );
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "name",
+        labelText: "Логин",
+      }),
+      "username",
+    );
+    // Real full-name fields must still win (autocomplete=name / Full name / bare Name*).
+    assert.equal(
+      classifyAutofillInput({
+        type: "text",
+        name: "name",
+        id: "signup_name",
+        autocomplete: "name",
+        labelText: "Username *",
+      }),
+      "name",
+    );
+    assert.equal(
+      classifyAutofillInput({ type: "text", name: "name", labelText: "Full name" }),
+      "name",
+    );
+  });
+
   it("does not treat entity Name labels as personal name (GitHub ruleset etc.)", () => {
     // GitHub settings → Ruleset Name (required) — not a person's name.
     assert.equal(
