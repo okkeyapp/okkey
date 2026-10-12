@@ -12,6 +12,7 @@ import {
   writeExtensionAuthPending,
 } from "../../auth/extensionAuthPendingStorage";
 import { readStoredSession } from "../../auth/sessionAuthStorage";
+import { useLocale } from "../../locale/LocaleContext";
 import { AUTH_EMAIL_PATH } from "../../routes/paths";
 
 const CLIENT_ID = "okkey_extension";
@@ -44,6 +45,7 @@ function isExtensionRedirectUri(uri: string): boolean {
  * or sends the user through normal web login — **without** vault unlock.
  */
 export default function ExtensionAuthStartPage() {
+  const { t } = useLocale();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { accessToken } = useAuthVault();
@@ -67,22 +69,22 @@ export default function ExtensionAuthStartPage() {
       setError(null);
 
       if (params.clientId !== CLIENT_ID) {
-        setError("Invalid client_id. Open login from the Okkey extension.");
+        setError(t("auth.extensionStart.errorInvalidClient"));
         setBusy(false);
         return;
       }
       if (!params.state || params.state.length < 8) {
-        setError("Missing or invalid state.");
+        setError(t("auth.extensionStart.errorInvalidState"));
         setBusy(false);
         return;
       }
       if (!params.codeChallenge || params.method !== "S256") {
-        setError("PKCE code_challenge (S256) is required.");
+        setError(t("auth.extensionStart.errorPkceRequired"));
         setBusy(false);
         return;
       }
       if (!isExtensionRedirectUri(params.redirectUri)) {
-        setError("redirect_uri must be an extension callback URL.");
+        setError(t("auth.extensionStart.errorRedirectUri"));
         setBusy(false);
         return;
       }
@@ -116,7 +118,7 @@ export default function ExtensionAuthStartPage() {
       if (!hasExtensionAuthPending()) {
         return;
       }
-      setError("Could not complete extension sign-in. Try again from the extension.");
+      setError(t("auth.extensionStart.errorGeneric"));
       setBusy(false);
     }
 
@@ -124,12 +126,12 @@ export default function ExtensionAuthStartPage() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, navigate, params]);
+  }, [accessToken, navigate, params, t]);
 
   return (
     <AppShellLayout
-      title="Extension sign-in"
-      description="Connecting your Okkey session to the browser extension. Vault unlock stays in the extension."
+      title={t("auth.extensionStart.title")}
+      description={t("auth.extensionStart.description")}
       logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
       contentClassName="max-w-lg"
     >
@@ -137,12 +139,12 @@ export default function ExtensionAuthStartPage() {
         {busy && !error ? (
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <Spinner className="size-5" />
-            Preparing secure handoff…
+            {t("auth.extensionStart.preparing")}
           </div>
         ) : null}
         {error ? (
           <Alert variant="destructive">
-            <AlertTitle>Sign-in could not continue</AlertTitle>
+            <AlertTitle>{t("auth.extensionStart.errorTitle")}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
@@ -156,10 +158,10 @@ export default function ExtensionAuthStartPage() {
                 navigate(AUTH_EMAIL_PATH, { replace: true });
               }}
             >
-              Back to sign-in
+              {t("auth.extensionStart.backToSignIn")}
             </Button>
             <Button type="button" variant="ghost" asChild>
-              <Link to={AUTH_EMAIL_PATH}>Open email login</Link>
+              <Link to={AUTH_EMAIL_PATH}>{t("auth.extensionStart.openEmailLogin")}</Link>
             </Button>
           </div>
         ) : null}
