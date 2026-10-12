@@ -1,5 +1,10 @@
 import { encryptAttachmentPayload } from "@okkey/crypto";
-import { ITEM_CATEGORY_LOGIN, createPresetItemPlaintextV2, generateEntityId } from "@okkey/types";
+import {
+  ITEM_CATEGORY_LOGIN,
+  createPresetItemPlaintextV2,
+  generateEntityId,
+  type ItemPlaintextV2,
+} from "@okkey/types";
 import {
   categoriesForFieldKinds,
   createWorkspaceVaultItemsReadController,
@@ -29,9 +34,14 @@ import {
   type AutofillQueryResponse,
   type AutofillRuntimeMessage,
   type AutofillSaveContextResponse,
+  type AutofillSaveFormCommitMessage,
+  type AutofillSaveFormDraftItem,
+  type AutofillSaveFormDraftMessage,
+  type AutofillSaveFormDraftResponse,
   type AutofillSaveOfferResponse,
   type AutofillSaveResponse,
   type AutofillSiteIconResponse,
+  type AutofillUpdateFieldKey,
 } from "./autofillMessages";
 import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "./extensionVaultSession";
 import { initExtensionCrypto } from "./initExtensionCrypto";
@@ -652,6 +662,103 @@ function usernamesEqual(a: string, b: string): boolean {
   return a.trim().localeCompare(b.trim(), undefined, { sensitivity: "accent" }) === 0;
 }
 
+function computeUpdateChangedFields(input: {
+  item: {
+    fields: ItemPlaintextV2["fields"];
+  };
+  username: string;
+  password: string;
+  websiteUrl: string;
+  pageUrl: string;
+}): AutofillUpdateFieldKey[] {
+  const secrets = extractLoginAutofillSecrets(input.item);
+  const changed: AutofillUpdateFieldKey[] = [];
+  if (!secrets || !usernamesEqual(secrets.username, input.username)) {
+    changed.push("login");
+  }
+  if (!secrets || secrets.password !== input.password) {
+    changed.push("password");
+  }
+  const itemUrl = primaryLoginWebsiteUrl(input.item);
+  const sameUrl =
+    !itemUrl ||
+    saveUrlsEqual(itemUrl, input.websiteUrl) ||
+    saveUrlsEqual(itemUrl, input.pageUrl);
+  if (!sameUrl) {
+    changed.push("url");
+  }
+  return changed.length > 0 ? changed : ["login", "password"];
+}
+
+function applyLoginCredentialsToItem(
+  item: ItemPlaintextV2,
+  input: { title: string; username: string; password: string; websiteUrl: string },
+): ItemPlaintextV2 {
+  let websiteUpdated = false;
+  return {
+    ...item,
+    title: (input.title || item.title).trim() || item.title,
+    updatedAtMs: Date.now(),
+    fields: item.fields.map((field) => {
+      if ((field.id === "login" || field.type === "email") && field.value.kind === "text") {
+        return { ...field, value: { kind: "text" as const, text: input.username } };
+      }
+      if (field.value.kind === "password") {
+        return { ...field, value: { kind: "password" as const, password: input.password } };
+      }
+      if (field.type === "url" && field.value.kind === "url" && !websiteUpdated) {
+        websiteUpdated = true;
+        const scope = field.value.urlAutofillScope || "entire-site";
+        return {
+          ...field,
+          value: {
+            kind: "url" as const,
+            url: input.websiteUrl,
+            urlAutofillScope: scope,
+          },
+        };
+      }
+      return field;
+    }),
+  };
+}
+
+function toSaveFormDraftItem(item: ItemPlaintextV2): AutofillSaveFormDraftItem {
+  return {
+    itemId: item.itemId,
+    vaultId: item.vaultId,
+    title: item.title,
+    categoryId: item.categoryId,
+    createdAtMs: item.createdAtMs,
+    updatedAtMs: item.updatedAtMs,
+    schemaVersion: item.schemaVersion,
+    sections: item.sections,
+    fields: item.fields,
+    ...(item.tags ? { tags: item.tags } : {}),
+    ...(item.faviconId ? { faviconId: item.faviconId } : {}),
+    ...(item.faviconSource ? { faviconSource: item.faviconSource } : {}),
+  };
+}
+
+function fromSaveFormDraftItem(draft: AutofillSaveFormDraftItem): ItemPlaintextV2 {
+  return {
+    schemaVersion: draft.schemaVersion as ItemPlaintextV2["schemaVersion"],
+    itemId: draft.itemId,
+    vaultId: draft.vaultId,
+    title: draft.title,
+    categoryId: draft.categoryId,
+    createdAtMs: draft.createdAtMs,
+    updatedAtMs: draft.updatedAtMs,
+    sections: draft.sections as ItemPlaintextV2["sections"],
+    fields: draft.fields as ItemPlaintextV2["fields"],
+    ...(draft.tags ? { tags: draft.tags } : {}),
+    ...(draft.faviconId ? { faviconId: draft.faviconId } : {}),
+    ...(draft.faviconSource
+      ? { faviconSource: draft.faviconSource as ItemPlaintextV2["faviconSource"] }
+      : {}),
+  };
+}
+
 export async function handleAutofillSaveOffer(input: {
   pageUrl: string;
   websiteUrl: string;
@@ -717,10 +824,18 @@ export async function handleAutofillSaveOffer(input: {
   }
   await touchExtensionUnlockSession(auth.userId);
   const iconUrl = await storedFaviconDataUrl(target.vaultId, target.itemId, target.faviconId);
+  const changedFields = computeUpdateChangedFields({
+    item: target,
+    username: input.username,
+    password: input.password,
+    websiteUrl: input.websiteUrl,
+    pageUrl: input.pageUrl,
+  });
   return {
     status: "update",
     itemId: target.itemId,
     title: target.title || target.itemId,
+    changedFields,
     ...(iconUrl ? { iconUrl } : {}),
   };
 }
@@ -943,6 +1058,223 @@ export async function handleAutofillSave(input: {
   }
 }
 
+export async function handleAutofillSaveFormDraft(
+  input: Omit<AutofillSaveFormDraftMessage, "type">,
+): Promise<AutofillSaveFormDraftResponse> {
+  const session = await readSession();
+  const profile = await readProfile();
+  if (!session || !profile) {
+    return { status: "signed-out" };
+  }
+  const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
+  if (!fresh?.passwordShareC) {
+    return { status: "locked" };
+  }
+  const workspaceId = await readStoredCurrentWorkspaceId(session.user_id);
+  const bundle = await readExtensionVaultBundle(session.user_id);
+  if (!workspaceId || !bundle?.encrypted_private_key?.payload) {
+    return { status: "error", message: "VAULT_NOT_READY" };
+  }
+
+  try {
+    await initExtensionCrypto();
+    const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+    const [workspaces, vaults] = await Promise.all([
+      core.listWorkspaces(),
+      core.listWorkspaceVaults(workspaceId),
+    ]);
+    const workspace = workspaces.find((item) => item.id === workspaceId);
+    const vaultOptions = vaults.map((vault) => ({
+      vaultId: vault.id,
+      name: vault.name,
+      icon: vault.icon || (vault.isPersonal ? "👤" : "💼"),
+      isPersonal: Boolean(vault.isPersonal),
+    }));
+    const controller = createWorkspaceVaultItemsReadController({
+      core,
+      userId: session.user_id,
+      workspaceId,
+      vaults,
+      accountVaultKey: fresh.vaultKey,
+      encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+    });
+    try {
+      await controller.refresh();
+      const creds = {
+        title: input.title,
+        username: input.username,
+        password: input.password,
+        websiteUrl: input.websiteUrl,
+      };
+
+      if (input.kind === "update" && input.itemId) {
+        const existing = controller.getItemById(input.itemId);
+        if (
+          !existing ||
+          existing.deleted ||
+          existing.archived ||
+          existing.categoryId !== ITEM_CATEGORY_LOGIN
+        ) {
+          return { status: "error", message: "ITEM_NOT_FOUND" };
+        }
+        const draft = applyLoginCredentialsToItem(existing, creds);
+        await touchExtensionUnlockSession(session.user_id);
+        return {
+          status: "ok",
+          kind: "update",
+          item: toSaveFormDraftItem(draft),
+          workspaceName: workspace?.name?.trim() || "Workspace",
+          vaults: vaultOptions,
+        };
+      }
+
+      const personal =
+        (input.vaultId ? vaults.find((vault) => vault.id === input.vaultId) : undefined) ??
+        vaults.find((vault) => vault.isPersonal) ??
+        vaults[0];
+      if (!personal) {
+        return { status: "error", message: "NO_VAULT" };
+      }
+      const itemId = generateEntityId();
+      let item = createPresetItemPlaintextV2({
+        categoryId: ITEM_CATEGORY_LOGIN,
+        itemId,
+        vaultId: personal.id,
+        title: (input.title || domainTitleFromUrl(input.websiteUrl)).trim() || "Login",
+      });
+      item = applyLoginCredentialsToItem(item, {
+        ...creds,
+        title: item.title,
+      });
+      await touchExtensionUnlockSession(session.user_id);
+      return {
+        status: "ok",
+        kind: "create",
+        item: toSaveFormDraftItem(item),
+        workspaceName: workspace?.name?.trim() || "Workspace",
+        vaults: vaultOptions,
+      };
+    } finally {
+      controller.dispose();
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { status: "error", message };
+  }
+}
+
+export async function handleAutofillSaveFormCommit(
+  input: Omit<AutofillSaveFormCommitMessage, "type">,
+): Promise<AutofillSaveResponse> {
+  const session = await readSession();
+  const profile = await readProfile();
+  if (!session || !profile) {
+    return { status: "signed-out" };
+  }
+  const fresh = await readExtensionUnlockSessionIfFresh(session.user_id);
+  if (!fresh?.passwordShareC) {
+    return { status: "locked" };
+  }
+  const workspaceId = await readStoredCurrentWorkspaceId(session.user_id);
+  const bundle = await readExtensionVaultBundle(session.user_id);
+  if (!workspaceId || !bundle?.encrypted_private_key?.payload) {
+    return { status: "error", message: "VAULT_NOT_READY" };
+  }
+
+  try {
+    await initExtensionCrypto();
+    const core = createCoreClient(profile.apiBaseUrl, session.access_token);
+    const vaults = await core.listWorkspaceVaults(workspaceId);
+    const controller = createWorkspaceVaultItemsReadController({
+      core,
+      userId: session.user_id,
+      workspaceId,
+      vaults,
+      accountVaultKey: fresh.vaultKey,
+      encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+    });
+    try {
+      await controller.refresh();
+      const item = fromSaveFormDraftItem(input.item);
+      if (input.kind === "update") {
+        const existing = controller.getItemById(item.itemId);
+        if (
+          !existing ||
+          existing.deleted ||
+          existing.archived ||
+          existing.categoryId !== ITEM_CATEGORY_LOGIN
+        ) {
+          return { status: "error", message: "ITEM_NOT_FOUND" };
+        }
+        await controller.updateItem({
+          ...item,
+          createdAtMs: existing.createdAtMs,
+          updatedAtMs: Date.now(),
+          faviconId: item.faviconId ?? existing.faviconId,
+          faviconSource: item.faviconSource ?? existing.faviconSource,
+        });
+        await touchExtensionUnlockSession(session.user_id);
+        return { status: "ok", itemId: item.itemId };
+      }
+
+      const vault = vaults.find((entry) => entry.id === item.vaultId) ?? vaults.find((entry) => entry.isPersonal) ?? vaults[0];
+      if (!vault) {
+        return { status: "error", message: "NO_VAULT" };
+      }
+      const toCreate: ItemPlaintextV2 = {
+        ...item,
+        vaultId: vault.id,
+        updatedAtMs: Date.now(),
+      };
+      await controller.createItem(toCreate);
+
+      const websiteUrl = primaryLoginWebsiteUrl(toCreate);
+      if (websiteUrl) {
+        try {
+          const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, [websiteUrl]);
+          if (png && png.byteLength > 0) {
+            const vaultKey = await resolveVaultItemEncryptionKey({
+              vault,
+              accountVaultKey: fresh.vaultKey,
+              core,
+              encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+            });
+            const faviconId = await uploadFaviconAttachment({
+              apiBaseUrl: profile.apiBaseUrl,
+              accessToken: session.access_token,
+              vaultId: vault.id,
+              itemId: toCreate.itemId,
+              vaultKey,
+              pngBytes: png,
+            });
+            if (faviconId) {
+              const created = controller.getItemById(toCreate.itemId);
+              if (created) {
+                await controller.updateItem({
+                  ...created,
+                  faviconId,
+                  faviconSource: "website",
+                  updatedAtMs: Date.now(),
+                });
+              }
+            }
+          }
+        } catch {
+          /* favicon optional */
+        }
+      }
+
+      await touchExtensionUnlockSession(session.user_id);
+      return { status: "ok", itemId: toCreate.itemId };
+    } finally {
+      controller.dispose();
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { status: "error", message };
+  }
+}
+
 const pendingOpenFillByTab = new Map<number, { itemId: string; pageUrl: string }>();
 
 function normalizeOpenUrl(url: string): string {
@@ -1066,6 +1398,8 @@ export function isAutofillRuntimeMessage(message: unknown): message is AutofillR
     type === AUTOFILL_MSG.save ||
     type === AUTOFILL_MSG.saveOffer ||
     type === AUTOFILL_MSG.saveContext ||
+    type === AUTOFILL_MSG.saveFormDraft ||
+    type === AUTOFILL_MSG.saveFormCommit ||
     type === AUTOFILL_MSG.siteIcon ||
     type === AUTOFILL_MSG.openAndFill ||
     type === AUTOFILL_MSG.applyFill ||

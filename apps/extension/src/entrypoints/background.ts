@@ -9,6 +9,8 @@ import {
   handleAutofillQuery,
   handleAutofillSave,
   handleAutofillSaveContext,
+  handleAutofillSaveFormCommit,
+  handleAutofillSaveFormDraft,
   handleAutofillSaveOffer,
   handleAutofillSiteIcon,
   isAutofillRuntimeMessage,
@@ -65,6 +67,23 @@ export default defineBackground(() => {
     }
     if (message.type === AUTOFILL_MSG.saveContext) {
       return handleAutofillSaveContext();
+    }
+    if (message.type === AUTOFILL_MSG.saveFormDraft) {
+      return handleAutofillSaveFormDraft({
+        kind: message.kind,
+        title: message.title,
+        username: message.username,
+        password: message.password,
+        websiteUrl: message.websiteUrl,
+        vaultId: message.vaultId,
+        itemId: message.itemId,
+      });
+    }
+    if (message.type === AUTOFILL_MSG.saveFormCommit) {
+      return handleAutofillSaveFormCommit({
+        kind: message.kind,
+        item: message.item,
+      });
     }
     if (message.type === AUTOFILL_MSG.siteIcon) {
       return handleAutofillSiteIcon(message.websiteUrl, message.urls);

@@ -12,7 +12,14 @@ import {
   type AutofillSaveVaultOption,
   type AutofillSiteIconResponse,
   type AutofillSuggestion,
+  type AutofillUpdateFieldKey,
 } from "../lib/autofillMessages";
+import {
+  SAVE_PROMPT_FORM_MSG,
+  buildSavePromptFormUrl,
+  isSavePromptFormMessage,
+  type SavePromptFormQuery,
+} from "../lib/savePromptFormBridge";
 import {
   autofillCategoryIconColor,
   autofillCategoryIconSvgHtml,
@@ -77,7 +84,7 @@ type OverlayMode =
   | "unlock-tooltip"
   | "empty-tooltip"
   | "save"
-  | "save-rename"
+  | "save-form"
   | "unlock-save"
   | "password-generator"
   | "username-generator";
@@ -95,31 +102,41 @@ type PendingSaveCreds = {
   formType: AutofillFormType;
 };
 
+function msg(locale: "ru" | "en", key: string, fallback: string, values?: Record<string, string | number>): string {
+  try {
+    return formatWebMessage(locale, key, values);
+  } catch {
+    return fallback;
+  }
+}
+
 function overlayStrings() {
   const ru = (navigator.language || "").toLowerCase().startsWith("ru");
   const locale = ru ? "ru" : "en";
-  let usernameGeneratorCta = ru ? "Генератор логина" : "Username generator";
-  let emptyTooltip = ru ? "Нет элементов для автозаполнения" : "No items to autofill";
-  try {
-    usernameGeneratorCta = formatWebMessage(locale, "extension.autofill.usernameGenerator");
-  } catch {
-    /* bundle may lag until @okkey/i18n rebuild */
-  }
-  try {
-    emptyTooltip = formatWebMessage(locale, "extension.autofill.noItems");
-  } catch {
-    /* bundle may lag until @okkey/i18n rebuild */
-  }
+  const usernameGeneratorCta = msg(
+    locale,
+    "extension.autofill.usernameGenerator",
+    ru ? "Генератор логина" : "Username generator",
+  );
+  const emptyTooltip = msg(
+    locale,
+    "extension.autofill.noItems",
+    ru ? "Нет элементов для автозаполнения" : "No items to autofill",
+  );
   return ru
     ? {
         unlockCta: "Разблокировать Okkey",
         unlockTooltip: "Разблокируйте Okkey",
-        saveTitle: "Сохранить учётную запись?",
-        updateTitle: "Обновить пароль/логин в записи?",
+        saveTitle: msg(locale, "extension.autofill.saveTitle", "Сохранить учётную запись?"),
+        updateTitle: msg(locale, "extension.autofill.updateTitle", "Обновить учётную запись"),
         saveUnlockBody: "Чтобы сохранить учётную запись, сначала нужно разблокировать Okkey.",
         updateUnlockBody: "Чтобы обновить учётную запись, сначала нужно разблокировать Okkey.",
-        saveConfirm: "Сохранить",
-        updateConfirm: "Обновить",
+        saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Сохранить"),
+        updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Обновить"),
+        updateFieldsTemplate: "Обновить: {fields}",
+        fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "логин (емейл)"),
+        fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "пароль"),
+        fieldUrl: msg(locale, "web.keyForm.fieldLabels.url", "URL сайта"),
         emptyTooltip,
         workspaceFallback: "Workspace",
         vaultFallback: "Сейф",
@@ -128,17 +145,57 @@ function overlayStrings() {
     : {
         unlockCta: "Unlock Okkey",
         unlockTooltip: "Unlock Okkey",
-        saveTitle: "Save this login?",
-        updateTitle: "Update login or password?",
+        saveTitle: msg(locale, "extension.autofill.saveTitle", "Save this login?"),
+        updateTitle: msg(locale, "extension.autofill.updateTitle", "Update account"),
         saveUnlockBody: "To save this login, unlock Okkey first.",
         updateUnlockBody: "To update this login, unlock Okkey first.",
-        saveConfirm: "Save",
-        updateConfirm: "Update",
+        saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Save"),
+        updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Update"),
+        updateFieldsTemplate: "Update: {fields}",
+        fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "login"),
+        fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "password"),
+        fieldUrl: msg(locale, "web.keyForm.fieldLabels.url", "website URL"),
         emptyTooltip,
         workspaceFallback: "Workspace",
         vaultFallback: "Vault",
         usernameGeneratorCta,
       };
+}
+
+function truncateWithEllipsis(text: string, maxLen: number): string {
+  if (text.length <= maxLen) {
+    return text;
+  }
+  if (maxLen <= 1) {
+    return "…";
+  }
+  return `${text.slice(0, maxLen - 1).trimEnd()}…`;
+}
+
+function formatUpdateFieldsLine(
+  keys: readonly AutofillUpdateFieldKey[],
+  strings: ReturnType<typeof overlayStrings>,
+): string {
+  const labels = keys.map((key) => {
+    if (key === "login") {
+      return strings.fieldLogin;
+    }
+    if (key === "password") {
+      return strings.fieldPassword;
+    }
+    return strings.fieldUrl;
+  });
+  const joined = labels.join(", ");
+  const fields = truncateWithEllipsis(joined, 52);
+  try {
+    return formatWebMessage(
+      (navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en",
+      "extension.autofill.updateFields",
+      { fields },
+    );
+  } catch {
+    return strings.updateFieldsTemplate.replace("{fields}", fields);
+  }
 }
 
 /** Visual state of the in-field Okkey toggle (Figma 1215:4374). */
@@ -218,7 +275,10 @@ export default defineContentScript({
     /** Dedupe identical saveOffer while the prompt is already up (SPA redirect churn). */
     let lastSaveOfferKey: string | null = null;
     let pendingUpdateItemId: string | null = null;
+    let pendingUpdateChangedFields: AutofillUpdateFieldKey[] = [];
     let savePromptKind: SavePromptKind = "create";
+    let saveFormHost: HTMLDivElement | null = null;
+    let saveFormMessageBound = false;
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
     let stopCreditCardFillWatch: (() => void) | null = null;
@@ -286,7 +346,6 @@ export default defineContentScript({
       );
     }
     let saveTitleDraft = "";
-    let saveEditing = false;
     let saveVaults: AutofillSaveVaultOption[] = [];
     let saveWorkspaceName = "";
     let saveVaultId = "";
@@ -404,6 +463,10 @@ export default defineContentScript({
       generatorSliderActive = false;
       toggleVaultStatus = "unknown";
       clearGeneratorCopyFeedback();
+      if (saveFormHost) {
+        saveFormHost.remove();
+        saveFormHost = null;
+      }
       if (host) {
         host.style.display = "none";
         host.style.pointerEvents = "none";
@@ -490,7 +553,7 @@ export default defineContentScript({
       if (
         pendingSave ||
         overlayMode === "save" ||
-        overlayMode === "save-rename" ||
+        overlayMode === "save-form" ||
         overlayMode === "unlock-save"
       ) {
         return;
@@ -981,6 +1044,19 @@ export default defineContentScript({
             border: 0;
             margin: 0;
           }
+          .update-fields {
+            display: block;
+            width: 100%;
+            padding: 8px 16px 12px;
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 20px;
+            color: hsl(var(--ok-muted));
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-sizing: border-box;
+          }
           .vault-row {
             display: flex;
             align-items: center;
@@ -1407,24 +1483,12 @@ export default defineContentScript({
       username: string;
       iconUrl?: string;
       iconPending?: boolean;
-      editing?: boolean;
     }): string {
       const icon = rowIconHtml({
         title: input.title,
         iconUrl: input.iconUrl,
         iconPending: input.iconPending,
       });
-      if (input.editing) {
-        return `<div class="row editing">
-              ${icon}
-              <div class="rename-wrap">
-                <input type="text" data-rename-input value="${escapeHtml(input.title)}" />
-                <button type="button" class="rename-check" data-rename-confirm="1" aria-label="OK">
-                  <img src="${escapeHtml(overlayIconUrl("tabler-check"))}" alt="" />
-                </button>
-              </div>
-            </div>`;
-      }
       const meta = input.username
         ? `<span class="row-meta">${escapeHtml(input.username)}</span>`
         : "";
@@ -1434,7 +1498,7 @@ export default defineContentScript({
                 <span class="row-title">${escapeHtml(input.title)}</span>
                 ${meta}
               </span>
-              <button type="button" class="icon-btn" data-rename-start="1" aria-label="Edit">
+              <button type="button" class="icon-btn" data-open-key-form="1" aria-label="Edit">
                 <img src="${escapeHtml(overlayIconUrl("tabler-pencil"))}" alt="" />
               </button>
             </div>`;
@@ -1502,10 +1566,17 @@ export default defineContentScript({
         username: pendingSave?.username ?? "",
         iconUrl: saveIconUrl,
         iconPending: saveIconLoading && !saveIconUrl,
-        editing: saveEditing,
       });
-      const vaultBlock = isUpdate
-        ? ""
+      const secondaryBlock = isUpdate
+        ? `<hr class="save-divider" />
+          <span class="update-fields">${escapeHtml(
+            formatUpdateFieldsLine(
+              pendingUpdateChangedFields.length > 0
+                ? pendingUpdateChangedFields
+                : (["login", "password"] as AutofillUpdateFieldKey[]),
+              strings,
+            ),
+          )}</span>`
         : `<hr class="save-divider" />
           ${vaultPickerHtml()}`;
       return `<div class="panel panel-save">
@@ -1519,7 +1590,7 @@ export default defineContentScript({
         </div>
         <div class="save-card">
           ${preview}
-          ${vaultBlock}
+          ${secondaryBlock}
         </div>
         <div class="save-actions">
           <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
@@ -1622,9 +1693,8 @@ export default defineContentScript({
           return;
         }
         // Panel / toggle clicks must not steal focus from the page autofill field.
-        // Allow caret only in the save-rename text field. Length slider uses custom
-        // pointer drag (also preventDefault) so the page input keeps focus.
-        if (target.closest("[data-rename-input], textarea, [contenteditable='true']")) {
+        // Length slider uses custom pointer drag (also preventDefault) so the page input keeps focus.
+        if (target.closest("textarea, [contenteditable='true']")) {
           return;
         }
         if (target.closest(".panel, .toggle, .tooltip")) {
@@ -1659,8 +1729,9 @@ export default defineContentScript({
           pendingSave = null;
           lastSaveOfferKey = null;
           pendingUpdateItemId = null;
+          pendingUpdateChangedFields = [];
           savePromptKind = "create";
-          saveEditing = false;
+          closeSaveKeyFormOverlay();
           // Dismiss must survive redirect — do not restore on the next page.
           void dismissPendingSaveOffer();
           hideOverlay();
@@ -1670,20 +1741,8 @@ export default defineContentScript({
           void confirmSave();
           return;
         }
-        if (target.closest("[data-rename-start]")) {
-          saveEditing = true;
-          overlayMode = "save-rename";
-          void paintOverlay();
-          return;
-        }
-        if (target.closest("[data-rename-confirm]")) {
-          const input = root.querySelector("[data-rename-input]");
-          if (input instanceof HTMLInputElement) {
-            saveTitleDraft = input.value.trim() || domainTitle();
-          }
-          saveEditing = false;
-          overlayMode = "save";
-          void paintOverlay();
+        if (target.closest("[data-open-key-form]")) {
+          openSaveKeyFormOverlay();
           return;
         }
         if (target.closest("[data-vault-toggle]")) {
@@ -1940,33 +1999,128 @@ export default defineContentScript({
       void paintOverlay();
     }
 
-    function focusRenameInput(root: ShadowRoot): void {
-      const renameInput = root.querySelector("[data-rename-input]");
-      if (!(renameInput instanceof HTMLInputElement)) {
+    function closeSaveKeyFormOverlay(): void {
+      if (saveFormHost) {
+        saveFormHost.remove();
+        saveFormHost = null;
+      }
+      if (overlayMode === "save-form") {
+        overlayMode = pendingSave ? "save" : "hidden";
+      }
+    }
+
+    function currentSaveFormQuery(): SavePromptFormQuery | null {
+      if (!pendingSave) {
+        return null;
+      }
+      return {
+        kind: savePromptKind,
+        title: saveTitleDraft || domainTitleFromCapture(pendingSave.captureUrl),
+        username: pendingSave.username,
+        password: pendingSave.password,
+        websiteUrl: pendingSave.websiteUrl,
+        ...(savePromptKind === "create" && saveVaultId ? { vaultId: saveVaultId } : {}),
+        ...(savePromptKind === "update" && pendingUpdateItemId
+          ? { itemId: pendingUpdateItemId }
+          : {}),
+      };
+    }
+
+    function postSaveFormInit(iframe: HTMLIFrameElement): void {
+      const payload = currentSaveFormQuery();
+      if (!payload || !iframe.contentWindow) {
         return;
       }
-      renameInput.focus();
-      // Caret at end so the user can append; do not select-all / wipe on type.
-      const end = renameInput.value.length;
-      try {
-        renameInput.setSelectionRange(end, end);
-      } catch {
-        /* ignore */
+      iframe.contentWindow.postMessage(
+        {
+          type: SAVE_PROMPT_FORM_MSG.init,
+          source: "okkey-save-prompt-form",
+          payload,
+        },
+        new URL(browser.runtime.getURL("/")).origin,
+      );
+    }
+
+    function onSaveFormWindowMessage(event: MessageEvent): void {
+      if (!isSavePromptFormMessage(event.data)) {
+        return;
       }
-      renameInput.onkeydown = (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          saveTitleDraft = renameInput.value.trim() || domainTitle();
-          saveEditing = false;
-          overlayMode = "save";
-          void paintOverlay();
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          saveEditing = false;
+      const iframe = saveFormHost?.querySelector("iframe");
+      if (event.data.type === SAVE_PROMPT_FORM_MSG.ready && iframe instanceof HTMLIFrameElement) {
+        postSaveFormInit(iframe);
+        return;
+      }
+      if (event.data.type === SAVE_PROMPT_FORM_MSG.cancel) {
+        closeSaveKeyFormOverlay();
+        if (pendingSave) {
           overlayMode = "save";
           void paintOverlay();
         }
-      };
+        return;
+      }
+      if (event.data.type === SAVE_PROMPT_FORM_MSG.saved) {
+        closeSaveKeyFormOverlay();
+        pendingSave = null;
+        lastSaveOfferKey = null;
+        pendingUpdateItemId = null;
+        pendingUpdateChangedFields = [];
+        savePromptKind = "create";
+        saveIconUrl = undefined;
+        saveIconLoading = false;
+        void clearPendingSaveOffer();
+        hideOverlay();
+      }
+    }
+
+    function bindSaveFormMessages(): void {
+      if (saveFormMessageBound) {
+        return;
+      }
+      saveFormMessageBound = true;
+      window.addEventListener("message", onSaveFormWindowMessage);
+    }
+
+    function openSaveKeyFormOverlay(): void {
+      if (!pendingSave) {
+        return;
+      }
+      bindSaveFormMessages();
+      closeSaveKeyFormOverlay();
+      const hostEl = document.createElement("div");
+      hostEl.id = "okkey-save-prompt-form-host";
+      hostEl.setAttribute("data-okkey-save-form", "1");
+      Object.assign(hostEl.style, {
+        position: "fixed",
+        inset: "0",
+        zIndex: "2147483646",
+        margin: "0",
+        padding: "0",
+        border: "0",
+        background: "transparent",
+        pointerEvents: "auto",
+      });
+      const iframe = document.createElement("iframe");
+      iframe.src = buildSavePromptFormUrl();
+      iframe.title = "Okkey";
+      iframe.allow = "";
+      Object.assign(iframe.style, {
+        position: "absolute",
+        inset: "0",
+        width: "100%",
+        height: "100%",
+        border: "0",
+        background: "transparent",
+        colorScheme: "normal",
+      });
+      iframe.addEventListener("load", () => {
+        postSaveFormInit(iframe);
+      });
+      hostEl.appendChild(iframe);
+      document.documentElement.appendChild(hostEl);
+      saveFormHost = hostEl;
+      overlayMode = "save-form";
+      // Keep compact panel hidden while the full key-form iframe is open.
+      void paintOverlay();
     }
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
@@ -2031,10 +2185,12 @@ export default defineContentScript({
           panelMarkup = listHtml(cachedSuggestions);
         } else if (allowGeneratorPanel && generatorState) {
           panelMarkup = generatorPanelHtml(generatorState, genStrings);
-        } else if (overlayMode === "save" || overlayMode === "save-rename") {
+        } else if (overlayMode === "save") {
           panelMarkup = savePanelHtml(false);
         } else if (overlayMode === "unlock-save") {
           panelMarkup = savePanelHtml(true);
+        } else if (overlayMode === "save-form") {
+          panelMarkup = "";
         }
 
         const tooltipText =
@@ -2070,7 +2226,6 @@ export default defineContentScript({
         host.style.pointerEvents = "none";
         root.innerHTML = `<style>${panelBaseStyles(cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
         wireOverlayOnce(root);
-        focusRenameInput(root);
         wireGeneratorPanel(root);
         wireRowFaviconFallbacks(root);
         materializeRowFaviconDataUrls(root);
@@ -2107,11 +2262,7 @@ export default defineContentScript({
         const panel = root.querySelector(".panel");
         if (panel instanceof HTMLElement) {
           panel.style.pointerEvents = "auto";
-          if (
-            overlayMode === "save" ||
-            overlayMode === "save-rename" ||
-            overlayMode === "unlock-save"
-          ) {
+          if (overlayMode === "save" || overlayMode === "unlock-save") {
             positionSavePanel(panel);
           } else if (anchorInput && document.contains(anchorInput)) {
             positionPanelNearInput(panel, anchorInput);
@@ -2422,14 +2573,22 @@ export default defineContentScript({
     function showSavePrompt(
       creds: PendingSaveCreds,
       locked: boolean,
-      opts?: { kind?: SavePromptKind; itemId?: string; title?: string; iconUrl?: string },
+      opts?: {
+        kind?: SavePromptKind;
+        itemId?: string;
+        title?: string;
+        iconUrl?: string;
+        changedFields?: AutofillUpdateFieldKey[];
+      },
     ): void {
       pendingSave = creds;
       lastSaveOfferKey = pendingOfferKey(creds);
       savePromptKind = opts?.kind ?? "create";
       pendingUpdateItemId = savePromptKind === "update" ? opts?.itemId ?? null : null;
+      pendingUpdateChangedFields =
+        savePromptKind === "update" ? opts?.changedFields ?? [] : [];
       listOpen = false;
-      saveEditing = false;
+      closeSaveKeyFormOverlay();
       vaultMenuOpen = false;
       if (opts?.title) {
         saveTitleDraft = opts.title;
@@ -2530,7 +2689,9 @@ export default defineContentScript({
       // Already showing this offer (SPA) — keep it.
       if (
         pendingSave &&
-        (overlayMode === "save" || overlayMode === "save-rename" || overlayMode === "unlock-save")
+        (overlayMode === "save" ||
+          overlayMode === "save-form" ||
+          overlayMode === "unlock-save")
       ) {
         return;
       }
@@ -2567,23 +2728,12 @@ export default defineContentScript({
       window.setTimeout(() => void restorePendingSaveOffer(), 800);
     }
 
-    function syncRenameDraftFromDom(): void {
-      if (!shadow || !saveEditing) {
-        return;
-      }
-      const input = shadow.querySelector("[data-rename-input]");
-      if (input instanceof HTMLInputElement) {
-        saveTitleDraft = input.value;
-      }
-    }
-
     async function hydrateSaveContext(): Promise<void> {
       try {
         const ctx = await fetchSaveContext();
         if (!pendingSave || ctx.status !== "ok") {
           return;
         }
-        syncRenameDraftFromDom();
         saveWorkspaceName = ctx.workspaceName;
         saveVaults = ctx.vaults;
         if (!saveVaultId) {
@@ -2607,7 +2757,6 @@ export default defineContentScript({
         if (!pendingSave || pendingOfferKey(pendingSave) !== offerKey) {
           return;
         }
-        syncRenameDraftFromDom();
         saveIconLoading = false;
         if (result.status === "ok") {
           saveIconUrl = result.iconUrl;
@@ -2778,6 +2927,7 @@ export default defineContentScript({
           itemId: pendingUpdateItemId || undefined,
           title: saveTitleDraft,
           iconUrl: saveIconUrl,
+          changedFields: pendingUpdateChangedFields,
         });
         void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
         return;
@@ -2786,6 +2936,7 @@ export default defineContentScript({
         pendingSave = null;
         lastSaveOfferKey = null;
         pendingUpdateItemId = null;
+        pendingUpdateChangedFields = [];
         savePromptKind = "create";
         saveIconUrl = undefined;
         saveIconLoading = false;
@@ -2797,6 +2948,7 @@ export default defineContentScript({
         pendingSave = null;
         lastSaveOfferKey = null;
         pendingUpdateItemId = null;
+        pendingUpdateChangedFields = [];
         savePromptKind = "create";
         void clearPendingSaveOffer();
         hideOverlay();
@@ -2819,7 +2971,9 @@ export default defineContentScript({
       // Already showing this exact offer (e.g. SPA URL churn) — do not re-query / flicker.
       if (
         lastSaveOfferKey === offerKey &&
-        (overlayMode === "save" || overlayMode === "save-rename" || overlayMode === "unlock-save")
+        (overlayMode === "save" ||
+          overlayMode === "save-form" ||
+          overlayMode === "unlock-save")
       ) {
         return;
       }
@@ -2848,9 +3002,10 @@ export default defineContentScript({
         pendingSave = null;
         lastSaveOfferKey = null;
         pendingUpdateItemId = null;
+        pendingUpdateChangedFields = [];
         savePromptKind = "create";
         void clearPendingSaveOffer();
-        if (overlayMode === "save" || overlayMode === "save-rename" || overlayMode === "unlock-save") {
+        if (overlayMode === "save" || overlayMode === "save-form" || overlayMode === "unlock-save") {
           hideOverlay();
         }
         return;
@@ -2861,6 +3016,7 @@ export default defineContentScript({
           itemId: response.itemId,
           title: response.title,
           iconUrl: response.iconUrl,
+          changedFields: response.changedFields,
         });
         return;
       }

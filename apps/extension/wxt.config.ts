@@ -63,6 +63,7 @@ export default defineConfig({
         // Content-script shadow DOM loads Inter + overlay icons via extension URLs.
         resources: [
           "auth-callback.html",
+          "save-prompt-form.html",
           "fonts/*",
           "icons/*",
         ],

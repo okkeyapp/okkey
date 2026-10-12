@@ -6,6 +6,10 @@ export const AUTOFILL_MSG = {
   save: "okkey.autofill.save",
   saveOffer: "okkey.autofill.saveOffer",
   saveContext: "okkey.autofill.saveContext",
+  /** Draft ItemPlaintext for the save/update key-form (pencil). */
+  saveFormDraft: "okkey.autofill.saveFormDraft",
+  /** Persist full key-form item (create or update). */
+  saveFormCommit: "okkey.autofill.saveFormCommit",
   siteIcon: "okkey.autofill.siteIcon",
   openAndFill: "okkey.autofill.openAndFill",
   applyFill: "okkey.autofill.applyFill",
@@ -95,6 +99,9 @@ export type AutofillSaveResponse =
   | { status: "error"; message: string }
   | { status: "ok"; itemId: string };
 
+/** Fields that differ between the pending credentials and the matched vault item. */
+export type AutofillUpdateFieldKey = "login" | "password" | "url";
+
 /** Decide whether to offer save, update an existing URL-match login, or stay silent. */
 export type AutofillSaveOfferResponse =
   | { status: "signed-out" }
@@ -106,6 +113,8 @@ export type AutofillSaveOfferResponse =
       itemId: string;
       title: string;
       iconUrl?: string;
+      /** Labels of fields that will actually change (login / password / url). */
+      changedFields: AutofillUpdateFieldKey[];
     };
 
 export type AutofillSaveVaultOption = {
@@ -191,6 +200,51 @@ export type AutofillSaveContextMessage = {
   type: typeof AUTOFILL_MSG.saveContext;
 };
 
+export type AutofillSaveFormDraftMessage = {
+  type: typeof AUTOFILL_MSG.saveFormDraft;
+  kind: "create" | "update";
+  title: string;
+  username: string;
+  password: string;
+  websiteUrl: string;
+  vaultId?: string;
+  itemId?: string;
+};
+
+/** JSON-serializable login item draft for the key-form overlay. */
+export type AutofillSaveFormDraftItem = {
+  itemId: string;
+  vaultId: string;
+  title: string;
+  categoryId: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  schemaVersion: number;
+  sections: unknown[];
+  fields: unknown[];
+  tags?: string[];
+  faviconId?: string;
+  faviconSource?: string;
+};
+
+export type AutofillSaveFormDraftResponse =
+  | { status: "signed-out" }
+  | { status: "locked" }
+  | { status: "error"; message: string }
+  | {
+      status: "ok";
+      kind: "create" | "update";
+      item: AutofillSaveFormDraftItem;
+      workspaceName: string;
+      vaults: AutofillSaveVaultOption[];
+    };
+
+export type AutofillSaveFormCommitMessage = {
+  type: typeof AUTOFILL_MSG.saveFormCommit;
+  kind: "create" | "update";
+  item: AutofillSaveFormDraftItem;
+};
+
 export type AutofillSiteIconMessage = {
   type: typeof AUTOFILL_MSG.siteIcon;
   /** Primary website URL written on save (same lookup as post-save favicon upload). */
@@ -253,6 +307,8 @@ export type AutofillRuntimeMessage =
   | AutofillSaveMessage
   | AutofillSaveOfferMessage
   | AutofillSaveContextMessage
+  | AutofillSaveFormDraftMessage
+  | AutofillSaveFormCommitMessage
   | AutofillSiteIconMessage
   | AutofillOpenAndFillMessage
   | AutofillApplyFillMessage
