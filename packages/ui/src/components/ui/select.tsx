@@ -3,6 +3,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import type { VariantProps } from "class-variance-authority";
 
 import { inputLikeControlClassName } from "../../lib/input-like-control-classes.js";
+import { usePortalContainer } from "../../lib/portal-container.js";
 import { cn } from "../../lib/utils.js";
 import { buttonVariants } from "./button.js";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "./select-icons.js";
@@ -204,6 +205,7 @@ const SelectContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = "popper", onWheel, ...props }, ref) => {
   const { triggerVariant } = React.useContext(SelectUiContext);
+  const portalContainer = usePortalContainer();
   const [contentNode, setContentNode] = React.useState<React.ComponentRef<typeof SelectPrimitive.Content> | null>(
     null,
   );
@@ -249,7 +251,7 @@ const SelectContent = React.forwardRef<
   }, [contentNode]);
 
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={portalContainer}>
       <SelectPrimitive.Content
         ref={setContentRef}
         className={cn(

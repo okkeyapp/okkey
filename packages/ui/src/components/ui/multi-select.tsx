@@ -2,6 +2,7 @@ import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 
 import { inputLikeControlClassName } from "../../lib/input-like-control-classes.js";
+import { usePortalContainer } from "../../lib/portal-container.js";
 import { cn } from "../../lib/utils.js";
 import type { SelectVariant } from "./select.js";
 
@@ -369,6 +370,7 @@ const MultiSelectContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, children, align = "start", sideOffset = 2, ...props }, ref) => {
   const ctx = useMultiSelectContext("MultiSelectContent");
+  const portalContainer = usePortalContainer();
   const searchRef = React.useRef<HTMLInputElement>(null);
   const listboxRef = React.useRef<HTMLDivElement>(null);
   const [visibleOptionCount, setVisibleOptionCount] = React.useState<number | null>(null);
@@ -391,7 +393,7 @@ const MultiSelectContent = React.forwardRef<
   const showSearchEmpty = searchActive && visibleOptionCount === 0;
 
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={portalContainer}>
       <PopoverPrimitive.Content
         ref={ref}
         align={align}

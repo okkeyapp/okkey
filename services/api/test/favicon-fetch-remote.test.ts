@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { bytesEqual, hostsFromUrls } from "../src/favicon/fetch-remote.ts";
+import {
+  bytesEqual,
+  expandFaviconLookupKeys,
+  hostsFromUrls,
+  registrableDomainFromHost,
+} from "../src/favicon/fetch-remote.ts";
 
 describe("hostsFromUrls", () => {
   test("returns hosts in URL list order", () => {
@@ -16,6 +21,33 @@ describe("hostsFromUrls", () => {
       hostsFromUrls(["http://localhost:3000", "https://google.com", "192.168.0.1"]),
       ["google.com"],
     );
+  });
+});
+
+describe("expandFaviconLookupKeys", () => {
+  test("full URL, then origin, then https eTLD+1", () => {
+    assert.deepEqual(
+      expandFaviconLookupKeys(["https://d3v-alexanderzorin.zendesk.com/access/normal"]),
+      [
+        "https://d3v-alexanderzorin.zendesk.com/access/normal",
+        "https://d3v-alexanderzorin.zendesk.com",
+        "https://zendesk.com",
+      ],
+    );
+  });
+
+  test("does not duplicate origin when it is the full URL", () => {
+    assert.deepEqual(expandFaviconLookupKeys(["https://zendesk.com"]), ["https://zendesk.com"]);
+  });
+});
+
+describe("registrableDomainFromHost", () => {
+  test("strips subdomain to eTLD+1", () => {
+    assert.equal(registrableDomainFromHost("d3v-alexanderzorin.zendesk.com"), "zendesk.com");
+  });
+
+  test("keeps multi-part public suffixes", () => {
+    assert.equal(registrableDomainFromHost("www.bbc.co.uk"), "bbc.co.uk");
   });
 });
 

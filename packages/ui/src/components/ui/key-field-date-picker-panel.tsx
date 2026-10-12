@@ -12,6 +12,14 @@ import { KeyFieldOverlayPanel } from "./key-field-overlay-panel.js";
 const calendarStartMonth = new Date(new Date().getFullYear() - 100, 0);
 const calendarEndMonth = new Date(new Date().getFullYear() + 10, 11);
 
+const datePickerCalendarClassNames = {
+  nav: "hidden",
+} as const;
+
+const datePickerCalendarComponents = {
+  MonthCaption: CalendarMonthYearCaption,
+} as const;
+
 export type KeyFieldDatePickerPanelProps = {
   value: string;
   onValueChange: (value: string) => void;
@@ -34,14 +42,17 @@ function KeyFieldDatePickerPanelComponent({
     }
   }, [selectedDate]);
 
-  function handleDateSelect(date: Date | undefined) {
-    if (!date) {
-      return;
-    }
+  const handleDateSelect = React.useCallback(
+    (date: Date | undefined) => {
+      if (!date) {
+        return;
+      }
 
-    onValueChange(formatKeyFieldDateValue(date));
-    onClose?.();
-  }
+      onValueChange(formatKeyFieldDateValue(date));
+      onClose?.();
+    },
+    [onClose, onValueChange],
+  );
 
   return (
     <KeyFieldOverlayPanel data-key-field-date-picker-panel className="w-auto p-0">
@@ -55,12 +66,8 @@ function KeyFieldDatePickerPanelComponent({
         month={month}
         onMonthChange={setMonth}
         onSelect={handleDateSelect}
-        classNames={{
-          nav: "hidden",
-        }}
-        components={{
-          MonthCaption: CalendarMonthYearCaption,
-        }}
+        classNames={datePickerCalendarClassNames}
+        components={datePickerCalendarComponents}
       />
     </KeyFieldOverlayPanel>
   );

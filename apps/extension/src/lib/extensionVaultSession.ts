@@ -18,6 +18,8 @@ import {
   writeVaultDevicePrefsAsync,
 } from "@okkey/vault";
 
+import { extensionLocalStorage, extensionSessionStorage } from "./extensionStorageApi";
+
 const THEME_KEY = "okkey.theme";
 const ACCENT_KEY = "okkey.accent";
 const ACCENT_TINT_KEY = "okkey.accentTint";
@@ -25,15 +27,21 @@ const ACCENT_TINT_KEY = "okkey.accentTint";
 function chromeSessionStorage(): VaultUnlockSessionStorage {
   return {
     async getItem(key: string): Promise<string | null> {
-      const bag = await browser.storage.session.get(key);
+      const area = extensionSessionStorage();
+      if (!area) return null;
+      const bag = await area.get(key);
       const value = bag[key];
       return typeof value === "string" ? value : null;
     },
     async setItem(key: string, value: string): Promise<void> {
-      await browser.storage.session.set({ [key]: value });
+      const area = extensionSessionStorage();
+      if (!area) return;
+      await area.set({ [key]: value });
     },
     async removeItem(key: string): Promise<void> {
-      await browser.storage.session.remove(key);
+      const area = extensionSessionStorage();
+      if (!area) return;
+      await area.remove(key);
     },
   };
 }
@@ -41,12 +49,16 @@ function chromeSessionStorage(): VaultUnlockSessionStorage {
 function chromeLocalKvStorage() {
   return {
     async getItem(key: string): Promise<string | null> {
-      const bag = await browser.storage.local.get(key);
+      const area = extensionLocalStorage();
+      if (!area) return null;
+      const bag = await area.get(key);
       const value = bag[key];
       return typeof value === "string" ? value : null;
     },
     async setItem(key: string, value: string): Promise<void> {
-      await browser.storage.local.set({ [key]: value });
+      const area = extensionLocalStorage();
+      if (!area) return;
+      await area.set({ [key]: value });
     },
   };
 }
@@ -124,7 +136,10 @@ export async function writeExtensionThemePreference(input: {
     if (input.accentTint) {
       await store.setItem(ACCENT_TINT_KEY, "1");
     } else {
-      await browser.storage.local.remove(ACCENT_TINT_KEY);
+      const area = extensionLocalStorage();
+      if (area) {
+        await area.remove(ACCENT_TINT_KEY);
+      }
     }
   }
 }

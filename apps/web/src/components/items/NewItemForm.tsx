@@ -239,10 +239,15 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
   const trimmedRecordName = recordName.trim();
   const recordNameInvalid = showValidation && trimmedRecordName.length === 0;
   const currentSections = formSections ?? initialSections;
+  const liveWebsiteUrls = useMemo(
+    () => collectWebsiteUrlsFromSections(currentSections),
+    [currentSections],
+  );
+  const faviconLookupUrls = liveWebsiteUrls.length > 0 ? liveWebsiteUrls : committedWebsiteUrls;
   const faviconState = useItemFormFavicon({
     accessToken,
     categoryId,
-    urls: committedWebsiteUrls,
+    urls: faviconLookupUrls,
     initialFaviconId: initialValues?.faviconId ?? prefillValues?.faviconId,
     initialFaviconItemId: initialValues?.faviconItemId ?? prefillValues?.faviconItemId ?? initialValues?.itemId,
     initialFaviconSource: initialValues?.faviconSource ?? prefillValues?.faviconSource,
@@ -644,6 +649,7 @@ const NewItemForm = forwardRef<NewItemFormHandle, NewItemFormProps>(function New
         fieldTypes={keyFormFieldTypes}
         messages={keyFormMessages}
         datePickerLocale={datePickerLocale}
+        countryLocale={locale}
         onSectionsChange={setFormSections}
         onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
         onFileUpload={handleFileUpload}

@@ -59,9 +59,13 @@ export interface FieldValueTotp {
   digits?: number;
 }
 
+/** Autofill / copy-guard scope for a «Вебсайт URL» field. Default when omitted: entire-site. */
+export type UrlAutofillScope = "entire-site" | "exact-url" | "none";
+
 export interface FieldValueUrl {
   kind: "url";
   url: string;
+  urlAutofillScope?: UrlAutofillScope;
 }
 
 export interface FieldValueNote {

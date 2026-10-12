@@ -291,14 +291,8 @@ export default function UnlockPasswordPage() {
 
   if (hasExtensionAuthPending()) {
     return (
-      <AppShellLayout
-        title={t("unlock.title")}
-        description={t("unlock.description")}
-        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      >
-        <div className="flex flex-col items-center gap-3 py-8" role="status" aria-busy="true">
-          <Spinner />
-        </div>
+      <AppShellLayout title={t("unlock.title")} busy>
+        <Spinner />
       </AppShellLayout>
     );
   }
@@ -328,14 +322,8 @@ export default function UnlockPasswordPage() {
 
   if (deviceTrustStatus === "checking" || deviceTrustStatus === "idle") {
     return (
-      <AppShellLayout
-        title={t("unlock.title")}
-        description={t("unlock.description")}
-        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
-      >
-        <div className="flex flex-col items-center gap-3 py-8" role="status" aria-busy="true">
-          <Spinner />
-        </div>
+      <AppShellLayout title={t("unlock.title")} busy>
+        <Spinner />
       </AppShellLayout>
     );
   }

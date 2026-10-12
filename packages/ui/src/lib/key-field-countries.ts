@@ -3,23 +3,38 @@ const KEY_FIELD_COUNTRY_CODES =
     ",",
   );
 
-const countryDisplayNames = new Intl.DisplayNames(["en"], { type: "region" });
+const DEFAULT_COUNTRY_LOCALE = "en";
 
 export type KeyFieldCountryOption = {
   code: string;
   name: string;
 };
 
-export const keyFieldCountries: readonly KeyFieldCountryOption[] = KEY_FIELD_COUNTRY_CODES.map((code) => ({
-  code,
-  name: countryDisplayNames.of(code) ?? code,
-})).sort((left, right) => left.name.localeCompare(right.name, "en"));
+function createCountryDisplayNames(locale: string): Intl.DisplayNames {
+  try {
+    return new Intl.DisplayNames([locale], { type: "region" });
+  } catch {
+    return new Intl.DisplayNames([DEFAULT_COUNTRY_LOCALE], { type: "region" });
+  }
+}
 
-export function getKeyFieldCountryName(code: string): string {
+/** Localized country list — same Intl.DisplayNames(region) source as settings region of residence. */
+export function getKeyFieldCountries(locale: string = DEFAULT_COUNTRY_LOCALE): KeyFieldCountryOption[] {
+  const displayNames = createCountryDisplayNames(locale);
+  return KEY_FIELD_COUNTRY_CODES.map((code) => ({
+    code,
+    name: displayNames.of(code) ?? code,
+  })).sort((left, right) => left.name.localeCompare(right.name, locale));
+}
+
+export function getKeyFieldCountryName(code: string, locale: string = DEFAULT_COUNTRY_LOCALE): string {
   const trimmed = code.trim();
   if (!trimmed) {
     return "";
   }
 
-  return countryDisplayNames.of(trimmed) ?? trimmed;
+  return createCountryDisplayNames(locale).of(trimmed) ?? trimmed;
 }
+
+/** English country list (legacy default). Prefer getKeyFieldCountries(locale). */
+export const keyFieldCountries: readonly KeyFieldCountryOption[] = getKeyFieldCountries(DEFAULT_COUNTRY_LOCALE);

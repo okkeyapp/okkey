@@ -579,7 +579,7 @@ export {
 } from "./item-plaintext-v1.js";
 
 import type { ItemFaviconSource, ItemPlaintextV2 } from "./item-schema/types.js";
-export type { FieldValueV2, ItemFieldV2, ItemSectionV2 } from "./item-schema/types.js";
+export type { FieldValueV2, ItemFieldV2, ItemSectionV2, UrlAutofillScope } from "./item-schema/types.js";
 export type { ItemPlaintextV2, ItemFaviconSource };
 export {
   ITEM_PLAINTEXT_SCHEMA_VERSION_V1,
@@ -593,6 +593,7 @@ export {
   migrateItemPlaintextV1ToV2,
   validateItemPlaintextV2,
   normalizeItemPlaintextV2,
+  parseUrlAutofillScope,
   createItemDeleteTombstoneV2,
   listCategoryIds,
   getCategoryDefinition,

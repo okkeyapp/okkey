@@ -42,7 +42,7 @@ type SemanticBaseKey =
   | "foreground";
 
 /** --accent / --primary source per theme (same numbers as `index.css`). */
-const ACCENT_HSL: Record<"light" | "dark", Record<string, Hsl>> = {
+export const ACCENT_HSL: Record<"light" | "dark", Record<string, Hsl>> = {
   light: {
     a1: [215, 5.0, 9.0],
     a2: [217.2, 93.2, 59.8],
@@ -134,6 +134,13 @@ export function clearSemanticAccentTintInline(root: HTMLElement): void {
  * `--muted-foreground`, `--border`, `--input`, `--foreground`.
  * When disabled, clears those inline properties so stylesheet tokens apply.
  */
+/** `--primary` / `--accent` HSL triplet for a stored accent id. */
+export function accentPrimaryHslTriplet(theme: "light" | "dark", accentId: string): string {
+  const table = ACCENT_HSL[theme];
+  const hsl = table[accentId] ?? table.a2 ?? ACCENT_HSL.light.a2;
+  return `${hsl[0]} ${hsl[1].toFixed(1)}% ${hsl[2].toFixed(1)}%`;
+}
+
 export function applySemanticAccentTint(
   root: HTMLElement,
   theme: "light" | "dark",

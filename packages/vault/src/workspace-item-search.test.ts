@@ -7,7 +7,7 @@ import {
   parseTagSearchNeedle,
   scoreItemsListRecordSearch,
 } from "./workspace-item-search.ts";
-import { itemHasUrlMatchingTab, itemUrlMatchesTab, itemUrlsMatchTab } from "./item-url-match.ts";
+import { itemHasUrlMatchingTab, itemUrlFieldsMatchTab, itemUrlMatchesTab, itemUrlsMatchTab } from "./item-url-match.ts";
 
 describe("workspaceItemSearch", () => {
   const row = {
@@ -87,5 +87,29 @@ describe("itemUrlMatch", () => {
     assert.equal(itemHasUrlMatchingTab("https://a.com", []), false);
     assert.equal(itemHasUrlMatchingTab("https://github.com/login", ["github.com"]), true);
     assert.equal(itemHasUrlMatchingTab("https://evil.example", ["github.com"]), false);
+  });
+
+  it("none never matches", () => {
+    assert.equal(
+      itemUrlMatchesTab("https://github.com/login", "https://github.com/login", "none"),
+      false,
+    );
+  });
+
+  it("itemUrlFieldsMatchTab uses per-field scope", () => {
+    assert.equal(
+      itemUrlFieldsMatchTab("https://github.com/settings", [
+        { url: "https://github.com/login", urlAutofillScope: "exact-url" },
+        { url: "https://github.com", urlAutofillScope: "entire-site" },
+      ]),
+      true,
+    );
+    assert.equal(
+      itemUrlFieldsMatchTab("https://github.com/settings", [
+        { url: "https://github.com/login", urlAutofillScope: "exact-url" },
+        { url: "https://github.com", urlAutofillScope: "none" },
+      ]),
+      false,
+    );
   });
 });

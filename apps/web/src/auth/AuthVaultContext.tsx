@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type Context,
   type MutableRefObject,
   type ReactNode,
 } from "react";
@@ -134,7 +135,39 @@ export type AuthVaultContextValue = {
   retryDeviceRegistration: () => Promise<void>;
 };
 
-const AuthVaultContext = createContext<AuthVaultContextValue | null>(null);
+/**
+ * HMR-safe Context identity. Vite Fast Refresh can re-evaluate this module while
+ * children still hold a stale module binding; a new createContext() then makes
+ * useAuthVault() miss the Provider ("must be used within AuthVaultProvider").
+ * Pin the Context object on globalThis (and import.meta.hot.data) so Provider and
+ * consumers always share the same identity across soft refreshes.
+ */
+const AUTH_VAULT_CONTEXT_GLOBAL_KEY = "__okkey_AuthVaultContext__" as const;
+
+type AuthVaultContextGlobal = typeof globalThis & {
+  [AUTH_VAULT_CONTEXT_GLOBAL_KEY]?: Context<AuthVaultContextValue | null>;
+};
+
+function createAuthVaultContext(): Context<AuthVaultContextValue | null> {
+  const fromHot = import.meta.hot?.data?.authVaultContext as
+    | Context<AuthVaultContextValue | null>
+    | undefined;
+  if (fromHot) {
+    return fromHot;
+  }
+  const g = globalThis as AuthVaultContextGlobal;
+  if (!g[AUTH_VAULT_CONTEXT_GLOBAL_KEY]) {
+    g[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = createContext<AuthVaultContextValue | null>(null);
+  }
+  return g[AUTH_VAULT_CONTEXT_GLOBAL_KEY];
+}
+
+const AuthVaultContext = createAuthVaultContext();
+
+if (import.meta.hot) {
+  import.meta.hot.data.authVaultContext = AuthVaultContext;
+  (globalThis as AuthVaultContextGlobal)[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = AuthVaultContext;
+}
 
 function useActivityListeners(touch: () => void): void {
   useEffect(() => {
@@ -153,6 +186,33 @@ function useActivityListeners(touch: () => void): void {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [touch]);
+}
+
+function deviceApproversEqual(a: DeviceListItemDto[], b: DeviceListItemDto[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      !left ||
+      !right ||
+      left.device_id !== right.device_id ||
+      left.device_name !== right.device_name ||
+      left.status !== right.status ||
+      left.platform !== right.platform ||
+      left.is_current !== right.is_current ||
+      left.approval_expires_at !== right.approval_expires_at ||
+      left.blocked_until !== right.blocked_until
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function IdleLockWatcher({
@@ -903,7 +963,11 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       );
       setCurrentDeviceId(snapshot.deviceId);
       currentDeviceIdRef.current = snapshot.deviceId;
-      setDeviceApprovers(snapshot.approverDevices);
+      // Poll returns a fresh array every 2s; keep previous reference when equal so
+      // AuthVault context consumers (item forms / datepicker) do not re-render on a tick.
+      setDeviceApprovers((prev) =>
+        deviceApproversEqual(prev, snapshot.approverDevices) ? prev : snapshot.approverDevices,
+      );
       // Revoke/block from another browser must drop local unlock immediately.
       if (snapshot.status !== "trusted" && vaultUnlockedRef.current) {
         lockVault();
