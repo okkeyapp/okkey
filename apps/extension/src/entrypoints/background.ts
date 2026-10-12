@@ -67,7 +67,7 @@ export default defineBackground(() => {
       return handleAutofillSaveContext();
     }
     if (message.type === AUTOFILL_MSG.siteIcon) {
-      return handleAutofillSiteIcon(message.websiteUrl);
+      return handleAutofillSiteIcon(message.websiteUrl, message.urls);
     }
     if (message.type === AUTOFILL_MSG.openAndFill) {
       return handleAutofillOpenAndFill(message.itemId, message.url);

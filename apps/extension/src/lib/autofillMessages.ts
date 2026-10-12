@@ -193,7 +193,10 @@ export type AutofillSaveContextMessage = {
 
 export type AutofillSiteIconMessage = {
   type: typeof AUTOFILL_MSG.siteIcon;
+  /** Primary website URL written on save (same lookup as post-save favicon upload). */
   websiteUrl: string;
+  /** Extra lookup URLs (capture form URL → origin → eTLD+1 via API expand). */
+  urls?: string[];
 };
 
 export type AutofillSiteIconResponse =

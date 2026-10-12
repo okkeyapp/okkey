@@ -588,7 +588,10 @@ async function previewFaviconPng(apiBaseUrl: string, accessToken: string, urls: 
   }
 }
 
-export async function handleAutofillSiteIcon(websiteUrl: string): Promise<AutofillSiteIconResponse> {
+export async function handleAutofillSiteIcon(
+  websiteUrl: string,
+  urls?: string[],
+): Promise<AutofillSiteIconResponse> {
   const session = await readSession();
   const profile = await readProfile();
   if (!session || !profile) {
@@ -598,7 +601,9 @@ export async function handleAutofillSiteIcon(websiteUrl: string): Promise<Autofi
   if (!fresh?.passwordShareC) {
     return { status: "locked" };
   }
-  const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, [websiteUrl]);
+  // Same expand order as vault item favicon / web form preview: full URL → origin → eTLD+1.
+  const lookupUrls = [...new Set([...(urls ?? []), websiteUrl].map((u) => u.trim()).filter(Boolean))];
+  const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, lookupUrls);
   if (!png || png.byteLength === 0) {
     return { status: "missing" };
   }

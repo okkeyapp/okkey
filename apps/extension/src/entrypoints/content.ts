@@ -292,6 +292,8 @@ export default defineContentScript({
     let saveVaultId = "";
     let vaultMenuOpen = false;
     let saveIconUrl: string | undefined;
+    /** True while site-icon preview is in flight — transparent tile, not initials. */
+    let saveIconLoading = false;
 
     function markFilledByOkkey(): void {
       filledByOkkeyUntil = Date.now() + 15_000;
@@ -1272,11 +1274,13 @@ export default defineContentScript({
 
     /**
      * Match web `Favicon`: real image → transparent tile; colored monogram only when
-     * there is no image (or the image fails to load).
+     * there is no image (or the image fails to load). While a preview is in flight,
+     * keep a transparent tile (same as list/form) — never flash initials.
      */
     function rowIconHtml(input: {
       title: string;
       iconUrl?: string;
+      iconPending?: boolean;
       categoryId?: string;
     }): string {
       const letters = monogram(input.title);
@@ -1294,7 +1298,17 @@ export default defineContentScript({
         // Transparent tile while image loads (web Favicon); colored monogram only on error.
         return `<span class="row-icon" style="background:transparent" data-icon-fallback="${escapeHtml(letters)}" data-icon-fallback-bg="${escapeHtml(fallbackBg)}"><img src="${escapeHtml(input.iconUrl)}" alt="" data-row-favicon="1" /></span>`;
       }
+      if (input.iconPending) {
+        return `<span class="row-icon" style="background:transparent" data-icon-fallback="${escapeHtml(letters)}" data-icon-fallback-bg="${escapeHtml(fallbackBg)}" data-icon-pending="1"></span>`;
+      }
       return `<span class="row-icon" style="background:${fallbackBg}">${escapeHtml(letters)}</span>`;
+    }
+
+    function applyRowIconFallback(tile: HTMLElement): void {
+      const letters = tile.getAttribute("data-icon-fallback") || "?";
+      const bg = tile.getAttribute("data-icon-fallback-bg") || "#64748b";
+      tile.style.background = bg;
+      tile.textContent = letters;
     }
 
     function wireRowFaviconFallbacks(rootEl: ParentNode): void {
@@ -1308,16 +1322,69 @@ export default defineContentScript({
           if (!(tile instanceof HTMLElement) || !tile.classList.contains("row-icon")) {
             return;
           }
-          const letters = tile.getAttribute("data-icon-fallback") || "?";
-          const bg = tile.getAttribute("data-icon-fallback-bg") || "#64748b";
-          tile.style.background = bg;
-          tile.textContent = letters;
+          applyRowIconFallback(tile);
         };
         img.addEventListener("error", applyFallback);
         // Cached broken images may already be in error state before the listener attaches.
         if (img.complete && img.naturalWidth === 0) {
           applyFallback();
         }
+      }
+    }
+
+    /**
+     * Page CSP often blocks `data:` / `blob:` on `<img>` in the content overlay.
+     * Decode via fetch + canvas so the save/list tiles match the vault favicon image.
+     */
+    function materializeRowFaviconDataUrls(rootEl: ParentNode): void {
+      for (const img of rootEl.querySelectorAll<HTMLImageElement>("img[data-row-favicon]")) {
+        const src = img.getAttribute("src") || "";
+        if (!src.startsWith("data:") && !src.startsWith("blob:")) {
+          continue;
+        }
+        if (img.dataset.faviconMaterialized === "1") {
+          continue;
+        }
+        img.dataset.faviconMaterialized = "1";
+        const tile = img.parentElement;
+        if (!(tile instanceof HTMLElement) || !tile.classList.contains("row-icon")) {
+          continue;
+        }
+        void (async () => {
+          try {
+            const response = await fetch(src);
+            if (!response.ok) {
+              throw new Error("favicon fetch failed");
+            }
+            const blob = await response.blob();
+            const bitmap = await createImageBitmap(blob);
+            if (!tile.isConnected || !img.isConnected) {
+              bitmap.close();
+              return;
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.setAttribute("aria-hidden", "true");
+            canvas.style.width = "100%";
+            canvas.style.height = "100%";
+            canvas.style.display = "block";
+            canvas.style.objectFit = "cover";
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              bitmap.close();
+              throw new Error("no 2d context");
+            }
+            ctx.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            tile.style.background = "transparent";
+            img.replaceWith(canvas);
+          } catch {
+            if (tile.isConnected) {
+              applyRowIconFallback(tile);
+            }
+          }
+        })();
       }
     }
 
@@ -1339,9 +1406,14 @@ export default defineContentScript({
       title: string;
       username: string;
       iconUrl?: string;
+      iconPending?: boolean;
       editing?: boolean;
     }): string {
-      const icon = rowIconHtml({ title: input.title, iconUrl: input.iconUrl });
+      const icon = rowIconHtml({
+        title: input.title,
+        iconUrl: input.iconUrl,
+        iconPending: input.iconPending,
+      });
       if (input.editing) {
         return `<div class="row editing">
               ${icon}
@@ -1429,6 +1501,7 @@ export default defineContentScript({
         title,
         username: pendingSave?.username ?? "",
         iconUrl: saveIconUrl,
+        iconPending: saveIconLoading && !saveIconUrl,
         editing: saveEditing,
       });
       const vaultBlock = isUpdate
@@ -2000,6 +2073,7 @@ export default defineContentScript({
         focusRenameInput(root);
         wireGeneratorPanel(root);
         wireRowFaviconFallbacks(root);
+        materializeRowFaviconDataUrls(root);
 
         if (animateChevron) {
           const btn = root.querySelector("[data-toggle='1']");
@@ -2364,6 +2438,11 @@ export default defineContentScript({
       }
       if (opts?.iconUrl) {
         saveIconUrl = opts.iconUrl;
+        saveIconLoading = false;
+      } else {
+        saveIconUrl = undefined;
+        // Transparent pending tile until preview matches post-save vault favicon.
+        saveIconLoading = !locked;
       }
       overlayMode = locked ? "unlock-save" : "save";
       void paintOverlay();
@@ -2517,19 +2596,32 @@ export default defineContentScript({
     }
 
     async function hydrateSavePromptIcon(creds: PendingSaveCreds): Promise<void> {
+      const offerKey = pendingOfferKey(creds);
       try {
+        // Same URLs as save/upload: website written on the item + capture form URL.
         const result = (await browser.runtime.sendMessage({
           type: AUTOFILL_MSG.siteIcon,
           websiteUrl: creds.websiteUrl,
+          urls: [creds.captureUrl, creds.websiteUrl],
         })) as AutofillSiteIconResponse;
-        if (pendingSave !== creds || result.status !== "ok") {
+        if (!pendingSave || pendingOfferKey(pendingSave) !== offerKey) {
           return;
         }
         syncRenameDraftFromDom();
-        saveIconUrl = result.iconUrl;
+        saveIconLoading = false;
+        if (result.status === "ok") {
+          saveIconUrl = result.iconUrl;
+        } else {
+          saveIconUrl = undefined;
+        }
         await paintOverlay();
       } catch {
-        /* keep initials */
+        if (!pendingSave || pendingOfferKey(pendingSave) !== offerKey) {
+          return;
+        }
+        saveIconLoading = false;
+        saveIconUrl = undefined;
+        await paintOverlay();
       }
     }
 
@@ -2696,6 +2788,7 @@ export default defineContentScript({
         pendingUpdateItemId = null;
         savePromptKind = "create";
         saveIconUrl = undefined;
+        saveIconLoading = false;
         void clearPendingSaveOffer();
         hideOverlay();
         return;
