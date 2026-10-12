@@ -1,6 +1,14 @@
 import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 import { ITEM_CATEGORY_LOGIN, type ItemPlaintextV2 } from "@okkey/types";
-import { Input, PortalContainerProvider, ScrollArea, cn } from "@okkey/ui";
+import {
+  Input,
+  PortalContainerProvider,
+  ScrollArea,
+  Spinner,
+  cn,
+  getScrollAreaViewport,
+  readPopupScrollEdges,
+} from "@okkey/ui";
 import {
   ItemRecordFavicon,
   KeyFormEditor,
@@ -335,6 +343,19 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
       applySaveChromeShadows(scrollAreaRef.current, scrollEdges);
     }, [scrollEdges]);
 
+    // Recompute sticky chrome shadows after draft/form content replaces the spinner.
+    useLayoutEffect(() => {
+      const root = scrollAreaRef.current;
+      if (!root) {
+        return;
+      }
+      const viewport = getScrollAreaViewport(root);
+      if (!viewport) {
+        return;
+      }
+      applySaveChromeShadows(root, readPopupScrollEdges(viewport));
+    }, [loading, sections]);
+
     useLayoutEffect(() => {
       if (pathHostRef.current) {
         onPathHostReady?.();
@@ -371,11 +392,18 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
 
     return (
       <PortalContainerProvider container={portalContainer}>
-        <div className="okkey-tw relative flex h-full min-h-0 flex-1 flex-col text-foreground">
-          <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
+        <div className="okkey-tw relative flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden text-foreground">
+          <ScrollArea ref={scrollAreaRef} className="h-full max-h-full min-h-0 flex-1">
             <div className="flex flex-col gap-4 px-4 py-3">
               {loading ? (
-                <div className="py-3 text-sm text-muted-foreground">…</div>
+                <div
+                  className="flex min-h-[180px] flex-1 items-center justify-center py-8"
+                  role="status"
+                  aria-busy="true"
+                  aria-label={t(locale, "extension.autofill.saveFormLoading")}
+                >
+                  <Spinner />
+                </div>
               ) : error && !sections ? (
                 <p className="py-2 text-sm text-destructive">{error}</p>
               ) : (
@@ -425,7 +453,7 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
               )}
 
               {/* Gray breadcrumbs only — form sits on popup bg (web NewItemSaveLocationSection). */}
-              <div className="overflow-visible rounded-[10px] bg-secondary text-secondary-foreground">
+              <div className="overflow-hidden rounded-[10px] bg-secondary text-secondary-foreground">
                 <div ref={pathHostRef} data-save-path />
               </div>
             </div>

@@ -99,6 +99,12 @@ import { VaultPopup } from "./VaultPopup";
 
 type UnlockMode = "pin" | "master";
 
+/**
+ * MVP: self-hosted server URL only. Set true (or wire to env later) to restore
+ * SaaS / Self-hosted tabs without rewriting the sign-in flow.
+ */
+const ENABLE_SAAS_SIGNIN = false;
+
 const PIN_LENGTH = 6;
 
 const pinCellClassName =
@@ -171,8 +177,12 @@ export function PopupApp() {
   const [session, setSession] = useState<ExtensionSession | null>(null);
   const [trust, setTrust] = useState<DeviceTrustSnapshot | null>(null);
   const [identity, setIdentity] = useState<AccountIdentity | null>(null);
-  const [hostMode, setHostMode] = useState<ExtensionHostMode>("saas");
-  const [baseUrlInput, setBaseUrlInput] = useState(OKKEY_SAAS_WEB_BASE_URL);
+  const [hostMode, setHostMode] = useState<ExtensionHostMode>(
+    ENABLE_SAAS_SIGNIN ? "saas" : "self-hosted",
+  );
+  const [baseUrlInput, setBaseUrlInput] = useState(
+    ENABLE_SAAS_SIGNIN ? OKKEY_SAAS_WEB_BASE_URL : "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -343,13 +353,23 @@ export function PopupApp() {
       if (existingProfile) {
         setProfile(existingProfile);
         const mode: ExtensionHostMode =
-          existingProfile.webBaseUrl === OKKEY_SAAS_WEB_BASE_URL ? "saas" : "self-hosted";
+          !ENABLE_SAAS_SIGNIN || existingProfile.webBaseUrl !== OKKEY_SAAS_WEB_BASE_URL
+            ? "self-hosted"
+            : "saas";
         applyServerPreference(mode, existingProfile.webBaseUrl);
       } else if (lastServer) {
+        const mode: ExtensionHostMode =
+          !ENABLE_SAAS_SIGNIN || lastServer.hostMode !== "saas" ? "self-hosted" : "saas";
         applyServerPreference(
-          lastServer.hostMode,
-          lastServer.hostMode === "self-hosted" ? lastServer.webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
+          mode,
+          mode === "self-hosted"
+            ? lastServer.hostMode === "self-hosted"
+              ? lastServer.webBaseUrl
+              : ""
+            : OKKEY_SAAS_WEB_BASE_URL,
         );
+      } else if (!ENABLE_SAAS_SIGNIN) {
+        applyServerPreference("self-hosted", "");
       }
       if (existingProfile && existingSession) {
         setSession(existingSession);
@@ -510,7 +530,10 @@ export function PopupApp() {
     setBusy(true);
     setError(null);
     try {
-      const rawUrl = hostMode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : baseUrlInput;
+      const effectiveHostMode: ExtensionHostMode =
+        ENABLE_SAAS_SIGNIN && hostMode === "saas" ? "saas" : "self-hosted";
+      const rawUrl =
+        effectiveHostMode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : baseUrlInput;
       const webBaseUrl = normalizeWebBaseUrl(rawUrl);
       const apiBaseUrl = resolveApiBaseFromWebBase(webBaseUrl);
       const previous = await readProfile();
@@ -528,8 +551,9 @@ export function PopupApp() {
       };
       await writeProfile(nextProfile);
       await writeLastServer({
-        hostMode,
-        webBaseUrl: hostMode === "self-hosted" ? webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
+        hostMode: effectiveHostMode,
+        webBaseUrl:
+          effectiveHostMode === "self-hosted" ? webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
       });
       setProfile(nextProfile);
 
@@ -590,12 +614,20 @@ export function PopupApp() {
     setMasterPassword("");
     const lastServer = await readLastServer();
     if (lastServer) {
+      const mode: ExtensionHostMode =
+        !ENABLE_SAAS_SIGNIN || lastServer.hostMode !== "saas" ? "self-hosted" : "saas";
       applyServerPreference(
-        lastServer.hostMode,
-        lastServer.hostMode === "self-hosted" ? lastServer.webBaseUrl : OKKEY_SAAS_WEB_BASE_URL,
+        mode,
+        mode === "self-hosted"
+          ? lastServer.hostMode === "self-hosted"
+            ? lastServer.webBaseUrl
+            : ""
+          : OKKEY_SAAS_WEB_BASE_URL,
       );
-    } else {
+    } else if (ENABLE_SAAS_SIGNIN) {
       applyServerPreference("saas", OKKEY_SAAS_WEB_BASE_URL);
+    } else {
+      applyServerPreference("self-hosted", "");
     }
     setScreen("server");
   };
@@ -867,59 +899,61 @@ export function PopupApp() {
             topRight={languageSelect}
           >
             <form className="flex w-full flex-col gap-4" onSubmit={(e) => void onSaveServerAndLogin(e)}>
-              <div
-                className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-secondary/60 p-1"
-                role="tablist"
-                aria-label="Host"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={hostMode === "saas"}
-                  className={cn(
-                    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    hostMode === "saas"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => {
-                    setHostMode("saas");
-                    setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
-                  }}
+              {ENABLE_SAAS_SIGNIN ? (
+                <div
+                  className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-secondary/60 p-1"
+                  role="tablist"
+                  aria-label={t("auth.extension.hostModeLabel")}
                 >
-                  SaaS
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={hostMode === "self-hosted"}
-                  className={cn(
-                    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    hostMode === "self-hosted"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => {
-                    setHostMode("self-hosted");
-                    void (async () => {
-                      const last = await readLastServer();
-                      if (
-                        last?.hostMode === "self-hosted" &&
-                        last.webBaseUrl &&
-                        (baseUrlInput === OKKEY_SAAS_WEB_BASE_URL || !baseUrlInput.trim())
-                      ) {
-                        setBaseUrlInput(last.webBaseUrl);
-                      } else if (baseUrlInput === OKKEY_SAAS_WEB_BASE_URL) {
-                        setBaseUrlInput("");
-                      }
-                    })();
-                  }}
-                >
-                  Self-hosted
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={hostMode === "saas"}
+                    className={cn(
+                      "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                      hostMode === "saas"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => {
+                      setHostMode("saas");
+                      setBaseUrlInput(OKKEY_SAAS_WEB_BASE_URL);
+                    }}
+                  >
+                    {t("auth.extension.hostSaas")}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={hostMode === "self-hosted"}
+                    className={cn(
+                      "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                      hostMode === "self-hosted"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => {
+                      setHostMode("self-hosted");
+                      void (async () => {
+                        const last = await readLastServer();
+                        if (
+                          last?.hostMode === "self-hosted" &&
+                          last.webBaseUrl &&
+                          (baseUrlInput === OKKEY_SAAS_WEB_BASE_URL || !baseUrlInput.trim())
+                        ) {
+                          setBaseUrlInput(last.webBaseUrl);
+                        } else if (baseUrlInput === OKKEY_SAAS_WEB_BASE_URL) {
+                          setBaseUrlInput("");
+                        }
+                      })();
+                    }}
+                  >
+                    {t("auth.extension.hostSelfHosted")}
+                  </button>
+                </div>
+              ) : null}
 
-              {hostMode === "self-hosted" ? (
+              {hostMode === "self-hosted" || !ENABLE_SAAS_SIGNIN ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-1.5">
                     <label className="text-xs font-medium text-muted-foreground" htmlFor="base-url">

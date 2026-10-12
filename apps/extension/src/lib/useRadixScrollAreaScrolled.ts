@@ -57,6 +57,11 @@ export function useRadixScrollAreaScrollEdges(
 
     const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
     resizeObserver?.observe(viewport);
+    // Content growth (form load) changes scrollHeight without resizing the viewport.
+    const content = viewport.firstElementChild;
+    if (content instanceof HTMLElement) {
+      resizeObserver?.observe(content);
+    }
 
     return () => {
       viewport.removeEventListener("scroll", update);

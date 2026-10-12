@@ -976,7 +976,7 @@ export default defineContentScript({
             /* Edge-to-edge sticky chrome; padding lives on header / scroll / footer. */
             padding: 0;
             gap: 0;
-            /* Do not clip portaled vault menu; ScrollArea owns overflow for the body. */
+            /* Portal (vault menu) must paint outside; clip chrome via radius below. */
             overflow: visible;
           }
           .panel-save-form .save-header,
@@ -989,9 +989,14 @@ export default defineContentScript({
           }
           .panel-save-form .save-header {
             padding: 16px 16px 12px;
+            /* Match .panel border-radius so rectangular chrome does not poke past the card. */
+            border-radius: 12px 12px 0 0;
+            overflow: hidden;
           }
           .panel-save-form .save-actions {
             padding: 12px 16px 16px;
+            border-radius: 0 0 12px 12px;
+            overflow: hidden;
           }
           /* Match packages/ui popup sticky header/footer scroll shadows. */
           .panel-save-form .save-header[data-scroll-shadow] {
@@ -1005,7 +1010,14 @@ export default defineContentScript({
             flex-direction: column;
             flex: 1 1 auto;
             min-height: 0;
+            /* Definite max box between header/footer so Radix ScrollArea can scroll. */
             max-height: min(560px, calc(100vh - 160px));
+            overflow: hidden;
+          }
+          .panel-save-form .save-form-body > * {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: 100%;
           }
           .panel-save-form [data-save-path] .vault-row {
             padding: 6px 8px 4px;
