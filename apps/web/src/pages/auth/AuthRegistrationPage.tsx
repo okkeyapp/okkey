@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   buildRegistrationCryptoArtifacts,
@@ -20,7 +20,7 @@ import {
   Input,
   Spinner,
 } from "@okkey/ui";
-import { Copy, Download } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import AppShellLayout from "../../components/app-shell/AppShellLayout";
@@ -45,6 +45,8 @@ import {
 } from "./registrationRecoveryStep";
 
 const MIN_MASTER_PASSWORD_LENGTH = 4;
+/** Match KeyField copy-success feedback duration. */
+const RECOVERY_COPY_SUCCESS_MS = 3000;
 
 function RequirementCheckIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -90,8 +92,18 @@ export default function AuthRegistrationPage() {
   const [step, setStep] = useState<RegistrationStep>("form");
   const [recoverySecret, setRecoverySecret] = useState<string | null>(null);
   const [recoveryExported, setRecoveryExported] = useState(false);
+  const [recoveryCopied, setRecoveryCopied] = useState(false);
+  const recoveryCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
   const [postRegAccessToken, setPostRegAccessToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (recoveryCopyResetTimeoutRef.current) {
+        clearTimeout(recoveryCopyResetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // After completeRegistration we clear registrationAuthStateId and await enroll.
@@ -276,7 +288,15 @@ export default function AuthRegistrationPage() {
       await navigator.clipboard.writeText(recoverySecret);
       await ackRecoveryKeyExport();
       setRecoveryExported(true);
-      toast.success(t("web.toast.save.success"));
+      setRecoveryCopied(true);
+      if (recoveryCopyResetTimeoutRef.current) {
+        clearTimeout(recoveryCopyResetTimeoutRef.current);
+      }
+      recoveryCopyResetTimeoutRef.current = setTimeout(() => {
+        setRecoveryCopied(false);
+        recoveryCopyResetTimeoutRef.current = null;
+      }, RECOVERY_COPY_SUCCESS_MS);
+      toast.success(t("web.keyForm.copied"));
     } catch {
       setFormError(t("web.settingsPopup.recovery.error.copyFailed"));
     }
@@ -355,8 +375,12 @@ export default function AuthRegistrationPage() {
               className={`${controlGroupItemGrowClassName} h-9 gap-2.5 bg-background`}
               onClick={() => void handleRecoveryCopy()}
             >
-              <Copy className="size-4 shrink-0" />
-              {t("auth.registration.recovery.copy")}
+              {recoveryCopied ? (
+                <Check className="size-4 shrink-0" aria-hidden />
+              ) : (
+                <Copy className="size-4 shrink-0" aria-hidden />
+              )}
+              {recoveryCopied ? t("web.keyForm.copied") : t("auth.registration.recovery.copy")}
             </Button>
             <Button
               type="button"
