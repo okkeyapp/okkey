@@ -1,6 +1,6 @@
 import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 import { ITEM_CATEGORY_LOGIN, type ItemPlaintextV2 } from "@okkey/types";
-import { Input, PortalContainerProvider, cn } from "@okkey/ui";
+import { Input, PortalContainerProvider, ScrollArea, cn } from "@okkey/ui";
 import {
   ItemRecordFavicon,
   KeyFormEditor,
@@ -16,12 +16,14 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 
 import { AUTOFILL_MSG, type AutofillSaveFormDraftItem } from "../../lib/autofillMessages";
+import { useRadixScrollAreaScrollEdges } from "../../lib/useRadixScrollAreaScrolled";
 
 export type SavePromptKeyFormQuery = {
   kind: "create" | "update";
@@ -45,6 +47,10 @@ export type SavePromptKeyFormProps = {
   getVaultId?: () => string | undefined;
   /** Outside the scroll area so portaled overlays are not clipped. */
   portalContainer?: Element | null;
+  /** Fires when `[data-save-path]` is in the DOM (content script fills vault breadcrumbs). */
+  onPathHostReady?: () => void;
+  /** Closes the vault menu when the form body scrolls (menu is portaled). */
+  onScrollBody?: () => void;
   onSaved: () => void;
   onLocked: () => void;
 };
@@ -108,8 +114,38 @@ function collectWebsiteUrlsFromSections(sections: readonly KeyFormEditorSection[
     .filter(Boolean);
 }
 
+function applySaveChromeShadows(
+  scrollRoot: HTMLElement | null,
+  edges: { fromTop: boolean; fromBottom: boolean },
+): void {
+  const panel = scrollRoot?.closest(".panel-save-form");
+  if (!(panel instanceof HTMLElement)) {
+    return;
+  }
+  const header = panel.querySelector(".save-header");
+  const footer = panel.querySelector(".save-actions");
+  if (header instanceof HTMLElement) {
+    header.toggleAttribute("data-scroll-shadow", edges.fromTop);
+  }
+  if (footer instanceof HTMLElement) {
+    footer.toggleAttribute("data-scroll-shadow", edges.fromBottom);
+  }
+}
+
 export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptKeyFormProps>(
-  function SavePromptKeyForm({ query, iconUrl, getVaultId, portalContainer, onSaved, onLocked }, ref) {
+  function SavePromptKeyForm(
+    {
+      query,
+      iconUrl,
+      getVaultId,
+      portalContainer,
+      onPathHostReady,
+      onScrollBody,
+      onSaved,
+      onLocked,
+    },
+    ref,
+  ) {
     const locale = useMemo(() => resolveLocale(), []);
     const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
     const fieldTypes = useMemo(
@@ -127,6 +163,11 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
     const [saving, setSaving] = useState(false);
     const [previewIconUrl, setPreviewIconUrl] = useState<string | undefined>(iconUrl);
     const [iconLoading, setIconLoading] = useState(false);
+
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const pathHostRef = useRef<HTMLDivElement>(null);
+    const scrollEdges = useRadixScrollAreaScrollEdges(scrollAreaRef);
+    const lastScrollTopRef = useRef(0);
 
     useEffect(() => {
       setPreviewIconUrl(iconUrl);
@@ -290,60 +331,105 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
 
     useImperativeHandle(ref, () => ({ submit }), [submit]);
 
+    useLayoutEffect(() => {
+      applySaveChromeShadows(scrollAreaRef.current, scrollEdges);
+    }, [scrollEdges]);
+
+    useLayoutEffect(() => {
+      if (pathHostRef.current) {
+        onPathHostReady?.();
+      }
+    }, [loading, onPathHostReady, sections]);
+
+    useEffect(() => {
+      const root = scrollAreaRef.current;
+      if (!root || !onScrollBody) {
+        return;
+      }
+      const viewport = root.querySelector("[data-radix-scroll-area-viewport]");
+      if (!(viewport instanceof HTMLElement)) {
+        return;
+      }
+      lastScrollTopRef.current = viewport.scrollTop;
+      const onScroll = () => {
+        if (viewport.scrollTop !== lastScrollTopRef.current) {
+          lastScrollTopRef.current = viewport.scrollTop;
+          onScrollBody();
+        }
+      };
+      viewport.addEventListener("scroll", onScroll, { passive: true });
+      return () => viewport.removeEventListener("scroll", onScroll);
+    }, [onScrollBody]);
+
+    useEffect(() => {
+      return () => {
+        applySaveChromeShadows(scrollAreaRef.current, { fromTop: false, fromBottom: false });
+      };
+    }, []);
+
     const recordNameInvalid = showValidation && !recordName.trim();
 
     return (
       <PortalContainerProvider container={portalContainer}>
-        <div className="okkey-tw relative flex flex-col gap-3 text-foreground">
-          {loading ? (
-            <div className="px-1 py-3 text-sm text-muted-foreground">…</div>
-          ) : error && !sections ? (
-            <p className="px-1 py-2 text-sm text-destructive">{error}</p>
-          ) : (
-            <>
-              <div className="flex items-center gap-3 px-1">
-                <ItemRecordFavicon
-                  categoryId={ITEM_CATEGORY_LOGIN}
-                  title={recordName.trim() || undefined}
-                  previewImageSrc={previewIconUrl}
-                  previewLoading={iconLoading && !previewIconUrl}
-                  size={32}
-                  alt=""
-                />
-                <Input
-                  value={recordName}
-                  onChange={(event) => setRecordName(event.target.value)}
-                  placeholder={t(locale, "extension.autofill.recordNamePlaceholder")}
-                  className={cn(
-                    "h-9 min-w-0 flex-1 text-base font-semibold leading-6",
-                    recordNameInvalid &&
-                      "border-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:ring-0",
-                  )}
-                  aria-invalid={recordNameInvalid || undefined}
-                  disabled={saving}
-                />
+        <div className="okkey-tw relative flex h-full min-h-0 flex-1 flex-col text-foreground">
+          <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
+            <div className="flex flex-col gap-4 px-4 py-3">
+              {loading ? (
+                <div className="py-3 text-sm text-muted-foreground">…</div>
+              ) : error && !sections ? (
+                <p className="py-2 text-sm text-destructive">{error}</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <ItemRecordFavicon
+                      categoryId={ITEM_CATEGORY_LOGIN}
+                      title={recordName.trim() || undefined}
+                      previewImageSrc={previewIconUrl}
+                      previewLoading={iconLoading && !previewIconUrl}
+                      size={32}
+                      alt=""
+                    />
+                    <Input
+                      value={recordName}
+                      onChange={(event) => setRecordName(event.target.value)}
+                      placeholder={t(locale, "extension.autofill.recordNamePlaceholder")}
+                      className={cn(
+                        "h-9 min-w-0 flex-1 text-base font-semibold leading-6",
+                        recordNameInvalid &&
+                          "border-destructive shadow-[0_0_0_2px_hsl(var(--destructive)_/_0.4)] focus-visible:ring-0",
+                      )}
+                      aria-invalid={recordNameInvalid || undefined}
+                      disabled={saving}
+                    />
+                  </div>
+
+                  {sections ? (
+                    <KeyFormEditor
+                      key={baseItem?.itemId ?? "draft"}
+                      mode="edit"
+                      initialSections={sections}
+                      addSectionLabel={t(locale, "extension.autofill.addSectionWithField")}
+                      addFieldLabel={t(locale, "extension.autofill.addField")}
+                      fieldTypes={fieldTypes}
+                      messages={keyFormMessages}
+                      countryLocale={locale}
+                      onSectionsChange={handleSectionsChange}
+                      onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
+                      showValidation={showValidation}
+                      allowFileFields={false}
+                    />
+                  ) : null}
+
+                  {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                </>
+              )}
+
+              {/* Gray breadcrumbs only — form sits on popup bg (web NewItemSaveLocationSection). */}
+              <div className="overflow-visible rounded-[10px] bg-secondary text-secondary-foreground">
+                <div ref={pathHostRef} data-save-path />
               </div>
-
-              {sections ? (
-                <KeyFormEditor
-                  key={baseItem?.itemId ?? "draft"}
-                  mode="edit"
-                  initialSections={sections}
-                  addSectionLabel={t(locale, "extension.autofill.addSectionWithField")}
-                  addFieldLabel={t(locale, "extension.autofill.addField")}
-                  fieldTypes={fieldTypes}
-                  messages={keyFormMessages}
-                  countryLocale={locale}
-                  onSectionsChange={handleSectionsChange}
-                  onWebsiteUrlsBlur={handleWebsiteUrlsBlur}
-                  showValidation={showValidation}
-                  allowFileFields={false}
-                />
-              ) : null}
-
-              {error ? <p className="px-1 text-sm text-destructive">{error}</p> : null}
-            </>
-          )}
+            </div>
+          </ScrollArea>
         </div>
       </PortalContainerProvider>
     );

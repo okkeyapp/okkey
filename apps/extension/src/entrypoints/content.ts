@@ -973,27 +973,45 @@ export default defineContentScript({
           }
           .panel-save-form {
             max-height: min(720px, calc(100vh - 32px));
+            /* Edge-to-edge sticky chrome; padding lives on header / scroll / footer. */
+            padding: 0;
+            gap: 0;
+            /* Do not clip portaled vault menu; ScrollArea owns overflow for the body. */
+            overflow: visible;
           }
-          .save-card-form {
+          .panel-save-form .save-header,
+          .panel-save-form .save-actions {
+            position: relative;
+            z-index: 10;
+            flex: 0 0 auto;
+            background: hsl(var(--ok-bg));
+            transition: box-shadow 150ms ease;
+          }
+          .panel-save-form .save-header {
+            padding: 16px 16px 12px;
+          }
+          .panel-save-form .save-actions {
+            padding: 12px 16px 16px;
+          }
+          /* Match packages/ui popup sticky header/footer scroll shadows. */
+          .panel-save-form .save-header[data-scroll-shadow] {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          }
+          .panel-save-form .save-actions[data-scroll-shadow] {
+            box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
+          }
+          .panel-save-form .save-form-body {
             display: flex;
             flex-direction: column;
-            min-height: 0;
-            max-height: min(560px, calc(100vh - 160px));
-            overflow: hidden;
-            background: hsl(var(--ok-row-muted));
-          }
-          .save-form-scroll {
             flex: 1 1 auto;
             min-height: 0;
-            overflow: auto;
-            padding: 8px 8px 4px;
+            max-height: min(560px, calc(100vh - 160px));
           }
-          .save-card-form [data-save-path] {
-            flex: 0 0 auto;
-            padding: 0 8px 8px;
+          .panel-save-form [data-save-path] .vault-row {
+            padding: 6px 8px 4px;
           }
-          .save-card-form [data-save-path] .save-divider {
-            margin-top: 4px;
+          .panel-save-form [data-save-path] .update-fields {
+            padding: 8px 12px 10px;
           }
           [data-key-form-portal] {
             position: absolute;
@@ -1004,6 +1022,10 @@ export default defineContentScript({
           }
           [data-key-form-portal] > * {
             pointer-events: auto;
+          }
+          .vault-menu-portal {
+            position: absolute;
+            z-index: 30;
           }
           .save-card .row {
             pointer-events: none;
@@ -1540,22 +1562,28 @@ export default defineContentScript({
       return saveVaults.find((vault) => vault.vaultId === saveVaultId) ?? saveVaults[0];
     }
 
-    function vaultPickerHtml(): string {
-      const vault = selectedVault();
-      const icon = vault?.icon || "💼";
-      const name = vault?.name || strings.vaultFallback;
-      const selectedId = vault?.vaultId ?? saveVaultId;
-      const menu = vaultMenuOpen
-        ? `<div class="vault-menu" role="listbox">${saveVaults
-            .map((option) => {
-              const selected = option.vaultId === selectedId;
-              return `<button type="button" role="option" data-vault-id="${escapeHtml(option.vaultId)}" aria-selected="${selected ? "true" : "false"}">
+    function vaultMenuOptionsHtml(): string {
+      const selectedId = selectedVault()?.vaultId ?? saveVaultId;
+      return saveVaults
+        .map((option) => {
+          const selected = option.vaultId === selectedId;
+          return `<button type="button" role="option" data-vault-id="${escapeHtml(option.vaultId)}" aria-selected="${selected ? "true" : "false"}">
                    <span>${escapeHtml(option.icon || "💼")}</span>
                    <span>${escapeHtml(option.name)}</span>
                  </button>`;
-            })
-            .join("")}</div>`
-        : "";
+        })
+        .join("");
+    }
+
+    function vaultPickerHtml(opts?: { menuInPortal?: boolean }): string {
+      const vault = selectedVault();
+      const icon = vault?.icon || "💼";
+      const name = vault?.name || strings.vaultFallback;
+      const menuInPortal = Boolean(opts?.menuInPortal);
+      const menu =
+        vaultMenuOpen && !menuInPortal
+          ? `<div class="vault-menu" role="listbox">${vaultMenuOptionsHtml()}</div>`
+          : "";
       return `<div class="vault-row">
         <span class="vault-ws">${escapeHtml(saveWorkspaceName || strings.workspaceFallback)}</span>
         <span class="vault-arrow">→</span>
@@ -1568,20 +1596,21 @@ export default defineContentScript({
       </div>`;
     }
 
-    function savePathSecondaryHtml(isUpdate: boolean): string {
+    function savePathSecondaryHtml(isUpdate: boolean, formMode = false): string {
       if (isUpdate) {
-        return `<hr class="save-divider" />
-          <span class="update-fields">${escapeHtml(
-            formatUpdateFieldsLine(
-              pendingUpdateChangedFields.length > 0
-                ? pendingUpdateChangedFields
-                : (["login", "password"] as AutofillUpdateFieldKey[]),
-              strings,
-            ),
-          )}</span>`;
+        const fields = `<span class="update-fields">${escapeHtml(
+          formatUpdateFieldsLine(
+            pendingUpdateChangedFields.length > 0
+              ? pendingUpdateChangedFields
+              : (["login", "password"] as AutofillUpdateFieldKey[]),
+            strings,
+          ),
+        )}</span>`;
+        // Form mode: gray breadcrumbs container has no border-top divider.
+        return formMode ? fields : `<hr class="save-divider" />${fields}`;
       }
-      return `<hr class="save-divider" />
-          ${vaultPickerHtml()}`;
+      const picker = vaultPickerHtml({ menuInPortal: formMode });
+      return formMode ? picker : `<hr class="save-divider" />${picker}`;
     }
 
     function savePanelHtml(locked: boolean, formMode = false): string {
@@ -1608,7 +1637,6 @@ export default defineContentScript({
           </div>
         </div>`;
       }
-      const secondaryBlock = savePathSecondaryHtml(isUpdate);
       if (formMode) {
         return `<div class="panel panel-save panel-save-form">
           <div class="save-header">
@@ -1619,18 +1647,14 @@ export default defineContentScript({
               <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
             </button>
           </div>
-          <div class="save-card save-card-form">
-            <div class="save-form-scroll">
-              <div data-key-form-root></div>
-            </div>
-            <div data-save-path>${secondaryBlock}</div>
-          </div>
+          <div class="save-form-body" data-key-form-root></div>
           <div class="save-actions">
             <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
           </div>
           <div data-key-form-portal></div>
         </div>`;
       }
+      const secondaryBlock = savePathSecondaryHtml(isUpdate, false);
       const title = saveTitleDraft || domainTitle();
       const preview = previewRowHtml({
         title,
@@ -2110,6 +2134,53 @@ export default defineContentScript({
       void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
     }
 
+    function clearFormVaultMenuPortal(root: ShadowRoot): void {
+      const portal = root.querySelector("[data-key-form-portal]");
+      if (!(portal instanceof HTMLElement)) {
+        return;
+      }
+      for (const el of portal.querySelectorAll("[data-vault-menu-portal='1']")) {
+        el.remove();
+      }
+    }
+
+    /** Vault dropdown must live outside ScrollArea so it is not clipped. */
+    function syncFormVaultMenuPortal(root: ShadowRoot): void {
+      clearFormVaultMenuPortal(root);
+      if (!vaultMenuOpen || overlayMode !== "save-form") {
+        return;
+      }
+      const portal = root.querySelector("[data-key-form-portal]");
+      const picker = root.querySelector("[data-vault-toggle]");
+      const panel = root.querySelector(".panel-save-form");
+      if (
+        !(portal instanceof HTMLElement) ||
+        !(picker instanceof HTMLElement) ||
+        !(panel instanceof HTMLElement)
+      ) {
+        return;
+      }
+      const panelRect = panel.getBoundingClientRect();
+      const pickerRect = picker.getBoundingClientRect();
+      const menu = document.createElement("div");
+      menu.className = "vault-menu vault-menu-portal";
+      menu.setAttribute("role", "listbox");
+      menu.setAttribute("data-vault-menu-portal", "1");
+      menu.style.top = `${Math.max(0, pickerRect.bottom - panelRect.top - 2)}px`;
+      menu.style.left = "16px";
+      menu.style.right = "16px";
+      menu.innerHTML = vaultMenuOptionsHtml();
+      portal.appendChild(menu);
+    }
+
+    function refreshSaveFormPath(root: ShadowRoot): void {
+      const pathEl = root.querySelector("[data-save-path]");
+      if (pathEl instanceof HTMLElement) {
+        pathEl.innerHTML = savePathSecondaryHtml(savePromptKind === "update", true);
+      }
+      syncFormVaultMenuPortal(root);
+    }
+
     function mountSaveKeyFormIntoPanel(root: ShadowRoot): void {
       const query = currentSaveFormQuery();
       const mountEl = root.querySelector("[data-key-form-root]");
@@ -2122,10 +2193,19 @@ export default defineContentScript({
         iconUrl: saveIconUrl,
         getVaultId: () => saveVaultId || query.vaultId,
         portalContainer: portalEl instanceof HTMLElement ? portalEl : null,
+        onPathHostReady: () => refreshSaveFormPath(root),
+        onScrollBody: () => {
+          if (!vaultMenuOpen) {
+            return;
+          }
+          vaultMenuOpen = false;
+          refreshSaveFormPath(root);
+        },
         onSaved: onSaveFormSaved,
         onLocked: onSaveFormLocked,
       });
       saveFormMounted = true;
+      refreshSaveFormPath(root);
     }
 
     function openSaveKeyForm(): void {
@@ -2146,11 +2226,7 @@ export default defineContentScript({
     }
 
     function updateSaveFormPathDom(root: ShadowRoot): void {
-      const pathEl = root.querySelector("[data-save-path]");
-      if (!(pathEl instanceof HTMLElement)) {
-        return;
-      }
-      pathEl.innerHTML = savePathSecondaryHtml(savePromptKind === "update");
+      refreshSaveFormPath(root);
     }
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {

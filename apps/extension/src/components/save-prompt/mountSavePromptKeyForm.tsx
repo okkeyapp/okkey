@@ -1,4 +1,5 @@
 import React, { createRef } from "react";
+import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
 import extensionCss from "@/assets/extension.css?inline";
@@ -49,11 +50,13 @@ export function mountSavePromptKeyForm(
   unmountSavePromptKeyForm();
   const handleRef = createRef<SavePromptKeyFormHandle>();
   const root = createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <SavePromptKeyForm ref={handleRef} {...props} />
-    </React.StrictMode>,
-  );
+  flushSync(() => {
+    root.render(
+      <React.StrictMode>
+        <SavePromptKeyForm ref={handleRef} {...props} />
+      </React.StrictMode>,
+    );
+  });
   mounted = { root, handleRef };
   return handleRef;
 }
