@@ -15,11 +15,12 @@ import {
   type AutofillUpdateFieldKey,
 } from "../lib/autofillMessages";
 import {
-  SAVE_PROMPT_FORM_MSG,
-  buildSavePromptFormUrl,
-  isSavePromptFormMessage,
-  type SavePromptFormQuery,
-} from "../lib/savePromptFormBridge";
+  getSavePromptKeyFormHandle,
+  mountSavePromptKeyForm,
+  shadowExtensionCssText,
+  unmountSavePromptKeyForm,
+  type SavePromptKeyFormQuery,
+} from "../components/save-prompt/mountSavePromptKeyForm";
 import {
   autofillCategoryIconColor,
   autofillCategoryIconSvgHtml,
@@ -277,8 +278,7 @@ export default defineContentScript({
     let pendingUpdateItemId: string | null = null;
     let pendingUpdateChangedFields: AutofillUpdateFieldKey[] = [];
     let savePromptKind: SavePromptKind = "create";
-    let saveFormHost: HTMLDivElement | null = null;
-    let saveFormMessageBound = false;
+    let saveFormMounted = false;
     let pendingTotpItemId: string | null = null;
     let otpObserver: MutationObserver | null = null;
     let stopCreditCardFillWatch: (() => void) | null = null;
@@ -463,10 +463,8 @@ export default defineContentScript({
       generatorSliderActive = false;
       toggleVaultStatus = "unknown";
       clearGeneratorCopyFeedback();
-      if (saveFormHost) {
-        saveFormHost.remove();
-        saveFormHost = null;
-      }
+      unmountSavePromptKeyForm();
+      saveFormMounted = false;
       if (host) {
         host.style.display = "none";
         host.style.pointerEvents = "none";
@@ -972,6 +970,40 @@ export default defineContentScript({
             background: hsl(var(--ok-row-muted));
             border-radius: 8px;
             overflow: visible;
+          }
+          .panel-save-form {
+            max-height: min(720px, calc(100vh - 32px));
+          }
+          .save-card-form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            max-height: min(560px, calc(100vh - 160px));
+            overflow: hidden;
+            background: hsl(var(--ok-row-muted));
+          }
+          .save-form-scroll {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            padding: 8px 8px 4px;
+          }
+          .save-card-form [data-save-path] {
+            flex: 0 0 auto;
+            padding: 0 8px 8px;
+          }
+          .save-card-form [data-save-path] .save-divider {
+            margin-top: 4px;
+          }
+          [data-key-form-portal] {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 20;
+            overflow: visible;
+          }
+          [data-key-form-portal] > * {
+            pointer-events: auto;
           }
           .save-card .row {
             pointer-events: none;
@@ -1536,7 +1568,23 @@ export default defineContentScript({
       </div>`;
     }
 
-    function savePanelHtml(locked: boolean): string {
+    function savePathSecondaryHtml(isUpdate: boolean): string {
+      if (isUpdate) {
+        return `<hr class="save-divider" />
+          <span class="update-fields">${escapeHtml(
+            formatUpdateFieldsLine(
+              pendingUpdateChangedFields.length > 0
+                ? pendingUpdateChangedFields
+                : (["login", "password"] as AutofillUpdateFieldKey[]),
+              strings,
+            ),
+          )}</span>`;
+      }
+      return `<hr class="save-divider" />
+          ${vaultPickerHtml()}`;
+    }
+
+    function savePanelHtml(locked: boolean, formMode = false): string {
       const isUpdate = savePromptKind === "update";
       const titleText = isUpdate ? strings.updateTitle : strings.saveTitle;
       const unlockBody = isUpdate ? strings.updateUnlockBody : strings.saveUnlockBody;
@@ -1560,6 +1608,29 @@ export default defineContentScript({
           </div>
         </div>`;
       }
+      const secondaryBlock = savePathSecondaryHtml(isUpdate);
+      if (formMode) {
+        return `<div class="panel panel-save panel-save-form">
+          <div class="save-header">
+            <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
+            <span class="save-title">${escapeHtml(titleText)}</span>
+            <span class="spacer"></span>
+            <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
+              <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
+            </button>
+          </div>
+          <div class="save-card save-card-form">
+            <div class="save-form-scroll">
+              <div data-key-form-root></div>
+            </div>
+            <div data-save-path>${secondaryBlock}</div>
+          </div>
+          <div class="save-actions">
+            <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
+          </div>
+          <div data-key-form-portal></div>
+        </div>`;
+      }
       const title = saveTitleDraft || domainTitle();
       const preview = previewRowHtml({
         title,
@@ -1567,18 +1638,6 @@ export default defineContentScript({
         iconUrl: saveIconUrl,
         iconPending: saveIconLoading && !saveIconUrl,
       });
-      const secondaryBlock = isUpdate
-        ? `<hr class="save-divider" />
-          <span class="update-fields">${escapeHtml(
-            formatUpdateFieldsLine(
-              pendingUpdateChangedFields.length > 0
-                ? pendingUpdateChangedFields
-                : (["login", "password"] as AutofillUpdateFieldKey[]),
-              strings,
-            ),
-          )}</span>`
-        : `<hr class="save-divider" />
-          ${vaultPickerHtml()}`;
       return `<div class="panel panel-save">
         <div class="save-header">
           <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
@@ -1590,7 +1649,7 @@ export default defineContentScript({
         </div>
         <div class="save-card">
           ${preview}
-          ${secondaryBlock}
+          <div data-save-path>${secondaryBlock}</div>
         </div>
         <div class="save-actions">
           <button type="button" class="cta" data-save-confirm="1">${escapeHtml(confirmText)}</button>
@@ -1694,7 +1753,13 @@ export default defineContentScript({
         }
         // Panel / toggle clicks must not steal focus from the page autofill field.
         // Length slider uses custom pointer drag (also preventDefault) so the page input keeps focus.
-        if (target.closest("textarea, [contenteditable='true']")) {
+        // Inline save key-form needs real focus on its inputs / menus.
+        if (
+          target.closest(
+            "textarea, input, select, [contenteditable='true'], [data-key-form-root], [data-key-form-portal]",
+          )
+        ) {
+          window.clearTimeout(hideTimer);
           return;
         }
         if (target.closest(".panel, .toggle, .tooltip")) {
@@ -1731,18 +1796,22 @@ export default defineContentScript({
           pendingUpdateItemId = null;
           pendingUpdateChangedFields = [];
           savePromptKind = "create";
-          closeSaveKeyFormOverlay();
+          closeSaveKeyForm();
           // Dismiss must survive redirect — do not restore on the next page.
           void dismissPendingSaveOffer();
           hideOverlay();
           return;
         }
         if (target.closest("[data-save-confirm]")) {
+          if (overlayMode === "save-form") {
+            void confirmSaveForm();
+            return;
+          }
           void confirmSave();
           return;
         }
         if (target.closest("[data-open-key-form]")) {
-          openSaveKeyFormOverlay();
+          openSaveKeyForm();
           return;
         }
         if (target.closest("[data-vault-toggle]")) {
@@ -1999,17 +2068,15 @@ export default defineContentScript({
       void paintOverlay();
     }
 
-    function closeSaveKeyFormOverlay(): void {
-      if (saveFormHost) {
-        saveFormHost.remove();
-        saveFormHost = null;
-      }
+    function closeSaveKeyForm(): void {
+      unmountSavePromptKeyForm();
+      saveFormMounted = false;
       if (overlayMode === "save-form") {
         overlayMode = pendingSave ? "save" : "hidden";
       }
     }
 
-    function currentSaveFormQuery(): SavePromptFormQuery | null {
+    function currentSaveFormQuery(): SavePromptKeyFormQuery | null {
       if (!pendingSave) {
         return null;
       }
@@ -2026,101 +2093,64 @@ export default defineContentScript({
       };
     }
 
-    function postSaveFormInit(iframe: HTMLIFrameElement): void {
-      const payload = currentSaveFormQuery();
-      if (!payload || !iframe.contentWindow) {
-        return;
-      }
-      iframe.contentWindow.postMessage(
-        {
-          type: SAVE_PROMPT_FORM_MSG.init,
-          source: "okkey-save-prompt-form",
-          payload,
-        },
-        new URL(browser.runtime.getURL("/")).origin,
-      );
+    function onSaveFormSaved(): void {
+      closeSaveKeyForm();
+      pendingSave = null;
+      lastSaveOfferKey = null;
+      pendingUpdateItemId = null;
+      pendingUpdateChangedFields = [];
+      savePromptKind = "create";
+      saveIconUrl = undefined;
+      saveIconLoading = false;
+      void clearPendingSaveOffer();
+      hideOverlay();
     }
 
-    function onSaveFormWindowMessage(event: MessageEvent): void {
-      if (!isSavePromptFormMessage(event.data)) {
-        return;
-      }
-      const iframe = saveFormHost?.querySelector("iframe");
-      if (event.data.type === SAVE_PROMPT_FORM_MSG.ready && iframe instanceof HTMLIFrameElement) {
-        postSaveFormInit(iframe);
-        return;
-      }
-      if (event.data.type === SAVE_PROMPT_FORM_MSG.cancel) {
-        closeSaveKeyFormOverlay();
-        if (pendingSave) {
-          overlayMode = "save";
-          void paintOverlay();
-        }
-        return;
-      }
-      if (event.data.type === SAVE_PROMPT_FORM_MSG.saved) {
-        closeSaveKeyFormOverlay();
-        pendingSave = null;
-        lastSaveOfferKey = null;
-        pendingUpdateItemId = null;
-        pendingUpdateChangedFields = [];
-        savePromptKind = "create";
-        saveIconUrl = undefined;
-        saveIconLoading = false;
-        void clearPendingSaveOffer();
-        hideOverlay();
-      }
+    function onSaveFormLocked(): void {
+      void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlock });
     }
 
-    function bindSaveFormMessages(): void {
-      if (saveFormMessageBound) {
+    function mountSaveKeyFormIntoPanel(root: ShadowRoot): void {
+      const query = currentSaveFormQuery();
+      const mountEl = root.querySelector("[data-key-form-root]");
+      if (!query || !(mountEl instanceof HTMLElement)) {
         return;
       }
-      saveFormMessageBound = true;
-      window.addEventListener("message", onSaveFormWindowMessage);
+      const portalEl = root.querySelector("[data-key-form-portal]");
+      mountSavePromptKeyForm(mountEl, {
+        query,
+        iconUrl: saveIconUrl,
+        getVaultId: () => saveVaultId || query.vaultId,
+        portalContainer: portalEl instanceof HTMLElement ? portalEl : null,
+        onSaved: onSaveFormSaved,
+        onLocked: onSaveFormLocked,
+      });
+      saveFormMounted = true;
     }
 
-    function openSaveKeyFormOverlay(): void {
+    function openSaveKeyForm(): void {
       if (!pendingSave) {
         return;
       }
-      bindSaveFormMessages();
-      closeSaveKeyFormOverlay();
-      const hostEl = document.createElement("div");
-      hostEl.id = "okkey-save-prompt-form-host";
-      hostEl.setAttribute("data-okkey-save-form", "1");
-      Object.assign(hostEl.style, {
-        position: "fixed",
-        inset: "0",
-        zIndex: "2147483646",
-        margin: "0",
-        padding: "0",
-        border: "0",
-        background: "transparent",
-        pointerEvents: "auto",
-      });
-      const iframe = document.createElement("iframe");
-      iframe.src = buildSavePromptFormUrl();
-      iframe.title = "Okkey";
-      iframe.allow = "";
-      Object.assign(iframe.style, {
-        position: "absolute",
-        inset: "0",
-        width: "100%",
-        height: "100%",
-        border: "0",
-        background: "transparent",
-        colorScheme: "normal",
-      });
-      iframe.addEventListener("load", () => {
-        postSaveFormInit(iframe);
-      });
-      hostEl.appendChild(iframe);
-      document.documentElement.appendChild(hostEl);
-      saveFormHost = hostEl;
+      vaultMenuOpen = false;
       overlayMode = "save-form";
-      // Keep compact panel hidden while the full key-form iframe is open.
       void paintOverlay();
+    }
+
+    async function confirmSaveForm(): Promise<void> {
+      const handle = getSavePromptKeyFormHandle();
+      if (!handle) {
+        return;
+      }
+      await handle.submit();
+    }
+
+    function updateSaveFormPathDom(root: ShadowRoot): void {
+      const pathEl = root.querySelector("[data-save-path]");
+      if (!(pathEl instanceof HTMLElement)) {
+        return;
+      }
+      pathEl.innerHTML = savePathSecondaryHtml(savePromptKind === "update");
     }
 
     async function paintOverlay(opts?: { showToggleOnly?: boolean }): Promise<void> {
@@ -2186,11 +2216,39 @@ export default defineContentScript({
         } else if (allowGeneratorPanel && generatorState) {
           panelMarkup = generatorPanelHtml(generatorState, genStrings);
         } else if (overlayMode === "save") {
+          if (saveFormMounted) {
+            unmountSavePromptKeyForm();
+            saveFormMounted = false;
+          }
           panelMarkup = savePanelHtml(false);
         } else if (overlayMode === "unlock-save") {
+          if (saveFormMounted) {
+            unmountSavePromptKeyForm();
+            saveFormMounted = false;
+          }
           panelMarkup = savePanelHtml(true);
         } else if (overlayMode === "save-form") {
-          panelMarkup = "";
+          panelMarkup = savePanelHtml(false, true);
+        } else if (saveFormMounted) {
+          unmountSavePromptKeyForm();
+          saveFormMounted = false;
+        }
+
+        // Preserve the React key-form tree when only the vault path / menu changes.
+        if (
+          overlayMode === "save-form" &&
+          saveFormMounted &&
+          root.querySelector("[data-key-form-root]")
+        ) {
+          host.style.display = "block";
+          host.style.pointerEvents = "none";
+          updateSaveFormPathDom(root);
+          const panel = root.querySelector(".panel");
+          if (panel instanceof HTMLElement) {
+            panel.style.pointerEvents = "auto";
+            positionSavePanel(panel);
+          }
+          return;
         }
 
         const tooltipText =
@@ -2224,11 +2282,25 @@ export default defineContentScript({
 
         host.style.display = "block";
         host.style.pointerEvents = "none";
-        root.innerHTML = `<style>${panelBaseStyles(cssVars)}</style>${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
+        const formCss =
+          overlayMode === "save-form" ? `<style data-okkey-tw="1">${shadowExtensionCssText()}</style>` : "";
+        if (saveFormMounted && overlayMode !== "save-form") {
+          unmountSavePromptKeyForm();
+          saveFormMounted = false;
+        } else if (overlayMode === "save-form") {
+          // About to replace innerHTML — drop the previous React root first.
+          unmountSavePromptKeyForm();
+          saveFormMounted = false;
+        }
+        root.innerHTML = `<style>${panelBaseStyles(cssVars)}</style>${formCss}${toggleMarkup}${tooltipMarkup}${panelMarkup}`;
         wireOverlayOnce(root);
         wireGeneratorPanel(root);
         wireRowFaviconFallbacks(root);
         materializeRowFaviconDataUrls(root);
+
+        if (overlayMode === "save-form") {
+          mountSaveKeyFormIntoPanel(root);
+        }
 
         if (animateChevron) {
           const btn = root.querySelector("[data-toggle='1']");
@@ -2262,7 +2334,11 @@ export default defineContentScript({
         const panel = root.querySelector(".panel");
         if (panel instanceof HTMLElement) {
           panel.style.pointerEvents = "auto";
-          if (overlayMode === "save" || overlayMode === "unlock-save") {
+          if (
+            overlayMode === "save" ||
+            overlayMode === "unlock-save" ||
+            overlayMode === "save-form"
+          ) {
             positionSavePanel(panel);
           } else if (anchorInput && document.contains(anchorInput)) {
             positionPanelNearInput(panel, anchorInput);
@@ -2588,7 +2664,7 @@ export default defineContentScript({
       pendingUpdateChangedFields =
         savePromptKind === "update" ? opts?.changedFields ?? [] : [];
       listOpen = false;
-      closeSaveKeyFormOverlay();
+      closeSaveKeyForm();
       vaultMenuOpen = false;
       if (opts?.title) {
         saveTitleDraft = opts.title;

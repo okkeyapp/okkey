@@ -1,5 +1,10 @@
 export { cn } from "./lib/utils.js";
 export {
+  PortalContainerProvider,
+  usePortalContainer,
+  type PortalContainer,
+} from "./lib/portal-container.js";
+export {
   OKKEY_Z_INDEX,
   OKKEY_Z_INDEX_CLASS,
   type OkkeyZIndexLayer,

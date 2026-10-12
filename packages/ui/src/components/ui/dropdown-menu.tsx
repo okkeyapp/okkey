@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 
+import { usePortalContainer } from "../../lib/portal-container.js";
 import { cn } from "../../lib/utils.js";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
@@ -26,24 +27,27 @@ export type DropdownMenuContentProps = React.ComponentPropsWithoutRef<
 const DropdownMenuContent = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.Content>,
   DropdownMenuContentProps
->(({ className, sideOffset = 4, collisionPadding = 16, onOpenAutoFocus, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      collisionPadding={collisionPadding}
-      className={cn(
-        "z-floating min-w-[10rem] overflow-visible rounded-md bg-popover p-0 text-popover-foreground",
-        "shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)]",
-        "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]",
-        className,
-      )}
-      {...props}
-      // Runtime prop; omitted from Radix Menu Content .d.ts (private MenuContentImpl).
-      {...(onOpenAutoFocus !== undefined ? { onOpenAutoFocus } : {})}
-    />
-  </DropdownMenuPrimitive.Portal>
-));
+>(({ className, sideOffset = 4, collisionPadding = 16, onOpenAutoFocus, ...props }, ref) => {
+  const portalContainer = usePortalContainer();
+  return (
+    <DropdownMenuPrimitive.Portal container={portalContainer}>
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
+        className={cn(
+          "z-floating min-w-[10rem] overflow-visible rounded-md bg-popover p-0 text-popover-foreground",
+          "shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.05)]",
+          "dark:shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]",
+          className,
+        )}
+        {...props}
+        // Runtime prop; omitted from Radix Menu Content .d.ts (private MenuContentImpl).
+        {...(onOpenAutoFocus !== undefined ? { onOpenAutoFocus } : {})}
+      />
+    </DropdownMenuPrimitive.Portal>
+  );
+});
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
 const DropdownMenuItem = React.forwardRef<

@@ -6,6 +6,7 @@ import {
   getScrollableAncestors,
   type KeyFieldOverlayPlacement,
 } from "../../lib/key-field-portaled-overlay-position.js";
+import { usePortalContainer } from "../../lib/portal-container.js";
 
 export type KeyFieldPortaledOverlayProps = {
   open: boolean;
@@ -48,6 +49,7 @@ function coordsEqual(
 }
 
 export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldPortaledOverlayProps) {
+  const portalContainer = usePortalContainer();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const [coords, setCoords] = React.useState<{ top: number; left: number; placement: KeyFieldOverlayPlacement } | null>(
     null,
@@ -137,7 +139,10 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
     [placement],
   );
 
-  if (!open || typeof document === "undefined") {
+  const mountNode =
+    portalContainer ?? (typeof document !== "undefined" ? document.body : null);
+
+  if (!open || !mountNode) {
     return null;
   }
 
@@ -158,6 +163,6 @@ export function KeyFieldPortaledOverlay({ open, anchorRef, children }: KeyFieldP
         {children}
       </div>
     </KeyFieldPortaledOverlayContext.Provider>,
-    document.body,
+    mountNode,
   );
 }
