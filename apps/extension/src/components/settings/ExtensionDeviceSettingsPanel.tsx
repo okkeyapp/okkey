@@ -362,15 +362,15 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
           <BackChevronIcon />
         </Button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium leading-4 text-muted-foreground">
-            {t("web.settingsPopup.deviceSettings.title")}
-          </p>
           <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{pageTitle}</h1>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border p-2" aria-label={t("web.settingsPopup.deviceSettings.groupLabel")}>
+          <div className="h-8 min-w-0 px-2 text-xs font-medium leading-8 text-muted-foreground">
+            <span className="block truncate">{t("web.settingsPopup.deviceSettings.groupLabel")}</span>
+          </div>
           {MENU.map((item) => {
             const active = page === item.id;
             return (
@@ -392,6 +392,9 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
 
         <ScrollArea className="min-h-0 min-w-0 flex-1">
           <div className="px-4 py-3">
+          <p className="pb-4 text-sm leading-5 text-muted-foreground">
+            {t("web.settingsPopup.deviceSettings.description")}
+          </p>
           {page === "personalization" ? (
             <section>
               <SettingsRow
