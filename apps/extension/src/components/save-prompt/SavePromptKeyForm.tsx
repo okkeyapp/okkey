@@ -392,8 +392,17 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
 
     return (
       <PortalContainerProvider container={portalContainer}>
-        <div className="okkey-tw relative flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden text-foreground">
-          <ScrollArea ref={scrollAreaRef} className="h-full max-h-full min-h-0 flex-1">
+        {/*
+          ScrollArea must own max-height (not h-full). Parent .save-form-body only has
+          max-height + overflow clip — percentage height never resolves, so the viewport
+          grew with content and wheel-scroll stayed dead.
+        */}
+        <div className="okkey-tw relative w-full text-foreground" data-okkey-save-scroll-root="">
+          <ScrollArea
+            ref={scrollAreaRef}
+            className="w-full max-h-[min(560px,calc(100vh-160px))]"
+            data-okkey-save-scroll=""
+          >
             <div className="flex flex-col gap-4 px-4 py-3">
               {loading ? (
                 <div

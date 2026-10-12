@@ -444,7 +444,12 @@ export default defineContentScript({
       host.style.cssText =
         "all:initial;position:fixed;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483647;pointer-events:none;display:none;";
       shadow = host.attachShadow({ mode: "closed" });
-      document.documentElement.appendChild(host);
+      // Must be under document.body (not <html>): Radix Select/Menu call hideOthers()
+      // with parent=body. Shadow nodes are not body.contains(); aria-hidden unwraps to
+      // the host — if the host is a sibling of body, unwrap fails ("…Doing nothing")
+      // and focus/scroll layers misbehave.
+      const mountParent = document.body ?? document.documentElement;
+      mountParent.appendChild(host);
       return shadow;
     }
 
@@ -1006,18 +1011,32 @@ export default defineContentScript({
             box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
           }
           .panel-save-form .save-form-body {
-            display: flex;
-            flex-direction: column;
+            display: block;
             flex: 1 1 auto;
             min-height: 0;
-            /* Definite max box between header/footer so Radix ScrollArea can scroll. */
-            max-height: min(560px, calc(100vh - 160px));
-            overflow: hidden;
+            min-width: 0;
+            /* Do not max-height + overflow:hidden here — that clips without a
+               scrollport when ScrollArea height is content-sized. ScrollArea root
+               owns the budget via max-height (see [data-okkey-save-scroll]). */
+            overflow: visible;
           }
           .panel-save-form .save-form-body > * {
-            flex: 1 1 auto;
+            display: block;
+            width: 100%;
+            min-width: 0;
+          }
+          /*
+           * Belt-and-suspenders with Tailwind max-h on ScrollArea: ensure the Radix
+           * root/viewport form a real scrollport inside the closed shadow tree.
+           */
+          .panel-save-form [data-okkey-save-scroll],
+          .panel-save-form [data-radix-scroll-area-root] {
+            max-height: min(560px, calc(100vh - 160px));
             min-height: 0;
-            max-height: 100%;
+          }
+          .panel-save-form [data-radix-scroll-area-viewport] {
+            max-height: inherit;
+            overscroll-behavior: contain;
           }
           .panel-save-form [data-save-path] .vault-row {
             padding: 6px 8px 4px;
@@ -1025,12 +1044,17 @@ export default defineContentScript({
           .panel-save-form [data-save-path] .update-fields {
             padding: 8px 12px 10px;
           }
+          /*
+           * Portal host for Radix Select/Dropdown + vault menu. Full-panel box so
+           * absolutely positioned vault-menu left/right resolve against panel width;
+           * pointer-events:none lets wheel/trackpad reach ScrollArea underneath.
+           */
           [data-key-form-portal] {
             position: absolute;
             inset: 0;
+            overflow: visible;
             pointer-events: none;
             z-index: 20;
-            overflow: visible;
           }
           [data-key-form-portal] > * {
             pointer-events: auto;
