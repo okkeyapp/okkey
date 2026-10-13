@@ -3,7 +3,7 @@ import type { AuthService } from "./auth/service.ts";
 import type { RegistrationService } from "./registration/service.ts";
 import type { ApiConfig } from "./config.ts";
 import type { DeviceService } from "./device/service.ts";
-import { getHeader, HttpApp } from "./http.ts";
+import { getHeader, HttpApp, type RouteHandler } from "./http.ts";
 import type { Logger } from "./logger.ts";
 import { createCorsMiddleware } from "./middleware/cors.ts";
 import { createErrorHandlerMiddleware } from "./middleware/error-handler.ts";
@@ -158,6 +158,7 @@ import {
   createAttachmentUploadRoute,
 } from "./routes/attachments.ts";
 import { createItemFaviconPreviewRoute } from "./routes/item-favicons.ts";
+import { requireEnrolledRecoveryKey } from "./routes/require-recovery-key.ts";
 
 export interface CreateApiAppOptions {
   enterprisePlugins?: ApiEnterprisePlugin[];
@@ -228,6 +229,11 @@ export function createApiApp(
           const header = getHeader(req, "x-user-id");
           return header?.trim() ?? null;
         };
+
+  const gateVaultUse = (handler: RouteHandler): RouteHandler =>
+    deps.accountRecoveryService
+      ? requireEnrolledRecoveryKey(deps.accountRecoveryService, resolveUserId, handler)
+      : handler;
 
   app.route("GET", "/health", healthRouteHandler);
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
@@ -407,7 +413,7 @@ export function createApiApp(
     app.route(
       "GET",
       "/workspaces/:workspaceId/vaults",
-      createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId),
+      gateVaultUse(createWorkspaceVaultsListRoute(deps.vaultService, resolveUserId)),
     );
     if (options.postgres) {
       app.route(
@@ -542,12 +548,12 @@ export function createApiApp(
     app.route(
       "GET",
       "/vaults/:vaultId",
-      createVaultGetRoute(deps.vaultService, resolveUserId),
+      gateVaultUse(createVaultGetRoute(deps.vaultService, resolveUserId)),
     );
     app.route(
       "PATCH",
       "/vaults/:vaultId",
-      createVaultUpdateRoute(deps.vaultService, resolveUserId),
+      gateVaultUse(createVaultUpdateRoute(deps.vaultService, resolveUserId)),
     );
     // Shared vault delete / access routes: enterprise `workspace-shared-vaults` plugin only.
   }
@@ -555,7 +561,7 @@ export function createApiApp(
     app.route(
       "GET",
       "/vaults/:vaultId/key",
-      createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId),
+      gateVaultUse(createVaultKeyGetRoute(deps.vaultSharingService, resolveUserId)),
     );
     // Shares / rotate / member-role routes: enterprise `workspace-shared-vaults` plugin only.
   }
@@ -563,12 +569,12 @@ export function createApiApp(
     app.route(
       "GET",
       "/vaults/:vaultId/events",
-      createSyncEventsListRoute(deps.syncService, resolveUserId),
+      gateVaultUse(createSyncEventsListRoute(deps.syncService, resolveUserId)),
     );
     app.route(
       "POST",
       "/vaults/:vaultId/events",
-      createSyncEventsAppendRoute(deps.syncService, resolveUserId),
+      gateVaultUse(createSyncEventsAppendRoute(deps.syncService, resolveUserId)),
     );
   }
   if (deps.deviceService) {
@@ -747,17 +753,17 @@ export function createApiApp(
     app.route(
       "POST",
       "/vaults/:vaultId/items/:itemId/attachments",
-      createAttachmentUploadRoute(deps.attachmentService, resolveUserId),
+      gateVaultUse(createAttachmentUploadRoute(deps.attachmentService, resolveUserId)),
     );
     app.route(
       "GET",
       "/vaults/:vaultId/items/:itemId/attachments/:attachmentId",
-      createAttachmentDownloadRoute(deps.attachmentService, resolveUserId),
+      gateVaultUse(createAttachmentDownloadRoute(deps.attachmentService, resolveUserId)),
     );
     app.route(
       "DELETE",
       "/vaults/:vaultId/items/:itemId/attachments/:attachmentId",
-      createAttachmentDeleteRoute(deps.attachmentService, resolveUserId),
+      gateVaultUse(createAttachmentDeleteRoute(deps.attachmentService, resolveUserId)),
     );
   }
 
