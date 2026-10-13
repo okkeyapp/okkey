@@ -1,6 +1,7 @@
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { RegistrationError, type RegistrationService } from "../registration/service.ts";
 import type { EncryptedBlob } from "../crypto/encrypted-blob.ts";
+import { requestClientIp } from "../request-ip.ts";
 
 interface RegisterCompleteBody {
   auth_state_id?: string;
@@ -75,18 +76,6 @@ function parseOptionalProfileName(raw: string | undefined): string | null {
   return t;
 }
 
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
-  }
-  const first = forwardedFor.split(",")[0]?.trim();
-  return first || "unknown";
-}
-
-function getRequestIp(req: Parameters<typeof getHeader>[0]): string {
-  return requestIpFromHeaders(getHeader(req, "x-forwarded-for"));
-}
-
 function resolveMetadata(body: RegisterCompleteBody): {
   platform: string;
   osName: string;
@@ -122,6 +111,7 @@ function decodeRequiredBase64(value: string | undefined): Uint8Array | null {
 
 export function createRegisterCompleteRoute(
   registrationService: RegistrationService,
+  trustedProxyHops = 0,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterCompleteBody;
@@ -309,7 +299,7 @@ export function createRegisterCompleteRoute(
         appVersion: meta.appVersion,
         clientType: meta.clientType,
         userAgent,
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
         deviceCryptoCapable: meta.deviceCryptoCapable,
         personalWorkspaceName: personalWorkspaceName ?? undefined,
         personalVaultName: personalVaultName ?? undefined,

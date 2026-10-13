@@ -1,18 +1,6 @@
-import type { IncomingMessage } from "node:http";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import { requestClientIp } from "../request-ip.ts";
 import { TwoFactorError, type TwoFactorService } from "../two-factor/service.ts";
-
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
-  }
-  const first = forwardedFor.split(",")[0]?.trim();
-  return first || "unknown";
-}
-
-function getRequestIp(req: IncomingMessage): string {
-  return requestIpFromHeaders(getHeader(req, "x-forwarded-for"));
-}
 
 function errorPayload(
   code: string,
@@ -52,6 +40,7 @@ interface VerifyBody {
 
 export function createTwoFactorVerifyRoute(
   twoFactorService: TwoFactorService,
+  trustedProxyHops = 0,
 ): RouteHandler {
   return async (ctx) => {
     let body: VerifyBody;
@@ -75,7 +64,7 @@ export function createTwoFactorVerifyRoute(
       const result = await twoFactorService.verifyTwoFactorAndCreateSession({
         authStateId,
         code,
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, {
         access_token: result.accessToken,
