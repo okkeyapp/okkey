@@ -31,7 +31,7 @@ describe("hasPersonalDataItem", () => {
     ).toBe(false);
   });
 
-  it("ignores soft-deleted personal_data items", () => {
+  it("treats soft-deleted personal_data as present (deliberate delete)", () => {
     expect(
       hasPersonalDataItem([
         {
@@ -47,7 +47,7 @@ describe("hasPersonalDataItem", () => {
           fields: [],
         },
       ]),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns true when an active personal_data item exists", () => {

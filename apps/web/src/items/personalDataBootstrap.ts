@@ -7,8 +7,12 @@ import {
   type KeyFormEditorSection,
 } from "@okkey/vault-ui";
 
+/**
+ * True when the workspace already has a personal_data item, including soft-deleted.
+ * Soft-deleted means the user deliberately removed it — do not bootstrap again.
+ */
 export function hasPersonalDataItem(items: readonly ItemPlaintextV2[]): boolean {
-  return items.some((item) => item.categoryId === "personal_data" && !item.deleted);
+  return items.some((item) => item.categoryId === "personal_data");
 }
 
 function withPrefillValues(

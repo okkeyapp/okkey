@@ -24,9 +24,10 @@ type PersonalDataBootstrapControllerProps = {
 };
 
 /**
- * After unlock, once items for the workspace are bootstrapped: if the user has no
- * personal_data item yet, create one in the personal vault (no folder) with profile
- * prefill and open its edit popup. Same for old workspaces missing the record.
+ * After unlock, once items for the workspace are bootstrapped: if the user has never
+ * had a personal_data item (including soft-deleted), create one in the personal vault
+ * (no folder) with profile prefill and open its edit popup. Soft-deleted records are
+ * treated as a deliberate delete — we do not recreate them on unlock.
  */
 export default function PersonalDataBootstrapController({
   workspaceId,
