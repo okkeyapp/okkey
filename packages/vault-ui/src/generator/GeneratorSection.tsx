@@ -5,6 +5,10 @@ import {
   Input,
   Slider,
   Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@okkey/ui";
 import { type ReactNode, useEffect, useState } from "react";
@@ -117,6 +121,7 @@ function GeneratorOutputCard({
   crackTimeClassName,
   onCopy,
   copyAria,
+  copyTooltip,
 }: {
   value: string;
   colored?: boolean;
@@ -131,6 +136,7 @@ function GeneratorOutputCard({
   crackTimeClassName: string;
   onCopy: () => void;
   copyAria: string;
+  copyTooltip: string;
 }) {
   return (
     <div
@@ -146,16 +152,22 @@ function GeneratorOutputCard({
     >
       <div className="flex min-h-[100px] items-center gap-4 p-4">
         <span className="size-6 shrink-0" aria-hidden />
-        <button
-          type="button"
-          data-generator-copy
-          className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground outline-none sm:text-[32px] sm:leading-10"
-          onClick={onCopy}
-          aria-label={copyAria}
-          title={copyAria}
-        >
-          {colored ? renderColoredPassword(value) : value}
-        </button>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-generator-copy
+                className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground outline-none sm:text-[32px] sm:leading-10"
+                onClick={onCopy}
+                aria-label={copyAria}
+              >
+                {colored ? renderColoredPassword(value) : value}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{copyTooltip}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Button
           type="button"
           variant="ghost"
@@ -393,6 +405,7 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
           crackTimeClassName={strengthClassName}
           onCopy={() => void copyActiveValue()}
           copyAria={t("web.tools.generator.copyAria")}
+          copyTooltip={t("web.tools.generator.copy")}
         />
 
         {mode === "password" ? (
@@ -453,7 +466,7 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                 />
               </div>
             </div>
-            <div className="flex flex-col border-t border-border sm:flex-row">
+            <div className="flex border-t border-border">
               <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-[18px]">
                 <p className="shrink-0 text-sm font-medium text-foreground">
                   {t("web.tools.generator.passphrase.separator")}
@@ -473,8 +486,8 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                   onBlur={() => commitSeparatorDraft(separatorDraft)}
                 />
               </div>
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-t border-border px-4 py-[18px] sm:border-l sm:border-t-0">
-                <span className="text-sm font-medium text-foreground">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-l border-border px-4 py-[18px]">
+                <span className="truncate text-sm font-medium text-foreground">
                   {t("web.tools.generator.passphrase.capitalize")}
                 </span>
                 <Switch
@@ -482,8 +495,8 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                   onCheckedChange={(checked) => updatePassphrasePreferences({ capitalize: checked })}
                 />
               </label>
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-t border-border px-4 py-[18px] sm:border-l sm:border-t-0">
-                <span className="text-sm font-medium text-foreground">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-l border-border px-4 py-[18px]">
+                <span className="truncate text-sm font-medium text-foreground">
                   {t("web.tools.generator.passphrase.includeNumber")}
                 </span>
                 <Switch
@@ -499,9 +512,9 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
 
         {mode === "username" ? (
           <div className="overflow-hidden rounded-xl bg-secondary">
-            <div className="flex flex-col sm:flex-row">
+            <div className="flex">
               <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 px-4 py-[18px]">
-                <span className="text-sm font-medium text-foreground">
+                <span className="truncate text-sm font-medium text-foreground">
                   {t("web.tools.generator.username.capitalize")}
                 </span>
                 <Switch
@@ -509,8 +522,8 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                   onCheckedChange={(checked) => updateUsernamePreferences({ capitalize: checked })}
                 />
               </label>
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-t border-border px-4 py-[18px] sm:border-l sm:border-t-0">
-                <span className="text-sm font-medium text-foreground">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-l border-border px-4 py-[18px]">
+                <span className="truncate text-sm font-medium text-foreground">
                   {t("web.tools.generator.username.includeNumber")}
                 </span>
                 <Switch

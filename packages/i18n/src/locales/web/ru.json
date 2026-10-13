@@ -412,6 +412,7 @@
   "web.tools.generator.modes.passphrase": "Кодовая фраза",
   "web.tools.generator.modes.username": "Имя пользователя",
   "web.tools.generator.regenerateAria": "Сгенерировать заново",
+  "web.tools.generator.copy": "Скопировать",
   "web.tools.generator.copyAria": "Скопировать сгенерированное значение",
   "web.tools.generator.passphrase.words": "Слов: {count}",
   "web.tools.generator.passphrase.wordsAria": "Количество слов",

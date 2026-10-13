@@ -412,6 +412,7 @@
   "web.tools.generator.modes.passphrase": "Passphrase",
   "web.tools.generator.modes.username": "Username",
   "web.tools.generator.regenerateAria": "Regenerate",
+  "web.tools.generator.copy": "Copy",
   "web.tools.generator.copyAria": "Copy generated value",
   "web.tools.generator.passphrase.words": "Words: {count}",
   "web.tools.generator.passphrase.wordsAria": "Number of words",

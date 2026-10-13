@@ -131,10 +131,11 @@ export function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPopupProps
     <Popup
       className="z-popup-nested"
       width={420}
+      layout="desktop"
       header={t("web.settingsPopup.vault.pin.setupTitle")}
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
-      panelClassName="min-h-0"
+      panelClassName="min-h-0 max-w-[420px]"
       contentClassName="pt-0 pb-1"
       footer={
         <>

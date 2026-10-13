@@ -14,20 +14,21 @@ import {
   DeviceSecurityIcon,
   DeviceUnlockIcon,
   PAGE_BACKGROUND_GRADIENT_LIGHT,
+  Popup,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   SettingsRow,
-  ScrollArea,
   Switch,
   cn,
   normalizeThemePreference,
+  type PopupMenu,
   type ThemePreference,
 } from "@okkey/ui";
 import { SetupPinPopup } from "@okkey/vault-ui";
-import { useCallback, useEffect, useState, type ReactNode, type SVGProps } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode, type SVGProps } from "react";
 import { toast } from "sonner";
 
 import { SettingsGearIcon } from "../icons/SettingsGearIcon";
@@ -123,14 +124,6 @@ function SunMoonIcon(props: SVGProps<SVGSVGElement>) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function BackChevronIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden className={cn("size-4", className)}>
-      <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -309,6 +302,25 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   const bioBlockedCode =
     bioCapability && bioCapability.status !== "ready" ? bioCapability.code : null;
   const pageTitle = t(MENU.find((item) => item.id === page)?.labelKey ?? MENU[0].labelKey);
+  const menu = useMemo<PopupMenu>(
+    () => ({
+      activeItemId: page,
+      items: MENU.map((item) => ({
+        id: item.id,
+        label: t(item.labelKey),
+        icon: <item.Icon className="size-4" />,
+      })),
+      onItemSelect: (item) => {
+        if (item.separator || item.groupLabel) {
+          return;
+        }
+        if (item.id === "personalization" || item.id === "security" || item.id === "unlock") {
+          setPage(item.id);
+        }
+      },
+    }),
+    [page, t],
+  );
 
   function accentColor(option: (typeof ACCENT_OPTIONS)[number]): string {
     if (themePreference === "dark") {
@@ -356,45 +368,18 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   ];
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
-      <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-2">
-        <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0" onClick={onBack} aria-label={t("web.settingsPopup.close")}>
-          <BackChevronIcon />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{pageTitle}</h1>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border p-2" aria-label={t("web.settingsPopup.deviceSettings.groupLabel")}>
-          <div className="h-8 min-w-0 px-2 text-xs font-medium leading-8 text-muted-foreground">
-            <span className="block truncate">{t("web.settingsPopup.deviceSettings.groupLabel")}</span>
-          </div>
-          {MENU.map((item) => {
-            const active = page === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-foreground hover:bg-secondary",
-                  active && "bg-secondary font-medium",
-                )}
-                onClick={() => setPage(item.id)}
-              >
-                <item.Icon className="size-4 shrink-0" />
-                <span className="min-w-0 truncate">{t(item.labelKey)}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <ScrollArea className="min-h-0 min-w-0 flex-1">
-          <div className="px-4 py-3">
-          <p className="pb-4 text-sm leading-5 text-muted-foreground">
-            {t("web.settingsPopup.deviceSettings.description")}
-          </p>
+    <>
+      <Popup
+        layout="desktop"
+        width={720}
+        header={t("web.settingsPopup.deviceSettings.title")}
+        menu={menu}
+        closeLabel={t("web.settingsPopup.close")}
+        onClose={onBack}
+        panelClassName="min-h-0"
+        contentClassName="pt-0"
+      >
+          <h2 className="pb-4 text-lg font-semibold leading-7 text-foreground">{pageTitle}</h2>
           {page === "personalization" ? (
             <section>
               <SettingsRow
@@ -608,9 +593,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
               </SettingsRow>
             </section>
           ) : null}
-          </div>
-        </ScrollArea>
-      </div>
+      </Popup>
 
       <SetupPinPopup
         open={pinSetupOpen}
@@ -638,6 +621,6 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
           })();
         }}
       />
-    </div>
+    </>
   );
 }

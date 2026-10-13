@@ -52,7 +52,7 @@ import {
   type OkkeySidebarVaultItem,
   type OkkeyWorkspaceNavLinkComponent,
 } from "@okkey/ui";
-import { GeneratorPasswordTabIcon, useWorkspaceLogoUrl } from "@okkey/vault-ui";
+import { GeneratorPassphraseTabIcon, useWorkspaceLogoUrl } from "@okkey/vault-ui";
 import { toast } from "sonner";
 
 import {
@@ -134,7 +134,11 @@ function LockIcon({ className }: { className?: string }) {
   );
 }
 
-/** Gear segment inside Lock+Settings header group — closes mobile drawer when opening settings. */
+/** Same filled surface as the sidebar burger / panel-toggle control. */
+const headerSubtleControlClassName =
+  "size-9 min-h-9 min-w-9 shrink-0 p-0 bg-[rgba(0,0,0,0.05)] hover:bg-[rgba(0,0,0,0.1)] dark:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.14)]";
+
+/** Gear segment inside Settings+Generator header group — closes mobile drawer when opening settings. */
 function VaultHeaderDeviceSettingsButton(props: {
   label: string;
   onOpen: () => void;
@@ -147,9 +151,9 @@ function VaultHeaderDeviceSettingsButton(props: {
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="icon"
-            className={cn(controlGroupItemFixedClassName, props.className)}
+            className={cn(controlGroupItemFixedClassName, headerSubtleControlClassName, props.className)}
             aria-label={props.label}
             onClick={() => {
               shell.setMobileDrawerOpen(false);
@@ -1344,24 +1348,29 @@ export function VaultPopup(props: VaultPopupProps) {
           : undefined
       }
     >
-      {deviceSettingsOpen ? (
-        <ExtensionDeviceSettingsPanel
-          userId={userId}
-          secrets={secrets}
-          idleLockMs={idleLockMs}
-          onIdleLockMsChange={(ms) => onIdleLockMsChange?.(ms)}
-          onBack={() => setDeviceSettingsOpen(false)}
-          t={t}
-        />
-      ) : generatorOpen ? (
-        <ExtensionGeneratorPanel onBack={() => setGeneratorOpen(false)} t={t} />
-      ) : (
       <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
         <header className="flex h-[52px] shrink-0 items-center gap-2 bg-gradient-to-r from-[var(--extension-shell-header-from)] to-[var(--extension-shell-header-to)] p-2">
           <OkkeyAppSidebarToolbar
             openMobileNavLabel={t("web.nav.openMobileNav")}
             className="!p-0"
           />
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={headerSubtleControlClassName}
+                  aria-label={t("extension.vault.lock")}
+                  onClick={onLock}
+                >
+                  <LockIcon className="text-destructive" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t("extension.vault.lock")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <WorkspaceSearchField
             value={search}
             onChange={onSearchChange}
@@ -1374,39 +1383,30 @@ export function VaultPopup(props: VaultPopupProps) {
           <div className="flex shrink-0 items-center gap-2">
             <ControlGroup
               className="w-auto shrink-0"
-              aria-label={`${t("extension.vault.lock")} / ${t("web.accountMenu.deviceSettings")}`}
+              aria-label={`${t("web.accountMenu.deviceSettings")} / ${t("extension.vault.openGenerator")}`}
             >
-              <Button
-                type="button"
-                variant="outline"
-                className={cn(controlGroupItemFixedClassName, "h-9 gap-1.5 px-3")}
-                aria-label={t("extension.vault.lock")}
-                onClick={onLock}
-              >
-                <LockIcon />
-                <span className="text-sm font-medium">{t("extension.vault.lock")}</span>
-              </Button>
               <VaultHeaderDeviceSettingsButton
                 label={t("web.accountMenu.deviceSettings")}
                 onOpen={openDeviceSettings}
               />
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={cn(controlGroupItemFixedClassName, headerSubtleControlClassName)}
+                      aria-label={t("extension.vault.openGenerator")}
+                      onClick={openGenerator}
+                    >
+                      <GeneratorPassphraseTabIcon className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t("extension.vault.openGenerator")}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </ControlGroup>
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="size-9 min-h-9 min-w-9 shrink-0 rounded-lg p-0"
-                    aria-label={t("extension.vault.openGenerator")}
-                    onClick={openGenerator}
-                  >
-                    <GeneratorPasswordTabIcon className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{t("extension.vault.openGenerator")}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1519,7 +1519,19 @@ export function VaultPopup(props: VaultPopupProps) {
           </main>
         </div>
       </div>
-      )}
+      {deviceSettingsOpen ? (
+        <ExtensionDeviceSettingsPanel
+          userId={userId}
+          secrets={secrets}
+          idleLockMs={idleLockMs}
+          onIdleLockMsChange={(ms) => onIdleLockMsChange?.(ms)}
+          onBack={() => setDeviceSettingsOpen(false)}
+          t={t}
+        />
+      ) : null}
+      {generatorOpen ? (
+        <ExtensionGeneratorPanel onBack={() => setGeneratorOpen(false)} t={t} />
+      ) : null}
     </OkkeyAppSidebar>
   );
 }
