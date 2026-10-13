@@ -360,27 +360,8 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       }
       return;
     }
-    setBusy(true);
-    setStatus((prev) =>
-      prev
-        ? {
-            ...prev,
-            settings: { ...prev.settings, keyEnabled: false },
-            key: { enrolled: false, createdAt: null, rotatedAt: null, exportedAt: null },
-          }
-        : prev,
-    );
-    setSessionKey(null);
-    try {
-      const next = await core.patchAccountRecoverySettings({ keyEnabled: false });
-      setStatus(next);
-      notifySaved();
-    } catch (err) {
-      setError(recoveryErrorMessage(err, t));
-      void refreshStatus();
-    } finally {
-      setBusy(false);
-    }
+    // Recovery key is mandatory — disabling (and deleting the wrap) is not allowed.
+    return;
   }
 
   async function handleDevicesSwitch(checked: boolean) {
@@ -752,7 +733,7 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
         <Switch
           size="lg"
           checked={keyEnabled}
-          disabled={!core || busy || initialLoading}
+          disabled={!core || busy || initialLoading || keyEnabled}
           onCheckedChange={(checked) => void handleKeySwitch(checked)}
           aria-label={t("web.settingsPopup.recovery.key.label")}
         />

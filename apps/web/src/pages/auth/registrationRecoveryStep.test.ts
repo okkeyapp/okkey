@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldRedirectAwayFromRegistrationForm } from "./registrationRecoveryStep";
+import {
+  registrationStepAfterRecoveryEnroll,
+  shouldRedirectAwayFromRegistrationForm,
+} from "./registrationRecoveryStep";
 
 describe("shouldRedirectAwayFromRegistrationForm", () => {
   it("redirects when registration auth state is missing on the form step", () => {
@@ -33,6 +36,16 @@ describe("shouldRedirectAwayFromRegistrationForm", () => {
     ).toBe(false);
   });
 
+  it("stays on the page when recovery enroll did not succeed", () => {
+    expect(
+      shouldRedirectAwayFromRegistrationForm({
+        step: "enrollFailed",
+        registrationAuthStateId: null,
+        email: "user@okkey.local",
+      }),
+    ).toBe(false);
+  });
+
   it("stays on the page for the recovery key export step", () => {
     expect(
       shouldRedirectAwayFromRegistrationForm({
@@ -51,5 +64,15 @@ describe("shouldRedirectAwayFromRegistrationForm", () => {
         email: "user@okkey.local",
       }),
     ).toBe(false);
+  });
+});
+
+describe("registrationStepAfterRecoveryEnroll", () => {
+  it("advances to recovery key export only after successful enroll", () => {
+    expect(registrationStepAfterRecoveryEnroll(true)).toBe("recoveryKey");
+  });
+
+  it("blocks continue on enroll failure", () => {
+    expect(registrationStepAfterRecoveryEnroll(false)).toBe("enrollFailed");
   });
 });

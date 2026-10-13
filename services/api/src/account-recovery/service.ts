@@ -155,6 +155,11 @@ export class AccountRecoveryService {
     return resolveAccountRecoveryEntitlements(workspaces);
   }
 
+  async hasEnrolledRecoveryKey(userId: string): Promise<boolean> {
+    const wrap = await this.recovery.getWrap(userId);
+    return wrap !== null;
+  }
+
   async getStatus(userId: string): Promise<AccountRecoveryStatusResponseDto> {
     const entitlements = await this.resolveEntitlements(userId);
     const [wrap, settingsRow, contacts, pendingInvites, servingAsContact] = await Promise.all([
@@ -259,7 +264,11 @@ export class AccountRecoveryService {
     }
 
     if (patch.keyEnabled === false) {
-      await this.recovery.deleteWrap(userId);
+      throw new AccountRecoveryError(
+        "RECOVERY_KEY_REQUIRED",
+        403,
+        "recovery key cannot be disabled",
+      );
     }
 
     await this.recovery.upsertSettings(userId, next);
