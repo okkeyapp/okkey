@@ -141,7 +141,7 @@ function GeneratorOutputCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-border transition-[border-color,box-shadow]",
+        "relative overflow-hidden rounded-xl border border-border transition-[border-color,box-shadow]",
         "has-[[data-generator-copy]:focus]:border-accent",
         "has-[[data-generator-copy]:focus]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
         "has-[[data-generator-copy]:focus-visible]:border-accent",
@@ -150,50 +150,52 @@ function GeneratorOutputCard({
         "dark:has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
       )}
     >
-      <div className="flex min-h-[100px] items-stretch">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                data-generator-copy
-                className="flex min-h-[100px] min-w-0 flex-1 items-center gap-4 p-4 pr-0 text-left outline-none"
-                onClick={onCopy}
-                aria-label={copyAria}
-              >
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              data-generator-copy
+              className="flex w-full flex-col text-left outline-none"
+              onClick={onCopy}
+              aria-label={copyAria}
+            >
+              <div className="flex min-h-[100px] items-center gap-4 p-4">
                 <span className="size-6 shrink-0" aria-hidden />
                 <span className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground sm:text-[32px] sm:leading-10">
                   {colored ? renderColoredPassword(value) : value}
                 </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">{copyTooltip}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <div className="flex shrink-0 items-center p-4 pl-4">
-          <Button
-            type="button"
-            variant="ghost"
-            size="iconSm"
-            className="size-6 min-h-6 min-w-6 shrink-0 p-0 text-foreground/50 hover:bg-transparent hover:text-foreground"
-            aria-label={regenerateAria}
-            onClick={onRegenerate}
-          >
-            <GeneratorRefreshIcon />
-          </Button>
-        </div>
+                <span className="size-6 shrink-0" aria-hidden />
+              </div>
+              {showStrength ? (
+                <div className="flex h-[60px] items-center justify-center gap-4 border-t border-border px-4 text-sm font-medium text-foreground">
+                  <p>
+                    {strengthLabel}{" "}
+                    <span className={cn("font-medium", strengthClassName)}>{strengthValue}</span>
+                  </p>
+                  <p>
+                    {crackTimeLabel}{" "}
+                    <span className={cn("font-medium", crackTimeClassName)}>{crackTimeValue}</span>
+                  </p>
+                </div>
+              ) : null}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{copyTooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex min-h-[100px] items-center justify-end p-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="iconSm"
+          className="pointer-events-auto size-6 min-h-6 min-w-6 shrink-0 p-0 text-foreground/50 hover:bg-transparent hover:text-foreground"
+          aria-label={regenerateAria}
+          onClick={onRegenerate}
+        >
+          <GeneratorRefreshIcon />
+        </Button>
       </div>
-      {showStrength ? (
-        <div className="flex h-[60px] items-center justify-center gap-4 border-t border-border px-4 text-sm font-medium text-foreground">
-          <p>
-            {strengthLabel} <span className={cn("font-medium", strengthClassName)}>{strengthValue}</span>
-          </p>
-          <p>
-            {crackTimeLabel}{" "}
-            <span className={cn("font-medium", crackTimeClassName)}>{crackTimeValue}</span>
-          </p>
-        </div>
-      ) : null}
     </div>
   );
 }
