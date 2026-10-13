@@ -1,6 +1,7 @@
 import { AuthError, type AuthService } from "../auth/service.ts";
 import { EmailTemplateError } from "../email/errors.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import { requestClientIp } from "../request-ip.ts";
 
 interface StartBody {
   email?: string;
@@ -17,19 +18,10 @@ interface ResendBody {
   locale?: string;
 }
 
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
-  }
-  const first = forwardedFor.split(",")[0]?.trim();
-  return first || "unknown";
-}
-
-function getRequestIp(req: Parameters<typeof getHeader>[0]): string {
-  return requestIpFromHeaders(getHeader(req, "x-forwarded-for"));
-}
-
-export function createAuthEmailStartRoute(authService: AuthService): RouteHandler {
+export function createAuthEmailStartRoute(
+  authService: AuthService,
+  trustedProxyHops = 0,
+): RouteHandler {
   return async (ctx) => {
     let body: StartBody;
     try {
@@ -50,7 +42,7 @@ export function createAuthEmailStartRoute(authService: AuthService): RouteHandle
         email,
         locale: body.locale,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
     } catch (error) {
@@ -59,7 +51,10 @@ export function createAuthEmailStartRoute(authService: AuthService): RouteHandle
   };
 }
 
-export function createAuthEmailResendRoute(authService: AuthService): RouteHandler {
+export function createAuthEmailResendRoute(
+  authService: AuthService,
+  trustedProxyHops = 0,
+): RouteHandler {
   return async (ctx) => {
     let body: ResendBody;
     try {
@@ -83,7 +78,7 @@ export function createAuthEmailResendRoute(authService: AuthService): RouteHandl
         challengeId: body.challengeId,
         locale: body.locale,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
     } catch (error) {
@@ -92,7 +87,10 @@ export function createAuthEmailResendRoute(authService: AuthService): RouteHandl
   };
 }
 
-export function createAuthEmailConfirmRoute(authService: AuthService): RouteHandler {
+export function createAuthEmailConfirmRoute(
+  authService: AuthService,
+  trustedProxyHops = 0,
+): RouteHandler {
   return async (ctx) => {
     let body: ConfirmBody;
     try {
@@ -115,7 +113,7 @@ export function createAuthEmailConfirmRoute(authService: AuthService): RouteHand
       const result = await authService.confirmEmailCode({
         challengeId: body.challengeId,
         code: body.code,
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
     } catch (error) {

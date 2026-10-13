@@ -1,24 +1,12 @@
-import type { IncomingMessage } from "node:http";
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import { requestClientIp } from "../request-ip.ts";
 import {
   WebAuthnError,
   type WebAuthnService,
   type LoginMethodsResponse,
 } from "../webauthn/service.ts";
 import type { PrimaryLoginMethod, WebAuthnAttachment } from "../webauthn/repository.ts";
-
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
-  }
-  const first = forwardedFor.split(",")[0]?.trim();
-  return first || "unknown";
-}
-
-function getRequestIp(req: IncomingMessage): string {
-  return requestIpFromHeaders(getHeader(req, "x-forwarded-for"));
-}
 
 function errorPayload(
   code: string,
@@ -292,7 +280,10 @@ export function createAuthLoginDiscoverRoute(webauthnService: WebAuthnService): 
   };
 }
 
-export function createWebAuthnLoginOptionsRoute(webauthnService: WebAuthnService): RouteHandler {
+export function createWebAuthnLoginOptionsRoute(
+  webauthnService: WebAuthnService,
+  trustedProxyHops = 0,
+): RouteHandler {
   return async (ctx) => {
     let body: { email?: string; attachment?: string };
     try {
@@ -312,7 +303,7 @@ export function createWebAuthnLoginOptionsRoute(webauthnService: WebAuthnService
     }
     try {
       // Touch IP for future rate-limit hooks (parity with email auth).
-      void getRequestIp(ctx.req);
+      void requestClientIp(ctx.req, trustedProxyHops);
       const result = await webauthnService.authenticationOptions({
         email: body.email,
         attachment: attachment ?? undefined,

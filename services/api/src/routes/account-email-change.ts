@@ -1,6 +1,7 @@
 import { EmailChangeError, type EmailChangeService } from "../account/email-change.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { EmailTemplateError } from "../email/errors.ts";
+import { requestClientIp } from "../request-ip.ts";
 
 interface StartBody {
   email?: string;
@@ -19,18 +20,6 @@ interface ConfirmBody {
 
 type ResolveUserId = (req: Parameters<typeof getHeader>[0]) => Promise<string | null>;
 
-function requestIpFromHeaders(forwardedFor: string | undefined): string {
-  if (!forwardedFor) {
-    return "unknown";
-  }
-  const first = forwardedFor.split(",")[0]?.trim();
-  return first || "unknown";
-}
-
-function getRequestIp(req: Parameters<typeof getHeader>[0]): string {
-  return requestIpFromHeaders(getHeader(req, "x-forwarded-for"));
-}
-
 async function requireUserId(ctx: Parameters<RouteHandler>[0], resolveUserId: ResolveUserId): Promise<string | null> {
   const userId = await resolveUserId(ctx.req);
   if (!userId) {
@@ -43,6 +32,7 @@ async function requireUserId(ctx: Parameters<RouteHandler>[0], resolveUserId: Re
 export function createAccountEmailChangeStartRoute(
   service: EmailChangeService,
   resolveUserId: ResolveUserId,
+  trustedProxyHops = 0,
 ): RouteHandler {
   return async (ctx) => {
     const userId = await requireUserId(ctx, resolveUserId);
@@ -62,7 +52,7 @@ export function createAccountEmailChangeStartRoute(
         email: body.email ?? "",
         locale: body.locale,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
     } catch (error) {
@@ -74,6 +64,7 @@ export function createAccountEmailChangeStartRoute(
 export function createAccountEmailChangeResendRoute(
   service: EmailChangeService,
   resolveUserId: ResolveUserId,
+  trustedProxyHops = 0,
 ): RouteHandler {
   return async (ctx) => {
     const userId = await requireUserId(ctx, resolveUserId);
@@ -97,7 +88,7 @@ export function createAccountEmailChangeResendRoute(
         challengeId: body.challengeId,
         locale: body.locale,
         acceptLanguage: getHeader(ctx.req, "accept-language"),
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
     } catch (error) {
@@ -109,6 +100,7 @@ export function createAccountEmailChangeResendRoute(
 export function createAccountEmailChangeConfirmRoute(
   service: EmailChangeService,
   resolveUserId: ResolveUserId,
+  trustedProxyHops = 0,
 ): RouteHandler {
   return async (ctx) => {
     const userId = await requireUserId(ctx, resolveUserId);
@@ -131,7 +123,7 @@ export function createAccountEmailChangeConfirmRoute(
         userId,
         challengeId: body.challengeId,
         code: body.code,
-        requestIp: getRequestIp(ctx.req),
+        requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
     } catch (error) {

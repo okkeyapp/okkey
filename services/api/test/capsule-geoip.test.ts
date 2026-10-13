@@ -15,10 +15,17 @@ test("trusted proxy parsing ignores forwarded headers unless explicitly configur
   assert.equal(clientIpFromTrustedProxy("::ffff:192.0.2.2", undefined, 0), "192.0.2.2");
 });
 
-test("loopback remote honors X-Forwarded-For without trusted hops", () => {
-  assert.equal(clientIpFromTrustedProxy("::1", "198.51.100.10", 0), "198.51.100.10");
-  assert.equal(clientIpFromTrustedProxy("127.0.0.1", "203.0.113.5, 10.0.0.1", 0), "203.0.113.5");
+test("loopback remote ignores X-Forwarded-For without trusted hops", () => {
+  assert.equal(clientIpFromTrustedProxy("::1", "198.51.100.10", 0), "::1");
+  assert.equal(clientIpFromTrustedProxy("127.0.0.1", "203.0.113.5, 10.0.0.1", 0), "127.0.0.1");
   assert.equal(clientIpFromTrustedProxy("::1", undefined, 0), "::1");
+});
+
+test("loopback remote honors X-Forwarded-For when trusted hops are configured", () => {
+  assert.equal(clientIpFromTrustedProxy("::1", "198.51.100.10", 1), "198.51.100.10");
+  // With hops=1, take the address immediately before the TCP peer (rightmost trusted hop).
+  assert.equal(clientIpFromTrustedProxy("127.0.0.1", "203.0.113.5, 10.0.0.1", 1), "10.0.0.1");
+  assert.equal(clientIpFromTrustedProxy("127.0.0.1", "203.0.113.5, 10.0.0.1", 2), "203.0.113.5");
 });
 
 test("public lookup IP excludes loopback and private ranges", () => {
