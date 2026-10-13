@@ -38,10 +38,19 @@ gen_secret() {
   fi
 }
 
-# Compose project name defaults to the install directory basename → volume
-# prefix e.g. ~/okkey → okkey_okkey-postgres.
+# Compose project name = install directory basename (lowercased) → volume prefix
+# e.g. ~/okkey → okkey_okkey-postgres, ~/okkey-qa-1 → okkey-qa-1_okkey-postgres.
+# Must match every `docker compose` invocation via `-p` (compose file does not pin `name:`).
 compose_project_name() {
-  basename "$OKKEY_INSTALL_DIR"
+  basename "$OKKEY_INSTALL_DIR" | tr '[:upper:]' '[:lower:]'
+}
+
+# All compose calls go through here so project name / volumes stay aligned with
+# OKKEY_INSTALL_DIR even when the working directory or file path would differ.
+run_compose() {
+  local env_file="$1"
+  shift
+  docker compose -p "$(compose_project_name)" -f "./${COMPOSE_FILE_NAME}" --env-file "$env_file" "$@"
 }
 
 postgres_data_volume() {
@@ -61,7 +70,7 @@ reset_compose_volumes() {
   else
     env_file="./${ENV_EXAMPLE_NAME}"
   fi
-  docker compose -f "./${COMPOSE_FILE_NAME}" --env-file "$env_file" down -v >/dev/null 2>&1 || true
+  run_compose "$env_file" down -v >/dev/null 2>&1 || true
   # Belt-and-suspenders if project name / labels drifted.
   docker volume rm -f \
     "${project}_okkey-postgres" \
@@ -90,31 +99,47 @@ Postgres ignores POSTGRES_PASSWORD after the first init, so api fails with
 Fix — pick one:
   1) Wipe data and reinstall (destroys DB):
        OKKEY_RESET_VOLUMES=1 OKKEY_REF=${OKKEY_REF} bash deploy/docker/install.sh
-     or: docker compose -f ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME} --env-file ${OKKEY_INSTALL_DIR}/.env down -v
+     or: docker compose -p $(basename ${OKKEY_INSTALL_DIR} | tr '[:upper:]' '[:lower:]') -f ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME} --env-file ${OKKEY_INSTALL_DIR}/.env down -v
          then re-run install
   2) Keep data: restore the original .env (same POSTGRES_PASSWORD) and re-run up -d
   3) Keep data + new password: ALTER USER inside postgres to match .env, then restart api"
 }
 
+# Resolve a service container id via compose (do not guess "<project>-<service>-1").
+compose_service_cid() {
+  local service="$1"
+  run_compose .env ps -q "$service" 2>/dev/null | head -n1
+}
+
 wait_for_api_healthy() {
-  local name status i
-  name="$(compose_project_name)-api-1"
-  log "==> Waiting for ${name} to become healthy"
+  local cid status i
+  log "==> Waiting for api to become healthy (project=$(compose_project_name))"
   for i in $(seq 1 36); do
-    status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || true)"
-    if [[ "$status" == "healthy" ]]; then
-      log "==> API healthy"
-      return 0
-    fi
-    if [[ "$status" == "unhealthy" ]] || [[ "$status" == "exited" ]] || [[ "$status" == "restarting" && "$i" -ge 6 ]]; then
-      break
+    cid="$(compose_service_cid api)"
+    if [[ -n "$cid" ]]; then
+      status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || true)"
+      if [[ "$status" == "healthy" ]]; then
+        log "==> API healthy"
+        return 0
+      fi
+      if [[ "$status" == "unhealthy" ]] || [[ "$status" == "exited" ]] || [[ "$status" == "restarting" && "$i" -ge 6 ]]; then
+        break
+      fi
     fi
     sleep 5
   done
+  cid="$(compose_service_cid api)"
   log "error: API did not become healthy (last status: ${status:-unknown})"
-  log "--- docker logs ${name} (tail) ---"
-  docker logs "$name" 2>&1 | tail -40 || true
-  if docker logs "$(compose_project_name)-postgres-1" 2>&1 | grep -q 'password authentication failed'; then
+  if [[ -n "$cid" ]]; then
+    log "--- docker logs api (${cid}) (tail) ---"
+    docker logs "$cid" 2>&1 | tail -40 || true
+  else
+    log "--- api container not found (docker compose ps) ---"
+    run_compose .env ps || true
+  fi
+  local pg_cid
+  pg_cid="$(compose_service_cid postgres)"
+  if [[ -n "$pg_cid" ]] && docker logs "$pg_cid" 2>&1 | grep -q 'password authentication failed'; then
     log ""
     log "Detected Postgres password mismatch (volume from an earlier install)."
     log "See OKKEY_RESET_VOLUMES=1 / restore original .env in the installer error above."
@@ -216,14 +241,14 @@ else
   fi
 fi
 
-log "==> Pulling images and starting stack"
+log "==> Pulling images and starting stack (compose project=$(compose_project_name))"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
   log "==> Skipping pull (OKKEY_SKIP_PULL=1)"
 else
-  docker compose -f "./${COMPOSE_FILE_NAME}" --env-file .env pull
+  run_compose .env pull
 fi
-docker compose -f "./${COMPOSE_FILE_NAME}" --env-file .env up -d
+run_compose .env up -d
 wait_for_api_healthy
 
 web_port="$(grep -E '^WEB_PORT=' .env 2>/dev/null | cut -d= -f2- || true)"
@@ -258,7 +283,7 @@ log "  Open:  ${web_url}"
 log "  API:   http://localhost:${api_port}/health"
 log ""
 log "Files: ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME}  ${OKKEY_INSTALL_DIR}/.env"
-log "Logs:  docker compose -f ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME} logs -f"
+log "Logs:  docker compose -p $(compose_project_name) -f ${OKKEY_INSTALL_DIR}/${COMPOSE_FILE_NAME} --env-file ${OKKEY_INSTALL_DIR}/.env logs -f"
 log "Docs:  https://github.com/okkeyapp/okkey/blob/${OKKEY_REF}/deploy/docker/README.md"
 log ""
 log "First-run: with an empty database, enter your email and create the first account"

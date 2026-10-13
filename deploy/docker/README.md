@@ -27,18 +27,18 @@ Optional env:
 |----------|---------|
 | `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`) |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
-| `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`) |
+| `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
 
 ### Reinstall / password mismatch
 
-Postgres applies `POSTGRES_PASSWORD` **only on first volume init**. If you delete `~/okkey/.env` and re-run install (new secrets) while `okkey_okkey-postgres` still exists, `api` crash-loops with `postgres query failed` / `password authentication failed`, and `web`/`worker` stay `Created` (depend on api healthy).
+Postgres applies `POSTGRES_PASSWORD` **only on first volume init**. If you delete `~/okkey/.env` and re-run install (new secrets) while `<basename>_okkey-postgres` still exists (default `okkey_okkey-postgres`), `api` crash-loops with `postgres query failed` / `password authentication failed`, and `web`/`worker` stay `Created` (depend on api healthy).
 
 ```bash
 # Destructive — empty DB, keep current .env secrets:
-cd ~/okkey && docker compose -f docker-compose.prod.yml --env-file .env down -v && \
-  docker compose -f docker-compose.prod.yml --env-file .env up -d
+cd ~/okkey && docker compose -p okkey -f docker-compose.prod.yml --env-file .env down -v && \
+  docker compose -p okkey -f docker-compose.prod.yml --env-file .env up -d
 
 # Or via installer:
 OKKEY_RESET_VOLUMES=1 OKKEY_REF=cursor/self-host-docker-2ea1 \
