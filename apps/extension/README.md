@@ -2,6 +2,10 @@
 
 MV3 extension scaffolded with [WXT](https://wxt.dev/). Chromium (Chrome / Edge / Opera / Yandex) and Firefox share one source tree.
 
+**Product version:** `1.0.0-beta.2` · **manifest `version`:** `1.0.0.2` · Chromium **`version_name`:** `1.0.0-beta.2`
+
+Store packaging (listings, permissions justification, submit checklist): **[store/](./store/)**.
+
 ## Requirements
 
 - Node `>=25 <26` (see repo `.tool-versions`)
@@ -23,7 +27,7 @@ yarn dev
 yarn dev:firefox
 ```
 
-Run API + web locally in another terminal (`yarn dev` from repo root) so extension login can open `http://localhost:5173`.
+Run API + web locally in another terminal (`yarn dev` from repo root) so extension login can open your **self-hosted** web origin (e.g. `http://localhost:5173`).
 
 ## Build (load unpacked)
 
@@ -32,9 +36,9 @@ yarn build:extension:chromium   # → apps/extension/output/chrome-mv3
 yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 ```
 
-### Chrome / Edge / Chromium
+### Chrome / Edge / Chromium / Opera / Yandex
 
-1. Open `chrome://extensions` (or `edge://extensions`).
+1. Open `chrome://extensions` (or `edge://extensions` / Opera / Yandex equivalents).
 2. Enable **Developer mode**.
 3. **Load unpacked** → select `apps/extension/output/chrome-mv3`.
 
@@ -43,37 +47,24 @@ yarn build:extension:firefox    # → apps/extension/output/firefox-mv3
 1. Open `about:debugging#/runtime/this-firefox`.
 2. **Load Temporary Add-on…** → select `apps/extension/output/firefox-mv3/manifest.json`.
 
-## E2 — Vault unlock + read MVP
+## Store zips (E5 ready-to-submit)
 
-1. Start Core API + web (`yarn dev` from repo root).
-2. Load the unpacked Chromium build (`apps/extension/output/chrome-mv3`).
-3. Complete E1 flow: Server URL → web PKCE login → device approve on a trusted device.
-4. On **Unlock**, enter the master password (same as web).
-5. After unlock the popup shows vault UI (web-mobile parity shell):
-   - Header: burger · search (live on-type) · Lock · «+» (opens web `/items?popup=newItem`)
-   - Burger drawer: workspace switcher, vaults (no «+»), folders (no folder settings), profile (Logout + Change server; no My settings). No Workspace nav / Documentation / Help.
-   - Left **250px** list: filter dropdown + sort like web, row layout like web
-   - Right: item card toolbar like web mobile (no back) — edit/capsule/favorite/archive deep-link to web; field copy with copy-guard
-6. **Lock** returns to Unlock; **Sign out** / **Change server** wipe extension session/device/vault cache (keeps last server URL preference) and return to the server screen.
+```bash
+yarn zip:extension:store
+# → apps/extension/output/*chrome*.zip   (CWS + Edge + Opera; Yandex via CWS)
+# → apps/extension/output/*firefox*.zip  (AMO)
+```
 
-### After rebuilding
+Full checklist: [store/SUBMIT-CHECKLIST.md](./store/SUBMIT-CHECKLIST.md).
 
-1. `chrome://extensions` → Okkey → **Reload**.
-2. Open popup → unlock → verify list/card/search/burger/lock/+.
+## Smoke after rebuild
 
-## Scope
+1. `chrome://extensions` → Okkey → **Reload** (or re-load unpacked).
+2. Server URL → web PKCE login → device approve → Unlock (MP).
+3. Vault list/card/search; autofill on a matching login form; generator in popup tools.
 
-- **E0:** popup shell + background SW, Chromium/Firefox builds.
-- **E1:** Server URL, web+PKCE session, device pending/approve.
-- **E2 (this phase):** Local MP unlock, sync read, workspace switch, search/filter, item read/copy + copy-guard, web deep links, vault UI parity with web mobile shell.
-- **E3:** delete/favorite mutations, device settings (theme/PIN).
-- **E4 (this phase):** persist `urlAutofillScope` on login «Вебсайт URL»; content-script autofill (login + password + TOTP); copy-guard in popup; host permissions `<all_urls>`; save-password prompt MVP; auto-submit after fill / open-and-fill.
-- **Not yet (E4.1+):** password generator on page.
+## Scope (phases)
 
-## E4 — Autofill
-
-1. Rebuild: `yarn workspace @okkey/extension build:chromium` → `apps/extension/output/chrome-mv3`.
-2. `chrome://extensions` → Okkey → **Reload** (or Load unpacked → that folder).
-3. In **web**, create a **Логин/пароль** item with username/password, optional TOTP, and website URLs using all three scopes (`на всём сайте` / `только на этом URL` / `без автозаполнения`). Save.
-4. Unlock the extension, open a matching site, focus login/password/OTP → pick the item from the Okkey overlay. Locked vault shows **Разблокировать**.
-5. Copy login/password in the popup on a tab that does **not** match any website URL → **Отмена** / **Копировать** (copy writes immediately).
+- **E0–E3:** scaffold, auth/device, vault read, mutations + device settings.
+- **E4 / E4.1:** autofill + save prompt + generator / polish (on `dev`).
+- **E5:** store beta packaging + listing docs (this folder’s `store/`).

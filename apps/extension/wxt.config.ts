@@ -27,59 +27,68 @@ export default defineConfig({
   suppressWarnings: {
     firefoxDataCollection: true,
   },
-  manifest: ({ browser }) => ({
-    name: "Okkey",
-    description: "Okkey password manager extension",
-    version: "0.0.1",
-    icons: {
-      16: "icon-16.png",
-      32: "icon-32.png",
-      48: "icon-48.png",
-      128: "icon-128.png",
-    },
-    action: {
-      default_title: "Okkey",
-      default_icon: {
+  manifest: ({ browser }) => {
+    // Product: 1.0.0-beta.2 — Chrome/Edge/Opera need dotted integers in `version`;
+    // `version_name` is Chromium-only display string (Firefox uses listing version).
+    const manifestVersion = "1.0.0.2";
+    const versionName = "1.0.0-beta.2";
+    return {
+      name: "Okkey",
+      description:
+        "Self-hosted, client-side password manager with post-quantum ready crypto and autofill.",
+      version: manifestVersion,
+      ...(browser !== "firefox" ? { version_name: versionName } : {}),
+      homepage_url: "https://github.com/okkeyapp/okkey",
+      icons: {
         16: "icon-16.png",
         32: "icon-32.png",
         48: "icon-48.png",
         128: "icon-128.png",
       },
-    },
-    permissions: ["storage", "tabs", "idle"],
-    // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
-    content_security_policy: {
-      // blob: required for decrypted favicon / workspace-logo object URLs in <img>.
-      extension_pages:
-        "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob:; connect-src 'self' http: https:;",
-    },
-    // E4: content scripts + autofill on arbitrary http(s) origins.
-    host_permissions: ["<all_urls>"],
-    // Required so web (localhost / self-host) can redirect into the PKCE callback
-    // page. Without this, Chrome rewrites the navigation to chrome-extension://invalid/
-    // and shows ERR_BLOCKED_BY_CLIENT.
-    web_accessible_resources: [
-      {
-        // Content-script shadow DOM loads Inter + overlay icons via extension URLs.
-        resources: [
-          "auth-callback.html",
-          "fonts/*",
-          "icons/*",
-        ],
-        matches: ["http://*/*", "https://*/*"],
+      action: {
+        default_title: "Okkey",
+        default_icon: {
+          16: "icon-16.png",
+          32: "icon-32.png",
+          48: "icon-48.png",
+          128: "icon-128.png",
+        },
       },
-    ],
-    ...(browser === "firefox"
-      ? {
-          browser_specific_settings: {
-            gecko: {
-              id: "extension@okkey.io",
-              strict_min_version: "121.0",
+      permissions: ["storage", "tabs", "idle"],
+      // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
+      content_security_policy: {
+        // blob: required for decrypted favicon / workspace-logo object URLs in <img>.
+        extension_pages:
+          "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob:; connect-src 'self' http: https:;",
+      },
+      // E4: content scripts + autofill on arbitrary http(s) origins.
+      host_permissions: ["<all_urls>"],
+      // Required so web (localhost / self-host) can redirect into the PKCE callback
+      // page. Without this, Chrome rewrites the navigation to chrome-extension://invalid/
+      // and shows ERR_BLOCKED_BY_CLIENT.
+      web_accessible_resources: [
+        {
+          // Content-script shadow DOM loads Inter + overlay icons via extension URLs.
+          resources: [
+            "auth-callback.html",
+            "fonts/*",
+            "icons/*",
+          ],
+          matches: ["http://*/*", "https://*/*"],
+        },
+      ],
+      ...(browser === "firefox"
+        ? {
+            browser_specific_settings: {
+              gecko: {
+                id: "extension@okkey.io",
+                strict_min_version: "121.0",
+              },
             },
-          },
-        }
-      : {}),
-  }),
+          }
+        : {}),
+    };
+  },
   vite: () => ({
     // Same as apps/web: emit `.wasm` as build assets (required for crypto unlock).
     assetsInclude: ["**/*.wasm"],

@@ -1,7 +1,7 @@
 {
   "name": "@okkey/extension",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0-beta.2",
   "type": "module",
   "description": "Okkey browser extension (MV3)",
   "scripts": {
@@ -13,6 +13,7 @@
     "zip": "wxt zip",
     "zip:chromium": "wxt zip -b chrome",
     "zip:firefox": "wxt zip -b firefox",
+    "zip:store": "wxt zip -b chrome && wxt zip -b firefox",
     "compile": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
     "postinstall": "wxt prepare"
