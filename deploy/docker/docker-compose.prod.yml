@@ -1,6 +1,7 @@
 # Okkey Core — production self-host stack (image: only, no build).
 # Install: see install.sh / README.md
-name: okkey
+# Project name is not pinned here — install.sh passes `-p "$(basename "$OKKEY_INSTALL_DIR")"`,
+# and plain `docker compose` uses the compose-file directory basename (default ~/okkey → okkey).
 
 services:
   postgres:
