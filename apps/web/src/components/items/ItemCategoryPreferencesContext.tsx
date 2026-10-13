@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
+import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
+import { markPersonalDataBootstrapDismissed as markLocalPersonalDataBootstrapDismissed } from "../../items/personalDataBootstrapDismissal";
 import {
   buildDefaultFavoriteOrder,
   encodeFavoriteOrderEntry,
@@ -23,10 +24,14 @@ export type ItemCategoryPreferencesContextValue = {
   favoriteOrder: string[];
   favoriteIdSet: Set<string>;
   favoriteTemplateIdSet: Set<string>;
+  /** Server flag: skip personal_data bootstrap after the member deleted it. */
+  personalDataBootstrapDismissed: boolean;
   ready: boolean;
   toggleFavorite: (categoryId: string) => void;
   toggleTemplateFavorite: (templateId: string) => void;
   reorderFavorites: (nextFavoriteOrder: string[]) => void;
+  /** Persist dismiss on the server (and localStorage cache). */
+  markPersonalDataBootstrapDismissed: () => void;
 };
 
 const ItemCategoryPreferencesContext = createContext<ItemCategoryPreferencesContextValue | null>(null);
@@ -35,9 +40,11 @@ export function useItemCategoryPreferencesState(
   workspaceId: string | null,
 ): ItemCategoryPreferencesContextValue {
   const core = useAuthenticatedCoreClient();
+  const { userId } = useAuthVault();
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [favoriteTemplateIds, setFavoriteTemplateIds] = useState<string[]>([]);
   const [favoriteOrder, setFavoriteOrder] = useState<string[]>([]);
+  const [personalDataBootstrapDismissed, setPersonalDataBootstrapDismissed] = useState(false);
   const [ready, setReady] = useState(false);
   const favoriteIdsRef = useRef(favoriteIds);
   const favoriteTemplateIdsRef = useRef(favoriteTemplateIds);
@@ -60,6 +67,7 @@ export function useItemCategoryPreferencesState(
       setFavoriteIds([]);
       setFavoriteTemplateIds([]);
       setFavoriteOrder([]);
+      setPersonalDataBootstrapDismissed(false);
       setReady(false);
       return;
     }
@@ -80,6 +88,11 @@ export function useItemCategoryPreferencesState(
           setFavoriteIds(categoryIds);
           setFavoriteTemplateIds(templateIds);
           setFavoriteOrder(reconcileFavoriteOrder(order, categoryIds, templateIds));
+          const dismissed = Boolean(response.personal_data_bootstrap_dismissed);
+          setPersonalDataBootstrapDismissed(dismissed);
+          if (dismissed) {
+            markLocalPersonalDataBootstrapDismissed(userId, workspaceId);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -87,6 +100,7 @@ export function useItemCategoryPreferencesState(
           setFavoriteIds(categoryIds);
           setFavoriteTemplateIds([]);
           setFavoriteOrder(buildDefaultFavoriteOrder(categoryIds, []));
+          setPersonalDataBootstrapDismissed(false);
         }
       } finally {
         if (!cancelled) {
@@ -98,7 +112,7 @@ export function useItemCategoryPreferencesState(
     return () => {
       cancelled = true;
     };
-  }, [core, workspaceId]);
+  }, [core, userId, workspaceId]);
 
   const persistPreferences = useCallback(
     (nextFavoriteIds: string[], nextFavoriteTemplateIds: string[], nextFavoriteOrder: string[]) => {
@@ -132,6 +146,7 @@ export function useItemCategoryPreferencesState(
           setFavoriteIds(categoryIds);
           setFavoriteTemplateIds(templateIds);
           setFavoriteOrder(reconcileFavoriteOrder(order, categoryIds, templateIds));
+          setPersonalDataBootstrapDismissed(Boolean(response.personal_data_bootstrap_dismissed));
         })
         .catch(() => {
           setFavoriteIds(previousFavoriteIds);
@@ -181,6 +196,24 @@ export function useItemCategoryPreferencesState(
     [persistPreferences],
   );
 
+  const markPersonalDataBootstrapDismissed = useCallback(() => {
+    setPersonalDataBootstrapDismissed(true);
+    markLocalPersonalDataBootstrapDismissed(userId, workspaceId);
+    if (!core || !workspaceId) {
+      return;
+    }
+    void core
+      .updateWorkspaceItemCategoryPreferences(workspaceId, {
+        personal_data_bootstrap_dismissed: true,
+      })
+      .then((response) => {
+        setPersonalDataBootstrapDismissed(Boolean(response.personal_data_bootstrap_dismissed));
+      })
+      .catch(() => {
+        /* keep optimistic true; next GET will reconcile */
+      });
+  }, [core, userId, workspaceId]);
+
   const favoriteIdSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const favoriteTemplateIdSet = useMemo(() => new Set(favoriteTemplateIds), [favoriteTemplateIds]);
 
@@ -190,10 +223,12 @@ export function useItemCategoryPreferencesState(
     favoriteOrder,
     favoriteIdSet,
     favoriteTemplateIdSet,
+    personalDataBootstrapDismissed,
     ready,
     toggleFavorite,
     toggleTemplateFavorite,
     reorderFavorites,
+    markPersonalDataBootstrapDismissed,
   };
 }
 

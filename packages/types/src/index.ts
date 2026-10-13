@@ -1580,13 +1580,19 @@ export interface WorkspaceItemCategoryPreferencesResponseDto {
   favorite_category_ids: string[];
   favorite_template_ids: string[];
   favorite_order: string[];
+  /** When true, skip auto-creating personal_data after unlock (member deleted it). */
+  personal_data_bootstrap_dismissed: boolean;
 }
 
-/** `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer). */
+/**
+ * `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer).
+ * Favorites fields update favorites; `personal_data_bootstrap_dismissed` alone is enough to set the flag.
+ */
 export interface WorkspaceItemCategoryPreferencesUpdateRequestDto {
-  favorite_category_ids: string[];
-  favorite_template_ids: string[];
-  favorite_order: string[];
+  favorite_category_ids?: string[];
+  favorite_template_ids?: string[];
+  favorite_order?: string[];
+  personal_data_bootstrap_dismissed?: boolean;
 }
 
 export interface WorkspaceItemTemplatePayloadDto {

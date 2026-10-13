@@ -21,8 +21,9 @@ export function hasSoftDeletedPersonalDataItem(items: readonly ItemPlaintextV2[]
 }
 
 /**
- * Skip bootstrap when an item (active or soft-deleted) exists, or when a
- * dismissed marker remains after the soft-deleted row was purged from retention.
+ * Skip bootstrap when an item (active or soft-deleted) exists, or when the
+ * dismissed flag is set (server-authoritative; localStorage may cache it).
+ * After retention purge the item is gone — the flag alone must still skip.
  */
 export function shouldSkipPersonalDataBootstrap(
   items: readonly ItemPlaintextV2[],

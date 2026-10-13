@@ -133,6 +133,7 @@ export class ItemCategoryPreferencesService {
     favoriteCategoryIds: string[];
     favoriteTemplateIds: string[];
     favoriteOrder: string[];
+    personalDataBootstrapDismissed: boolean;
   }> {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const row = await this.preferences.find(workspaceId, userId);
@@ -142,6 +143,7 @@ export class ItemCategoryPreferencesService {
         favoriteCategoryIds,
         favoriteTemplateIds: [],
         favoriteOrder: buildDefaultFavoriteOrder(favoriteCategoryIds, []),
+        personalDataBootstrapDismissed: false,
       };
     }
     const favoriteCategoryIds = sanitizeFavoriteCategoryIds(row.favoriteCategoryIds);
@@ -157,6 +159,7 @@ export class ItemCategoryPreferencesService {
       favoriteCategoryIds,
       favoriteTemplateIds,
       favoriteOrder,
+      personalDataBootstrapDismissed: row.personalDataBootstrapDismissed,
     };
   }
 
@@ -168,8 +171,18 @@ export class ItemCategoryPreferencesService {
   async updatePreferences(
     workspaceId: string,
     userId: string,
-    input: { favoriteCategoryIds: string[]; favoriteTemplateIds: string[]; favoriteOrder: string[] },
-  ): Promise<{ favoriteCategoryIds: string[]; favoriteTemplateIds: string[]; favoriteOrder: string[] }> {
+    input: {
+      favoriteCategoryIds: string[];
+      favoriteTemplateIds: string[];
+      favoriteOrder: string[];
+      personalDataBootstrapDismissed?: boolean;
+    },
+  ): Promise<{
+    favoriteCategoryIds: string[];
+    favoriteTemplateIds: string[];
+    favoriteOrder: string[];
+    personalDataBootstrapDismissed: boolean;
+  }> {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const sanitizedCategories = sanitizeFavoriteCategoryIds(input.favoriteCategoryIds);
     const sanitizedTemplates = await this.sanitizeFavoriteTemplateIds(workspaceId, input.favoriteTemplateIds);
@@ -184,6 +197,7 @@ export class ItemCategoryPreferencesService {
       favoriteCategoryIds: sanitizedCategories,
       favoriteTemplateIds: sanitizedTemplates,
       favoriteOrder: sanitizedOrder,
+      personalDataBootstrapDismissed: input.personalDataBootstrapDismissed,
     });
     const favoriteCategoryIds = sanitizeFavoriteCategoryIds(row.favoriteCategoryIds);
     const favoriteTemplateIds = await this.sanitizeFavoriteTemplateIds(workspaceId, row.favoriteTemplateIds);
@@ -191,7 +205,58 @@ export class ItemCategoryPreferencesService {
       favoriteCategoryIds,
       favoriteTemplateIds,
       favoriteOrder: reconcileFavoriteOrder(row.favoriteOrder, favoriteCategoryIds, favoriteTemplateIds),
+      personalDataBootstrapDismissed: row.personalDataBootstrapDismissed,
     };
+  }
+
+  /**
+   * Persist that the member dismissed personal_data bootstrap (e.g. deleted the item).
+   * Creates a preferences row with default favorites when none exists yet.
+   */
+  async setPersonalDataBootstrapDismissed(
+    workspaceId: string,
+    userId: string,
+    dismissed: boolean,
+  ): Promise<{
+    favoriteCategoryIds: string[];
+    favoriteTemplateIds: string[];
+    favoriteOrder: string[];
+    personalDataBootstrapDismissed: boolean;
+  }> {
+    await this.assertWorkspaceAccess(workspaceId, userId);
+    const existing = await this.preferences.setPersonalDataBootstrapDismissed({
+      workspaceId,
+      userId,
+      dismissed,
+    });
+    if (existing) {
+      const favoriteCategoryIds = sanitizeFavoriteCategoryIds(existing.favoriteCategoryIds);
+      const favoriteTemplateIds = await this.sanitizeFavoriteTemplateIds(
+        workspaceId,
+        existing.favoriteTemplateIds,
+      );
+      return {
+        favoriteCategoryIds,
+        favoriteTemplateIds,
+        favoriteOrder: reconcileFavoriteOrder(
+          existing.favoriteOrder.length > 0
+            ? existing.favoriteOrder
+            : buildDefaultFavoriteOrder(favoriteCategoryIds, favoriteTemplateIds),
+          favoriteCategoryIds,
+          favoriteTemplateIds,
+        ),
+        personalDataBootstrapDismissed: existing.personalDataBootstrapDismissed,
+      };
+    }
+    const favoriteCategoryIds = [...DEFAULT_WORKSPACE_ITEM_CATEGORY_FAVORITE_IDS];
+    const favoriteTemplateIds: string[] = [];
+    const favoriteOrder = buildDefaultFavoriteOrder(favoriteCategoryIds, favoriteTemplateIds);
+    return this.updatePreferences(workspaceId, userId, {
+      favoriteCategoryIds,
+      favoriteTemplateIds,
+      favoriteOrder,
+      personalDataBootstrapDismissed: dismissed,
+    });
   }
 
   async updateFavoriteCategoryIds(
@@ -294,4 +359,11 @@ export function parseFavoriteOrderPayload(value: unknown): string[] | null {
     return null;
   }
   return value.filter((entry) => parseFavoriteOrderEntry(entry) !== null);
+}
+
+export function parsePersonalDataBootstrapDismissedPayload(value: unknown): boolean | null {
+  if (typeof value !== "boolean") {
+    return null;
+  }
+  return value;
 }

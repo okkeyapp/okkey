@@ -1,7 +1,8 @@
 /**
- * Per-user, per-workspace marker: personal_data bootstrap was dismissed by a
- * deliberate delete. Survives soft-delete retention purge so unlock does not
- * recreate the item / re-open the edit popup.
+ * Browser-local cache of the server personal_data bootstrap dismissed flag.
+ * Authoritative value lives on the server (workspace member item-category
+ * preferences). This cache only speeds same-browser skips; new profiles /
+ * cleared site data must read the server flag.
  */
 
 const PREFIX = "okkey.personalDataBootstrap.dismissed.u.";

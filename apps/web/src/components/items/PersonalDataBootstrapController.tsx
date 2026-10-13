@@ -9,10 +9,7 @@ import {
   buildPersonalDataBootstrapItem,
   shouldSkipPersonalDataBootstrap,
 } from "../../items/personalDataBootstrap";
-import {
-  isPersonalDataBootstrapDismissed,
-  markPersonalDataBootstrapDismissed,
-} from "../../items/personalDataBootstrapDismissal";
+import { isPersonalDataBootstrapDismissed } from "../../items/personalDataBootstrapDismissal";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
@@ -24,6 +21,7 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
+import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
 type PersonalDataBootstrapControllerProps = {
   workspaceId: string;
@@ -35,7 +33,7 @@ type PersonalDataBootstrapControllerProps = {
  * After unlock, once items for the workspace are bootstrapped: if the user has never
  * had a personal_data item (and has not dismissed bootstrap via delete), create one in
  * the personal vault (no folder) with profile prefill and open its edit popup.
- * Soft-delete and a durable dismissed marker (survives retention purge) both skip recreate.
+ * Soft-delete and a server dismissed flag (cached in localStorage) both skip recreate.
  */
 export default function PersonalDataBootstrapController({
   workspaceId,
@@ -46,6 +44,11 @@ export default function PersonalDataBootstrapController({
   const { profile, vaultUnlocked, userId } = useAuthVault();
   const { items, bootstrapped, createItem } = useWorkspaceItems();
   const { canPostToVault } = useWorkspaceVaultProfiles();
+  const {
+    ready: preferencesReady,
+    personalDataBootstrapDismissed,
+    markPersonalDataBootstrapDismissed,
+  } = useItemCategoryPreferences();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -57,7 +60,14 @@ export default function PersonalDataBootstrapController({
   locationRef.current = location;
 
   useEffect(() => {
-    if (!vaultUnlocked || !bootstrapped || !vaultsListReady || !workspaceId || !userId) {
+    if (
+      !vaultUnlocked ||
+      !bootstrapped ||
+      !vaultsListReady ||
+      !workspaceId ||
+      !userId ||
+      !preferencesReady
+    ) {
       return;
     }
     if (doneWorkspaceIdRef.current === workspaceId) {
@@ -69,10 +79,11 @@ export default function PersonalDataBootstrapController({
 
     // Soft-deleted row still in retention → persist dismiss so a later purge cannot recreate.
     if (hasSoftDeletedPersonalDataItem(items)) {
-      markPersonalDataBootstrapDismissed(userId, workspaceId);
+      markPersonalDataBootstrapDismissed();
     }
 
-    const dismissed = isPersonalDataBootstrapDismissed(userId, workspaceId);
+    const dismissed =
+      personalDataBootstrapDismissed || isPersonalDataBootstrapDismissed(userId, workspaceId);
     if (shouldSkipPersonalDataBootstrap(items, dismissed)) {
       doneWorkspaceIdRef.current = workspaceId;
       return;
@@ -138,6 +149,9 @@ export default function PersonalDataBootstrapController({
     createItem,
     items,
     locale,
+    markPersonalDataBootstrapDismissed,
+    personalDataBootstrapDismissed,
+    preferencesReady,
     profile?.email,
     profile?.firstName,
     profile?.lastName,

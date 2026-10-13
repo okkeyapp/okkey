@@ -113,6 +113,13 @@ describe("shouldSkipPersonalDataBootstrap", () => {
     expect(shouldSkipPersonalDataBootstrap([], true)).toBe(true);
   });
 
+  it("skips on a new device after purge when only the server flag is set", () => {
+    // Cleared localStorage + IndexedDB: no personal_data item, no local cache.
+    // Server personal_data_bootstrap_dismissed === true is passed as dismissed.
+    expect(shouldSkipPersonalDataBootstrap([], true)).toBe(true);
+    expect(shouldSkipPersonalDataBootstrap([loginItem], true)).toBe(true);
+  });
+
   it("does not skip for a fresh workspace without marker", () => {
     expect(shouldSkipPersonalDataBootstrap([loginItem], false)).toBe(false);
     expect(shouldSkipPersonalDataBootstrap([], false)).toBe(false);
@@ -124,7 +131,7 @@ describe("personalDataBootstrapDismissal storage", () => {
     vi.stubGlobal("localStorage", memoryStorage());
   });
 
-  it("persists dismissed marker per user and workspace", () => {
+  it("persists dismissed marker per user and workspace as a local cache", () => {
     expect(isPersonalDataBootstrapDismissed("user-1", "ws-1")).toBe(false);
     markPersonalDataBootstrapDismissed("user-1", "ws-1");
     expect(isPersonalDataBootstrapDismissed("user-1", "ws-1")).toBe(true);
@@ -133,6 +140,14 @@ describe("personalDataBootstrapDismissal storage", () => {
     expect(localStorage.getItem(personalDataBootstrapDismissedStorageKey("user-1", "ws-1"))).toBe(
       "1",
     );
+  });
+
+  it("new browser profile has empty local cache (server flag must decide skip)", () => {
+    // Simulate cleared site data / new profile: no local keys.
+    expect(isPersonalDataBootstrapDismissed("user-1", "ws-1")).toBe(false);
+    // Bootstrap skip then depends on server personal_data_bootstrap_dismissed.
+    expect(shouldSkipPersonalDataBootstrap([], false)).toBe(false);
+    expect(shouldSkipPersonalDataBootstrap([], true)).toBe(true);
   });
 });
 

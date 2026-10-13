@@ -310,6 +310,20 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const persistPersonalDataBootstrapDismissed = useCallback(() => {
+    markPersonalDataBootstrapDismissed(userId, workspaceId);
+    if (!core || !workspaceId) {
+      return;
+    }
+    void core
+      .updateWorkspaceItemCategoryPreferences(workspaceId, {
+        personal_data_bootstrap_dismissed: true,
+      })
+      .catch(() => {
+        /* server flag is authoritative once synced; local cache still set */
+      });
+  }, [core, userId, workspaceId]);
+
   const setItemDeleted = useCallback(
     async (itemId: string, deleted: boolean) => {
       await runMutation(async (controller) => {
@@ -321,12 +335,12 @@ export function useWorkspaceItemsState(input: {
           return;
         }
         if (deleted && item.categoryId === "personal_data") {
-          markPersonalDataBootstrapDismissed(userId, workspaceId);
+          persistPersonalDataBootstrapDismissed();
         }
         await controller.updateItem(withItemDeletedState(item, deleted));
       });
     },
-    [runMutation, userId, workspaceId],
+    [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
   const setItemsDeleted = useCallback(
@@ -343,13 +357,13 @@ export function useWorkspaceItemsState(input: {
             continue;
           }
           if (deleted && item.categoryId === "personal_data") {
-            markPersonalDataBootstrapDismissed(userId, workspaceId);
+            persistPersonalDataBootstrapDismissed();
           }
           await controller.updateItem(withItemDeletedState(item, deleted));
         }
       });
     },
-    [runMutation, userId, workspaceId],
+    [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
   const refreshItems = useCallback(async () => {
