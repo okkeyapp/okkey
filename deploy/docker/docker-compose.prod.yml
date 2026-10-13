@@ -121,6 +121,7 @@ services:
       WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
       OKKEY_DEPLOYMENT_MODE: self_hosted
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
+      FAVICON_PROVIDER: ${FAVICON_PROVIDER:-direct}
     ports:
       - "${API_PORT:-4000}:4000"
     healthcheck:

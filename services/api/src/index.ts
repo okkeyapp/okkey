@@ -214,7 +214,9 @@ async function main(): Promise<void> {
       endpoint: keyFieldFileStorageConfig?.endpoint,
     });
   }
-  const itemFaviconService = new ItemFaviconService();
+  const itemFaviconService = new ItemFaviconService({
+    provider: config.faviconProvider,
+  });
   const attachmentService = keyFieldFileStorage
     ? new AttachmentService({
         storage: keyFieldFileStorage,

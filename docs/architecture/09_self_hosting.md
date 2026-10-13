@@ -87,6 +87,22 @@ CORS_ORIGIN
 
 ---
 
+## Favicon preview
+
+Login-item favicon preview (`POST /favicon/preview`) defaults to fetching icons from the website
+origin only (`FAVICON_PROVIDER=direct`).
+
+```text
+FAVICON_PROVIDER=direct
+```
+
+Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monograms).
+
+`FAVICON_PROVIDER=google` is an explicit opt-in that uses Google's favicon service.
+Prefer `direct` or `off` for self-hosted deployments.
+
+---
+
 ## Capsule GeoIP
 
 Capsule approval can resolve requester country/city locally from any City-compatible MMDB file.

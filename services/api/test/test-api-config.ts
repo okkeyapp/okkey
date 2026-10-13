@@ -85,6 +85,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     webauthnRpName: "Okkey",
     webauthnOrigins: ["http://localhost:5173"],
     webauthnChallengeTtlSeconds: 300,
+    faviconProvider: "direct",
     ...overrides,
   };
 }
