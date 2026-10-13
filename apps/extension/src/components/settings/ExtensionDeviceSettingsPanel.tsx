@@ -26,12 +26,21 @@ import {
   normalizeThemePreference,
   type ThemePreference,
 } from "@okkey/ui";
-import { SetupPinPopup } from "@okkey/vault-ui";
-import { useCallback, useEffect, useState, type ReactNode, type SVGProps } from "react";
+import { GeneratorExternalLinkIcon, SetupPinPopup } from "@okkey/vault-ui";
+import {
+  EXTENSION_POPUP_DIALOG_LAYOUT,
+  EXTENSION_POPUP_DIALOG_WIDTH,
+} from "../../lib/extensionPopupDialog";
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { toast } from "sonner";
 
 import { SettingsGearIcon } from "../icons/SettingsGearIcon";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
+import {
+  buildSettingsMainDeepLink,
+  buildWorkspaceSettingsDeepLink,
+  openWebDeepLink,
+} from "../../lib/deepLinks";
 import {
   biometricErrorMessageKey,
   disableExtensionBiometricUnlock,
@@ -60,10 +69,11 @@ const ACCENT_OPTIONS = [
 
 type AccentId = (typeof ACCENT_OPTIONS)[number]["id"];
 
-export type DeviceSettingsPage = "personalization" | "security" | "unlock";
+export type DeviceSettingsPage = "personalization" | "security" | "unlock" | "other";
 
 type ExtensionDeviceSettingsPanelProps = {
   userId: string;
+  webBaseUrl: string;
   secrets: UnlockWithMasterPasswordResult;
   idleLockMs: number;
   onIdleLockMsChange: (ms: number) => void;
@@ -155,7 +165,11 @@ function clipboardLabel(seconds: number, t: ExtensionDeviceSettingsPanelProps["t
   return t("web.settingsPopup.vault.clipboard.minutes", { count: String(Math.round(seconds / 60)) });
 }
 
-const MENU: Array<{ id: DeviceSettingsPage; labelKey: string; Icon: typeof DevicePersonalizationIcon }> = [
+const MENU: Array<{
+  id: DeviceSettingsPage;
+  labelKey: string;
+  Icon: ComponentType<{ className?: string }>;
+}> = [
   {
     id: "personalization",
     labelKey: "web.settingsPopup.deviceSettings.personalization",
@@ -171,10 +185,15 @@ const MENU: Array<{ id: DeviceSettingsPage; labelKey: string; Icon: typeof Devic
     labelKey: "web.settingsPopup.deviceSettings.unlock",
     Icon: DeviceUnlockIcon,
   },
+  {
+    id: "other",
+    labelKey: "web.settingsPopup.deviceSettings.other",
+    Icon: SettingsGearIcon,
+  },
 ];
 
 export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanelProps) {
-  const { userId, secrets, idleLockMs, onIdleLockMsChange, onBack, t } = props;
+  const { userId, webBaseUrl, secrets, idleLockMs, onIdleLockMsChange, onBack, t } = props;
   const [page, setPage] = useState<DeviceSettingsPage>("personalization");
   const [prefs, setPrefs] = useState<VaultDevicePrefs | null>(null);
   const [idleSeconds, setIdleSeconds] = useState(() => Math.round(idleLockMs / 1000));
@@ -358,19 +377,28 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-2">
-        <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0" onClick={onBack} aria-label={t("web.settingsPopup.close")}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9 shrink-0"
+          onClick={onBack}
+          aria-label={t("web.settingsPopup.close")}
+        >
           <BackChevronIcon />
         </Button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium leading-4 text-muted-foreground">
-            {t("web.settingsPopup.deviceSettings.title")}
-          </p>
-          <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{pageTitle}</h1>
+          <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
+            {t("extension.vault.settings")}
+          </h1>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border p-2" aria-label={t("web.settingsPopup.deviceSettings.groupLabel")}>
+        <nav
+          className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border p-2"
+          aria-label={t("web.settingsPopup.deviceSettings.groupLabel")}
+        >
           {MENU.map((item) => {
             const active = page === item.id;
             return (
@@ -392,6 +420,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
 
         <ScrollArea className="min-h-0 min-w-0 flex-1">
           <div className="px-4 py-3">
+          <h2 className="pb-4 text-lg font-semibold leading-7 text-foreground">{pageTitle}</h2>
           {page === "personalization" ? (
             <section>
               <SettingsRow
@@ -605,12 +634,60 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
               </SettingsRow>
             </section>
           ) : null}
+
+          {page === "other" ? (
+            <section>
+              <div className="flex flex-col gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium leading-5 text-foreground">
+                    {t("extension.vault.otherSettings.personal.title")}
+                  </p>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    {t("extension.vault.otherSettings.personal.description")}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-fit gap-2"
+                  onClick={() => void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl))}
+                >
+                  {t("extension.vault.otherSettings.personal.open")}
+                  <GeneratorExternalLinkIcon />
+                </Button>
+              </div>
+
+              <div className="border-t border-border py-4">
+                <div className="flex flex-col gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-5 text-foreground">
+                      {t("extension.vault.otherSettings.workspace.title")}
+                    </p>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      {t("extension.vault.otherSettings.workspace.description")}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-fit gap-2"
+                    onClick={() => void openWebDeepLink(buildWorkspaceSettingsDeepLink(webBaseUrl))}
+                  >
+                    {t("extension.vault.otherSettings.workspace.open")}
+                    <GeneratorExternalLinkIcon />
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : null}
           </div>
         </ScrollArea>
       </div>
 
       <SetupPinPopup
         open={pinSetupOpen}
+        layout={EXTENSION_POPUP_DIALOG_LAYOUT}
+        width={EXTENSION_POPUP_DIALOG_WIDTH}
         t={t}
         onClose={() => setPinSetupOpen(false)}
         onSubmit={(pin) => {

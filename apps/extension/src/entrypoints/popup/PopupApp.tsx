@@ -69,7 +69,7 @@ import {
 } from "../../lib/locale";
 import {
   clearExtensionUnlockSession,
-  DEFAULT_VAULT_IDLE_LOCK_MS,
+  DEFAULT_EXTENSION_IDLE_LOCK_MS,
   extensionUnlockSessionExceededIdle,
   persistExtensionUnlockSession,
   readExtensionDevicePrefs,
@@ -194,7 +194,7 @@ export function PopupApp() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [unlockSecrets, setUnlockSecrets] = useState<UnlockWithMasterPasswordResult | null>(null);
   const [encryptedPrivateKeyPayload, setEncryptedPrivateKeyPayload] = useState<string | null>(null);
-  const [vaultIdleLockMs, setVaultIdleLockMs] = useState(DEFAULT_VAULT_IDLE_LOCK_MS);
+  const [vaultIdleLockMs, setVaultIdleLockMs] = useState(DEFAULT_EXTENSION_IDLE_LOCK_MS);
   const serverUrlInputRef = useRef<HTMLInputElement>(null);
   const masterPasswordInputRef = useRef<HTMLInputElement>(null);
   const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);

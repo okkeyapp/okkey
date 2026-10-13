@@ -4,7 +4,7 @@
  */
 import {
   clearVaultUnlockSession,
-  DEFAULT_VAULT_IDLE_LOCK_MS,
+  DEFAULT_VAULT_DEVICE_PREFS,
   persistVaultUnlockSession,
   readVaultDevicePrefsAsync,
   readVaultUnlockSessionIfFresh,
@@ -23,6 +23,17 @@ import { extensionLocalStorage, extensionSessionStorage } from "./extensionStora
 const THEME_KEY = "okkey.theme";
 const ACCENT_KEY = "okkey.accent";
 const ACCENT_TINT_KEY = "okkey.accentTint";
+
+/** Extension default idle lock: 1 hour (web/server stay on 15m). */
+export const DEFAULT_EXTENSION_IDLE_LOCK_SECONDS = 3600;
+export const DEFAULT_EXTENSION_IDLE_LOCK_MS = DEFAULT_EXTENSION_IDLE_LOCK_SECONDS * 1000;
+
+/** Security defaults for new extension installs / unset device prefs. */
+export const EXTENSION_DEVICE_SECURITY_DEFAULTS = {
+  idleLockSeconds: DEFAULT_EXTENSION_IDLE_LOCK_SECONDS,
+  lockOnDeviceSleep: DEFAULT_VAULT_DEVICE_PREFS.lockOnDeviceSleep, // true
+  clipboardClearSeconds: DEFAULT_VAULT_DEVICE_PREFS.clipboardClearSeconds, // 0 = never
+} as const;
 
 function chromeSessionStorage(): VaultUnlockSessionStorage {
   return {
@@ -72,7 +83,7 @@ export async function persistExtensionUnlockSession(input: {
     userId: input.userId,
     vaultKey: input.secrets.vaultKey,
     passwordShareC: input.secrets.passwordShareC,
-    idleLockMs: input.idleLockMs > 0 ? input.idleLockMs : DEFAULT_VAULT_IDLE_LOCK_MS,
+    idleLockMs: input.idleLockMs > 0 ? input.idleLockMs : DEFAULT_EXTENSION_IDLE_LOCK_MS,
   });
 }
 
@@ -154,7 +165,8 @@ export async function patchExtensionDevicePrefs(
 }
 
 /**
- * Prefer device-local `idleLockSeconds`; one-time migrate from server value when unset.
+ * Prefer saved device-local `idleLockSeconds`. When unset, seed 1h extension
+ * default (does not rewrite other prefs). Server idle is not used as fallback.
  */
 export async function resolveExtensionIdleLockMs(input: {
   userId: string;
@@ -164,12 +176,9 @@ export async function resolveExtensionIdleLockMs(input: {
   if (typeof prefs.idleLockSeconds === "number" && Number.isFinite(prefs.idleLockSeconds)) {
     return vaultIdleLockMsFromServerSeconds(prefs.idleLockSeconds);
   }
-  const migratedSeconds =
-    input.serverIdleLockSeconds != null && Number.isFinite(input.serverIdleLockSeconds)
-      ? Math.trunc(input.serverIdleLockSeconds)
-      : Math.round(DEFAULT_VAULT_IDLE_LOCK_MS / 1000);
-  await patchExtensionDevicePrefs(input.userId, { idleLockSeconds: migratedSeconds });
-  return vaultIdleLockMsFromServerSeconds(migratedSeconds);
+  const defaultSeconds = DEFAULT_EXTENSION_IDLE_LOCK_SECONDS;
+  await patchExtensionDevicePrefs(input.userId, { idleLockSeconds: defaultSeconds });
+  return vaultIdleLockMsFromServerSeconds(defaultSeconds);
 }
 
-export { vaultIdleLockMsFromServerSeconds, DEFAULT_VAULT_IDLE_LOCK_MS };
+export { vaultIdleLockMsFromServerSeconds };

@@ -90,6 +90,11 @@ export function buildSettingsMainDeepLink(webBaseUrl: string): string {
   return joinWebPath(webBaseUrl, `/items?popup=${encodePopupQueryParam("settings|main")}`);
 }
 
+/** `/settings/main` — workspace settings entry from extension. */
+export function buildWorkspaceSettingsDeepLink(webBaseUrl: string): string {
+  return joinWebPath(webBaseUrl, "/settings/main");
+}
+
 export async function openWebDeepLink(url: string): Promise<void> {
   await browser.tabs.create({ url });
 }

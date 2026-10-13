@@ -249,7 +249,9 @@ function PopupDescription({ description }: { description: React.ReactNode }) {
 const popupHeaderPaddingClassName = (withMenu: boolean, desktopLayout: boolean) =>
   cn(
     withMenu
-      ? "px-4 pt-4 pb-4 md:pr-12"
+      ? desktopLayout
+        ? "px-4 pt-4 pb-4 pr-12"
+        : "px-4 pt-4 pb-4 md:pr-12"
       : desktopLayout
         ? "px-6 pt-6 pb-4 pr-12"
         : "px-6 pt-6 pb-4 md:pr-12 max-md:px-4 max-md:pt-4 max-md:pb-4",
@@ -258,7 +260,9 @@ const popupHeaderPaddingClassName = (withMenu: boolean, desktopLayout: boolean) 
 const popupDescriptionPaddingClassName = (withMenu: boolean, desktopLayout: boolean) =>
   cn(
     withMenu
-      ? "px-4 md:pr-12"
+      ? desktopLayout
+        ? "px-4 pr-12"
+        : "px-4 md:pr-12"
       : desktopLayout
         ? "px-6 pr-12"
         : "px-6 max-md:px-4 md:pr-12",
@@ -593,11 +597,15 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       >
         <div
           className={cn(
-            "pointer-events-none relative flex max-h-[calc(100dvh-32px)] w-[min(var(--okkey-popup-width),calc(100vw-32px))]",
-            !isDesktopLayout && "max-md:max-h-none max-md:w-full",
+            // Overlay already has p-4; 100% is the padded host (extension shell is 600px).
+            "pointer-events-none relative flex max-h-[calc(100dvh-32px)] max-w-full",
+            isDesktopLayout
+              ? "w-[min(var(--okkey-popup-width),100%)]"
+              : "w-[min(var(--okkey-popup-width),calc(100vw-32px))] max-md:max-h-none max-md:w-full",
           )}
         >
           <div
+            data-layout={layout}
             data-state={isClosing ? "closing" : "open"}
             className={cn(
               "okkey-popup-sheet pointer-events-auto flex w-full min-h-0 flex-col",
@@ -628,7 +636,7 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
               data-state={isClosing ? "closing" : "open"}
               className={cn(
                 "okkey-popup-panel relative flex min-h-0 w-full max-h-[calc(100dvh-32px)] flex-col overflow-hidden rounded-2xl bg-background",
-                menu && "md:flex-row",
+                menu && (isDesktopLayout ? "flex-row" : "md:flex-row"),
                 !isDesktopLayout &&
                   "max-md:w-full max-md:min-h-0 max-md:flex-1 max-md:max-h-none max-md:flex-col max-md:rounded-b-none max-md:rounded-t-2xl",
                 panelClassName,
@@ -650,7 +658,12 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
                 </button>
               ) : null}
           {menu ? (
-            <aside className="hidden w-60 min-h-0 shrink-0 overflow-hidden bg-secondary p-2 md:block">
+            <aside
+              className={cn(
+                "w-60 min-h-0 shrink-0 overflow-hidden bg-secondary p-2",
+                isDesktopLayout ? "block" : "hidden md:block",
+              )}
+            >
               <ScrollArea className="h-full max-h-[inherit]">
                 <PopupMenuItems menu={menu} surface="sidebar" />
               </ScrollArea>

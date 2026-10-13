@@ -5,6 +5,7 @@ import {
   buildEditItemDeepLink,
   buildNewCapsuleDeepLink,
   buildSettingsMainDeepLink,
+  buildWorkspaceSettingsDeepLink,
 } from "./deepLinks.ts";
 
 const WEB = "https://app.okkey.test";
@@ -26,4 +27,8 @@ test("buildNewCapsuleDeepLink uses item + capsuleFromItem", () => {
 
 test("buildSettingsMainDeepLink opens settings|main", () => {
   assert.equal(buildSettingsMainDeepLink(WEB), `${WEB}/items?popup=settings|main`);
+});
+
+test("buildWorkspaceSettingsDeepLink opens /settings/main", () => {
+  assert.equal(buildWorkspaceSettingsDeepLink(WEB), `${WEB}/settings/main`);
 });
