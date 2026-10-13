@@ -64,6 +64,15 @@ By default the API listens on `http://localhost:4000`.
 
 Note: the storage layer needs `pg` and `redis` dependencies to run.
 
+## Favicon preview
+
+`POST /favicon/preview` resolves website icons for login-item forms. Provider is controlled by
+`FAVICON_PROVIDER` (see `.env.example` and [`docs/architecture/09_self_hosting.md`](../../docs/architecture/09_self_hosting.md)):
+
+- `direct` (default) — fetch from the site origin only; no third party sees vault domains
+- `off` — disable remote preview
+- `google` — opt-in Google favicon API (sends looked-up domains to Google)
+
 ## Email providers
 
 Transports (`EMAIL_PROVIDER`) are protocols, not named vendors. See [`docs/backend-email.md`](../../docs/backend-email.md) and `services/api/.env.example` for presets.
