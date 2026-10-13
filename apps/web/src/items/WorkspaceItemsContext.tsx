@@ -24,6 +24,7 @@ import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import { withItemArchivedState } from "./itemArchive";
 import { withItemDeletedState } from "./itemDelete";
+import { markPersonalDataBootstrapDismissed } from "./personalDataBootstrapDismissal";
 import {
   createWorkspaceVaultItemsSyncController,
   type WorkspaceVaultItemsSyncController,
@@ -319,10 +320,13 @@ export function useWorkspaceItemsState(input: {
         if (Boolean(item.deleted) === deleted) {
           return;
         }
+        if (deleted && item.categoryId === "personal_data") {
+          markPersonalDataBootstrapDismissed(userId, workspaceId);
+        }
         await controller.updateItem(withItemDeletedState(item, deleted));
       });
     },
-    [runMutation],
+    [runMutation, userId, workspaceId],
   );
 
   const setItemsDeleted = useCallback(
@@ -338,11 +342,14 @@ export function useWorkspaceItemsState(input: {
           if (!item || Boolean(item.deleted) === deleted) {
             continue;
           }
+          if (deleted && item.categoryId === "personal_data") {
+            markPersonalDataBootstrapDismissed(userId, workspaceId);
+          }
           await controller.updateItem(withItemDeletedState(item, deleted));
         }
       });
     },
-    [runMutation],
+    [runMutation, userId, workspaceId],
   );
 
   const refreshItems = useCallback(async () => {

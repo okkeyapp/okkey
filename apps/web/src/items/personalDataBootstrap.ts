@@ -15,6 +15,22 @@ export function hasPersonalDataItem(items: readonly ItemPlaintextV2[]): boolean 
   return items.some((item) => item.categoryId === "personal_data");
 }
 
+/** True when a soft-deleted personal_data item is still in the client item list. */
+export function hasSoftDeletedPersonalDataItem(items: readonly ItemPlaintextV2[]): boolean {
+  return items.some((item) => item.categoryId === "personal_data" && Boolean(item.deleted));
+}
+
+/**
+ * Skip bootstrap when an item (active or soft-deleted) exists, or when a
+ * dismissed marker remains after the soft-deleted row was purged from retention.
+ */
+export function shouldSkipPersonalDataBootstrap(
+  items: readonly ItemPlaintextV2[],
+  dismissed: boolean,
+): boolean {
+  return dismissed || hasPersonalDataItem(items);
+}
+
 function withPrefillValues(
   sections: readonly KeyFormEditorSection[],
   prefill: { firstName?: string; lastName?: string; email?: string },
