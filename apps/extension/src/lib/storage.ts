@@ -209,13 +209,25 @@ export async function wipeAllExtensionData(): Promise<void> {
 
 /**
  * Resolve API base from a single web Base URL.
- * Localhost web → :4000 API; otherwise same origin (SaaS / same-host self-host).
+ *
+ * Forces `:4000` only for local loopback web (Vite `:5173` + API `:4000`):
+ * `localhost`, `127.0.0.1`, `[::1]` / `::1`.
+ *
+ * Any other host (custom domain, LAN IP, self-host reverse proxy) → same
+ * origin as the web Base URL — never rewrite to `:4000`.
  */
+export function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+}
+
 export function resolveApiBaseFromWebBase(webBaseUrl: string): string {
   const trimmed = webBaseUrl.trim().replace(/\/$/, "");
   const url = new URL(trimmed);
-  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-    return `${url.protocol}//${url.hostname}:4000`;
+  if (isLoopbackHostname(url.hostname)) {
+    // Keep IPv6 brackets when rewriting the port.
+    const host = url.hostname === "::1" ? "[::1]" : url.hostname;
+    return `${url.protocol}//${host}:4000`;
   }
   return url.origin;
 }

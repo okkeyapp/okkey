@@ -1,7 +1,7 @@
 {
   "name": "@okkey/extension",
   "private": true,
-  "version": "1.0.0.2",
+  "version": "1.0.0",
   "type": "module",
   "description": "Okkey browser extension (MV3)",
   "scripts": {

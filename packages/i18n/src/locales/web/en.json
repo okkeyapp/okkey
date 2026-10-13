@@ -43,6 +43,8 @@
   "web.settingsPopup.vault.idle.hours": "{count} hour",
   "web.settingsPopup.vault.lockOnSleep.label": "Lock vault when the device locks",
   "web.settingsPopup.vault.lockOnSleep.description": "The vault locks automatically if the device sleeps or becomes inactive",
+  "web.settingsPopup.vault.lockOnPopupClose.label": "Lock when the popup closes",
+  "web.settingsPopup.vault.lockOnPopupClose.description": "The vault locks immediately when you close the extension popup",
   "web.settingsPopup.vault.clipboard.label": "Clear clipboard",
   "web.settingsPopup.vault.clipboard.description": "After this time the clipboard is cleared of copied passwords",
   "web.settingsPopup.vault.clipboard.never": "Never",

@@ -6,7 +6,6 @@ import {
   type KeyFieldFileValue,
 } from "@okkey/ui";
 import {
-  copyTextWithVaultClipboardPolicy,
   collectItemUrls,
   downloadKeyFieldFileAttachment,
   isLoginOrPasswordCopyField,
@@ -35,6 +34,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebLocale } from "@okkey/i18n";
 
 import { AUTOFILL_MSG } from "../../lib/autofillMessages";
+import { copyTextWithExtensionClipboardPolicy } from "../../lib/extensionClipboard";
 import { readActiveTabUrl } from "../../lib/deepLinks";
 import {
   EXTENSION_POPUP_CONFIRM_WIDTH,
@@ -184,7 +184,7 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
   const copyWithPolicy = useCallback(
     async (text: string) => {
       const prefs = await readExtensionDevicePrefs(userId);
-      await copyTextWithVaultClipboardPolicy({
+      await copyTextWithExtensionClipboardPolicy({
         clipboardClearSeconds: prefs.clipboardClearSeconds,
         text,
       });

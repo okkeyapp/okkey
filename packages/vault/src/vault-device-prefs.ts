@@ -21,6 +21,11 @@ export type SectionReauthZoneId =
 export type VaultDevicePrefs = {
   lockOnDeviceSleep: boolean;
   /**
+   * Extension-only: lock vault immediately when the browser action popup closes.
+   * Default off. Web ignores this flag.
+   */
+  lockOnPopupClose: boolean;
+  /**
    * Idle lock timeout in seconds (device-local).
    * Absent until the user sets it or a one-time migration from the former
    * server `vault_idle_lock_seconds` runs on this device.
@@ -42,6 +47,7 @@ export type VaultDevicePrefsStorage = {
 
 export const DEFAULT_VAULT_DEVICE_PREFS: VaultDevicePrefs = {
   lockOnDeviceSleep: true,
+  lockOnPopupClose: false,
   clipboardClearSeconds: 0,
   requireReauthZones: [],
   pinEnabled: false,
@@ -108,6 +114,10 @@ export function parseVaultDevicePrefs(raw: string | null): VaultDevicePrefs {
         typeof o.lockOnDeviceSleep === "boolean"
           ? o.lockOnDeviceSleep
           : DEFAULT_VAULT_DEVICE_PREFS.lockOnDeviceSleep,
+      lockOnPopupClose:
+        typeof o.lockOnPopupClose === "boolean"
+          ? o.lockOnPopupClose
+          : DEFAULT_VAULT_DEVICE_PREFS.lockOnPopupClose,
       ...(idleLockSeconds !== undefined ? { idleLockSeconds } : {}),
       clipboardClearSeconds:
         typeof o.clipboardClearSeconds === "number" && Number.isFinite(o.clipboardClearSeconds)
