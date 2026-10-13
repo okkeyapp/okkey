@@ -34,8 +34,11 @@ services:
       timeout: 3s
       retries: 10
 
+  # Official minio/minio left Docker Hub (2026-09); Quay anonymous pulls also 401.
+  # pgsty/minio is a drop-in Community rebuild (same CLI/env/health) — keep in sync
+  # with deploy/docker/docker-compose.prod.yml.
   minio:
-    image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     container_name: okkey-minio
     restart: unless-stopped
     environment:

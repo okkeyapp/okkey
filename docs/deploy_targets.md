@@ -30,7 +30,7 @@ Tested and supported for the first stable release:
 Docker images used in local dev:
 - Postgres: `postgres:16-alpine`
 - Redis: `redis:7-alpine`
-- MinIO: `minio/minio:RELEASE.2024-07-16T23-46-41Z`
+- MinIO: `pgsty/minio:RELEASE.2026-08-04T00-00-00Z`
 
 ## Minimum Resource Baseline
 
