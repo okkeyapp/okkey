@@ -268,7 +268,7 @@
   "web.settingsPopup.deviceSettings.personalization": "Personalization",
   "web.settingsPopup.deviceSettings.security": "Security",
   "web.settingsPopup.deviceSettings.unlock": "Unlock",
-  "web.settingsPopup.deviceSettings.other": "Other settings",
+  "web.settingsPopup.deviceSettings.other": "Other",
   "web.settingsPopup.devices.label": "My devices",
   "web.settingsPopup.devices.title": "My devices",
   "web.settingsPopup.devices.description": "Devices that can unlock your vault. They can also help restore access if the master password is lost.",

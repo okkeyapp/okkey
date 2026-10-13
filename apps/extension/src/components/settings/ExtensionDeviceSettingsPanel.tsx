@@ -20,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
   SettingsRow,
-  SettingsSectionDivider,
   ScrollArea,
   Switch,
   cn,
@@ -637,13 +636,13 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
           ) : null}
 
           {page === "other" ? (
-            <div className="flex flex-col gap-6">
-              <section className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-base font-semibold leading-7 text-foreground">
+            <section>
+              <div className="flex flex-col gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium leading-5 text-foreground">
                     {t("extension.vault.otherSettings.personal.title")}
-                  </h2>
-                  <p className="text-sm leading-5 text-muted-foreground">
+                  </p>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
                     {t("extension.vault.otherSettings.personal.description")}
                   </p>
                 </div>
@@ -653,31 +652,33 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                   className="w-fit gap-2"
                   onClick={() => void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl))}
                 >
-                  <GeneratorExternalLinkIcon />
                   {t("extension.vault.otherSettings.personal.open")}
-                </Button>
-              </section>
-              <SettingsSectionDivider />
-              <section className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-base font-semibold leading-7 text-foreground">
-                    {t("extension.vault.otherSettings.workspace.title")}
-                  </h2>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    {t("extension.vault.otherSettings.workspace.description")}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-fit gap-2"
-                  onClick={() => void openWebDeepLink(buildWorkspaceSettingsDeepLink(webBaseUrl))}
-                >
                   <GeneratorExternalLinkIcon />
-                  {t("extension.vault.otherSettings.workspace.open")}
                 </Button>
-              </section>
-            </div>
+              </div>
+
+              <div className="border-t border-border py-4">
+                <div className="flex flex-col gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-5 text-foreground">
+                      {t("extension.vault.otherSettings.workspace.title")}
+                    </p>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      {t("extension.vault.otherSettings.workspace.description")}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-fit gap-2"
+                    onClick={() => void openWebDeepLink(buildWorkspaceSettingsDeepLink(webBaseUrl))}
+                  >
+                    {t("extension.vault.otherSettings.workspace.open")}
+                    <GeneratorExternalLinkIcon />
+                  </Button>
+                </div>
+              </div>
+            </section>
           ) : null}
           </div>
         </ScrollArea>

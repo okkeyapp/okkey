@@ -268,7 +268,7 @@
   "web.settingsPopup.deviceSettings.personalization": "Персонализация",
   "web.settingsPopup.deviceSettings.security": "Безопасность",
   "web.settingsPopup.deviceSettings.unlock": "Разблокировка",
-  "web.settingsPopup.deviceSettings.other": "Другие настройки",
+  "web.settingsPopup.deviceSettings.other": "Другое",
   "web.settingsPopup.devices.label": "Мои устройства",
   "web.settingsPopup.devices.title": "Мои устройства",
   "web.settingsPopup.devices.description": "Устройства, способные открыть Ваше хранилище. Также устройства могут восстановить доступ к аккаунту если был утерян мастер-пароль",
