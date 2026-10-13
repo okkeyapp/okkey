@@ -1,5 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
-import { Alert, AlertDescription, AlertTitle, Button, Input, Popup } from "@okkey/ui";
+import { Alert, AlertDescription, AlertTitle, Button, Input, Popup, type PopupProps } from "@okkey/ui";
 import { useCallback, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 type SetupPinPopupProps = {
@@ -7,9 +7,14 @@ type SetupPinPopupProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   onClose: () => void;
   onSubmit: (pin: string) => void;
+  /** Defaults to `desktop` (centered card). Pass from extension hosts < `md`. */
+  layout?: PopupProps["layout"];
+  /** Defaults to 420. Extension should pass a width ≤ host minus overlay padding. */
+  width?: PopupProps["width"];
 };
 
 const PIN_LENGTH = 6;
+const DEFAULT_WIDTH = 420;
 
 const pinCellClassName =
   "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";
@@ -20,7 +25,14 @@ function emptyDigits(): string[] {
   return Array.from({ length: PIN_LENGTH }, () => "");
 }
 
-export function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPopupProps) {
+export function SetupPinPopup({
+  open,
+  t,
+  onClose,
+  onSubmit,
+  layout = "desktop",
+  width = DEFAULT_WIDTH,
+}: SetupPinPopupProps) {
   const formId = useId();
   const labelId = useId();
   const [step, setStep] = useState<SetupStep>("enter");
@@ -130,12 +142,12 @@ export function SetupPinPopup({ open, t, onClose, onSubmit }: SetupPinPopupProps
   return (
     <Popup
       className="z-popup-nested"
-      width={420}
-      layout="desktop"
+      width={width}
+      layout={layout}
       header={t("web.settingsPopup.vault.pin.setupTitle")}
       closeLabel={t("web.settingsPopup.close")}
       onClose={handleClose}
-      panelClassName="min-h-0 max-w-[420px]"
+      panelClassName="min-h-0 max-w-full"
       contentClassName="pt-0 pb-1"
       footer={
         <>

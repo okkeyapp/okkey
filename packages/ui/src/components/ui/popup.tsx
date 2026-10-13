@@ -597,8 +597,11 @@ export const Popup = React.forwardRef<HTMLDivElement, PopupProps>(
       >
         <div
           className={cn(
-            "pointer-events-none relative flex max-h-[calc(100dvh-32px)] w-[min(var(--okkey-popup-width),calc(100vw-32px))]",
-            !isDesktopLayout && "max-md:max-h-none max-md:w-full",
+            // Overlay already has p-4; 100% is the padded host (extension shell is 600px).
+            "pointer-events-none relative flex max-h-[calc(100dvh-32px)] max-w-full",
+            isDesktopLayout
+              ? "w-[min(var(--okkey-popup-width),100%)]"
+              : "w-[min(var(--okkey-popup-width),calc(100vw-32px))] max-md:max-h-none max-md:w-full",
           )}
         >
           <div

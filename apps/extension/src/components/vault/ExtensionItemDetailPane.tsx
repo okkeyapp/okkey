@@ -36,6 +36,10 @@ import type { WebLocale } from "@okkey/i18n";
 
 import { AUTOFILL_MSG } from "../../lib/autofillMessages";
 import { readActiveTabUrl } from "../../lib/deepLinks";
+import {
+  EXTENSION_POPUP_CONFIRM_WIDTH,
+  EXTENSION_POPUP_DIALOG_LAYOUT,
+} from "../../lib/extensionPopupDialog";
 import { readExtensionDevicePrefs } from "../../lib/extensionVaultSession";
 import { useRadixScrollAreaScrolled } from "../../lib/useRadixScrollAreaScrolled";
 import { ExtensionItemFolderAssignControl } from "./ExtensionItemFolderAssignControl";
@@ -335,6 +339,8 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
         multiple={false}
         retentionDays={deletedItemsRetentionDays}
         deleting={deleting}
+        layout={EXTENSION_POPUP_DIALOG_LAYOUT}
+        width={EXTENSION_POPUP_CONFIRM_WIDTH}
         t={t}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={() => {
@@ -351,6 +357,8 @@ export function ExtensionItemDetailPane(props: ExtensionItemDetailPaneProps) {
       />
       <CopyGuardConfirmPopup
         open={copyGuardText !== null}
+        layout={EXTENSION_POPUP_DIALOG_LAYOUT}
+        width={EXTENSION_POPUP_CONFIRM_WIDTH}
         t={t}
         onCancel={() => setCopyGuardText(null)}
         onCopy={() => {

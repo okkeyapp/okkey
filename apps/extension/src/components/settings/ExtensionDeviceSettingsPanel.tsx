@@ -27,6 +27,10 @@ import {
   type ThemePreference,
 } from "@okkey/ui";
 import { SetupPinPopup } from "@okkey/vault-ui";
+import {
+  EXTENSION_POPUP_DIALOG_LAYOUT,
+  EXTENSION_POPUP_DIALOG_WIDTH,
+} from "../../lib/extensionPopupDialog";
 import { useCallback, useEffect, useState, type ReactNode, type SVGProps } from "react";
 import { toast } from "sonner";
 
@@ -621,6 +625,8 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
 
       <SetupPinPopup
         open={pinSetupOpen}
+        layout={EXTENSION_POPUP_DIALOG_LAYOUT}
+        width={EXTENSION_POPUP_DIALOG_WIDTH}
         t={t}
         onClose={() => setPinSetupOpen(false)}
         onSubmit={(pin) => {
