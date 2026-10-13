@@ -20,22 +20,28 @@ import {
   SelectTrigger,
   SelectValue,
   SettingsRow,
+  SettingsSectionDivider,
   ScrollArea,
   Switch,
   cn,
   normalizeThemePreference,
   type ThemePreference,
 } from "@okkey/ui";
-import { SetupPinPopup } from "@okkey/vault-ui";
+import { GeneratorExternalLinkIcon, SetupPinPopup } from "@okkey/vault-ui";
 import {
   EXTENSION_POPUP_DIALOG_LAYOUT,
   EXTENSION_POPUP_DIALOG_WIDTH,
 } from "../../lib/extensionPopupDialog";
-import { useCallback, useEffect, useState, type ReactNode, type SVGProps } from "react";
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { toast } from "sonner";
 
 import { SettingsGearIcon } from "../icons/SettingsGearIcon";
 import { applyExtensionStoredTheme } from "../../lib/applyExtensionTheme";
+import {
+  buildSettingsMainDeepLink,
+  buildWorkspaceSettingsDeepLink,
+  openWebDeepLink,
+} from "../../lib/deepLinks";
 import {
   biometricErrorMessageKey,
   disableExtensionBiometricUnlock,
@@ -64,10 +70,11 @@ const ACCENT_OPTIONS = [
 
 type AccentId = (typeof ACCENT_OPTIONS)[number]["id"];
 
-export type DeviceSettingsPage = "personalization" | "security" | "unlock";
+export type DeviceSettingsPage = "personalization" | "security" | "unlock" | "other";
 
 type ExtensionDeviceSettingsPanelProps = {
   userId: string;
+  webBaseUrl: string;
   secrets: UnlockWithMasterPasswordResult;
   idleLockMs: number;
   onIdleLockMsChange: (ms: number) => void;
@@ -159,7 +166,11 @@ function clipboardLabel(seconds: number, t: ExtensionDeviceSettingsPanelProps["t
   return t("web.settingsPopup.vault.clipboard.minutes", { count: String(Math.round(seconds / 60)) });
 }
 
-const MENU: Array<{ id: DeviceSettingsPage; labelKey: string; Icon: typeof DevicePersonalizationIcon }> = [
+const MENU: Array<{
+  id: DeviceSettingsPage;
+  labelKey: string;
+  Icon: ComponentType<{ className?: string }>;
+}> = [
   {
     id: "personalization",
     labelKey: "web.settingsPopup.deviceSettings.personalization",
@@ -175,10 +186,15 @@ const MENU: Array<{ id: DeviceSettingsPage; labelKey: string; Icon: typeof Devic
     labelKey: "web.settingsPopup.deviceSettings.unlock",
     Icon: DeviceUnlockIcon,
   },
+  {
+    id: "other",
+    labelKey: "web.settingsPopup.deviceSettings.other",
+    Icon: SettingsGearIcon,
+  },
 ];
 
 export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanelProps) {
-  const { userId, secrets, idleLockMs, onIdleLockMsChange, onBack, t } = props;
+  const { userId, webBaseUrl, secrets, idleLockMs, onIdleLockMsChange, onBack, t } = props;
   const [page, setPage] = useState<DeviceSettingsPage>("personalization");
   const [prefs, setPrefs] = useState<VaultDevicePrefs | null>(null);
   const [idleSeconds, setIdleSeconds] = useState(() => Math.round(idleLockMs / 1000));
@@ -618,6 +634,50 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                 />
               </SettingsRow>
             </section>
+          ) : null}
+
+          {page === "other" ? (
+            <div className="flex flex-col gap-6">
+              <section className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-base font-semibold leading-7 text-foreground">
+                    {t("extension.vault.otherSettings.personal.title")}
+                  </h2>
+                  <p className="text-sm leading-5 text-muted-foreground">
+                    {t("extension.vault.otherSettings.personal.description")}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-fit gap-2"
+                  onClick={() => void openWebDeepLink(buildSettingsMainDeepLink(webBaseUrl))}
+                >
+                  <GeneratorExternalLinkIcon />
+                  {t("extension.vault.otherSettings.personal.open")}
+                </Button>
+              </section>
+              <SettingsSectionDivider />
+              <section className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-base font-semibold leading-7 text-foreground">
+                    {t("extension.vault.otherSettings.workspace.title")}
+                  </h2>
+                  <p className="text-sm leading-5 text-muted-foreground">
+                    {t("extension.vault.otherSettings.workspace.description")}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-fit gap-2"
+                  onClick={() => void openWebDeepLink(buildWorkspaceSettingsDeepLink(webBaseUrl))}
+                >
+                  <GeneratorExternalLinkIcon />
+                  {t("extension.vault.otherSettings.workspace.open")}
+                </Button>
+              </section>
+            </div>
           ) : null}
           </div>
         </ScrollArea>

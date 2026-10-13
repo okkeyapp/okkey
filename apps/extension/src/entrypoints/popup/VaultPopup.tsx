@@ -1351,6 +1351,7 @@ export function VaultPopup(props: VaultPopupProps) {
       {deviceSettingsOpen ? (
         <ExtensionDeviceSettingsPanel
           userId={userId}
+          webBaseUrl={webBaseUrl}
           secrets={secrets}
           idleLockMs={idleLockMs}
           onIdleLockMsChange={(ms) => onIdleLockMsChange?.(ms)}
