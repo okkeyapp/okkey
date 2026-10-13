@@ -264,7 +264,11 @@ export class AccountRecoveryService {
     }
 
     if (patch.keyEnabled === false) {
-      await this.recovery.deleteWrap(userId);
+      throw new AccountRecoveryError(
+        "RECOVERY_KEY_REQUIRED",
+        403,
+        "recovery key cannot be disabled",
+      );
     }
 
     await this.recovery.upsertSettings(userId, next);

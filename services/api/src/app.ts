@@ -537,12 +537,16 @@ export function createApiApp(
       app.route(
         "GET",
         "/workspaces/:workspaceId/personal-events",
-        createWorkspacePersonalEventsListRoute(deps.workspacePersonalSyncService, resolveUserId),
+        gateVaultUse(
+          createWorkspacePersonalEventsListRoute(deps.workspacePersonalSyncService, resolveUserId),
+        ),
       );
       app.route(
         "POST",
         "/workspaces/:workspaceId/personal-events",
-        createWorkspacePersonalEventsAppendRoute(deps.workspacePersonalSyncService, resolveUserId),
+        gateVaultUse(
+          createWorkspacePersonalEventsAppendRoute(deps.workspacePersonalSyncService, resolveUserId),
+        ),
       );
     }
     app.route(

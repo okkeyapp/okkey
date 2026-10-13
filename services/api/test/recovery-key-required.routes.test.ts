@@ -6,8 +6,9 @@ import { AccountRecoveryService } from "../src/account-recovery/service.ts";
 import type { VaultUnlockBootstrapService } from "../src/account/vault-unlock-bootstrap.ts";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
-import type { SyncService } from "../src/sync/service.ts";
+import { SyncServiceError, type SyncService } from "../src/sync/service.ts";
 import type { VaultService } from "../src/vault/service.ts";
+import type { WorkspacePersonalSyncService } from "../src/workspace-personal-sync/service.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 class MockResponse {
@@ -68,6 +69,15 @@ function createRecoveryService(enrolled: boolean): AccountRecoveryService {
   } as unknown as AccountRecoveryService;
 }
 
+function createPersonalSyncStub(): WorkspacePersonalSyncService {
+  return {
+    listEvents: async () => [],
+    appendEvent: async () => {
+      throw new Error("not used");
+    },
+  } as unknown as WorkspacePersonalSyncService;
+}
+
 async function dispatch(input: {
   method: string;
   url: string;
@@ -77,6 +87,7 @@ async function dispatch(input: {
   const app = createApiApp(config, loggerStub(), {
     vaultService: createVaultServiceStub(),
     syncService: createSyncServiceStub(),
+    workspacePersonalSyncService: createPersonalSyncStub(),
     accountRecoveryService: createRecoveryService(input.enrolled),
     ...(input.includeUnlockBootstrap
       ? {
@@ -142,6 +153,14 @@ test("vault and item routes reject an account with no recovery key", async () =>
   });
   assert.equal(list.statusCode, 403);
   assert.equal(JSON.parse(list.body).error, "RECOVERY_KEY_REQUIRED");
+
+  const personal = await dispatch({
+    method: "GET",
+    url: "/workspaces/w1/personal-events",
+    enrolled: false,
+  });
+  assert.equal(personal.statusCode, 403);
+  assert.equal(JSON.parse(personal.body).error, "RECOVERY_KEY_REQUIRED");
 });
 
 test("vault routes proceed after a recovery key is saved", async () => {
