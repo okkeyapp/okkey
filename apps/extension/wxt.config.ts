@@ -51,7 +51,7 @@ export default defineConfig({
           128: "icon-128.png",
         },
       },
-      permissions: ["storage", "tabs", "idle"],
+      permissions: ["storage", "tabs", "idle", "alarms", "offscreen", "clipboardRead", "clipboardWrite"],
       // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
       content_security_policy: {
         // blob: required for decrypted favicon / workspace-logo object URLs in <img>.

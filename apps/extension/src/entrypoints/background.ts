@@ -22,12 +22,22 @@ import {
 } from "../lib/autofillBroker";
 import { AUTOFILL_MSG } from "../lib/autofillMessages";
 import { EXTENSION_DEVICE_CHANNEL } from "../lib/deviceChannel";
+import {
+  isClipboardScheduleMessage,
+  isOffscreenClearMessage,
+  wireExtensionVaultLifecycle,
+} from "../lib/extensionVaultLifecycle";
 
 export default defineBackground(() => {
   console.info(`[okkey] background ready (channel=${EXTENSION_DEVICE_CHANNEL})`);
   wirePendingSaveTabCleanup();
+  wireExtensionVaultLifecycle();
 
   browser.runtime.onMessage.addListener((message, sender) => {
+    // Handled by wireExtensionVaultLifecycle or the offscreen document — do not swallow.
+    if (isClipboardScheduleMessage(message) || isOffscreenClearMessage(message)) {
+      return undefined;
+    }
     if (!isAutofillRuntimeMessage(message)) {
       if (message && typeof message === "object" && "type" in message) {
         return Promise.resolve({ ok: true });

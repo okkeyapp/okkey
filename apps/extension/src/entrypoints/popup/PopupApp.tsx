@@ -36,7 +36,10 @@ import {
 import { unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
 import { toast } from "sonner";
 
-import type { UnlockWithMasterPasswordResult } from "@okkey/vault";
+import {
+  VAULT_UNLOCK_SESSION_STORAGE_KEY,
+  type UnlockWithMasterPasswordResult,
+} from "@okkey/vault";
 
 import { Toaster } from "../../components/toaster";
 import { AUTOFILL_MSG } from "../../lib/autofillMessages";
@@ -67,6 +70,7 @@ import {
   readStoredExtensionLocale,
   writeStoredExtensionLocale,
 } from "../../lib/locale";
+import { flushPendingClipboardClearInPage, POPUP_PORT_NAME } from "../../lib/extensionVaultLifecycle";
 import {
   clearExtensionUnlockSession,
   DEFAULT_EXTENSION_IDLE_LOCK_MS,
@@ -115,13 +119,11 @@ function emptyPinDigits(): string[] {
 }
 
 /**
- * lockOnDeviceSleep: do NOT use document.visibilitychange / window blur in the
- * popup — closing the extension popup hides the document and would false-trigger
- * a lock. OS sleep cannot be reliably distinguished from popup close here.
- * Prefer chrome.idle when available; otherwise rely on idleLockMs session
- * freshness (checked while open + on next open via readExtensionUnlockSessionIfFresh).
- * Closing the popup must NOT clearExtensionUnlockSession or wipeUnlockSecrets —
- * session storage holds key material for restore on the next open.
+ * Device sleep / OS lock and idle-after-popup-close are owned by the background
+ * service worker (chrome.idle + chrome.alarms + popup port disconnect).
+ * Do NOT use document.visibilitychange / window blur here — popup close would
+ * false-trigger a lock. Optional lock-on-popup-close is a user setting (default off).
+ * While the popup is open we still poll idle for in-popup inactivity.
  */
 
 type Screen =
@@ -390,7 +392,20 @@ export function PopupApp() {
     };
   }, [applyServerPreference, refreshTrust]);
 
-  // Idle lock while vault is open. Session freshness is also checked on reopen.
+  // Tell the background SW the popup is open (resets idle) / closed (starts idle or locks).
+  useEffect(() => {
+    const port = browser.runtime.connect({ name: POPUP_PORT_NAME });
+    void flushPendingClipboardClearInPage();
+    return () => {
+      try {
+        port.disconnect();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  // Idle lock while vault is open. Background alarms cover closed-popup idle.
   // Do not use visibilitychange: popup close hides the document and is not sleep.
   useEffect(() => {
     if (screen !== "vault" || !session) {
@@ -414,38 +429,32 @@ export function PopupApp() {
     return () => window.clearInterval(timer);
   }, [screen, session, vaultIdleLockMs]);
 
-  // lockOnDeviceSleep via chrome.idle (not visibilitychange — popup close must not lock).
+  // Background may clear the unlock session (device lock, idle alarm, lock-on-close).
   useEffect(() => {
-    if (screen !== "vault" || !session) {
+    const area = browser.storage?.session;
+    if (!area?.onChanged) {
       return;
     }
-    const userId = session.user_id;
-    const idleApi = browser.idle;
-    if (!idleApi?.onStateChanged) {
-      return;
-    }
-    const onIdleState = (state: string) => {
-      if (state !== "locked") {
+    const onChanged: Parameters<typeof area.onChanged.addListener>[0] = (changes) => {
+      const change = changes[VAULT_UNLOCK_SESSION_STORAGE_KEY];
+      if (!change || change.newValue != null) {
         return;
       }
-      void readExtensionDevicePrefs(userId).then((prefs) => {
-        if (!prefs.lockOnDeviceSleep) {
-          return;
-        }
-        wipeUnlockSecrets(unlockSecretsRef.current);
-        unlockSecretsRef.current = null;
-        setUnlockSecrets(null);
-        setEncryptedPrivateKeyPayload(null);
-        setMasterPassword("");
-        void clearExtensionUnlockSession();
-        setScreen("unlock");
-      });
+      if (screen !== "vault") {
+        return;
+      }
+      wipeUnlockSecrets(unlockSecretsRef.current);
+      unlockSecretsRef.current = null;
+      setUnlockSecrets(null);
+      setEncryptedPrivateKeyPayload(null);
+      setMasterPassword("");
+      setScreen("unlock");
     };
-    idleApi.onStateChanged.addListener(onIdleState);
+    area.onChanged.addListener(onChanged);
     return () => {
-      idleApi.onStateChanged.removeListener(onIdleState);
+      area.onChanged.removeListener(onChanged);
     };
-  }, [screen, session]);
+  }, [screen]);
 
   useEffect(() => {
     if (screen !== "server" || hostMode !== "self-hosted") {

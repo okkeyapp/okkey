@@ -32,6 +32,7 @@ export const DEFAULT_EXTENSION_IDLE_LOCK_MS = DEFAULT_EXTENSION_IDLE_LOCK_SECOND
 export const EXTENSION_DEVICE_SECURITY_DEFAULTS = {
   idleLockSeconds: DEFAULT_EXTENSION_IDLE_LOCK_SECONDS,
   lockOnDeviceSleep: DEFAULT_VAULT_DEVICE_PREFS.lockOnDeviceSleep, // true
+  lockOnPopupClose: DEFAULT_VAULT_DEVICE_PREFS.lockOnPopupClose, // false
   clipboardClearSeconds: DEFAULT_VAULT_DEVICE_PREFS.clipboardClearSeconds, // 0 = never
 } as const;
 

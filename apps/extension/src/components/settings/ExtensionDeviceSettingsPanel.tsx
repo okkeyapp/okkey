@@ -536,6 +536,18 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
                 />
               </SettingsRow>
               <SettingsRow
+                label={t("web.settingsPopup.vault.lockOnPopupClose.label")}
+                description={t("web.settingsPopup.vault.lockOnPopupClose.description")}
+                controlClassName="w-[100px]"
+                stackOnMobile={false}
+              >
+                <Switch
+                  size="lg"
+                  checked={prefs.lockOnPopupClose}
+                  onCheckedChange={(checked) => void updatePrefs({ lockOnPopupClose: checked })}
+                />
+              </SettingsRow>
+              <SettingsRow
                 label={t("web.settingsPopup.vault.clipboard.label")}
                 description={t("web.settingsPopup.vault.clipboard.description")}
                 controlClassName="w-[140px]"

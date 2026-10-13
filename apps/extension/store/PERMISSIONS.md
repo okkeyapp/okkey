@@ -20,7 +20,10 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 |------------|----------------|
 | `storage` | Persist server URL profile, encrypted vault cache, device prefs (theme/PIN), session handles. Master password is **never** written to storage. |
 | `tabs` | Know the active tab URL for autofill matching, open the self-hosted web app for login/edit deep links, and coordinate save-password prompts after navigation. |
-| `idle` | Lock the unlocked vault when the device goes idle/locked (user-configurable idle timeout), without locking merely because the popup closed. |
+| `idle` | Lock the unlocked vault when the OS locks / device sleeps (`chrome.idle`), including while the popup is closed. |
+| `alarms` | Run vault idle-lock and clipboard auto-clear timers in the service worker after the popup is closed. |
+| `offscreen` | Clear the system clipboard from a Chromium offscreen document after the configured timeout (MV3 service workers cannot use the Clipboard API). |
+| `clipboardRead` / `clipboardWrite` | Read/clear the clipboard only to remove values the user copied from Okkey vault fields (matched by an internal copy token + exact text). Ordinary copies outside Okkey are not cleared. |
 | Host permission `<all_urls>` | Content scripts must run on arbitrary http(s) origins to **detect login/register forms** and **autofill** credentials the user explicitly saved for those sites. Password managers cannot limit hosts to a fixed allowlist. |
 
 ### Host permission / autofill — detailed justification (EN)
