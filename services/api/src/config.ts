@@ -15,6 +15,7 @@ import {
   loadEnterpriseBackendEnv,
 } from "./enterpriseEnv.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
+import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -113,6 +114,13 @@ export interface ApiConfig {
   /** Allowed browser origins for WebAuthn ceremonies (comma-separated env). */
   webauthnOrigins: string[];
   webauthnChallengeTtlSeconds: number;
+  /**
+   * How `/favicon/preview` resolves website icons.
+   * - `direct` (default): fetch from the site origin only.
+   * - `google`: explicit opt-in; uses Google's favicon service.
+   * - `off`: disable remote favicon preview.
+   */
+  faviconProvider: FaviconProvider;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -450,6 +458,7 @@ export function loadConfig(): ApiConfig {
       process.env.WEBAUTHN_CHALLENGE_TTL_SECONDS,
       300,
     ),
+    faviconProvider: parseFaviconProvider(process.env.FAVICON_PROVIDER),
     allowedCryptoProfileVersions,
     cryptoRolloutMode,
     cryptoRolloutEnabled,
