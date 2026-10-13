@@ -20,6 +20,7 @@ import {
   buildItemsListSections,
   cn,
   mutedSurfaceHoverBgClassName,
+  mutedSurfaceHoverBgImportantClassName,
   mutedSurfaceOpenBgClassName,
   sortIconForValue,
   useListWindow,
@@ -332,8 +333,9 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                       <li key={row.id}>
                         <div
                           className={cn(
-                            "group relative z-0 rounded-lg transition-colors",
-                            "hover:bg-muted/60",
+                            "group/row relative z-0 rounded-lg transition-colors",
+                            // Without overlay: whole row stays one light hover surface.
+                            !showOpenAndFill && "hover:bg-muted/60",
                             rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                           )}
                         >
@@ -341,7 +343,16 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             type="button"
                             aria-current={rowActive ? "true" : undefined}
                             onClick={() => onSelect(row.id)}
-                            className="relative flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left"
+                            className={cn(
+                              "relative flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left transition-colors",
+                              // Split zones: row hover → light; this (left) zone hover → dark.
+                              // Full-width + absolute overlay keeps click-through when overlay is pointer-events-none.
+                              showOpenAndFill &&
+                                cn(
+                                  "group-hover/row:bg-muted/60",
+                                  mutedSurfaceHoverBgImportantClassName,
+                                ),
+                            )}
                           >
                             <ExtensionListRowFavicon
                               row={row}
@@ -373,31 +384,31 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                     className={cn(
                                       "pointer-events-none absolute inset-y-0 right-0 z-10",
                                       "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-black/10 p-0 dark:border-white/10",
-                                      // Solid mid-tone between row bg and hover (no translucent muted/60).
-                                      "bg-[color-mix(in_srgb,#e2e8f0_45%,hsl(var(--background))_55%)] dark:bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--background))_45%)] text-foreground",
+                                      "text-foreground",
                                       "opacity-0 transition-[opacity,background-color,border-color]",
-                                      "group-hover:pointer-events-auto group-hover:opacity-100",
-                                      rowActive && "pointer-events-auto opacity-100",
-                                      // Hover: mid (#e2e8f0) — lighter than pressed/focus.
-                                      "hover:bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
-                                      "hover:border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      // Visible + light (non-hovered zone) while the row is hovered.
+                                      "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:bg-muted/60",
+                                      rowActive && "pointer-events-auto opacity-100 bg-muted/60",
+                                      // Hovered right zone → dark (same as previous overlay hover).
+                                      "hover:!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      "hover:!border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:!border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
                                       "focus-visible:pointer-events-auto focus-visible:opacity-100",
                                       // No ring — pressed/focus = one soft step past hover mid (slate-300, not slate-400).
                                       // Mouse click does not set :focus-visible; :active covers press, :focus covers post-click focus.
                                       "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
-                                      "active:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "active:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus-visible:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus-visible:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:!bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:!bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:!border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:!border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:!bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:!bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:!border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:!border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:!bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:!bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:!border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:!border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
                                       // Hover must not mute active/focus while the pointer stays on the button.
-                                      "active:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "active:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus-visible:hover:bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
-                                      "focus-visible:hover:border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:hover:!bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "active:hover:!border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:active:hover:!border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:hover:!bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus:hover:!border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus:hover:!border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:hover:!bg-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
+                                      "focus-visible:hover:!border-[color-mix(in_srgb,#cbd5e1_90%,hsl(var(--secondary))_10%)] dark:focus-visible:hover:!border-[color-mix(in_srgb,hsl(var(--muted))_70%,hsl(var(--secondary))_30%)]",
                                       "[&_svg]:size-5",
                                     )}
                                     aria-label={t("extension.vault.openAndFill")}
@@ -410,7 +421,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                     <IconOpenWebsite />
                                   </button>
                                 </TooltipTrigger>
-                                <TooltipContent side="left">
+                                <TooltipContent side="top" align="center">
                                   {t("extension.vault.openAndFill")}
                                 </TooltipContent>
                               </Tooltip>
