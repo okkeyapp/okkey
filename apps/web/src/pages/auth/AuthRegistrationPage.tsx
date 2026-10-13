@@ -40,6 +40,7 @@ import { readPendingInviteToken } from "../../auth/pendingInviteStorage";
 import { completeExtensionAuthHandoffIfPending } from "../../auth/completeExtensionAuthHandoff";
 import { registrationErrorI18nKey } from "./registrationErrors";
 import {
+  registrationStepAfterRecoveryEnroll,
   shouldRedirectAwayFromRegistrationForm,
   type RegistrationStep,
 } from "./registrationRecoveryStep";
@@ -94,6 +95,8 @@ export default function AuthRegistrationPage() {
   const [recoveryExported, setRecoveryExported] = useState(false);
   const [recoveryCopied, setRecoveryCopied] = useState(false);
   const recoveryCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Held only until recovery enroll succeeds; wiped on success or unmount. */
+  const vaultKeyPendingEnrollRef = useRef<Uint8Array | null>(null);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
   const [postRegAccessToken, setPostRegAccessToken] = useState<string | null>(null);
 
@@ -102,13 +105,18 @@ export default function AuthRegistrationPage() {
       if (recoveryCopyResetTimeoutRef.current) {
         clearTimeout(recoveryCopyResetTimeoutRef.current);
       }
+      if (vaultKeyPendingEnrollRef.current) {
+        wipeBytes(vaultKeyPendingEnrollRef.current);
+        vaultKeyPendingEnrollRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
     // After completeRegistration we clear registrationAuthStateId and await enroll.
-    // Guard must keep `enrolling` / `recoveryKey` on this page — otherwise the user
-    // is bounced to /auth/email → GuestAuthOnly → lock and never sees the key.
+    // Guard must keep `enrolling` / `enrollFailed` / `recoveryKey` on this page —
+    // otherwise the user is bounced to /auth/email → GuestAuthOnly → lock and never
+    // sees the key (or a blocking enroll error).
     if (
       !shouldRedirectAwayFromRegistrationForm({
         step,
@@ -228,33 +236,24 @@ export default function AuthRegistrationPage() {
         : ACCOUNT_LOCK_PATH;
       setPostRegRedirect(nextPath);
 
-      let secretForStep: string | null = null;
+      // Keep vault key until enroll succeeds — fail-closed (no navigate/handoff).
+      vaultKeyPendingEnrollRef.current = material.vaultKey;
+      wipeBytes(pwd);
+      wipeBytes(material.serverKeyShare);
+      wipeBytes(material.deviceShare);
+
       try {
-        const secret = await generateRecoverySecret();
-        const secretBytes = new TextEncoder().encode(secret);
-        const encryptedBlob = await wrapVaultKeyWithRecoverySecret(material.vaultKey, secretBytes);
-        const core = createAuthenticatedCoreClient(reg.access_token);
-        await core.enrollAccountRecoveryKey({ encryptedBlob });
-        secretForStep = secret;
+        const secret = await enrollAccountRecoveryKey(material.vaultKey, reg.access_token);
+        wipeBytes(material.vaultKey);
+        vaultKeyPendingEnrollRef.current = null;
+        setRecoverySecret(secret);
+        setStep(registrationStepAfterRecoveryEnroll(true));
       } catch (enrollErr) {
         if (import.meta.env.DEV) {
           console.error("[auth/register/recovery-enroll]", enrollErr);
         }
         setFormError(t("auth.registration.recovery.errorEnroll"));
-      }
-
-      wipeBytes(material.vaultKey);
-      wipeBytes(pwd);
-      wipeBytes(material.serverKeyShare);
-      wipeBytes(material.deviceShare);
-
-      if (secretForStep) {
-        setRecoverySecret(secretForStep);
-        setStep("recoveryKey");
-      } else if (await completeExtensionAuthHandoffIfPending()) {
-        return;
-      } else {
-        navigate(nextPath, { replace: true });
+        setStep(registrationStepAfterRecoveryEnroll(false));
       }
     } catch (err) {
       wipeBytes(pwd);
@@ -266,6 +265,43 @@ export default function AuthRegistrationPage() {
       } catch {
         setFormError(t("auth.registration.errorGeneric"));
       }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function enrollAccountRecoveryKey(vaultKey: Uint8Array, token: string): Promise<string> {
+    const secret = await generateRecoverySecret();
+    const secretBytes = new TextEncoder().encode(secret);
+    const encryptedBlob = await wrapVaultKeyWithRecoverySecret(vaultKey, secretBytes);
+    const core = createAuthenticatedCoreClient(token);
+    await core.enrollAccountRecoveryKey({ encryptedBlob });
+    return secret;
+  }
+
+  async function retryRecoveryEnroll() {
+    const vaultKey = vaultKeyPendingEnrollRef.current;
+    const token = postRegAccessToken ?? accessToken;
+    if (!vaultKey || !token) {
+      setFormError(t("auth.registration.recovery.errorEnroll"));
+      setStep("enrollFailed");
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    setStep("enrolling");
+    try {
+      const secret = await enrollAccountRecoveryKey(vaultKey, token);
+      wipeBytes(vaultKey);
+      vaultKeyPendingEnrollRef.current = null;
+      setRecoverySecret(secret);
+      setStep(registrationStepAfterRecoveryEnroll(true));
+    } catch (enrollErr) {
+      if (import.meta.env.DEV) {
+        console.error("[auth/register/recovery-enroll-retry]", enrollErr);
+      }
+      setFormError(t("auth.registration.recovery.errorEnroll"));
+      setStep(registrationStepAfterRecoveryEnroll(false));
     } finally {
       setSubmitting(false);
     }
@@ -336,6 +372,33 @@ export default function AuthRegistrationPage() {
     return (
       <AppShellLayout title={t("auth.registration.recovery.title")} busy>
         <Spinner aria-label={t("auth.registration.recovery.preparing")} />
+      </AppShellLayout>
+    );
+  }
+
+  if (step === "enrollFailed") {
+    return (
+      <AppShellLayout
+        title={t("auth.registration.recovery.title")}
+        description={t("auth.registration.recovery.errorEnroll")}
+        logo={<OkkeyLogoMark className="h-[60px] w-[61px]" />}
+      >
+        <div className="flex w-full flex-col gap-6 rounded-xl border border-border bg-background p-4 shadow-sm">
+          {formError ? (
+            <Alert variant="error">
+              <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <Button
+            type="button"
+            className="w-full"
+            disabled={submitting}
+            onClick={() => void retryRecoveryEnroll()}
+          >
+            {t("auth.registration.recovery.retryEnroll")}
+          </Button>
+        </div>
       </AppShellLayout>
     );
   }

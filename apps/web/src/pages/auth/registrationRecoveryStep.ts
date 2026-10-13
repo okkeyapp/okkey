@@ -1,8 +1,9 @@
 /**
  * Post-signup recovery export must stay on `/account/new` after
- * `completeRegistration` clears `registrationAuthStateId` and while enroll runs.
+ * `completeRegistration` clears `registrationAuthStateId` and while enroll runs
+ * (or fails closed on `enrollFailed` until retry succeeds).
  */
-export type RegistrationStep = "form" | "enrolling" | "recoveryKey";
+export type RegistrationStep = "form" | "enrolling" | "enrollFailed" | "recoveryKey";
 
 export function shouldRedirectAwayFromRegistrationForm(args: {
   step: RegistrationStep;
@@ -13,4 +14,9 @@ export function shouldRedirectAwayFromRegistrationForm(args: {
     return false;
   }
   return !args.registrationAuthStateId || !args.email;
+}
+
+/** Enroll must succeed before leave/handoff; failure stays on a blocking step. */
+export function registrationStepAfterRecoveryEnroll(enrolled: boolean): "recoveryKey" | "enrollFailed" {
+  return enrolled ? "recoveryKey" : "enrollFailed";
 }
