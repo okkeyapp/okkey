@@ -334,8 +334,6 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                         <div
                           className={cn(
                             "group/row relative z-0 rounded-lg transition-colors",
-                            // Without overlay: whole row stays one light hover surface.
-                            !showOpenAndFill && "hover:bg-muted/60",
                             rowActive && "z-[1] bg-muted/80 shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
                           )}
                         >
@@ -345,11 +343,13 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                             onClick={() => onSelect(row.id)}
                             className={cn(
                               "relative flex h-[60px] w-full items-center gap-4 rounded-lg px-3 text-left transition-colors",
-                              // Split zones: row hover → light; this (left) zone hover → dark.
+                              // Unified split layout: left darkens on hover for every row.
+                              // With overlay CTA, row hover keeps left light until the pointer is on left.
                               // Full-width + absolute overlay keeps click-through when overlay is pointer-events-none.
-                              showOpenAndFill &&
+                              // Selected: no left hover darken — only the right overlay (if any) reacts.
+                              !rowActive &&
                                 cn(
-                                  "group-hover/row:bg-muted/60",
+                                  showOpenAndFill && "group-hover/row:bg-muted",
                                   mutedSurfaceHoverBgImportantClassName,
                                 ),
                             )}
@@ -386,13 +386,13 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
                                       "flex size-[60px] items-center justify-center rounded-l-none rounded-r-lg border-l border-black/10 p-0 dark:border-white/10",
                                       "text-foreground",
                                       "opacity-0 transition-[opacity,background-color,border-color]",
-                                      // Visible + light (non-hovered zone) while the row is hovered.
-                                      "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:bg-muted/60",
-                                      rowActive && "pointer-events-auto opacity-100 bg-muted/60",
-                                      // Hovered right zone → dark (same as previous overlay hover).
-                                      "hover:!bg-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:!bg-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
+                                      // Solid rest (no /60 / alpha): muted token while visible.
+                                      "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:bg-muted",
+                                      rowActive && "pointer-events-auto opacity-100 bg-muted",
+                                      // Solid dark hover/press — shared muted-surface tokens + pressed step.
+                                      mutedSurfaceHoverBgImportantClassName,
                                       "hover:!border-[color-mix(in_srgb,#e2e8f0_90%,hsl(var(--secondary))_10%)] dark:hover:!border-[color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--secondary))_20%)]",
-                                      "focus-visible:pointer-events-auto focus-visible:opacity-100",
+                                      "focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:bg-muted",
                                       // No ring — pressed/focus = one soft step past hover mid (slate-300, not slate-400).
                                       // Mouse click does not set :focus-visible; :active covers press, :focus covers post-click focus.
                                       "focus:outline-none focus-visible:outline-none focus:shadow-none focus-visible:shadow-none",
