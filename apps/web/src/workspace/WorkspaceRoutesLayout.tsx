@@ -49,6 +49,7 @@ import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
 import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspaces/createWorkspaceFlow";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
+import PersonalDataBootstrapController from "../components/items/PersonalDataBootstrapController";
 import NewCapsulePopup from "../components/capsules/NewCapsulePopup";
 import CapsuleApprovalController from "../components/capsules/CapsuleApprovalController";
 import DeviceApprovalController from "../components/devices/DeviceApprovalController";
@@ -1059,6 +1060,11 @@ function WorkspaceShellWithItems({
             t={t}
             workspaceId={resolvedWorkspaceId}
             workspaceName={currentWorkspaceName}
+            vaults={vaults}
+            vaultsListReady={vaultsListReady}
+          />
+          <PersonalDataBootstrapController
+            workspaceId={resolvedWorkspaceId}
             vaults={vaults}
             vaultsListReady={vaultsListReady}
           />
