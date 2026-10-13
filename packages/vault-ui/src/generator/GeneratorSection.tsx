@@ -150,34 +150,38 @@ function GeneratorOutputCard({
         "dark:has-[[data-generator-copy]:focus-visible]:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)]",
       )}
     >
-      <div className="flex min-h-[100px] items-center gap-4 p-4">
-        <span className="size-6 shrink-0" aria-hidden />
+      <div className="flex min-h-[100px] items-stretch">
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
                 data-generator-copy
-                className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground outline-none sm:text-[32px] sm:leading-10"
+                className="flex min-h-[100px] min-w-0 flex-1 items-center gap-4 p-4 pr-0 text-left outline-none"
                 onClick={onCopy}
                 aria-label={copyAria}
               >
-                {colored ? renderColoredPassword(value) : value}
+                <span className="size-6 shrink-0" aria-hidden />
+                <span className="min-w-0 flex-1 break-all text-center text-2xl font-medium leading-tight text-foreground sm:text-[32px] sm:leading-10">
+                  {colored ? renderColoredPassword(value) : value}
+                </span>
               </button>
             </TooltipTrigger>
             <TooltipContent side="top">{copyTooltip}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button
-          type="button"
-          variant="ghost"
-          size="iconSm"
-          className="size-6 min-h-6 min-w-6 shrink-0 p-0 text-foreground/50 hover:bg-transparent hover:text-foreground"
-          aria-label={regenerateAria}
-          onClick={onRegenerate}
-        >
-          <GeneratorRefreshIcon />
-        </Button>
+        <div className="flex shrink-0 items-center p-4 pl-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="iconSm"
+            className="size-6 min-h-6 min-w-6 shrink-0 p-0 text-foreground/50 hover:bg-transparent hover:text-foreground"
+            aria-label={regenerateAria}
+            onClick={onRegenerate}
+          >
+            <GeneratorRefreshIcon />
+          </Button>
+        </div>
       </div>
       {showStrength ? (
         <div className="flex h-[60px] items-center justify-center gap-4 border-t border-border px-4 text-sm font-medium text-foreground">
@@ -426,12 +430,12 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                 />
               </div>
             </div>
-            <div className="flex border-t border-border">
+            <div className="flex min-h-[56px] border-t border-border">
               {passwordOptions.map((option, index) => (
                 <label
                   key={option.key}
                   className={cn(
-                    "flex min-w-0 flex-1 cursor-pointer select-none items-center gap-2 px-4 py-[18px] text-sm font-medium text-foreground",
+                    "flex min-w-0 flex-1 cursor-pointer select-none items-center gap-2 px-4 py-2 text-sm font-medium text-foreground",
                     index > 0 && "border-l border-border",
                   )}
                 >
@@ -466,15 +470,15 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                 />
               </div>
             </div>
-            <div className="flex border-t border-border">
-              <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-[18px]">
-                <p className="shrink-0 text-sm font-medium text-foreground">
+            <div className="flex min-h-[56px] border-t border-border">
+              <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2">
+                <p className="line-clamp-2 min-w-0 text-sm font-medium leading-5 text-foreground">
                   {t("web.tools.generator.passphrase.separator")}
                 </p>
                 <Input
                   value={separatorDraft}
                   maxLength={1}
-                  className="h-8 w-12 text-center"
+                  className="h-8 w-12 shrink-0 text-center"
                   aria-label={t("web.tools.generator.passphrase.separatorAria")}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -486,20 +490,22 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
                   onBlur={() => commitSeparatorDraft(separatorDraft)}
                 />
               </div>
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-l border-border px-4 py-[18px]">
-                <span className="truncate text-sm font-medium text-foreground">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 border-l border-border px-4 py-2">
+                <span className="line-clamp-2 min-w-0 text-sm font-medium leading-5 text-foreground">
                   {t("web.tools.generator.passphrase.capitalize")}
                 </span>
                 <Switch
+                  className="shrink-0"
                   checked={passphrasePreferences.capitalize}
                   onCheckedChange={(checked) => updatePassphrasePreferences({ capitalize: checked })}
                 />
               </label>
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 border-l border-border px-4 py-[18px]">
-                <span className="truncate text-sm font-medium text-foreground">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 border-l border-border px-4 py-2">
+                <span className="line-clamp-2 min-w-0 text-sm font-medium leading-5 text-foreground">
                   {t("web.tools.generator.passphrase.includeNumber")}
                 </span>
                 <Switch
+                  className="shrink-0"
                   checked={passphrasePreferences.includeNumber}
                   onCheckedChange={(checked) =>
                     updatePassphrasePreferences({ includeNumber: checked })

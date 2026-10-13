@@ -380,9 +380,6 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
           className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-border p-2"
           aria-label={t("web.settingsPopup.deviceSettings.groupLabel")}
         >
-          <div className="h-8 min-w-0 px-2 text-xs font-medium leading-8 text-muted-foreground">
-            <span className="block truncate">{t("web.settingsPopup.deviceSettings.groupLabel")}</span>
-          </div>
           {MENU.map((item) => {
             const active = page === item.id;
             return (
