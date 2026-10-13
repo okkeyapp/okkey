@@ -232,19 +232,27 @@ export function createApiApp(
   app.route("GET", "/health", healthRouteHandler);
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
   if (deps.authService) {
-    app.route("POST", "/auth/email/start", createAuthEmailStartRoute(deps.authService));
-    app.route("POST", "/auth/email/resend", createAuthEmailResendRoute(deps.authService));
+    app.route(
+      "POST",
+      "/auth/email/start",
+      createAuthEmailStartRoute(deps.authService, config.trustedProxyHops),
+    );
+    app.route(
+      "POST",
+      "/auth/email/resend",
+      createAuthEmailResendRoute(deps.authService, config.trustedProxyHops),
+    );
     app.route(
       "POST",
       "/auth/email/confirm",
-      createAuthEmailConfirmRoute(deps.authService),
+      createAuthEmailConfirmRoute(deps.authService, config.trustedProxyHops),
     );
   }
   if (deps.registrationService) {
     app.route(
       "POST",
       "/auth/register/complete",
-      createRegisterCompleteRoute(deps.registrationService),
+      createRegisterCompleteRoute(deps.registrationService, config.trustedProxyHops),
     );
   }
   if (deps.extensionAuthService) {
@@ -268,7 +276,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/two-factor/verify",
-      createTwoFactorVerifyRoute(deps.twoFactorService),
+      createTwoFactorVerifyRoute(deps.twoFactorService, config.trustedProxyHops),
     );
     app.route(
       "GET",
@@ -310,7 +318,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/auth/webauthn/login/options",
-      createWebAuthnLoginOptionsRoute(deps.webauthnService),
+      createWebAuthnLoginOptionsRoute(deps.webauthnService, config.trustedProxyHops),
     );
     app.route(
       "POST",
@@ -383,17 +391,29 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/email-change/start",
-      createAccountEmailChangeStartRoute(deps.emailChangeService, resolveUserId),
+      createAccountEmailChangeStartRoute(
+        deps.emailChangeService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
     );
     app.route(
       "POST",
       "/account/email-change/resend",
-      createAccountEmailChangeResendRoute(deps.emailChangeService, resolveUserId),
+      createAccountEmailChangeResendRoute(
+        deps.emailChangeService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
     );
     app.route(
       "POST",
       "/account/email-change/confirm",
-      createAccountEmailChangeConfirmRoute(deps.emailChangeService, resolveUserId),
+      createAccountEmailChangeConfirmRoute(
+        deps.emailChangeService,
+        resolveUserId,
+        config.trustedProxyHops,
+      ),
     );
   }
   const enterprisePlugins = options.enterprisePlugins ?? [];
