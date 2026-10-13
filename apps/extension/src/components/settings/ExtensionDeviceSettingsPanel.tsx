@@ -374,7 +374,7 @@ export function ExtensionDeviceSettingsPanel(props: ExtensionDeviceSettingsPanel
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">
-            {t("web.settingsPopup.deviceSettings.title")}
+            {t("extension.vault.settings")}
           </h1>
         </div>
       </header>

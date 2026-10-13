@@ -1395,10 +1395,10 @@ export function VaultPopup(props: VaultPopupProps) {
           <div className="flex shrink-0 items-center gap-2">
             <ControlGroup
               className="w-auto shrink-0"
-              aria-label={`${t("web.accountMenu.deviceSettings")} / ${t("extension.vault.openGenerator")}`}
+              aria-label={`${t("extension.vault.settings")} / ${t("extension.vault.openGenerator")}`}
             >
               <VaultHeaderDeviceSettingsButton
-                label={t("web.accountMenu.deviceSettings")}
+                label={t("extension.vault.settings")}
                 onOpen={openDeviceSettings}
               />
               <TooltipProvider delayDuration={300}>
