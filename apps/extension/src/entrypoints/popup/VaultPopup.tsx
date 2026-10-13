@@ -1348,6 +1348,18 @@ export function VaultPopup(props: VaultPopupProps) {
           : undefined
       }
     >
+      {deviceSettingsOpen ? (
+        <ExtensionDeviceSettingsPanel
+          userId={userId}
+          secrets={secrets}
+          idleLockMs={idleLockMs}
+          onIdleLockMsChange={(ms) => onIdleLockMsChange?.(ms)}
+          onBack={() => setDeviceSettingsOpen(false)}
+          t={t}
+        />
+      ) : generatorOpen ? (
+        <ExtensionGeneratorPanel onBack={() => setGeneratorOpen(false)} t={t} />
+      ) : (
       <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
         <header className="flex h-[52px] shrink-0 items-center gap-2 bg-gradient-to-r from-[var(--extension-shell-header-from)] to-[var(--extension-shell-header-to)] p-2">
           <OkkeyAppSidebarToolbar
@@ -1519,19 +1531,7 @@ export function VaultPopup(props: VaultPopupProps) {
           </main>
         </div>
       </div>
-      {deviceSettingsOpen ? (
-        <ExtensionDeviceSettingsPanel
-          userId={userId}
-          secrets={secrets}
-          idleLockMs={idleLockMs}
-          onIdleLockMsChange={(ms) => onIdleLockMsChange?.(ms)}
-          onBack={() => setDeviceSettingsOpen(false)}
-          t={t}
-        />
-      ) : null}
-      {generatorOpen ? (
-        <ExtensionGeneratorPanel onBack={() => setGeneratorOpen(false)} t={t} />
-      ) : null}
+      )}
     </OkkeyAppSidebar>
   );
 }
