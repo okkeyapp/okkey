@@ -128,6 +128,9 @@ vi.mock("../components/items/NewItemPopup", () => ({
 vi.mock("../components/items/EditItemPopup", () => ({
   default: () => null,
 }));
+vi.mock("../components/items/PersonalDataBootstrapController", () => ({
+  default: () => null,
+}));
 
 vi.mock("../components/folders/FoldersSettingsPopup", () => ({
   default: () => null,
