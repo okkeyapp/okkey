@@ -30,6 +30,7 @@ Optional env:
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
+| `WEB_PORT` / `API_PORT` | Host ports for web/API (same vars as Compose). Process env overrides `.env`, then defaults `8080` / `4000`. Final installer URLs use these effective ports. |
 
 ### Reinstall / password mismatch
 

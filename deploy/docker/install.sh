@@ -26,6 +26,12 @@ ENV_EXAMPLE_NAME=".env.example"
 log() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+# Read KEY=value from the install-dir .env (no export). Empty if missing.
+env_file_value() {
+  local key="$1"
+  grep -E "^${key}=" .env 2>/dev/null | cut -d= -f2- || true
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
@@ -251,15 +257,34 @@ fi
 run_compose .env up -d
 wait_for_api_healthy
 
-web_port="$(grep -E '^WEB_PORT=' .env 2>/dev/null | cut -d= -f2- || true)"
-api_port="$(grep -E '^API_PORT=' .env 2>/dev/null | cut -d= -f2- || true)"
-public_app_url="$(grep -E '^PUBLIC_APP_URL=' .env 2>/dev/null | cut -d= -f2- || true)"
+# Effective host ports: same precedence as Compose interpolation
+# (process env > --env-file/.env > defaults in docker-compose.prod.yml).
+web_port="${WEB_PORT:-}"
+if [[ -z "${web_port}" ]]; then
+  web_port="$(env_file_value WEB_PORT)"
+fi
 web_port="${web_port:-8080}"
+
+api_port="${API_PORT:-}"
+if [[ -z "${api_port}" ]]; then
+  api_port="$(env_file_value API_PORT)"
+fi
 api_port="${api_port:-4000}"
-if [[ -n "${public_app_url}" ]]; then
-  web_url="${public_app_url}"
-else
+
+# PUBLIC_APP_URL from the process environment always wins. If WEB_PORT was
+# overridden via env, ignore a stale PUBLIC_APP_URL from .env so Open: matches
+# the published port. Otherwise keep a custom PUBLIC_APP_URL from .env.
+if [[ -n "${PUBLIC_APP_URL:-}" ]]; then
+  web_url="${PUBLIC_APP_URL}"
+elif [[ -n "${WEB_PORT:-}" ]]; then
   web_url="http://localhost:${web_port}"
+else
+  public_app_url="$(env_file_value PUBLIC_APP_URL)"
+  if [[ -n "${public_app_url}" ]]; then
+    web_url="${public_app_url}"
+  else
+    web_url="http://localhost:${web_port}"
+  fi
 fi
 
 print_okkey_banner() {
