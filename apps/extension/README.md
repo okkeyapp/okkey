@@ -2,7 +2,7 @@
 
 MV3 extension scaffolded with [WXT](https://wxt.dev/). Chromium (Chrome / Edge / Opera / Yandex) and Firefox share one source tree.
 
-**Product version:** `1.0.0-beta.2` · **manifest `version`:** `1.0.0.2` · Chromium **`version_name`:** `1.0.0-beta.2`
+**Extension / manifest version:** `1.0.0.2` (no `version_name`, no `*-beta.*` in packaging)
 
 Store packaging (listings, permissions justification, submit checklist): **[store/](./store/)**.
 

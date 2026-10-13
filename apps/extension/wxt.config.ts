@@ -28,16 +28,13 @@ export default defineConfig({
     firefoxDataCollection: true,
   },
   manifest: ({ browser }) => {
-    // Product: 1.0.0-beta.2 — Chrome/Edge/Opera need dotted integers in `version`;
-    // `version_name` is Chromium-only display string (Firefox uses listing version).
+    // Extension packaging version is dotted integers only (no beta / version_name).
     const manifestVersion = "1.0.0.2";
-    const versionName = "1.0.0-beta.2";
     return {
       name: "Okkey",
       description:
         "Self-hosted, client-side password manager with post-quantum ready crypto and autofill.",
       version: manifestVersion,
-      ...(browser !== "firefox" ? { version_name: versionName } : {}),
       homepage_url: "https://github.com/okkeyapp/okkey",
       icons: {
         16: "icon-16.png",

@@ -1,15 +1,15 @@
-# E5 Store beta — submit checklist (team)
+# E5 Store — submit checklist (team)
 
-Ready-to-submit pack for **Okkey `1.0.0-beta.2`**. Do **not** tag/`Release` on `main` from this branch. Do **not** merge until Саша says so.
+Ready-to-submit pack for **Okkey extension `1.0.0.2`**. Do **not** tag/`Release` on `main` from this branch. Do **not** merge until Саша says so.
 
 ## 0. Preflight
 
 - [ ] Tip of branch includes `origin/dev` ≥ `4900d34`
-- [ ] `apps/extension/package.json` → `"version": "1.0.0-beta.2"`
-- [ ] Built manifest → `"version": "1.0.0.2"` (+ Chromium `"version_name": "1.0.0-beta.2"`)
+- [ ] `apps/extension/package.json` → `"version": "1.0.0.2"`
+- [ ] Built manifest → `"version": "1.0.0.2"` (no Chromium `version_name`, no `*-beta.*`)
 - [ ] Listing copy reviewed: [LISTING.en.md](./LISTING.en.md) / [LISTING.ru.md](./LISTING.ru.md)
 - [ ] Permissions text ready: [PERMISSIONS.md](./PERMISSIONS.md)
-- [ ] Privacy / support URLs decided (self-host placeholders → [URLS.md](./URLS.md))
+- [ ] Privacy / support URLs: [URLS.md](./URLS.md) (public GitHub blob links)
 - [ ] Screenshots prepared ([assets/README.md](./assets/README.md))
 - [ ] Smoke: load unpacked Chromium + Firefox against a **self-hosted** web+API (not SaaS-only mindset)
 
@@ -33,7 +33,7 @@ Expected outputs (WXT names from package/manifest version):
 apps/extension/output/
   chrome-mv3/                                      # unpacked Chromium
   firefox-mv3/                                     # unpacked Firefox
-  okkeyextension-1.0.0-beta.2-chrome.zip           # CWS / Edge / Opera
+  okkeyextension-1.0.0.2-chrome.zip                # CWS / Edge / Opera
   okkeyextension-1.0.0.2-firefox.zip               # AMO package
   okkeyextension-1.0.0.2-sources.zip               # AMO sources (when requested)
 ```
@@ -47,7 +47,7 @@ unzip -p apps/extension/output/*chrome*.zip manifest.json | python3 -c "import s
 unzip -p apps/extension/output/*firefox*.zip manifest.json | python3 -c "import sys,json; m=json.load(sys.stdin); print(m['version'], m.get('browser_specific_settings'))"
 ```
 
-Expect: `1.0.0.2` / `1.0.0-beta.2` (Chromium) and gecko id `extension@okkey.io` (Firefox).
+Expect: `1.0.0.2` and **no** `version_name` (Chromium); gecko id `extension@okkey.io` (Firefox).
 
 ## 2. Local QA before upload
 
@@ -83,7 +83,7 @@ Per store console, paste:
 
 1. Short + detailed description ([LISTING.en.md](./LISTING.en.md))
 2. Permission justification single-purpose / host access ([PERMISSIONS.md](./PERMISSIONS.md))
-3. Privacy policy URL + support URL ([URLS.md](./URLS.md)) — self-hosted product framing
+3. Privacy policy URL + support URL ([URLS.md](./URLS.md)) — public GitHub blob links
 4. Screenshots / promo tiles ([assets/README.md](./assets/README.md))
 5. Category: Productivity / Privacy & Security (as available)
 
@@ -96,8 +96,8 @@ Use the short block at the top of [PERMISSIONS.md](./PERMISSIONS.md). Emphasize:
 - User configures **their own** Okkey instance URL (self-host); no mandatory SaaS backend
 - No remote code execution; all scripts shipped in the package
 
-## 5. After upload (still beta)
+## 5. After upload (still pre-merge)
 
 - [ ] Record draft/item IDs from each store console in team notes (not in this PR unless asked)
 - [ ] Keep this PR **Draft** until Саша approves merge
-- [ ] **Do not** create `v1.0.0-beta.2` tag / GitHub Release on `main` from E5 alone — product release flow stays on `main` per [versioning](../../../../docs) / project `versioning.md`
+- [ ] **Do not** create product tags / GitHub Releases on `main` from E5 alone — product release flow stays on `main` (extension packaging here is only `1.0.0.2`)

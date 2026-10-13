@@ -1,6 +1,7 @@
 # Permissions justification — Okkey extension (store review)
 
-**Version:** `1.0.0-beta.2` (`manifest` `1.0.0.2`)  
+**Version:** `1.0.0.2`  
+
 **Single purpose:** A password manager that unlocks a client-side encrypted vault and autofills credentials the user saved for websites they visit, against a **user-configured self-hosted** Okkey instance.
 
 Paste the blocks below into CWS / Edge / Opera / AMO permission or “single purpose” fields. Adapt wording slightly per console limits; keep facts identical.
@@ -54,7 +55,7 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 - **Data transmitted:** only to the **user-configured** Okkey server URL (sync, device registration, encrypted item blobs). Not to a fixed Okkey SaaS unless the user enters that URL themselves.
 - **Does not sell data / no third-party ad trackers** in the extension package.
 
-When AMO asks for a privacy policy URL, use the self-host placeholder policy page documented in [URLS.md](./URLS.md).
+When AMO asks for a privacy policy URL, use the public GitHub URL documented in [URLS.md](./URLS.md) ([PRIVACY.md](./PRIVACY.md)).
 
 ---
 

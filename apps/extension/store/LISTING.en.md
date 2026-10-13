@@ -1,4 +1,4 @@
-# Store listing — English (`1.0.0-beta.2`)
+# Store listing — English (`1.0.0.2`)
 
 Use for Chrome Web Store, Edge Add-ons, Opera Add-ons, and Firefox AMO (default locale).
 
@@ -42,7 +42,7 @@ Okkey needs access to websites you visit only to detect login forms and autofill
 
 Open source core: https://github.com/okkeyapp/okkey
 
-Beta note: this listing is for a public beta build (1.0.0-beta.2). Features and store assets may still evolve.
+Note: this listing is for extension build 1.0.0.2. Features and store assets may still evolve.
 ```
 
 ## Category / tags (suggestions)

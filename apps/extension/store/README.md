@@ -1,8 +1,8 @@
-# Okkey extension — store packaging (E5 beta)
+# Okkey extension — store packaging (E5)
 
-**Product version:** `1.0.0-beta.2`  
+**Extension version:** `1.0.0.2`  
 **Manifest `version`:** `1.0.0.2`  
-**Manifest `version_name` (Chromium):** `1.0.0-beta.2`
+(No Chromium `version_name`; no `*-beta.*` in extension packaging.)
 
 This folder is the **ready-to-submit** pack for browser stores. It does **not** submit to stores and does **not** create git tags / GitHub Releases on `main`.
 
@@ -12,14 +12,16 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 | [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access) |
 | [LISTING.en.md](./LISTING.en.md) | Chrome/Edge/Opera/AMO listing copy (EN) |
 | [LISTING.ru.md](./LISTING.ru.md) | Listing copy (RU) — AMO / optional CWS locale |
-| [URLS.md](./URLS.md) | Self-host privacy/support URL placeholders |
+| [URLS.md](./URLS.md) | Public GitHub privacy / support / homepage URLs |
+| [PRIVACY.md](./PRIVACY.md) | Privacy policy (linked from store consoles via GitHub) |
+| [SUPPORT.md](./SUPPORT.md) | Support page (linked from store consoles via GitHub) |
 | [assets/README.md](./assets/README.md) | Screenshots / promotional images checklist |
 
 ## Artifact map
 
 | Target | Build / zip | Upload to |
 |--------|-------------|-----------|
-| Chrome | `yarn zip:extension:chromium` → `apps/extension/output/okkeyextension-1.0.0-beta.2-chrome.zip` | [Chrome Web Store](https://chrome.google.com/webstore/devconsole) |
+| Chrome | `yarn zip:extension:chromium` → `apps/extension/output/okkeyextension-1.0.0.2-chrome.zip` | [Chrome Web Store](https://chrome.google.com/webstore/devconsole) |
 | Edge | **Same Chromium zip** | [Edge Add-ons](https://partner.microsoft.com/dashboard) |
 | Opera | **Same Chromium zip** | [Opera Add-ons](https://addons.opera.com/developer/) |
 | Yandex Browser | Install from **CWS** (no separate package) | via Chrome Web Store listing |
