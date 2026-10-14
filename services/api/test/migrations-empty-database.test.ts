@@ -9,14 +9,15 @@ import {
   listMigrationSqlFiles,
 } from "./two-factor-test-helpers.ts";
 
-test("migration directory contains every numbered file through 0034", () => {
+test("migration directory contains every numbered file through 0035", () => {
   const files = listMigrationSqlFiles();
-  assert.equal(files.length, 34);
+  assert.equal(files.length, 35);
   assert.equal(files[0], "0001_init.sql");
-  assert.equal(files.at(-1), "0034_backup_codes_exported_at.sql");
+  assert.equal(files.at(-1), "0035_personal_data_bootstrap_dismissed.sql");
   assert.ok(files.includes("0011_workspace_role_permissions_matrix.sql"));
   assert.ok(files.includes("0032_device_blocked.sql"));
   assert.ok(files.includes("0033_account_recovery.sql"));
+  assert.ok(files.includes("0034_backup_codes_exported_at.sql"));
 });
 
 test("all migrations apply on an empty database", async () => {
@@ -34,7 +35,7 @@ test("all migrations apply on an empty database", async () => {
     await client.query(`CREATE SCHEMA ${schema}`);
     await client.query(`SET search_path TO ${schema}`);
     const applied = await applyAllMigrationFiles((sql) => client.query(sql));
-    assert.equal(applied.length, 34);
+    assert.equal(applied.length, 35);
 
     const blockedUntil = await client.query(
       `

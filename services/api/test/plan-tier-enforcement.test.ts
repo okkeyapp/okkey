@@ -41,7 +41,11 @@ function serviceForTier(planTier: "FREE" | "ENTERPRISE"): CapsuleService {
       putObject: async () => {},
       getObject: async () => null,
     },
-    config: createTestApiConfig({ allowedCryptoProfileVersions: [2] }),
+    // SaaS: honor workspace plan_tier (self_hosted ignores tier and uses modules).
+    config: createTestApiConfig({
+      deploymentMode: "saas",
+      allowedCryptoProfileVersions: [2],
+    }),
   });
 }
 

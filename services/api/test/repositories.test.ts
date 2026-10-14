@@ -154,8 +154,9 @@ test("ItemsRepository.listByVault maps encrypted data", async () => {
 test("DevicesRepository.registerOrUpdate returns mapped device row", async () => {
   const db = new FakeDb();
   // Lookup by fingerprint finds nothing, then INSERT … ON CONFLICT returns the row.
+  // First device with no other trusted row is auto-trusted.
   db.enqueueResult([]);
-  db.enqueueResult([makeDeviceRow()]);
+  db.enqueueResult([makeDeviceRow({ status: "trusted" })]);
 
   const repo = new DevicesRepository(db);
   const result = await repo.registerOrUpdate({
@@ -175,7 +176,7 @@ test("DevicesRepository.registerOrUpdate returns mapped device row", async () =>
   });
 
   assert.equal(result.id, "d1");
-  assert.equal(result.status, "pending");
+  assert.equal(result.status, "trusted");
   assert.equal(result.ipFirst, "10.0.0.1");
   assert.equal(result.approvedBy, null);
   assert.equal(db.queries.length, 2);
