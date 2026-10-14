@@ -44,6 +44,12 @@ export class AuthError extends Error {
 export interface AuthServiceDeps {
   redis: {
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
+    /** Atomic SET NX + EX; true when this caller created the key. */
+    setIfNotExistsWithTtl(
+      key: string,
+      value: string,
+      ttlSeconds: number,
+    ): Promise<boolean>;
     get(key: string): Promise<string | null>;
     del(key: string): Promise<number>;
     incr(key: string): Promise<number>;
@@ -70,8 +76,9 @@ export interface EmailStartResult {
   expiresAt: string;
   resendAvailableAt: string;
   /**
-   * When true (zero users on this instance), skip OTP and register with `authStateId`.
-   * Self-host first-run; normal email OTP resumes once any user exists.
+   * When true (self-hosted empty catalog, exclusive claim), skip OTP and register
+   * with `authStateId`. Normal email OTP resumes once any user exists, on saas,
+   * or when another first-run claim is already held.
    */
   bootstrapRequired?: boolean;
   authStateId?: string;
@@ -120,6 +127,14 @@ function emailActiveChallengeKey(email: string): string {
   return `auth:email:active-challenge:${email}`;
 }
 
+/**
+ * Exclusive claim for self-host empty-catalog registration (value = normalized email).
+ * TTL matches registration auth-state so an abandoned first-run can be retried later.
+ */
+function firstUserBootstrapClaimKey(): string {
+  return "auth:bootstrap:first-user";
+}
+
 export function authStateRedisKey(id: string): string {
   return `auth:state:${id}`;
 }
@@ -152,8 +167,8 @@ export class AuthService {
       throw new AuthError("AUTH_EMAIL_INVALID", 400, "invalid email");
     }
 
-    // Self-host first-run: empty users table → skip OTP / SMTP and mint registration auth state.
-    if (!(await this.users.hasAnyUsers())) {
+    // Self-host first-run only: empty users + exclusive claim → skip OTP / SMTP.
+    if (await this.tryClaimEmptyCatalogBootstrap(email)) {
       await this.consumeStartRateLimits(email, input.requestIp);
       const authStateId = await this.createRegistrationAuthState(email);
       const now = this.now();
@@ -381,6 +396,30 @@ export class AuthService {
       userExists: true,
       nextStep: pendingTwoFactor ? "two_factor" : "device_check",
     };
+  }
+
+  /**
+   * True when this request may skip email OTP for empty-catalog self-host bootstrap.
+   * SaaS always requires OTP. Concurrent empty-catalog starts: only the claim holder skips.
+   */
+  private async tryClaimEmptyCatalogBootstrap(email: string): Promise<boolean> {
+    if (this.config.deploymentMode !== "self_hosted") {
+      return false;
+    }
+    if (await this.users.hasAnyUsers()) {
+      return false;
+    }
+
+    const claimKey = firstUserBootstrapClaimKey();
+    const ttlSeconds = this.config.registrationAuthStateTtlSeconds;
+    const claimed = await this.redis.setIfNotExistsWithTtl(claimKey, email, ttlSeconds);
+    if (claimed) {
+      return true;
+    }
+
+    // Idempotent retry for the same email that already holds the claim.
+    const holder = await this.redis.get(claimKey);
+    return holder === email;
   }
 
   /** Mint Redis auth state for registration (email already trusted — OTP confirm or first-run). */

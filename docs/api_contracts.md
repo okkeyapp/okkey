@@ -68,7 +68,7 @@ Flow: **start** → (optional **resend**) → **confirm** → receive `authState
 
 Starts login: creates a short-lived challenge, sends code to email (provider-dependent).
 
-**Self-host first-run:** when the `users` table is empty, Core does **not** send OTP mail. The response includes `bootstrapRequired: true` and `authStateId` so the client can open registration immediately (no SMTP required for the first account). Once any user exists, this endpoint returns to the normal email OTP flow.
+**Self-host first-run:** when `OKKEY_DEPLOYMENT_MODE=self_hosted` and the `users` table is empty, Core may skip OTP mail for a single exclusive first-admin claim. The response includes `bootstrapRequired: true` and `authStateId` so that claimant can open registration immediately (no SMTP required for the first account). SaaS mode always sends email OTP. Concurrent empty-catalog starts: only the claim holder skips OTP; others get the normal challenge. Once any user exists, this endpoint returns to the normal email OTP flow.
 
 **Auth:** none.
 

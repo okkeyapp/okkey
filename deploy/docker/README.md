@@ -57,9 +57,9 @@ Then open **http://localhost:8080** (web) and check **http://localhost:4000/heal
 
 ## First-run (empty database)
 
-On a fresh install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped** and you go straight to the registration form (no SMTP needed for the first account).
+On a fresh self-hosted install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped for the exclusive first-admin claim** and you go straight to the registration form (no SMTP needed for that account).
 
-`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
+`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` for that claim while the catalog is empty. Concurrent empty-catalog starts for other emails still use email OTP. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
 ## Crypto profiles (registration)
 

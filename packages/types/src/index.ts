@@ -846,8 +846,9 @@ export interface EmailAuthStartResponse {
   expiresAt: string;
   resendAvailableAt: string;
   /**
-   * When true (zero users on this instance), skip OTP and open registration with `authStateId`.
-   * Self-host first-run only; omitted once any user exists (normal email OTP).
+   * When true (self-hosted empty catalog with exclusive claim), skip OTP and open
+   * registration with `authStateId`. Omitted on saas, after any user exists, or when
+   * another first-run claim is already held (normal email OTP).
    */
   bootstrapRequired?: boolean;
   authStateId?: string;

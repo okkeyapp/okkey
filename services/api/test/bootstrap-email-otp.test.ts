@@ -10,6 +10,18 @@ class InMemoryRedis {
     this.values.set(key, value);
   }
 
+  async setIfNotExistsWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    if (this.values.has(key)) {
+      return false;
+    }
+    await this.setWithTtl(key, value, ttlSeconds);
+    return true;
+  }
+
   async get(key: string): Promise<string | null> {
     return this.values.get(key) ?? null;
   }
@@ -29,7 +41,7 @@ class InMemoryRedis {
   }
 }
 
-test("email OTP is skipped only while the directory is empty", async () => {
+test("email OTP is skipped only while the self-hosted directory is empty", async () => {
   const redis = new InMemoryRedis();
   let userCount = 0;
   const sent: string[] = [];
@@ -68,4 +80,35 @@ test("email OTP is skipped only while the directory is empty", async () => {
   assert.equal(second.nextStep, undefined);
   assert.ok(second.challengeId);
   assert.deepEqual(sent, ["second@example.com"]);
+});
+
+test("saas empty catalog always sends email OTP", async () => {
+  const redis = new InMemoryRedis();
+  const sent: string[] = [];
+  let nextId = 1;
+  const service = new AuthService({
+    redis,
+    users: {
+      findByEmail: async () => null,
+      isTwoFactorEnabled: async () => false,
+      hasAnyUsers: async () => false,
+    },
+    emailTemplates: {
+      sendAuthEmailCode: async (input) => {
+        sent.push(input.to);
+      },
+    },
+    config: createTestApiConfig({ deploymentMode: "saas" }),
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+    generateCode: () => "111111",
+    generateId: () => `id-${nextId++}`,
+  });
+
+  const result = await service.startEmailLogin({
+    email: "first@example.com",
+    requestIp: "203.0.113.8",
+  });
+  assert.equal(result.bootstrapRequired, undefined);
+  assert.ok(result.challengeId);
+  assert.deepEqual(sent, ["first@example.com"]);
 });
