@@ -200,7 +200,7 @@ Install without hitting the registry:
 OKKEY_SKIP_PULL=1 ./deploy/docker/install.sh
 ```
 
-GHCR packages for `okkeyapp/{api,web,worker}` are **public** for anonymous pull. If a mirror or fork keeps them private, `docker login ghcr.io` with `read:packages` is required.
+GHCR packages for `okkeyapp/{api,web,worker}` are **public** for anonymous pull (CI best-effort `visibility=public` after each publish; confirm in the GHCR UI if a package was created before the workflow landed). If a mirror or fork keeps them private, `docker login ghcr.io` with `read:packages` is required.
 
 ## Dev infrastructure
 
