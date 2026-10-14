@@ -55,20 +55,31 @@ Entitlements are resolved only via `hasPlanFeature` in `@okkey/types` (`PLAN_FEA
 
 Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
 
+### Self-host enterprise enablement vs `plan_tier`
+
+**Self-hosted enterprise is not gated by `plan_tier`.**
+
+| Gate | Self-hosted | SaaS |
+|---|---|---|
+| Enterprise modules on? | Interim: `ENTERPRISE_MODULES` / `VITE_ENTERPRISE_MODULES=true` **and** loadable sibling `okkey-enterprise` → enterprise **on immediately, no license token**. **`plan_tier` is not consulted** and is not required for enablement. Future: signed license token from **`okkey-license`** (`license.okkey.io`), Ed25519 verify in `okkey-enterprise`, host/domain bind (not localhost), soft lock after expiry. | Enterprise image + org subscription; workspace features still use `plan_tier`. |
+| Workspace feature matrix | Not the self-host enablement gate. | `workspace.plan_tier` (+ custom overrides) via `hasPlanFeature`. |
+
+Canonical contract: Project store `docs/license-and-updates.md`. Enterprise docs: `okkey-enterprise/docs/architecture/04_feature_gating.md`, `10_license_enforcement.md`.
+
 ### How `plan_tier` changes (SaaS vs Self-hosted)
 
 | Deployment | Who changes `plan_tier` | Mechanism (future product surfaces) |
 |---|---|---|
 | **SaaS** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve “Сменить тариф”. |
-| **Self-hosted** | License / specialist activation | Specialist request or license key → `validateLicense()` + set `plan_tier` / custom overrides. **No** self-serve Stripe on self-hosted. |
+| **Self-hosted** | **Not** the enterprise enablement path | Enablement uses modules + sibling (interim) or signed token (future). `plan_tier` may still exist for display / tooling parity but **must not** be required to turn enterprise on. **No** self-serve Stripe on self-hosted. |
 
-Core stores the tier and matrix; commercial write paths (subscribe, invoices, license blob) live in `okkey-enterprise`.
+Core stores the tier and matrix for SaaS; commercial write paths (subscribe, invoices) live in `okkey-enterprise`. Self-host license issuance lives in **`okkey-license`**.
 
 ### Existing `ENTERPRISE` rows (dev strategy)
 
 - Rows already on `ENTERPRISE` **stay** `ENTERPRISE` — no remapping to `TEAM` / `PREMIUM`.
-- With `ENTERPRISE_MODULES=true`, new workspaces still default to `ENTERPRISE` (local full-feature convenience, not a payment flow).
-- Optional local upgrade of FREE/personal tiers when developing with modules:
+- With `ENTERPRISE_MODULES=true`, new workspaces may still default to `ENTERPRISE` for local convenience; this is **not** a substitute for the self-host enablement gate above.
+- Optional local upgrade of FREE/personal tiers when developing with modules (SaaS/dev convenience only):
 
 ```sql
 UPDATE workspaces
@@ -97,7 +108,7 @@ List / switch / delete stay in Core. **`POST /workspaces` is not a Core route.**
 
 The open-source Core provides the FREE plan baseline:
 
-- Upgrade to paid tiers is available only in SaaS or self-hosted deployments with a license / enterprise build.
+- Upgrade to paid **SaaS** tiers uses `plan_tier`. Self-hosted enterprise uses modules + sibling (interim) or a signed license token (future) — not `plan_tier` as the enablement gate.
 - Authentication via email + email code.
 - 2FA: authenticator app and backup codes.
 - Self-hosted: only one workspace; enterprise feature modules unavailable in OSS builds.
@@ -180,8 +191,8 @@ Enterprise / SaaS build:
 
 - includes enterprise plugins
 - ships as `okkey-enterprise/*` images
-- SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true`
-- Self-hosted enterprise: `self_hosted` + enterprise modules (1 workspace, ENTERPRISE plan features)
+- SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true` (workspace features via `plan_tier`)
+- Self-hosted enterprise: `self_hosted` + enterprise modules / loadable sibling (interim; no token, no `plan_tier` gate). Future: + valid signed license from `okkey-license`
 
 ---
 
