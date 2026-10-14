@@ -1,37 +1,63 @@
+# Publish Okkey container images to GHCR.
+#
+# Tag scheme:
+#   push to `dev`          → :dev, :dev-<sha>
+#   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X, :latest
+#   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no :latest / rolling)
+#   pull_request           → :pr-<n>, :pr-<n>-<sha>  (cleaned up on close)
+#   workflow_dispatch      → explicit tag (+ optional :latest)
+#
+# Multi-arch: linux/amd64 + linux/arm64.
+# OCI labels via docker/metadata-action; SBOM + provenance via buildx.
+# Cosign: keyless OIDC when vars.ENABLE_COSIGN=true (needs id-token + packages write).
 name: Publish container images
 
 on:
   push:
+    branches:
+      - dev
     tags:
       - "v*"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (e.g. pr19-test). Default: branch-sha style via 'dev'."
+        description: "Image tag to push (default: dev)"
         required: false
         default: "dev"
       push_latest:
-        description: "Also tag as latest (avoid for test tags)"
+        description: "Also tag as latest (avoid for test / pre-release tags)"
         required: false
         type: boolean
         default: false
       platforms:
-        description: "Comma-separated platforms (e.g. linux/amd64 or linux/amd64,linux/arm64)"
+        description: "Comma-separated platforms"
         required: false
-        default: "linux/amd64"
+        default: "linux/amd64,linux/arm64"
 
 permissions:
   contents: read
   packages: write
   actions: write # GHA cache for buildx
+  id-token: write # provenance attestations + cosign keyless
+  attestations: write
+  pull-requests: read
 
 env:
   REGISTRY: ghcr.io
   OWNER: okkeyapp
+  DEFAULT_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   publish:
     name: build-and-push
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.action != 'closed' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -67,57 +93,156 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve tags and platforms
-        id: meta
+      - name: Resolve image name and platforms
+        id: prep
         shell: bash
         run: |
           set -euo pipefail
           IMAGE="${REGISTRY}/${OWNER}/${{ matrix.image }}"
-          TAGS=""
-          PLATFORMS="linux/amd64,linux/arm64"
+          PLATFORMS="${DEFAULT_PLATFORMS}"
 
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-            TAGS="${IMAGE}:${VERSION}"
-            TAGS="${TAGS},${IMAGE}:${GITHUB_REF_NAME}"
-            # Promote :latest only for clean semver releases (v1.2.3), never for pre-releases.
-            if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              TAGS="${TAGS},${IMAGE}:latest"
-              PLATFORMS="linux/amd64,linux/arm64"
-            else
-              # Faster first/pre-release publishes (qemu multi-arch is slow/fragile).
-              PLATFORMS="linux/amd64"
-            fi
-          else
-            DISPATCH_TAG="${{ github.event.inputs.tag }}"
-            DISPATCH_TAG="${DISPATCH_TAG:-dev}"
-            TAGS="${IMAGE}:${DISPATCH_TAG}"
-            if [[ "${{ github.event.inputs.push_latest }}" == "true" && "${DISPATCH_TAG}" != "latest" ]]; then
-              TAGS="${TAGS},${IMAGE}:latest"
-            fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             INPUT_PLATFORMS="${{ github.event.inputs.platforms }}"
-            PLATFORMS="${INPUT_PLATFORMS:-linux/amd64}"
+            PLATFORMS="${INPUT_PLATFORMS:-$DEFAULT_PLATFORMS}"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR builds stay multi-arch when feasible; override via repo var if needed.
+            if [[ "${{ vars.PR_IMAGE_PLATFORMS }}" != "" ]]; then
+              PLATFORMS="${{ vars.PR_IMAGE_PLATFORMS }}"
+            fi
           fi
 
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
-          echo "platforms=${PLATFORMS}" >> "$GITHUB_OUTPUT"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved tags: ${TAGS}"
-          echo "Platforms: ${PLATFORMS}"
+          echo "platforms=${PLATFORMS}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker metadata (tags + OCI labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.prep.outputs.image }}
+          # flavor: no automatic latest — we control :latest only for clean SemVer.
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=dev,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+            type=sha,prefix=dev-,format=short,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+            type=semver,pattern={{version}},enable=${{ github.ref_type == 'tag' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=semver,pattern={{major}},enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=ref,event=pr
+            type=sha,prefix=pr-${{ github.event.number }}-,format=short,enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=${{ github.event.inputs.tag || 'dev' }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.push_latest == 'true' }}
+          labels: |
+            org.opencontainers.image.title=okkey-${{ matrix.image }}
+            org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            org.opencontainers.image.vendor=okkeyapp
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
           target: ${{ matrix.target }}
-          platforms: ${{ steps.meta.outputs.platforms }}
+          platforms: ${{ steps.prep.outputs.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          provenance: false
+          labels: ${{ steps.meta.outputs.labels }}
+          # Buildx provenance attestation (SLSA) + SBOM (SPDX).
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           build-args: |
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      # Keyless signing via GitHub OIDC. Enable with repository variable
+      # ENABLE_COSIGN=true once org/package permissions allow signing.
+      # Optional key-based path: secrets.COSIGN_KEY + COSIGN_PASSWORD.
+      - name: Sign images (cosign)
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          COSIGN_YES: "true"
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ steps.prep.outputs.image }}
+          ENABLE_COSIGN: ${{ vars.ENABLE_COSIGN }}
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${ENABLE_COSIGN}" != "true" ]]; then
+            echo "Cosign skipped — set repository variable ENABLE_COSIGN=true when ready."
+            echo "TODO: enable keyless OIDC signing (id-token) or provide COSIGN_KEY / COSIGN_PASSWORD."
+            exit 0
+          fi
+          if [[ -z "${DIGEST}" ]]; then
+            echo "No image digest from build; skipping cosign."
+            exit 0
+          fi
+          REF="${IMAGE}@${DIGEST}"
+          if [[ -n "${COSIGN_KEY}" ]]; then
+            echo "${COSIGN_KEY}" > "${RUNNER_TEMP}/cosign.key"
+            cosign sign --key "${RUNNER_TEMP}/cosign.key" "${REF}"
+            rm -f "${RUNNER_TEMP}/cosign.key"
+          else
+            cosign sign "${REF}"
+          fi
+          echo "Signed ${REF}"
+
+  cleanup-pr-tags:
+    name: cleanup-pr-tags
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Delete ephemeral PR tags from GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PACKAGE: ${{ matrix.image }}
+          OWNER: ${{ env.OWNER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="pr-${PR_NUMBER}"
+          echo "Cleaning GHCR tags matching ${PREFIX}* for ${OWNER}/${PACKAGE}"
+
+          # List package versions; delete any whose tags start with pr-<n>.
+          # Requires packages:write on GITHUB_TOKEN (workflow permissions above).
+          mapfile -t VERSION_IDS < <(
+            gh api --paginate \
+              "/orgs/${OWNER}/packages/container/${PACKAGE}/versions" \
+              --jq ".[] | select(.metadata.container.tags != null) | select(any(.metadata.container.tags[]; startswith(\"${PREFIX}\"))) | .id" \
+              2>/dev/null || true
+          )
+
+          if [[ ${#VERSION_IDS[@]} -eq 0 ]]; then
+            echo "No matching versions found (ok if PR never published images)."
+            exit 0
+          fi
+
+          for id in "${VERSION_IDS[@]}"; do
+            echo "Deleting package version id=${id}"
+            gh api -X DELETE \
+              "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${id}" \
+              || echo "warn: failed to delete version ${id} (check package permissions)"
+          done

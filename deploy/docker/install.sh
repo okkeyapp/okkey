@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
-# Until this lands on `dev`, run from the feature branch:
-#   OKKEY_REF=cursor/self-host-docker-2ea1 \
-#     curl -fsSL "https://raw.githubusercontent.com/okkeyapp/okkey/${OKKEY_REF}/deploy/docker/install.sh" | bash
-#
-# After merge to `dev`:
+# Tracking / QA (default image tag `dev`):
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+#
+# Production — pin a SemVer image (example):
+#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+#     | OKKEY_IMAGE_TAG=1.0.0-beta.1 bash
+#
+# Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
 #
 # From a checked-out tree:
 #   ./deploy/docker/install.sh
@@ -18,8 +20,12 @@ if [[ -n "${OKKEY_RAW_BASE:-}" ]]; then
   OKKEY_REPO_RAW_BASE="${OKKEY_RAW_BASE}"
 fi
 OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/okkeyapp/okkey}"
-# Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev` after merge.
+# Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
+# Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
 OKKEY_REF="${OKKEY_REF:-dev}"
+# Recommended production pin (bump when cutting a main release). Used only when
+# OKKEY_CHANNEL=prod and OKKEY_IMAGE_TAG is unset.
+OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.1}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
 
@@ -153,24 +159,29 @@ wait_for_api_healthy() {
   die "stack started but API is not healthy — web/worker depend on api health"
 }
 
+# Resolve effective GHCR tag for a fresh install.
+# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`dev`).
+resolve_image_tag_for_fresh_install() {
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
+    printf '%s\n' "${OKKEY_IMAGE_TAG}"
+    return
+  fi
+  case "${OKKEY_CHANNEL:-}" in
+    prod|production)
+      printf '%s\n' "${OKKEY_PROD_IMAGE_TAG}"
+      ;;
+    *)
+      # Leave empty → keep .env.example value (dev).
+      printf '\n'
+      ;;
+  esac
+}
+
 # When piped to bash (`curl … | bash`), BASH_SOURCE is unset — never expand [0] under `set -u`.
 SCRIPT_DIR=""
 if [[ ${BASH_SOURCE+x} ]] && [[ ${#BASH_SOURCE[@]} -gt 0 ]] && [[ -n "${BASH_SOURCE[0]}" ]] && [[ -f "${BASH_SOURCE[0]}" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
-
-# Refs to try for raw downloads. Primary is OKKEY_REF; until merge to `dev`,
-# also try the PR branch so `curl …/cursor/…/install.sh | bash` works without env.
-resolve_fetch_refs() {
-  local -a refs=("${OKKEY_REF}")
-  local candidate
-  for candidate in cursor/self-host-docker-2ea1 dev; do
-    if [[ "${candidate}" != "${OKKEY_REF}" ]]; then
-      refs+=("${candidate}")
-    fi
-  done
-  printf '%s\n' "${refs[@]}"
-}
 
 fetch_file() {
   local name="$1"
@@ -180,28 +191,18 @@ fetch_file() {
     return
   fi
   need_cmd curl
-  local ref url
-  local -a tried=()
-  while IFS= read -r ref; do
-    [[ -z "${ref}" ]] && continue
-    url="${OKKEY_REPO_RAW_BASE}/${ref}/deploy/docker/${name}"
-    log "==> Fetching ${name} (ref=${ref})"
-    if curl -fsSL "$url" -o "$dest" 2>/dev/null; then
-      if [[ "${ref}" != "${OKKEY_REF}" ]]; then
-        log "==> Using ref ${ref} for downloads (OKKEY_REF was ${OKKEY_REF})"
-        OKKEY_REF="${ref}"
-      fi
-      return
-    fi
-    tried+=("${url}")
-    rm -f "$dest"
-  done < <(resolve_fetch_refs)
+  local url="${OKKEY_REPO_RAW_BASE}/${OKKEY_REF}/deploy/docker/${name}"
+  log "==> Fetching ${name} (ref=${OKKEY_REF})"
+  if curl -fsSL "$url" -o "$dest" 2>/dev/null; then
+    return
+  fi
+  rm -f "$dest"
   die "failed to download deploy/docker/${name}
 tried:
-$(printf '  %s\n' "${tried[@]}")
-hint: pipe env into bash, e.g.
-  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/cursor/self-host-docker-2ea1/deploy/docker/install.sh \\
-    | OKKEY_REF=cursor/self-host-docker-2ea1 bash"
+  ${url}
+hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
+  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \\
+    | OKKEY_REF=dev bash"
 }
 
 need_cmd docker
@@ -239,20 +240,38 @@ if [[ ! -f .env ]]; then
   replace_env SESSION_SECRET "$SESSION"
   replace_env POSTGRES_PASSWORD "$PG_PASS"
   replace_env MINIO_ROOT_PASSWORD "$MINIO_PASS"
+
+  resolved_tag="$(resolve_image_tag_for_fresh_install)"
+  if [[ -n "${resolved_tag}" ]]; then
+    replace_env OKKEY_IMAGE_TAG "${resolved_tag}"
+    log "==> OKKEY_IMAGE_TAG=${resolved_tag}"
+  fi
+
   log "==> Generated JWT_SECRET, SESSION_SECRET, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]] || [[ -n "${OKKEY_CHANNEL:-}" ]]; then
+    log "==> Note: OKKEY_IMAGE_TAG / OKKEY_CHANNEL set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
+  fi
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
   fi
 fi
 
-log "==> Pulling images and starting stack (compose project=$(compose_project_name))"
+image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
+image_tag="${image_tag:-dev}"
+log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
   log "==> Skipping pull (OKKEY_SKIP_PULL=1)"
 else
-  run_compose .env pull
+  if ! run_compose .env pull; then
+    die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
+hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
+  Tracking channel: OKKEY_IMAGE_TAG=dev (published on every push to the \`dev\` branch after CI lands).
+  Production: pin a SemVer, e.g. OKKEY_IMAGE_TAG=${OKKEY_PROD_IMAGE_TAG} or OKKEY_CHANNEL=prod.
+  Or set OKKEY_SKIP_PULL=1 with local images."
+  fi
 fi
 run_compose .env up -d
 wait_for_api_healthy

@@ -4,28 +4,33 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 
 ## One-command install
 
-**Until PR #19 is merged to `dev`**, use this one-liner (note: `OKKEY_REF=…` must be on the **right** of `|` so the installer process sees it — `VAR=x curl | bash` does **not** pass `VAR` into `bash`):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/cursor/self-host-docker-2ea1/deploy/docker/install.sh \
-  | OKKEY_REF=cursor/self-host-docker-2ea1 bash
-```
-
-The installer also falls back to `cursor/self-host-docker-2ea1` if `OKKEY_REF=dev` 404s, so plain `| bash` from that URL usually works after this fix is pushed.
-
-`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.4` (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4`). If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
-
-**After merge to `dev`:**
+**Tracking / QA** (floating `:dev` images, published on every push to `dev` after the publish workflow lands):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 ```
 
+**Production** — pin a SemVer image (do **not** rely on floating `:latest`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+  | OKKEY_IMAGE_TAG=1.0.0-beta.1 bash
+# or:
+#   | OKKEY_CHANNEL=prod bash   # uses OKKEY_PROD_IMAGE_TAG (default 1.0.0-beta.1)
+```
+
+Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
+
+`.env.example` defaults to `OKKEY_IMAGE_TAG=dev`. If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
+
 Optional env:
 
 | Variable | Purpose |
 |----------|---------|
-| `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`) |
+| `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
+| `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
+| `OKKEY_CHANNEL=prod` | On **fresh** installs, pin `OKKEY_PROD_IMAGE_TAG` when `OKKEY_IMAGE_TAG` is unset |
+| `OKKEY_PROD_IMAGE_TAG` | SemVer pin used by `OKKEY_CHANNEL=prod` (default `1.0.0-beta.1`) |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
@@ -42,7 +47,7 @@ cd ~/okkey && docker compose -p okkey -f docker-compose.prod.yml --env-file .env
   docker compose -p okkey -f docker-compose.prod.yml --env-file .env up -d
 
 # Or via installer:
-OKKEY_RESET_VOLUMES=1 OKKEY_REF=cursor/self-host-docker-2ea1 \
+OKKEY_RESET_VOLUMES=1 OKKEY_REF=dev \
   bash deploy/docker/install.sh
 ```
 
@@ -57,9 +62,9 @@ Then open **http://localhost:8080** (web) and check **http://localhost:4000/heal
 
 ## First-run (empty database)
 
-On a fresh self-hosted install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped for the exclusive first-admin claim** and you go straight to the registration form (no SMTP needed for that account).
+On a fresh install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped** and you go straight to the registration form (no SMTP needed for the first account).
 
-`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` for that claim while the catalog is empty. Concurrent empty-catalog starts for other emails still use email OTP. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
+`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
 ## Crypto profiles (registration)
 
@@ -77,7 +82,7 @@ Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLL
 1. Refresh compose (old files hardcode `DEPLOY_ENV: prod`):
 
 ```bash
-REF=cursor/self-host-docker-2ea1
+REF=dev
 curl -fsSL -o ~/okkey/docker-compose.prod.yml \
   "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 ```
@@ -97,20 +102,38 @@ cd ~/okkey
 docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate api worker
 ```
 
-> Latest CI publish (PR #19): tag `v0.0.0-pr19.4` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4` (also `:v0.0.0-pr19.4`; includes first-run bootstrap).  
-> Workflow: https://github.com/okkeyapp/okkey/actions/runs/38037326395  
-> Prior: `v0.0.0-pr19.3` → https://github.com/okkeyapp/okkey/actions/runs/37924403393  
-> `workflow_dispatch` appears in the Actions UI only after `publish-images.yml` is on the default branch (`main`). Until then, push a `v*` tag on a commit that contains the workflow.
+## Image tags
+
+Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/publish-images.yml) to `ghcr.io/okkeyapp/{api,web,worker}`:
+
+| Event | Tags |
+|-------|------|
+| Push to `dev` | `:dev`, `:dev-<sha>` |
+| Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X`, `:latest` |
+| Git tag `vX.Y.Z-…` (pre-release) | `:X.Y.Z-…` only (no `:latest` / rolling) |
+| Pull request | `:pr-<n>`, `:pr-<n>-<sha>` (deleted when the PR closes) |
+| `workflow_dispatch` | explicit tag (+ optional `:latest`) |
+
+Installer defaults:
+
+| Channel | `OKKEY_IMAGE_TAG` |
+|---------|-------------------|
+| Tracking / QA (default) | `dev` |
+| Production | pin SemVer (e.g. `1.0.0-beta.1`) via `OKKEY_IMAGE_TAG` or `OKKEY_CHANNEL=prod` |
+
+Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign signing is wired (keyless OIDC) and runs when repository variable `ENABLE_COSIGN=true` (optional `COSIGN_KEY` / `COSIGN_PASSWORD`).
 
 ## Manual install
 
 ```bash
-REF=cursor/self-host-docker-2ea1   # or `dev` after merge
+REF=dev
 mkdir -p ~/okkey && cd ~/okkey
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
-# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; keep OKKEY_IMAGE_TAG=0.0.0-pr19.4 until a release tag
+# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
+# tracking: keep OKKEY_IMAGE_TAG=dev
+# production: set OKKEY_IMAGE_TAG=<SemVer>
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 

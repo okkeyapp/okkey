@@ -153,7 +153,11 @@ Images:
 - `ghcr.io/okkeyapp/web`
 - `ghcr.io/okkeyapp/worker`
 
-Tagged from git `v*` releases (+ `latest`). CI: `.github/workflows/publish-images.yml`.
+Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `.github/workflows/publish-images.yml`):
+
+- push to `dev` → `:dev`, `:dev-<sha>` (installer tracking default)
+- clean SemVer tag `vX.Y.Z` on `main` → `:X.Y.Z`, `:X.Y`, `:X`, `:latest`
+- production installs should **pin** a SemVer (not floating `:latest`)
 
 ---
 
