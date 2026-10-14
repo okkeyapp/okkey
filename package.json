@@ -83,7 +83,7 @@
     "zip:extension:chromium": "yarn --cwd apps/extension zip:chromium",
     "zip:extension:firefox": "yarn --cwd apps/extension zip:firefox",
     "zip:extension:store": "yarn --cwd apps/extension zip:store",
-    "dev:worker": "node --experimental-strip-types services/api/src/worker.ts",
+    "dev:worker": "node scripts/ensure-api-dev-deps.mjs && node --experimental-strip-types services/api/src/worker.ts",
     "infra:down": "./scripts/infra.sh down",
     "infra:logs": "./scripts/infra.sh logs",
     "infra:ps": "./scripts/infra.sh ps",
