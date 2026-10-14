@@ -35,10 +35,23 @@ type SelfHostedSalesRequestPopupProps = {
     contactEmail: string;
     locale: WebLocale;
     region: RegionCode | null;
+    workspaceMemberCount: number;
   }) => void;
 };
 
-/** Self-hosted FREE sales contact: region + email only (locale sent silently). */
+function parseMemberCount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value < 1 || !Number.isFinite(value)) {
+    return null;
+  }
+  return value;
+}
+
+/** Self-hosted FREE sales contact: member count + region + email (locale sent silently). */
 export default function SelfHostedSalesRequestPopup({
   open,
   initialLocale,
@@ -56,6 +69,7 @@ export default function SelfHostedSalesRequestPopup({
     () => normalizeRegionCode(initialRegion) ?? detectBrowserRegion(),
   );
   const [email, setEmail] = useState(initialEmail);
+  const [memberCountInput, setMemberCountInput] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +78,7 @@ export default function SelfHostedSalesRequestPopup({
     }
     setRegion(normalizeRegionCode(initialRegion) ?? detectBrowserRegion());
     setEmail(initialEmail);
+    setMemberCountInput("");
     setLocalError(null);
   }, [open, initialRegion, initialEmail]);
 
@@ -88,7 +103,9 @@ export default function SelfHostedSalesRequestPopup({
   }
 
   const emailTrimmed = email.trim();
-  const canSubmit = emailTrimmed.includes("@") && !submitting && !success;
+  const memberCount = parseMemberCount(memberCountInput);
+  const canSubmit =
+    emailTrimmed.includes("@") && memberCount !== null && !submitting && !success;
 
   return (
     <Popup
@@ -127,7 +144,7 @@ export default function SelfHostedSalesRequestPopup({
           className="flex w-full flex-col gap-5"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!canSubmit) {
+            if (!canSubmit || memberCount === null) {
               return;
             }
             if (!emailTrimmed.includes("@") || emailTrimmed.length < 3) {
@@ -139,6 +156,7 @@ export default function SelfHostedSalesRequestPopup({
               contactEmail: emailTrimmed,
               locale: initialLocale,
               region,
+              workspaceMemberCount: memberCount,
             });
           }}
         >
@@ -152,6 +170,24 @@ export default function SelfHostedSalesRequestPopup({
               <AlertDescription>{localError ?? errorMessage}</AlertDescription>
             </Alert>
           )}
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-members`}>
+              {t("web.workspaceSettings.plan.request.memberCountLabel")}
+            </label>
+            <Input
+              id={`${formId}-members`}
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={memberCountInput}
+              disabled={submitting}
+              onChange={(event) =>
+                setMemberCountInput(event.target.value.replace(/[^\d]/g, ""))
+              }
+            />
+          </div>
 
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">

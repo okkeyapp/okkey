@@ -71,6 +71,7 @@
   "email.planChangeRequest.contactEmail": "Contact email: {email}",
   "email.planChangeRequest.accountEmail": "Account email: {email}",
   "email.planChangeRequest.locale": "Locale: {locale}",
+  "email.planChangeRequest.workspaceMemberCount": "Workspace members: {count}",
   "email.planChangeRequest.region": "Region: {region}",
   "email.planChangeRequest.actor": "User: {userId}"
 }

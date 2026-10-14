@@ -1222,6 +1222,8 @@ export interface WorkspacePlanChangeRequestDto {
   locale: string;
   /** Billing region ISO 3166-1 alpha-2, or empty when unset. */
   region: string | null;
+  /** Expected number of workspace members / seats (integer ≥ 1). */
+  workspace_member_count: number;
 }
 
 /** `POST /workspaces/:workspaceId/plan-change-requests` success body. */
