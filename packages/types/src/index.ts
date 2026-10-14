@@ -1224,6 +1224,8 @@ export interface WorkspacePlanChangeRequestDto {
   locale: string;
   /** Billing region ISO 3166-1 alpha-2, or empty when unset. */
   region: string | null;
+  /** Expected number of workspace members / seats (integer ≥ 1). */
+  workspace_member_count: number;
 }
 
 /** `POST /workspaces/:workspaceId/plan-change-requests` success body. */
@@ -1582,13 +1584,19 @@ export interface WorkspaceItemCategoryPreferencesResponseDto {
   favorite_category_ids: string[];
   favorite_template_ids: string[];
   favorite_order: string[];
+  /** When true, skip auto-creating personal_data after unlock (deleted or legacy member). */
+  personal_data_bootstrap_dismissed: boolean;
 }
 
-/** `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer). */
+/**
+ * `PUT /workspaces/:workspaceId/item-category-preferences` (Bearer).
+ * Favorites fields update favorites; `personal_data_bootstrap_dismissed` alone is enough to set the flag.
+ */
 export interface WorkspaceItemCategoryPreferencesUpdateRequestDto {
-  favorite_category_ids: string[];
-  favorite_template_ids: string[];
-  favorite_order: string[];
+  favorite_category_ids?: string[];
+  favorite_template_ids?: string[];
+  favorite_order?: string[];
+  personal_data_bootstrap_dismissed?: boolean;
 }
 
 export interface WorkspaceItemTemplatePayloadDto {

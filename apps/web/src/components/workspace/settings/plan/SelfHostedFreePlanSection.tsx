@@ -82,6 +82,7 @@ export default function SelfHostedFreePlanSection({
     contactEmail: string;
     locale: "en" | "ru";
     region: RegionCode | null;
+    workspaceMemberCount: number;
   }) {
     if (!core) {
       return;
@@ -94,6 +95,7 @@ export default function SelfHostedFreePlanSection({
         contact_email: input.contactEmail,
         locale: input.locale,
         region: input.region,
+        workspace_member_count: input.workspaceMemberCount,
       });
       setSuccess(true);
     } catch (error) {

@@ -25,6 +25,11 @@ import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import { withItemArchivedState } from "./itemArchive";
 import { withItemDeletedState } from "./itemDelete";
 import {
+  isPersonalDataBootstrapDismissed,
+  markPersonalDataBootstrapDismissed,
+  shouldPutPersonalDataBootstrapDismissed,
+} from "./personalDataBootstrapDismissal";
+import {
   createWorkspaceVaultItemsSyncController,
   type WorkspaceVaultItemsSyncController,
 } from "./workspaceVaultItemsSync";
@@ -309,6 +314,26 @@ export function useWorkspaceItemsState(input: {
     [runMutation],
   );
 
+  const persistPersonalDataBootstrapDismissed = useCallback(() => {
+    // Local cache mirrors the server flag after GET / prior PUT. Skip PUT when
+    // the known value is already true (e.g. soft-deleted path already synced).
+    const knownDismissed = isPersonalDataBootstrapDismissed(userId, workspaceId);
+    markPersonalDataBootstrapDismissed(userId, workspaceId);
+    if (!core || !workspaceId) {
+      return;
+    }
+    if (!shouldPutPersonalDataBootstrapDismissed(knownDismissed, true)) {
+      return;
+    }
+    void core
+      .updateWorkspaceItemCategoryPreferences(workspaceId, {
+        personal_data_bootstrap_dismissed: true,
+      })
+      .catch(() => {
+        /* server flag is authoritative once synced; local cache still set */
+      });
+  }, [core, userId, workspaceId]);
+
   const setItemDeleted = useCallback(
     async (itemId: string, deleted: boolean) => {
       await runMutation(async (controller) => {
@@ -319,10 +344,13 @@ export function useWorkspaceItemsState(input: {
         if (Boolean(item.deleted) === deleted) {
           return;
         }
+        if (deleted && item.categoryId === "personal_data") {
+          persistPersonalDataBootstrapDismissed();
+        }
         await controller.updateItem(withItemDeletedState(item, deleted));
       });
     },
-    [runMutation],
+    [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
   const setItemsDeleted = useCallback(
@@ -338,11 +366,14 @@ export function useWorkspaceItemsState(input: {
           if (!item || Boolean(item.deleted) === deleted) {
             continue;
           }
+          if (deleted && item.categoryId === "personal_data") {
+            persistPersonalDataBootstrapDismissed();
+          }
           await controller.updateItem(withItemDeletedState(item, deleted));
         }
       });
     },
-    [runMutation],
+    [persistPersonalDataBootstrapDismissed, runMutation],
   );
 
   const refreshItems = useCallback(async () => {

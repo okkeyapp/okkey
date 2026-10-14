@@ -4,7 +4,12 @@ import { useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuthVault } from "../../auth/AuthVaultContext";
-import { buildPersonalDataBootstrapItem, hasPersonalDataItem } from "../../items/personalDataBootstrap";
+import {
+  hasSoftDeletedPersonalDataItem,
+  buildPersonalDataBootstrapItem,
+  shouldSkipPersonalDataBootstrap,
+} from "../../items/personalDataBootstrap";
+import { isPersonalDataBootstrapDismissed } from "../../items/personalDataBootstrapDismissal";
 import { useWorkspaceItems } from "../../items/WorkspaceItemsContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
 import { useLocale } from "../../locale/LocaleContext";
@@ -16,6 +21,7 @@ import {
   popupQuerySearch,
 } from "../../routes/popupQuery";
 import { createKeyFormEditorMessages } from "../key-form/keyFormI18n";
+import { useItemCategoryPreferences } from "./useItemCategoryPreferences";
 
 type PersonalDataBootstrapControllerProps = {
   workspaceId: string;
@@ -24,9 +30,10 @@ type PersonalDataBootstrapControllerProps = {
 };
 
 /**
- * After unlock, once items for the workspace are bootstrapped: if the user has no
- * personal_data item yet, create one in the personal vault (no folder) with profile
- * prefill and open its edit popup. Same for old workspaces missing the record.
+ * After unlock, once items for the workspace are bootstrapped: if the user has never
+ * had a personal_data item (and has not dismissed bootstrap via delete), create one in
+ * the personal vault (no folder) with profile prefill and open its edit popup.
+ * Soft-delete and a server dismissed flag (cached in localStorage) both skip recreate.
  */
 export default function PersonalDataBootstrapController({
   workspaceId,
@@ -34,9 +41,14 @@ export default function PersonalDataBootstrapController({
   vaultsListReady,
 }: PersonalDataBootstrapControllerProps) {
   const { t, locale } = useLocale();
-  const { profile, vaultUnlocked } = useAuthVault();
+  const { profile, vaultUnlocked, userId } = useAuthVault();
   const { items, bootstrapped, createItem } = useWorkspaceItems();
   const { canPostToVault } = useWorkspaceVaultProfiles();
+  const {
+    ready: preferencesReady,
+    personalDataBootstrapDismissed,
+    markPersonalDataBootstrapDismissed,
+  } = useItemCategoryPreferences();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -48,7 +60,14 @@ export default function PersonalDataBootstrapController({
   locationRef.current = location;
 
   useEffect(() => {
-    if (!vaultUnlocked || !bootstrapped || !vaultsListReady || !workspaceId) {
+    if (
+      !vaultUnlocked ||
+      !bootstrapped ||
+      !vaultsListReady ||
+      !workspaceId ||
+      !userId ||
+      !preferencesReady
+    ) {
       return;
     }
     if (doneWorkspaceIdRef.current === workspaceId) {
@@ -57,7 +76,16 @@ export default function PersonalDataBootstrapController({
     if (inFlightWorkspaceIdRef.current === workspaceId) {
       return;
     }
-    if (hasPersonalDataItem(items)) {
+
+    // Soft-deleted row still in retention → persist dismiss so a later purge cannot recreate.
+    // Only when the server flag is not already set (avoids a redundant PUT on every unlock).
+    if (hasSoftDeletedPersonalDataItem(items) && !personalDataBootstrapDismissed) {
+      markPersonalDataBootstrapDismissed();
+    }
+
+    const dismissed =
+      personalDataBootstrapDismissed || isPersonalDataBootstrapDismissed(userId, workspaceId);
+    if (shouldSkipPersonalDataBootstrap(items, dismissed)) {
       doneWorkspaceIdRef.current = workspaceId;
       return;
     }
@@ -122,11 +150,15 @@ export default function PersonalDataBootstrapController({
     createItem,
     items,
     locale,
+    markPersonalDataBootstrapDismissed,
+    personalDataBootstrapDismissed,
+    preferencesReady,
     profile?.email,
     profile?.firstName,
     profile?.lastName,
     searchParams,
     t,
+    userId,
     vaultUnlocked,
     vaults,
     vaultsListReady,

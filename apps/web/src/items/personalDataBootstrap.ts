@@ -7,8 +7,29 @@ import {
   type KeyFormEditorSection,
 } from "@okkey/vault-ui";
 
+/**
+ * True when the workspace already has a personal_data item, including soft-deleted.
+ * Soft-deleted means the user deliberately removed it — do not bootstrap again.
+ */
 export function hasPersonalDataItem(items: readonly ItemPlaintextV2[]): boolean {
-  return items.some((item) => item.categoryId === "personal_data" && !item.deleted);
+  return items.some((item) => item.categoryId === "personal_data");
+}
+
+/** True when a soft-deleted personal_data item is still in the client item list. */
+export function hasSoftDeletedPersonalDataItem(items: readonly ItemPlaintextV2[]): boolean {
+  return items.some((item) => item.categoryId === "personal_data" && Boolean(item.deleted));
+}
+
+/**
+ * Skip bootstrap when an item (active or soft-deleted) exists, or when the
+ * dismissed flag is set (server-authoritative; localStorage may cache it).
+ * After retention purge the item is gone — the flag alone must still skip.
+ */
+export function shouldSkipPersonalDataBootstrap(
+  items: readonly ItemPlaintextV2[],
+  dismissed: boolean,
+): boolean {
+  return dismissed || hasPersonalDataItem(items);
 }
 
 function withPrefillValues(

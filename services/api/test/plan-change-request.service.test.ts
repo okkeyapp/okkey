@@ -78,6 +78,7 @@ test("PlanChangeRequestService rejects missing sales email", async () => {
         contactEmail: "a@b.co",
         locale: "ru",
         region: "RU",
+        workspaceMemberCount: 3,
       }),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "EMAIL_NOT_CONFIGURED",
@@ -95,6 +96,7 @@ test("PlanChangeRequestService rejects invalid tier and email", async () => {
         contactEmail: "not-an-email",
         locale: "ru",
         region: "RU",
+        workspaceMemberCount: 3,
       }),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "INVALID_REQUEST",
@@ -108,8 +110,29 @@ test("PlanChangeRequestService rejects invalid tier and email", async () => {
         contactEmail: "a@b.co",
         locale: "ru",
         region: "RU",
+        workspaceMemberCount: 3,
       }),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "INVALID_REQUEST",
   );
+});
+
+test("PlanChangeRequestService rejects invalid workspace member count", async () => {
+  const { service } = makeService();
+  for (const workspaceMemberCount of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    await assert.rejects(
+      () =>
+        service.submit({
+          workspaceId: "ws_1",
+          actorUserId: "user_1",
+          requestedPlanTier: "PREMIUM",
+          contactEmail: "a@b.co",
+          locale: "ru",
+          region: "RU",
+          workspaceMemberCount,
+        }),
+      (error: unknown) =>
+        error instanceof PlanChangeRequestServiceError && error.code === "INVALID_REQUEST",
+    );
+  }
 });

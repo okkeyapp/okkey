@@ -356,6 +356,7 @@ export async function renderPlanChangeRequest(
     "contactEmail",
     "accountEmail",
     "locale",
+    "workspaceMemberCount",
     "deploymentMode",
     "actorUserId",
   ]);
@@ -386,6 +387,9 @@ export async function renderPlanChangeRequest(
     }),
     formatEmailMessage(locale, "email.planChangeRequest.locale", {
       locale: variables.locale,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.workspaceMemberCount", {
+      count: String(variables.workspaceMemberCount),
     }),
     formatEmailMessage(locale, "email.planChangeRequest.region", {
       region: variables.region.trim() || "—",
