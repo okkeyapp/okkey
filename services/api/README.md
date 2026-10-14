@@ -60,6 +60,8 @@ The API reads only `services/api/.env` and `services/api/.env.local`.
 yarn dev:api
 ```
 
+This runs `scripts/ensure-api-dev-deps.mjs` first: builds WASM crypto when missing, then `build:ts-sdk` (`@okkey/id` / `@okkey/types` / `@okkey/sync`) and `build:email`.
+
 By default the API listens on `http://localhost:4000`.
 
 Note: the storage layer needs `pg` and `redis` dependencies to run.
