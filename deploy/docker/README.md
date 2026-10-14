@@ -4,28 +4,20 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 
 ## One-command install
 
-**Until PR #19 is merged to `dev`**, use this one-liner (note: `OKKEY_REF=…` must be on the **right** of `|` so the installer process sees it — `VAR=x curl | bash` does **not** pass `VAR` into `bash`):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/cursor/self-host-docker-2ea1/deploy/docker/install.sh \
-  | OKKEY_REF=cursor/self-host-docker-2ea1 bash
-```
-
-The installer also falls back to `cursor/self-host-docker-2ea1` if `OKKEY_REF=dev` 404s, so plain `| bash` from that URL usually works after this fix is pushed.
-
-`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.4` (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4`). If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
-
-**After merge to `dev`:**
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 ```
+
+Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` (if set) must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
+
+`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.4` — the last image tag that **exists** in GHCR (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4`). Do **not** default to `:dev`: that floating tag is not published until Actions → **Publish container images** → `workflow_dispatch` with tag `dev`. After that publish, pin `OKKEY_IMAGE_TAG=dev` (or a newer `v*` / `0.0.0-prN.M`) for post-merge QA. If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
 
 Optional env:
 
 | Variable | Purpose |
 |----------|---------|
-| `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`) |
+| `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
+| `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
@@ -42,7 +34,7 @@ cd ~/okkey && docker compose -p okkey -f docker-compose.prod.yml --env-file .env
   docker compose -p okkey -f docker-compose.prod.yml --env-file .env up -d
 
 # Or via installer:
-OKKEY_RESET_VOLUMES=1 OKKEY_REF=cursor/self-host-docker-2ea1 \
+OKKEY_RESET_VOLUMES=1 OKKEY_REF=dev \
   bash deploy/docker/install.sh
 ```
 
@@ -77,7 +69,7 @@ Compose passes `DEPLOY_ENV`, `CRYPTO_ALLOWED_PROFILE_VERSIONS`, and `CRYPTO_ROLL
 1. Refresh compose (old files hardcode `DEPLOY_ENV: prod`):
 
 ```bash
-REF=cursor/self-host-docker-2ea1
+REF=dev
 curl -fsSL -o ~/okkey/docker-compose.prod.yml \
   "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 ```
@@ -97,20 +89,28 @@ cd ~/okkey
 docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate api worker
 ```
 
-> Latest CI publish (PR #19): tag `v0.0.0-pr19.4` → images `ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4` (also `:v0.0.0-pr19.4`; includes first-run bootstrap).  
-> Workflow: https://github.com/okkeyapp/okkey/actions/runs/38037326395  
-> Prior: `v0.0.0-pr19.3` → https://github.com/okkeyapp/okkey/actions/runs/37924403393  
-> `workflow_dispatch` appears in the Actions UI only after `publish-images.yml` is on the default branch (`main`). Until then, push a `v*` tag on a commit that contains the workflow.
+## Image tags
+
+| Tag | Meaning |
+|-----|---------|
+| `0.0.0-pr19.4` (default) | Last published pre-release in GHCR — bare install works without a prior publish |
+| `0.0.0-prN.M` / `v0.0.0-prN.M` | Pre-release from a `v*` git tag push |
+| `dev` | Optional floating tag from `workflow_dispatch` on **Publish container images** — **not** present until published; then use for post-merge QA |
+| `latest` | Only promoted on clean semver releases (`vX.Y.Z`) |
+
+`OKKEY_REF` (git) ≠ `OKKEY_IMAGE_TAG` (GHCR). Installer files come from the `dev` branch by default; container images come from the tag in `.env`.
+
+Workflow: https://github.com/okkeyapp/okkey/actions/workflows/publish-images.yml
 
 ## Manual install
 
 ```bash
-REF=cursor/self-host-docker-2ea1   # or `dev` after merge
+REF=dev
 mkdir -p ~/okkey && cd ~/okkey
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
-# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; keep OKKEY_IMAGE_TAG=0.0.0-pr19.4 until a release tag
+# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; default OKKEY_IMAGE_TAG=0.0.0-pr19.4
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
