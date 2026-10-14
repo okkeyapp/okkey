@@ -1541,6 +1541,7 @@
   "unlock.biometricFailed": "Biometrics failed. Use another unlock method",
   "unlock.pinIncorrect": "Incorrect PIN",
   "unlock.pinLocked": "Too many attempts. Try again later or use your master password.",
+  "unlock.masterPasswordLocked": "Too many attempts. Try again later.",
   "unlock.errorTitle": "Error",
   "unlock.errorIncorrectPassword": "Incorrect master password",
   "unlock.syncingVault": "Restoring vault data from the server",

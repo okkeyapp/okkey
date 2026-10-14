@@ -20,6 +20,11 @@ import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH, acco
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
 import { hasExtensionAuthPending } from "../../auth/extensionAuthPendingStorage";
+import {
+  clearMasterPasswordFailures,
+  isMasterPasswordLocked,
+  recordMasterPasswordFailure,
+} from "../../auth/masterPasswordRateLimit";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../auth/pinRateLimit";
 import { safeRedirectPath } from "../../auth/safeRedirect";
 import { readVaultDevicePrefs } from "../../auth/vaultDevicePrefs";
@@ -78,6 +83,9 @@ export default function UnlockPasswordPage() {
   const [pinDigits, setPinDigits] = useState(emptyPinDigits);
   const [masterPassword, setMasterPassword] = useState("");
   const [showUnlockError, setShowUnlockError] = useState(false);
+  const [masterPasswordLocked, setMasterPasswordLocked] = useState(
+    () => userId !== null && isMasterPasswordLocked(userId),
+  );
   const [noBundleError, setNoBundleError] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSubmitting, setPinSubmitting] = useState(false);
@@ -283,8 +291,16 @@ export default function UnlockPasswordPage() {
     await initCrypto();
     const ok = await tryUnlockWithMasterPassword(masterPassword);
     if (!ok) {
+      if (userId) {
+        const result = recordMasterPasswordFailure(userId);
+        setMasterPasswordLocked(result.locked);
+      }
       setShowUnlockError(true);
       return;
+    }
+    if (userId) {
+      clearMasterPasswordFailures(userId);
+      setMasterPasswordLocked(false);
     }
     touchActivity();
   }
@@ -458,11 +474,15 @@ export default function UnlockPasswordPage() {
           </Alert>
         ) : null}
 
-        {showUnlockError ? (
+        {showUnlockError || masterPasswordLocked ? (
           <Alert variant="error">
             <AlertErrorIcon className="size-4" />
             <AlertTitle>{t("unlock.errorTitle")}</AlertTitle>
-            <AlertDescription>{t("unlock.errorIncorrectPassword")}</AlertDescription>
+            <AlertDescription>
+              {masterPasswordLocked
+                ? t("unlock.masterPasswordLocked")
+                : t("unlock.errorIncorrectPassword")}
+            </AlertDescription>
           </Alert>
         ) : null}
 
