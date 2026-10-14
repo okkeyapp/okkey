@@ -36,7 +36,14 @@ Commercial workspace plan is `workspace.plan_tier` (catalog):
 
 Catalog `plan_tier` stays for display/billing; when custom override is on, overrides win in `hasPlanFeature(..., { customOverride, featureOverrides })`.
 
-Entitlements are resolved only via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_MATRIX`). Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits`.
+Entitlements are resolved via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_MATRIX`), with deployment context:
+
+| Deployment | Paid-feature source |
+|---|---|
+| **SaaS** | `workspace.plan_tier` (+ optional custom overrides) |
+| **Self-hosted** | enterprise modules active (env ∧ loadable sibling) → ENTERPRISE matrix; otherwise FREE. **Do not** use `plan_tier` for gating. |
+
+Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same self-host rule).
 
 | Feature | FREE | PREMIUM | FAMILY | TEAM | ENTERPRISE |
 |---|---|---|---|---|---|
@@ -60,21 +67,18 @@ Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
 | Deployment | Who changes `plan_tier` | Mechanism (future product surfaces) |
 |---|---|---|
 | **SaaS** | Subscription / billing lifecycle | Checkout → payment webhook → update `plan_tier` (and seats). Self-serve “Сменить тариф”. |
-| **Self-hosted** | License / specialist activation | Specialist request or license key → `validateLicense()` + set `plan_tier` / custom overrides. **No** self-serve Stripe on self-hosted. |
+| **Self-hosted** | Display / future license metadata only | Feature gating uses modules loaded (license token later). **No** self-serve Stripe on self-hosted. Setting `plan_tier=ENTERPRISE` alone does **not** unlock paid features. |
 
 Core stores the tier and matrix; commercial write paths (subscribe, invoices, license blob) live in `okkey-enterprise`.
+
+### Enterprise modules fail-closed
+
+`ENTERPRISE_MODULES=true` / `VITE_ENTERPRISE_MODULES=true` enables plugins **only** when the sibling `okkey-enterprise` path exists and is loadable. Otherwise modules stay off (FREE matrix on self-host), even if SQL has `plan_tier=ENTERPRISE`.
 
 ### Existing `ENTERPRISE` rows (dev strategy)
 
 - Rows already on `ENTERPRISE` **stay** `ENTERPRISE` — no remapping to `TEAM` / `PREMIUM`.
-- With `ENTERPRISE_MODULES=true`, new workspaces still default to `ENTERPRISE` (local full-feature convenience, not a payment flow).
-- Optional local upgrade of FREE/personal tiers when developing with modules:
-
-```sql
-UPDATE workspaces
-SET plan_tier = 'ENTERPRISE'
-WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
-```
+- New workspaces always default to `plan_tier=FREE` (including when modules are on). Self-host paid features come from modules being active, not from the default tier.
 
 ---
 
@@ -181,7 +185,7 @@ Enterprise / SaaS build:
 - includes enterprise plugins
 - ships as `okkey-enterprise/*` images
 - SaaS: deployment mode `saas` (from enterprise env when modules load) + `ENTERPRISE_MODULES=true`
-- Self-hosted enterprise: `self_hosted` + enterprise modules (1 workspace, ENTERPRISE plan features)
+- Self-hosted enterprise: `self_hosted` + enterprise modules loaded (1 workspace, full paid feature matrix without reading `plan_tier`)
 
 ---
 
@@ -191,12 +195,6 @@ Core schema is stable and public.
 Enterprise migrations **only add** tables and indexes.
 No core table is altered or removed by enterprise code.
 
-Local upgrade of legacy / FREE rows when developing with enterprise modules (optional; existing ENTERPRISE rows are left as-is):
-
-```sql
-UPDATE workspaces
-SET plan_tier = 'ENTERPRISE'
-WHERE plan_tier IN ('FREE', 'TEAM', 'PREMIUM', 'FAMILY');
-```
+On self-hosted with modules loaded, paid features work with `plan_tier=FREE` (no SQL upgrade required). SaaS still uses catalog tiers / billing webhooks.
 
 Custom selective plans use `plan_custom_override` + `plan_feature_overrides` (migration `0031_workspace_plan_custom_override.sql`) instead of inventing a `CUSTOM` tier string.

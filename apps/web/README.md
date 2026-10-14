@@ -119,13 +119,9 @@ yarn dev:api
 yarn dev:web
 ```
 
-With `ENTERPRISE_MODULES=true` (self_hosted), new workspaces from registration still get `plan_tier=ENTERPRISE`. SaaS `POST /workspaces` always creates **FREE**. Upgrade existing local rows:
+New workspaces always get `plan_tier=FREE` (registration and SaaS `POST /workspaces`). On **self-hosted**, paid features unlock when enterprise modules are **requested and loadable** (sibling `okkey-enterprise`); `plan_tier` is not used for gating. Fail closed if the env flag is set but the sibling path is missing.
 
-```sql
-UPDATE workspaces SET plan_tier = 'ENTERPRISE' WHERE plan_tier IN ('FREE','TEAM','PREMIUM','FAMILY');
-```
-
-Start the API with `ENTERPRISE_MODULES=true`. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
+Start the API with `ENTERPRISE_MODULES=true` **and** sibling present. Put SaaS `OKKEY_DEPLOYMENT_MODE=saas` in **`okkey-enterprise/backend/.env`** (not Core examples); Core loads it when modules are on so `POST /workspaces` and other SaaS routes register. Without that enterprise file / value, the create-workspace UI may appear (Vite) but `POST /workspaces` returns **404**.
 
 Custom roles UI loads from `okkey-enterprise/web/workspace-roles/`.  
 Additional members UI: `okkey-enterprise/web/workspace-members/`.  
@@ -133,6 +129,6 @@ Shared vaults UI: `okkey-enterprise/web/workspace-shared-vaults/`.
 SaaS create UI and privacy-policy overlay: see `okkey-enterprise/web/.env.example` and `web/workspace-tenancy/`, `web/legal/`.  
 SaaS API deployment mode: see `okkey-enterprise/backend/.env.example`.
 
-Plan entitlements use `hasPlanFeature` over catalog tiers `FREE` | `PREMIUM` | `FAMILY` | `TEAM` | `ENTERPRISE` (plus optional `plan_custom_override`). Module presence alone does not unlock paid features on a FREE workspace; without modules, paid routes are absent (404).
+Plan entitlements: SaaS → `hasPlanFeature(plan_tier)`; self-hosted → modules active → ENTERPRISE matrix, else FREE. Without modules, paid routes are absent (404).
 
-SaaS changes `plan_tier` via subscription; self-hosted via license / specialist activation (see `docs/architecture/12_open_core_boundary.md`).
+SaaS changes `plan_tier` via subscription; self-hosted license token comes later (see `docs/architecture/12_open_core_boundary.md`).

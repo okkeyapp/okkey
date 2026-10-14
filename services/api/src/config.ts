@@ -29,8 +29,9 @@ export interface ApiConfig {
   /** Product deployment: self_hosted (default OSS) vs saas (multi-workspace via enterprise plugin). */
   deploymentMode: DeploymentMode;
   /**
-   * Plan assigned to newly created workspaces.
-   * ENTERPRISE when enterprise modules are enabled (dev convenience — not a payment flow).
+   * Plan assigned to newly created workspaces (catalog / billing display).
+   * Always FREE — self-hosted paid features gate on enterprise modules being loaded,
+   * not on this default or `workspace.plan_tier`.
    */
   defaultWorkspacePlanTier: PlanTier;
   port: number;
@@ -274,6 +275,11 @@ function resolveEnterpriseModulesPath(explicitPath: string | undefined): string 
   return path.resolve(servicesApiDir, "../../../../okkey-enterprise");
 }
 
+/** Fail-closed: sibling (or explicit) path must expose the API plugin entry. */
+export function isEnterpriseBackendLoadable(enterpriseModulesPath: string): boolean {
+  return existsSync(path.join(enterpriseModulesPath, "backend/api-plugin/index.ts"));
+}
+
 function parseDeploymentMode(value: string | undefined): DeploymentMode {
   const normalized = (value ?? "self_hosted").trim().toLowerCase();
   if (normalized === "saas") {
@@ -304,8 +310,11 @@ export function loadConfig(): ApiConfig {
 
   const nodeEnv = (process.env.NODE_ENV ?? "development") as NodeEnv;
   const deployEnv = resolveDeployEnv(nodeEnv, process.env.DEPLOY_ENV);
-  const enterpriseModulesEnabled = parseBoolean(process.env.ENTERPRISE_MODULES, false);
+  const enterpriseModulesRequested = parseBoolean(process.env.ENTERPRISE_MODULES, false);
   const enterpriseModulesPath = resolveEnterpriseModulesPath(process.env.ENTERPRISE_MODULES_PATH);
+  // Fail closed: env alone is not enough — sibling (or ENTERPRISE_MODULES_PATH) must be loadable.
+  const enterpriseModulesEnabled =
+    enterpriseModulesRequested && isEnterpriseBackendLoadable(enterpriseModulesPath);
 
   // SaaS deployment mode lives in okkey-enterprise/backend/.env (not public Core examples).
   if (enterpriseModulesEnabled) {
@@ -314,7 +323,7 @@ export function loadConfig(): ApiConfig {
   }
 
   const deploymentMode = parseDeploymentMode(process.env.OKKEY_DEPLOYMENT_MODE);
-  const defaultWorkspacePlanTier = enterpriseModulesEnabled ? "ENTERPRISE" : "FREE";
+  const defaultWorkspacePlanTier: PlanTier = "FREE";
   const allowedCryptoProfileVersions = parseProfileVersions(
     process.env.CRYPTO_ALLOWED_PROFILE_VERSIONS,
     getAllowedCryptoProfileVersionsByEnv(deployEnv),

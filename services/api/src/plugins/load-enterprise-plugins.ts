@@ -8,14 +8,34 @@ type EnterprisePluginModule = {
   createEnterprisePlugins?: () => ApiEnterprisePlugin[] | Promise<ApiEnterprisePlugin[]>;
 };
 
-export async function loadEnterprisePlugins(config: ApiConfig): Promise<ApiEnterprisePlugin[]> {
+export type LoadEnterprisePluginsResult = {
+  plugins: ApiEnterprisePlugin[];
+  /** True only when config requested modules and the plugin entry imported successfully. */
+  enterpriseModulesActive: boolean;
+};
+
+/**
+ * Load enterprise backend plugins.
+ * Fail closed: missing/unloadable sibling → no plugins and modules inactive
+ * (even if ENTERPRISE_MODULES=true or DB plan_tier=ENTERPRISE).
+ */
+export async function loadEnterprisePlugins(
+  config: ApiConfig,
+): Promise<LoadEnterprisePluginsResult> {
   if (!config.enterpriseModulesEnabled) {
-    return [];
+    return { plugins: [], enterpriseModulesActive: false };
   }
 
   const entryPath = path.join(config.enterpriseModulesPath, "backend/api-plugin/index.ts");
-  const moduleUrl = pathToFileURL(entryPath).href;
-  const loaded = (await import(moduleUrl)) as EnterprisePluginModule;
-  const plugins = await loaded.createEnterprisePlugins?.();
-  return plugins ?? [];
+  try {
+    const moduleUrl = pathToFileURL(entryPath).href;
+    const loaded = (await import(moduleUrl)) as EnterprisePluginModule;
+    const plugins = await loaded.createEnterprisePlugins?.();
+    return {
+      plugins: plugins ?? [],
+      enterpriseModulesActive: true,
+    };
+  } catch {
+    return { plugins: [], enterpriseModulesActive: false };
+  }
 }

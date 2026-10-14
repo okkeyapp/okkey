@@ -45,9 +45,21 @@ export type PlanQuotaLimits = {
   maxAttachmentStorageMb: number | null;
 };
 
+/** Product deployment mode (API `OKKEY_DEPLOYMENT_MODE` / web `VITE_DEPLOYMENT_MODE`). */
+export type DeploymentMode = "self_hosted" | "saas";
+
 export type PlanEntitlementOptions = {
   customOverride?: boolean | null;
   featureOverrides?: PlanFeatureOverrides | null;
+  /**
+   * Self-hosted: entitlements ignore `workspace.plan_tier` and use
+   * {@link PlanEntitlementOptions.enterpriseModulesActive} instead
+   * (`true` → ENTERPRISE matrix, `false`/omitted → FREE).
+   * SaaS / omitted mode: catalog `plan_tier` as today.
+   */
+  deploymentMode?: DeploymentMode | null;
+  /** True only when enterprise modules were requested and successfully loaded. */
+  enterpriseModulesActive?: boolean | null;
 };
 
 export const PLAN_TIERS: readonly PlanTier[] = [
@@ -200,15 +212,30 @@ export function sanitizePlanFeatureOverrides(
 }
 
 /**
+ * Effective catalog tier used for feature / quota checks.
+ * Self-hosted never reads `plan_tier` for gating — only modules active vs FREE.
+ */
+export function resolveEntitlementPlanTier(
+  workspacePlanTier: string | null | undefined,
+  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
+): PlanTier {
+  if (options?.deploymentMode === "self_hosted") {
+    return options.enterpriseModulesActive ? "ENTERPRISE" : "FREE";
+  }
+  return normalizePlanTier(workspacePlanTier);
+}
+
+/**
  * Resolve whether a plan grants a feature.
  * When custom override is enabled, explicit featureOverrides win over the catalog matrix.
+ * On self-hosted, the catalog base comes from {@link resolveEntitlementPlanTier} (not DB tier).
  */
 export function hasPlanFeature(
   planTier: string | null | undefined,
   feature: PlanFeature,
   options?: PlanEntitlementOptions,
 ): boolean {
-  const base = PLAN_FEATURE_MATRIX[normalizePlanTier(planTier)][feature];
+  const base = PLAN_FEATURE_MATRIX[resolveEntitlementPlanTier(planTier, options)][feature];
   if (!options?.customOverride) {
     return base;
   }
@@ -221,8 +248,9 @@ export function hasPlanFeature(
 
 export function getPlanQuotaLimits(
   planTier: string | null | undefined,
+  options?: Pick<PlanEntitlementOptions, "deploymentMode" | "enterpriseModulesActive">,
 ): PlanQuotaLimits {
-  return PLAN_QUOTA_LIMITS[normalizePlanTier(planTier)];
+  return PLAN_QUOTA_LIMITS[resolveEntitlementPlanTier(planTier, options)];
 }
 
 /** All feature flags for a tier (after optional custom overrides). */

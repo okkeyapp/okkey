@@ -67,6 +67,13 @@ interface ImportMetaEnv {
   readonly VITE_SHOW_DEV_LINKS?: string;
   /** Load enterprise web modules from okkey-enterprise (default: false). */
   readonly VITE_ENTERPRISE_MODULES?: string;
+  /**
+   * Effective modules flag after Vite fail-closed sibling resolve.
+   * Prefer this over `VITE_ENTERPRISE_MODULES` for entitlements.
+   */
+  readonly VITE_ENTERPRISE_MODULES_ACTIVE?: string;
+  /** self_hosted (default) | saas — usually from okkey-enterprise/web/.env overlay. */
+  readonly VITE_DEPLOYMENT_MODE?: string;
   /** GitHub repo slug for domain capabilities catalog (default: okkeyapp/domain-capabilities). */
   readonly VITE_DOMAIN_CAPABILITIES_REPO?: string;
   readonly VITE_DOMAIN_CAPABILITIES_BRANCH?: string;

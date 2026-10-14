@@ -4,6 +4,10 @@ import { afterEach, beforeEach, vi } from "vitest";
 
 import { LOCALE_STORAGE_KEY } from "../locale/localeStorage";
 
+// Default web unit tests exercise SaaS `plan_tier` gating unless a case stubs otherwise.
+vi.stubEnv("VITE_DEPLOYMENT_MODE", "saas");
+vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
+
 beforeEach(() => {
   try {
     localStorage.removeItem(LOCALE_STORAGE_KEY);
