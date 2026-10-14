@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
+import { applySqlMigrations } from "../src/storage/migrate.ts";
+import {
+  createIntegrationStorage,
+  skipIfIntegrationUnavailable,
+} from "./integration-env.ts";
 import {
   applyAllMigrationFiles,
   applyMigrations,
@@ -9,17 +13,23 @@ import {
   listMigrationSqlFiles,
 } from "./two-factor-test-helpers.ts";
 
-test("migration directory contains every numbered file through 0034", () => {
+test("migration directory lists every numbered SQL file in order", () => {
   const files = listMigrationSqlFiles();
-  assert.equal(files.length, 34);
+  assert.ok(files.length >= 34);
   assert.equal(files[0], "0001_init.sql");
-  assert.equal(files.at(-1), "0034_backup_codes_exported_at.sql");
   assert.ok(files.includes("0011_workspace_role_permissions_matrix.sql"));
   assert.ok(files.includes("0032_device_blocked.sql"));
   assert.ok(files.includes("0033_account_recovery.sql"));
+  assert.ok(files.includes("0034_backup_codes_exported_at.sql"));
+  const sorted = [...files].sort((left, right) => left.localeCompare(right));
+  assert.deepEqual(files, sorted);
 });
 
-test("all migrations apply on an empty database", async () => {
+test("all migrations apply on an empty database", async (t) => {
+  if (await skipIfIntegrationUnavailable(t)) {
+    return;
+  }
+  const expected = listMigrationSqlFiles();
   const schema = `mig_empty_${Date.now().toString(36)}`;
   const { Client } = (await import("pg")) as {
     Client: new (opts: { connectionString: string }) => {
@@ -34,7 +44,7 @@ test("all migrations apply on an empty database", async () => {
     await client.query(`CREATE SCHEMA ${schema}`);
     await client.query(`SET search_path TO ${schema}`);
     const applied = await applyAllMigrationFiles((sql) => client.query(sql));
-    assert.equal(applied.length, 34);
+    assert.equal(applied.length, expected.length);
 
     const blockedUntil = await client.query(
       `
@@ -88,7 +98,10 @@ test("all migrations apply on an empty database", async () => {
 });
 
 test("applyMigrations on the shared test database includes latest columns", async (t) => {
-  const storage = await createStorageLayer(loadConfig(), createLoggerStub());
+  const storage = await createIntegrationStorage(t);
+  if (!storage) {
+    return;
+  }
   t.after(async () => {
     await storage.close();
   });
@@ -129,4 +142,10 @@ test("applyMigrations on the shared test database includes latest columns", asyn
     "SELECT filename FROM schema_migrations ORDER BY filename",
   );
   assert.equal(ledger.length, listMigrationSqlFiles().length);
+
+  const idle = await applySqlMigrations(storage.postgres, {
+    logger: createLoggerStub(),
+  });
+  assert.equal(idle.applied.length, 0);
+  assert.equal(idle.skipped.length, listMigrationSqlFiles().length);
 });

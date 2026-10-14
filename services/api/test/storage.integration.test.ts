@@ -5,7 +5,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { initEntityIdGenerator } from "../src/entity-id.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { applyMigrations } from "./two-factor-test-helpers.ts";
 import { loadConfig } from "../src/config.ts";
 import {
@@ -17,14 +16,11 @@ import {
 } from "../src/storage/repositories.ts";
 import { PostgresDatabase } from "../src/storage/postgres.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../src/storage/errors.ts";
+import {
+  createIntegrationStorage,
+  skipIfIntegrationUnavailable,
+} from "./integration-env.ts";
 
-function createLoggerStub() {
-  return {
-    info(_message: string, _extra?: Record<string, unknown>) {},
-    warn(_message: string, _extra?: Record<string, unknown>) {},
-    error(_message: string, _extra?: Record<string, unknown>) {},
-  };
-}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationPath = path.resolve(__dirname, "../migrations/0001_init.sql");
@@ -59,8 +55,15 @@ async function ensureCoreSchema(db: PostgresDatabase): Promise<void> {
 
 
 test("integration: createStorageLayer ping succeeds with postgres and redis", async (t) => {
+
+  if (await skipIfIntegrationUnavailable(t)) {
+    return;
+  }
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   t.after(async () => {
     await storage.close();
   });
@@ -69,6 +72,10 @@ test("integration: createStorageLayer ping succeeds with postgres and redis", as
 });
 
 test("integration: EventsRepository.append persists event and detects version conflict", async (t) => {
+
+  if (await skipIfIntegrationUnavailable(t)) {
+    return;
+  }
   const config = loadConfig();
   const db = await PostgresDatabase.connect(config.databaseUrl);
   let userId: string | null = null;
@@ -169,6 +176,10 @@ test("integration: EventsRepository.append persists event and detects version co
 });
 
 test("integration: DevicesRepository deduplicates and updates trusted metadata", async (t) => {
+
+  if (await skipIfIntegrationUnavailable(t)) {
+    return;
+  }
   const config = loadConfig();
   const db = await PostgresDatabase.connect(config.databaseUrl);
   let userId: string | null = null;
@@ -215,7 +226,8 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
     now: "2026-01-01T00:00:00.000Z",
   });
 
-  assert.equal(first.status, "pending");
+  // First device for a user is auto-trusted when no other trusted device exists.
+  assert.equal(first.status, "trusted");
 
   const second = await devices.registerOrUpdate({
     userId: user.id,
@@ -234,7 +246,7 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
   });
 
   assert.equal(second.id, first.id);
-  assert.equal(second.status, "pending");
+  assert.equal(second.status, "trusted");
 
   const countRows = await db.query<{ count: string }>(
     "SELECT COUNT(*)::text AS count FROM devices WHERE user_id = $1",
@@ -271,6 +283,10 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
 });
 
 test("integration: DevicesRepository approval transitions are consistent", async (t) => {
+
+  if (await skipIfIntegrationUnavailable(t)) {
+    return;
+  }
   const config = loadConfig();
   const db = await PostgresDatabase.connect(config.databaseUrl);
   let userId: string | null = null;

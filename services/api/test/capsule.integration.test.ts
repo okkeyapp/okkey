@@ -3,11 +3,10 @@ import { testEntityId } from "./test-entity-id.ts";
 import test from "node:test";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -22,7 +21,10 @@ function mkBlob(input: string) {
 
 test("integration: capsule create/open with password and view limit", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-owner-${testEntityId()}@okkey.local`;
@@ -103,7 +105,10 @@ test("integration: capsule create/open with password and view limit", async (t) 
 
 test("integration: file capsule persists encrypted blob in object storage", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-file-${testEntityId()}@okkey.local`;
@@ -143,7 +148,10 @@ test("integration: file capsule persists encrypted blob in object storage", asyn
 
 test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-expired-${testEntityId()}@okkey.local`;
@@ -192,7 +200,10 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
 
 test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-revoked-${testEntityId()}@okkey.local`;
@@ -240,7 +251,10 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
     capsuleOpenRateLimitPerIp: 1,
     capsuleRateLimitWindowSeconds: 60,
   };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-rl-${testEntityId()}@okkey.local`;
@@ -286,7 +300,10 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
 
 test("integration: file capsule open tolerates missing object storage blob", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-missing-blob-${testEntityId()}@okkey.local`;
@@ -335,7 +352,10 @@ test("integration: file capsule open tolerates missing object storage blob", asy
 
 test("integration: capsule create works on FREE without access settings", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-free-${testEntityId()}@okkey.local`;
@@ -384,7 +404,10 @@ test("integration: capsule create works on FREE without access settings", async 
 
 test("integration: update resets view count; activate clears past schedule and views", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-edit-${testEntityId()}@okkey.local`;
@@ -469,7 +492,10 @@ test("integration: update resets view count; activate clears past schedule and v
 
 test("integration: deactivate then activate restores public access after view limit", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const email = `capsule-reactivate-${testEntityId()}@okkey.local`;

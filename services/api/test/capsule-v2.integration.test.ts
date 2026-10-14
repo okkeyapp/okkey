@@ -3,14 +3,13 @@ import test from "node:test";
 
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 import { testEntityId } from "./test-entity-id.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 
 function blob(value: string) {
   return {
@@ -23,7 +22,10 @@ function blob(value: string) {
 
 test("capsules v2: owner pagination, isolation, approval and reactivation", async (t) => {
   const config = { ...loadConfig(), deploymentMode: "saas" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const ownerEmail = `capsule-v2-owner-${testEntityId()}@okkey.local`;
   const requesterEmail = `capsule-v2-requester-${testEntityId()}@okkey.local`;

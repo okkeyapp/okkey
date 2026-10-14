@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { generateEntityId, initEntityIdGenerator } from "../src/entity-id.ts";
 import { loadConfig } from "../src/config.ts";
 import { PostgresDatabase } from "../src/storage/postgres.ts";
+import { skipIfIntegrationUnavailable } from "./integration-env.ts";
 import {
   PostgresPreprodMigrationAdapter,
   runPreprodMigration,
@@ -48,6 +49,10 @@ async function ensurePreprodMigrationSchema(db: PostgresDatabase): Promise<void>
 }
 
 test("integration: PostgresPreprodMigrationAdapter migrates legacy rows and is idempotent", async (t) => {
+
+  if (await skipIfIntegrationUnavailable(t)) {
+    return;
+  }
   const config = loadConfig();
   const db = await PostgresDatabase.connect(config.databaseUrl);
 

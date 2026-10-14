@@ -9,17 +9,10 @@ import { loadConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationError, RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { ENTITY_ID_RE } from "../../../packages/types/dist/index.js";
 import { applyMigrations } from "./two-factor-test-helpers.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 
-function createLoggerStub() {
-  return {
-    info(_message: string, _extra?: Record<string, unknown>) {},
-    warn(_message: string, _extra?: Record<string, unknown>) {},
-    error(_message: string, _extra?: Record<string, unknown>) {},
-  };
-}
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,7 +30,10 @@ function mkEncryptedPrivateKeyBlob(byte: number) {
 
 test("integration: registration completes user, workspace, vault, trusted device", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `reg-${suffix}@okkey.local`;
@@ -173,7 +169,10 @@ test("integration: registration completes user, workspace, vault, trusted device
 
 test("integration: parallel completeRegistration creates single user", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `reg-parallel-${suffix}@okkey.local`;
@@ -292,7 +291,10 @@ test("integration: parallel completeRegistration creates single user", async (t)
 
 test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const emailTemplates = new EmailTemplateService({ send: async () => {} }, {
@@ -364,7 +366,10 @@ test("integration: missing auth state returns AUTH_CHALLENGE_EXPIRED", async (t)
 test("integration: strict rollout rejects registration without PQ-capable device", async (t) => {
   const baseConfig = loadConfig();
   const config = { ...baseConfig, cryptoRolloutMode: "strict" as const };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

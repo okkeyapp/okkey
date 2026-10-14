@@ -145,23 +145,22 @@ vi.mock("../components/settings/SettingsPopup", () => ({
   }) => children({ openSettingsPopup: () => {} }),
 }));
 
-vi.mock("@okkey/ui", () => ({
-  cn: (...classes: Array<string | undefined | false | null>) => classes.filter(Boolean).join(" "),
-  DropdownMenuItem: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-  keyFieldTypeOptions: [
-    { id: "text", label: "Text", group: "general" },
-    { id: "secret", label: "Secret", group: "secret" },
-    { id: "file", label: "File", group: "file" },
-  ],
-  okkeyWorkspaceShellNavItems: () => [],
-  PersonalWorkspaceMark: () => <span data-testid="personal-workspace-mark" />,
-  Spinner: () => <span>Loading</span>,
-  workspaceSwitcherActiveItemClassName: "active",
-}));
+vi.mock("@okkey/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@okkey/ui")>();
+  return {
+    ...actual,
+    // Lightweight stubs for layout interactions under test; keep real exports
+    // (e.g. mutedSurface* class names) that @okkey/vault-ui pulls in transitively.
+    DropdownMenuItem: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    ),
+    okkeyWorkspaceShellNavItems: () => [],
+    Spinner: () => <span>Loading</span>,
+    workspaceSwitcherActiveItemClassName: "active",
+  };
+});
 
 vi.mock("../components/workspace/WorkspaceSidebarLayout", () => ({
   default: ({ children }: { children: ReactNode }) => <main data-testid="workspace-layout">{children}</main>,

@@ -3,12 +3,11 @@ import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import { decodeEncryptedBlobFromStorage } from "../src/crypto/encrypted-blob.ts";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { VaultSharingService, VaultSharingServiceError } from "../src/vault-sharing/service.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -34,7 +33,10 @@ function mkHybridWrapBlob(input: string, cryptoVersion = 2) {
 
 test("integration: share + revoke vault access with key rotation", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -119,7 +121,10 @@ test("integration: share + revoke vault access with key rotation", async (t) => 
 
 test("integration: sharing rejects crypto profile blocked by policy", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -180,7 +185,10 @@ test("integration: sharing rejects crypto profile blocked by policy", async (t) 
 
 test("integration: sharing rejects crypto downgrade below vault event stream max", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -255,7 +263,10 @@ test("integration: sharing rejects crypto downgrade below vault event stream max
 
 test("integration: prod sharing requires recipient PQ key", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -320,7 +331,10 @@ test("integration: prod sharing requires recipient PQ key", async (t) => {
 
 test("integration: strict rollout blocks share for recipient without PQ key", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -386,7 +400,10 @@ test("integration: strict rollout blocks share for recipient without PQ key", as
 
 test("integration: compat rollout allows share for recipient without PQ key", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -446,7 +463,10 @@ test("integration: compat rollout allows share for recipient without PQ key", as
 
 test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -510,7 +530,10 @@ test("integration: prod sharing requires hybrid key_wrap_scheme metadata", async
 
 test("integration: prod sharing overwrites client-spoofed recipient_user_id in wrap meta", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -581,7 +604,10 @@ test("integration: prod sharing overwrites client-spoofed recipient_user_id in w
 
 test("integration: sharing rejects corrupted envelope payload", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -649,7 +675,10 @@ test("integration: sharing rejects corrupted envelope payload", async (t) => {
 
 test("integration: rotateVaultKey (standalone manual rotation)", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -730,7 +759,10 @@ test("integration: rotateVaultKey (standalone manual rotation)", async (t) => {
 
 test("integration: rotateVaultKey rejects missing recipient in rotatedVaultKeys", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -796,7 +828,10 @@ test("integration: rotateVaultKey rejects missing recipient in rotatedVaultKeys"
 
 test("integration: rotateVaultKey rejects unknown recipient in rotatedVaultKeys", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -846,7 +881,10 @@ test("integration: rotateVaultKey rejects unknown recipient in rotatedVaultKeys"
 
 test("integration: updateVaultMemberRole changes role and rotates keys", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -933,7 +971,10 @@ test("integration: updateVaultMemberRole changes role and rotates keys", async (
 
 test("integration: updateVaultMemberRole rejects non-member", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -984,7 +1025,10 @@ test("integration: updateVaultMemberRole rejects non-member", async (t) => {
 
 test("security: revoked user cannot read vault key after subsequent rotateVaultKey", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1068,7 +1112,10 @@ test("security: revoked user cannot read vault key after subsequent rotateVaultK
 
 test("security: rotateVaultKey does not leave stale wrapped keys in vault_keys", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1147,7 +1194,10 @@ test("security: rotateVaultKey does not leave stale wrapped keys in vault_keys",
 
 test("concurrency: parallel rotateVaultKey calls with same baseVersion → second gets VERSION_MISMATCH", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1212,7 +1262,10 @@ test("concurrency: parallel rotateVaultKey calls with same baseVersion → secon
 
 test("integration: rotateVaultKey idempotent retry is no-op and keeps event log stable", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1288,7 +1341,10 @@ test("integration: rotateVaultKey idempotent retry is no-op and keeps event log 
 
 test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1375,7 +1431,10 @@ test("integration: rotateVaultKey rejects conflicting reuse of idempotencyKey", 
 
 test("integration: revokeVaultAccess idempotent retry is no-op and keeps event log stable", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1458,7 +1517,10 @@ test("integration: revokeVaultAccess idempotent retry is no-op and keeps event l
 
 test("integration: updateVaultMemberRole rejects conflicting reuse of idempotencyKey", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1557,7 +1619,10 @@ test("integration: updateVaultMemberRole rejects conflicting reuse of idempotenc
 
 test("integration: failed rotation validation leaves keys and events unchanged", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1630,7 +1695,10 @@ test("integration: failed rotation validation leaves keys and events unchanged",
 
 test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1681,7 +1749,10 @@ test("integration: prod rotateVaultKey rejects wrap without hybrid scheme", asyn
 
 test("integration: prod rotateVaultKey rejects wrap without recipient PQ key", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -1735,7 +1806,10 @@ test("integration: prod rotateVaultKey rejects wrap without recipient PQ key", a
 
 test("integration: prod updateVaultMemberRole rejects wrap without hybrid scheme", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

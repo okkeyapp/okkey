@@ -10,7 +10,7 @@ import { loadConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   buildRegistrationCryptoArtifacts,
   registrationArtifactsToWire,
@@ -28,7 +28,6 @@ import {
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
 } from "./two-factor-test-helpers.ts";
 
 const cryptoDist = join(dirname(fileURLToPath(import.meta.url)), "../../../packages/crypto/dist");
@@ -82,7 +81,10 @@ test("unit: ML-KEM-768 keypair generator returns fixed lengths", async () => {
 test("integration: registration + first unlock decrypts stored hybrid identity bundle", async (t) => {
   ensureWasmSync();
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

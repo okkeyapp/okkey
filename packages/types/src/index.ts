@@ -1541,6 +1541,37 @@ export interface AccountMasterPasswordChangeResponseDto {
   master_password_changed_at: string;
 }
 
+/** Signed proof for `POST /account/vault-unlock` (identity Ed25519). */
+export interface VaultUnlockAttestationDto {
+  purpose: "account.vault_unlock";
+  user_id: string;
+  recorded_at: string;
+  signature: string;
+}
+
+/** `POST /account/vault-unlock` with a signed attestation. */
+export interface VaultUnlockRecordRequestDto {
+  attestation: VaultUnlockAttestationDto;
+}
+
+/** `POST /account/vault-unlock` failure report (no secrets). */
+export interface VaultUnlockFailureRequestDto {
+  failure: true;
+}
+
+/** `POST /account/vault-unlock` success / failure-ack body. */
+export interface VaultUnlockRecordResponseDto {
+  recorded: boolean;
+  locked?: boolean;
+  remaining_ms?: number;
+}
+
+/** `GET /account/vault-unlock/status` body. */
+export interface VaultUnlockAttemptStatusDto {
+  locked: boolean;
+  remaining_ms: number;
+}
+
 /** `POST /account/email-change/start` and `/resend` success body. */
 export interface AccountEmailChangeStartResponseDto {
   challengeId: string;

@@ -9,9 +9,11 @@ The worker reuses `services/api` code (same Node package / Docker image family):
 ```bash
 # from repo root
 yarn dev:worker
-# equivalent:
+# equivalent (after package dists exist):
 node --experimental-strip-types services/api/src/worker.ts
 ```
+
+`yarn dev:worker` runs `scripts/ensure-api-dev-deps.mjs` first (same as `yarn dev:api`): builds WASM when missing, then `build:ts-sdk` and `build:email`, so `@okkey/email-templates/dist` is present before the process starts.
 
 Docker image `ghcr.io/okkeyapp/worker` runs the same entrypoint.
 

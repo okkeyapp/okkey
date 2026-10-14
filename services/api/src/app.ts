@@ -126,7 +126,14 @@ import {
 } from "./routes/workspace-me-vault-profiles.ts";
 import type { WorkspaceMembersService } from "./workspace-members/service.ts";
 import { createVaultUnlockBootstrapRoute } from "./routes/vault-unlock-bootstrap.ts";
-import { createAccountVaultUnlockRoute } from "./routes/account-vault-unlock.ts";
+import {
+  createAccountVaultUnlockRoute,
+  createAccountVaultUnlockStatusRoute,
+} from "./routes/account-vault-unlock.ts";
+import {
+  createVaultUnlockAttemptStore,
+  type VaultUnlockAttemptRedis,
+} from "./account/vault-unlock-attempts.ts";
 import { createAccountMasterPasswordChangeRoute } from "./routes/account-master-password-change.ts";
 import { createAccountProfileRoute } from "./routes/account-profile.ts";
 import {
@@ -183,7 +190,10 @@ export interface AppDeps {
   vaultService?: VaultService;
   vaultUnlockBootstrapService?: VaultUnlockBootstrapService;
   /** When set with `sessionService`, exposes account profile routes (Bearer). */
-  usersRepository?: Pick<UsersRepository, "loadAccountProfile" | "updateAccountProfile">;
+  usersRepository?: Pick<
+    UsersRepository,
+    "loadAccountProfile" | "updateAccountProfile" | "recordVaultUnlock" | "findById"
+  >;
   emailChangeService?: EmailChangeService;
   vaultSharingService?: VaultSharingService;
   syncService?: SyncService;
@@ -382,11 +392,30 @@ export function createApiApp(
       "/account/profile",
       createAccountProfileRoute(deps.usersRepository, resolveUserId),
     );
-    app.route(
-      "POST",
-      "/account/vault-unlock",
-      createAccountVaultUnlockRoute(deps.usersRepository, resolveUserId),
-    );
+    {
+      const unlockAttemptRedis =
+        options.redis &&
+        typeof (options.redis as VaultUnlockAttemptRedis).get === "function" &&
+        typeof (options.redis as VaultUnlockAttemptRedis).setWithTtl === "function" &&
+        typeof (options.redis as VaultUnlockAttemptRedis).del === "function"
+          ? (options.redis as VaultUnlockAttemptRedis)
+          : undefined;
+      const unlockAttemptStore = createVaultUnlockAttemptStore(unlockAttemptRedis);
+      app.route(
+        "GET",
+        "/account/vault-unlock/status",
+        createAccountVaultUnlockStatusRoute(resolveUserId, {
+          attemptStore: unlockAttemptStore,
+        }),
+      );
+      app.route(
+        "POST",
+        "/account/vault-unlock",
+        createAccountVaultUnlockRoute(deps.usersRepository, resolveUserId, {
+          attemptStore: unlockAttemptStore,
+        }),
+      );
+    }
     app.route(
       "POST",
       "/account/master-password/change",

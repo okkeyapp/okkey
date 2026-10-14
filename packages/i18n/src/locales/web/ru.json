@@ -1541,6 +1541,7 @@
   "unlock.biometricFailed": "Биометрия не сработала. Используйте другой способ разблокировки",
   "unlock.pinIncorrect": "Неверный PIN-код",
   "unlock.pinLocked": "Слишком много попыток. Попробуйте позже или введите мастер-пароль.",
+  "unlock.masterPasswordLocked": "Слишком много попыток. Попробуйте позже.",
   "unlock.errorTitle": "Ошибка",
   "unlock.errorIncorrectPassword": "Неверный мастер-пароль",
   "unlock.syncingVault": "Загружаем данные хранилища с сервера",

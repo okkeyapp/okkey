@@ -15,6 +15,7 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  buildVaultUnlockAttestation,
   decryptUserIdentityFromEncryptedBlob,
   reconstructVaultKeyWithMasterPassword,
   rebalanceServerShareForNewPassword,
@@ -165,6 +166,8 @@ function createAuthVaultContext(): Context<AuthVaultContextValue | null> {
 const AuthVaultContext = createAuthVaultContext();
 
 if (import.meta.hot) {
+  // Vitest may expose `import.meta.hot` without initializing `.data`.
+  import.meta.hot.data ??= {};
   import.meta.hot.data.authVaultContext = AuthVaultContext;
   (globalThis as AuthVaultContextGlobal)[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = AuthVaultContext;
 }
@@ -742,9 +745,15 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
       wipeBytes(deviceB);
       wipeBytes(salt);
       const token = accessToken;
-      if (token) {
-        void createAuthenticatedCoreClient(token)
-          .recordVaultUnlock()
+      if (token && userId) {
+        void buildVaultUnlockAttestation({
+          userId,
+          vaultKey,
+          encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        })
+          .then((attestation) =>
+            createAuthenticatedCoreClient(token).recordVaultUnlock(attestation),
+          )
           .catch(() => {
             /* best-effort: unlock UI must not fail if telemetry POST fails */
           });
@@ -775,9 +784,16 @@ export function AuthVaultProvider({ children }: { children: ReactNode }) {
         persistVaultUnlockSession(userId, nextVaultKey, nextShareC);
       }
       const token = accessToken;
-      if (token) {
-        void createAuthenticatedCoreClient(token)
-          .recordVaultUnlock()
+      const bundle = userId ? readVaultBundle(userId) : null;
+      if (token && userId && bundle?.encrypted_private_key?.payload) {
+        void buildVaultUnlockAttestation({
+          userId,
+          vaultKey: nextVaultKey,
+          encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+        })
+          .then((attestation) =>
+            createAuthenticatedCoreClient(token).recordVaultUnlock(attestation),
+          )
           .catch(() => {
             /* best-effort */
           });
