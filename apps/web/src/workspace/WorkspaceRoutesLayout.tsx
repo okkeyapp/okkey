@@ -1,7 +1,6 @@
 import { ApiRequestError } from "@okkey/api";
 import type { Vault, Workspace, WorkspacePermissionsMatrixDto } from "@okkey/types";
 import {
-  hasPlanFeature,
   normalizeWorkspacePermissionsMatrix,
   permissionAllowsPost,
 } from "@okkey/types";
@@ -12,6 +11,7 @@ import {
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
 } from "@okkey/types";
+import { workspaceHasPlanFeature } from "./planEntitlements";
 import {
   cn,
   DropdownMenuItem,
@@ -990,7 +990,7 @@ function WorkspaceShellWithItems({
   const { itemFolderByItemId, itemFavoriteByItemId } = useWorkspaceFolders();
   const { isContentBlocked, requestAccess } = useSectionReauth();
   const canShowVaultHeaderPlus = useMemo(() => {
-    if (!hasPlanFeature(currentWorkspace?.planTier, "sharedVaults")) {
+    if (!workspaceHasPlanFeature(currentWorkspace, "sharedVaults")) {
       return false;
     }
     if (!enterpriseSharedVaultsModule.SharedVaultCardPopup) {
@@ -998,7 +998,7 @@ function WorkspaceShellWithItems({
     }
     const vaultPermissions = settingsSectionPermissionCell(workspacePermissions, "vaults");
     return permissionAllowsPost(vaultPermissions?.post ?? 0);
-  }, [currentWorkspace?.planTier, workspacePermissions]);
+  }, [currentWorkspace, workspacePermissions]);
   const workspaceItemsState = useWorkspaceItemsState({
     userId,
     workspaceId: resolvedWorkspaceId,

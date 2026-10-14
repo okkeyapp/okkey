@@ -2,8 +2,6 @@ import { encryptCapsulePayload } from "@okkey/crypto";
 import type { WebMessageValues } from "@okkey/i18n";
 import type { Locale } from "date-fns";
 import {
-  hasPlanFeature,
-  planEntitlementOptionsFromWorkspace,
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
   type CapsuleAccessDefaultsDto,
@@ -15,6 +13,7 @@ import {
   type WorkspaceCapsulePolicies,
   type WorkspaceMemberDirectoryEntryDto,
 } from "@okkey/types";
+import { workspaceHasPlanFeature } from "../../workspace/planEntitlements";
 import {
   Button,
   Calendar,
@@ -196,14 +195,7 @@ export default function NewCapsulePopup({
   const sourceItemId = open
     ? (searchParams.get(CAPSULE_FROM_ITEM_QUERY_PARAM)?.trim() ?? "")
     : "";
-  const advancedAvailable = hasPlanFeature(
-    workspace?.planTier,
-    "capsuleAccessSettings",
-    planEntitlementOptionsFromWorkspace({
-      planCustomOverride: workspace?.planCustomOverride,
-      planFeatureOverrides: workspace?.planFeatureOverrides,
-    }),
-  );
+  const advancedAvailable = workspaceHasPlanFeature(workspace, "capsuleAccessSettings");
   const capsulePolicies: WorkspaceCapsulePolicies =
     workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
   const capsulesAllowedForMember = isCapsuleAllowedForMember(capsulePolicies, userId);

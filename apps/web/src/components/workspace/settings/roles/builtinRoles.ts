@@ -1,9 +1,10 @@
 import {
-  hasPlanFeature,
   type WorkspaceBuiltInRoleId,
   type WorkspaceBuiltInRoleDto,
   type WorkspaceRoleSummary,
 } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 
 export type BuiltInRoleDefinition = {
   builtinId: WorkspaceBuiltInRoleId;
@@ -44,9 +45,9 @@ export function buildBuiltInRoleSummaries(
   }));
 }
 
-/** Custom roles require the ENTERPRISE plan feature (module presence is checked separately). */
+/** Custom roles: SaaS `plan_tier` / self-host enterprise modules (checked separately for UI module). */
 export function canManageCustomWorkspaceRoles(planTier: string | undefined): boolean {
-  return hasPlanFeature(planTier, "customWorkspaceRoles");
+  return workspaceHasPlanFeature({ planTier }, "customWorkspaceRoles");
 }
 
 export function extractBuiltInMemberCounts(

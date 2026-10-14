@@ -5,7 +5,9 @@ import type {
   WorkspaceProfileSummary,
   WorkspaceResourcePermissionDto,
 } from "@okkey/types";
-import { hasPlanFeature, permissionAllowsMutate } from "@okkey/types";
+import { permissionAllowsMutate } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 import type { WebMessageValues } from "@okkey/i18n";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -57,7 +59,7 @@ export default function WorkspaceSettingsVaultsSection({
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const canManageSharedPlan = hasPlanFeature(workspace?.planTier, "sharedVaults");
+  const canManageSharedPlan = workspaceHasPlanFeature(workspace, "sharedVaults");
   const SharedVaultsSection = enterpriseSharedVaultsModule.SharedVaultsSection;
   const PersonalVaultCardPopup = enterpriseSharedVaultsModule.PersonalVaultCardPopup;
   const showEnterpriseShared = Boolean(canManageSharedPlan && SharedVaultsSection);

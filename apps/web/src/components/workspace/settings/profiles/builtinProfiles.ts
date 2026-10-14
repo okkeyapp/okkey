@@ -1,9 +1,10 @@
 import {
-  hasPlanFeature,
   type WorkspaceBuiltInProfileId,
   type WorkspaceBuiltInProfileDto,
   type WorkspaceProfileSummary,
 } from "@okkey/types";
+
+import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
 
 export type BuiltInProfileDefinition = {
   builtinId: WorkspaceBuiltInProfileId;
@@ -35,9 +36,9 @@ export function buildBuiltInProfileSummaries(
   }));
 }
 
-/** Custom profiles require the ENTERPRISE plan feature (module presence is checked separately). */
+/** Custom profiles: SaaS `plan_tier` / self-host enterprise modules. */
 export function canManageCustomWorkspaceProfiles(planTier: string | undefined): boolean {
-  return hasPlanFeature(planTier, "customWorkspaceProfiles");
+  return workspaceHasPlanFeature({ planTier }, "customWorkspaceProfiles");
 }
 
 export function extractBuiltInApplicationCounts(

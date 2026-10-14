@@ -46,7 +46,7 @@ import { AccountRecoveryService } from "./account-recovery/service.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  let config = loadConfig();
   initEntityIdGenerator(config.snowflakeNodeId);
   const logger = createLogger();
   const storage = await createStorageLayer(config, logger);
@@ -158,7 +158,12 @@ async function main(): Promise<void> {
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
   });
-  const enterprisePlugins = await loadEnterprisePlugins(config);
+  const enterpriseLoad = await loadEnterprisePlugins(config);
+  if (config.enterpriseModulesEnabled && !enterpriseLoad.enterpriseModulesActive) {
+    logger.warn("enterprise modules requested but not loadable; continuing without them");
+    config = { ...config, enterpriseModulesEnabled: false };
+  }
+  const enterprisePlugins = enterpriseLoad.plugins;
   const vaultUnlockBootstrapService = new VaultUnlockBootstrapService({
     users: storage.repositories.users,
     devices: storage.repositories.devices,
@@ -202,6 +207,7 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
+    config,
   });
   const keyFieldFileStorageConfig = loadKeyFieldFileStorageConfigFromEnv();
   const keyFieldFileStorage = keyFieldFileStorageConfig
@@ -223,6 +229,7 @@ async function main(): Promise<void> {
         attachments: storage.repositories.attachments,
         vaults: storage.repositories.vaults,
         workspaces: storage.repositories.workspaces,
+        config,
       })
     : undefined;
   const itemTemplatesService = new ItemTemplatesService({

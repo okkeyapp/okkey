@@ -1,8 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import {
-  hasPlanFeature,
   isCapsuleAllowedForMember,
-  planEntitlementOptionsFromWorkspace,
   sanitizePlanFeatureOverrides,
   workspaceCapsulePoliciesFromDto,
   type CapsuleApprovalRequestDto,
@@ -20,6 +18,7 @@ import {
 } from "@okkey/types";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
+import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 import {
   CRYPTO_CAPABILITY_REQUIRED,
   CRYPTO_CAPABILITY_REQUIRED_STATUS_CODE,
@@ -97,6 +96,8 @@ export interface CapsuleServiceDeps {
     | "cryptoRolloutState"
     | "cryptoRolloutStopWritePaths"
     | "trustedProxyHops"
+    | "deploymentMode"
+    | "enterpriseModulesEnabled"
   >;
   users?: Pick<UsersRepository, "findById">;
   objectStorage: Pick<ObjectStorage, "putObject" | "getObject" | "deleteObject">;
@@ -312,7 +313,7 @@ export class CapsuleService {
     if (!workspace.canAccess) {
       throw new CapsuleServiceError("ACCESS_DENIED", 403, "access denied");
     }
-    if (!hasPlanFeature(workspace.planTier, "capsules", planEntitlementOptionsFromWorkspace(workspace))) {
+    if (!workspaceHasPlanFeature(this.config, workspace, "capsules")) {
       throw new CapsuleServiceError("FEATURE_NOT_AVAILABLE", 403, "capsules are unavailable");
     }
     if (!isCapsuleAllowedForMember(workspace.capsulePolicies, creatorId)) {
@@ -320,11 +321,7 @@ export class CapsuleService {
     }
     if (
       requestsCapsuleAccessSettings(input) &&
-      !hasPlanFeature(
-        workspace.planTier,
-        "capsuleAccessSettings",
-        planEntitlementOptionsFromWorkspace(workspace),
-      )
+      !workspaceHasPlanFeature(this.config, workspace, "capsuleAccessSettings")
     ) {
       throw new CapsuleServiceError(
         "FEATURE_NOT_AVAILABLE",
@@ -631,11 +628,7 @@ export class CapsuleService {
       }
       if (
         requestsCapsuleAccessSettings(input) &&
-        !hasPlanFeature(
-          workspace.planTier,
-          "capsuleAccessSettings",
-          planEntitlementOptionsFromWorkspace(workspace),
-        )
+        !workspaceHasPlanFeature(this.config, workspace, "capsuleAccessSettings")
       ) {
         throw new CapsuleServiceError(
           "FEATURE_NOT_AVAILABLE",

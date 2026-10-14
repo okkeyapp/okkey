@@ -18,6 +18,7 @@ import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-car
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
 
 export type {
+  DeploymentMode,
   PlanCatalogGroup,
   PlanCustomOverride,
   PlanEntitlementOptions,
@@ -44,6 +45,7 @@ export {
   planCatalogGroupForTier,
   planEntitlementOptionsFromWorkspace,
   planTiersForCatalogGroup,
+  resolveEntitlementPlanTier,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
 } from "./plan-features.js";
