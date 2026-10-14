@@ -85,6 +85,21 @@ CORS_ORIGIN
 
 `install.sh` generates strong `JWT_SECRET` / `SESSION_SECRET` / DB / MinIO passwords into `.env`.
 
+### Web runtime (`/config.js`)
+
+`OKKEY_API_PUBLIC_URL` is a **Compose / container env** for the `web` image. On start, the entrypoint writes browser config (not the env name) to `/config.js`:
+
+```js
+window.__OKKEY_RUNTIME__ = { apiBaseUrl: "<OKKEY_API_PUBLIC_URL value>" };
+```
+
+| Layer | Name | Where |
+|-------|------|--------|
+| Deploy env | `OKKEY_API_PUBLIC_URL` | `.env` / Compose → `web` container |
+| Browser runtime | `window.__OKKEY_RUNTIME__.apiBaseUrl` | `GET /config.js` |
+
+The SPA prefers `apiBaseUrl` from `__OKKEY_RUNTIME__` over build-time `VITE_API_BASE_URL`. Local Vite may ship an empty `apps/web/public/config.js` stub; Docker always regenerates it.
+
 ---
 
 ## Favicon preview

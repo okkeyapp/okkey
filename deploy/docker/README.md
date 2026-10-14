@@ -118,7 +118,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 | Service | Image | Role |
 |---------|-------|------|
-| `web` | `ghcr.io/okkeyapp/web` | SPA (nginx); `OKKEY_API_PUBLIC_URL` → `/config.js` |
+| `web` | `ghcr.io/okkeyapp/web` | SPA (nginx); env `OKKEY_API_PUBLIC_URL` → `/config.js` field `apiBaseUrl` |
 | `api` | `ghcr.io/okkeyapp/api` | HTTP API + SQL migrations on start; enqueues email to Redis |
 | `worker` | `ghcr.io/okkeyapp/worker` | Item purge, capsule cleanup, **email queue consumer** |
 | `postgres` | `postgres:16-alpine` | Metadata / events |
@@ -127,6 +127,25 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | `minio-init` | `amazon/aws-cli` | Creates the S3 bucket once at start |
 
 API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the worker owns periodic jobs and outbound mail. See [`services/worker/README.md`](../../services/worker/README.md).
+
+## Runtime config (`/config.js`)
+
+The `web` container entrypoint reads **`OKKEY_API_PUBLIC_URL`** (fallback: `VITE_API_BASE_URL`, then `http://localhost:4000`) and overwrites `/config.js` with:
+
+```js
+window.__OKKEY_RUNTIME__ = { apiBaseUrl: "http://localhost:4000" };
+```
+
+- **Env (Compose / `.env`):** `OKKEY_API_PUBLIC_URL` — browser-facing API origin.
+- **Browser contract:** `window.__OKKEY_RUNTIME__.apiBaseUrl` — the SPA reads this at runtime (not the env var name).
+
+Smoke check after install:
+
+```bash
+curl -fsS http://localhost:8080/config.js
+# expect: window.__OKKEY_RUNTIME__ = { apiBaseUrl: "…" };
+# do not expect the literal string OKKEY_API_PUBLIC_URL in the file
+```
 
 ## Email
 

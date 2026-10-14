@@ -2,6 +2,15 @@
 
 SPA on **Vite + React + TypeScript**. Core HTTP API runs separately (`yarn dev:api` from the monorepo root).
 
+## API base URL (runtime)
+
+| Mode | Source |
+|------|--------|
+| Docker / self-host | `GET /config.js` → `window.__OKKEY_RUNTIME__.apiBaseUrl` (written from env **`OKKEY_API_PUBLIC_URL`**) |
+| Local Vite | `VITE_API_BASE_URL` (default `http://localhost:4000`); `public/config.js` is an empty stub |
+
+`getApiBaseUrl()` prefers `__OKKEY_RUNTIME__.apiBaseUrl` over the Vite env. The env name `OKKEY_API_PUBLIC_URL` does **not** appear in `/config.js` — only the `apiBaseUrl` property does. See [`deploy/docker/README.md`](../../deploy/docker/README.md#runtime-config-configjs).
+
 ## Requirements
 
 - Node.js and Yarn as in the [root `package.json`](../package.json) `engines` field.
