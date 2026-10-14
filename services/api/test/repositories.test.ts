@@ -153,6 +153,8 @@ test("ItemsRepository.listByVault maps encrypted data", async () => {
 
 test("DevicesRepository.registerOrUpdate returns mapped device row", async () => {
   const db = new FakeDb();
+  // Lookup by fingerprint finds nothing, then INSERT … ON CONFLICT returns the row.
+  db.enqueueResult([]);
   db.enqueueResult([makeDeviceRow()]);
 
   const repo = new DevicesRepository(db);
@@ -176,8 +178,10 @@ test("DevicesRepository.registerOrUpdate returns mapped device row", async () =>
   assert.equal(result.status, "pending");
   assert.equal(result.ipFirst, "10.0.0.1");
   assert.equal(result.approvedBy, null);
-  assert.equal(db.queries.length, 1);
-  assert.match(db.queries[0].sql, /INSERT INTO devices/);
+  assert.equal(db.queries.length, 2);
+  assert.match(db.queries[0].sql, /FROM devices/);
+  assert.match(db.queries[0].sql, /device_fingerprint/);
+  assert.match(db.queries[1].sql, /INSERT INTO devices/);
 });
 
 test("DevicesRepository.isTrustedDevice checks trusted status", async () => {

@@ -165,6 +165,8 @@ function createAuthVaultContext(): Context<AuthVaultContextValue | null> {
 const AuthVaultContext = createAuthVaultContext();
 
 if (import.meta.hot) {
+  // Vitest may expose `import.meta.hot` without initializing `.data`.
+  import.meta.hot.data ??= {};
   import.meta.hot.data.authVaultContext = AuthVaultContext;
   (globalThis as AuthVaultContextGlobal)[AUTH_VAULT_CONTEXT_GLOBAL_KEY] = AuthVaultContext;
 }
