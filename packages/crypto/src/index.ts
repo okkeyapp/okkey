@@ -277,3 +277,11 @@ export {
 
 export { getCryptoConfig, listCryptoConfigs, type CryptoConfig } from "./config/index.js";
 export { wipeBytes, withSensitiveBytes, withSensitiveBytesAsync } from "./secret-buffer.js";
+
+export {
+  VAULT_UNLOCK_ATTESTATION_PURPOSE,
+  VAULT_UNLOCK_ATTESTATION_MAX_AGE_MS,
+  vaultUnlockAttestationMessageBytes,
+  buildVaultUnlockAttestation,
+  type VaultUnlockAttestation,
+} from "./vault-unlock-attestation.js";

@@ -33,7 +33,7 @@ import {
   type WebLocale,
   type WebMessageValues,
 } from "@okkey/i18n";
-import { unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
+import { buildVaultUnlockAttestation, unwrapUnlockMaterialWithPin, wipeBytes } from "@okkey/crypto";
 import { toast } from "sonner";
 
 import {
@@ -707,9 +707,15 @@ export function PopupApp() {
       void browser.runtime.sendMessage({ type: AUTOFILL_MSG.unlocked }).catch(() => {
         /* best-effort */
       });
-      void core.recordVaultUnlock().catch(() => {
-        /* best-effort */
-      });
+      void buildVaultUnlockAttestation({
+        userId: session.user_id,
+        vaultKey: secrets.vaultKey,
+        encryptedPrivateKeyPayloadB64: bundle.encrypted_private_key.payload,
+      })
+        .then((attestation) => core.recordVaultUnlock(attestation))
+        .catch(() => {
+          /* best-effort */
+        });
       return true;
     },
     [profile, session, t, vaultIdleLockMs],
