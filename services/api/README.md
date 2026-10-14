@@ -39,7 +39,7 @@ Production self-host runs jobs in a separate process (`services/api/src/worker.t
 - soft-deleted item hard-purge (hourly)
 - expired capsule cleanup (every 60s)
 
-Locally: `yarn dev:worker`. See [`services/worker/README.md`](../worker/README.md).
+Locally: `yarn dev:worker` (same ensure step as `dev:api`). See [`services/worker/README.md`](../worker/README.md).
 
 SQL migrations under `migrations/` apply automatically on API (and worker) start via `schema_migrations`.
 
