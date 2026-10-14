@@ -9,13 +9,12 @@ import {
 } from "../../../packages/types/dist/index.js";
 import type { ItemPlaintextV2 } from "../../../packages/types/dist/index.js";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { VaultService } from "../src/vault/service.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -38,7 +37,10 @@ function mkBlobFromItem(item: ItemPlaintextV2, cryptoVersion = ITEM_PLAINTEXT_SC
 
 test("integration: item events append, list, replay, idempotency (opaque payload)", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -185,7 +187,10 @@ test("integration: item events append, list, replay, idempotency (opaque payload
 
 test("integration: sync rejects payload schema downgrade after higher version in stream", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

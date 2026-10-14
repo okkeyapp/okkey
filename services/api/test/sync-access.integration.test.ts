@@ -2,12 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -22,7 +21,10 @@ function mkBlob(payload = "x", cryptoVersion = 2) {
 
 test("integration: sync append/list ACCESS_DENIED for user without vault access", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -82,7 +84,10 @@ test("integration: sync append/list ACCESS_DENIED for user without vault access"
 
 test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -123,7 +128,10 @@ test("integration: sync append/list VAULT_NOT_FOUND for unknown vault id", async
 
 test("integration: sync write path blocks v1 when policy allows only v2", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

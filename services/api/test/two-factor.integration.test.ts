@@ -5,12 +5,11 @@ import { authStateRedisKey, AuthService } from "../src/auth/service.ts";
 import { loadConfig, type ApiConfig } from "../src/config.ts";
 import { EmailTemplateService } from "../src/email/service.ts";
 import { SessionService } from "../src/session/service.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { TwoFactorError, TwoFactorService } from "../src/two-factor/service.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
   totpCodeForSecret,
 } from "./two-factor-test-helpers.ts";
@@ -19,7 +18,10 @@ test("integration: email-equivalent auth state → TOTP verify → session row",
   const base = loadConfig();
   const fixed = new Date("2026-06-15T10:00:00.000Z");
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-totp-${suffix}@okkey.local`;
@@ -108,7 +110,10 @@ test("integration: 2FA verify with backup code then reject reuse", async (t) => 
   const base = loadConfig();
   const fixed = new Date("2026-06-15T11:30:00.000Z");
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-backup-${suffix}@okkey.local`;
@@ -206,7 +211,10 @@ test("integration: disable 2FA with TOTP", async (t) => {
   const base = loadConfig();
   const fixed = new Date("2026-06-15T12:00:00.000Z");
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 3 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-off-${suffix}@okkey.local`;
@@ -268,7 +276,10 @@ test("integration: TWO_FACTOR_BACKUP_DEPLETED when no backup codes left", async 
   const base = loadConfig();
   const fixed = new Date("2026-06-15T13:00:00.000Z");
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 1 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-depl-${suffix}@okkey.local`;
@@ -347,7 +358,10 @@ test("integration: 2FA verify rate limit per auth state", async (t) => {
   const base = loadConfig();
   const fixed = new Date("2026-06-15T14:00:00.000Z");
   const config: ApiConfig = { ...base, twoFactorVerifyMaxAttemptsPerState: 2 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-rl-${suffix}@okkey.local`;
@@ -440,7 +454,10 @@ test("integration: 2FA verify rate limit per IP", async (t) => {
   const base = loadConfig();
   const fixed = new Date("2026-06-15T15:00:00.000Z");
   const config: ApiConfig = { ...base, authRateLimitTwoFactorVerifyPerIp: 2 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-ip-${suffix}@okkey.local`;

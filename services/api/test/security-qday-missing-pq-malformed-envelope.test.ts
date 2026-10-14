@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { testEntityId } from "./test-entity-id.ts";
 import { loadConfig } from "../src/config.ts";
 import { CapsuleService, CapsuleServiceError } from "../src/capsule/service.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { SyncService, SyncServiceError } from "../src/sync/service.ts";
 import { VaultSharingService } from "../src/vault-sharing/service.ts";
+import { isEntityId } from "../src/entity-id.ts";
+import type { StorageLayer } from "../src/storage/index.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -27,7 +28,6 @@ function errorChainCode(error: unknown): string | undefined {
   return undefined;
 }
 
-import { isEntityId } from "../src/entity-id.ts";
 
 function pgWireEntityId(value: unknown): string {
   const s = String(value).trim();
@@ -38,7 +38,7 @@ function pgWireEntityId(value: unknown): string {
 }
 
 async function userIdByEmail(
-  storage: Awaited<ReturnType<typeof createStorageLayer>>,
+  storage: StorageLayer,
   email: string,
 ): Promise<string> {
   const rows = await storage.postgres.query<{ id: unknown }>(
@@ -72,7 +72,10 @@ function mkHybridWrapBlob(input: string, recipientUserId: string) {
 
 test("security: prod share rejects recipient without PQ key", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -154,7 +157,10 @@ test("security: prod share rejects recipient without PQ key", async (t) => {
 
 test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid base64 payload", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -232,7 +238,10 @@ test("security: prod rotate rejects non-hybrid key_wrap_scheme even with valid b
 
 test("security: strict rollout rejects share without recipient PQ capability (no silent fallback)", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -305,7 +314,10 @@ test("security: strict rollout rejects share without recipient PQ capability (no
 
 test("security: strict rollout rejects sync append without actor PQ capability", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
@@ -359,7 +371,10 @@ test("security: strict rollout rejects sync append without actor PQ capability",
 
 test("security: strict rollout rejects capsule create without actor PQ capability", async (t) => {
   const baseConfig = loadConfig();
-  const storage = await createStorageLayer(baseConfig, createLoggerStub());
+  const storage = await createIntegrationStorage(t, baseConfig);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();
