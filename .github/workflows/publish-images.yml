@@ -3,20 +3,20 @@
 # Scope: api / worker / web only. Browser extension is not published here
 # (out of the first image-backed release slice: 1.0.0-beta.2).
 #
-# Tag scheme:
+# Tag scheme (aligned with okkey-internal release-and-images + enterprise#53):
 #   push to `dev`          → :dev, :dev-<sha>
-#   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X, :latest
-#   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no :latest / rolling)
+#   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X   (:latest ONLY via manual dispatch)
+#   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
 #   pull_request           → :pr-<n>, :pr-<n>-<head-sha7>  (PR head, not merge commit)
-#   workflow_dispatch      → explicit tag (+ optional :latest)
+#   workflow_dispatch      → explicit tag (+ optional :latest when push_latest=true)
 #
 # Retention (scheduled GC — never deletes SemVer / :latest / floating :dev):
-#   pr-*       → delete when last updated > 14 days ago
+#   pr-*       → delete 14 days AFTER the PR is CLOSED; open-PR tags are never deleted
 #   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
 #
 # Multi-arch: linux/amd64 + linux/arm64.
 # OCI labels set explicitly; SBOM + provenance via buildx.
-# Cosign: keyless GitHub OIDC on every non-PR publish (optional COSIGN_KEY override).
+# Cosign: keyless GitHub OIDC only (no COSIGN_KEY path).
 # GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
 name: Publish container images
 
@@ -38,7 +38,7 @@ on:
         required: false
         default: "dev"
       push_latest:
-        description: "Also tag as latest (avoid for test / pre-release tags)"
+        description: "Also tag as latest (manual/approved only; never auto on SemVer)"
         required: false
         type: boolean
         default: false
@@ -60,10 +60,18 @@ permissions:
   attestations: write
   pull-requests: read
 
+# Parallel matrix images share GHCR/cache; serialize per-ref so runs do not fight.
+concurrency:
+  group: okkey-publish-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   OWNER: okkeyapp
   DEFAULT_PLATFORMS: linux/amd64,linux/arm64
+  PR_TAG_TTL_DAYS: "14"
+  DEV_SHA_TTL_DAYS: "30"
+  DEV_SHA_KEEP_LAST: "20"
 
 jobs:
   publish:
@@ -114,7 +122,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Resolve tags in bash (not docker/metadata-action type=sha) so PR tags use
+      # Resolve tags in bash (not docker/metadata-action) so PR tags use
       # pull_request.head.sha. Avoids merge-commit SHAs and metadata-action JSON flakes.
       - name: Resolve image name, platforms, tags, labels
         id: prep
@@ -154,11 +162,12 @@ jobs:
           elif [[ "${REF_TYPE}" == "tag" ]]; then
             VERSION="${REF_NAME#v}"
             TAGS="${IMAGE}:${VERSION}"
-            # Clean SemVer vX.Y.Z only → rolling + latest.
+            # Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
+            # :latest is NEVER automatic — only workflow_dispatch + push_latest=true.
             if [[ "${REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               MAJOR="${VERSION%%.*}"
               MINOR_MAJOR="${VERSION%.*}" # X.Y
-              TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR},${IMAGE}:latest"
+              TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR}"
             fi
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             DISPATCH_TAG="${DISPATCH_TAG:-dev}"
@@ -243,17 +252,13 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v3
 
-      # Keyless GitHub OIDC signing is enabled for every non-PR publish
-      # (push to `dev`, release tags, workflow_dispatch). Optional key-based
-      # override: secrets.COSIGN_KEY + COSIGN_PASSWORD.
+      # Keyless GitHub OIDC only — no COSIGN_KEY / password path.
       - name: Sign images (cosign keyless OIDC)
         if: github.event_name != 'pull_request'
         env:
           COSIGN_YES: "true"
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ${{ steps.prep.outputs.image }}
-          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
@@ -262,27 +267,33 @@ jobs:
             exit 1
           fi
           REF="${IMAGE}@${DIGEST}"
-          if [[ -n "${COSIGN_KEY}" ]]; then
-            echo "${COSIGN_KEY}" > "${RUNNER_TEMP}/cosign.key"
-            cosign sign --key "${RUNNER_TEMP}/cosign.key" "${REF}"
-            rm -f "${RUNNER_TEMP}/cosign.key"
-          else
-            cosign sign "${REF}"
-          fi
+          cosign sign "${REF}"
           echo "Signed ${REF}"
 
+  # Reminder only — do not delete on close. TTL GC runs on schedule (14d after closed_at).
+  note-pr-closed:
+    name: note-pr-closed-ttl
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: TTL reminder
+        run: |
+          echo "PR #${{ github.event.pull_request.number }} closed."
+          echo "Tags pr-${{ github.event.pull_request.number }}* will be deleted by scheduled GC ${PR_TAG_TTL_DAYS}d after closed_at (open-PR tags are never deleted)."
+
   # TTL GC for ephemeral tags. Release SemVer tags and floating :dev are never deleted.
-  # pr-* versions are retained ~14 days after last update (≈ after PR close / last sync).
+  # pr-* : 14 days after PR closed_at; tags for OPEN PRs are never deleted.
   # Deletion uses GITHUB_TOKEN with packages:write only (no human PAT required).
   gc-ephemeral-tags:
     name: gc-ephemeral-tags
     if: >
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' &&
-       github.event.inputs.run_gc_only == 'true') ||
-      (github.event_name == 'pull_request' &&
-       github.event.action == 'closed' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+       github.event.inputs.run_gc_only == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -295,12 +306,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE: ${{ matrix.image }}
           OWNER: ${{ env.OWNER }}
-          # On PR close, only consider that PR's tags for the 14-day rule
-          # (still age-gated). Scheduled runs consider all pr-* / dev-<sha>.
-          CLOSED_PR: ${{ github.event.pull_request.number || '' }}
-          PR_TTL_DAYS: "14"
-          DEV_SHA_TTL_DAYS: "30"
-          DEV_SHA_KEEP_LAST: "20"
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_TTL_DAYS: ${{ env.PR_TAG_TTL_DAYS }}
+          DEV_SHA_TTL_DAYS: ${{ env.DEV_SHA_TTL_DAYS }}
+          DEV_SHA_KEEP_LAST: ${{ env.DEV_SHA_KEEP_LAST }}
         shell: bash
         run: |
           set -euo pipefail
@@ -311,15 +320,23 @@ jobs:
 
           owner = os.environ["OWNER"]
           package = os.environ["PACKAGE"]
-          closed_pr = os.environ.get("CLOSED_PR", "").strip()
+          repo = os.environ["GITHUB_REPOSITORY"]
           pr_ttl = timedelta(days=int(os.environ["PR_TTL_DAYS"]))
           dev_ttl = timedelta(days=int(os.environ["DEV_SHA_TTL_DAYS"]))
           keep_last = int(os.environ["DEV_SHA_KEEP_LAST"])
           now = datetime.now(timezone.utc)
           pkg_enc = urllib.parse.quote(package, safe="")
+          pr_closed_cache = {}
 
-          def list_versions() -> list:
-              # Emit one version object per line via jq (handles --paginate).
+          def gh_api(path):
+              cmd = ["gh", "api", path]
+              try:
+                  out = subprocess.check_output(cmd, text=True, stderr=subprocess.PIPE)
+                  return 0, out
+              except subprocess.CalledProcessError as exc:
+                  return exc.returncode, (exc.stderr or "").strip()
+
+          def list_versions():
               cmd = [
                   "gh", "api", "--paginate",
                   f"/orgs/{owner}/packages/container/{pkg_enc}/versions",
@@ -339,25 +356,47 @@ jobs:
                   items.append(json.loads(line))
               return items
 
-          def parse_ts(s: str) -> datetime:
+          def parse_ts(s):
               return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
-          def is_release_tag(tag: str) -> bool:
-              # Never delete release / floating tip tags.
+          def is_release_tag(tag):
               if tag in {"latest", "dev"}:
                   return True
-              # SemVer (+ optional pre-release): 1.2.3, 1.0.0-beta.2, 1.2, 1
               return bool(
                   re.fullmatch(r"\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?", tag)
               ) and not tag.startswith("pr-") and not tag.startswith("dev-")
 
-          def is_pr_tag(tag: str) -> bool:
-              if closed_pr:
-                  return tag == f"pr-{closed_pr}" or tag.startswith(f"pr-{closed_pr}-")
-              return tag.startswith("pr-")
+          def pr_numbers_from_tags(tags):
+              nums = set()
+              for tag in tags:
+                  m = re.fullmatch(r"pr-(\d+)(?:-.*)?", tag)
+                  if m:
+                      nums.add(int(m.group(1)))
+              return nums
 
-          def is_dev_sha_tag(tag: str) -> bool:
+          def is_dev_sha_tag(tag):
               return tag.startswith("dev-") and tag != "dev"
+
+          def pr_closed_at(pr_n):
+              """Return closed_at when PR is closed; None if open or unknown."""
+              if pr_n in pr_closed_cache:
+                  return pr_closed_cache[pr_n]
+              rc, body = gh_api(f"/repos/{repo}/pulls/{pr_n}")
+              if rc != 0:
+                  print(f"warn: cannot fetch PR #{pr_n}: {body}")
+                  pr_closed_cache[pr_n] = None
+                  return None
+              data = json.loads(body)
+              if data.get("state") == "open":
+                  pr_closed_cache[pr_n] = None
+                  return None
+              closed = data.get("closed_at")
+              if not closed:
+                  pr_closed_cache[pr_n] = None
+                  return None
+              ts = parse_ts(closed)
+              pr_closed_cache[pr_n] = ts
+              return ts
 
           versions = list_versions()
           if not versions:
@@ -373,25 +412,41 @@ jobs:
               vid = v.get("id")
               tags = (v.get("metadata") or {}).get("container", {}).get("tags") or []
               updated = parse_ts(v.get("updated_at") or v.get("created_at"))
-              age = now - updated
 
               if any(is_release_tag(t) for t in tags):
                   protected.add(vid)
                   continue
 
-              if any(is_pr_tag(t) for t in tags):
-                  pr_candidates.append((vid, tags, age, updated))
+              if any(t.startswith("pr-") for t in tags):
+                  pr_candidates.append((vid, tags))
                   continue
 
               if tags and all(is_dev_sha_tag(t) for t in tags):
                   dev_sha_rows.append((updated, vid, tags))
 
-          for vid, tags, age, updated in pr_candidates:
-              if age > pr_ttl:
-                  to_delete.add(vid)
-                  print(f"pr TTL expired id={vid} tags={tags} updated={updated.isoformat()}")
+          for vid, tags in pr_candidates:
+              nums = pr_numbers_from_tags(tags)
+              if not nums:
+                  print(f"pr skip (unparsed) id={vid} tags={tags}")
+                  continue
+              # Keep if ANY linked PR is still open, or closed < TTL ago.
+              keep = False
+              reasons = []
+              for n in sorted(nums):
+                  closed = pr_closed_at(n)
+                  if closed is None:
+                      keep = True
+                      reasons.append(f"#{n}=open-or-unknown")
+                  elif now - closed <= pr_ttl:
+                      keep = True
+                      reasons.append(f"#{n}=closed_at={closed.isoformat()} within TTL")
+                  else:
+                      reasons.append(f"#{n}=closed_at={closed.isoformat()} expired")
+              if keep:
+                  print(f"pr keep id={vid} tags={tags} ({'; '.join(reasons)})")
               else:
-                  print(f"pr keep id={vid} tags={tags} age_days={age.days}")
+                  to_delete.add(vid)
+                  print(f"pr TTL expired id={vid} tags={tags} ({'; '.join(reasons)})")
 
           # Keep if within 30 days OR among the newest KEEP_LAST.
           dev_sha_rows.sort(key=lambda r: r[0], reverse=True)

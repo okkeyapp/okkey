@@ -35,7 +35,8 @@ Optional env:
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
-| `WEB_PORT` / `API_PORT` | Host ports for web/API (same vars as Compose). Process env overrides `.env`, then defaults `8080` / `4000`. Final installer URLs use these effective ports. |
+| `WEB_PORT` / `API_PORT` | Host ports for web/API. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. |
+| `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
 
 ### Reinstall / password mismatch
 
@@ -109,20 +110,20 @@ Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/pu
 | Event | Tags |
 |-------|------|
 | Push to `dev` | `:dev`, `:dev-<sha>` (intended immediately after this workflow merges to `dev`) |
-| Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X`, `:latest` |
+| Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X` (**not** `:latest`) |
 | Git tag `vX.Y.Z-…` (pre-release, e.g. `v1.0.0-beta.2`) | `:X.Y.Z-…` only (no `:latest` / rolling) |
 | Pull request | `:pr-<n>`, `:pr-<n>-<head-sha7>` (PR head commit, not the merge commit) |
-| `workflow_dispatch` | explicit tag (+ optional `:latest`) |
+| `workflow_dispatch` | explicit tag; `:latest` only when `push_latest=true` (manual/approved) |
 
 Retention (scheduled GC; release SemVer tags and floating `:dev` are never deleted):
 
 | Tag class | Policy |
 |-----------|--------|
-| `pr-*` | Deleted ~14 days after last update (after PR close / last sync) |
+| `pr-*` | Deleted **14 days after the PR is closed**; tags of **open** PRs are never deleted |
 | `dev-<sha>` | Keep if age ≤ 30 days **or** among the newest 20 |
 | SemVer / `:latest` / `:dev` | Never deleted by GC |
 
-Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand.
+Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand. Prod never uses floating `:latest`.
 
 Installer defaults:
 
@@ -131,7 +132,7 @@ Installer defaults:
 | Tracking / QA (default) | `dev` |
 | Production | pin SemVer (default `1.0.0-beta.2`) via `OKKEY_IMAGE_TAG` or `OKKEY_CHANNEL=prod` — **never** `:latest` |
 
-Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (optional `COSIGN_KEY` / `COSIGN_PASSWORD` override).
+Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 
 ## Manual install
 

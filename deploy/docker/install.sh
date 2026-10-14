@@ -247,6 +247,51 @@ if [[ ! -f .env ]]; then
     log "==> OKKEY_IMAGE_TAG=${resolved_tag}"
   fi
 
+  # Persist installer-provided ports / public URLs into .env (enterprise#38 / #56).
+  # Process env wins; when only WEB_PORT / API_PORT are set, derive matching URL defaults
+  # so config.js and a later `compose --env-file .env` stay consistent.
+  if [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env WEB_PORT "${WEB_PORT}"
+  fi
+  if [[ -n "${API_PORT:-}" ]]; then
+    replace_env API_PORT "${API_PORT}"
+  fi
+
+  if [[ -n "${PUBLIC_APP_URL:-}" ]]; then
+    replace_env PUBLIC_APP_URL "${PUBLIC_APP_URL}"
+  elif [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env PUBLIC_APP_URL "http://localhost:${WEB_PORT}"
+  fi
+
+  if [[ -n "${OKKEY_API_PUBLIC_URL:-}" ]]; then
+    replace_env OKKEY_API_PUBLIC_URL "${OKKEY_API_PUBLIC_URL}"
+  elif [[ -n "${API_PORT:-}" ]]; then
+    replace_env OKKEY_API_PUBLIC_URL "http://localhost:${API_PORT}"
+  fi
+
+  if [[ -n "${CORS_ORIGIN:-}" ]]; then
+    replace_env CORS_ORIGIN "${CORS_ORIGIN}"
+  elif [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env CORS_ORIGIN "http://localhost:${WEB_PORT}"
+  fi
+
+  if [[ -n "${WEBAUTHN_ORIGINS:-}" ]]; then
+    replace_env WEBAUTHN_ORIGINS "${WEBAUTHN_ORIGINS}"
+  elif [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env WEBAUTHN_ORIGINS "http://localhost:${WEB_PORT}"
+  fi
+
+  if [[ -n "${WEBAUTHN_RP_ID:-}" ]]; then
+    replace_env WEBAUTHN_RP_ID "${WEBAUTHN_RP_ID}"
+  fi
+  if [[ -n "${WEBAUTHN_RP_NAME:-}" ]]; then
+    replace_env WEBAUTHN_RP_NAME "${WEBAUTHN_RP_NAME}"
+  fi
+
+  if [[ -n "${WEB_PORT:-}" || -n "${API_PORT:-}" || -n "${PUBLIC_APP_URL:-}" || -n "${OKKEY_API_PUBLIC_URL:-}" ]]; then
+    log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
+  fi
+
   log "==> Generated JWT_SECRET, SESSION_SECRET, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
