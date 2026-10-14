@@ -4,13 +4,24 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 
 ## One-command install
 
+**Tracking / QA** (floating `:dev` images, published on every push to `dev` after the publish workflow lands):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 ```
 
-Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` (if set) must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
+**Production** — pin a SemVer image (never floating `:latest`):
 
-`.env.example` defaults to `OKKEY_IMAGE_TAG=0.0.0-pr19.4` — the last image tag that **exists** in GHCR (`ghcr.io/okkeyapp/{api,web,worker}:0.0.0-pr19.4`). Do **not** default to `:dev`: that floating tag is not published until Actions → **Publish container images** → `workflow_dispatch` with tag `dev`. After that publish, pin `OKKEY_IMAGE_TAG=dev` (or a newer `v*` / `0.0.0-prN.M`) for post-merge QA. If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
+```bash
+curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+  | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+# or:
+#   | OKKEY_CHANNEL=prod bash   # uses OKKEY_PROD_IMAGE_TAG (default 1.0.0-beta.2)
+```
+
+Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
+
+`.env.example` defaults to `OKKEY_IMAGE_TAG=dev` for tracking. Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull. Production must pin a SemVer (default prod pin: `1.0.0-beta.2`); do not use `:latest` for prod.
 
 Optional env:
 
@@ -18,11 +29,14 @@ Optional env:
 |----------|---------|
 | `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
 | `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
+| `OKKEY_CHANNEL=prod` | On **fresh** installs, pin `OKKEY_PROD_IMAGE_TAG` when `OKKEY_IMAGE_TAG` is unset |
+| `OKKEY_PROD_IMAGE_TAG` | SemVer pin used by `OKKEY_CHANNEL=prod` (default `1.0.0-beta.2`; never `latest`) |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
 | `OKKEY_RESET_VOLUMES=1` | `docker compose down -v` before start (wipe Postgres/Redis/MinIO data) |
-| `WEB_PORT` / `API_PORT` | Host ports for web/API (same vars as Compose). Process env overrides `.env`, then defaults `8080` / `4000`. Final installer URLs use these effective ports. |
+| `WEB_PORT` / `API_PORT` | Host ports for web/API. On **fresh** installs, written into `.env`; when set without explicit URLs, also derives `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS`. |
+| `PUBLIC_APP_URL` / `OKKEY_API_PUBLIC_URL` / `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` | Optional overrides written into `.env` on fresh installs (keep `config.js` and `.env` aligned). |
 
 ### Reinstall / password mismatch
 
@@ -49,9 +63,9 @@ Then open **http://localhost:8080** (web) and check **http://localhost:4000/heal
 
 ## First-run (empty database)
 
-On a fresh self-hosted install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped for the exclusive first-admin claim** and you go straight to the registration form (no SMTP needed for that account).
+On a fresh install the `users` table is empty. Open the web UI, enter an email, and continue — **OTP is skipped** and you go straight to the registration form (no SMTP needed for the first account).
 
-`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` for that claim while the catalog is empty. Concurrent empty-catalog starts for other emails still use email OTP. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
+`POST /auth/email/start` returns `bootstrapRequired: true` plus `authStateId` when there are zero users. After the first account exists, the same endpoint uses the normal email OTP flow for every subsequent login/registration.
 
 ## Crypto profiles (registration)
 
@@ -91,16 +105,34 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
 
 ## Image tags
 
-| Tag | Meaning |
-|-----|---------|
-| `0.0.0-pr19.4` (default) | Last published pre-release in GHCR — bare install works without a prior publish |
-| `0.0.0-prN.M` / `v0.0.0-prN.M` | Pre-release from a `v*` git tag push |
-| `dev` | Optional floating tag from `workflow_dispatch` on **Publish container images** — **not** present until published; then use for post-merge QA |
-| `latest` | Only promoted on clean semver releases (`vX.Y.Z`) |
+Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/publish-images.yml) to `ghcr.io/okkeyapp/{api,web,worker}` (Core only — the browser extension is **not** published by this workflow).
 
-`OKKEY_REF` (git) ≠ `OKKEY_IMAGE_TAG` (GHCR). Installer files come from the `dev` branch by default; container images come from the tag in `.env`.
+| Event | Tags |
+|-------|------|
+| Push to `dev` | `:dev`, `:dev-<sha>` (intended immediately after this workflow merges to `dev`) |
+| Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X` (**not** `:latest`) |
+| Git tag `vX.Y.Z-…` (pre-release, e.g. `v1.0.0-beta.2`) | `:X.Y.Z-…` only (no `:latest` / rolling) |
+| Pull request | `:pr-<n>`, `:pr-<n>-<head-sha7>` (PR head commit, not the merge commit) |
+| `workflow_dispatch` | explicit tag; `:latest` only when `push_latest=true` (manual/approved) |
 
-Workflow: https://github.com/okkeyapp/okkey/actions/workflows/publish-images.yml
+Retention (scheduled GC; release SemVer tags and floating `:dev` are never deleted):
+
+| Tag class | Policy |
+|-----------|--------|
+| `pr-*` | Deleted **14 days after the PR is closed**; tags of **open** PRs are never deleted |
+| `dev-<sha>` | Keep if age ≤ 30 days **or** among the newest 20 |
+| SemVer / `:latest` / `:dev` | Never deleted by GC |
+
+Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand. Prod never uses floating `:latest`.
+
+Installer defaults:
+
+| Channel | `OKKEY_IMAGE_TAG` |
+|---------|-------------------|
+| Tracking / QA (default) | `dev` |
+| Production | pin SemVer (default `1.0.0-beta.2`) via `OKKEY_IMAGE_TAG` or `OKKEY_CHANNEL=prod` — **never** `:latest` |
+
+Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 
 ## Manual install
 
@@ -110,7 +142,9 @@ mkdir -p ~/okkey && cd ~/okkey
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/docker-compose.prod.yml"
 curl -fsSL -O "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/.env.example"
 cp .env.example .env
-# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL; default OKKEY_IMAGE_TAG=0.0.0-pr19.4
+# edit secrets and PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL
+# tracking: keep OKKEY_IMAGE_TAG=dev
+# production: set OKKEY_IMAGE_TAG=<SemVer>
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
@@ -118,7 +152,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 | Service | Image | Role |
 |---------|-------|------|
-| `web` | `ghcr.io/okkeyapp/web` | SPA (nginx); env `OKKEY_API_PUBLIC_URL` → `/config.js` field `apiBaseUrl` |
+| `web` | `ghcr.io/okkeyapp/web` | SPA (nginx); `OKKEY_API_PUBLIC_URL` → `/config.js` |
 | `api` | `ghcr.io/okkeyapp/api` | HTTP API + SQL migrations on start; enqueues email to Redis |
 | `worker` | `ghcr.io/okkeyapp/worker` | Item purge, capsule cleanup, **email queue consumer** |
 | `postgres` | `postgres:16-alpine` | Metadata / events |
@@ -127,25 +161,6 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | `minio-init` | `amazon/aws-cli` | Creates the S3 bucket once at start |
 
 API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the worker owns periodic jobs and outbound mail. See [`services/worker/README.md`](../../services/worker/README.md).
-
-## Runtime config (`/config.js`)
-
-The `web` container entrypoint reads **`OKKEY_API_PUBLIC_URL`** (fallback: `VITE_API_BASE_URL`, then `http://localhost:4000`) and overwrites `/config.js` with:
-
-```js
-window.__OKKEY_RUNTIME__ = { apiBaseUrl: "http://localhost:4000" };
-```
-
-- **Env (Compose / `.env`):** `OKKEY_API_PUBLIC_URL` — browser-facing API origin.
-- **Browser contract:** `window.__OKKEY_RUNTIME__.apiBaseUrl` — the SPA reads this at runtime (not the env var name).
-
-Smoke check after install:
-
-```bash
-curl -fsS http://localhost:8080/config.js
-# expect: window.__OKKEY_RUNTIME__ = { apiBaseUrl: "…" };
-# do not expect the literal string OKKEY_API_PUBLIC_URL in the file
-```
 
 ## Email
 
@@ -186,7 +201,7 @@ Install without hitting the registry:
 OKKEY_SKIP_PULL=1 ./deploy/docker/install.sh
 ```
 
-GHCR packages for `okkeyapp/{api,web,worker}` must be **public** (or your Docker login needs `read:packages`). Anonymous pull returns 401/403 while they stay private.
+GHCR packages for `okkeyapp/{api,web,worker}` are **public** for anonymous pull (CI best-effort `visibility=public` after each publish; confirm in the GHCR UI if a package was created before the workflow landed). If a mirror or fork keeps them private, `docker login ghcr.io` with `read:packages` is required.
 
 ## Dev infrastructure
 

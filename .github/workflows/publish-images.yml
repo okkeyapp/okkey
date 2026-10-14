@@ -1,39 +1,210 @@
+# Publish Okkey Core container images to GHCR.
+#
+# Scope: api / worker / web only. Browser extension is not published here
+# (out of the first image-backed release slice: 1.0.0-beta.2).
+#
+# Tag scheme (aligned with okkey-internal release-and-images + enterprise#53):
+#   push to `dev`          → :dev, :dev-<sha>
+#   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X   (:latest ONLY via manual dispatch)
+#   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no rolling / :latest)
+#   pull_request           → :pr-<n>, :pr-<n>-<head-sha7>  (PR head, not merge commit)
+#   workflow_dispatch      → explicit tag (+ optional :latest when push_latest=true)
+#
+# Retention (scheduled GC — never deletes SemVer / :latest / floating :dev):
+#   pr-*       → delete 14 days AFTER the PR is CLOSED; open-PR tags are never deleted
+#   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
+#
+# Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU), then
+# manifest-list merge. BuildKit yarn/cargo cache mounts + GHA buildx cache.
+# Cosign: keyless GitHub OIDC only (no COSIGN_KEY path).
+# GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
 name: Publish container images
 
 on:
   push:
+    branches:
+      - dev
     tags:
       - "v*"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  schedule:
+    # Daily GHCR TTL cleanup (pr-* / dev-<sha>).
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to push (e.g. pr19-test). Default: branch-sha style via 'dev'."
+        description: "Image tag to push (default: dev)"
         required: false
         default: "dev"
       push_latest:
-        description: "Also tag as latest (avoid for test tags)"
+        description: "Also tag as latest (manual/approved only; never auto on SemVer)"
         required: false
         type: boolean
         default: false
       platforms:
-        description: "Comma-separated platforms (e.g. linux/amd64 or linux/amd64,linux/arm64)"
+        description: "Comma-separated platforms"
         required: false
-        default: "linux/amd64"
+        default: "linux/amd64,linux/arm64"
+      run_gc_only:
+        description: "Skip publish; only run GHCR TTL cleanup"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   packages: write
   actions: write # GHA cache for buildx
+  id-token: write # provenance attestations + cosign keyless OIDC
+  attestations: write
+  pull-requests: read
+
+# Parallel matrix images share GHCR/cache; serialize per-ref so runs do not fight.
+concurrency:
+  group: okkey-publish-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
   OWNER: okkeyapp
+  DEFAULT_PLATFORMS: linux/amd64,linux/arm64
+  PR_TAG_TTL_DAYS: "14"
+  DEV_SHA_TTL_DAYS: "30"
+  DEV_SHA_KEEP_LAST: "20"
 
 jobs:
-  publish:
-    name: build-and-push
+  # Resolve tags / platforms / revision once for all build+merge jobs.
+  prep:
+    name: resolve-tags
+    if: >
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.run_gc_only != 'true') ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.action != 'closed' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 5
+    outputs:
+      platforms: ${{ steps.prep.outputs.platforms }}
+      revision: ${{ steps.prep.outputs.revision }}
+      want_amd64: ${{ steps.prep.outputs.want_amd64 }}
+      want_arm64: ${{ steps.prep.outputs.want_arm64 }}
+      tags_api: ${{ steps.prep.outputs.tags_api }}
+      tags_worker: ${{ steps.prep.outputs.tags_worker }}
+      tags_web: ${{ steps.prep.outputs.tags_web }}
+      image_api: ${{ steps.prep.outputs.image_api }}
+      image_worker: ${{ steps.prep.outputs.image_worker }}
+      image_web: ${{ steps.prep.outputs.image_web }}
+    steps:
+      - name: Resolve platforms, tags, revision
+        id: prep
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+          DISPATCH_LATEST: ${{ github.event.inputs.push_latest }}
+          DISPATCH_PLATFORMS: ${{ github.event.inputs.platforms }}
+          PR_IMAGE_PLATFORMS: ${{ vars.PR_IMAGE_PLATFORMS }}
+        run: |
+          set -euo pipefail
+          PLATFORMS="${DEFAULT_PLATFORMS}"
+          REVISION="${SHA}"
+
+          short7() { printf '%.7s' "$1"; }
+
+          tags_for() {
+            local IMAGE="$1"
+            local TAGS=""
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              SHORT="$(short7 "${REVISION}")"
+              TAGS="${IMAGE}:pr-${PR_NUMBER},${IMAGE}:pr-${PR_NUMBER}-${SHORT}"
+            elif [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/dev" ]]; then
+              SHORT="$(short7 "${REVISION}")"
+              TAGS="${IMAGE}:dev,${IMAGE}:dev-${SHORT}"
+            elif [[ "${REF_TYPE}" == "tag" ]]; then
+              VERSION="${REF_NAME#v}"
+              TAGS="${IMAGE}:${VERSION}"
+              # Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
+              # :latest is NEVER automatic — only workflow_dispatch + push_latest=true.
+              if [[ "${REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                MAJOR="${VERSION%%.*}"
+                MINOR_MAJOR="${VERSION%.*}" # X.Y
+                TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR}"
+              fi
+            elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+              local DT="${DISPATCH_TAG:-dev}"
+              TAGS="${IMAGE}:${DT}"
+              if [[ "${DISPATCH_LATEST}" == "true" && "${DT}" != "latest" ]]; then
+                TAGS="${TAGS},${IMAGE}:latest"
+              fi
+            else
+              echo "Unsupported event for publish: ${EVENT_NAME} ref=${REF}" >&2
+              exit 1
+            fi
+            printf '%s' "${TAGS}"
+          }
+
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            REVISION="${PR_HEAD_SHA}"
+            if [[ -n "${PR_IMAGE_PLATFORMS}" ]]; then
+              PLATFORMS="${PR_IMAGE_PLATFORMS}"
+            fi
+          elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            PLATFORMS="${DISPATCH_PLATFORMS:-$DEFAULT_PLATFORMS}"
+          fi
+
+          WANT_AMD64=false
+          WANT_ARM64=false
+          IFS=',' read -ra PLAT_ARR <<< "${PLATFORMS}"
+          for p in "${PLAT_ARR[@]}"; do
+            p="$(echo "$p" | xargs)"
+            [[ "$p" == "linux/amd64" ]] && WANT_AMD64=true
+            [[ "$p" == "linux/arm64" ]] && WANT_ARM64=true
+          done
+          if [[ "${WANT_AMD64}" != "true" && "${WANT_ARM64}" != "true" ]]; then
+            echo "No supported platforms in: ${PLATFORMS}" >&2
+            exit 1
+          fi
+
+          IMAGE_API="${REGISTRY}/${OWNER}/api"
+          IMAGE_WORKER="${REGISTRY}/${OWNER}/worker"
+          IMAGE_WEB="${REGISTRY}/${OWNER}/web"
+
+          {
+            echo "platforms=${PLATFORMS}"
+            echo "revision=${REVISION}"
+            echo "want_amd64=${WANT_AMD64}"
+            echo "want_arm64=${WANT_ARM64}"
+            echo "image_api=${IMAGE_API}"
+            echo "image_worker=${IMAGE_WORKER}"
+            echo "image_web=${IMAGE_WEB}"
+            echo "tags_api=$(tags_for "${IMAGE_API}")"
+            echo "tags_worker=$(tags_for "${IMAGE_WORKER}")"
+            echo "tags_web=$(tags_for "${IMAGE_WEB}")"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Revision: ${REVISION}"
+          echo "Platforms: ${PLATFORMS} (amd64=${WANT_AMD64} arm64=${WANT_ARM64})"
+          echo "api tags: $(tags_for "${IMAGE_API}")"
+          echo "worker tags: $(tags_for "${IMAGE_WORKER}")"
+          echo "web tags: $(tags_for "${IMAGE_WEB}")"
+
+  # Native per-arch builds (amd64 on x86 runner, arm64 on ARM runner — no QEMU).
+  # Split by arch so job-level `if` can use needs.* (matrix is not allowed there).
+  build-amd64:
+    name: build-and-push (amd64)
+    needs: prep
+    if: needs.prep.outputs.want_amd64 == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -42,20 +213,24 @@ jobs:
             file: services/api/Dockerfile
             target: api
             image: api
+            cache_scope: services-api
           - name: worker
             file: services/api/Dockerfile
             target: worker
             image: worker
+            cache_scope: services-api
           - name: web
             file: apps/web/Dockerfile
             target: runtime
             image: web
+            cache_scope: web
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        with:
+          # PR: build the head commit so image contents match :pr-N-<sha> tags
+          # (github.sha on pull_request is the ephemeral merge commit).
+          ref: ${{ needs.prep.outputs.revision }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -67,57 +242,517 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve tags and platforms
-        id: meta
+      - name: Image name
+        id: img
         shell: bash
         run: |
           set -euo pipefail
-          IMAGE="${REGISTRY}/${OWNER}/${{ matrix.image }}"
-          TAGS=""
-          PLATFORMS="linux/amd64,linux/arm64"
+          case "${{ matrix.image }}" in
+            api) echo "name=${{ needs.prep.outputs.image_api }}" >> "$GITHUB_OUTPUT" ;;
+            worker) echo "name=${{ needs.prep.outputs.image_worker }}" >> "$GITHUB_OUTPUT" ;;
+            web) echo "name=${{ needs.prep.outputs.image_web }}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown image" >&2; exit 1 ;;
+          esac
 
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-            TAGS="${IMAGE}:${VERSION}"
-            TAGS="${TAGS},${IMAGE}:${GITHUB_REF_NAME}"
-            # Promote :latest only for clean semver releases (v1.2.3), never for pre-releases.
-            if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              TAGS="${TAGS},${IMAGE}:latest"
-              PLATFORMS="linux/amd64,linux/arm64"
-            else
-              # Faster first/pre-release publishes (qemu multi-arch is slow/fragile).
-              PLATFORMS="linux/amd64"
-            fi
-          else
-            DISPATCH_TAG="${{ github.event.inputs.tag }}"
-            DISPATCH_TAG="${DISPATCH_TAG:-dev}"
-            TAGS="${IMAGE}:${DISPATCH_TAG}"
-            if [[ "${{ github.event.inputs.push_latest }}" == "true" && "${DISPATCH_TAG}" != "latest" ]]; then
-              TAGS="${TAGS},${IMAGE}:latest"
-            fi
-            INPUT_PLATFORMS="${{ github.event.inputs.platforms }}"
-            PLATFORMS="${INPUT_PLATFORMS:-linux/amd64}"
-          fi
-
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
-          echo "platforms=${PLATFORMS}" >> "$GITHUB_OUTPUT"
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved tags: ${TAGS}"
-          echo "Platforms: ${PLATFORMS}"
-
-      - name: Build and push
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
           target: ${{ matrix.target }}
-          platforms: ${{ steps.meta.outputs.platforms }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          provenance: false
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          platforms: linux/amd64
+          labels: |
+            org.opencontainers.image.title=okkey-${{ matrix.image }}
+            org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            org.opencontainers.image.vendor=okkeyapp
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-amd64
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}-linux-amd64
           build-args: |
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+          outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-linux-amd64
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  build-arm64:
+    name: build-and-push (arm64)
+    needs: prep
+    if: needs.prep.outputs.want_arm64 == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            file: services/api/Dockerfile
+            target: api
+            image: api
+            cache_scope: services-api
+          - name: worker
+            file: services/api/Dockerfile
+            target: worker
+            image: worker
+            cache_scope: services-api
+          - name: web
+            file: apps/web/Dockerfile
+            target: runtime
+            image: web
+            cache_scope: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prep.outputs.revision }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name
+        id: img
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.image }}" in
+            api) echo "name=${{ needs.prep.outputs.image_api }}" >> "$GITHUB_OUTPUT" ;;
+            worker) echo "name=${{ needs.prep.outputs.image_worker }}" >> "$GITHUB_OUTPUT" ;;
+            web) echo "name=${{ needs.prep.outputs.image_web }}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown image" >&2; exit 1 ;;
+          esac
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/arm64
+          labels: |
+            org.opencontainers.image.title=okkey-${{ matrix.image }}
+            org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            org.opencontainers.image.vendor=okkeyapp
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-arm64
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}-linux-arm64
+          build-args: |
+            NODE_VERSION=25
+            RUST_TOOLCHAIN=1.86.0
+            WASM_PACK_VERSION=0.13.1
+          outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-linux-arm64
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge per-arch digests into multi-arch manifests and apply channel tags.
+  merge:
+    name: merge-manifests
+    needs: [prep, build-amd64, build-arm64]
+    # Run when prep succeeded and every requested arch build succeeded (skipped arch = ok).
+    if: >
+      always() &&
+      needs.prep.result == 'success' &&
+      (needs.build-amd64.result == 'success' || needs.build-amd64.result == 'skipped') &&
+      (needs.build-arm64.result == 'success' || needs.build-arm64.result == 'skipped') &&
+      !(needs.build-amd64.result == 'skipped' && needs.build-arm64.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Resolve image + tags for matrix
+        id: meta
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ matrix.image }}
+          IMAGE_API: ${{ needs.prep.outputs.image_api }}
+          IMAGE_WORKER: ${{ needs.prep.outputs.image_worker }}
+          IMAGE_WEB: ${{ needs.prep.outputs.image_web }}
+          TAGS_API: ${{ needs.prep.outputs.tags_api }}
+          TAGS_WORKER: ${{ needs.prep.outputs.tags_worker }}
+          TAGS_WEB: ${{ needs.prep.outputs.tags_web }}
+        run: |
+          set -euo pipefail
+          case "${IMAGE_KEY}" in
+            api)
+              echo "image=${IMAGE_API}" >> "$GITHUB_OUTPUT"
+              echo "tags=${TAGS_API}" >> "$GITHUB_OUTPUT"
+              ;;
+            worker)
+              echo "image=${IMAGE_WORKER}" >> "$GITHUB_OUTPUT"
+              echo "tags=${TAGS_WORKER}" >> "$GITHUB_OUTPUT"
+              ;;
+            web)
+              echo "image=${IMAGE_WEB}" >> "$GITHUB_OUTPUT"
+              echo "tags=${TAGS_WEB}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "unknown image ${IMAGE_KEY}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        id: manifest
+        shell: bash
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAGS_CSV: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          cd /tmp/digests
+          DIGEST_ARGS=()
+          for f in *; do
+            [[ -f "$f" ]] || continue
+            DIGEST_ARGS+=("${IMAGE}@sha256:${f}")
+          done
+          if [[ ${#DIGEST_ARGS[@]} -eq 0 ]]; then
+            echo "No digests found for ${{ matrix.image }}" >&2
+            ls -la >&2 || true
+            exit 1
+          fi
+
+          TAG_ARGS=()
+          IFS=',' read -ra TAGS <<< "${TAGS_CSV}"
+          for t in "${TAGS[@]}"; do
+            t="$(echo "$t" | xargs)"
+            [[ -n "$t" ]] || continue
+            TAG_ARGS+=("-t" "$t")
+          done
+
+          docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_ARGS[@]}"
+
+          FIRST_TAG="$(echo "${TAGS_CSV}" | cut -d, -f1 | xargs)"
+          # Digest of the multi-arch index (not a child platform manifest).
+          INDEX_DIGEST="$(docker buildx imagetools inspect "${FIRST_TAG}" --format '{{printf "%s" .Manifest.Digest}}' 2>/dev/null || true)"
+          if [[ -z "${INDEX_DIGEST}" ]]; then
+            INDEX_DIGEST="$(docker buildx imagetools inspect "${FIRST_TAG}" --format '{{.Digest}}' 2>/dev/null || true)"
+          fi
+          echo "first_tag=${FIRST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "digest=${INDEX_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Merged ${FIRST_TAG} platforms=${#DIGEST_ARGS[@]} digest=${INDEX_DIGEST:-unknown}"
+
+      # Approved: Core GHCR packages must allow anonymous pull (public).
+      # Best-effort PATCH — GITHUB_TOKEN may lack admin:packages; verify in GHCR UI.
+      - name: Ensure package is public
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PKG="${{ matrix.image }}"
+          HTTP="$(curl -sS -o /tmp/ghcr-vis.json -w '%{http_code}' \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/user/packages/container/${PKG}/visibility" \
+            -d '{"visibility":"public"}' || true)"
+          echo "visibility PATCH user HTTP ${HTTP}"
+          HTTP2="$(curl -sS -o /tmp/ghcr-vis-org.json -w '%{http_code}' \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/okkeyapp/packages/container/${PKG}/visibility" \
+            -d '{"visibility":"public"}' || true)"
+          echo "visibility PATCH org HTTP ${HTTP2}"
+          if [[ "${HTTP}" != "204" && "${HTTP}" != "200" && "${HTTP2}" != "204" && "${HTTP2}" != "200" ]]; then
+            echo "::warning::Could not set package visibility to public via API (may need admin:packages). Confirm ghcr.io/okkeyapp/${PKG} is public in the GHCR UI."
+          fi
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      # Keyless GitHub OIDC only — no COSIGN_KEY / password path.
+      - name: Sign images (cosign keyless OIDC)
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_YES: "true"
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          FIRST_TAG: ${{ steps.manifest.outputs.first_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${DIGEST}" ]]; then
+            REF="${IMAGE}@${DIGEST}"
+          else
+            REF="${FIRST_TAG}"
+            echo "::warning::No index digest resolved; signing tag ref ${REF}"
+          fi
+          cosign sign "${REF}"
+          echo "Signed ${REF}"
+
+  # Reminder only — do not delete on close. TTL GC runs on schedule (14d after closed_at).
+  note-pr-closed:
+    name: note-pr-closed-ttl
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: TTL reminder
+        run: |
+          echo "PR #${{ github.event.pull_request.number }} closed."
+          echo "Tags pr-${{ github.event.pull_request.number }}* will be deleted by scheduled GC ${PR_TAG_TTL_DAYS}d after closed_at (open-PR tags are never deleted)."
+
+  # TTL GC for ephemeral tags. Release SemVer tags and floating :dev are never deleted.
+  # pr-* : 14 days after PR closed_at; tags for OPEN PRs are never deleted.
+  # Deletion uses GITHUB_TOKEN with packages:write only (no human PAT required).
+  gc-ephemeral-tags:
+    name: gc-ephemeral-tags
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.run_gc_only == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Apply GHCR TTL retention
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE: ${{ matrix.image }}
+          OWNER: ${{ env.OWNER }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_TTL_DAYS: ${{ env.PR_TAG_TTL_DAYS }}
+          DEV_SHA_TTL_DAYS: ${{ env.DEV_SHA_TTL_DAYS }}
+          DEV_SHA_KEEP_LAST: ${{ env.DEV_SHA_KEEP_LAST }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, urllib.parse
+          from datetime import datetime, timezone, timedelta
+
+          owner = os.environ["OWNER"]
+          package = os.environ["PACKAGE"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          pr_ttl = timedelta(days=int(os.environ["PR_TTL_DAYS"]))
+          dev_ttl = timedelta(days=int(os.environ["DEV_SHA_TTL_DAYS"]))
+          keep_last = int(os.environ["DEV_SHA_KEEP_LAST"])
+          now = datetime.now(timezone.utc)
+          pkg_enc = urllib.parse.quote(package, safe="")
+          pr_closed_cache = {}
+
+          def gh_api(path):
+              cmd = ["gh", "api", path]
+              try:
+                  out = subprocess.check_output(cmd, text=True, stderr=subprocess.PIPE)
+                  return 0, out
+              except subprocess.CalledProcessError as exc:
+                  return exc.returncode, (exc.stderr or "").strip()
+
+          def list_versions():
+              cmd = [
+                  "gh", "api", "--paginate",
+                  f"/orgs/{owner}/packages/container/{pkg_enc}/versions",
+                  "--jq", ".[]",
+              ]
+              try:
+                  out = subprocess.check_output(cmd, text=True, stderr=subprocess.PIPE)
+              except subprocess.CalledProcessError as exc:
+                  err = (exc.stderr or "").strip()
+                  print(f"warn: list versions failed for {owner}/{package}: {err or exc}")
+                  return []
+              items = []
+              for line in out.splitlines():
+                  line = line.strip()
+                  if not line:
+                      continue
+                  items.append(json.loads(line))
+              return items
+
+          def parse_ts(s):
+              return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+          def is_release_tag(tag):
+              if tag in {"latest", "dev"}:
+                  return True
+              return bool(
+                  re.fullmatch(r"\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?", tag)
+              ) and not tag.startswith("pr-") and not tag.startswith("dev-")
+
+          def pr_numbers_from_tags(tags):
+              nums = set()
+              for tag in tags:
+                  m = re.fullmatch(r"pr-(\d+)(?:-.*)?", tag)
+                  if m:
+                      nums.add(int(m.group(1)))
+              return nums
+
+          def is_dev_sha_tag(tag):
+              return tag.startswith("dev-") and tag != "dev"
+
+          def pr_closed_at(pr_n):
+              """Return closed_at when PR is closed; None if open or unknown."""
+              if pr_n in pr_closed_cache:
+                  return pr_closed_cache[pr_n]
+              rc, body = gh_api(f"/repos/{repo}/pulls/{pr_n}")
+              if rc != 0:
+                  print(f"warn: cannot fetch PR #{pr_n}: {body}")
+                  pr_closed_cache[pr_n] = None
+                  return None
+              data = json.loads(body)
+              if data.get("state") == "open":
+                  pr_closed_cache[pr_n] = None
+                  return None
+              closed = data.get("closed_at")
+              if not closed:
+                  pr_closed_cache[pr_n] = None
+                  return None
+              ts = parse_ts(closed)
+              pr_closed_cache[pr_n] = ts
+              return ts
+
+          versions = list_versions()
+          if not versions:
+              print(f"No versions listed for {owner}/{package} (ok if empty).")
+              sys.exit(0)
+
+          to_delete = set()
+          protected = set()
+          pr_candidates = []
+          dev_sha_rows = []
+
+          for v in versions:
+              vid = v.get("id")
+              tags = (v.get("metadata") or {}).get("container", {}).get("tags") or []
+              updated = parse_ts(v.get("updated_at") or v.get("created_at"))
+
+              if any(is_release_tag(t) for t in tags):
+                  protected.add(vid)
+                  continue
+
+              if any(t.startswith("pr-") for t in tags):
+                  pr_candidates.append((vid, tags))
+                  continue
+
+              if tags and all(is_dev_sha_tag(t) for t in tags):
+                  dev_sha_rows.append((updated, vid, tags))
+
+          for vid, tags in pr_candidates:
+              nums = pr_numbers_from_tags(tags)
+              if not nums:
+                  print(f"pr skip (unparsed) id={vid} tags={tags}")
+                  continue
+              # Keep if ANY linked PR is still open, or closed < TTL ago.
+              keep = False
+              reasons = []
+              for n in sorted(nums):
+                  closed = pr_closed_at(n)
+                  if closed is None:
+                      keep = True
+                      reasons.append(f"#{n}=open-or-unknown")
+                  elif now - closed <= pr_ttl:
+                      keep = True
+                      reasons.append(f"#{n}=closed_at={closed.isoformat()} within TTL")
+                  else:
+                      reasons.append(f"#{n}=closed_at={closed.isoformat()} expired")
+              if keep:
+                  print(f"pr keep id={vid} tags={tags} ({'; '.join(reasons)})")
+              else:
+                  to_delete.add(vid)
+                  print(f"pr TTL expired id={vid} tags={tags} ({'; '.join(reasons)})")
+
+          # Keep if within 30 days OR among the newest KEEP_LAST.
+          dev_sha_rows.sort(key=lambda r: r[0], reverse=True)
+          for idx, (updated, vid, tags) in enumerate(dev_sha_rows):
+              age = now - updated
+              if idx < keep_last or age <= dev_ttl:
+                  print(f"dev-sha keep id={vid} tags={tags} rank={idx+1} age_days={age.days}")
+              else:
+                  to_delete.add(vid)
+                  print(f"dev-sha GC id={vid} tags={tags} rank={idx+1} age_days={age.days}")
+
+          to_delete -= protected
+          if not to_delete:
+              print("Nothing to delete.")
+              sys.exit(0)
+
+          for vid in sorted(to_delete):
+              print(f"Deleting package version id={vid}")
+              rc = subprocess.call(
+                  [
+                      "gh", "api", "-X", "DELETE",
+                      f"/orgs/{owner}/packages/container/{pkg_enc}/versions/{vid}",
+                  ],
+              )
+              if rc != 0:
+                  print(
+                      f"warn: failed to delete version {vid} (check package permissions)",
+                      file=sys.stderr,
+                  )
+          PY

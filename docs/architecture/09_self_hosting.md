@@ -85,21 +85,6 @@ CORS_ORIGIN
 
 `install.sh` generates strong `JWT_SECRET` / `SESSION_SECRET` / DB / MinIO passwords into `.env`.
 
-### Web runtime (`/config.js`)
-
-`OKKEY_API_PUBLIC_URL` is a **Compose / container env** for the `web` image. On start, the entrypoint writes browser config (not the env name) to `/config.js`:
-
-```js
-window.__OKKEY_RUNTIME__ = { apiBaseUrl: "<OKKEY_API_PUBLIC_URL value>" };
-```
-
-| Layer | Name | Where |
-|-------|------|--------|
-| Deploy env | `OKKEY_API_PUBLIC_URL` | `.env` / Compose → `web` container |
-| Browser runtime | `window.__OKKEY_RUNTIME__.apiBaseUrl` | `GET /config.js` |
-
-The SPA prefers `apiBaseUrl` from `__OKKEY_RUNTIME__` over build-time `VITE_API_BASE_URL`. Local Vite may ship an empty `apps/web/public/config.js` stub; Docker always regenerates it.
-
 ---
 
 ## Favicon preview
@@ -168,7 +153,14 @@ Images:
 - `ghcr.io/okkeyapp/web`
 - `ghcr.io/okkeyapp/worker`
 
-`deploy/docker/.env.example` pins `OKKEY_IMAGE_TAG` to a tag that **exists** in GHCR (currently `0.0.0-pr19.4`). Pre-releases come from `v*` git tag pushes; floating `:dev` only after `workflow_dispatch` on **Publish container images**; `latest` only on clean `vX.Y.Z`. See [`deploy/docker/README.md`](../../deploy/docker/README.md). CI: `.github/workflows/publish-images.yml`.
+Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `.github/workflows/publish-images.yml`):
+
+- push to `dev` → `:dev`, `:dev-<sha>` (installer tracking default; published on every push to `dev`)
+- pre-release tag e.g. `v1.0.0-beta.2` → `:1.0.0-beta.2` only (first image-backed release pin)
+- clean SemVer tag `vX.Y.Z` on `main` → `:X.Y.Z`, `:X.Y`, `:X` (`:latest` only via manual `workflow_dispatch` + `push_latest=true`)
+- production installs must **pin** a SemVer (default prod pin `1.0.0-beta.2`; never floating `:latest`)
+- Core images only (`api` / `web` / `worker`); browser extension is not part of this publish path
+- Cosign keyless GitHub OIDC on non-PR publishes; GHCR Core packages are public for pull
 
 ---
 

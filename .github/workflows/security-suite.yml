@@ -38,6 +38,7 @@ jobs:
     env:
       RUST_TOOLCHAIN: 1.86.0
       WASM_PACK_VERSION: 0.13.1
+      CARGO_NET_RETRY: "10"
       DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
       REDIS_URL: redis://127.0.0.1:6379
       DEPLOY_ENV: dev
@@ -77,7 +78,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: PATH="$HOME/.cargo/bin:$PATH" cargo install wasm-pack --version $WASM_PACK_VERSION --locked
+        run: bash scripts/ci/install-wasm-pack.sh
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
+# Tracking / QA (default image tag `dev`):
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 #
-# Optional env on the right of `|` so bash sees it (VAR=x curl | bash does not):
+# Production — pin a SemVer image (never `:latest`):
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-#     | OKKEY_REF=dev OKKEY_IMAGE_TAG=0.0.0-pr19.4 bash
+#     | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
+#
+# Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
 #
 # From a checked-out tree:
 #   ./deploy/docker/install.sh
@@ -20,6 +23,9 @@ OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/ok
 # Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
 OKKEY_REF="${OKKEY_REF:-dev}"
+# Recommended production pin (first image-backed release: 1.0.0-beta.2).
+# Used only when OKKEY_CHANNEL=prod and OKKEY_IMAGE_TAG is unset. Never defaults to `latest`.
+OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.2}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
 
@@ -153,6 +159,24 @@ wait_for_api_healthy() {
   die "stack started but API is not healthy — web/worker depend on api health"
 }
 
+# Resolve effective GHCR tag for a fresh install.
+# Precedence: OKKEY_IMAGE_TAG env → OKKEY_CHANNEL=prod pin → .env.example default (`dev`).
+resolve_image_tag_for_fresh_install() {
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
+    printf '%s\n' "${OKKEY_IMAGE_TAG}"
+    return
+  fi
+  case "${OKKEY_CHANNEL:-}" in
+    prod|production)
+      printf '%s\n' "${OKKEY_PROD_IMAGE_TAG}"
+      ;;
+    *)
+      # Leave empty → keep .env.example value (dev).
+      printf '\n'
+      ;;
+  esac
+}
+
 # When piped to bash (`curl … | bash`), BASH_SOURCE is unset — never expand [0] under `set -u`.
 SCRIPT_DIR=""
 if [[ ${BASH_SOURCE+x} ]] && [[ ${#BASH_SOURCE[@]} -gt 0 ]] && [[ -n "${BASH_SOURCE[0]}" ]] && [[ -f "${BASH_SOURCE[0]}" ]]; then
@@ -216,16 +240,63 @@ if [[ ! -f .env ]]; then
   replace_env SESSION_SECRET "$SESSION"
   replace_env POSTGRES_PASSWORD "$PG_PASS"
   replace_env MINIO_ROOT_PASSWORD "$MINIO_PASS"
-  # Process-env OKKEY_IMAGE_TAG wins over .env.example default (fresh installs only).
-  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
-    replace_env OKKEY_IMAGE_TAG "${OKKEY_IMAGE_TAG}"
-    log "==> OKKEY_IMAGE_TAG=${OKKEY_IMAGE_TAG} (from process environment)"
+
+  resolved_tag="$(resolve_image_tag_for_fresh_install)"
+  if [[ -n "${resolved_tag}" ]]; then
+    replace_env OKKEY_IMAGE_TAG "${resolved_tag}"
+    log "==> OKKEY_IMAGE_TAG=${resolved_tag}"
   fi
+
+  # Persist installer-provided ports / public URLs into .env (enterprise#38 / #56).
+  # Process env wins; when only WEB_PORT / API_PORT are set, derive matching URL defaults
+  # so config.js and a later `compose --env-file .env` stay consistent.
+  if [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env WEB_PORT "${WEB_PORT}"
+  fi
+  if [[ -n "${API_PORT:-}" ]]; then
+    replace_env API_PORT "${API_PORT}"
+  fi
+
+  if [[ -n "${PUBLIC_APP_URL:-}" ]]; then
+    replace_env PUBLIC_APP_URL "${PUBLIC_APP_URL}"
+  elif [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env PUBLIC_APP_URL "http://localhost:${WEB_PORT}"
+  fi
+
+  if [[ -n "${OKKEY_API_PUBLIC_URL:-}" ]]; then
+    replace_env OKKEY_API_PUBLIC_URL "${OKKEY_API_PUBLIC_URL}"
+  elif [[ -n "${API_PORT:-}" ]]; then
+    replace_env OKKEY_API_PUBLIC_URL "http://localhost:${API_PORT}"
+  fi
+
+  if [[ -n "${CORS_ORIGIN:-}" ]]; then
+    replace_env CORS_ORIGIN "${CORS_ORIGIN}"
+  elif [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env CORS_ORIGIN "http://localhost:${WEB_PORT}"
+  fi
+
+  if [[ -n "${WEBAUTHN_ORIGINS:-}" ]]; then
+    replace_env WEBAUTHN_ORIGINS "${WEBAUTHN_ORIGINS}"
+  elif [[ -n "${WEB_PORT:-}" ]]; then
+    replace_env WEBAUTHN_ORIGINS "http://localhost:${WEB_PORT}"
+  fi
+
+  if [[ -n "${WEBAUTHN_RP_ID:-}" ]]; then
+    replace_env WEBAUTHN_RP_ID "${WEBAUTHN_RP_ID}"
+  fi
+  if [[ -n "${WEBAUTHN_RP_NAME:-}" ]]; then
+    replace_env WEBAUTHN_RP_NAME "${WEBAUTHN_RP_NAME}"
+  fi
+
+  if [[ -n "${WEB_PORT:-}" || -n "${API_PORT:-}" || -n "${PUBLIC_APP_URL:-}" || -n "${OKKEY_API_PUBLIC_URL:-}" ]]; then
+    log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
+  fi
+
   log "==> Generated JWT_SECRET, SESSION_SECRET, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
-  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
-    log "==> Note: OKKEY_IMAGE_TAG=${OKKEY_IMAGE_TAG} is set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]] || [[ -n "${OKKEY_CHANNEL:-}" ]]; then
+    log "==> Note: OKKEY_IMAGE_TAG / OKKEY_CHANNEL set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
   fi
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
@@ -233,7 +304,7 @@ else
 fi
 
 image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
-image_tag="${image_tag:-latest}"
+image_tag="${image_tag:-dev}"
 log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
@@ -242,8 +313,8 @@ else
   if ! run_compose .env pull; then
     die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
 hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
-  Current published pre-release example: OKKEY_IMAGE_TAG=0.0.0-pr19.4
-  Floating :dev is only available after Actions → Publish container images → workflow_dispatch.
+  Tracking channel: OKKEY_IMAGE_TAG=dev (published on every push to the \`dev\` branch after CI lands).
+  Production: pin a SemVer, e.g. OKKEY_IMAGE_TAG=${OKKEY_PROD_IMAGE_TAG} or OKKEY_CHANNEL=prod.
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
 fi

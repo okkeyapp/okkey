@@ -18,10 +18,13 @@ RUN apt-get update \
 
 ARG RUST_TOOLCHAIN=1.86.0
 ARG WASM_PACK_VERSION=0.13.1
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN} \
+ENV CARGO_NET_RETRY=10
+RUN --mount=type=cache,target=/root/.cargo/registry \
+  --mount=type=cache,target=/root/.cargo/git \
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN} \
   && . "$HOME/.cargo/env" \
   && rustup target add wasm32-unknown-unknown \
-  && cargo install wasm-pack --version ${WASM_PACK_VERSION} --locked
+  && WASM_PACK_VERSION=${WASM_PACK_VERSION} bash scripts/ci/install-wasm-pack.sh
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Build-time placeholders; runtime config.js overrides API URL for self-host.
@@ -30,11 +33,21 @@ ARG VITE_APP_ENV=production
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_APP_ENV=${VITE_APP_ENV}
 
+# Yarn classic defaults to a short network timeout; flaky registry pulls under
+# multi-arch CI need a longer budget. Cache mount keeps downloaded tarballs
+# across builds (paired with buildx GHA cache).
+ENV YARN_CACHE_FOLDER=/usr/local/share/.cache/yarn
+ENV YARN_NETWORK_TIMEOUT=600000
+
 # --ignore-scripts: avoid @okkey/extension `wxt prepare` (entrypoints not in image).
 # vite build only: Core image has no okkey-enterprise sibling; tsc -b would fail on
 # enterprise path aliases that Vite stubs at bundle time.
-RUN node scripts/ensure-crypto-wasm-dist.mjs \
-  && yarn install --frozen-lockfile --ignore-scripts \
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+  --mount=type=cache,target=/root/.cargo/registry \
+  --mount=type=cache,target=/root/.cargo/git \
+  node scripts/ensure-crypto-wasm-dist.mjs \
+  && yarn config set network-timeout 600000 \
+  && yarn install --frozen-lockfile --ignore-scripts --network-timeout 600000 \
   && yarn build:wasm \
   && yarn build:ts-sdk \
   && yarn build:i18n \

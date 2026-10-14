@@ -75,7 +75,7 @@ services:
     restart: "no"
 
   api:
-    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-latest}
+    image: ${OKKEY_API_IMAGE:-ghcr.io/okkeyapp/api}:${OKKEY_IMAGE_TAG:-dev}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -132,7 +132,7 @@ services:
       start_period: 40s
 
   worker:
-    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-latest}
+    image: ${OKKEY_WORKER_IMAGE:-ghcr.io/okkeyapp/worker}:${OKKEY_IMAGE_TAG:-dev}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -172,7 +172,7 @@ services:
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
 
   web:
-    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-latest}
+    image: ${OKKEY_WEB_IMAGE:-ghcr.io/okkeyapp/web}:${OKKEY_IMAGE_TAG:-dev}
     restart: unless-stopped
     depends_on:
       api:
