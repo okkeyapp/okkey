@@ -215,7 +215,8 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
     now: "2026-01-01T00:00:00.000Z",
   });
 
-  assert.equal(first.status, "pending");
+  // First device for a user is auto-trusted when no other trusted device exists.
+  assert.equal(first.status, "trusted");
 
   const second = await devices.registerOrUpdate({
     userId: user.id,
@@ -234,7 +235,7 @@ test("integration: DevicesRepository deduplicates and updates trusted metadata",
   });
 
   assert.equal(second.id, first.id);
-  assert.equal(second.status, "pending");
+  assert.equal(second.status, "trusted");
 
   const countRows = await db.query<{ count: string }>(
     "SELECT COUNT(*)::text AS count FROM devices WHERE user_id = $1",
