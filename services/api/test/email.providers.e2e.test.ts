@@ -21,6 +21,18 @@ class InMemoryRedis {
     this.values.set(key, value);
   }
 
+  async setIfNotExistsWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    if (this.values.has(key)) {
+      return false;
+    }
+    await this.setWithTtl(key, value, ttlSeconds);
+    return true;
+  }
+
   async get(key: string): Promise<string | null> {
     return this.values.get(key) ?? null;
   }
