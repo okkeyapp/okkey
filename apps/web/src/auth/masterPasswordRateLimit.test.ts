@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyMasterPasswordServerStatus,
   clearMasterPasswordFailures,
   getMasterPasswordLockRemainingMs,
   isMasterPasswordLocked,
@@ -22,5 +23,17 @@ describe("masterPasswordRateLimit", () => {
     expect(getMasterPasswordLockRemainingMs(userId)).toBeGreaterThan(0);
     clearMasterPasswordFailures(userId);
     expect(isMasterPasswordLocked(userId)).toBe(false);
+  });
+
+  it("applies server lockout into local cache", () => {
+    const userId = `master-rate-server-${Date.now()}`;
+    clearMasterPasswordFailures(userId);
+    const applied = applyMasterPasswordServerStatus(userId, {
+      locked: true,
+      remaining_ms: 60_000,
+    });
+    expect(applied.locked).toBe(true);
+    expect(isMasterPasswordLocked(userId)).toBe(true);
+    clearMasterPasswordFailures(userId);
   });
 });

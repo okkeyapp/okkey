@@ -43,6 +43,9 @@ import type {
   AccountProfileUpdateRequestDto,
   AccountMasterPasswordChangeRequestDto,
   AccountMasterPasswordChangeResponseDto,
+  VaultUnlockAttestationDto,
+  VaultUnlockAttemptStatusDto,
+  VaultUnlockRecordResponseDto,
   AccountEmailChangeConfirmRequestDto,
   AccountEmailChangeConfirmResponseDto,
   AccountEmailChangeResendRequestDto,
@@ -333,9 +336,19 @@ export class CoreApiClient {
     return this.api.post<AccountMasterPasswordChangeResponseDto>("/account/master-password/change", body);
   }
 
-  /** Reports a successful master-password vault unlock (no secrets in the body). */
-  recordVaultUnlock(): Promise<{ recorded: true }> {
-    return this.api.post<{ recorded: true }>("/account/vault-unlock", {});
+  /** Reports a successful vault unlock with a signed attestation (no secrets). */
+  recordVaultUnlock(attestation: VaultUnlockAttestationDto): Promise<VaultUnlockRecordResponseDto> {
+    return this.api.post<VaultUnlockRecordResponseDto>("/account/vault-unlock", { attestation });
+  }
+
+  /** Reports a failed local unlock attempt (increments server-side attempt budget). */
+  reportVaultUnlockFailure(): Promise<VaultUnlockRecordResponseDto> {
+    return this.api.post<VaultUnlockRecordResponseDto>("/account/vault-unlock", { failure: true });
+  }
+
+  /** Server-authoritative unlock attempt lockout status. */
+  getVaultUnlockAttemptStatus(): Promise<VaultUnlockAttemptStatusDto> {
+    return this.api.get<VaultUnlockAttemptStatusDto>("/account/vault-unlock/status");
   }
 
   startAccountEmailChange(

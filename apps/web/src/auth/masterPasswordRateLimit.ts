@@ -1,6 +1,7 @@
 /**
- * Master-password unlock attempt limiting (local device only).
- * Mirrors PIN budget so repeated wrong passwords lock the unlock form.
+ * Master-password unlock attempt limiting.
+ * Local cache mirrors the server budget; lockout is authoritative on the API so
+ * clearing site data does not reset the attempt window.
  */
 const WINDOW_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -62,6 +63,25 @@ export function getMasterPasswordLockRemainingMs(userId: string): number {
 
 export function isMasterPasswordLocked(userId: string): boolean {
   return getMasterPasswordLockRemainingMs(userId) > 0;
+}
+
+/**
+ * Apply server lockout into the local cache.
+ * When the server reports unlocked, clear local lockout but keep failure
+ * timestamps so in-flight local counting is not wiped by a soft 200 ack.
+ */
+export function applyMasterPasswordServerStatus(
+  userId: string,
+  status: { locked: boolean; remaining_ms: number },
+): { locked: boolean; remainingMs: number } {
+  if (status.locked && status.remaining_ms > 0) {
+    const lockedUntil = Date.now() + status.remaining_ms;
+    writeState(userId, { failures: [], lockedUntil });
+    return { locked: true, remainingMs: status.remaining_ms };
+  }
+  const state = readState(userId);
+  writeState(userId, { failures: state.failures, lockedUntil: null });
+  return { locked: false, remainingMs: 0 };
 }
 
 export function recordMasterPasswordFailure(userId: string): {

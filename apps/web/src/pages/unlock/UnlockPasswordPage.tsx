@@ -20,7 +20,9 @@ import { ACCOUNT_RESTORE_PATH, AUTH_EMAIL_PATH, DEFAULT_AUTHENTICATED_PATH, acco
 import { useAuthVault } from "../../auth/AuthVaultContext";
 import { tryUnlockWithBiometrics, biometricErrorMessageKey } from "../../auth/biometricUnlock";
 import { hasExtensionAuthPending } from "../../auth/extensionAuthPendingStorage";
+import { createAuthenticatedCoreClient } from "../../api/client";
 import {
+  applyMasterPasswordServerStatus,
   clearMasterPasswordFailures,
   isMasterPasswordLocked,
   recordMasterPasswordFailure,
@@ -100,6 +102,28 @@ export default function UnlockPasswordPage() {
     const q = searchParams.toString();
     return q ? `${ACCOUNT_RESTORE_PATH}?${q}` : ACCOUNT_RESTORE_PATH;
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!accessToken || !userId || vaultUnlocked) {
+      return;
+    }
+    let cancelled = false;
+    void createAuthenticatedCoreClient(accessToken)
+      .getVaultUnlockAttemptStatus()
+      .then((status) => {
+        if (cancelled) {
+          return;
+        }
+        const applied = applyMasterPasswordServerStatus(userId, status);
+        setMasterPasswordLocked(applied.locked);
+      })
+      .catch(() => {
+        /* offline / best-effort — local cache still applies */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, userId, vaultUnlocked]);
 
   useEffect(() => {
     if (mode !== "biometric" || !userId || vaultUnlocked) {
@@ -292,8 +316,42 @@ export default function UnlockPasswordPage() {
     const ok = await tryUnlockWithMasterPassword(masterPassword);
     if (!ok) {
       if (userId) {
-        const result = recordMasterPasswordFailure(userId);
-        setMasterPasswordLocked(result.locked);
+        const local = recordMasterPasswordFailure(userId);
+        setMasterPasswordLocked(local.locked);
+        if (accessToken) {
+          try {
+            const server = await createAuthenticatedCoreClient(accessToken).reportVaultUnlockFailure();
+            if (server.locked) {
+              const applied = applyMasterPasswordServerStatus(userId, {
+                locked: true,
+                remaining_ms: typeof server.remaining_ms === "number" ? server.remaining_ms : 0,
+              });
+              setMasterPasswordLocked(applied.locked || local.locked);
+            } else {
+              setMasterPasswordLocked(local.locked);
+            }
+          } catch (err: unknown) {
+            const status =
+              err && typeof err === "object" && "status" in err
+                ? Number((err as { status?: unknown }).status)
+                : NaN;
+            if (status === 429) {
+              try {
+                const lockedStatus = await createAuthenticatedCoreClient(
+                  accessToken,
+                ).getVaultUnlockAttemptStatus();
+                const applied = applyMasterPasswordServerStatus(userId, lockedStatus);
+                setMasterPasswordLocked(applied.locked);
+              } catch {
+                const applied = applyMasterPasswordServerStatus(userId, {
+                  locked: true,
+                  remaining_ms: local.remainingMs > 0 ? local.remainingMs : 5 * 60 * 1000,
+                });
+                setMasterPasswordLocked(applied.locked);
+              }
+            }
+          }
+        }
       }
       setShowUnlockError(true);
       return;
@@ -348,7 +406,8 @@ export default function UnlockPasswordPage() {
     bioBusy ||
     vaultUnlockBootstrapLoading ||
     pinSubmitting ||
-    (mode === "pin" && userId !== null && isPinLocked(userId));
+    (mode === "pin" && userId !== null && isPinLocked(userId)) ||
+    (mode === "master" && masterPasswordLocked);
   const submitDisabled =
     fieldsDisabled ||
     (mode === "pin" ? pinValue.length !== PIN_LENGTH : masterPassword.length === 0);

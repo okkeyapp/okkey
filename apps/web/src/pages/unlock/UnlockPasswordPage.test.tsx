@@ -12,6 +12,13 @@ vi.mock("../../locale/LocaleContext", () => ({
   }),
 }));
 
+vi.mock("../../api/client", () => ({
+  createAuthenticatedCoreClient: () => ({
+    getVaultUnlockAttemptStatus: vi.fn(async () => ({ locked: false, remaining_ms: 0 })),
+    reportVaultUnlockFailure: vi.fn(async () => ({ recorded: false, locked: false, remaining_ms: 0 })),
+  }),
+}));
+
 vi.mock("../../auth/AuthVaultContext", () => ({
   useAuthVault: () => ({
     accessToken: "token",
@@ -60,13 +67,15 @@ describe("UnlockPasswordPage master password", () => {
     );
     const password = await screen.findByLabelText("unlock.masterPassword");
     const submit = screen.getByRole("button", { name: "unlock.submit" });
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       fireEvent.change(password, { target: { value: "wrong-password" } });
       fireEvent.click(submit);
       await waitFor(() => {
         expect(tryUnlockWithMasterPassword).toHaveBeenCalledTimes(attempt + 1);
       });
     }
-    expect(screen.getByText(/attempt|locked|limit/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText(/attempt|locked|limit/i)).toBeTruthy();
+    });
   });
 });
