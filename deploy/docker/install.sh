@@ -4,9 +4,9 @@
 # Tracking / QA (default image tag `dev`):
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 #
-# Production — pin a SemVer image (example):
+# Production — pin a SemVer image (never `:latest`):
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-#     | OKKEY_IMAGE_TAG=1.0.0-beta.1 bash
+#     | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 #
 # Env must be on the right of `|` so bash sees it (`VAR=x curl | bash` does not).
 #
@@ -23,9 +23,9 @@ OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/ok
 # Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
 OKKEY_REF="${OKKEY_REF:-dev}"
-# Recommended production pin (bump when cutting a main release). Used only when
-# OKKEY_CHANNEL=prod and OKKEY_IMAGE_TAG is unset.
-OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.1}"
+# Recommended production pin (first image-backed release: 1.0.0-beta.2).
+# Used only when OKKEY_CHANNEL=prod and OKKEY_IMAGE_TAG is unset. Never defaults to `latest`.
+OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.2}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
 

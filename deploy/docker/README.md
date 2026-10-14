@@ -10,18 +10,18 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 ```
 
-**Production** — pin a SemVer image (do **not** rely on floating `:latest`):
+**Production** — pin a SemVer image (never floating `:latest`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-  | OKKEY_IMAGE_TAG=1.0.0-beta.1 bash
+  | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
 # or:
-#   | OKKEY_CHANNEL=prod bash   # uses OKKEY_PROD_IMAGE_TAG (default 1.0.0-beta.1)
+#   | OKKEY_CHANNEL=prod bash   # uses OKKEY_PROD_IMAGE_TAG (default 1.0.0-beta.2)
 ```
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
-`.env.example` defaults to `OKKEY_IMAGE_TAG=dev`. If GHCR packages are private, `docker login ghcr.io` first (or ask an org admin to make them public).
+`.env.example` defaults to `OKKEY_IMAGE_TAG=dev` for tracking. Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull. Production must pin a SemVer (default prod pin: `1.0.0-beta.2`); do not use `:latest` for prod.
 
 Optional env:
 
@@ -30,7 +30,7 @@ Optional env:
 | `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
 | `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
 | `OKKEY_CHANNEL=prod` | On **fresh** installs, pin `OKKEY_PROD_IMAGE_TAG` when `OKKEY_IMAGE_TAG` is unset |
-| `OKKEY_PROD_IMAGE_TAG` | SemVer pin used by `OKKEY_CHANNEL=prod` (default `1.0.0-beta.1`) |
+| `OKKEY_PROD_IMAGE_TAG` | SemVer pin used by `OKKEY_CHANNEL=prod` (default `1.0.0-beta.2`; never `latest`) |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
@@ -104,24 +104,34 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
 
 ## Image tags
 
-Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/publish-images.yml) to `ghcr.io/okkeyapp/{api,web,worker}`:
+Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/publish-images.yml) to `ghcr.io/okkeyapp/{api,web,worker}` (Core only — the browser extension is **not** published by this workflow).
 
 | Event | Tags |
 |-------|------|
-| Push to `dev` | `:dev`, `:dev-<sha>` |
+| Push to `dev` | `:dev`, `:dev-<sha>` (intended immediately after this workflow merges to `dev`) |
 | Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X`, `:latest` |
-| Git tag `vX.Y.Z-…` (pre-release) | `:X.Y.Z-…` only (no `:latest` / rolling) |
-| Pull request | `:pr-<n>`, `:pr-<n>-<sha>` (deleted when the PR closes) |
+| Git tag `vX.Y.Z-…` (pre-release, e.g. `v1.0.0-beta.2`) | `:X.Y.Z-…` only (no `:latest` / rolling) |
+| Pull request | `:pr-<n>`, `:pr-<n>-<sha>` |
 | `workflow_dispatch` | explicit tag (+ optional `:latest`) |
+
+Retention (scheduled GC; release SemVer tags and floating `:dev` are never deleted):
+
+| Tag class | Policy |
+|-----------|--------|
+| `pr-*` | Deleted ~14 days after last update (after PR close / last sync) |
+| `dev-<sha>` | Keep if age ≤ 30 days **or** among the newest 20 |
+| SemVer / `:latest` / `:dev` | Never deleted by GC |
+
+Ephemeral `pr-*` versions are deleted only by CI (`GITHUB_TOKEN` + `packages:write`), not by hand.
 
 Installer defaults:
 
 | Channel | `OKKEY_IMAGE_TAG` |
 |---------|-------------------|
 | Tracking / QA (default) | `dev` |
-| Production | pin SemVer (e.g. `1.0.0-beta.1`) via `OKKEY_IMAGE_TAG` or `OKKEY_CHANNEL=prod` |
+| Production | pin SemVer (default `1.0.0-beta.2`) via `OKKEY_IMAGE_TAG` or `OKKEY_CHANNEL=prod` — **never** `:latest` |
 
-Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign signing is wired (keyless OIDC) and runs when repository variable `ENABLE_COSIGN=true` (optional `COSIGN_KEY` / `COSIGN_PASSWORD`).
+Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (optional `COSIGN_KEY` / `COSIGN_PASSWORD` override).
 
 ## Manual install
 
@@ -190,7 +200,7 @@ Install without hitting the registry:
 OKKEY_SKIP_PULL=1 ./deploy/docker/install.sh
 ```
 
-GHCR packages for `okkeyapp/{api,web,worker}` must be **public** (or your Docker login needs `read:packages`). Anonymous pull returns 401/403 while they stay private.
+GHCR packages for `okkeyapp/{api,web,worker}` are **public** for anonymous pull. If a mirror or fork keeps them private, `docker login ghcr.io` with `read:packages` is required.
 
 ## Dev infrastructure
 

@@ -1,15 +1,23 @@
-# Publish Okkey container images to GHCR.
+# Publish Okkey Core container images to GHCR.
+#
+# Scope: api / worker / web only. Browser extension is not published here
+# (out of the first image-backed release slice: 1.0.0-beta.2).
 #
 # Tag scheme:
 #   push to `dev`          → :dev, :dev-<sha>
 #   tag vX.Y.Z (clean)     → :X.Y.Z, :X.Y, :X, :latest
 #   tag vX.Y.Z-prerelease  → :X.Y.Z-prerelease  (no :latest / rolling)
-#   pull_request           → :pr-<n>, :pr-<n>-<sha>  (cleaned up on close)
+#   pull_request           → :pr-<n>, :pr-<n>-<sha>
 #   workflow_dispatch      → explicit tag (+ optional :latest)
+#
+# Retention (scheduled GC — never deletes SemVer / :latest / floating :dev):
+#   pr-*       → delete when last updated > 14 days ago
+#   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
 #
 # Multi-arch: linux/amd64 + linux/arm64.
 # OCI labels via docker/metadata-action; SBOM + provenance via buildx.
-# Cosign: keyless OIDC when vars.ENABLE_COSIGN=true (needs id-token + packages write).
+# Cosign: keyless GitHub OIDC on every non-PR publish (optional COSIGN_KEY override).
+# GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
 name: Publish container images
 
 on:
@@ -20,6 +28,9 @@ on:
       - "v*"
   pull_request:
     types: [opened, synchronize, reopened, closed]
+  schedule:
+    # Daily GHCR TTL cleanup (pr-* / dev-<sha>).
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       tag:
@@ -35,12 +46,17 @@ on:
         description: "Comma-separated platforms"
         required: false
         default: "linux/amd64,linux/arm64"
+      run_gc_only:
+        description: "Skip publish; only run GHCR TTL cleanup"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   packages: write
   actions: write # GHA cache for buildx
-  id-token: write # provenance attestations + cosign keyless
+  id-token: write # provenance attestations + cosign keyless OIDC
   attestations: write
   pull-requests: read
 
@@ -53,7 +69,8 @@ jobs:
   publish:
     name: build-and-push
     if: >
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.run_gc_only != 'true') ||
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' &&
        github.event.action != 'closed' &&
@@ -166,30 +183,23 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v3
 
-      # Keyless signing via GitHub OIDC. Enable with repository variable
-      # ENABLE_COSIGN=true once org/package permissions allow signing.
-      # Optional key-based path: secrets.COSIGN_KEY + COSIGN_PASSWORD.
-      - name: Sign images (cosign)
+      # Keyless GitHub OIDC signing is enabled for every non-PR publish
+      # (push to `dev`, release tags, workflow_dispatch). Optional key-based
+      # override: secrets.COSIGN_KEY + COSIGN_PASSWORD.
+      - name: Sign images (cosign keyless OIDC)
         if: github.event_name != 'pull_request'
-        continue-on-error: true
         env:
           COSIGN_YES: "true"
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ${{ steps.prep.outputs.image }}
-          ENABLE_COSIGN: ${{ vars.ENABLE_COSIGN }}
           COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${ENABLE_COSIGN}" != "true" ]]; then
-            echo "Cosign skipped — set repository variable ENABLE_COSIGN=true when ready."
-            echo "TODO: enable keyless OIDC signing (id-token) or provide COSIGN_KEY / COSIGN_PASSWORD."
-            exit 0
-          fi
           if [[ -z "${DIGEST}" ]]; then
-            echo "No image digest from build; skipping cosign."
-            exit 0
+            echo "No image digest from build; cannot sign."
+            exit 1
           fi
           REF="${IMAGE}@${DIGEST}"
           if [[ -n "${COSIGN_KEY}" ]]; then
@@ -201,48 +211,154 @@ jobs:
           fi
           echo "Signed ${REF}"
 
-  cleanup-pr-tags:
-    name: cleanup-pr-tags
+  # TTL GC for ephemeral tags. Release SemVer tags and floating :dev are never deleted.
+  # pr-* versions are retained ~14 days after last update (≈ after PR close / last sync).
+  # Deletion uses GITHUB_TOKEN with packages:write only (no human PAT required).
+  gc-ephemeral-tags:
+    name: gc-ephemeral-tags
     if: >
-      github.event_name == 'pull_request' &&
-      github.event.action == 'closed' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.run_gc_only == 'true') ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'closed' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         image: [api, worker, web]
     steps:
-      - name: Delete ephemeral PR tags from GHCR
+      - name: Apply GHCR TTL retention
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           PACKAGE: ${{ matrix.image }}
           OWNER: ${{ env.OWNER }}
+          # On PR close, only consider that PR's tags for the 14-day rule
+          # (still age-gated). Scheduled runs consider all pr-* / dev-<sha>.
+          CLOSED_PR: ${{ github.event.pull_request.number || '' }}
+          PR_TTL_DAYS: "14"
+          DEV_SHA_TTL_DAYS: "30"
+          DEV_SHA_KEEP_LAST: "20"
         shell: bash
         run: |
           set -euo pipefail
-          PREFIX="pr-${PR_NUMBER}"
-          echo "Cleaning GHCR tags matching ${PREFIX}* for ${OWNER}/${PACKAGE}"
+          # shellcheck disable=SC2016
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, urllib.parse
+          from datetime import datetime, timezone, timedelta
 
-          # List package versions; delete any whose tags start with pr-<n>.
-          # Requires packages:write on GITHUB_TOKEN (workflow permissions above).
-          mapfile -t VERSION_IDS < <(
-            gh api --paginate \
-              "/orgs/${OWNER}/packages/container/${PACKAGE}/versions" \
-              --jq ".[] | select(.metadata.container.tags != null) | select(any(.metadata.container.tags[]; startswith(\"${PREFIX}\"))) | .id" \
-              2>/dev/null || true
-          )
+          owner = os.environ["OWNER"]
+          package = os.environ["PACKAGE"]
+          closed_pr = os.environ.get("CLOSED_PR", "").strip()
+          pr_ttl = timedelta(days=int(os.environ["PR_TTL_DAYS"]))
+          dev_ttl = timedelta(days=int(os.environ["DEV_SHA_TTL_DAYS"]))
+          keep_last = int(os.environ["DEV_SHA_KEEP_LAST"])
+          now = datetime.now(timezone.utc)
+          pkg_enc = urllib.parse.quote(package, safe="")
 
-          if [[ ${#VERSION_IDS[@]} -eq 0 ]]; then
-            echo "No matching versions found (ok if PR never published images)."
-            exit 0
-          fi
+          def list_versions() -> list:
+              # Emit one version object per line via jq (handles --paginate).
+              cmd = [
+                  "gh", "api", "--paginate",
+                  f"/orgs/{owner}/packages/container/{pkg_enc}/versions",
+                  "--jq", ".[]",
+              ]
+              try:
+                  out = subprocess.check_output(cmd, text=True, stderr=subprocess.PIPE)
+              except subprocess.CalledProcessError as exc:
+                  err = (exc.stderr or "").strip()
+                  print(f"warn: list versions failed for {owner}/{package}: {err or exc}")
+                  return []
+              items = []
+              for line in out.splitlines():
+                  line = line.strip()
+                  if not line:
+                      continue
+                  items.append(json.loads(line))
+              return items
 
-          for id in "${VERSION_IDS[@]}"; do
-            echo "Deleting package version id=${id}"
-            gh api -X DELETE \
-              "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${id}" \
-              || echo "warn: failed to delete version ${id} (check package permissions)"
-          done
+          def parse_ts(s: str) -> datetime:
+              return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+          def is_release_tag(tag: str) -> bool:
+              # Never delete release / floating tip tags.
+              if tag in {"latest", "dev"}:
+                  return True
+              # SemVer (+ optional pre-release): 1.2.3, 1.0.0-beta.2, 1.2, 1
+              return bool(
+                  re.fullmatch(r"\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?", tag)
+              ) and not tag.startswith("pr-") and not tag.startswith("dev-")
+
+          def is_pr_tag(tag: str) -> bool:
+              if closed_pr:
+                  return tag == f"pr-{closed_pr}" or tag.startswith(f"pr-{closed_pr}-")
+              return tag.startswith("pr-")
+
+          def is_dev_sha_tag(tag: str) -> bool:
+              return tag.startswith("dev-") and tag != "dev"
+
+          versions = list_versions()
+          if not versions:
+              print(f"No versions listed for {owner}/{package} (ok if empty).")
+              sys.exit(0)
+
+          to_delete = set()
+          protected = set()
+          pr_candidates = []
+          dev_sha_rows = []
+
+          for v in versions:
+              vid = v.get("id")
+              tags = (v.get("metadata") or {}).get("container", {}).get("tags") or []
+              updated = parse_ts(v.get("updated_at") or v.get("created_at"))
+              age = now - updated
+
+              if any(is_release_tag(t) for t in tags):
+                  protected.add(vid)
+                  continue
+
+              if any(is_pr_tag(t) for t in tags):
+                  pr_candidates.append((vid, tags, age, updated))
+                  continue
+
+              if tags and all(is_dev_sha_tag(t) for t in tags):
+                  dev_sha_rows.append((updated, vid, tags))
+
+          for vid, tags, age, updated in pr_candidates:
+              if age > pr_ttl:
+                  to_delete.add(vid)
+                  print(f"pr TTL expired id={vid} tags={tags} updated={updated.isoformat()}")
+              else:
+                  print(f"pr keep id={vid} tags={tags} age_days={age.days}")
+
+          # Keep if within 30 days OR among the newest KEEP_LAST.
+          dev_sha_rows.sort(key=lambda r: r[0], reverse=True)
+          for idx, (updated, vid, tags) in enumerate(dev_sha_rows):
+              age = now - updated
+              if idx < keep_last or age <= dev_ttl:
+                  print(f"dev-sha keep id={vid} tags={tags} rank={idx+1} age_days={age.days}")
+              else:
+                  to_delete.add(vid)
+                  print(f"dev-sha GC id={vid} tags={tags} rank={idx+1} age_days={age.days}")
+
+          to_delete -= protected
+          if not to_delete:
+              print("Nothing to delete.")
+              sys.exit(0)
+
+          for vid in sorted(to_delete):
+              print(f"Deleting package version id={vid}")
+              rc = subprocess.call(
+                  [
+                      "gh", "api", "-X", "DELETE",
+                      f"/orgs/{owner}/packages/container/{pkg_enc}/versions/{vid}",
+                  ],
+              )
+              if rc != 0:
+                  print(
+                      f"warn: failed to delete version {vid} (check package permissions)",
+                      file=sys.stderr,
+                  )
+          PY
