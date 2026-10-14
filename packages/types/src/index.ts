@@ -1580,7 +1580,7 @@ export interface WorkspaceItemCategoryPreferencesResponseDto {
   favorite_category_ids: string[];
   favorite_template_ids: string[];
   favorite_order: string[];
-  /** When true, skip auto-creating personal_data after unlock (member deleted it). */
+  /** When true, skip auto-creating personal_data after unlock (deleted or legacy member). */
   personal_data_bootstrap_dismissed: boolean;
 }
 

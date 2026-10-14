@@ -78,7 +78,8 @@ export default function PersonalDataBootstrapController({
     }
 
     // Soft-deleted row still in retention → persist dismiss so a later purge cannot recreate.
-    if (hasSoftDeletedPersonalDataItem(items)) {
+    // Only when the server flag is not already set (avoids a redundant PUT on every unlock).
+    if (hasSoftDeletedPersonalDataItem(items) && !personalDataBootstrapDismissed) {
       markPersonalDataBootstrapDismissed();
     }
 

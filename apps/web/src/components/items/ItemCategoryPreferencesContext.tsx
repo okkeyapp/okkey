@@ -10,7 +10,10 @@ import {
 } from "react";
 
 import { useAuthenticatedCoreClient, useAuthVault } from "../../auth/AuthVaultContext";
-import { markPersonalDataBootstrapDismissed as markLocalPersonalDataBootstrapDismissed } from "../../items/personalDataBootstrapDismissal";
+import {
+  markPersonalDataBootstrapDismissed as markLocalPersonalDataBootstrapDismissed,
+  shouldPutPersonalDataBootstrapDismissed,
+} from "../../items/personalDataBootstrapDismissal";
 import {
   buildDefaultFavoriteOrder,
   encodeFavoriteOrderEntry,
@@ -49,6 +52,7 @@ export function useItemCategoryPreferencesState(
   const favoriteIdsRef = useRef(favoriteIds);
   const favoriteTemplateIdsRef = useRef(favoriteTemplateIds);
   const favoriteOrderRef = useRef(favoriteOrder);
+  const personalDataBootstrapDismissedRef = useRef(personalDataBootstrapDismissed);
 
   useEffect(() => {
     favoriteIdsRef.current = favoriteIds;
@@ -61,6 +65,10 @@ export function useItemCategoryPreferencesState(
   useEffect(() => {
     favoriteOrderRef.current = favoriteOrder;
   }, [favoriteOrder]);
+
+  useEffect(() => {
+    personalDataBootstrapDismissedRef.current = personalDataBootstrapDismissed;
+  }, [personalDataBootstrapDismissed]);
 
   useEffect(() => {
     if (!core || !workspaceId) {
@@ -197,9 +205,15 @@ export function useItemCategoryPreferencesState(
   );
 
   const markPersonalDataBootstrapDismissed = useCallback(() => {
+    const knownServerDismissed = personalDataBootstrapDismissedRef.current;
     setPersonalDataBootstrapDismissed(true);
+    personalDataBootstrapDismissedRef.current = true;
     markLocalPersonalDataBootstrapDismissed(userId, workspaceId);
     if (!core || !workspaceId) {
+      return;
+    }
+    // Skip repeat PUTs when the server flag is already true (e.g. every unlock).
+    if (!shouldPutPersonalDataBootstrapDismissed(knownServerDismissed, true)) {
       return;
     }
     void core
@@ -207,7 +221,9 @@ export function useItemCategoryPreferencesState(
         personal_data_bootstrap_dismissed: true,
       })
       .then((response) => {
-        setPersonalDataBootstrapDismissed(Boolean(response.personal_data_bootstrap_dismissed));
+        const dismissed = Boolean(response.personal_data_bootstrap_dismissed);
+        setPersonalDataBootstrapDismissed(dismissed);
+        personalDataBootstrapDismissedRef.current = dismissed;
       })
       .catch(() => {
         /* keep optimistic true; next GET will reconcile */

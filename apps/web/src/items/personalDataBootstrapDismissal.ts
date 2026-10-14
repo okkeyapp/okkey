@@ -49,3 +49,15 @@ export function markPersonalDataBootstrapDismissed(
     /* quota / private mode */
   }
 }
+
+/**
+ * Whether a PUT of `personal_data_bootstrap_dismissed` would change the known
+ * server value. Callers must skip the network write when this returns false
+ * (e.g. every unlock after the flag is already true).
+ */
+export function shouldPutPersonalDataBootstrapDismissed(
+  knownServerDismissed: boolean,
+  nextDismissed: boolean,
+): boolean {
+  return knownServerDismissed !== nextDismissed;
+}

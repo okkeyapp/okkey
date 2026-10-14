@@ -212,6 +212,7 @@ export class ItemCategoryPreferencesService {
   /**
    * Persist that the member dismissed personal_data bootstrap (e.g. deleted the item).
    * Creates a preferences row with default favorites when none exists yet.
+   * No-op write when the stored value already matches `dismissed`.
    */
   async setPersonalDataBootstrapDismissed(
     workspaceId: string,
@@ -224,6 +225,26 @@ export class ItemCategoryPreferencesService {
     personalDataBootstrapDismissed: boolean;
   }> {
     await this.assertWorkspaceAccess(workspaceId, userId);
+    const current = await this.preferences.find(workspaceId, userId);
+    if (current && current.personalDataBootstrapDismissed === dismissed) {
+      const favoriteCategoryIds = sanitizeFavoriteCategoryIds(current.favoriteCategoryIds);
+      const favoriteTemplateIds = await this.sanitizeFavoriteTemplateIds(
+        workspaceId,
+        current.favoriteTemplateIds,
+      );
+      return {
+        favoriteCategoryIds,
+        favoriteTemplateIds,
+        favoriteOrder: reconcileFavoriteOrder(
+          current.favoriteOrder.length > 0
+            ? current.favoriteOrder
+            : buildDefaultFavoriteOrder(favoriteCategoryIds, favoriteTemplateIds),
+          favoriteCategoryIds,
+          favoriteTemplateIds,
+        ),
+        personalDataBootstrapDismissed: current.personalDataBootstrapDismissed,
+      };
+    }
     const existing = await this.preferences.setPersonalDataBootstrapDismissed({
       workspaceId,
       userId,

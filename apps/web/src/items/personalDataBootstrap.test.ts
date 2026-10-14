@@ -12,6 +12,7 @@ import {
   isPersonalDataBootstrapDismissed,
   markPersonalDataBootstrapDismissed,
   personalDataBootstrapDismissedStorageKey,
+  shouldPutPersonalDataBootstrapDismissed,
 } from "./personalDataBootstrapDismissal";
 
 function memoryStorage(): Storage {
@@ -148,6 +149,32 @@ describe("personalDataBootstrapDismissal storage", () => {
     // Bootstrap skip then depends on server personal_data_bootstrap_dismissed.
     expect(shouldSkipPersonalDataBootstrap([], false)).toBe(false);
     expect(shouldSkipPersonalDataBootstrap([], true)).toBe(true);
+  });
+});
+
+describe("shouldPutPersonalDataBootstrapDismissed", () => {
+  it("puts only when the known server value would change", () => {
+    expect(shouldPutPersonalDataBootstrapDismissed(false, true)).toBe(true);
+    expect(shouldPutPersonalDataBootstrapDismissed(true, false)).toBe(true);
+  });
+
+  it("skips PUT when the flag is already the desired value (unlock after dismiss)", () => {
+    expect(shouldPutPersonalDataBootstrapDismissed(true, true)).toBe(false);
+    expect(shouldPutPersonalDataBootstrapDismissed(false, false)).toBe(false);
+  });
+});
+
+describe("legacy account after purge (server backfill)", () => {
+  it("skips recreate when migration backfilled dismissed and item is gone", () => {
+    // Old client deleted personal_data; purge removed the row before first unlock
+    // on new code. Migration backfill set personal_data_bootstrap_dismissed=true
+    // for pre-existing members, so bootstrap must not recreate.
+    expect(shouldSkipPersonalDataBootstrap([], true)).toBe(true);
+    expect(shouldSkipPersonalDataBootstrap([loginItem], true)).toBe(true);
+  });
+
+  it("still bootstraps genuinely new accounts (dismissed false, no item)", () => {
+    expect(shouldSkipPersonalDataBootstrap([], false)).toBe(false);
   });
 });
 

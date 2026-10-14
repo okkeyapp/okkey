@@ -24,7 +24,11 @@ import type { ItemActivityWireEntry } from "./buildItemActivityEntries";
 import { itemPlaintextToListRecord } from "./itemPlaintextToListRecord";
 import { withItemArchivedState } from "./itemArchive";
 import { withItemDeletedState } from "./itemDelete";
-import { markPersonalDataBootstrapDismissed } from "./personalDataBootstrapDismissal";
+import {
+  isPersonalDataBootstrapDismissed,
+  markPersonalDataBootstrapDismissed,
+  shouldPutPersonalDataBootstrapDismissed,
+} from "./personalDataBootstrapDismissal";
 import {
   createWorkspaceVaultItemsSyncController,
   type WorkspaceVaultItemsSyncController,
@@ -311,8 +315,14 @@ export function useWorkspaceItemsState(input: {
   );
 
   const persistPersonalDataBootstrapDismissed = useCallback(() => {
+    // Local cache mirrors the server flag after GET / prior PUT. Skip PUT when
+    // the known value is already true (e.g. soft-deleted path already synced).
+    const knownDismissed = isPersonalDataBootstrapDismissed(userId, workspaceId);
     markPersonalDataBootstrapDismissed(userId, workspaceId);
     if (!core || !workspaceId) {
+      return;
+    }
+    if (!shouldPutPersonalDataBootstrapDismissed(knownDismissed, true)) {
       return;
     }
     void core
