@@ -47,7 +47,7 @@ For a given recipient and request:
 ## Developer workflow
 
 - **Preview only (no API):** from repo root run `yarn dev:email` — React Email dev server on port **3030** for files under `packages/email-templates/emails/`.
-- **Build packages:** `yarn build:email` (compiles `@okkey/i18n` then `@okkey/email-templates`). Required before `yarn dev:api` and `yarn test:api` (both run `build:email` first).
+- **Build packages:** `yarn build:email` (compiles `@okkey/i18n` then `@okkey/email-templates`). `yarn dev:api` runs `scripts/ensure-api-dev-deps.mjs` first (`build:wasm` if needed, then `build:ts-sdk`, then `build:email`). `yarn test:api` runs `build:wasm`, `build:ts-sdk`, then `build:email`.
 - **Change copy:** edit `packages/i18n/src/locales/email/en.json` and `ru.json` (ICU). Change layout/styles: `packages/email-templates/src/components/*.tsx`.
 - **Tests:** `email.qa.fallbackProbeOnlyInEn` is intentionally present **only** in `en.json` (fallback coverage). If you add a Russian string for that key, update the corresponding unit test expectation in `services/api/test/email.catalog.test.ts`.
 

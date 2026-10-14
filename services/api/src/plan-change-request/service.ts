@@ -46,6 +46,8 @@ export type PlanChangeRequestInput = {
   contactEmail: string;
   locale: string;
   region: string | null;
+  /** Expected number of workspace members / seats (integer ≥ 1). */
+  workspaceMemberCount: number;
 };
 
 /** Sales-facing label: `saas` | `self-hosted`. */
@@ -108,6 +110,18 @@ export class PlanChangeRequestService {
       input.locale === "ru" || input.locale === "en" ? input.locale : "en";
     const region =
       input.region && /^[A-Z]{2}$/.test(input.region) ? input.region : null;
+    const workspaceMemberCount = input.workspaceMemberCount;
+    if (
+      !Number.isInteger(workspaceMemberCount) ||
+      workspaceMemberCount < 1 ||
+      !Number.isFinite(workspaceMemberCount)
+    ) {
+      throw new PlanChangeRequestServiceError(
+        "INVALID_REQUEST",
+        400,
+        "workspace member count must be an integer >= 1",
+      );
+    }
 
     try {
       await assertWorkspacePermission(
@@ -157,6 +171,7 @@ export class PlanChangeRequestService {
           accountEmail: profile?.email ?? contactEmail,
           locale,
           region: region ?? "",
+          workspaceMemberCount,
           deploymentMode: salesDeploymentLabel(this.deploymentMode),
           actorUserId: input.actorUserId,
         },

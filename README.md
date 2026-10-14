@@ -53,6 +53,8 @@ yarn dev:api
 yarn dev:worker
 ```
 
+`yarn dev:api` builds missing WASM / TS SDK / email package dists before starting (first run needs `wasm-pack`).
+
 ## Env policy
 
 - Root `.env` is for infrastructure only (`docker-compose` ports/credentials).

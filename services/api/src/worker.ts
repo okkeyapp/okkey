@@ -88,6 +88,7 @@ async function main(): Promise<void> {
         attachments: storage.repositories.attachments,
         vaults: storage.repositories.vaults,
         workspaces: storage.repositories.workspaces,
+        config,
       })
     : undefined;
 

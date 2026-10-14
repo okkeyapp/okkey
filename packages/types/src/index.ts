@@ -18,6 +18,7 @@ import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-car
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
 
 export type {
+  DeploymentMode,
   PlanCatalogGroup,
   PlanCustomOverride,
   PlanEntitlementOptions,
@@ -44,6 +45,7 @@ export {
   planCatalogGroupForTier,
   planEntitlementOptionsFromWorkspace,
   planTiersForCatalogGroup,
+  resolveEntitlementPlanTier,
   resolvePlanFeatures,
   sanitizePlanFeatureOverrides,
 } from "./plan-features.js";
@@ -1223,6 +1225,8 @@ export interface WorkspacePlanChangeRequestDto {
   locale: string;
   /** Billing region ISO 3166-1 alpha-2, or empty when unset. */
   region: string | null;
+  /** Expected number of workspace members / seats (integer ≥ 1). */
+  workspace_member_count: number;
 }
 
 /** `POST /workspaces/:workspaceId/plan-change-requests` success body. */

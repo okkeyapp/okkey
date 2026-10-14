@@ -21,7 +21,7 @@ function mkBlob(input: string) {
 }
 
 test("integration: capsule create/open with password and view limit", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -102,7 +102,7 @@ test("integration: capsule create/open with password and view limit", async (t) 
 });
 
 test("integration: file capsule persists encrypted blob in object storage", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -142,7 +142,7 @@ test("integration: file capsule persists encrypted blob in object storage", asyn
 });
 
 test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -191,7 +191,7 @@ test("integration: capsule open returns CAPSULE_EXPIRED after expiry", async (t)
 });
 
 test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -234,7 +234,7 @@ test("integration: capsule open returns CAPSULE_REVOKED after revoke", async (t)
 });
 
 test("integration: capsule open is rate-limited per IP", async (t) => {
-  const base = loadConfig();
+  const base = { ...loadConfig(), deploymentMode: "saas" as const };
   const config = {
     ...base,
     capsuleOpenRateLimitPerIp: 1,
@@ -285,7 +285,7 @@ test("integration: capsule open is rate-limited per IP", async (t) => {
 });
 
 test("integration: file capsule open tolerates missing object storage blob", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -334,7 +334,7 @@ test("integration: file capsule open tolerates missing object storage blob", asy
 });
 
 test("integration: capsule create works on FREE without access settings", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -383,7 +383,7 @@ test("integration: capsule create works on FREE without access settings", async 
 });
 
 test("integration: update resets view count; activate clears past schedule and views", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 
@@ -468,7 +468,7 @@ test("integration: update resets view count; activate clears past schedule and v
 });
 
 test("integration: deactivate then activate restores public access after view limit", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
 

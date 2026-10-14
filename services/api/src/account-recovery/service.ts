@@ -12,6 +12,10 @@ import {
 import { generateEntityId } from "../entity-id.ts";
 import { decodeEncryptedBlobFromStorage } from "../crypto/encrypted-blob.ts";
 import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
+import {
+  planEntitlementRuntimeFromConfig,
+  type PlanEntitlementRuntimeConfig,
+} from "../plan-entitlements.ts";
 import type { AccountRecoveryRepository } from "../storage/account-recovery.ts";
 import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
 
@@ -42,6 +46,8 @@ export interface AccountRecoveryServiceDeps {
   >;
   emailTemplates?: Pick<EmailTemplateService, "sendTrustedContactInviteBestEffort">;
   publicAppBaseUrl?: string;
+  /** When set, self-hosted recovery gates on modules instead of `plan_tier`. */
+  config?: PlanEntitlementRuntimeConfig;
 }
 
 function normalizeEmail(email: string): string {
@@ -141,6 +147,7 @@ export class AccountRecoveryService {
   private readonly users: AccountRecoveryServiceDeps["users"];
   private readonly emailTemplates?: AccountRecoveryServiceDeps["emailTemplates"];
   private readonly publicAppBaseUrl: string;
+  private readonly config?: PlanEntitlementRuntimeConfig;
 
   constructor(deps: AccountRecoveryServiceDeps) {
     this.recovery = deps.recovery;
@@ -148,11 +155,15 @@ export class AccountRecoveryService {
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.publicAppBaseUrl = deps.publicAppBaseUrl ?? "";
+    this.config = deps.config;
   }
 
   async resolveEntitlements(userId: string): Promise<AccountRecoveryEntitlements> {
     const workspaces = await this.workspaces.listAccessibleByUser(userId);
-    return resolveAccountRecoveryEntitlements(workspaces);
+    return resolveAccountRecoveryEntitlements(
+      workspaces,
+      this.config ? planEntitlementRuntimeFromConfig(this.config) : undefined,
+    );
   }
 
   async hasEnrolledRecoveryKey(userId: string): Promise<boolean> {

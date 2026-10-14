@@ -22,7 +22,7 @@ function blob(value: string) {
 }
 
 test("capsules v2: owner pagination, isolation, approval and reactivation", async (t) => {
-  const config = loadConfig();
+  const config = { ...loadConfig(), deploymentMode: "saas" as const };
   const storage = await createStorageLayer(config, createLoggerStub());
   await applyMigrations(storage);
   const ownerEmail = `capsule-v2-owner-${testEntityId()}@okkey.local`;

@@ -1,3 +1,4 @@
+import { createTestApiConfig } from "./test-api-config.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AttachmentService, AttachmentServiceError } from "../src/attachments/service.ts";
@@ -102,7 +103,7 @@ function uploadMocks(input: {
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
   return {
-    service: new AttachmentService({ storage, attachments, vaults, workspaces }),
+    service: new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) }),
     getCreated: () => created,
   };
 }
@@ -142,7 +143,7 @@ test("AttachmentService removes uploaded object when metadata insert fails", asy
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
 
   await assert.rejects(() =>
     service.upload({
@@ -182,7 +183,7 @@ test("AttachmentService denies vault access before storage operations", async ()
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
 
   await assert.rejects(
     () =>
@@ -301,7 +302,7 @@ test("AttachmentService purges all item attachment objects", async () => {
   const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
   const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
 
   await service.purgeForItem("1000000000000000001", "1000000000000000002");
 
@@ -346,7 +347,7 @@ test("AttachmentService purges all attachment objects by item id", async () => {
   const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
   const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
 
   await service.purgeForItemId("1000000000000000002");
 
@@ -410,7 +411,7 @@ test("AttachmentService purges template attachments by scope and referenced ids"
   const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
   const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces });
+  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
 
   await service.purgeForTemplate("1000000000000000002", ["1000000000000000003", "1000000000000000004"]);
 

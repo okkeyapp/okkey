@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import fs from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
@@ -9,11 +10,18 @@ import {
   loadEnterpriseWebViteEnv,
 } from "./vite.enterpriseEnv";
 
+/** Fail-closed: sibling must expose at least one web module entry. */
+function isEnterpriseWebLoadable(enterpriseRoot: string): boolean {
+  return fs.existsSync(path.join(enterpriseRoot, "web/workspace-roles/src/index.ts"));
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
-  const enterpriseModules = env.VITE_ENTERPRISE_MODULES === "true";
   const enterpriseRoot = path.resolve(__dirname, "../../../okkey-enterprise");
   const enterpriseWebEnvDir = path.resolve(enterpriseRoot, "web");
+  const enterpriseModulesRequested = env.VITE_ENTERPRISE_MODULES === "true";
+  // Fail closed: env alone is not enough — sibling path must be loadable.
+  const enterpriseModules = enterpriseModulesRequested && isEnterpriseWebLoadable(enterpriseRoot);
 
   /** SaaS / legal env lives in okkey-enterprise/web/.env — not in public Core examples. */
   const enterpriseWebEnvOverlay = enterpriseModules
@@ -106,7 +114,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    define: enterpriseWebViteEnvDefines(enterpriseWebEnvOverlay),
+    define: {
+      ...enterpriseWebViteEnvDefines(enterpriseWebEnvOverlay),
+      // Effective after fail-closed sibling check (client entitlements / UI).
+      "import.meta.env.VITE_ENTERPRISE_MODULES_ACTIVE": JSON.stringify(
+        enterpriseModules ? "true" : "false",
+      ),
+    },
     assetsInclude: ["**/*.wasm"],
     optimizeDeps: {
       exclude: [

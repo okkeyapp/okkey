@@ -3,11 +3,11 @@ import type { AttachmentsRepository, AttachmentRecord } from "../storage/attachm
 import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import {
   DEFAULT_MAX_FILE_SIZE_MB,
-  hasPlanFeature,
   maxFileSizeBytesFromMb,
   normalizeFileExtensionTag,
-  planEntitlementOptionsFromWorkspace,
 } from "@okkey/types";
+import type { PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
+import { workspaceHasPlanFeature } from "../plan-entitlements.ts";
 
 export class AttachmentServiceError extends Error {
   readonly code: string;
@@ -50,6 +50,7 @@ export interface AttachmentServiceDeps {
   attachments: AttachmentsRepository;
   vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   workspaces: Pick<WorkspacesRepository, "findById">;
+  config: PlanEntitlementRuntimeConfig;
 }
 
 const ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES = 1024 * 1024;
@@ -59,12 +60,14 @@ export class AttachmentService {
   private readonly attachments: AttachmentsRepository;
   private readonly vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   private readonly workspaces: Pick<WorkspacesRepository, "findById">;
+  private readonly config: PlanEntitlementRuntimeConfig;
 
   constructor(deps: AttachmentServiceDeps) {
     this.storage = deps.storage;
     this.attachments = deps.attachments;
     this.vaults = deps.vaults;
     this.workspaces = deps.workspaces;
+    this.config = deps.config;
   }
 
   async upload(input: AttachmentUploadInput): Promise<AttachmentUploadResult> {
@@ -246,11 +249,7 @@ export class AttachmentService {
       maxSizeBytes: maxFileSizeBytesFromMb(workspace.maxFileSizeMb),
       filesInItemsEnabled:
         workspace.filesInItemsEnabled &&
-        hasPlanFeature(
-          workspace.planTier,
-          "filesInItems",
-          planEntitlementOptionsFromWorkspace(workspace),
-        ),
+        workspaceHasPlanFeature(this.config, workspace, "filesInItems"),
       isWorkspaceSystemAttachment,
     };
   }
