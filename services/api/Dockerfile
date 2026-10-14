@@ -12,7 +12,9 @@ RUN apt-get update \
 # Rust + wasm-pack for @okkey/crypto
 ARG RUST_TOOLCHAIN=1.86.0
 ARG WASM_PACK_VERSION=0.13.1
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN} \
+RUN --mount=type=cache,target=/root/.cargo/registry \
+  --mount=type=cache,target=/root/.cargo/git \
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN} \
   && . "$HOME/.cargo/env" \
   && rustup target add wasm32-unknown-unknown \
   && cargo install wasm-pack --version ${WASM_PACK_VERSION} --locked
@@ -27,10 +29,20 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/extension/package.json apps/extension/package.json
 COPY services/api services/api
 
+# Yarn classic defaults to a short network timeout; flaky registry pulls under
+# multi-arch CI need a longer budget. Cache mount keeps downloaded tarballs
+# across builds (paired with buildx GHA cache).
+ENV YARN_CACHE_FOLDER=/usr/local/share/.cache/yarn
+ENV YARN_NETWORK_TIMEOUT=600000
+
 # --ignore-scripts: workspace includes apps/extension (wxt postinstall); we only
 # ship package.json for lockfile resolution and must not run extension prepare.
-RUN node scripts/ensure-crypto-wasm-dist.mjs \
-  && yarn install --frozen-lockfile --ignore-scripts \
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+  --mount=type=cache,target=/root/.cargo/registry \
+  --mount=type=cache,target=/root/.cargo/git \
+  node scripts/ensure-crypto-wasm-dist.mjs \
+  && yarn config set network-timeout 600000 \
+  && yarn install --frozen-lockfile --ignore-scripts --network-timeout 600000 \
   && yarn build:wasm \
   && yarn build:ts-sdk \
   && yarn build:email

@@ -14,8 +14,8 @@
 #   pr-*       → delete 14 days AFTER the PR is CLOSED; open-PR tags are never deleted
 #   dev-<sha>  → keep if age ≤ 30 days OR among the newest 20; else delete
 #
-# Multi-arch: linux/amd64 + linux/arm64.
-# OCI labels set explicitly; SBOM + provenance via buildx.
+# Multi-arch: linux/amd64 + linux/arm64 via native runners (no QEMU), then
+# manifest-list merge. BuildKit yarn/cargo cache mounts + GHA buildx cache.
 # Cosign: keyless GitHub OIDC only (no COSIGN_KEY path).
 # GHCR Core packages are public for anonymous pull; pr-* deletion uses GITHUB_TOKEN only.
 name: Publish container images
@@ -74,8 +74,9 @@ env:
   DEV_SHA_KEEP_LAST: "20"
 
 jobs:
-  publish:
-    name: build-and-push
+  # Resolve tags / platforms / revision once for all build+merge jobs.
+  prep:
+    name: resolve-tags
     if: >
       (github.event_name == 'workflow_dispatch' &&
        github.event.inputs.run_gc_only != 'true') ||
@@ -84,47 +85,20 @@ jobs:
        github.event.action != 'closed' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: api
-            file: services/api/Dockerfile
-            target: api
-            image: api
-          - name: worker
-            file: services/api/Dockerfile
-            target: worker
-            image: worker
-          - name: web
-            file: apps/web/Dockerfile
-            target: runtime
-            image: web
+    timeout-minutes: 5
+    outputs:
+      platforms: ${{ steps.prep.outputs.platforms }}
+      revision: ${{ steps.prep.outputs.revision }}
+      want_amd64: ${{ steps.prep.outputs.want_amd64 }}
+      want_arm64: ${{ steps.prep.outputs.want_arm64 }}
+      tags_api: ${{ steps.prep.outputs.tags_api }}
+      tags_worker: ${{ steps.prep.outputs.tags_worker }}
+      tags_web: ${{ steps.prep.outputs.tags_web }}
+      image_api: ${{ steps.prep.outputs.image_api }}
+      image_worker: ${{ steps.prep.outputs.image_worker }}
+      image_web: ${{ steps.prep.outputs.image_web }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # PR: build the head commit so image contents match :pr-N-<sha> tags
-          # (github.sha on pull_request is the ephemeral merge commit).
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Resolve tags in bash (not docker/metadata-action) so PR tags use
-      # pull_request.head.sha. Avoids merge-commit SHAs and metadata-action JSON flakes.
-      - name: Resolve image name, platforms, tags, labels
+      - name: Resolve platforms, tags, revision
         id: prep
         shell: bash
         env:
@@ -139,85 +113,388 @@ jobs:
           DISPATCH_LATEST: ${{ github.event.inputs.push_latest }}
           DISPATCH_PLATFORMS: ${{ github.event.inputs.platforms }}
           PR_IMAGE_PLATFORMS: ${{ vars.PR_IMAGE_PLATFORMS }}
-          MATRIX_IMAGE: ${{ matrix.image }}
         run: |
           set -euo pipefail
-          IMAGE="${REGISTRY}/${OWNER}/${MATRIX_IMAGE}"
           PLATFORMS="${DEFAULT_PLATFORMS}"
-          TAGS=""
           REVISION="${SHA}"
 
           short7() { printf '%.7s' "$1"; }
 
+          tags_for() {
+            local IMAGE="$1"
+            local TAGS=""
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              SHORT="$(short7 "${REVISION}")"
+              TAGS="${IMAGE}:pr-${PR_NUMBER},${IMAGE}:pr-${PR_NUMBER}-${SHORT}"
+            elif [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/dev" ]]; then
+              SHORT="$(short7 "${REVISION}")"
+              TAGS="${IMAGE}:dev,${IMAGE}:dev-${SHORT}"
+            elif [[ "${REF_TYPE}" == "tag" ]]; then
+              VERSION="${REF_NAME#v}"
+              TAGS="${IMAGE}:${VERSION}"
+              # Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
+              # :latest is NEVER automatic — only workflow_dispatch + push_latest=true.
+              if [[ "${REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                MAJOR="${VERSION%%.*}"
+                MINOR_MAJOR="${VERSION%.*}" # X.Y
+                TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR}"
+              fi
+            elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+              local DT="${DISPATCH_TAG:-dev}"
+              TAGS="${IMAGE}:${DT}"
+              if [[ "${DISPATCH_LATEST}" == "true" && "${DT}" != "latest" ]]; then
+                TAGS="${TAGS},${IMAGE}:latest"
+              fi
+            else
+              echo "Unsupported event for publish: ${EVENT_NAME} ref=${REF}" >&2
+              exit 1
+            fi
+            printf '%s' "${TAGS}"
+          }
+
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             REVISION="${PR_HEAD_SHA}"
-            SHORT="$(short7 "${REVISION}")"
-            TAGS="${IMAGE}:pr-${PR_NUMBER},${IMAGE}:pr-${PR_NUMBER}-${SHORT}"
             if [[ -n "${PR_IMAGE_PLATFORMS}" ]]; then
               PLATFORMS="${PR_IMAGE_PLATFORMS}"
             fi
-          elif [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/dev" ]]; then
-            SHORT="$(short7 "${REVISION}")"
-            TAGS="${IMAGE}:dev,${IMAGE}:dev-${SHORT}"
-          elif [[ "${REF_TYPE}" == "tag" ]]; then
-            VERSION="${REF_NAME#v}"
-            TAGS="${IMAGE}:${VERSION}"
-            # Clean SemVer vX.Y.Z only → rolling :X.Y / :X.
-            # :latest is NEVER automatic — only workflow_dispatch + push_latest=true.
-            if [[ "${REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              MAJOR="${VERSION%%.*}"
-              MINOR_MAJOR="${VERSION%.*}" # X.Y
-              TAGS="${TAGS},${IMAGE}:${MINOR_MAJOR},${IMAGE}:${MAJOR}"
-            fi
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            DISPATCH_TAG="${DISPATCH_TAG:-dev}"
-            TAGS="${IMAGE}:${DISPATCH_TAG}"
-            if [[ "${DISPATCH_LATEST}" == "true" && "${DISPATCH_TAG}" != "latest" ]]; then
-              TAGS="${TAGS},${IMAGE}:latest"
-            fi
             PLATFORMS="${DISPATCH_PLATFORMS:-$DEFAULT_PLATFORMS}"
-          else
-            echo "Unsupported event for publish: ${EVENT_NAME} ref=${REF}" >&2
+          fi
+
+          WANT_AMD64=false
+          WANT_ARM64=false
+          IFS=',' read -ra PLAT_ARR <<< "${PLATFORMS}"
+          for p in "${PLAT_ARR[@]}"; do
+            p="$(echo "$p" | xargs)"
+            [[ "$p" == "linux/amd64" ]] && WANT_AMD64=true
+            [[ "$p" == "linux/arm64" ]] && WANT_ARM64=true
+          done
+          if [[ "${WANT_AMD64}" != "true" && "${WANT_ARM64}" != "true" ]]; then
+            echo "No supported platforms in: ${PLATFORMS}" >&2
             exit 1
           fi
 
+          IMAGE_API="${REGISTRY}/${OWNER}/api"
+          IMAGE_WORKER="${REGISTRY}/${OWNER}/worker"
+          IMAGE_WEB="${REGISTRY}/${OWNER}/web"
+
           {
-            echo "image=${IMAGE}"
             echo "platforms=${PLATFORMS}"
-            echo "tags=${TAGS}"
             echo "revision=${REVISION}"
+            echo "want_amd64=${WANT_AMD64}"
+            echo "want_arm64=${WANT_ARM64}"
+            echo "image_api=${IMAGE_API}"
+            echo "image_worker=${IMAGE_WORKER}"
+            echo "image_web=${IMAGE_WEB}"
+            echo "tags_api=$(tags_for "${IMAGE_API}")"
+            echo "tags_worker=$(tags_for "${IMAGE_WORKER}")"
+            echo "tags_web=$(tags_for "${IMAGE_WEB}")"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Resolved tags: ${TAGS}"
           echo "Revision: ${REVISION}"
-          echo "Platforms: ${PLATFORMS}"
+          echo "Platforms: ${PLATFORMS} (amd64=${WANT_AMD64} arm64=${WANT_ARM64})"
+          echo "api tags: $(tags_for "${IMAGE_API}")"
+          echo "worker tags: $(tags_for "${IMAGE_WORKER}")"
+          echo "web tags: $(tags_for "${IMAGE_WEB}")"
 
-      - name: Build and push
+  # Native per-arch builds (amd64 on x86 runner, arm64 on ARM runner — no QEMU).
+  # Split by arch so job-level `if` can use needs.* (matrix is not allowed there).
+  build-amd64:
+    name: build-and-push (amd64)
+    needs: prep
+    if: needs.prep.outputs.want_amd64 == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            file: services/api/Dockerfile
+            target: api
+            image: api
+            cache_scope: services-api
+          - name: worker
+            file: services/api/Dockerfile
+            target: worker
+            image: worker
+            cache_scope: services-api
+          - name: web
+            file: apps/web/Dockerfile
+            target: runtime
+            image: web
+            cache_scope: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # PR: build the head commit so image contents match :pr-N-<sha> tags
+          # (github.sha on pull_request is the ephemeral merge commit).
+          ref: ${{ needs.prep.outputs.revision }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name
+        id: img
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.image }}" in
+            api) echo "name=${{ needs.prep.outputs.image_api }}" >> "$GITHUB_OUTPUT" ;;
+            worker) echo "name=${{ needs.prep.outputs.image_worker }}" >> "$GITHUB_OUTPUT" ;;
+            web) echo "name=${{ needs.prep.outputs.image_web }}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown image" >&2; exit 1 ;;
+          esac
+
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
           target: ${{ matrix.target }}
-          platforms: ${{ steps.prep.outputs.platforms }}
-          push: true
-          tags: ${{ steps.prep.outputs.tags }}
+          platforms: linux/amd64
           labels: |
             org.opencontainers.image.title=okkey-${{ matrix.image }}
             org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
             org.opencontainers.image.vendor=okkeyapp
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ steps.prep.outputs.revision }}
+            org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
             org.opencontainers.image.licenses=AGPL-3.0-or-later
-          # Buildx provenance attestation (SLSA) + SBOM (SPDX).
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-amd64
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}-linux-amd64
           build-args: |
             NODE_VERSION=25
             RUST_TOOLCHAIN=1.86.0
             WASM_PACK_VERSION=0.13.1
+          outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-linux-amd64
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  build-arm64:
+    name: build-and-push (arm64)
+    needs: prep
+    if: needs.prep.outputs.want_arm64 == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            file: services/api/Dockerfile
+            target: api
+            image: api
+            cache_scope: services-api
+          - name: worker
+            file: services/api/Dockerfile
+            target: worker
+            image: worker
+            cache_scope: services-api
+          - name: web
+            file: apps/web/Dockerfile
+            target: runtime
+            image: web
+            cache_scope: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prep.outputs.revision }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name
+        id: img
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.image }}" in
+            api) echo "name=${{ needs.prep.outputs.image_api }}" >> "$GITHUB_OUTPUT" ;;
+            worker) echo "name=${{ needs.prep.outputs.image_worker }}" >> "$GITHUB_OUTPUT" ;;
+            web) echo "name=${{ needs.prep.outputs.image_web }}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown image" >&2; exit 1 ;;
+          esac
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/arm64
+          labels: |
+            org.opencontainers.image.title=okkey-${{ matrix.image }}
+            org.opencontainers.image.description=Okkey Core ${{ matrix.image }} image
+            org.opencontainers.image.vendor=okkeyapp
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prep.outputs.revision }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}-linux-arm64
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}-linux-arm64
+          build-args: |
+            NODE_VERSION=25
+            RUST_TOOLCHAIN=1.86.0
+            WASM_PACK_VERSION=0.13.1
+          outputs: type=image,name=${{ steps.img.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-linux-arm64
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge per-arch digests into multi-arch manifests and apply channel tags.
+  merge:
+    name: merge-manifests
+    needs: [prep, build-amd64, build-arm64]
+    # Run when prep succeeded and every requested arch build succeeded (skipped arch = ok).
+    if: >
+      always() &&
+      needs.prep.result == 'success' &&
+      (needs.build-amd64.result == 'success' || needs.build-amd64.result == 'skipped') &&
+      (needs.build-arm64.result == 'success' || needs.build-arm64.result == 'skipped') &&
+      !(needs.build-amd64.result == 'skipped' && needs.build-arm64.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, web]
+    steps:
+      - name: Resolve image + tags for matrix
+        id: meta
+        shell: bash
+        env:
+          IMAGE_KEY: ${{ matrix.image }}
+          IMAGE_API: ${{ needs.prep.outputs.image_api }}
+          IMAGE_WORKER: ${{ needs.prep.outputs.image_worker }}
+          IMAGE_WEB: ${{ needs.prep.outputs.image_web }}
+          TAGS_API: ${{ needs.prep.outputs.tags_api }}
+          TAGS_WORKER: ${{ needs.prep.outputs.tags_worker }}
+          TAGS_WEB: ${{ needs.prep.outputs.tags_web }}
+        run: |
+          set -euo pipefail
+          case "${IMAGE_KEY}" in
+            api)
+              echo "image=${IMAGE_API}" >> "$GITHUB_OUTPUT"
+              echo "tags=${TAGS_API}" >> "$GITHUB_OUTPUT"
+              ;;
+            worker)
+              echo "image=${IMAGE_WORKER}" >> "$GITHUB_OUTPUT"
+              echo "tags=${TAGS_WORKER}" >> "$GITHUB_OUTPUT"
+              ;;
+            web)
+              echo "image=${IMAGE_WEB}" >> "$GITHUB_OUTPUT"
+              echo "tags=${TAGS_WEB}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "unknown image ${IMAGE_KEY}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        id: manifest
+        shell: bash
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAGS_CSV: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          cd /tmp/digests
+          DIGEST_ARGS=()
+          for f in *; do
+            [[ -f "$f" ]] || continue
+            DIGEST_ARGS+=("${IMAGE}@sha256:${f}")
+          done
+          if [[ ${#DIGEST_ARGS[@]} -eq 0 ]]; then
+            echo "No digests found for ${{ matrix.image }}" >&2
+            ls -la >&2 || true
+            exit 1
+          fi
+
+          TAG_ARGS=()
+          IFS=',' read -ra TAGS <<< "${TAGS_CSV}"
+          for t in "${TAGS[@]}"; do
+            t="$(echo "$t" | xargs)"
+            [[ -n "$t" ]] || continue
+            TAG_ARGS+=("-t" "$t")
+          done
+
+          docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_ARGS[@]}"
+
+          FIRST_TAG="$(echo "${TAGS_CSV}" | cut -d, -f1 | xargs)"
+          # Digest of the multi-arch index (not a child platform manifest).
+          INDEX_DIGEST="$(docker buildx imagetools inspect "${FIRST_TAG}" --format '{{printf "%s" .Manifest.Digest}}' 2>/dev/null || true)"
+          if [[ -z "${INDEX_DIGEST}" ]]; then
+            INDEX_DIGEST="$(docker buildx imagetools inspect "${FIRST_TAG}" --format '{{.Digest}}' 2>/dev/null || true)"
+          fi
+          echo "first_tag=${FIRST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "digest=${INDEX_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Merged ${FIRST_TAG} platforms=${#DIGEST_ARGS[@]} digest=${INDEX_DIGEST:-unknown}"
 
       # Approved: Core GHCR packages must allow anonymous pull (public).
       # Best-effort PATCH — GITHUB_TOKEN may lack admin:packages; verify in GHCR UI.
@@ -257,16 +534,18 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           COSIGN_YES: "true"
-          DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE: ${{ steps.prep.outputs.image }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+          FIRST_TAG: ${{ steps.manifest.outputs.first_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${DIGEST}" ]]; then
-            echo "No image digest from build; cannot sign."
-            exit 1
+          if [[ -n "${DIGEST}" ]]; then
+            REF="${IMAGE}@${DIGEST}"
+          else
+            REF="${FIRST_TAG}"
+            echo "::warning::No index digest resolved; signing tag ref ${REF}"
           fi
-          REF="${IMAGE}@${DIGEST}"
           cosign sign "${REF}"
           echo "Signed ${REF}"
 
