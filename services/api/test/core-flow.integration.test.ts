@@ -14,6 +14,7 @@ import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
+  createLoggerStub,
   flushOutboundEmailTasks,
   registerUser,
 } from "./two-factor-test-helpers.ts";

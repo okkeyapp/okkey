@@ -9,6 +9,7 @@ import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
+  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
