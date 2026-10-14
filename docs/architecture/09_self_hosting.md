@@ -153,7 +153,7 @@ Images:
 - `ghcr.io/okkeyapp/web`
 - `ghcr.io/okkeyapp/worker`
 
-Tagged from git `v*` releases (+ `latest`). CI: `.github/workflows/publish-images.yml`.
+`deploy/docker/.env.example` pins `OKKEY_IMAGE_TAG` to a tag that **exists** in GHCR (currently `0.0.0-pr19.4`). Pre-releases come from `v*` git tag pushes; floating `:dev` only after `workflow_dispatch` on **Publish container images**; `latest` only on clean `vX.Y.Z`. See [`deploy/docker/README.md`](../../deploy/docker/README.md). CI: `.github/workflows/publish-images.yml`.
 
 ---
 

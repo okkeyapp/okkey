@@ -3,9 +3,9 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 #
-# Optional: OKKEY_REF=main (or a tag/SHA) on the right of `|` so bash sees it:
+# Optional env on the right of `|` so bash sees it (VAR=x curl | bash does not):
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-#     | OKKEY_REF=dev bash
+#     | OKKEY_REF=dev OKKEY_IMAGE_TAG=0.0.0-pr19.4 bash
 #
 # From a checked-out tree:
 #   ./deploy/docker/install.sh
@@ -18,6 +18,7 @@ if [[ -n "${OKKEY_RAW_BASE:-}" ]]; then
 fi
 OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/okkeyapp/okkey}"
 # Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
+# Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
 OKKEY_REF="${OKKEY_REF:-dev}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
@@ -215,20 +216,36 @@ if [[ ! -f .env ]]; then
   replace_env SESSION_SECRET "$SESSION"
   replace_env POSTGRES_PASSWORD "$PG_PASS"
   replace_env MINIO_ROOT_PASSWORD "$MINIO_PASS"
+  # Process-env OKKEY_IMAGE_TAG wins over .env.example default (fresh installs only).
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
+    replace_env OKKEY_IMAGE_TAG "${OKKEY_IMAGE_TAG}"
+    log "==> OKKEY_IMAGE_TAG=${OKKEY_IMAGE_TAG} (from process environment)"
+  fi
   log "==> Generated JWT_SECRET, SESSION_SECRET, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
+  if [[ -n "${OKKEY_IMAGE_TAG:-}" ]]; then
+    log "==> Note: OKKEY_IMAGE_TAG=${OKKEY_IMAGE_TAG} is set but .env already exists — edit OKKEY_IMAGE_TAG in .env or remove .env to apply"
+  fi
   if [[ "${OKKEY_RESET_VOLUMES:-}" == "1" ]]; then
     reset_compose_volumes
   fi
 fi
 
-log "==> Pulling images and starting stack (compose project=$(compose_project_name))"
+image_tag="$(env_file_value OKKEY_IMAGE_TAG)"
+image_tag="${image_tag:-latest}"
+log "==> Pulling images and starting stack (compose project=$(compose_project_name), OKKEY_IMAGE_TAG=${image_tag})"
 # OKKEY_SKIP_PULL=1: use images already present locally (e.g. :local / pre-loaded tags).
 if [[ "${OKKEY_SKIP_PULL:-}" == "1" ]]; then
   log "==> Skipping pull (OKKEY_SKIP_PULL=1)"
 else
-  run_compose .env pull
+  if ! run_compose .env pull; then
+    die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
+hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
+  Current published pre-release example: OKKEY_IMAGE_TAG=0.0.0-pr19.4
+  Floating :dev is only available after Actions → Publish container images → workflow_dispatch.
+  Or set OKKEY_SKIP_PULL=1 with local images."
+  fi
 fi
 run_compose .env up -d
 wait_for_api_healthy
