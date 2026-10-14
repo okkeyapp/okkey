@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Okkey Core — one-command self-host installer (Docker Compose).
 #
-# Until this lands on `dev`, run from the feature branch:
-#   OKKEY_REF=cursor/self-host-docker-2ea1 \
-#     curl -fsSL "https://raw.githubusercontent.com/okkeyapp/okkey/${OKKEY_REF}/deploy/docker/install.sh" | bash
-#
-# After merge to `dev`:
 #   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
+#
+# Optional: OKKEY_REF=main (or a tag/SHA) on the right of `|` so bash sees it:
+#   curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
+#     | OKKEY_REF=dev bash
 #
 # From a checked-out tree:
 #   ./deploy/docker/install.sh
@@ -18,7 +17,7 @@ if [[ -n "${OKKEY_RAW_BASE:-}" ]]; then
   OKKEY_REPO_RAW_BASE="${OKKEY_RAW_BASE}"
 fi
 OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/okkeyapp/okkey}"
-# Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev` after merge.
+# Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
 OKKEY_REF="${OKKEY_REF:-dev}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
@@ -159,19 +158,6 @@ if [[ ${BASH_SOURCE+x} ]] && [[ ${#BASH_SOURCE[@]} -gt 0 ]] && [[ -n "${BASH_SOU
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-# Refs to try for raw downloads. Primary is OKKEY_REF; until merge to `dev`,
-# also try the PR branch so `curl …/cursor/…/install.sh | bash` works without env.
-resolve_fetch_refs() {
-  local -a refs=("${OKKEY_REF}")
-  local candidate
-  for candidate in cursor/self-host-docker-2ea1 dev; do
-    if [[ "${candidate}" != "${OKKEY_REF}" ]]; then
-      refs+=("${candidate}")
-    fi
-  done
-  printf '%s\n' "${refs[@]}"
-}
-
 fetch_file() {
   local name="$1"
   local dest="$2"
@@ -180,28 +166,18 @@ fetch_file() {
     return
   fi
   need_cmd curl
-  local ref url
-  local -a tried=()
-  while IFS= read -r ref; do
-    [[ -z "${ref}" ]] && continue
-    url="${OKKEY_REPO_RAW_BASE}/${ref}/deploy/docker/${name}"
-    log "==> Fetching ${name} (ref=${ref})"
-    if curl -fsSL "$url" -o "$dest" 2>/dev/null; then
-      if [[ "${ref}" != "${OKKEY_REF}" ]]; then
-        log "==> Using ref ${ref} for downloads (OKKEY_REF was ${OKKEY_REF})"
-        OKKEY_REF="${ref}"
-      fi
-      return
-    fi
-    tried+=("${url}")
-    rm -f "$dest"
-  done < <(resolve_fetch_refs)
+  local url="${OKKEY_REPO_RAW_BASE}/${OKKEY_REF}/deploy/docker/${name}"
+  log "==> Fetching ${name} (ref=${OKKEY_REF})"
+  if curl -fsSL "$url" -o "$dest" 2>/dev/null; then
+    return
+  fi
+  rm -f "$dest"
   die "failed to download deploy/docker/${name}
 tried:
-$(printf '  %s\n' "${tried[@]}")
-hint: pipe env into bash, e.g.
-  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/cursor/self-host-docker-2ea1/deploy/docker/install.sh \\
-    | OKKEY_REF=cursor/self-host-docker-2ea1 bash"
+  ${url}
+hint: set OKKEY_REF on the right of \`|\` so bash sees it, e.g.
+  curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \\
+    | OKKEY_REF=dev bash"
 }
 
 need_cmd docker
