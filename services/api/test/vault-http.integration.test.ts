@@ -4,12 +4,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { testEntityId } from "./test-entity-id.ts";
 import { createApiApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { VaultService } from "../src/vault/service.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   registerUser,
 } from "./two-factor-test-helpers.ts";
 
@@ -33,7 +32,10 @@ class MockResponse {
 
 test("integration: HTTP GET workspace vaults and vault by id return cryptoVersion from DB", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
 
   const suffix = testEntityId();

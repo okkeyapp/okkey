@@ -10,11 +10,10 @@ import { SessionService } from "../src/session/service.ts";
 import { TwoFactorService } from "../src/two-factor/service.ts";
 import { VaultService } from "../src/vault/service.ts";
 import { SyncService } from "../src/sync/service.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   flushOutboundEmailTasks,
   registerUser,
 } from "./two-factor-test-helpers.ts";
@@ -30,7 +29,10 @@ function mkBlob(payload: string, cryptoVersion = 2) {
 
 test("integration: register → email login (Bearer) → vault + sync → second device + approval email", async (t) => {
   const config = loadConfig();
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `core-flow-${suffix}@okkey.local`;

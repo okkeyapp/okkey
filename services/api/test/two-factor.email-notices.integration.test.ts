@@ -6,12 +6,11 @@ import { AuthService } from "../src/auth/service.ts";
 import { loadConfig, type ApiConfig } from "../src/config.ts";
 import { EmailTemplateService, type EmailMessage } from "../src/email/service.ts";
 import { SessionService } from "../src/session/service.ts";
-import { createStorageLayer } from "../src/storage/index.ts";
 import { TwoFactorService } from "../src/two-factor/service.ts";
+import { createIntegrationStorage } from "./integration-env.ts";
 import {
   applyMigrations,
   cleanupUserData,
-  createLoggerStub,
   flushOutboundEmailTasks,
   registerUser,
   totpCodeForSecret,
@@ -24,7 +23,10 @@ test("integration: after TOTP enroll confirm, transport receives two_factor_enab
   const base = loadConfig();
   const fixed = new Date("2026-06-20T09:00:00.000Z");
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-mail-enroll-${suffix}@okkey.local`;
@@ -105,7 +107,10 @@ test("integration: after backup regeneration, transport receives two_factor_back
   const base = loadConfig();
   const fixed = new Date("2026-06-20T10:30:00.000Z");
   const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 3 };
-  const storage = await createStorageLayer(config, createLoggerStub());
+  const storage = await createIntegrationStorage(t, config);
+  if (!storage) {
+    return;
+  }
   await applyMigrations(storage);
   const suffix = testEntityId();
   const email = `2fa-mail-regen-${suffix}@okkey.local`;

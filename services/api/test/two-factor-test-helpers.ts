@@ -10,6 +10,7 @@ import { EmailTemplateService } from "../src/email/service.ts";
 import { RegistrationService } from "../src/registration/service.ts";
 import { SessionService } from "../src/session/service.ts";
 import { createStorageLayer } from "../src/storage/index.ts";
+import { applySqlMigrations } from "../src/storage/migrate.ts";
 
 const helpersDir = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(helpersDir, "../migrations");
@@ -21,7 +22,10 @@ export function listMigrationSqlFiles(): string[] {
     .sort((left, right) => left.localeCompare(right));
 }
 
-/** Apply every migration file, in order, on a database that has none of them yet. */
+/**
+ * Apply every migration file, in order, on a database that has none of them yet.
+ * Used by isolated-schema tests that cannot use `schema_migrations` on `public`.
+ */
 export async function applyAllMigrationFiles(
   query: (sql: string) => Promise<unknown>,
 ): Promise<string[]> {
@@ -36,6 +40,7 @@ export async function applyAllMigrationFiles(
  * Migrations the hand-written checks below already apply on a non-empty test database.
  * `0004` is included without re-running it: `0008` drops that table, and creating it again
  * would resurrect a removed relation.
+ * Newer files (`0011`, `0032`+) are applied via `applySqlMigrations` after this baseline.
  */
 const LEDGER_BASELINE = new Set([
   "0001_init.sql",
@@ -95,31 +100,20 @@ async function recordMigrationFiles(
 }
 
 /**
- * On databases created by the legacy helper, run every SQL file that helper never applied.
- * Later files are picked up from `services/api/migrations` without another hand-written check.
+ * Shared test DBs may predate `schema_migrations`. Seed the legacy helper baseline so
+ * `applySqlMigrations` does not mark every file applied without running newer SQL.
  */
-async function applyMigrationsMissingFromLedger(
+async function applyRemainingSqlMigrations(
   storage: Awaited<ReturnType<typeof createStorageLayer>>,
 ): Promise<void> {
   await ensureMigrationLedger(storage);
   const rows = await storage.postgres.query<{ filename: string }>(
     "SELECT filename FROM schema_migrations",
   );
-  const applied = new Set(rows.map((row) => row.filename));
-  if (applied.size === 0) {
+  if (rows.length === 0) {
     await recordMigrationFiles(storage, LEDGER_BASELINE);
-    for (const name of LEDGER_BASELINE) {
-      applied.add(name);
-    }
   }
-  for (const name of listMigrationSqlFiles()) {
-    if (applied.has(name)) {
-      continue;
-    }
-    await storage.postgres.query(readFileSync(path.join(migrationsDir, name), "utf8"));
-    await recordMigrationFiles(storage, [name]);
-    applied.add(name);
-  }
+  await applySqlMigrations(storage.postgres, { logger: createLoggerStub() });
 }
 
 export function createLoggerStub() {
@@ -159,8 +153,7 @@ export async function applyMigrations(
     "SELECT to_regclass('public.users') IS NOT NULL AS exists",
   );
   if (!baseSchema[0]?.exists) {
-    const files = await applyAllMigrationFiles((sql) => storage.postgres.query(sql));
-    await recordMigrationFiles(storage, files);
+    await applySqlMigrations(storage.postgres, { logger: createLoggerStub() });
     return;
   }
 
@@ -622,7 +615,7 @@ export async function applyMigrations(
     await storage.postgres.query(migration0026);
   }
 
-  await applyMigrationsMissingFromLedger(storage);
+  await applyRemainingSqlMigrations(storage);
 }
 
 export async function cleanupUserData(
