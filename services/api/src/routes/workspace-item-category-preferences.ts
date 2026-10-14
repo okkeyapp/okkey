@@ -6,6 +6,7 @@ import {
   parseFavoriteCategoryIdsPayload,
   parseFavoriteOrderPayload,
   parseFavoriteTemplateIdsPayload,
+  parsePersonalDataBootstrapDismissedPayload,
   buildDefaultFavoriteOrder,
 } from "../item-category-preferences/service.ts";
 
@@ -17,7 +18,22 @@ type ItemCategoryPreferencesBody = {
   favorite_category_ids?: unknown;
   favorite_template_ids?: unknown;
   favorite_order?: unknown;
+  personal_data_bootstrap_dismissed?: unknown;
 };
+
+function preferencesResponse(preferences: {
+  favoriteCategoryIds: string[];
+  favoriteTemplateIds: string[];
+  favoriteOrder: string[];
+  personalDataBootstrapDismissed: boolean;
+}) {
+  return {
+    favorite_category_ids: preferences.favoriteCategoryIds,
+    favorite_template_ids: preferences.favoriteTemplateIds,
+    favorite_order: preferences.favoriteOrder,
+    personal_data_bootstrap_dismissed: preferences.personalDataBootstrapDismissed,
+  };
+}
 
 export function createWorkspaceItemCategoryPreferencesRoute(
   service: ItemCategoryPreferencesService,
@@ -39,15 +55,55 @@ export function createWorkspaceItemCategoryPreferencesRoute(
     try {
       if (ctx.req.method === "GET") {
         const preferences = await service.getPreferences(workspaceId, userId);
-        json(ctx.res, 200, {
-          favorite_category_ids: preferences.favoriteCategoryIds,
-          favorite_template_ids: preferences.favoriteTemplateIds,
-          favorite_order: preferences.favoriteOrder,
-        });
+        json(ctx.res, 200, preferencesResponse(preferences));
         return;
       }
 
       const body = await readJsonBody<ItemCategoryPreferencesBody>(ctx.req);
+      const hasFavoritesUpdate = body.favorite_category_ids !== undefined;
+      const hasDismissUpdate = body.personal_data_bootstrap_dismissed !== undefined;
+
+      if (!hasFavoritesUpdate && !hasDismissUpdate) {
+        json(
+          ctx.res,
+          400,
+          errorPayload(
+            "INVALID_PREFERENCES_BODY",
+            "favorite_category_ids or personal_data_bootstrap_dismissed is required",
+            ctx.requestId,
+          ),
+        );
+        return;
+      }
+
+      let dismissed: boolean | undefined;
+      if (hasDismissUpdate) {
+        const parsed = parsePersonalDataBootstrapDismissedPayload(body.personal_data_bootstrap_dismissed);
+        if (parsed === null) {
+          json(
+            ctx.res,
+            400,
+            errorPayload(
+              "INVALID_PERSONAL_DATA_BOOTSTRAP_DISMISSED",
+              "personal_data_bootstrap_dismissed must be a boolean",
+              ctx.requestId,
+            ),
+          );
+          return;
+        }
+        dismissed = parsed;
+      }
+
+      if (!hasFavoritesUpdate) {
+        const updated = await service.setPersonalDataBootstrapDismissed(
+          workspaceId,
+          userId,
+          dismissed === true,
+        );
+        json(ctx.res, 200, preferencesResponse(updated));
+        return;
+      }
+
       const favoriteCategoryIds = parseFavoriteCategoryIdsPayload(body.favorite_category_ids);
       if (favoriteCategoryIds === null) {
         json(
@@ -83,12 +139,9 @@ export function createWorkspaceItemCategoryPreferencesRoute(
         favoriteCategoryIds,
         favoriteTemplateIds,
         favoriteOrder,
+        personalDataBootstrapDismissed: dismissed,
       });
-      json(ctx.res, 200, {
-        favorite_category_ids: updated.favoriteCategoryIds,
-        favorite_template_ids: updated.favoriteTemplateIds,
-        favorite_order: updated.favoriteOrder,
-      });
+      json(ctx.res, 200, preferencesResponse(updated));
     } catch (error) {
       handleError(ctx.requestId, ctx.res, error);
     }

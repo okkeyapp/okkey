@@ -7,6 +7,7 @@ export type WorkspaceMemberItemCategoryPreferencesRecord = {
   favoriteCategoryIds: string[];
   favoriteTemplateIds: string[];
   favoriteOrder: string[];
+  personalDataBootstrapDismissed: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -17,9 +18,21 @@ type PreferencesRow = {
   favorite_category_ids: unknown;
   favorite_template_ids?: unknown;
   favorite_order?: unknown;
+  personal_data_bootstrap_dismissed?: boolean | null;
   created_at: string;
   updated_at: string;
 };
+
+const SELECT_COLUMNS = `
+  workspace_id,
+  user_id,
+  favorite_category_ids,
+  favorite_template_ids,
+  favorite_order,
+  personal_data_bootstrap_dismissed,
+  created_at,
+  updated_at
+`;
 
 function mapPreferencesRow(row: PreferencesRow): WorkspaceMemberItemCategoryPreferencesRecord {
   const favoriteCategoryIds = Array.isArray(row.favorite_category_ids)
@@ -37,6 +50,7 @@ function mapPreferencesRow(row: PreferencesRow): WorkspaceMemberItemCategoryPref
     favoriteCategoryIds,
     favoriteTemplateIds,
     favoriteOrder,
+    personalDataBootstrapDismissed: Boolean(row.personal_data_bootstrap_dismissed),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -55,7 +69,7 @@ export class WorkspaceMemberItemCategoryPreferencesRepository {
   ): Promise<WorkspaceMemberItemCategoryPreferencesRecord | null> {
     const rows = await this.db.query<PreferencesRow>(
       `
-        SELECT workspace_id, user_id, favorite_category_ids, favorite_template_ids, favorite_order, created_at, updated_at
+        SELECT ${SELECT_COLUMNS}
         FROM workspace_member_item_category_preferences
         WHERE workspace_id = $1 AND user_id = $2
       `,
@@ -70,8 +84,14 @@ export class WorkspaceMemberItemCategoryPreferencesRepository {
     favoriteCategoryIds: string[];
     favoriteTemplateIds: string[];
     favoriteOrder: string[];
+    /** When omitted on conflict, the existing dismissed flag is preserved. */
+    personalDataBootstrapDismissed?: boolean;
   }): Promise<WorkspaceMemberItemCategoryPreferencesRecord> {
     const id = generateEntityId();
+    const dismissedParam =
+      input.personalDataBootstrapDismissed === undefined
+        ? null
+        : input.personalDataBootstrapDismissed;
     const rows = await this.db.query<PreferencesRow>(
       `
         INSERT INTO workspace_member_item_category_preferences (
@@ -80,16 +100,21 @@ export class WorkspaceMemberItemCategoryPreferencesRepository {
           user_id,
           favorite_category_ids,
           favorite_template_ids,
-          favorite_order
+          favorite_order,
+          personal_data_bootstrap_dismissed
         )
-        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb)
+        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, COALESCE($7::boolean, false))
         ON CONFLICT (workspace_id, user_id)
         DO UPDATE SET
           favorite_category_ids = EXCLUDED.favorite_category_ids,
           favorite_template_ids = EXCLUDED.favorite_template_ids,
           favorite_order = EXCLUDED.favorite_order,
+          personal_data_bootstrap_dismissed = COALESCE(
+            $7::boolean,
+            workspace_member_item_category_preferences.personal_data_bootstrap_dismissed
+          ),
           updated_at = now()
-        RETURNING workspace_id, user_id, favorite_category_ids, favorite_template_ids, favorite_order, created_at, updated_at
+        RETURNING ${SELECT_COLUMNS}
       `,
       [
         id,
@@ -98,8 +123,28 @@ export class WorkspaceMemberItemCategoryPreferencesRepository {
         JSON.stringify(input.favoriteCategoryIds),
         JSON.stringify(input.favoriteTemplateIds),
         JSON.stringify(input.favoriteOrder),
+        dismissedParam,
       ],
     );
     return mapPreferencesRow(rows[0]);
+  }
+
+  async setPersonalDataBootstrapDismissed(input: {
+    workspaceId: string;
+    userId: string;
+    dismissed: boolean;
+  }): Promise<WorkspaceMemberItemCategoryPreferencesRecord | null> {
+    const rows = await this.db.query<PreferencesRow>(
+      `
+        UPDATE workspace_member_item_category_preferences
+        SET
+          personal_data_bootstrap_dismissed = $3,
+          updated_at = now()
+        WHERE workspace_id = $1 AND user_id = $2
+        RETURNING ${SELECT_COLUMNS}
+      `,
+      [input.workspaceId, input.userId, input.dismissed],
+    );
+    return rows[0] ? mapPreferencesRow(rows[0]) : null;
   }
 }
