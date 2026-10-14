@@ -18,12 +18,13 @@ RUN apt-get update \
 
 ARG RUST_TOOLCHAIN=1.86.0
 ARG WASM_PACK_VERSION=0.13.1
+ENV CARGO_NET_RETRY=10
 RUN --mount=type=cache,target=/root/.cargo/registry \
   --mount=type=cache,target=/root/.cargo/git \
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN} \
   && . "$HOME/.cargo/env" \
   && rustup target add wasm32-unknown-unknown \
-  && cargo install wasm-pack --version ${WASM_PACK_VERSION} --locked
+  && WASM_PACK_VERSION=${WASM_PACK_VERSION} bash scripts/ci/install-wasm-pack.sh
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Build-time placeholders; runtime config.js overrides API URL for self-host.
