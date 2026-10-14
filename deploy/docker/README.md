@@ -111,7 +111,7 @@ Published by [`.github/workflows/publish-images.yml`](../../.github/workflows/pu
 | Push to `dev` | `:dev`, `:dev-<sha>` (intended immediately after this workflow merges to `dev`) |
 | Git tag `vX.Y.Z` (clean SemVer on `main`) | `:X.Y.Z`, `:X.Y`, `:X`, `:latest` |
 | Git tag `vX.Y.Z-…` (pre-release, e.g. `v1.0.0-beta.2`) | `:X.Y.Z-…` only (no `:latest` / rolling) |
-| Pull request | `:pr-<n>`, `:pr-<n>-<sha>` |
+| Pull request | `:pr-<n>`, `:pr-<n>-<head-sha7>` (PR head commit, not the merge commit) |
 | `workflow_dispatch` | explicit tag (+ optional `:latest`) |
 
 Retention (scheduled GC; release SemVer tags and floating `:dev` are never deleted):
