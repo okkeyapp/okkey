@@ -1,8 +1,10 @@
 # Okkey extension — store packaging (E5)
 
-**Extension version:** `1.0.0.2`  
+**Extension / store version:** `1.0.0.2`  
 **Manifest `version`:** `1.0.0.2`  
-(No Chromium `version_name`; no `*-beta.*` in extension packaging.)
+**`apps/extension/package.json`:** `1.0.0` (Yarn workspace SemVer — four-part `1.0.0.N` is invalid there)
+
+Store packaging uses **Chrome / Edge / AMO numeric** `1.0.0.N` only. Do **not** put product SemVer with a beta string (`1.0.0-beta.2`) in `manifest.version`, `version_name`, listing version fields, or zip filenames. No Chromium `version_name`.
 
 This folder is the **ready-to-submit** pack for browser stores. It does **not** submit to stores and does **not** create git tags / GitHub Releases on `main`.
 

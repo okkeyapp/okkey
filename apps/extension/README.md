@@ -2,7 +2,8 @@
 
 MV3 extension scaffolded with [WXT](https://wxt.dev/). Chromium (Chrome / Edge / Opera / Yandex) and Firefox share one source tree.
 
-**Extension / manifest version:** `1.0.0.2` (no `version_name`, no `*-beta.*` in packaging)
+**Extension / manifest version:** `1.0.0.2` (Chrome/Edge/AMO numeric; no `version_name`, no `*-beta.*` in packaging).  
+`package.json` stays at `1.0.0` for Yarn workspaces; store zips are named from the manifest version.
 
 Store packaging (listings, permissions justification, submit checklist): **[store/](./store/)**.
 

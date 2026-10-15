@@ -27,8 +27,17 @@ export default defineConfig({
   suppressWarnings: {
     firefoxDataCollection: true,
   },
+  // Store zips use manifest `version` (1.0.0.N), not package.json SemVer (yarn workspaces
+  // reject four-part versions — keep package.json at 1.0.0).
+  zip: {
+    name: "okkeyextension",
+    // WXT 0.20.x: {{version}} = manifest.version (store numeric). No {{modeSuffix}} yet.
+    artifactTemplate: "{{name}}-{{version}}-{{browser}}.zip",
+    sourcesTemplate: "{{name}}-{{version}}-sources.zip",
+  },
   manifest: ({ browser }) => {
-    // Extension packaging version is dotted integers only (no beta / version_name).
+    // Chrome / Edge / AMO: dotted integers only. No Chromium `version_name`, no `*-beta.*`.
+    // Product SemVer (e.g. 1.0.0-beta.2) is for GitHub Releases / images — not store packaging.
     const manifestVersion = "1.0.0.2";
     return {
       name: "Okkey",
