@@ -4,7 +4,7 @@ import { loadConfig } from "../src/config.ts";
 import { applySqlMigrations } from "../src/storage/migrate.ts";
 import {
   createIntegrationStorage,
-  skipIfIntegrationUnavailable,
+  skipIfPostgresUnavailable,
 } from "./integration-env.ts";
 import {
   applyAllMigrationFiles,
@@ -15,18 +15,20 @@ import {
 
 test("migration directory lists every numbered SQL file in order", () => {
   const files = listMigrationSqlFiles();
-  assert.ok(files.length >= 34);
+  assert.ok(files.length >= 35);
   assert.equal(files[0], "0001_init.sql");
   assert.ok(files.includes("0011_workspace_role_permissions_matrix.sql"));
   assert.ok(files.includes("0032_device_blocked.sql"));
   assert.ok(files.includes("0033_account_recovery.sql"));
   assert.ok(files.includes("0034_backup_codes_exported_at.sql"));
+  assert.ok(files.includes("0035_personal_data_bootstrap_dismissed.sql"));
   const sorted = [...files].sort((left, right) => left.localeCompare(right));
   assert.deepEqual(files, sorted);
 });
 
 test("all migrations apply on an empty database", async (t) => {
-  if (await skipIfIntegrationUnavailable(t)) {
+  // Postgres-only: this suite does not open Redis. Skip instead of hanging when Redis is down.
+  if (await skipIfPostgresUnavailable(t)) {
     return;
   }
   const expected = listMigrationSqlFiles();

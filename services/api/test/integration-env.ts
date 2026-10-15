@@ -84,24 +84,38 @@ async function probePostgres(databaseUrl: string): Promise<void> {
 
 async function probeRedis(redisUrl: string): Promise<void> {
   const redisModule = (await import("redis")) as {
-    createClient: (options: { url: string; socket?: { connectTimeout?: number } }) => {
+    createClient: (options: {
+      url: string;
+      socket?: { connectTimeout?: number; reconnectStrategy?: false };
+    }) => {
       connect(): Promise<void>;
       ping(): Promise<string>;
       disconnect(): Promise<void>;
       quit(): Promise<string>;
+      // redis@5 destroy() is sync and returns undefined — do not call .catch on the result.
+      destroy?: () => void | Promise<void>;
     };
   };
+  // No reconnect: a missing Redis must fail the probe quickly and release the event loop.
   const client = redisModule.createClient({
     url: redisUrl,
-    socket: { connectTimeout: PROBE_TIMEOUT_MS },
+    socket: { connectTimeout: PROBE_TIMEOUT_MS, reconnectStrategy: false },
   });
   try {
     await withTimeout(client.connect(), "redis connect");
     await withTimeout(client.ping(), "redis ping");
   } finally {
-    await client.quit().catch(async () => {
-      await client.disconnect().catch(() => {});
-    });
+    if (typeof client.destroy === "function") {
+      try {
+        await Promise.resolve(client.destroy());
+      } catch {
+        // ignore cleanup errors after a successful or failed probe
+      }
+    } else {
+      await client.quit().catch(async () => {
+        await client.disconnect().catch(() => {});
+      });
+    }
   }
 }
 
@@ -152,6 +166,20 @@ export async function skipIfIntegrationUnavailable(
   }
   t.skip(probe.reason);
   return true;
+}
+
+/** Postgres-only skip for suites that never open Redis (avoids Redis hang on empty-DB tests). */
+export async function skipIfPostgresUnavailable(
+  t: Pick<TestContext, "skip">,
+  config: ApiConfig = loadConfig(),
+): Promise<boolean> {
+  try {
+    await probePostgres(config.databaseUrl);
+    return false;
+  } catch (error) {
+    t.skip(`Postgres unavailable (${errorText(error)}); start infra with yarn infra:up`);
+    return true;
+  }
 }
 
 /**

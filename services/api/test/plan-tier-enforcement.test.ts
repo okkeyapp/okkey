@@ -89,3 +89,54 @@ test("FREE denies capsule access settings and ENTERPRISE allows them", async () 
     (error: unknown) => error instanceof Error && error.message === "PLAN_GATE_PASSED",
   );
 });
+
+test("self_hosted without modules denies capsule access even when plan_tier is ENTERPRISE", async () => {
+  const service = new CapsuleService({
+    db: {
+      query: async (sql: string) => {
+        if (sql.includes("FROM workspaces")) {
+          return [
+            {
+              exists: true,
+              can_access: true,
+              plan_tier: "ENTERPRISE",
+              plan_custom_override: false,
+              plan_feature_overrides: {},
+              capsule_policies: {},
+            },
+          ];
+        }
+        return [];
+      },
+      transaction: async () => {
+        throw new Error("PLAN_GATE_PASSED");
+      },
+    },
+    redis: {
+      incr: async () => 1,
+      expire: async () => true,
+    },
+    objectStorage: {
+      putObject: async () => {},
+      getObject: async () => null,
+    },
+    config: createTestApiConfig({
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: false,
+      allowedCryptoProfileVersions: [2],
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.createCapsule("w1", "u1", {
+        type: "item",
+        encryptedPayload: blob,
+        password: "capsule-secret",
+      }),
+    (error: unknown) =>
+      error instanceof CapsuleServiceError &&
+      error.code === "FEATURE_NOT_AVAILABLE" &&
+      error.statusCode === 403,
+  );
+});
