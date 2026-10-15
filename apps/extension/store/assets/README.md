@@ -1,18 +1,22 @@
 # Store visual assets
 
-Icons shipped in the extension package (`public/icon-*.png`) cover the **toolbar**. Stores also require **listing screenshots** (and often a promo tile). Files below are demo-framed packaging shots (disposable credentials, self-host wording) for submit rehearsal.
+Icons shipped in the extension package (`public/icon-*.png`) cover the **toolbar**. Stores also require **listing screenshots** (and often a promo tile).
+
+## Publication blocker
+
+Files currently in this folder are **layout mockups** (drawn UI placeholders), **not** live product captures. They are sized correctly for console field rehearsal only.
+
+**Do not upload these mockups for a real store review / publish.** Replace every screenshot (and the promo tile) with EN captures from a self-hosted demo instance that show the real extension UI (popup layout, autofill overlay, server URL setup, unlock / “Vault is locked”). Until then, the screenshot steps in [SUBMIT-CHECKLIST.md](../SUBMIT-CHECKLIST.md) remain a **publication blocker**.
 
 ## Files in this folder
 
-| File | Size | Stores |
-|------|------|--------|
-| [screenshot-01-vault-popup-en.png](./screenshot-01-vault-popup-en.png) | 1280×800 | CWS / Edge / Opera / AMO |
-| [screenshot-02-autofill-en.png](./screenshot-02-autofill-en.png) | 1280×800 | CWS / Edge / Opera / AMO |
-| [screenshot-03-server-url-en.png](./screenshot-03-server-url-en.png) | 1280×800 | CWS / Edge / Opera / AMO |
-| [screenshot-04-unlock-en.png](./screenshot-04-unlock-en.png) | 1280×800 | CWS / Edge / Opera / AMO |
-| [promo-small-440x280.png](./promo-small-440x280.png) | 440×280 | CWS small promo tile |
-
-Replace with live product captures from a self-hosted demo before a real store publish if the mockups are not sufficient for the console review.
+| File | Size | Stores | Status |
+|------|------|--------|--------|
+| [screenshot-01-vault-popup-en.png](./screenshot-01-vault-popup-en.png) | 1280×800 | CWS / Edge / Opera / AMO | Mockup — replace before publish |
+| [screenshot-02-autofill-en.png](./screenshot-02-autofill-en.png) | 1280×800 | CWS / Edge / Opera / AMO | Mockup — replace before publish |
+| [screenshot-03-server-url-en.png](./screenshot-03-server-url-en.png) | 1280×800 | CWS / Edge / Opera / AMO | Mockup — replace before publish |
+| [screenshot-04-unlock-en.png](./screenshot-04-unlock-en.png) | 1280×800 | CWS / Edge / Opera / AMO | Mockup — replace before publish |
+| [promo-small-440x280.png](./promo-small-440x280.png) | 440×280 | CWS small promo tile | Mockup — replace before publish |
 
 ## Required (typical)
 

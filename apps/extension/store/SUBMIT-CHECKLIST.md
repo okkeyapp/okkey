@@ -12,7 +12,9 @@ Ready-to-submit pack for **Okkey extension `1.0.0.2`**. This folder documents pa
 | **Firefox AMO** | Firefox zip + sources | **Blocked** until a verified Firefox build exists (see [AMO](#5-firefox-amo--blocked)) |
 | **Yandex Browser** | — | No separate package — users install from **CWS** (and/or Opera) |
 
-Self-host framing only (FREE / ENTERPRISE on the user’s instance). Do **not** submit SaaS / cloud-hosted Okkey promises in any store form.
+**Listing screenshots — publication blocked.** Files under [assets/](./assets/) are **layout mockups**, not live product captures. Stores require screenshots that accurately show the extension UI. Do **not** submit for review (or treat the upload step as publish-ready) until those PNGs are replaced with EN captures from a self-hosted demo (see [assets/README.md](./assets/README.md)). Rehearsal of other console fields may continue.
+
+Self-host framing only (FREE / ENTERPRISE on the user’s instance). Do **not** promise a hosted Okkey cloud service in any store form.
 
 ## 0. Preflight (all stores)
 
@@ -22,7 +24,7 @@ Self-host framing only (FREE / ENTERPRISE on the user’s instance). Do **not** 
 - [ ] Listing copy reviewed: [LISTING.en.md](./LISTING.en.md) / [LISTING.ru.md](./LISTING.ru.md)
 - [ ] Permissions text ready: [PERMISSIONS.md](./PERMISSIONS.md)
 - [ ] Privacy / support URLs: [URLS.md](./URLS.md) (official GitHub paste, or substituted instance placeholders)
-- [ ] Screenshots / promo tiles present under [assets/](./assets/) (see [assets/README.md](./assets/README.md))
+- [ ] Screenshots / promo tiles under [assets/](./assets/) are **live product captures** (EN UI from a self-hosted stand) — current mockups **block real publish** (see [assets/README.md](./assets/README.md))
 - [ ] Smoke: load unpacked Chromium against a **self-hosted** web+API
 
 ## 1. Build Chromium zip (CWS / Edge / Opera)
@@ -68,10 +70,10 @@ Do these in order in the [Chrome Web Store Developer Dashboard](https://chrome.g
 3. [ ] Paste short + detailed description from [LISTING.en.md](./LISTING.en.md) (optional RU locale from [LISTING.ru.md](./LISTING.ru.md)).
 4. [ ] Paste single-purpose / host-access justification from [PERMISSIONS.md](./PERMISSIONS.md).
 5. [ ] Paste privacy policy URL + support URL from [URLS.md](./URLS.md).
-6. [ ] Upload screenshots and small promo tile from [assets/](./assets/).
+6. [ ] Upload screenshots and small promo tile from [assets/](./assets/) — **publish blocker:** live captures only; mockups are for field rehearsal, not store review.
 7. [ ] Set category (Productivity / Privacy & Security as available).
 8. [ ] Paste reviewer notes (section [Reviewer notes](#6-reviewer-notes)).
-9. [ ] Save draft / submit for review only when intentionally publishing (rehearsal stops before final publish if no account).
+9. [ ] Save draft / submit for review only when intentionally publishing **and** screenshot blocker is cleared (rehearsal stops before final publish if no account).
 
 ## 3. Edge Add-ons — steps
 
@@ -82,15 +84,15 @@ Do these in order in the [Partner Center](https://partner.microsoft.com/dashboar
 3. [ ] Paste short + detailed description from [LISTING.en.md](./LISTING.en.md).
 4. [ ] Paste permission justification from [PERMISSIONS.md](./PERMISSIONS.md).
 5. [ ] Paste privacy policy URL + support URL from [URLS.md](./URLS.md).
-6. [ ] Upload screenshots from [assets/](./assets/) (Edge does not require the CWS small promo tile).
+6. [ ] Upload screenshots from [assets/](./assets/) (Edge does not require the CWS small promo tile) — **publish blocker:** live captures only; mockups are for field rehearsal, not store review.
 7. [ ] Set category as available in the Edge console.
-8. [ ] Save draft / submit for review only when intentionally publishing.
+8. [ ] Save draft / submit for review only when intentionally publishing **and** screenshot blocker is cleared.
 
 Optional: mirror store metadata from the CWS listing where Partner Center allows import.
 
 ## 4. Opera Add-ons — optional Chromium mirror
 
-Same Chromium zip as CWS/Edge. Paste EN listing, permissions, URLs, and screenshots the same way. Helps Yandex users who prefer Opera Add-ons as a fallback to CWS.
+Same Chromium zip as CWS/Edge. Paste EN listing, permissions, URLs, and screenshots the same way (same **live-capture** screenshot rule as CWS/Edge). Helps Yandex users who prefer Opera Add-ons as a fallback to CWS.
 
 ## 5. Firefox AMO — **BLOCKED**
 
@@ -135,8 +137,8 @@ Expect: `1.0.0.2`, gecko id `extension@okkey.io`.
 6. [ ] Paste EN listing ([LISTING.en.md](./LISTING.en.md)); optional RU ([LISTING.ru.md](./LISTING.ru.md)).
 7. [ ] Paste permissions justification ([PERMISSIONS.md](./PERMISSIONS.md)).
 8. [ ] Paste privacy / support URLs ([URLS.md](./URLS.md)).
-9. [ ] Upload at least one screenshot from [assets/](./assets/).
-10. [ ] Submit for review only when intentionally publishing.
+9. [ ] Upload at least one screenshot from [assets/](./assets/) — **publish blocker:** live captures only; mockups are for field rehearsal, not store review.
+10. [ ] Submit for review only when intentionally publishing **and** screenshot blocker is cleared.
 
 ## 6. Reviewer notes
 
@@ -144,7 +146,7 @@ Use the short block at the top of [PERMISSIONS.md](./PERMISSIONS.md). Emphasize:
 
 - Password manager autofill requires detecting login fields on websites the user visits
 - Vault decrypt is **client-side** (WASM); server never sees plaintext vault
-- User configures **their own** Okkey instance URL (self-host); no mandatory SaaS backend
+- User configures their own self-hosted Okkey instance URL; Okkey does not offer a hosted cloud service for the extension
 - No remote code execution; all scripts shipped in the package
 
 ## 7. After upload

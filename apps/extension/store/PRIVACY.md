@@ -9,7 +9,7 @@ This notice describes how the **browser extension** handles data. It is written 
 
 In a self-hosted deployment, the organisation or person that installs and runs Okkey is the **service operator**. They choose hosting location, access controls, retention, and how to handle privacy requests. The Okkey software authors are **not** the controller of data on your private instance.
 
-The extension talks only to the **Okkey instance URL you configure**. There is no mandatory connection to a fixed Okkey SaaS backend.
+User configures their own self-hosted Okkey instance URL; Okkey does not offer a hosted cloud service for the extension. The extension talks only to that configured URL.
 
 ## What the extension processes
 
