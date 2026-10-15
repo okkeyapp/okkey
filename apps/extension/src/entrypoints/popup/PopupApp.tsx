@@ -67,6 +67,7 @@ import {
 } from "../../lib/extensionUnlock";
 import { initExtensionCrypto } from "../../lib/initExtensionCrypto";
 import {
+  loadExtensionLocale,
   readStoredExtensionLocale,
   writeStoredExtensionLocale,
 } from "../../lib/locale";
@@ -213,8 +214,14 @@ export function PopupApp() {
 
   const onLocaleChange = (next: WebLocale) => {
     setLocale(next);
-    writeStoredExtensionLocale(next);
+    void writeStoredExtensionLocale(next);
   };
+
+  useEffect(() => {
+    void loadExtensionLocale().then((stored) => {
+      setLocale((current) => (current === stored ? current : stored));
+    });
+  }, []);
 
   const languageSelect = (
     <Select value={locale} onValueChange={(v) => onLocaleChange(v as WebLocale)} variant="inline">
