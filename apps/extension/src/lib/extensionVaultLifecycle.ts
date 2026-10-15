@@ -8,6 +8,7 @@ import {
   vaultIdleLockMsFromServerSeconds,
 } from "@okkey/vault";
 
+import { clearBackgroundClipboardIfMatches } from "./backgroundClipboardClear";
 import {
   clearExtensionUnlockSession,
   DEFAULT_EXTENSION_IDLE_LOCK_MS,
@@ -274,9 +275,13 @@ async function ensureOffscreenDocument(): Promise<boolean> {
   }
 }
 
-async function clearClipboardViaOffscreen(pending: ClipboardPendingClear): Promise<boolean> {
+type OffscreenClearAttempt = "done" | "unavailable";
+
+async function clearClipboardViaOffscreen(
+  pending: ClipboardPendingClear,
+): Promise<OffscreenClearAttempt> {
   const ready = await ensureOffscreenDocument();
-  if (!ready) return false;
+  if (!ready) return "unavailable";
   // Allow the offscreen module to register its message listener after createDocument.
   await new Promise((resolve) => setTimeout(resolve, 75));
   try {
@@ -286,18 +291,33 @@ async function clearClipboardViaOffscreen(pending: ClipboardPendingClear): Promi
       token: pending.token,
     };
     const response = (await browser.runtime.sendMessage(msg)) as
-      | { ok?: boolean; cleared?: boolean }
+      | { ok?: boolean; cleared?: boolean; reason?: string }
       | undefined;
-    return Boolean(response?.ok || response?.cleared);
+    if (!response) return "unavailable";
+    if (response.cleared) return "done";
+    // Verified the clipboard no longer holds our copy — finish the pending clear.
+    if (response.ok && response.reason === "clipboard-changed") return "done";
+    // Unreadable / write failed: try Firefox background path or popup flush.
+    return "unavailable";
   } catch {
-    return false;
+    return "unavailable";
+  }
+}
+
+async function finishClipboardPending(): Promise<void> {
+  await writeClipboardPending(null);
+  try {
+    await browser.alarms.clear(CLIPBOARD_CLEAR_ALARM);
+  } catch {
+    /* ignore */
   }
 }
 
 /**
  * Clear clipboard only when it still holds the Okkey-copied text for this token.
- * Uses an offscreen document on Chromium; otherwise keeps the pending marker so
- * the next popup open can finish the clear.
+ * Chromium: offscreen document (execCommand paste/copy).
+ * Firefox: navigator.clipboard in the background (no offscreen API).
+ * Otherwise keeps the pending marker so the next popup open can finish the clear.
  */
 export async function runClipboardClearAlarm(): Promise<void> {
   const pending = await readClipboardPending();
@@ -306,42 +326,40 @@ export async function runClipboardClearAlarm(): Promise<void> {
     await browser.alarms.create(CLIPBOARD_CLEAR_ALARM, { when: pending.clearAt });
     return;
   }
-  const cleared = await clearClipboardViaOffscreen(pending);
-  if (cleared) {
-    await writeClipboardPending(null);
-    try {
-      await browser.alarms.clear(CLIPBOARD_CLEAR_ALARM);
-    } catch {
-      /* ignore */
-    }
+  const offscreen = await clearClipboardViaOffscreen(pending);
+  if (offscreen === "done") {
+    await finishClipboardPending();
     return;
   }
-  // Non-Chromium / offscreen unavailable: leave pending for popup flush.
+  // Firefox (and any runtime with background clipboard access): clear here.
+  const background = await clearBackgroundClipboardIfMatches(pending.text);
+  if (background.handled) {
+    await finishClipboardPending();
+    return;
+  }
+  // Leave pending for popup flush when neither path can verify ownership.
 }
 
-/** Popup (or offscreen-less browsers): finish a due clear with page clipboard APIs. */
+/** Popup: finish a due clear with page clipboard APIs (read-before-clear). */
 export async function flushPendingClipboardClearInPage(): Promise<void> {
   const pending = await readClipboardPending();
   if (!pending) return;
   if (Date.now() < pending.clearAt) return;
   try {
-    if (navigator.clipboard?.readText) {
-      const current = await navigator.clipboard.readText();
-      if (current !== pending.text) {
-        await writeClipboardPending(null);
-        return;
-      }
+    if (!navigator.clipboard?.readText || !navigator.clipboard?.writeText) {
+      return;
+    }
+    const current = await navigator.clipboard.readText();
+    if (current !== pending.text) {
+      await finishClipboardPending();
+      return;
     }
     await navigator.clipboard.writeText(" ");
   } catch {
-    /* ignore */
+    /* unread / write failed — keep pending rather than wiping blindly */
+    return;
   }
-  await writeClipboardPending(null);
-  try {
-    await browser.alarms.clear(CLIPBOARD_CLEAR_ALARM);
-  } catch {
-    /* ignore */
-  }
+  await finishClipboardPending();
 }
 
 export function isClipboardScheduleMessage(message: unknown): message is ClipboardScheduleMessage {
