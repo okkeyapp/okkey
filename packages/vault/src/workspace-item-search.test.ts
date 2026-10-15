@@ -12,6 +12,7 @@ import { itemHasUrlMatchingTab, itemUrlFieldsMatchTab, itemUrlMatchesTab, itemUr
 describe("workspaceItemSearch", () => {
   const row = {
     title: "GitHub",
+    description: "octocat",
     urls: ["https://github.com"],
     tags: ["первый", "Work"],
   };
@@ -43,6 +44,19 @@ describe("workspaceItemSearch", () => {
   it("scoreItemsListRecordSearch keeps title/url matching without hash", () => {
     assert.ok(scoreItemsListRecordSearch(row, "github") > 0);
     assert.equal(scoreItemsListRecordSearch(row, "первый"), 0);
+  });
+
+  it("scoreItemsListRecordSearch matches login in description", () => {
+    assert.ok(scoreItemsListRecordSearch(row, "bob") === 0);
+    assert.equal(
+      scoreItemsListRecordSearch(
+        { title: "Other Exact", description: "bob", urls: ["https://site.test"] },
+        "bob",
+      ),
+      10,
+    );
+    assert.ok(scoreItemsListRecordSearch(row, "octo") > 0);
+    assert.ok(scoreItemsListRecordSearch(row, "OCTOCAT") > 0);
   });
 });
 

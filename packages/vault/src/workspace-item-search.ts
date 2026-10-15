@@ -1,5 +1,7 @@
 export type ItemsListSearchableRecord = {
   title: string;
+  /** Subtitle shown in the list (login / username for login items). */
+  description?: string;
   urls: readonly string[];
   tags?: readonly string[];
 };
@@ -25,7 +27,10 @@ export function itemRecordMatchesTagSearch(tags: readonly string[], tagNeedle: s
   return tags.some((tag) => tag.toLocaleLowerCase() === needle);
 }
 
-/** Title weight 10; each URL index `i` contributes `10 / (i + 1)` if substring matches. */
+/**
+ * Title weight 10; description (login / list subtitle) weight 10;
+ * each URL index `i` contributes `10 / (i + 1)` if substring matches.
+ */
 export function scoreItemsListRecordSearch(row: ItemsListSearchableRecord, needle: string): number {
   const trimmed = needle.trim();
   if (!trimmed) {
@@ -40,6 +45,9 @@ export function scoreItemsListRecordSearch(row: ItemsListSearchableRecord, needl
   const q = trimmed.toLowerCase();
   let score = 0;
   if (row.title.toLowerCase().includes(q)) {
+    score += 10;
+  }
+  if ((row.description ?? "").toLowerCase().includes(q)) {
     score += 10;
   }
   row.urls.forEach((url, index) => {
