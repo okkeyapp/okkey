@@ -1114,6 +1114,13 @@ export function VaultPopup(props: VaultPopupProps) {
     setSelectedId(null);
   }, [clearSlotB]);
 
+  const pickSuggestionsScope = useCallback(() => {
+    clearSlotB();
+    setSuggestionsActive(true);
+    suggestionsAutoDoneRef.current = true;
+    setSelectedId(null);
+  }, [clearSlotB]);
+
   const openNewItem = () => {
     void openWebDeepLink(
       buildNewItemDeepLink({
@@ -1453,6 +1460,11 @@ export function VaultPopup(props: VaultPopupProps) {
               suggestionsScopeLabel={
                 suggestionsActive ? t("extension.vault.filterSuggestions") : null
               }
+              suggestionsPickLabel={
+                !suggestionsActive && activeTabUrl
+                  ? t("extension.vault.filterSuggestions")
+                  : null
+              }
               vaultScopeLabel={vaultScopeMeta?.name ?? null}
               folderScopeLabel={folderScopeLabel}
               categoryScopeLabel={categoryScopeLabel}
@@ -1470,6 +1482,7 @@ export function VaultPopup(props: VaultPopupProps) {
               onSortChange={setSort}
               onSelect={onSelectItem}
               onClearScope={clearAllListScope}
+              onPickSuggestions={pickSuggestionsScope}
               onPickVault={pickVaultScope}
               onPickFolder={pickFolderScope}
               onPickCategory={pickCategoryScope}

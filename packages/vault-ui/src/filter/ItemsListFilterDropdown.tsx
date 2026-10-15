@@ -220,8 +220,14 @@ export type ItemsListFilterDropdownProps<TRecord extends ItemsListFilterScopeRec
   /** Plain text search scope (non-tag). Mutually exclusive display with tagScopeLabel. */
   searchScopeLabel?: string | null;
   tagScopeLabel?: string | null;
-  /** Auto tab-URL suggestions scope (extension; dismissable chip only — not a menu row). */
+  /** Active tab-URL suggestions scope (extension; dismissable chip while applied). */
   suggestionsScopeLabel?: string | null;
+  /**
+   * Pickable «Suggestions» menu row (extension). Shown when a tab URL is available
+   * and suggestions are not already applied as a chip.
+   */
+  suggestionsPickLabel?: string | null;
+  onPickSuggestions?: () => void;
   vaultScopeLabel?: string | null;
   /** Personal/shared vault-kind scope label (web monitoring vaultScope.*). */
   vaultKindScopeLabel?: string | null;
@@ -258,6 +264,8 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
     searchScopeLabel,
     tagScopeLabel,
     suggestionsScopeLabel,
+    suggestionsPickLabel,
+    onPickSuggestions,
     vaultScopeLabel,
     vaultKindScopeLabel,
     vaultKindIsPersonal,
@@ -573,6 +581,17 @@ export function ItemsListFilterDropdown<TRecord extends ItemsListFilterScopeReco
             </DropdownMenuItem>
           );
         })}
+
+        {!suggestionsActive && suggestionsPickLabel && onPickSuggestions ? (
+          <DropdownMenuItem
+            data-okkey-filter-suggestions=""
+            className="gap-2 whitespace-nowrap py-2 ps-2 pe-3"
+            onSelect={() => onPickSuggestions()}
+          >
+            <FilterIconSuggestions className="size-4 shrink-0 text-foreground" />
+            <span className="min-w-0 flex-1 truncate text-left">{suggestionsPickLabel}</span>
+          </DropdownMenuItem>
+        ) : null}
 
         <ItemsListFilterScopeSubmenus
           t={t}
