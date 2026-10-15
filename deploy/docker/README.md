@@ -10,18 +10,18 @@ Run Okkey Core on your own machine with Docker Compose — **no monorepo clone o
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh | bash
 ```
 
-**Production** — pin a SemVer image (never floating `:latest`):
+**Production** — pin a **published** SemVer image (never floating `:latest`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/okkeyapp/okkey/dev/deploy/docker/install.sh \
-  | OKKEY_IMAGE_TAG=1.0.0-beta.2 bash
-# or:
-#   | OKKEY_CHANNEL=prod bash   # uses OKKEY_PROD_IMAGE_TAG (default 1.0.0-beta.2)
+  | OKKEY_IMAGE_TAG=<published-semver> bash
 ```
+
+`OKKEY_CHANNEL=prod` is **disabled** until a SemVer tag exists in GHCR (today only `:dev` / `:dev-<sha>` are published). The installer exits with a clear error instead of pulling a missing `1.0.0-beta.2` manifest. After the first release is published, use `OKKEY_IMAGE_TAG=<semver>` (or `OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod` to force the historical pin).
 
 Note: `OKKEY_REF=…` / `OKKEY_IMAGE_TAG=…` / `OKKEY_CHANNEL=…` must be on the **right** of `|` so the installer process sees them — `VAR=x curl | bash` does **not** pass `VAR` into `bash`.
 
-`.env.example` defaults to `OKKEY_IMAGE_TAG=dev` for tracking. Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull. Production must pin a SemVer (default prod pin: `1.0.0-beta.2`); do not use `:latest` for prod.
+`.env.example` defaults to `OKKEY_IMAGE_TAG=dev` for tracking. Core GHCR packages (`ghcr.io/okkeyapp/{api,web,worker}`) are **public** for anonymous pull. Do not use `:latest` for prod.
 
 Optional env:
 
@@ -29,8 +29,8 @@ Optional env:
 |----------|---------|
 | `OKKEY_REF` | Git branch/tag/SHA for raw `deploy/docker/*` downloads (default `dev`). Independent of the container image tag. |
 | `OKKEY_IMAGE_TAG` | On **fresh** installs, overrides the `.env.example` default written into `.env` |
-| `OKKEY_CHANNEL=prod` | On **fresh** installs, pin `OKKEY_PROD_IMAGE_TAG` when `OKKEY_IMAGE_TAG` is unset |
-| `OKKEY_PROD_IMAGE_TAG` | SemVer pin used by `OKKEY_CHANNEL=prod` (default `1.0.0-beta.2`; never `latest`) |
+| `OKKEY_CHANNEL=prod` | Refused until SemVer exists in GHCR; with `OKKEY_PROD_CHANNEL_FORCE=1`, pins `OKKEY_PROD_IMAGE_TAG` |
+| `OKKEY_PROD_IMAGE_TAG` | Historical SemVer pin name (default `1.0.0-beta.2`; never `latest`) — not published yet |
 | `OKKEY_RAW_BASE` / `OKKEY_REPO_RAW_BASE` | Raw GitHub repo root (default `https://raw.githubusercontent.com/okkeyapp/okkey`) |
 | `OKKEY_INSTALL_DIR` | Install directory (default `~/okkey`). Compose project name = directory basename (containers/volumes are namespaced per install dir). |
 | `OKKEY_SKIP_PULL=1` | Skip `docker compose pull` (local/preloaded images) |
@@ -130,7 +130,7 @@ Installer defaults:
 | Channel | `OKKEY_IMAGE_TAG` |
 |---------|-------------------|
 | Tracking / QA (default) | `dev` |
-| Production | pin SemVer (default `1.0.0-beta.2`) via `OKKEY_IMAGE_TAG` or `OKKEY_CHANNEL=prod` — **never** `:latest` |
+| Production | pin a **published** SemVer via `OKKEY_IMAGE_TAG=<semver>` — **never** `:latest`; `OKKEY_CHANNEL=prod` gated until SemVer exists |
 
 Multi-arch (`linux/amd64` + `linux/arm64`), OCI labels, SBOM, and build provenance are enabled in CI. Cosign **keyless GitHub OIDC** signing runs on every non-PR publish (no key-based override).
 

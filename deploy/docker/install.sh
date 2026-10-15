@@ -23,8 +23,9 @@ OKKEY_REPO_RAW_BASE="${OKKEY_REPO_RAW_BASE:-https://raw.githubusercontent.com/ok
 # Git ref for raw file downloads (branch, tag, or commit SHA). Default `dev`.
 # Not the same as OKKEY_IMAGE_TAG (GHCR container tag; see .env.example).
 OKKEY_REF="${OKKEY_REF:-dev}"
-# Recommended production pin (first image-backed release: 1.0.0-beta.2).
-# Used only when OKKEY_CHANNEL=prod and OKKEY_IMAGE_TAG is unset. Never defaults to `latest`.
+# Historical production pin name (first planned SemVer). Not published in GHCR yet —
+# OKKEY_CHANNEL=prod is refused until a SemVer exists (or OKKEY_PROD_CHANNEL_FORCE=1).
+# Used only when OKKEY_CHANNEL=prod is forced and OKKEY_IMAGE_TAG is unset. Never `:latest`.
 OKKEY_PROD_IMAGE_TAG="${OKKEY_PROD_IMAGE_TAG:-1.0.0-beta.2}"
 COMPOSE_FILE_NAME="docker-compose.prod.yml"
 ENV_EXAMPLE_NAME=".env.example"
@@ -168,6 +169,17 @@ resolve_image_tag_for_fresh_install() {
   fi
   case "${OKKEY_CHANNEL:-}" in
     prod|production)
+      # Guard: GHCR currently publishes :dev / :dev-<sha> only — no SemVer tags yet.
+      # Refuse OKKEY_CHANNEL=prod so install does not pull a missing 1.0.0-beta.2 manifest.
+      if [[ "${OKKEY_PROD_CHANNEL_FORCE:-}" != "1" ]]; then
+        die "OKKEY_CHANNEL=prod is not available yet: no SemVer image tag in GHCR (only :dev).
+Use tracking images:
+  OKKEY_IMAGE_TAG=dev
+Or pin an explicit published tag when a release exists:
+  OKKEY_IMAGE_TAG=<semver>
+To force the historical pin ${OKKEY_PROD_IMAGE_TAG} anyway (pull will fail if missing):
+  OKKEY_PROD_CHANNEL_FORCE=1 OKKEY_CHANNEL=prod"
+      fi
       printf '%s\n' "${OKKEY_PROD_IMAGE_TAG}"
       ;;
     *)
@@ -314,7 +326,7 @@ else
     die "docker compose pull failed (OKKEY_IMAGE_TAG=${image_tag}).
 hint: the tag must exist in GHCR (ghcr.io/okkeyapp/{api,web,worker}).
   Tracking channel: OKKEY_IMAGE_TAG=dev (published on every push to the \`dev\` branch after CI lands).
-  Production: pin a SemVer, e.g. OKKEY_IMAGE_TAG=${OKKEY_PROD_IMAGE_TAG} or OKKEY_CHANNEL=prod.
+  Production: pin a published SemVer with OKKEY_IMAGE_TAG=<semver> (OKKEY_CHANNEL=prod is gated until SemVer exists).
   Or set OKKEY_SKIP_PULL=1 with local images."
   fi
 fi
