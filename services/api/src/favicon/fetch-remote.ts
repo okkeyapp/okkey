@@ -1,5 +1,8 @@
 import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
 import net from "node:net";
+import type { LookupFunction } from "node:net";
 
 const IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
@@ -12,6 +15,9 @@ const DIRECT_FAVICON_PATHS = ["/favicon.ico", "/apple-touch-icon.png", "/apple-t
 const MAX_REDIRECTS = 5;
 const FETCH_TIMEOUT_MS = 5_000;
 
+/** Cap response body size for outbound favicon fetches (bytes). */
+export const MAX_FAVICON_RESPONSE_BYTES = 256 * 1024;
+
 export type FaviconProvider = "direct" | "google" | "off";
 
 export type FaviconFetchOptions = {
@@ -22,16 +28,155 @@ export type FaviconFetchOptions = {
 /** Resolves a hostname to one or more IP addresses (A/AAAA). */
 export type FaviconHostResolver = (hostname: string) => Promise<string[]>;
 
+export type FaviconPinnedAddress = {
+  address: string;
+  family: 4 | 6;
+};
+
+export type FaviconOutboundResponse = {
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  readBody: (maxBytes: number) => Promise<Uint8Array | null>;
+};
+
+export type FaviconOutboundRequest = (
+  url: URL,
+  options: {
+    signal: AbortSignal;
+    pinned: FaviconPinnedAddress;
+    headers: Record<string, string>;
+  },
+) => Promise<FaviconOutboundResponse>;
+
+const DISALLOWED_RESOLVED_ADDRESSES = (() => {
+  const list = new net.BlockList();
+  // IPv4 special-use / non-global
+  list.addSubnet("0.0.0.0", 8, "ipv4");
+  list.addSubnet("10.0.0.0", 8, "ipv4");
+  list.addSubnet("127.0.0.0", 8, "ipv4");
+  list.addSubnet("100.64.0.0", 10, "ipv4");
+  list.addSubnet("169.254.0.0", 16, "ipv4");
+  list.addSubnet("172.16.0.0", 12, "ipv4");
+  list.addSubnet("192.168.0.0", 16, "ipv4");
+  // RFC 2544 benchmarking range
+  list.addSubnet("198.18.0.0", 15, "ipv4");
+  // Multicast and reserved
+  list.addSubnet("224.0.0.0", 4, "ipv4");
+  list.addSubnet("240.0.0.0", 4, "ipv4");
+  // IPv6 special-use / non-global
+  list.addAddress("::", "ipv6");
+  list.addAddress("::1", "ipv6");
+  list.addSubnet("fe80::", 10, "ipv6");
+  list.addSubnet("ff00::", 8, "ipv6");
+  list.addSubnet("fc00::", 7, "ipv6");
+  // NAT64 well-known prefix and 6to4
+  list.addSubnet("64:ff9b::", 96, "ipv6");
+  list.addSubnet("2002::", 16, "ipv6");
+  return list;
+})();
+
 async function defaultResolveHostAddresses(hostname: string): Promise<string[]> {
   const results = await dns.lookup(hostname, { all: true, verbatim: true });
   return results.map((entry) => entry.address);
 }
 
+function createPinnedLookup(pinned: FaviconPinnedAddress): LookupFunction {
+  return ((_hostname, options, callback) => {
+    const cb = typeof options === "function" ? options : callback;
+    if (typeof cb !== "function") {
+      throw new Error("favicon lookup callback missing");
+    }
+    if (typeof options === "object" && options?.all) {
+      cb(null, [{ address: pinned.address, family: pinned.family }]);
+      return;
+    }
+    cb(null, pinned.address, pinned.family);
+  }) as LookupFunction;
+}
+
+async function readResponseBodyLimited(
+  response: http.IncomingMessage,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  const contentLengthHeader = response.headers["content-length"];
+  if (contentLengthHeader !== undefined) {
+    const contentLength = Number(Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      response.resume();
+      response.destroy();
+      return null;
+    }
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for await (const chunk of response) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buf.byteLength;
+      if (total > maxBytes) {
+        response.destroy();
+        return null;
+      }
+      chunks.push(buf);
+    }
+  } catch {
+    return null;
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
+async function defaultFaviconOutboundRequest(
+  url: URL,
+  options: {
+    signal: AbortSignal;
+    pinned: FaviconPinnedAddress;
+    headers: Record<string, string>;
+  },
+): Promise<FaviconOutboundResponse> {
+  const transport = url.protocol === "https:" ? https : http;
+  const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+  const lookup = createPinnedLookup(options.pinned);
+
+  return await new Promise<FaviconOutboundResponse>((resolve, reject) => {
+    const req = transport.request(
+      {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port,
+        path: `${url.pathname}${url.search}`,
+        method: "GET",
+        headers: {
+          ...options.headers,
+          Host: url.host,
+        },
+        lookup,
+        signal: options.signal,
+      },
+      (res) => {
+        resolve({
+          status: res.statusCode ?? 0,
+          headers: res.headers,
+          readBody: (maxBytes) => readResponseBodyLimited(res, maxBytes),
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 let hostResolver: FaviconHostResolver = defaultResolveHostAddresses;
+let outboundRequest: FaviconOutboundRequest = defaultFaviconOutboundRequest;
 
 /** Test-only: override DNS resolution used before outbound favicon fetches. */
 export function setFaviconHostResolverForTests(resolver: FaviconHostResolver | null): void {
   hostResolver = resolver ?? defaultResolveHostAddresses;
+}
+
+/** Test-only: override the outbound HTTP(S) request used for favicon fetches. */
+export function setFaviconOutboundRequestForTests(request: FaviconOutboundRequest | null): void {
+  outboundRequest = request ?? defaultFaviconOutboundRequest;
 }
 
 export function parseHostFromUrl(input: string): string | null {
@@ -84,7 +229,7 @@ export function isHostSuitableForFaviconLookup(host: string): boolean {
 
 /**
  * True when a resolved address must not be contacted for favicon fetch
- * (loopback, private, link-local, ULA, unspecified, multicast).
+ * (loopback, private, link-local, ULA, unspecified, multicast, benchmarking, NAT64, 6to4).
  */
 export function isDisallowedResolvedAddress(address: string): boolean {
   const withoutZone = address.trim().toLowerCase().split("%")[0] ?? "";
@@ -93,39 +238,7 @@ export function isDisallowedResolvedAddress(address: string): boolean {
   if (family === 0) {
     return true;
   }
-
-  if (family === 4) {
-    const parts = ip.split(".").map((part) => Number(part));
-    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
-      return true;
-    }
-    const [a, b] = parts;
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
-    );
-  }
-
-  if (ip === "::" || ip === "::1" || ip === "0:0:0:0:0:0:0:0" || ip === "0:0:0:0:0:0:0:1") {
-    return true;
-  }
-
-  const firstHextet = ip.split(":", 1)[0] ?? "";
-  const firstValue = Number.parseInt(firstHextet || "0", 16);
-  if (!Number.isFinite(firstValue)) {
-    return true;
-  }
-  // fe80::/10 link-local, ff00::/8 multicast, fc00::/7 unique local (ULA)
-  if ((firstValue & 0xffc0) === 0xfe80 || (firstValue & 0xff00) === 0xff00 || (firstValue & 0xfe00) === 0xfc00) {
-    return true;
-  }
-
-  return false;
+  return DISALLOWED_RESOLVED_ADDRESSES.check(ip, family === 6 ? "ipv6" : "ipv4");
 }
 
 export function isAllowedFaviconFetchUrl(url: URL): boolean {
@@ -142,15 +255,24 @@ export function isAllowedFaviconFetchUrl(url: URL): boolean {
   return isHostSuitableForFaviconLookup(url.hostname);
 }
 
-async function hostResolvesToAllowedAddresses(hostname: string): Promise<boolean> {
+async function resolvePinnedAddress(hostname: string): Promise<FaviconPinnedAddress | null> {
   try {
     const addresses = await hostResolver(hostname);
     if (addresses.length === 0) {
-      return false;
+      return null;
     }
-    return addresses.every((address) => !isDisallowedResolvedAddress(address));
+    if (!addresses.every((address) => !isDisallowedResolvedAddress(address))) {
+      return null;
+    }
+    for (const address of addresses) {
+      const family = net.isIP(address);
+      if (family === 4 || family === 6) {
+        return { address, family };
+      }
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -234,11 +356,23 @@ export function looksLikeImageBytes(bytes: Uint8Array): boolean {
   return false;
 }
 
-function redirectLocation(response: Response, currentUrl: string): string | null {
-  if (response.status < 300 || response.status >= 400) {
+function headerValue(headers: http.IncomingHttpHeaders, name: string): string | null {
+  const raw = headers[name];
+  if (raw === undefined) {
     return null;
   }
-  const location = response.headers.get("location");
+  return Array.isArray(raw) ? (raw[0] ?? null) : raw;
+}
+
+function redirectLocation(
+  status: number,
+  headers: http.IncomingHttpHeaders,
+  currentUrl: string,
+): string | null {
+  if (status < 300 || status >= 400) {
+    return null;
+  }
+  const location = headerValue(headers, "location");
   if (!location) {
     return null;
   }
@@ -264,33 +398,43 @@ async function fetchImageBytes(urlString: string, redirectCount = 0): Promise<Ui
   if (!isAllowedFaviconFetchUrl(url)) {
     return null;
   }
-  if (!(await hostResolvesToAllowedAddresses(url.hostname))) {
+
+  const pinned = await resolvePinnedAddress(url.hostname);
+  if (!pinned) {
     return null;
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url.href, {
+    const response = await outboundRequest(url, {
       signal: controller.signal,
-      redirect: "manual",
-      headers: { Accept: "image/png,image/x-icon,image/vnd.microsoft.icon,image/*,*/*;q=0.8" },
+      pinned,
+      headers: {
+        Accept: "image/png,image/x-icon,image/vnd.microsoft.icon,image/*,*/*;q=0.8",
+      },
     });
 
-    const next = redirectLocation(response, url.href);
+    const next = redirectLocation(response.status, response.headers, url.href);
     if (next) {
+      // Drain unused redirect body so sockets can close cleanly.
+      await response.readBody(MAX_FAVICON_RESPONSE_BYTES).catch(() => null);
       return fetchImageBytes(next, redirectCount + 1);
     }
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
+      await response.readBody(MAX_FAVICON_RESPONSE_BYTES).catch(() => null);
       return null;
     }
-    const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+
+    const contentType = (headerValue(response.headers, "content-type") ?? "").toLowerCase();
     if (contentType && !contentType.startsWith("image/") && !contentType.includes("octet-stream")) {
+      await response.readBody(MAX_FAVICON_RESPONSE_BYTES).catch(() => null);
       return null;
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength === 0 || !looksLikeImageBytes(bytes)) {
+
+    const bytes = await response.readBody(MAX_FAVICON_RESPONSE_BYTES);
+    if (!bytes || bytes.byteLength === 0 || !looksLikeImageBytes(bytes)) {
       return null;
     }
     return bytes;

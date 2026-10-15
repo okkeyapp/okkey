@@ -8,15 +8,58 @@ import {
   isDisallowedResolvedAddress,
   isHostSuitableForFaviconLookup,
   looksLikeImageBytes,
+  MAX_FAVICON_RESPONSE_BYTES,
   parseFaviconProvider,
   fetchRemoteFaviconBytes,
   fetchRemoteFaviconBytesFromUrls,
   setFaviconHostResolverForTests,
+  setFaviconOutboundRequestForTests,
+  type FaviconOutboundRequest,
 } from "../src/favicon/fetch-remote.ts";
 
 afterEach(() => {
   setFaviconHostResolverForTests(null);
+  setFaviconOutboundRequestForTests(null);
 });
+
+function mockOutbound(
+  handler: (url: URL, pinnedAddress: string) => {
+    status: number;
+    headers?: Record<string, string>;
+    body?: Uint8Array | null;
+  },
+): { requested: Array<{ href: string; pinnedAddress: string }> } {
+  const requested: Array<{ href: string; pinnedAddress: string }> = [];
+  const request: FaviconOutboundRequest = async (url, options) => {
+    requested.push({ href: url.href, pinnedAddress: options.pinned.address });
+    const result = handler(url, options.pinned.address);
+    const body = result.body ?? null;
+    return {
+      status: result.status,
+      headers: result.headers ?? {},
+      readBody: async (maxBytes) => {
+        if (!body) {
+          return new Uint8Array();
+        }
+        if (body.byteLength > maxBytes) {
+          return null;
+        }
+        return body;
+      },
+    };
+  };
+  setFaviconOutboundRequestForTests(request);
+  return { requested };
+}
+
+function pngBytes(size = 64): Uint8Array {
+  const bytes = new Uint8Array(size);
+  bytes[0] = 0x89;
+  bytes[1] = 0x50;
+  bytes[2] = 0x4e;
+  bytes[3] = 0x47;
+  return bytes;
+}
 
 describe("hostsFromUrls", () => {
   test("returns hosts in URL list order", () => {
@@ -78,9 +121,22 @@ describe("isDisallowedResolvedAddress", () => {
     assert.equal(isDisallowedResolvedAddress("fc00::1"), true);
   });
 
+  test("rejects benchmarking, multicast, reserved, NAT64, and 6to4 ranges", () => {
+    assert.equal(isDisallowedResolvedAddress("198.18.0.1"), true);
+    assert.equal(isDisallowedResolvedAddress("198.19.255.255"), true);
+    assert.equal(isDisallowedResolvedAddress("224.0.0.1"), true);
+    assert.equal(isDisallowedResolvedAddress("239.1.2.3"), true);
+    assert.equal(isDisallowedResolvedAddress("240.0.0.1"), true);
+    assert.equal(isDisallowedResolvedAddress("255.255.255.255"), true);
+    assert.equal(isDisallowedResolvedAddress("64:ff9b::c000:201"), true);
+    assert.equal(isDisallowedResolvedAddress("2002:cb00:7100::1"), true);
+    assert.equal(isDisallowedResolvedAddress("::ffff:198.18.0.1"), true);
+  });
+
   test("allows public addresses", () => {
     assert.equal(isDisallowedResolvedAddress("93.184.216.34"), false);
     assert.equal(isDisallowedResolvedAddress("8.8.8.8"), false);
+    assert.equal(isDisallowedResolvedAddress("198.20.0.1"), false);
     assert.equal(isDisallowedResolvedAddress("2001:4860:4860::8888"), false);
   });
 });
@@ -150,48 +206,39 @@ describe("fetchRemoteFaviconBytes provider=off", () => {
 });
 
 describe("fetchRemoteFaviconBytes provider=direct", () => {
-  test("direct provider requests the site origin", async () => {
+  test("direct provider requests the site origin with pinned address", async () => {
     setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const { requested } = mockOutbound(() => ({
+      status: 200,
+      headers: { "content-type": "text/html" },
+      body: new TextEncoder().encode("not-an-image"),
+    }));
 
-    const requested: string[] = [];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      requested.push(url);
-      return new Response("not-an-image", { status: 200, headers: { "content-type": "text/html" } });
-    }) as typeof fetch;
-
-    try {
-      await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
 
     assert.ok(requested.length > 0);
-    for (const url of requested) {
-      assert.match(url, /^https:\/\/example\.com\//);
-      assert.doesNotMatch(url, /google\.com/i);
+    for (const entry of requested) {
+      assert.match(entry.href, /^https:\/\/example\.com\//);
+      assert.doesNotMatch(entry.href, /google\.com/i);
+      assert.equal(entry.pinnedAddress, "93.184.216.34");
     }
   });
 
   test("skips hosts that resolve to disallowed addresses", async () => {
     setFaviconHostResolverForTests(async () => ["127.0.0.1"]);
+    const { requested } = mockOutbound(() => ({ status: 404 }));
 
-    const requested: string[] = [];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      requested.push(url);
-      return new Response(null, { status: 404 });
-    }) as typeof fetch;
+    const bytes = await fetchRemoteFaviconBytes("127.0.0.1.nip.io", { provider: "direct" });
+    assert.equal(bytes, null);
+    assert.deepEqual(requested, []);
+  });
 
-    try {
-      const bytes = await fetchRemoteFaviconBytes("127.0.0.1.nip.io", { provider: "direct" });
-      assert.equal(bytes, null);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+  test("skips hosts that resolve to benchmarking range addresses", async () => {
+    setFaviconHostResolverForTests(async () => ["198.18.0.1"]);
+    const { requested } = mockOutbound(() => ({ status: 200, body: pngBytes() }));
 
+    const bytes = await fetchRemoteFaviconBytes("lab.example.com", { provider: "direct" });
+    assert.equal(bytes, null);
     assert.deepEqual(requested, []);
   });
 
@@ -206,56 +253,74 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       return ["8.8.8.8"];
     });
 
-    const requested: string[] = [];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      requested.push(url);
-      if (url === "https://example.com/favicon.ico") {
-        return new Response(null, {
+    const { requested } = mockOutbound((url) => {
+      if (url.href === "https://example.com/favicon.ico") {
+        return {
           status: 302,
-          headers: { Location: "https://127.0.0.1.nip.io/favicon.ico" },
-        });
+          headers: { location: "https://127.0.0.1.nip.io/favicon.ico" },
+        };
       }
-      return new Response(null, { status: 200, headers: { "content-type": "image/png" } });
-    }) as typeof fetch;
+      // Other candidate paths / hop targets: no usable icon body.
+      return { status: 404 };
+    });
 
-    try {
-      const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-      assert.equal(bytes, null);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-
-    assert.ok(requested.includes("https://example.com/favicon.ico"));
-    assert.ok(!requested.some((url) => url.includes("127.0.0.1.nip.io")));
+    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(bytes, null);
+    assert.ok(requested.some((entry) => entry.href === "https://example.com/favicon.ico"));
+    assert.ok(!requested.some((entry) => entry.href.includes("127.0.0.1.nip.io")));
   });
 
   test("rejects non-default ports on redirect targets", async () => {
     setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
 
-    const requested: string[] = [];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      requested.push(url);
-      if (url === "https://example.com/favicon.ico") {
-        return new Response(null, {
+    const { requested } = mockOutbound((url) => {
+      if (url.href === "https://example.com/favicon.ico") {
+        return {
           status: 302,
-          headers: { Location: "https://example.com:8443/secret.ico" },
-        });
+          headers: { location: "https://example.com:8443/secret.ico" },
+        };
       }
-      return new Response(null, { status: 200, headers: { "content-type": "image/png" } });
-    }) as typeof fetch;
+      return { status: 404 };
+    });
 
-    try {
-      const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
-      assert.equal(bytes, null);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(bytes, null);
+    assert.ok(requested.some((entry) => entry.href === "https://example.com/favicon.ico"));
+    assert.ok(!requested.some((entry) => entry.href.includes(":8443")));
+  });
 
-    assert.ok(requested.includes("https://example.com/favicon.ico"));
-    assert.ok(!requested.some((url) => url.includes(":8443")));
+  test("rejects oversized response bodies", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const oversized = pngBytes(MAX_FAVICON_RESPONSE_BYTES + 1);
+
+    const { requested } = mockOutbound(() => ({
+      status: 200,
+      headers: { "content-type": "image/png" },
+      body: oversized,
+    }));
+
+    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.equal(bytes, null);
+    assert.ok(requested.length > 0);
+  });
+
+  test("accepts image bytes within the size limit", async () => {
+    setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
+    const icon = pngBytes(128);
+
+    mockOutbound((url) => {
+      if (url.pathname === "/favicon.ico") {
+        return {
+          status: 200,
+          headers: { "content-type": "image/png" },
+          body: icon,
+        };
+      }
+      return { status: 404 };
+    });
+
+    const bytes = await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
+    assert.ok(bytes);
+    assert.equal(bytes.byteLength, 128);
   });
 });
