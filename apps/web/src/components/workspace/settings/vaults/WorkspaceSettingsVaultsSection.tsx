@@ -24,6 +24,7 @@ import {
   popupQuerySearch,
 } from "../../../../routes/popupQuery";
 
+import RemnantSharedVaultsSection from "./RemnantSharedVaultsSection";
 import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
 import SettingsListCardSkeleton from "../SettingsListCardSkeleton";
@@ -66,6 +67,11 @@ export default function WorkspaceSettingsVaultsSection({
   const canOpenPersonalVault = Boolean(PersonalVaultCardPopup);
 
   const personalVault = useMemo(() => vaults.find((vault) => vault.isPersonal) ?? null, [vaults]);
+  const remnantSharedVaults = useMemo(
+    () => vaults.filter((vault) => !vault.isPersonal),
+    [vaults],
+  );
+  const showRemnantShared = !showEnterpriseShared && remnantSharedVaults.length > 0;
   const canPutPersonal = permissionAllowsMutate(resourcePermissions?.put ?? 0);
 
   const popupRaw = searchParams.get(POPUP_QUERY_PARAM);
@@ -136,6 +142,14 @@ export default function WorkspaceSettingsVaultsSection({
           t={t}
           onVaultsChanged={onVaultsChanged}
           personalVaultId={personalVault?.id ?? null}
+          resourcePermissions={resourcePermissions}
+        />
+      ) : showRemnantShared ? (
+        <RemnantSharedVaultsSection
+          vaults={vaults}
+          vaultsListReady={vaultsListReady}
+          t={t}
+          onVaultsChanged={onVaultsChanged}
           resourcePermissions={resourcePermissions}
         />
       ) : null}
