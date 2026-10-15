@@ -29,6 +29,7 @@ import WorkspaceSettingsProfilesSection from "./profiles/WorkspaceSettingsProfil
 import WorkspaceSettingsVaultsSection from "./vaults/WorkspaceSettingsVaultsSection";
 import WorkspaceSettingsMembersSection from "./members/WorkspaceSettingsMembersSection";
 import workspacePlanModule from "@okkey-enterprise/workspace-plan";
+import { webDisplayPlanTier } from "../../../workspace/planEntitlements";
 import SelfHostedFreePlanSection from "./plan/SelfHostedFreePlanSection";
 import WorkspaceSettingsMobileHeader from "./WorkspaceSettingsMobileHeader";
 import WorkspaceSettingsSidebar from "./WorkspaceSettingsSidebar";
@@ -199,7 +200,7 @@ export default function WorkspaceSettingsPage({
             ) : activeSection === "plan" ? (
               <PlanSection
                 workspaceId={workspaceId}
-                planTier={workspace?.planTier}
+                planTier={webDisplayPlanTier(workspace)}
                 t={t}
                 canRequest={Boolean(sectionPermissions && sectionPermissions.put >= 1)}
               />

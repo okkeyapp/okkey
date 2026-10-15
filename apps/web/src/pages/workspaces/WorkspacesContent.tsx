@@ -12,6 +12,7 @@ import ListScrollSentinel from "../../lists/ListScrollSentinel";
 import { useListWindow } from "../../lists/useListWindow";
 import { ITEMS_PATH } from "../../routes/paths";
 import { useLocale } from "../../locale/LocaleContext";
+import { webDisplayPlanTier } from "../../workspace/planEntitlements";
 import CreateWorkspacePopup from "./CreateWorkspacePopup";
 import { createWorkspaceRequest, toastWorkspaceCreated } from "./createWorkspaceFlow";
 import WorkspacesListTile from "./WorkspacesListTile";
@@ -191,7 +192,7 @@ export default function WorkspacesContent() {
         <WorkspacesListTile
           key={ws.id}
           workspace={ws}
-          description={t(planDescriptionKey(ws.planTier))}
+          description={t(planDescriptionKey(webDisplayPlanTier(ws)))}
           onClick={() => {
             if (userId) {
               writeStoredCurrentWorkspaceId(userId, ws.id);

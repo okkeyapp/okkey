@@ -1,4 +1,3 @@
-import { normalizePlanTier } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle, Button } from "@okkey/ui";
 import { ApiRequestError } from "@okkey/api";
@@ -42,41 +41,29 @@ const SELF_HOSTED_SALES_REQUEST_TIER = "ENTERPRISE" as const;
 
 type SelfHostedFreePlanSectionProps = {
   workspaceId: string;
+  /** Kept for PlanSection prop parity; Core self-host UI ignores DB `plan_tier`. */
   planTier: string | null | undefined;
   t: (messageKey: string, values?: WebMessageValues) => string;
   canRequest: boolean;
 };
 
 /**
- * Public Core plan page for self-hosted FREE workspaces: notice + sales request (no tariff cards).
+ * Public Core plan page when enterprise modules are not loaded: FREE notice + sales request.
+ * Self-host display is driven by modules (this section mounts only when modules are off),
+ * not by workspace `plan_tier`.
  */
 export default function SelfHostedFreePlanSection({
   workspaceId,
-  planTier,
   t,
   canRequest,
 }: SelfHostedFreePlanSectionProps) {
   const core = useAuthenticatedCoreClient();
   const profile = usePlanRequestProfile();
-  const tier = normalizePlanTier(planTier);
 
   const [popupOpen, setPopupOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-
-  // Non-FREE without enterprise overlay should not hit this section; fail closed to a short note.
-  if (tier !== "FREE") {
-    return (
-      <Alert variant="info">
-        <AlertInfoIcon className="size-4" />
-        <AlertTitle>{t("web.workspaceSettings.plan.selfHosted.nonFreeTitle")}</AlertTitle>
-        <AlertDescription>
-          {t("web.workspaceSettings.plan.selfHosted.nonFreeBody")}
-        </AlertDescription>
-      </Alert>
-    );
-  }
 
   async function handleSubmit(input: {
     contactEmail: string;

@@ -105,6 +105,7 @@ import {
   WORKSPACES_PATH,
   type WorkspaceAppShellPath,
 } from "../routes/paths";
+import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 
 function SharedVaultMembersIcon({ className }: { className?: string }) {
@@ -707,7 +708,7 @@ export default function WorkspaceRoutesLayout() {
               {currentWorkspace?.name ?? "…"}
             </p>
             <p className="truncate text-xs font-normal leading-4 text-muted-foreground">
-              {currentWorkspace ? planTierLabel(currentWorkspace.planTier, t) : ""}
+              {currentWorkspace ? planTierLabel(webDisplayPlanTier(currentWorkspace), t) : ""}
             </p>
           </div>
         ) : null}
@@ -742,7 +743,9 @@ export default function WorkspaceRoutesLayout() {
                 <WorkspaceTileAvatar workspace={ws} sizeClass="size-8" />
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold leading-5 text-foreground">{ws.name}</p>
-                  <p className="truncate text-xs leading-4 text-muted-foreground">{planTierLabel(ws.planTier, t)}</p>
+                  <p className="truncate text-xs leading-4 text-muted-foreground">
+                    {planTierLabel(webDisplayPlanTier(ws), t)}
+                  </p>
                 </div>
                 {active ? <span className="shrink-0 text-primary">✓</span> : null}
               </DropdownMenuItem>
