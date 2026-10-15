@@ -35,6 +35,7 @@ export {
   PLAN_QUOTA_LIMITS,
   PLAN_TIER_RANK,
   PLAN_TIERS,
+  SELF_HOSTED_FREE_EXTRA,
   canRequestPlanUpgrade,
   comparePlanTiers,
   emptyPlanFeatureOverrides,

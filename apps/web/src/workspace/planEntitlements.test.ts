@@ -38,6 +38,7 @@ describe("web plan entitlements (self_hosted without modules)", () => {
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "false");
     const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "filesInItems")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "ENTERPRISE" })).toBe("FREE");
   });
 });
@@ -48,6 +49,7 @@ describe("web plan entitlements (saas)", () => {
     vi.stubEnv("VITE_ENTERPRISE_MODULES_ACTIVE", "true");
     const { workspaceHasPlanFeature, webDisplayPlanTier } = await import("./planEntitlements");
     expect(workspaceHasPlanFeature({ planTier: "FREE" }, "sharedVaults")).toBe(false);
+    expect(workspaceHasPlanFeature({ planTier: "FREE" }, "filesInItems")).toBe(false);
     expect(workspaceHasPlanFeature({ planTier: "ENTERPRISE" }, "sharedVaults")).toBe(true);
     expect(webDisplayPlanTier({ planTier: "TEAM" })).toBe("TEAM");
   });
