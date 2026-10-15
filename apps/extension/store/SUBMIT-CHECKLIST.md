@@ -5,8 +5,8 @@ Ready-to-submit pack for **Okkey extension `1.0.0.2`**. Do **not** tag/`Release`
 ## 0. Preflight
 
 - [ ] Tip of branch includes `origin/dev` ≥ `4900d34`
-- [ ] `apps/extension/package.json` → `"version": "1.0.0.2"`
-- [ ] Built manifest → `"version": "1.0.0.2"` (no Chromium `version_name`, no `*-beta.*`)
+- [ ] `apps/extension/package.json` → `"version": "1.0.0"` (workspace SemVer; **not** `1.0.0.2`)
+- [ ] `wxt.config.ts` / built manifest → `"version": "1.0.0.2"` (no Chromium `version_name`, no `*-beta.*`)
 - [ ] Listing copy reviewed: [LISTING.en.md](./LISTING.en.md) / [LISTING.ru.md](./LISTING.ru.md)
 - [ ] Permissions text ready: [PERMISSIONS.md](./PERMISSIONS.md)
 - [ ] Privacy / support URLs: [URLS.md](./URLS.md) (public GitHub blob links)
@@ -27,7 +27,7 @@ yarn zip:extension:store
 #   yarn zip:extension:firefox
 ```
 
-Expected outputs (WXT names from package/manifest version):
+Expected outputs (WXT names from **manifest** `version` via `zip.artifactTemplate`):
 
 ```text
 apps/extension/output/
