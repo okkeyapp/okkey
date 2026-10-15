@@ -10,6 +10,7 @@ import {
 describe("workspaceItemSearch", () => {
   const row = {
     title: "GitHub",
+    description: "octocat",
     urls: ["https://github.com"],
     tags: ["первый", "Work"],
   };
@@ -41,5 +42,16 @@ describe("workspaceItemSearch", () => {
   it("scoreItemsListRecordSearch keeps title/url matching without hash", () => {
     expect(scoreItemsListRecordSearch(row, "github")).toBeGreaterThan(0);
     expect(scoreItemsListRecordSearch(row, "первый")).toBe(0);
+  });
+
+  it("scoreItemsListRecordSearch matches login in description", () => {
+    expect(
+      scoreItemsListRecordSearch(
+        { title: "Other Exact", description: "bob", urls: ["https://site.test"] },
+        "bob",
+      ),
+    ).toBe(10);
+    expect(scoreItemsListRecordSearch(row, "octo")).toBeGreaterThan(0);
+    expect(scoreItemsListRecordSearch(row, "OCTOCAT")).toBeGreaterThan(0);
   });
 });
