@@ -20,6 +20,7 @@ import {
   REGION_CODES,
   type RegionCode,
 } from "../../../../regions/regions";
+import { parseMemberCount } from "./parseMemberCount";
 
 type SelfHostedSalesRequestPopupProps = {
   open: boolean;
@@ -38,18 +39,6 @@ type SelfHostedSalesRequestPopupProps = {
     workspaceMemberCount: number;
   }) => void;
 };
-
-function parseMemberCount(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const value = Number(trimmed);
-  if (!Number.isInteger(value) || value < 1 || !Number.isFinite(value)) {
-    return null;
-  }
-  return value;
-}
 
 /** Self-hosted FREE sales contact: member count + region + email (locale sent silently). */
 export default function SelfHostedSalesRequestPopup({
@@ -177,15 +166,13 @@ export default function SelfHostedSalesRequestPopup({
             </label>
             <Input
               id={`${formId}-members`}
-              type="number"
-              min={1}
-              step={1}
+              type="text"
               inputMode="numeric"
+              autoComplete="off"
               value={memberCountInput}
               disabled={submitting}
-              onChange={(event) =>
-                setMemberCountInput(event.target.value.replace(/[^\d]/g, ""))
-              }
+              aria-invalid={memberCountInput.trim() !== "" && memberCount === null}
+              onChange={(event) => setMemberCountInput(event.target.value)}
             />
           </div>
 
