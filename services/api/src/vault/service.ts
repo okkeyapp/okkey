@@ -37,6 +37,7 @@ export interface VaultServiceDeps {
     | "canReadVault"
     | "canManageVaultSettings"
     | "updateMetadata"
+    | "deleteById"
   >;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "listAccessibleByUser">;
   config?: PlanEntitlementRuntimeConfig;
@@ -135,6 +136,27 @@ export class VaultService {
       throw new VaultServiceError("VAULT_NOT_FOUND", 404, "vault not found");
     }
     return updated;
+  }
+
+  async deleteVault(vaultId: string, actorId: string): Promise<void> {
+    const vault = await this.vaults.findById(vaultId);
+    if (!vault) {
+      throw new VaultServiceError("VAULT_NOT_FOUND", 404, "vault not found");
+    }
+    if (vault.isPersonal) {
+      throw new VaultServiceError("VAULT_DELETE_FORBIDDEN", 403, "personal vault cannot be deleted");
+    }
+
+    await this.requireWorkspaceAccess(vault.workspaceId, actorId);
+    const canManage = await this.vaults.canManageVaultSettings(vaultId, actorId);
+    if (!canManage) {
+      throw new VaultServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+
+    const deleted = await this.vaults.deleteById(vaultId);
+    if (!deleted) {
+      throw new VaultServiceError("VAULT_DELETE_FORBIDDEN", 403, "vault cannot be deleted");
+    }
   }
 
   private async requireWorkspaceAccess(

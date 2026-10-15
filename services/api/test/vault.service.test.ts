@@ -36,6 +36,7 @@ function vaultsStub(overrides?: Record<string, unknown>) {
     canReadVault: async () => false,
     canManageVaultSettings: async () => false,
     updateMetadata: async () => null,
+    deleteById: async () => false,
     ...overrides,
   };
 }
@@ -302,4 +303,85 @@ test("updateVault allows personal vault metadata without sharedVaults plan", asy
 
   const updated = await service.updateVault("v1", "u1", { name: "Renamed" });
   assert.equal(updated.name, "Renamed");
+});
+
+test("deleteVault removes shared vault when actor can manage settings", async () => {
+  let deletedId: string | null = null;
+  const service = new VaultService({
+    workspaces: {
+      findById: async () => ({
+        id: "w1",
+        name: "Workspace",
+        ownerId: "u1",
+        planTier: "FREE",
+        planCustomOverride: false,
+        planFeatureOverrides: {},
+        createdAt: "",
+        updatedAt: "",
+      }),
+      hasAccess: async () => true,
+      listAccessibleByUser: async () => [],
+    },
+    vaults: vaultsStub({
+      findById: async () => ({
+        id: "v-shared",
+        workspaceId: "w1",
+        name: "Shared",
+        description: "",
+        icon: "💜",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canManageVaultSettings: async () => true,
+      deleteById: async (id: string) => {
+        deletedId = id;
+        return true;
+      },
+    }),
+  });
+
+  await service.deleteVault("v-shared", "u1");
+  assert.equal(deletedId, "v-shared");
+});
+
+test("deleteVault rejects personal vault", async () => {
+  const service = new VaultService({
+    workspaces: {
+      findById: async () => ({
+        id: "w1",
+        name: "Workspace",
+        ownerId: "u1",
+        planTier: "FREE",
+        planCustomOverride: false,
+        planFeatureOverrides: {},
+        createdAt: "",
+        updatedAt: "",
+      }),
+      hasAccess: async () => true,
+      listAccessibleByUser: async () => [],
+    },
+    vaults: vaultsStub({
+      findById: async () => ({
+        id: "v1",
+        workspaceId: "w1",
+        name: "Personal",
+        description: "",
+        icon: "🏠",
+        isPersonal: true,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+    }),
+  });
+
+  await assert.rejects(
+    () => service.deleteVault("v1", "u1"),
+    (error: unknown) =>
+      error instanceof VaultServiceError && error.code === "VAULT_DELETE_FORBIDDEN",
+  );
 });

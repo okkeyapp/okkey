@@ -120,6 +120,7 @@ import {
 } from "./routes/workspace-personal-sync.ts";
 import { createWorkspacesListRoute } from "./routes/workspaces-list.ts";
 import {
+  createVaultDeleteRoute,
   createVaultGetRoute,
   createVaultUpdateRoute,
   createWorkspaceVaultsListRoute,
@@ -649,7 +650,18 @@ export function createApiApp(
       "/vaults/:vaultId",
       gateVaultUse(createVaultUpdateRoute(deps.vaultService, resolveUserId)),
     );
-    // Shared vault delete / access routes: enterprise `workspace-shared-vaults` plugin only.
+    const hasEnterpriseWorkspaceSharedVaults = enterprisePlugins.some(
+      (plugin) => plugin.id === "workspace-shared-vaults",
+    );
+    if (!hasEnterpriseWorkspaceSharedVaults) {
+      // Remnant shared vaults after modules off: allow delete without EE plugin.
+      app.route(
+        "DELETE",
+        "/vaults/:vaultId",
+        gateVaultUse(createVaultDeleteRoute(deps.vaultService, resolveUserId)),
+      );
+    }
+    // Shared vault access routes: enterprise `workspace-shared-vaults` plugin only.
   }
   if (deps.vaultSharingService) {
     app.route(
