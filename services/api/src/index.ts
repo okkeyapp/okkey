@@ -116,6 +116,7 @@ async function main(): Promise<void> {
   const vaultService = new VaultService({
     vaults: storage.repositories.vaults,
     workspaces: storage.repositories.workspaces,
+    config,
     db: storage.postgres,
   });
   const itemCategoryPreferencesService = new ItemCategoryPreferencesService({
