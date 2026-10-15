@@ -27,6 +27,7 @@ import {
   type PassphraseGeneratorPreferences,
 } from "../lib/passphraseGenerator.js";
 import {
+  ensurePasswordGeneratorCharset,
   generatePassword,
   getGeneratedPasswordCharKind,
   loadPasswordGeneratorPreferences,
@@ -258,21 +259,13 @@ export function GeneratorSection({ t, hideIntro = false, onCopied, className }: 
 
   function updatePasswordSetting(key: keyof PasswordGeneratorSettings, checked: boolean) {
     setPasswordPreferences((current) => {
-      const nextSettings: PasswordGeneratorSettings = {
+      const nextSettings = ensurePasswordGeneratorCharset({
         uppercase: current.uppercase,
         lowercase: current.lowercase,
         numbers: current.numbers,
         symbols: current.symbols,
         [key]: checked,
-      };
-      if (
-        !nextSettings.uppercase &&
-        !nextSettings.lowercase &&
-        !nextSettings.numbers &&
-        !nextSettings.symbols
-      ) {
-        return current;
-      }
+      });
       setPasswordValue(generatePassword(nextSettings, current.length));
       return { ...nextSettings, length: current.length };
     });
