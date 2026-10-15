@@ -4,14 +4,10 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
+    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
-    "baseUrl": ".",
-    "paths": {
-      "@okkey/types": ["../types/src"],
-      "@okkey/api": ["../api/src"]
-    },
     "skipLibCheck": true
   },
-  "include": ["src", "../types/src", "../api/src"]
+  "include": ["src"]
 }

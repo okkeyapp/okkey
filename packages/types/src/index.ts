@@ -7,6 +7,7 @@ export {
   isEntityId,
 } from "./entity-id.js";
 import type { EntityId } from "./entity-id.js";
+import type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
 import type { PlanFeatureOverrides, PlanTier } from "./plan-features.js";
 import type {
   WorkspaceBuiltInRoleDto,
@@ -16,6 +17,8 @@ import type { WorkspaceCapsulePolicies } from "./workspace-capsule-policies.js";
 import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.js";
 import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-card-settings.js";
 import type { WorkspaceMonitoringCardSettingsDto } from "./workspace-monitoring-card-settings.js";
+
+export type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
 
 export type {
   DeploymentMode,
@@ -809,33 +812,6 @@ export {
   profileAllowsFunction,
   profileAllowsItemView,
 } from "./workspace-profiles.js";
-
-/** Canonical encrypted wire/storage envelope for all ciphertext artifacts. */
-export interface EncryptedBlobDto {
-  crypto_version: number;
-  algorithm: string;
-  payload: string;
-  meta: Record<string, unknown>;
-}
-
-/** Canonical hybrid signature envelope for integrity-critical artifacts. */
-export interface HybridSignatureEnvelopeDto {
-  version: 1;
-  algorithm: "hybrid_ed25519_pq_bind_v1";
-  key_id: string;
-  context:
-    | "sync.append"
-    | "vault.share"
-    | "vault.revoke"
-    | "vault.rotate"
-    | "vault.member_role_update"
-    | "vault.create"
-    | "vault.access_update";
-  signer_pq_public_key: string;
-  payload_hash: string;
-  signature: string;
-  created_at: string;
-}
 
 /** @deprecated Use {@link CoreApiErrorBody}; the wire field is `error`, not `code`. */
 export type ApiError = CoreApiErrorBody;

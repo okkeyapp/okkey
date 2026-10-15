@@ -1,4 +1,4 @@
-import { ApiClient } from "../../api/src/index.js";
+import { ApiClient } from "@okkey/api";
 import type {
   AccessTokenResponseDto,
   AccountLoginMethodsPrimaryPatchDto,
@@ -25,7 +25,7 @@ import type {
   WebAuthnRegisterOptionsRequestDto,
   WebAuthnRegisterVerifyRequestDto,
   WebAuthnAuthenticatorAttachment,
-} from "../../types/src/index.js";
+} from "@okkey/types";
 
 export class LoginFlowError extends Error {
   constructor(message: string) {

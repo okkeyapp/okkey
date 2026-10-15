@@ -23,18 +23,25 @@ test("OpenAPI includes canonical EncryptedBlob schema and usage", async () => {
 
 test("DTO contract exposes EncryptedBlob fields in types", async () => {
   const typesPath = path.join(repoRoot, "packages", "types", "src", "index.ts");
+  const cryptoWirePath = path.join(repoRoot, "packages", "types", "src", "crypto-wire.ts");
   const content = await readFile(typesPath, "utf8");
+  const cryptoWireContent = await readFile(cryptoWirePath, "utf8");
   const capsuleContent = await readFile(
     path.join(repoRoot, "packages", "types", "src", "capsules.ts"),
     "utf8",
   );
 
   assert.match(content, /export interface Vault[\s\S]*cryptoVersion: number;/);
-  assert.match(content, /export interface EncryptedBlobDto/);
-  assert.match(content, /crypto_version: number;/);
-  assert.match(content, /algorithm: string;/);
-  assert.match(content, /payload: string;/);
-  assert.match(content, /meta: Record<string, unknown>;/);
+  // Canonical wire DTO lives in crypto-wire.ts and must stay publicly re-exported from index.
+  assert.match(cryptoWireContent, /export interface EncryptedBlobDto/);
+  assert.match(cryptoWireContent, /crypto_version: number;/);
+  assert.match(cryptoWireContent, /algorithm: string;/);
+  assert.match(cryptoWireContent, /payload: string;/);
+  assert.match(cryptoWireContent, /meta: Record<string, unknown>;/);
+  assert.match(
+    content,
+    /export type \{[\s\S]*EncryptedBlobDto[\s\S]*\} from "\.\/crypto-wire\.js";/,
+  );
 
   assert.match(content, /SyncAppendEventRequestDto[\s\S]*encryptedBlob: EncryptedBlobDto;/);
   assert.match(content, /SyncEventWireDto[\s\S]*encryptedBlob: EncryptedBlobDto;/);
