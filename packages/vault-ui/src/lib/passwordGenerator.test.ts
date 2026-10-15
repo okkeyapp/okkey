@@ -2,7 +2,12 @@ import { webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { generatePassphrase } from "./passphraseGenerator";
-import { generatePassword, getGeneratedPasswordCharKind } from "./passwordGenerator";
+import {
+  ensurePasswordGeneratorCharset,
+  generatePassword,
+  getGeneratedPasswordCharKind,
+  normalizePasswordGeneratorPreferences,
+} from "./passwordGenerator";
 import { generateUsername } from "./usernameGenerator";
 
 const g = globalThis as typeof globalThis & {
@@ -19,6 +24,60 @@ g.window = {
     length: 0,
   },
 };
+
+describe("ensurePasswordGeneratorCharset", () => {
+  it("falls back to lowercase when every charset is disabled", () => {
+    expect(
+      ensurePasswordGeneratorCharset({
+        uppercase: false,
+        lowercase: false,
+        numbers: false,
+        symbols: false,
+      }),
+    ).toEqual({
+      uppercase: false,
+      lowercase: true,
+      numbers: false,
+      symbols: false,
+    });
+  });
+
+  it("leaves an already-enabled charset unchanged", () => {
+    expect(
+      ensurePasswordGeneratorCharset({
+        uppercase: false,
+        lowercase: false,
+        numbers: true,
+        symbols: false,
+      }),
+    ).toEqual({
+      uppercase: false,
+      lowercase: false,
+      numbers: true,
+      symbols: false,
+    });
+  });
+});
+
+describe("normalizePasswordGeneratorPreferences", () => {
+  it("falls back to lowercase when stored prefs disable every charset", () => {
+    expect(
+      normalizePasswordGeneratorPreferences({
+        uppercase: false,
+        lowercase: false,
+        numbers: false,
+        symbols: false,
+        length: 20,
+      }),
+    ).toMatchObject({
+      uppercase: false,
+      lowercase: true,
+      numbers: false,
+      symbols: false,
+      length: 20,
+    });
+  });
+});
 
 describe("generatePassword", () => {
   it("includes at least one character from each enabled set", () => {

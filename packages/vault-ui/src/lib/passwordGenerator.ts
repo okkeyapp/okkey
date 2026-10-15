@@ -30,13 +30,23 @@ export const PASSWORD_GENERATOR_CHARACTER_SETS: Record<keyof PasswordGeneratorSe
 export const PASSWORD_GENERATOR_LENGTH_MIN = 4;
 export const PASSWORD_GENERATOR_LENGTH_MAX = 128;
 
+/** When every charset is off, keep lowercase enabled (matches tools generator UX). */
+export function ensurePasswordGeneratorCharset(
+  settings: PasswordGeneratorSettings,
+): PasswordGeneratorSettings {
+  if (!settings.uppercase && !settings.lowercase && !settings.numbers && !settings.symbols) {
+    return { ...settings, lowercase: true };
+  }
+  return settings;
+}
+
 export function normalizePasswordGeneratorPreferences(value: unknown): PasswordGeneratorPreferences {
   if (!value || typeof value !== "object") {
     return { ...DEFAULT_PASSWORD_GENERATOR_SETTINGS, length: DEFAULT_PASSWORD_GENERATOR_LENGTH };
   }
 
   const candidate = value as Partial<Record<keyof PasswordGeneratorPreferences, unknown>>;
-  const settings: PasswordGeneratorSettings = {
+  const settings = ensurePasswordGeneratorCharset({
     uppercase:
       typeof candidate.uppercase === "boolean"
         ? candidate.uppercase
@@ -53,11 +63,7 @@ export function normalizePasswordGeneratorPreferences(value: unknown): PasswordG
       typeof candidate.symbols === "boolean"
         ? candidate.symbols
         : DEFAULT_PASSWORD_GENERATOR_SETTINGS.symbols,
-  };
-
-  if (!settings.uppercase && !settings.lowercase && !settings.numbers && !settings.symbols) {
-    settings.lowercase = true;
-  }
+  });
 
   const length =
     typeof candidate.length === "number" ? candidate.length : DEFAULT_PASSWORD_GENERATOR_LENGTH;

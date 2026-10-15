@@ -101,6 +101,7 @@ export {
   PASSWORD_GENERATOR_CHARACTER_SETS,
   PASSWORD_GENERATOR_LENGTH_MIN,
   PASSWORD_GENERATOR_LENGTH_MAX,
+  ensurePasswordGeneratorCharset,
   normalizePasswordGeneratorPreferences,
   loadPasswordGeneratorPreferences,
   savePasswordGeneratorPreferences,

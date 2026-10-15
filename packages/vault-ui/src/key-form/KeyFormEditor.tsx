@@ -2330,7 +2330,8 @@ export function KeyFormEditor({
     setPasswordGeneratorPreferences((current) => {
       const next = { ...current, [key]: checked };
       const hasEnabledSet = next.uppercase || next.lowercase || next.numbers || next.symbols;
-      const safeNext = hasEnabledSet ? next : current;
+      // Match tools GeneratorSection: if every charset is off, keep lowercase on.
+      const safeNext = hasEnabledSet ? next : { ...next, lowercase: true };
       const { length, ...settings } = safeNext;
       setGeneratedPassword(generatePassword(settings, length));
       return safeNext;
