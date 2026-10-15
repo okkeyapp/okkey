@@ -99,14 +99,42 @@ export async function openWebDeepLink(url: string): Promise<void> {
   await browser.tabs.create({ url });
 }
 
+/** True when the tab URL can drive «Suggestions» / copy-guard (http(s) pages). */
+export function isUsableTabUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+  // Popup / new-tab / settings / extension pages are not autofill targets.
+  return !(
+    trimmed.startsWith("chrome://") ||
+    trimmed.startsWith("chrome-extension://") ||
+    trimmed.startsWith("edge://") ||
+    trimmed.startsWith("about:") ||
+    trimmed.startsWith("moz-extension://") ||
+    trimmed.startsWith("safari-web-extension://")
+  );
+}
+
+/**
+ * URL of the page the user was on when opening the popup.
+ * Prefer `lastFocusedWindow` — `currentWindow` from an action popup can miss the tab
+ * (empty result), which would hide the «Suggestions» filter for that tab.
+ */
 export async function readActiveTabUrl(): Promise<string | null> {
   try {
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    const url = tabs[0]?.url?.trim();
-    if (!url || url.startsWith("chrome://") || url.startsWith("about:") || url.startsWith("moz-extension://")) {
-      return null;
+    const queries: Parameters<typeof browser.tabs.query>[0][] = [
+      { active: true, lastFocusedWindow: true },
+      { active: true, currentWindow: true },
+    ];
+    for (const query of queries) {
+      const tabs = await browser.tabs.query(query);
+      const url = tabs[0]?.url?.trim();
+      if (url && isUsableTabUrl(url)) {
+        return url;
+      }
     }
-    return url;
+    return null;
   } catch {
     return null;
   }

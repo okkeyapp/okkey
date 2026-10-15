@@ -65,6 +65,8 @@ type ExtensionItemsListPaneProps = {
   locale: ItemsListLocale;
   searchQuery?: string;
   suggestionsScopeLabel?: string | null;
+  /** Pickable «Suggestions» row when tab URL is known and scope is not applied. */
+  suggestionsPickLabel?: string | null;
   vaultScopeLabel?: string | null;
   folderScopeLabel?: string | null;
   categoryScopeLabel?: string | null;
@@ -80,6 +82,7 @@ type ExtensionItemsListPaneProps = {
   onSortChange: (sort: ExtensionListSort) => void;
   onSelect: (id: string) => void;
   onClearScope?: () => void;
+  onPickSuggestions?: () => void;
   onPickVault: (vaultId: string) => void;
   onPickFolder: (folderId: string) => void;
   onPickCategory: (categoryId: string) => void;
@@ -163,6 +166,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     locale,
     searchQuery = "",
     suggestionsScopeLabel = null,
+    suggestionsPickLabel = null,
     vaultScopeLabel,
     folderScopeLabel,
     categoryScopeLabel,
@@ -178,6 +182,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
     onSortChange,
     onSelect,
     onClearScope,
+    onPickSuggestions,
     onPickVault,
     onPickFolder,
     onPickCategory,
@@ -229,6 +234,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
             searchScopeLabel={searchScopeLabel}
             tagScopeLabel={tagScopeLabel}
             suggestionsScopeLabel={suggestionsScopeLabel}
+            suggestionsPickLabel={suggestionsPickLabel}
             vaultScopeLabel={vaultScopeLabel}
             folderScopeLabel={folderScopeLabel}
             categoryScopeLabel={categoryScopeLabel}
@@ -240,6 +246,7 @@ export function ExtensionItemsListPane(props: ExtensionItemsListPaneProps) {
             activeFolderId={activeFolderId}
             activeCategoryId={activeCategoryId}
             onClearScope={onClearScope}
+            onPickSuggestions={onPickSuggestions}
             onPickVault={onPickVault}
             onPickFolder={onPickFolder}
             onPickCategory={onPickCategory}

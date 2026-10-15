@@ -101,7 +101,7 @@ export function FilterIconDeleted({ className, ...props }: SVGProps<SVGSVGElemen
   );
 }
 
-/** Tab URL suggestions scope (extension list; not a menu row). */
+/** Tab URL suggestions scope (extension list filter). */
 export function FilterIconSuggestions({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg

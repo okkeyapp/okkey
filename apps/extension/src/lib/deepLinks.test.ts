@@ -6,6 +6,7 @@ import {
   buildNewCapsuleDeepLink,
   buildSettingsMainDeepLink,
   buildWorkspaceSettingsDeepLink,
+  isUsableTabUrl,
 } from "./deepLinks.ts";
 
 const WEB = "https://app.okkey.test";
@@ -31,4 +32,14 @@ test("buildSettingsMainDeepLink opens settings|main", () => {
 
 test("buildWorkspaceSettingsDeepLink opens /settings/main", () => {
   assert.equal(buildWorkspaceSettingsDeepLink(WEB), `${WEB}/settings/main`);
+});
+
+test("isUsableTabUrl accepts http(s) pages and rejects browser/extension URLs", () => {
+  assert.equal(isUsableTabUrl("https://example.com/login"), true);
+  assert.equal(isUsableTabUrl("http://localhost:8080/"), true);
+  assert.equal(isUsableTabUrl("chrome://extensions"), false);
+  assert.equal(isUsableTabUrl("chrome-extension://abcdef/popup.html"), false);
+  assert.equal(isUsableTabUrl("about:blank"), false);
+  assert.equal(isUsableTabUrl("moz-extension://abcdef/popup.html"), false);
+  assert.equal(isUsableTabUrl("  "), false);
 });
