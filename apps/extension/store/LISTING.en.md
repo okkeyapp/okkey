@@ -21,10 +21,10 @@ Q-day ready, self-hosted password manager with client-side encryption and autofi
 ```text
 Okkey is a self-hosted password manager built for maximum client-side protection — including cryptography designed with a post-quantum (Q-day) threat model in mind.
 
-You run Okkey on your own infrastructure. The browser extension connects to the Okkey instance URL you configure (self-hosted or local). There is no mandatory SaaS backend: your vault syncs with your server, and decryption happens on your device.
+You run Okkey on your own infrastructure. The browser extension connects to the Okkey instance URL you configure (self-hosted or local). Your vault syncs with your server, and decryption happens on your device.
 
 Why Okkey
-• Client-side vault — plaintext secrets are decrypted in the extension, not on the server
+• Client-side vault — secrets are decrypted in the extension, not on the server
 • Post-quantum ready crypto — engineered for long-term confidentiality as quantum threats emerge
 • Self-host first — bring your own Okkey deployment; you control where encrypted data lives
 • Autofill done right — fill username, password, and TOTP on sites you saved, with per-URL scopes (entire site / exact URL / never)
@@ -42,7 +42,7 @@ Okkey needs access to websites you visit only to detect login forms and autofill
 
 Open source core: https://github.com/okkeyapp/okkey
 
-Note: this listing is for extension build 1.0.0.2. Features and store assets may still evolve.
+Extension build: 1.0.0.2.
 ```
 
 ## Category / tags (suggestions)
