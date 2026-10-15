@@ -11,7 +11,7 @@ import {
   DEFAULT_WORKSPACE_CAPSULE_POLICIES,
   isCapsuleAllowedForMember,
 } from "@okkey/types";
-import { workspaceHasPlanFeature } from "./planEntitlements";
+import { webEnterpriseModulesActive, workspaceHasPlanFeature } from "./planEntitlements";
 import {
   cn,
   DropdownMenuItem,
@@ -233,6 +233,10 @@ export default function WorkspaceRoutesLayout() {
 
   useEffect(() => {
     if (!core || !userId || !vaultKey || !vaultUnlocked || !resolvedWorkspaceId) {
+      return;
+    }
+    // EE route `/pending-vault-wraps` — skip entirely when modules are off (avoid 404 spam).
+    if (!webEnterpriseModulesActive()) {
       return;
     }
     void tryCompletePendingVaultWraps({
@@ -1035,6 +1039,7 @@ function WorkspaceShellWithItems({
       ? { ...item, onAddPointerDown: undefined }
       : item,
   );
+  const enterpriseModulesOn = webEnterpriseModulesActive();
 
   return (
     <WorkspaceItemTemplatesProvider workspaceId={resolvedWorkspaceId}>
@@ -1055,10 +1060,12 @@ function WorkspaceShellWithItems({
           />
           <CapsuleApprovalController />
           <DeviceApprovalController />
-          <DeviceRecoveryApprovalController />
+          {enterpriseModulesOn ? <DeviceRecoveryApprovalController /> : null}
           <TrustedContactInviteController />
-          <ContactsShareReleaseController />
-          {ContactsShareAutoEnrollController ? <ContactsShareAutoEnrollController /> : null}
+          {enterpriseModulesOn ? <ContactsShareReleaseController /> : null}
+          {ContactsShareAutoEnrollController && enterpriseModulesOn ? (
+            <ContactsShareAutoEnrollController />
+          ) : null}
           <EditItemPopup
             t={t}
             workspaceId={resolvedWorkspaceId}

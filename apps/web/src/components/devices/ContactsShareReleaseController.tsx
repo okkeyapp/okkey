@@ -22,6 +22,7 @@ import { useAuthVault } from "../../auth/AuthVaultContext";
 import { readVaultBundle } from "../../auth/localVaultBundle";
 import { readStoredLocale } from "../../locale/localeStorage";
 import { useLocale } from "../../locale/LocaleContext";
+import { webEnterpriseModulesActive } from "../../workspace/planEntitlements";
 import {
   MemberFavicon,
   memberDisplayName,
@@ -55,7 +56,9 @@ function formatAbsoluteDate(iso: string, locale: string): string {
  * (owner card matches TrustedContactInviteController / MembersListCard).
  */
 export default function ContactsShareReleaseController() {
-  const enterpriseEnabled = Boolean(accountRecoveryModule.ContactsRestorePanel);
+  // Vite may load EE UI while API modules are off — gate polls on /public/features.
+  const enterpriseEnabled =
+    Boolean(accountRecoveryModule.ContactsRestorePanel) && webEnterpriseModulesActive();
   const { t, locale } = useLocale();
   const { accessToken, userId, vaultUnlocked, vaultKey } = useAuthVault();
   const [pending, setPending] = useState<EnterpriseContactRecoveryRequestDto[]>([]);
