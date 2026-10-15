@@ -12,6 +12,8 @@ type BuiltInRolesLoaderProps = {
   t: (messageKey: string, values?: WebMessageValues) => string;
   profilesLink?: ReactNode;
   RoleCardPopup?: ComponentType<BuiltInRoleCardPopupProps>;
+  /** Bump to refetch member counts (e.g. after a custom role's members moved to User). */
+  reloadKey?: number;
 };
 
 export default function BuiltInRolesLoader({
@@ -20,6 +22,7 @@ export default function BuiltInRolesLoader({
   t,
   profilesLink,
   RoleCardPopup,
+  reloadKey = 0,
 }: BuiltInRolesLoaderProps) {
   const [memberCounts, setMemberCounts] = useState<Partial<Record<WorkspaceBuiltInRoleId, number>>>();
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export default function BuiltInRolesLoader({
 
   useEffect(() => {
     void loadRoles();
-  }, [loadRoles]);
+  }, [loadRoles, reloadKey]);
 
   return (
     <BuiltInRolesList

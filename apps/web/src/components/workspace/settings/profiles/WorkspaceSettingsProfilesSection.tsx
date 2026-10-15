@@ -11,6 +11,7 @@ import { canManageCustomWorkspaceProfiles } from "./builtinProfiles";
 import BuiltInProfilesLoader from "./BuiltInProfilesLoader";
 import CustomProfilesUpsell from "./CustomProfilesUpsell";
 import ProfilesSectionHeader from "./ProfilesSectionHeader";
+import RemnantCustomProfilesList from "./RemnantCustomProfilesList";
 
 type WorkspaceSettingsProfilesSectionProps = {
   workspaceId: string;
@@ -52,7 +53,7 @@ export default function WorkspaceSettingsProfilesSection({
         rolesLink={rolesLink}
         ProfileCardPopup={canOpenBuiltInCards ? BuiltInProfileCardPopup ?? undefined : undefined}
       />
-      {canManageCustom && EnterpriseProfilesSection ? (
+      {EnterpriseProfilesSection ? (
         <EnterpriseProfilesSection
           workspaceId={workspaceId}
           workspace={workspace}
@@ -60,10 +61,21 @@ export default function WorkspaceSettingsProfilesSection({
           rolesLink={rolesLink}
           t={t}
           resourcePermissions={resourcePermissions}
+          readOnly={!canManageCustom}
         />
-      ) : (
+      ) : null}
+      {!EnterpriseProfilesSection ? (
+        <CustomProfilesUpsell t={t}>
+          <RemnantCustomProfilesList
+            workspaceId={workspaceId}
+            core={core}
+            t={t}
+            resourcePermissions={resourcePermissions}
+          />
+        </CustomProfilesUpsell>
+      ) : !canManageCustom ? (
         <CustomProfilesUpsell t={t} />
-      )}
+      ) : null}
     </div>
   );
 }

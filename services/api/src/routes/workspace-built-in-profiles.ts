@@ -38,3 +38,39 @@ export function createWorkspaceBuiltInProfilesListRoute(
     }
   };
 }
+
+/** Deletes a custom-profile remnant; create/update stay enterprise-only. */
+export function createWorkspaceCustomProfileDeleteRoute(
+  service: WorkspaceBuiltInProfilesService,
+  resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+): RouteHandler {
+  return async (ctx) => {
+    const userId = await resolveUserId(ctx.req);
+    if (!userId) {
+      json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
+      return;
+    }
+
+    const workspaceId = ctx.params.workspaceId?.trim() ?? "";
+    if (!workspaceId) {
+      json(ctx.res, 400, errorPayload("INVALID_WORKSPACE_ID", "workspace id is required", ctx.requestId));
+      return;
+    }
+    const profileId = ctx.params.profileId?.trim() ?? "";
+    if (!profileId) {
+      json(ctx.res, 400, errorPayload("INVALID_PROFILE_ID", "profile id is required", ctx.requestId));
+      return;
+    }
+
+    try {
+      await service.deleteCustomProfile(workspaceId, userId, profileId);
+      json(ctx.res, 200, { ok: true });
+    } catch (error) {
+      if (error instanceof WorkspaceBuiltInProfilesServiceError) {
+        json(ctx.res, error.statusCode, errorPayload(error.code, error.message, ctx.requestId));
+        return;
+      }
+      json(ctx.res, 500, errorPayload("INTERNAL_ERROR", "internal error", ctx.requestId));
+    }
+  };
+}

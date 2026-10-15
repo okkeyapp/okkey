@@ -15,6 +15,8 @@ export type WorkspaceSettingsRolesSectionProps = {
   core: CoreApiClient;
   profilesLink: ReactNode;
   resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
+  /** Plan denies custom roles: list + delete only, no create/update. */
+  readOnly?: boolean;
 };
 
 export type BuiltInRoleCardPopupProps = {
@@ -39,6 +41,8 @@ export type WorkspaceSettingsProfilesSectionProps = {
   core: CoreApiClient;
   rolesLink: ReactNode;
   resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
+  /** Plan denies custom profiles: list + delete only, no create/update. */
+  readOnly?: boolean;
 };
 
 export type BuiltInProfileCardPopupProps = {
@@ -61,6 +65,8 @@ export type EnterpriseAdditionalMembersSectionProps = {
   workspace?: Workspace;
   t: (messageKey: string, values?: WebMessageValues) => string;
   resourcePermissions?: import("@okkey/types").WorkspaceResourcePermissionDto | null;
+  /** Plan denies additional members: list + edit + delete/revoke only, no invites. */
+  readOnly?: boolean;
 };
 
 export type WorkspaceSettingsMembersModule = {

@@ -1,6 +1,6 @@
 import {
   type WorkspaceBuiltInProfileId,
-  type WorkspaceBuiltInProfileDto,
+  type WorkspaceProfileListItemDto,
   type WorkspaceProfileSummary,
 } from "@okkey/types";
 
@@ -42,7 +42,7 @@ export function canManageCustomWorkspaceProfiles(planTier: string | undefined): 
 }
 
 export function extractBuiltInApplicationCounts(
-  profiles: WorkspaceBuiltInProfileDto[],
+  profiles: readonly WorkspaceProfileListItemDto[],
 ): Partial<Record<WorkspaceBuiltInProfileId, number>> {
   const counts: Partial<Record<WorkspaceBuiltInProfileId, number>> = {};
   for (const profile of profiles) {

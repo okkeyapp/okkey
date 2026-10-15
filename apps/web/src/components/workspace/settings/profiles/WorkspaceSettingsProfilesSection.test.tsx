@@ -1,39 +1,41 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "../../../../locale/LocaleContext";
 import WorkspaceSettingsProfilesSection from "./WorkspaceSettingsProfilesSection";
-import type { PlanTier } from "@okkey/types";
+import type { PlanTier, WorkspaceProfileListItemDto, WorkspaceResourcePermissionDto } from "@okkey/types";
 
 const enterpriseModuleMock = vi.hoisted(() => ({
   EnterpriseProfilesSection: null as ComponentType<unknown> | null,
   BuiltInProfileCardPopup: null as ComponentType<unknown> | null,
 }));
 
+const builtInProfiles: WorkspaceProfileListItemDto[] = [
+  { id: "1", kind: "builtin", builtin_id: "extended", name: "Extended", description: "", application_count: 2 },
+  { id: "2", kind: "builtin", builtin_id: "simple", name: "Simple", description: "", application_count: 0 },
+];
+
 const coreMock = vi.hoisted(() => ({
-  listWorkspaceProfiles: vi.fn(async () => ({
-    profiles: [
-      {
-        id: "1",
-        kind: "builtin" as const,
-        builtin_id: "extended" as const,
-        name: "Extended",
-        description: "",
-        application_count: 2,
-      },
-      {
-        id: "2",
-        kind: "builtin" as const,
-        builtin_id: "simple" as const,
-        name: "Simple",
-        description: "",
-        application_count: 0,
-      },
-    ],
-  })),
+  listWorkspaceProfiles: vi.fn<(workspaceId: string) => Promise<{ profiles: WorkspaceProfileListItemDto[] }>>(),
+  deleteWorkspaceProfile: vi.fn(async (_workspaceId: string, _profileId: string) => ({ ok: true as const })),
 }));
+
+const reauthMock = vi.hoisted(() => ({
+  requestZoneUnlock: vi.fn(async () => true),
+}));
+
+vi.mock("../../../../auth/SectionReauthContext", () => ({
+  useSectionReauth: () => reauthMock,
+}));
+
+beforeEach(() => {
+  coreMock.listWorkspaceProfiles.mockReset();
+  coreMock.listWorkspaceProfiles.mockImplementation(async () => ({ profiles: builtInProfiles }));
+  coreMock.deleteWorkspaceProfile.mockClear();
+  reauthMock.requestZoneUnlock.mockClear();
+});
 
 vi.mock("@okkey-enterprise/workspace-profiles", () => ({
   default: {
@@ -48,14 +50,19 @@ vi.mock("@okkey-enterprise/workspace-profiles", () => ({
 
 vi.mock("../../../../auth/AuthVaultContext", () => ({
   useAuthenticatedCoreClient: () => coreMock,
+  useAuthVault: () => ({ userId: "user-1" }),
 }));
 
-function renderProfilesSection(planTier: PlanTier = "FREE") {
+function renderProfilesSection(
+  planTier: PlanTier = "FREE",
+  resourcePermissions: WorkspaceResourcePermissionDto | null = null,
+) {
   return render(
     <MemoryRouter>
       <LocaleProvider>
         <WorkspaceSettingsProfilesSection
           workspaceId="ws-1"
+          resourcePermissions={resourcePermissions}
           workspace={{
             id: "ws-1",
             name: "Test",
@@ -118,6 +125,11 @@ function renderProfilesSection(planTier: PlanTier = "FREE") {
               "web.workspaceSettings.profiles.upsellPlanLink": "Change your plan",
               "web.workspaceSettings.profiles.upsellSuffix": " to unlock Custom profiles.",
               "web.workspaceSettings.profiles.retry": "Retry",
+              "web.workspaceSettings.profiles.actions.deleteProfile": "Delete profile",
+              "web.deleteProfileConfirmPopup.title": "Delete profile?",
+              "web.deleteProfileConfirmPopup.description": "Vault access using it is cleared",
+              "web.deleteProfileConfirmPopup.delete": "Confirm delete",
+              "web.newItemPopup.cancel": "Cancel",
             };
             return labels[key] ?? key;
           }}
@@ -155,5 +167,53 @@ describe("WorkspaceSettingsProfilesSection", () => {
     });
     expect(screen.queryByRole("button", { name: /Extended/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Built-in profile popup")).not.toBeInTheDocument();
+  });
+
+  it("mounts enterprise section read-only with upsell on FREE when module is loaded", async () => {
+    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
+      return <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>;
+    }
+
+    enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInProfileCardPopup = null;
+    renderProfilesSection("FREE");
+
+    await waitFor(() => {
+      expect(screen.getByText("Built-in profiles")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Enterprise profiles read-only")).toBeInTheDocument();
+    expect(screen.getByText("Change your plan")).toBeInTheDocument();
+  });
+
+  it("FREE + stub: custom profile from API appears and delete callable", async () => {
+    enterpriseModuleMock.EnterpriseProfilesSection = null;
+    enterpriseModuleMock.BuiltInProfileCardPopup = null;
+    coreMock.listWorkspaceProfiles.mockImplementation(async () => ({
+      profiles: [
+        ...builtInProfiles,
+        {
+          id: "9",
+          kind: "custom",
+          name: "Read only legacy",
+          description: "",
+          application_count: 3,
+          created_by: "user-1",
+        },
+      ],
+    }));
+    renderProfilesSection("FREE", { get: 1, post: 1, put: 1, delete: 2 });
+
+    expect(await screen.findByText("Read only legacy")).toBeInTheDocument();
+    expect(screen.getByText("Change your plan")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete profile" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+
+    await waitFor(() => {
+      expect(coreMock.deleteWorkspaceProfile).toHaveBeenCalledWith("ws-1", "9");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Read only legacy")).not.toBeInTheDocument();
+    });
   });
 });
