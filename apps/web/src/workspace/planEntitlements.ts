@@ -16,15 +16,43 @@ type WorkspaceLike = {
 };
 
 /**
- * Effective modules flag after Vite fail-closed resolve.
- * Prefer `VITE_ENTERPRISE_MODULES_ACTIVE` (set by vite.config); fall back to bootstrap env.
+ * Backend modules flag from GET /public/features.
+ * `null` = not probed yet (fall back to Vite-only).
+ * `false` = API has modules off → hide EE Create/License UI even if Vite ACTIVE.
  */
-export function webEnterpriseModulesActive(): boolean {
+let backendEnterpriseModulesActive: boolean | null = null;
+
+/** Apply API probe result so web entitlements cannot exceed backend modules. */
+export function setBackendEnterpriseModulesActive(active: boolean): void {
+  backendEnterpriseModulesActive = active;
+}
+
+/** Test helper — reset probe cache between vitest cases. */
+export function resetBackendEnterpriseModulesActiveForTests(): void {
+  backendEnterpriseModulesActive = null;
+}
+
+function viteEnterpriseModulesActive(): boolean {
   const active = import.meta.env.VITE_ENTERPRISE_MODULES_ACTIVE;
   if (active === "true" || active === "false") {
     return active === "true";
   }
   return import.meta.env.VITE_ENTERPRISE_MODULES === "true";
+}
+
+/**
+ * Effective modules flag after Vite fail-closed resolve, AND-gated by API probe when known.
+ * Prefer `VITE_ENTERPRISE_MODULES_ACTIVE` (set by vite.config); fall back to bootstrap env.
+ */
+export function webEnterpriseModulesActive(): boolean {
+  const viteActive = viteEnterpriseModulesActive();
+  if (!viteActive) {
+    return false;
+  }
+  if (backendEnterpriseModulesActive === false) {
+    return false;
+  }
+  return true;
 }
 
 export function webDeploymentMode(): DeploymentMode {

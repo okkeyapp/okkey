@@ -12,6 +12,8 @@ export type LoadEnterprisePluginsResult = {
   plugins: ApiEnterprisePlugin[];
   /** True only when config requested modules and the plugin entry imported successfully. */
   enterpriseModulesActive: boolean;
+  /** Present when the plugin entry failed to import. */
+  loadError?: string;
 };
 
 /**
@@ -35,7 +37,12 @@ export async function loadEnterprisePlugins(
       plugins: plugins ?? [],
       enterpriseModulesActive: true,
     };
-  } catch {
-    return { plugins: [], enterpriseModulesActive: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      plugins: [],
+      enterpriseModulesActive: false,
+      loadError: message,
+    };
   }
 }

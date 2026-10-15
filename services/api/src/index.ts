@@ -5,8 +5,9 @@ import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { RegistrationService } from "./registration/service.ts";
 import { createServer } from "node:http";
 import { createApiApp } from "./app.ts";
-import { loadConfig } from "./config.ts";
+import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
 import { DeviceService } from "./device/service.ts";
+import { json } from "./http.ts";
 import { createOutboundEmailSender, EmailTemplateService } from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
@@ -159,9 +160,21 @@ async function main(): Promise<void> {
     db: storage.postgres,
     workspaces: storage.repositories.workspaces,
   });
+  if (config.enterpriseModulesRequested && !config.enterpriseModulesEnabled) {
+    logger.warn(
+      "ENTERPRISE_MODULES=true but enterprise backend is not loadable; continuing as FREE",
+      {
+        enterpriseModulesPath: config.enterpriseModulesPath,
+        loadable: isEnterpriseBackendLoadable(config.enterpriseModulesPath),
+      },
+    );
+  }
   const enterpriseLoad = await loadEnterprisePlugins(config);
   if (config.enterpriseModulesEnabled && !enterpriseLoad.enterpriseModulesActive) {
-    logger.warn("enterprise modules requested but not loadable; continuing without them");
+    logger.warn("enterprise modules requested but plugin import failed; continuing without them", {
+      enterpriseModulesPath: config.enterpriseModulesPath,
+      error: enterpriseLoad.loadError,
+    });
     config = { ...config, enterpriseModulesEnabled: false };
   }
   const enterprisePlugins = enterpriseLoad.plugins;
@@ -289,12 +302,24 @@ async function main(): Promise<void> {
     geoIp,
   });
 
+  // Public capability probe for web/UI flag sync (registered here to avoid touching app.ts).
+  const enterpriseModulesActive = config.enterpriseModulesEnabled;
+  app.route("GET", "/public/features", async (ctx) => {
+    json(ctx.res, 200, {
+      enterpriseModulesActive,
+      deploymentMode: config.deploymentMode,
+      requestId: ctx.requestId,
+    });
+  });
+
   const server = createServer(app.handler());
   server.listen(config.port, () => {
     logger.info("api server started", {
       nodeEnv: config.nodeEnv,
       port: config.port,
       logLevel: config.logLevel,
+      enterpriseModulesActive,
+      enterpriseModulesRequested: config.enterpriseModulesRequested,
     });
   });
 
