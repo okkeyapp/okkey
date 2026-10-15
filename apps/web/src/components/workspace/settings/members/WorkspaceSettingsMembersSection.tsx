@@ -53,7 +53,7 @@ export default function WorkspaceSettingsMembersSection({
     useState<WorkspaceMembersPermissionCellDto>(EMPTY_MEMBER_PERMISSIONS);
   const { userId } = useAuthVault();
 
-  const canManageAdditional = canInviteAdditionalWorkspaceMembers(workspace?.planTier);
+  const canManageAdditional = canInviteAdditionalWorkspaceMembers(workspace);
   const AdditionalMembersSection = enterpriseMembersModule.AdditionalMembersSection;
   const showEnterpriseMembers = Boolean(AdditionalMembersSection);
   const enterpriseMembersUnlocked = canManageAdditional && showEnterpriseMembers;

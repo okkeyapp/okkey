@@ -29,7 +29,7 @@ export default function WorkspaceSettingsRolesSection({
 }: WorkspaceSettingsRolesSectionProps) {
   const core = useAuthenticatedCoreClient();
   const [builtInReloadKey, setBuiltInReloadKey] = useState(0);
-  const canManageCustom = canManageCustomWorkspaceRoles(workspace?.planTier);
+  const canManageCustom = canManageCustomWorkspaceRoles(workspace);
   const canOpenBuiltInCards = workspaceHasPlanFeature(workspace, "customWorkspaceRoles");
   const EnterpriseRolesSection = enterpriseRolesModule.EnterpriseRolesSection;
   const BuiltInRoleCardPopup = enterpriseRolesModule.BuiltInRoleCardPopup;

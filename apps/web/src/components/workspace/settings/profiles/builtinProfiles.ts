@@ -1,10 +1,17 @@
 import {
+  type PlanFeatureOverrides,
   type WorkspaceBuiltInProfileId,
   type WorkspaceProfileListItemDto,
   type WorkspaceProfileSummary,
 } from "@okkey/types";
 
 import { workspaceHasPlanFeature } from "../../../../workspace/planEntitlements";
+
+type WorkspacePlanLike = {
+  planTier?: string | null;
+  planCustomOverride?: boolean | null;
+  planFeatureOverrides?: PlanFeatureOverrides | null;
+};
 
 export type BuiltInProfileDefinition = {
   builtinId: WorkspaceBuiltInProfileId;
@@ -36,9 +43,14 @@ export function buildBuiltInProfileSummaries(
   }));
 }
 
-/** Custom profiles: SaaS `plan_tier` / self-host enterprise modules. */
-export function canManageCustomWorkspaceProfiles(planTier: string | undefined): boolean {
-  return workspaceHasPlanFeature({ planTier }, "customWorkspaceProfiles");
+/**
+ * Custom profiles: SaaS `plan_tier` (+ `planFeatureOverrides` when custom override is on)
+ * / self-host enterprise modules.
+ */
+export function canManageCustomWorkspaceProfiles(
+  workspace: WorkspacePlanLike | null | undefined,
+): boolean {
+  return workspaceHasPlanFeature(workspace, "customWorkspaceProfiles");
 }
 
 export function extractBuiltInApplicationCounts(
