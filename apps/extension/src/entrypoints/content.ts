@@ -1,5 +1,5 @@
 import { defineContentScript } from "wxt/utils/define-content-script";
-import { formatWebMessage } from "@okkey/i18n";
+import { formatWebMessage, type WebLocale } from "@okkey/i18n";
 
 import {
   AUTOFILL_MSG,
@@ -81,6 +81,10 @@ import {
   setConfiguredOkkeyWebBaseUrls,
 } from "../lib/okkeyWebAppOrigin";
 import { shouldFreezeOverlayUpdates } from "../lib/pageBlockingOverlayUi";
+import {
+  loadExtensionLocale,
+  subscribeExtensionLocale,
+} from "../lib/locale";
 import { readLastServer, readProfile } from "../lib/storage";
 
 /** Profile + lastServer web bases — used to skip overlays on self-host vault UI. */
@@ -132,9 +136,8 @@ function msg(locale: "ru" | "en", key: string, fallback: string, values?: Record
   }
 }
 
-function overlayStrings() {
-  const ru = (navigator.language || "").toLowerCase().startsWith("ru");
-  const locale = ru ? "ru" : "en";
+function overlayStrings(locale: WebLocale) {
+  const ru = locale === "ru";
   const usernameGeneratorCta = msg(
     locale,
     "extension.autofill.usernameGenerator",
@@ -147,14 +150,21 @@ function overlayStrings() {
   );
   return ru
     ? {
-        unlockCta: "Разблокировать Okkey",
+        unlockCta: msg(locale, "extension.autofill.unlockCta", "Разблокировать Okkey"),
         unlockTooltip: "Разблокируйте Okkey",
         saveTitle: msg(locale, "extension.autofill.saveTitle", "Сохранить учётную запись?"),
         updateTitle: msg(locale, "extension.autofill.updateTitle", "Обновить учётную запись"),
+        saveBody: msg(
+          locale,
+          "extension.autofill.saveBody",
+          "Okkey может сохранить логин и пароль для этого сайта.",
+        ),
         saveUnlockBody: "Чтобы сохранить учётную запись, сначала нужно разблокировать Okkey.",
         updateUnlockBody: "Чтобы обновить учётную запись, сначала нужно разблокировать Okkey.",
         saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Сохранить"),
         updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Обновить"),
+        saveCancel: msg(locale, "extension.autofill.saveCancel", "Отмена"),
+        closeAria: "Закрыть",
         updateFieldsTemplate: "Обновить: {fields}",
         fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "логин (емейл)"),
         fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "пароль"),
@@ -165,14 +175,21 @@ function overlayStrings() {
         usernameGeneratorCta,
       }
     : {
-        unlockCta: "Unlock Okkey",
+        unlockCta: msg(locale, "extension.autofill.unlockCta", "Unlock Okkey"),
         unlockTooltip: "Unlock Okkey",
         saveTitle: msg(locale, "extension.autofill.saveTitle", "Save this login?"),
         updateTitle: msg(locale, "extension.autofill.updateTitle", "Update account"),
+        saveBody: msg(
+          locale,
+          "extension.autofill.saveBody",
+          "Okkey can save the username and password for this site.",
+        ),
         saveUnlockBody: "To save this login, unlock Okkey first.",
         updateUnlockBody: "To update this login, unlock Okkey first.",
         saveConfirm: msg(locale, "extension.autofill.saveConfirm", "Save"),
         updateConfirm: msg(locale, "extension.autofill.updateConfirm", "Update"),
+        saveCancel: msg(locale, "extension.autofill.saveCancel", "Cancel"),
+        closeAria: "Close",
         updateFieldsTemplate: "Update: {fields}",
         fieldLogin: msg(locale, "web.keyForm.fieldLabels.login", "login"),
         fieldPassword: msg(locale, "web.keyForm.fieldLabels.password", "password"),
@@ -197,6 +214,7 @@ function truncateWithEllipsis(text: string, maxLen: number): string {
 function formatUpdateFieldsLine(
   keys: readonly AutofillUpdateFieldKey[],
   strings: ReturnType<typeof overlayStrings>,
+  locale: WebLocale,
 ): string {
   const labels = keys.map((key) => {
     if (key === "login") {
@@ -210,11 +228,7 @@ function formatUpdateFieldsLine(
   const joined = labels.join(", ");
   const fields = truncateWithEllipsis(joined, 52);
   try {
-    return formatWebMessage(
-      (navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en",
-      "extension.autofill.updateFields",
-      { fields },
-    );
+    return formatWebMessage(locale, "extension.autofill.updateFields", { fields });
   } catch {
     return strings.updateFieldsTemplate.replace("{fields}", fields);
   }
@@ -288,7 +302,11 @@ export default defineContentScript({
       return;
     }
 
-    const strings = overlayStrings();
+    // Use the popup language setting (chrome.storage), not navigator.language —
+    // Playwright / Linux profiles often report en-US while the UI is Russian.
+    let overlayLocale: WebLocale = await loadExtensionLocale();
+    let strings = overlayStrings(overlayLocale);
+    let genStrings = generatorOverlayStrings(overlayLocale === "ru");
     let host: HTMLDivElement | null = null;
     let shadow: ShadowRoot | null = null;
     let hideTimer = 0;
@@ -333,9 +351,18 @@ export default defineContentScript({
      * dropdown is closed (empty round vs chevron-right vs lock).
      */
     let toggleVaultStatus: "unknown" | "locked" | "empty" | "ready" = "unknown";
-    const genStrings = generatorOverlayStrings(
-      (navigator.language || "").toLowerCase().startsWith("ru"),
-    );
+
+    subscribeExtensionLocale((next) => {
+      if (next === overlayLocale) {
+        return;
+      }
+      overlayLocale = next;
+      strings = overlayStrings(next);
+      genStrings = generatorOverlayStrings(next === "ru");
+      if (host && host.style.display !== "none") {
+        void paintOverlay();
+      }
+    });
 
     function resolveToggleKind(): AutofillToggleKind {
       if (overlayMode === "unlock-tooltip" || toggleVaultStatus === "locked") {
@@ -1304,7 +1331,39 @@ export default defineContentScript({
             z-index: 1;
             display: flex;
             justify-content: flex-end;
+            align-items: center;
+            gap: 8px;
             width: 100%;
+          }
+          button.cta-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 36px;
+            height: 36px;
+            border: 1px solid hsla(var(--ok-fg) / 0.16);
+            border-radius: 8px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 20px;
+            appearance: none;
+            -webkit-appearance: none;
+            background: transparent;
+            color: hsl(var(--ok-fg));
+            box-shadow: none;
+            outline: none;
+            transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+          }
+          button.cta-secondary:hover {
+            background: hsl(var(--ok-hover));
+          }
+          button.cta-secondary:focus-visible {
+            background: hsl(var(--ok-hover));
+            box-shadow: 0 0 0 2px hsl(var(--ok-primary) / 0.4);
           }
           /* Figma 1215:4374 — 24×24 mark; 42×24 pill when lock/chevron present. */
           .toggle {
@@ -1771,6 +1830,7 @@ export default defineContentScript({
               ? pendingUpdateChangedFields
               : (["login", "password"] as AutofillUpdateFieldKey[]),
             strings,
+            overlayLocale,
           ),
         )}</span>`;
         // Form mode: gray breadcrumbs container has no border-top divider.
@@ -1780,23 +1840,29 @@ export default defineContentScript({
       return formMode ? picker : `<hr class="save-divider" />${picker}`;
     }
 
+    function saveCancelCtaHtml(): string {
+      return `<button type="button" class="cta-secondary" data-save-cancel="1">${escapeHtml(strings.saveCancel)}</button>`;
+    }
+
     function savePanelHtml(locked: boolean, formMode = false): string {
       const isUpdate = savePromptKind === "update";
       const titleText = isUpdate ? strings.updateTitle : strings.saveTitle;
       const unlockBody = isUpdate ? strings.updateUnlockBody : strings.saveUnlockBody;
       const confirmText = isUpdate ? strings.updateConfirm : strings.saveConfirm;
+      const closeAria = escapeHtml(strings.closeAria);
       if (locked) {
         return `<div class="panel panel-save">
           <div class="save-header">
             <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo-lock"))}" alt="" />
             <span class="save-title">${escapeHtml(titleText)}</span>
             <span class="spacer"></span>
-            <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
+            <button type="button" class="close-btn" data-save-cancel="1" aria-label="${closeAria}">
               <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
             </button>
           </div>
           <div class="save-body">${escapeHtml(unlockBody)}</div>
           <div class="save-actions">
+            ${saveCancelCtaHtml()}
             <button type="button" class="cta" data-unlock="1">
               <img src="${escapeHtml(overlayIconUrl("lucide-unlock"))}" alt="" />
               <span>${escapeHtml(strings.unlockCta)}</span>
@@ -1810,12 +1876,13 @@ export default defineContentScript({
             <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
             <span class="save-title">${escapeHtml(titleText)}</span>
             <span class="spacer"></span>
-            <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
+            <button type="button" class="close-btn" data-save-cancel="1" aria-label="${closeAria}">
               <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
             </button>
           </div>
           <div class="save-form-body" data-key-form-root></div>
           <div class="save-actions">
+            ${saveCancelCtaHtml()}
             ${saveConfirmCtaHtml(confirmText)}
           </div>
           <div data-key-form-portal></div>
@@ -1829,20 +1896,25 @@ export default defineContentScript({
         iconUrl: saveIconUrl,
         iconPending: saveIconLoading && !saveIconUrl,
       });
+      const bodyMarkup = isUpdate
+        ? ""
+        : `<div class="save-body">${escapeHtml(strings.saveBody)}</div>`;
       return `<div class="panel panel-save">
         <div class="save-header">
           <img class="logo" src="${escapeHtml(overlayIconUrl("okkey-logo"))}" alt="" />
           <span class="save-title">${escapeHtml(titleText)}</span>
           <span class="spacer"></span>
-          <button type="button" class="close-btn" data-save-cancel="1" aria-label="Close">
+          <button type="button" class="close-btn" data-save-cancel="1" aria-label="${closeAria}">
             <img src="${escapeHtml(overlayIconUrl("lucide-x"))}" alt="" />
           </button>
         </div>
+        ${bodyMarkup}
         <div class="save-card">
           ${preview}
           <div data-save-path>${secondaryBlock}</div>
         </div>
         <div class="save-actions">
+          ${saveCancelCtaHtml()}
           ${saveConfirmCtaHtml(confirmText)}
         </div>
       </div>`;
@@ -2363,6 +2435,7 @@ export default defineContentScript({
       const portalEl = root.querySelector("[data-key-form-portal]");
       mountSavePromptKeyForm(mountEl, {
         query,
+        locale: overlayLocale,
         iconUrl: saveIconUrl,
         getVaultId: () => saveVaultId || query.vaultId,
         portalContainer: portalEl instanceof HTMLElement ? portalEl : null,

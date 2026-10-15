@@ -49,6 +49,8 @@ export type SavePromptKeyFormHandle = {
 
 export type SavePromptKeyFormProps = {
   query: SavePromptKeyFormQuery;
+  /** Extension UI locale from chrome.storage (not navigator.language). */
+  locale: WebLocale;
   /** Site / stored favicon preview (same source as the compact save card). */
   iconUrl?: string;
   /** Create-mode vault id from the panel picker (read at submit — picker stays outside). */
@@ -62,10 +64,6 @@ export type SavePromptKeyFormProps = {
   onSaved: () => void;
   onLocked: () => void;
 };
-
-function resolveLocale(): WebLocale {
-  return (navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en";
-}
 
 function t(locale: WebLocale, key: string, values?: Record<string, string | number | boolean>): string {
   try {
@@ -144,6 +142,7 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
   function SavePromptKeyForm(
     {
       query,
+      locale,
       iconUrl,
       getVaultId,
       portalContainer,
@@ -154,7 +153,6 @@ export const SavePromptKeyForm = forwardRef<SavePromptKeyFormHandle, SavePromptK
     },
     ref,
   ) {
-    const locale = useMemo(() => resolveLocale(), []);
     const keyFormMessages = useMemo(() => createKeyFormEditorMessages(locale), [locale]);
     const fieldTypes = useMemo(
       () => filterKeyFieldTypesForFilesEnabled(createLocalizedKeyFieldTypes(locale), false),
