@@ -1,7 +1,9 @@
+import { isEntityId } from "../entity-id.ts";
 import type { QueryExecutor } from "../storage/postgres.ts";
 import type { WorkspacesRepository } from "../storage/repositories.ts";
 import {
   assertWorkspacePermission,
+  assertWorkspacePermissionOnObject,
   type WorkspacePermissionsMatrix,
   type WorkspaceResourcePermission,
   WorkspacePermissionError,
@@ -137,6 +139,104 @@ export class WorkspaceMembersService {
     });
   }
 
+  /** Not plan-gated: after downgrade, existing invitations must remain revocable. */
+  async revokeInvitation(workspaceId: string, actorId: string, invitationId: string): Promise<void> {
+    await this.requireAccessibleWorkspace(workspaceId, actorId);
+    if (!isEntityId(invitationId)) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid invitationId");
+    }
+
+    const rows = await this.db.query<{ id: string; status: string; invited_by_user_id: string }>(
+      `
+        SELECT id, status, invited_by_user_id FROM workspace_invitations
+        WHERE id = $1 AND workspace_id = $2
+        LIMIT 1
+      `,
+      [invitationId, workspaceId],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "invitation not found");
+    }
+    await this.assertMembersOnObject(workspaceId, actorId, "delete", row.invited_by_user_id === actorId);
+    if (row.status !== "pending") {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invitation is not pending");
+    }
+
+    await this.db.query(
+      `
+        UPDATE workspace_invitations
+        SET status = 'revoked'
+        WHERE id = $1 AND workspace_id = $2
+      `,
+      [invitationId, workspaceId],
+    );
+  }
+
+  /** Not plan-gated: after downgrade, existing additional members must remain removable. */
+  async removeMember(workspaceId: string, actorId: string, targetUserId: string): Promise<void> {
+    const workspace = await this.requireAccessibleWorkspace(workspaceId, actorId);
+    if (!isEntityId(targetUserId)) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "invalid userId");
+    }
+    if (targetUserId === workspace.ownerId) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "cannot remove owner");
+    }
+    if (targetUserId === actorId) {
+      throw new WorkspaceMembersServiceError("BAD_REQUEST", 400, "cannot remove yourself");
+    }
+
+    const memberRows = await this.db.query<{ id: string; invited_by_user_id: string | null }>(
+      `
+        SELECT id, invited_by_user_id FROM workspace_members
+        WHERE workspace_id = $1 AND user_id = $2
+        LIMIT 1
+      `,
+      [workspaceId, targetUserId],
+    );
+    const member = memberRows[0];
+    if (!member) {
+      throw new WorkspaceMembersServiceError("NOT_FOUND", 404, "member not found");
+    }
+    await this.assertMembersOnObject(workspaceId, actorId, "delete", member.invited_by_user_id === actorId);
+
+    // Minimal revoke: drop shared vault memberships/keys/profiles (no key rotation in this iteration).
+    await this.db.query(
+      `
+        DELETE FROM vault_keys
+        WHERE user_id = $1
+          AND vault_id IN (
+            SELECT id FROM vaults WHERE workspace_id = $2 AND is_personal = false
+          )
+      `,
+      [targetUserId, workspaceId],
+    );
+    await this.db.query(
+      `
+        DELETE FROM vault_profiles
+        WHERE user_id = $1
+          AND vault_id IN (
+            SELECT id FROM vaults WHERE workspace_id = $2 AND is_personal = false
+          )
+      `,
+      [targetUserId, workspaceId],
+    );
+    await this.db.query(
+      `
+        DELETE FROM vault_members
+        WHERE user_id = $1
+          AND vault_id IN (
+            SELECT id FROM vaults WHERE workspace_id = $2 AND is_personal = false
+          )
+      `,
+      [targetUserId, workspaceId],
+    );
+    await this.db.query(
+      `DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+      [workspaceId, targetUserId],
+    );
+  }
+
   private async assertMembers(
     workspaceId: string,
     actorId: string,
@@ -144,6 +244,22 @@ export class WorkspaceMembersService {
   ): Promise<WorkspacePermissionsMatrix> {
     try {
       return await assertWorkspacePermission(this.db, workspaceId, actorId, "members", action);
+    } catch (error) {
+      if (error instanceof WorkspacePermissionError) {
+        throw new WorkspaceMembersServiceError(error.code, error.statusCode, error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async assertMembersOnObject(
+    workspaceId: string,
+    actorId: string,
+    action: "get" | "put" | "delete",
+    isOwn: boolean,
+  ): Promise<WorkspacePermissionsMatrix> {
+    try {
+      return await assertWorkspacePermissionOnObject(this.db, workspaceId, actorId, "members", action, isOwn);
     } catch (error) {
       if (error instanceof WorkspacePermissionError) {
         throw new WorkspaceMembersServiceError(error.code, error.statusCode, error.message);

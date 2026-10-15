@@ -77,7 +77,7 @@ import type {
   WorkspacePlanChangeRequestDto,
   WorkspacePlanChangeRequestResponseDto,
   WorkspaceRolesListResponseDto,
-  WorkspaceBuiltInProfilesListResponseDto,
+  WorkspaceProfilesListResponseDto,
   VaultCreateRequestDto,
   VaultUpdateRequestDto,
   WorkspaceMembersListResponseDto,
@@ -609,9 +609,21 @@ export class CoreApiClient {
     );
   }
 
-  listWorkspaceProfiles(workspaceId: string): Promise<WorkspaceBuiltInProfilesListResponseDto> {
-    return this.api.get<WorkspaceBuiltInProfilesListResponseDto>(
+  deleteWorkspaceRole(workspaceId: string, roleId: string): Promise<{ ok: true }> {
+    return this.api.delete<{ ok: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}`,
+    );
+  }
+
+  listWorkspaceProfiles(workspaceId: string): Promise<WorkspaceProfilesListResponseDto> {
+    return this.api.get<WorkspaceProfilesListResponseDto>(
       `/workspaces/${encodeURIComponent(workspaceId)}/profiles`,
+    );
+  }
+
+  deleteWorkspaceProfile(workspaceId: string, profileId: string): Promise<{ ok: true }> {
+    return this.api.delete<{ ok: true }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/profiles/${encodeURIComponent(profileId)}`,
     );
   }
 

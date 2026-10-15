@@ -1,6 +1,6 @@
 import {
   type WorkspaceBuiltInRoleId,
-  type WorkspaceBuiltInRoleDto,
+  type WorkspaceRoleListItemDto,
   type WorkspaceRoleSummary,
 } from "@okkey/types";
 
@@ -51,7 +51,7 @@ export function canManageCustomWorkspaceRoles(planTier: string | undefined): boo
 }
 
 export function extractBuiltInMemberCounts(
-  roles: WorkspaceBuiltInRoleDto[],
+  roles: readonly WorkspaceRoleListItemDto[],
 ): Partial<Record<WorkspaceBuiltInRoleId, number>> {
   const counts: Partial<Record<WorkspaceBuiltInRoleId, number>> = {};
   for (const role of roles) {

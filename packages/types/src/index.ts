@@ -9,10 +9,7 @@ export {
 import type { EntityId } from "./entity-id.js";
 import type { EncryptedBlobDto, HybridSignatureEnvelopeDto } from "./crypto-wire.js";
 import type { PlanFeatureOverrides, PlanTier } from "./plan-features.js";
-import type {
-  WorkspaceBuiltInRoleDto,
-  WorkspaceBuiltInRolesListResponseDto,
-} from "./workspace-roles.js";
+import type { WorkspaceBuiltInRoleDto } from "./workspace-roles.js";
 import type { WorkspaceCapsulePolicies } from "./workspace-capsule-policies.js";
 import type { WorkspaceCapsulePoliciesDto } from "./workspace-capsule-policies.js";
 import type { WorkspaceMonitoringCardSettings } from "./workspace-monitoring-card-settings.js";
@@ -761,6 +758,9 @@ export type {
   WorkspaceBuiltInRoleDto,
   WorkspaceBuiltInRoleId,
   WorkspaceBuiltInRolesListResponseDto,
+  WorkspaceCustomRoleRemnantDto,
+  WorkspaceRoleListItemDto,
+  WorkspaceRolesListResponseDto,
   WorkspaceRoleSummary,
 } from "./workspace-roles.js";
 export type {
@@ -784,6 +784,9 @@ export type {
   WorkspaceBuiltInProfileDto,
   WorkspaceBuiltInProfileId,
   WorkspaceBuiltInProfilesListResponseDto,
+  WorkspaceCustomProfileRemnantDto,
+  WorkspaceProfileListItemDto,
+  WorkspaceProfilesListResponseDto,
   WorkspaceProfileSummary,
 } from "./workspace-profiles.js";
 export {
@@ -1212,9 +1215,6 @@ export interface WorkspacePlanChangeRequestResponseDto {
 
 /** @deprecated Use WorkspaceBuiltInRoleDto */
 export type WorkspaceRoleDto = WorkspaceBuiltInRoleDto;
-
-/** @deprecated Use WorkspaceBuiltInRolesListResponseDto */
-export type WorkspaceRolesListResponseDto = WorkspaceBuiltInRolesListResponseDto;
 
 /** `GET /vaults/:vaultId/key` success body. */
 export interface VaultKeyGetResponseDto {

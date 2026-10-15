@@ -100,8 +100,14 @@ import {
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
 import { createWorkspacePlanChangeRequestRoute } from "./routes/workspace-plan-change-request.ts";
-import { createWorkspaceBuiltInRolesListRoute } from "./routes/workspace-built-in-roles.ts";
-import { createWorkspaceBuiltInProfilesListRoute } from "./routes/workspace-built-in-profiles.ts";
+import {
+  createWorkspaceBuiltInRolesListRoute,
+  createWorkspaceCustomRoleDeleteRoute,
+} from "./routes/workspace-built-in-roles.ts";
+import {
+  createWorkspaceBuiltInProfilesListRoute,
+  createWorkspaceCustomProfileDeleteRoute,
+} from "./routes/workspace-built-in-profiles.ts";
 import type { ApiEnterprisePlugin, ApiEnterprisePluginContext } from "./plugins/types.ts";
 import type { QueryExecutor } from "./storage/postgres.ts";
 import type { WorkspaceBuiltInRolesService } from "./workspace-roles/list-service.ts";
@@ -118,7 +124,12 @@ import {
   createVaultUpdateRoute,
   createWorkspaceVaultsListRoute,
 } from "./routes/vault.ts";
-import { createWorkspaceMembersListRoute, createWorkspaceMemberDirectoryRoute } from "./routes/workspace-members.ts";
+import {
+  createWorkspaceInvitationDeleteRoute,
+  createWorkspaceMemberDeleteRoute,
+  createWorkspaceMembersListRoute,
+  createWorkspaceMemberDirectoryRoute,
+} from "./routes/workspace-members.ts";
 import { createWorkspaceMePermissionsRoute } from "./routes/workspace-me-permissions.ts";
 import {
   createWorkspaceMeVaultProfilesRoute,
@@ -490,7 +501,23 @@ export function createApiApp(
         "/workspaces/:workspaceId/member-directory",
         createWorkspaceMemberDirectoryRoute(deps.workspaceMembersService, resolveUserId),
       );
-      // Invite / member mutation / vault-access routes: enterprise `workspace-members` plugin only.
+      // Invite / member edit / vault-access routes: enterprise `workspace-members` plugin only.
+      // Without it, Core still lets downgraded workspaces revoke invitations and remove members.
+      const hasEnterpriseWorkspaceMembers = enterprisePlugins.some(
+        (plugin) => plugin.id === "workspace-members",
+      );
+      if (!hasEnterpriseWorkspaceMembers) {
+        app.route(
+          "DELETE",
+          "/workspaces/:workspaceId/invitations/:invitationId",
+          createWorkspaceInvitationDeleteRoute(deps.workspaceMembersService, resolveUserId),
+        );
+        app.route(
+          "DELETE",
+          "/workspaces/:workspaceId/members/:userId",
+          createWorkspaceMemberDeleteRoute(deps.workspaceMembersService, resolveUserId),
+        );
+      }
     }
     if (deps.itemCategoryPreferencesService) {
       app.route(
@@ -575,6 +602,11 @@ export function createApiApp(
         "/workspaces/:workspaceId/roles",
         createWorkspaceBuiltInRolesListRoute(deps.workspaceBuiltInRolesService, resolveUserId),
       );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/roles/:roleId",
+        createWorkspaceCustomRoleDeleteRoute(deps.workspaceBuiltInRolesService, resolveUserId),
+      );
     }
     const hasEnterpriseWorkspaceProfiles = enterprisePlugins.some(
       (plugin) => plugin.id === "workspace-profiles",
@@ -584,6 +616,11 @@ export function createApiApp(
         "GET",
         "/workspaces/:workspaceId/profiles",
         createWorkspaceBuiltInProfilesListRoute(deps.workspaceBuiltInProfilesService, resolveUserId),
+      );
+      app.route(
+        "DELETE",
+        "/workspaces/:workspaceId/profiles/:profileId",
+        createWorkspaceCustomProfileDeleteRoute(deps.workspaceBuiltInProfilesService, resolveUserId),
       );
     }
     if (deps.workspacePersonalSyncService) {

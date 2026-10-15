@@ -402,9 +402,31 @@ export interface WorkspaceBuiltInProfileDto {
   application_count: number;
 }
 
-/** `GET /workspaces/:workspaceId/profiles` success body (open-core). */
+/**
+ * `GET /workspaces/:workspaceId/profiles` custom profile item (open-core).
+ * Custom profiles created while enterprise modules were enabled stay listed (and deletable) after downgrade.
+ */
+export interface WorkspaceCustomProfileRemnantDto {
+  id: string;
+  kind: "custom";
+  /** Lets callers read `builtin_id` on the list union without narrowing first. */
+  builtin_id?: undefined;
+  name: string;
+  description: string;
+  application_count: number;
+  created_by: string | null;
+}
+
+export type WorkspaceProfileListItemDto = WorkspaceBuiltInProfileDto | WorkspaceCustomProfileRemnantDto;
+
+/** `GET /workspaces/:workspaceId/profiles` success body (built-in only). */
 export interface WorkspaceBuiltInProfilesListResponseDto {
   profiles: WorkspaceBuiltInProfileDto[];
+}
+
+/** `GET /workspaces/:workspaceId/profiles` success body (open-core: built-in + custom remnants). */
+export interface WorkspaceProfilesListResponseDto {
+  profiles: WorkspaceProfileListItemDto[];
 }
 
 /** One vault content-access profile for the current member. */

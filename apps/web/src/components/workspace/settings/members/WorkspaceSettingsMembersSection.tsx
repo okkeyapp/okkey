@@ -1,6 +1,7 @@
 import type {
   Workspace,
   WorkspaceMemberDto,
+  WorkspaceMembersPermissionCellDto,
   WorkspaceResourcePermissionDto,
 } from "@okkey/types";
 import type { WebMessageValues } from "@okkey/i18n";
@@ -10,7 +11,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import enterpriseMembersModule from "@okkey-enterprise/workspace-members";
 
-import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
+import { useAuthenticatedCoreClient, useAuthVault } from "../../../../auth/AuthVaultContext";
 import {
   buildPopupQueryValue,
   EDIT_MEMBER_POPUP_ID,
@@ -23,6 +24,9 @@ import AdditionalMembersUpsell from "./AdditionalMembersUpsell";
 import MembersListCard from "./MembersListCard";
 import MembersSectionHeader from "./MembersSectionHeader";
 import { canInviteAdditionalWorkspaceMembers } from "./membersPlanAccess";
+import RemnantMembersList from "./RemnantMembersList";
+
+const EMPTY_MEMBER_PERMISSIONS: WorkspaceMembersPermissionCellDto = { get: 0, post: 0, put: 0, delete: 0 };
 
 type WorkspaceSettingsMembersSectionProps = {
   workspaceId: string;
@@ -45,10 +49,14 @@ export default function WorkspaceSettingsMembersSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<WorkspaceMemberDto[]>([]);
+  const [memberPermissions, setMemberPermissions] =
+    useState<WorkspaceMembersPermissionCellDto>(EMPTY_MEMBER_PERMISSIONS);
+  const { userId } = useAuthVault();
 
   const canManageAdditional = canInviteAdditionalWorkspaceMembers(workspace?.planTier);
   const AdditionalMembersSection = enterpriseMembersModule.AdditionalMembersSection;
-  const showEnterpriseMembers = Boolean(canManageAdditional && AdditionalMembersSection);
+  const showEnterpriseMembers = Boolean(AdditionalMembersSection);
+  const enterpriseMembersUnlocked = canManageAdditional && showEnterpriseMembers;
 
   const load = useCallback(async () => {
     if (!core) {
@@ -58,9 +66,11 @@ export default function WorkspaceSettingsMembersSection({
     try {
       const membersResponse = await core.listWorkspaceMembers(workspaceId);
       setMembers(membersResponse.members);
+      setMemberPermissions(membersResponse.actorPermissions?.members ?? EMPTY_MEMBER_PERMISSIONS);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("web.toast.save.error"));
       setMembers([]);
+      setMemberPermissions(EMPTY_MEMBER_PERMISSIONS);
     } finally {
       setLoading(false);
     }
@@ -80,8 +90,12 @@ export default function WorkspaceSettingsMembersSection({
       ) ?? null,
     [members, workspace?.ownerId],
   );
+  const otherMembers = useMemo(
+    () => members.filter((member) => member !== ownerMember),
+    [members, ownerMember],
+  );
 
-  // Clear stale member popups on FREE / without enterprise module.
+  // Clear stale member popups without the enterprise module.
   useEffect(() => {
     if (showEnterpriseMembers) {
       return;
@@ -100,7 +114,7 @@ export default function WorkspaceSettingsMembersSection({
 
   const openOwnerMemberCard = useCallback(
     (member: WorkspaceMemberDto) => {
-      if (!showEnterpriseMembers) {
+      if (!enterpriseMembersUnlocked) {
         return;
       }
       const id = member.userId ?? member.invitationId;
@@ -112,7 +126,7 @@ export default function WorkspaceSettingsMembersSection({
         search: popupQuerySearch(location.search, buildPopupQueryValue(EDIT_MEMBER_POPUP_ID, id)),
       });
     },
-    [showEnterpriseMembers, navigate, location.pathname, location.search],
+    [enterpriseMembersUnlocked, navigate, location.pathname, location.search],
   );
 
   return (
@@ -141,20 +155,34 @@ export default function WorkspaceSettingsMembersSection({
             <MembersListCard
               members={[ownerMember]}
               t={t}
-              onMemberClick={showEnterpriseMembers ? openOwnerMemberCard : undefined}
+              onMemberClick={enterpriseMembersUnlocked ? openOwnerMemberCard : undefined}
             />
           ) : null}
 
-          {showEnterpriseMembers && AdditionalMembersSection ? (
+          {AdditionalMembersSection ? (
             <AdditionalMembersSection
               workspaceId={workspaceId}
               workspace={workspace}
               t={t}
               resourcePermissions={resourcePermissions}
+              readOnly={!canManageAdditional}
             />
-          ) : (
+          ) : null}
+          {!AdditionalMembersSection && core ? (
+            <AdditionalMembersUpsell t={t}>
+              <RemnantMembersList
+                workspaceId={workspaceId}
+                core={core}
+                t={t}
+                members={otherMembers}
+                actorId={userId}
+                permissions={memberPermissions}
+                onChanged={load}
+              />
+            </AdditionalMembersUpsell>
+          ) : !enterpriseMembersUnlocked ? (
             <AdditionalMembersUpsell t={t} />
-          )}
+          ) : null}
         </>
       ) : null}
     </div>
