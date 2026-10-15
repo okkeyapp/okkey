@@ -234,15 +234,34 @@ export function resolveApiBaseFromWebBase(webBaseUrl: string): string {
   return url.origin;
 }
 
+/** Thrown when the server URL field is empty. */
+export const WEB_BASE_URL_REQUIRED_ERROR = "Base URL is required";
+/** Thrown when the server URL uses a non-http(s) scheme (or is otherwise invalid). */
+export const WEB_BASE_URL_SCHEME_ERROR = "Base URL must use http or https";
+
+/**
+ * Normalize a user-entered web Base URL to an http(s) origin.
+ * Only prefixes `https://` when the value has no explicit `scheme://` —
+ * otherwise a value like `ftp://host` would become `https://ftp://host`
+ * and parse as origin `https://ftp`.
+ */
 export function normalizeWebBaseUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) {
-    throw new Error("Base URL is required");
+    throw new Error(WEB_BASE_URL_REQUIRED_ERROR);
   }
-  const withScheme = /^https?:\/\//iu.test(trimmed) ? trimmed : `https://${trimmed}`;
-  const url = new URL(withScheme);
+  // Detect any URI scheme with authority (`scheme://…`). Do not use a bare
+  // `scheme:` match — that would treat `localhost:8080` as a scheme.
+  const hasExplicitScheme = /^[a-z][a-z0-9+.-]*:\/\//iu.test(trimmed);
+  const withScheme = hasExplicitScheme ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    throw new Error(WEB_BASE_URL_SCHEME_ERROR);
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Base URL must use http or https");
+    throw new Error(WEB_BASE_URL_SCHEME_ERROR);
   }
   return url.origin;
 }

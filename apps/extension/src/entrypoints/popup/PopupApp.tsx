@@ -95,6 +95,8 @@ import {
   writeLastServer,
   writePkcePending,
   writeProfile,
+  WEB_BASE_URL_REQUIRED_ERROR,
+  WEB_BASE_URL_SCHEME_ERROR,
   type ExtensionHostMode,
   type ExtensionProfile,
   type ExtensionSession,
@@ -210,6 +212,20 @@ export function PopupApp() {
   const t = useCallback(
     (key: string, values?: WebMessageValues) => formatWebMessage(locale, key, values ?? {}),
     [locale],
+  );
+
+  const formatServerUrlError = useCallback(
+    (err: unknown): string => {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === WEB_BASE_URL_REQUIRED_ERROR) {
+        return t("auth.extension.errorBaseUrlRequired");
+      }
+      if (message === WEB_BASE_URL_SCHEME_ERROR) {
+        return t("auth.extension.errorBaseUrlScheme");
+      }
+      return message;
+    },
+    [t],
   );
 
   const onLocaleChange = (next: WebLocale) => {
@@ -593,7 +609,7 @@ export function PopupApp() {
       await browser.tabs.create({ url: startUrl });
       setScreen("signing-in");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatServerUrlError(err);
       setError(message);
       toast.error(message);
       setScreen("server");

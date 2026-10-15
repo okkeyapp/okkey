@@ -5,13 +5,42 @@ import {
   isLoopbackHostname,
   normalizeWebBaseUrl,
   resolveApiBaseFromWebBase,
+<<<<<<< HEAD
   STORAGE_KEYS,
   wipeAllExtensionData,
+=======
+  WEB_BASE_URL_REQUIRED_ERROR,
+  WEB_BASE_URL_SCHEME_ERROR,
+>>>>>>> d4b2f08 (fix(extension): validate server URL scheme before https prefix)
 } from "./storage.ts";
 
 test("normalizeWebBaseUrl adds https and strips path", () => {
   assert.equal(normalizeWebBaseUrl("okkey.app"), "https://okkey.app");
   assert.equal(normalizeWebBaseUrl("http://localhost:5173/foo"), "http://localhost:5173");
+  assert.equal(normalizeWebBaseUrl("localhost:8080"), "https://localhost:8080");
+});
+
+test("normalizeWebBaseUrl rejects empty input", () => {
+  assert.throws(() => normalizeWebBaseUrl(""), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.equal(err.message, WEB_BASE_URL_REQUIRED_ERROR);
+    return true;
+  });
+  assert.throws(() => normalizeWebBaseUrl("   "), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.equal(err.message, WEB_BASE_URL_REQUIRED_ERROR);
+    return true;
+  });
+});
+
+test("normalizeWebBaseUrl rejects non-http(s) schemes", () => {
+  for (const raw of ["ftp://host", "FTP://host", "file:///tmp", "ws://localhost:8080"]) {
+    assert.throws(() => normalizeWebBaseUrl(raw), (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, WEB_BASE_URL_SCHEME_ERROR);
+      return true;
+    });
+  }
 });
 
 test("resolveApiBaseFromWebBase maps loopback web to :4000 only", () => {
