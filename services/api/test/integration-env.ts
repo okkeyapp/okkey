@@ -92,7 +92,8 @@ async function probeRedis(redisUrl: string): Promise<void> {
       ping(): Promise<string>;
       disconnect(): Promise<void>;
       quit(): Promise<string>;
-      destroy?: () => Promise<void>;
+      // redis@5 destroy() is sync and returns undefined — do not call .catch on the result.
+      destroy?: () => void | Promise<void>;
     };
   };
   // No reconnect: a missing Redis must fail the probe quickly and release the event loop.
@@ -105,7 +106,11 @@ async function probeRedis(redisUrl: string): Promise<void> {
     await withTimeout(client.ping(), "redis ping");
   } finally {
     if (typeof client.destroy === "function") {
-      await client.destroy().catch(() => {});
+      try {
+        await Promise.resolve(client.destroy());
+      } catch {
+        // ignore cleanup errors after a successful or failed probe
+      }
     } else {
       await client.quit().catch(async () => {
         await client.disconnect().catch(() => {});
