@@ -1426,6 +1426,8 @@
   "auth.extension.description": "Sign in",
   "auth.extension.labelServerUrl": "Server URL",
   "auth.extension.serverUrlTooltip": "URL of your self-hosted Okkey web app",
+  "auth.extension.errorBaseUrlRequired": "Base URL is required",
+  "auth.extension.errorBaseUrlScheme": "Base URL must use http or https",
   "auth.extension.hostModeLabel": "Host",
   "auth.extension.hostSaas": "SaaS",
   "auth.extension.hostSelfHosted": "Self-hosted",

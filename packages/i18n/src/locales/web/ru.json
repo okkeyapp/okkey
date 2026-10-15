@@ -1426,6 +1426,8 @@
   "auth.extension.description": "Войдите в систему",
   "auth.extension.labelServerUrl": "URL сервера",
   "auth.extension.serverUrlTooltip": "Адрес вашего self-hosted веб-приложения Okkey",
+  "auth.extension.errorBaseUrlRequired": "Укажите URL сервера",
+  "auth.extension.errorBaseUrlScheme": "URL сервера должен использовать http или https",
   "auth.extension.hostModeLabel": "Хостинг",
   "auth.extension.hostSaas": "SaaS",
   "auth.extension.hostSelfHosted": "Self-hosted",
