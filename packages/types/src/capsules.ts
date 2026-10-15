@@ -1,5 +1,5 @@
+import type { EncryptedBlobDto } from "./crypto-wire.js";
 import type { EntityId } from "./entity-id.js";
-import type { EncryptedBlobDto } from "./index.js";
 
 export type CapsuleType = "text" | "file" | "item";
 export type CapsuleState = "active" | "inactive";

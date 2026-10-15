@@ -22,6 +22,6 @@
   },
   "dependencies": {
     "@okkey/crypto-wasm": "link:./dist",
-    "@okkey/types": "file:../types"
+    "@okkey/types": "0.0.1"
   }
 }
