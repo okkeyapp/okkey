@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   clearOffscreenClipboardIfMatches,
   tryReadClipboardText,
+  tryReadClipboardTextViaExecCommandPaste,
   writeClipboardTextViaExecCommand,
 } from "./offscreenClipboardClear.ts";
 
@@ -28,6 +29,7 @@ function installNavigatorClipboard(clipboard: ClipboardStub | undefined): () => 
 
 function installDocumentExecCommand(opts: {
   execCommandResult?: boolean;
+  pasteValue?: string;
   onExecCommand?: (command: string, value: string) => void;
 }): () => void {
   const previousDocument = (globalThis as { document?: Document }).document;
@@ -56,7 +58,11 @@ function installDocumentExecCommand(opts: {
       };
     },
     execCommand(command: string) {
-      const value = nodes[nodes.length - 1]?.value ?? "";
+      const node = nodes[nodes.length - 1];
+      if (command === "paste" && opts.pasteValue !== undefined && node) {
+        node.value = opts.pasteValue;
+      }
+      const value = node?.value ?? "";
       opts.onExecCommand?.(command, value);
       return opts.execCommandResult ?? true;
     },
@@ -73,20 +79,24 @@ function installDocumentExecCommand(opts: {
   };
 }
 
-test("tryReadClipboardText returns null when Async Clipboard API fails (unfocused)", async () => {
-  const restore = installNavigatorClipboard({
+test("tryReadClipboardText returns null when Async Clipboard API fails and paste fails", async () => {
+  const restoreNav = installNavigatorClipboard({
     async readText() {
       throw new Error("Failed to execute 'readText' on 'Clipboard': Document is not focused.");
     },
   });
+  const restoreDoc = installDocumentExecCommand({
+    execCommandResult: false,
+  });
   try {
     assert.equal(await tryReadClipboardText(), null);
   } finally {
-    restore();
+    restoreDoc();
+    restoreNav();
   }
 });
 
-test("tryReadClipboardText returns clipboard contents when readable", async () => {
+test("tryReadClipboardText returns clipboard contents when readable via Async API", async () => {
   const restore = installNavigatorClipboard({
     async readText() {
       return "secret-login";
@@ -94,6 +104,34 @@ test("tryReadClipboardText returns clipboard contents when readable", async () =
   });
   try {
     assert.equal(await tryReadClipboardText(), "secret-login");
+  } finally {
+    restore();
+  }
+});
+
+test("tryReadClipboardText falls back to execCommand paste when Async API fails", async () => {
+  const restoreNav = installNavigatorClipboard({
+    async readText() {
+      throw new Error("Document is not focused.");
+    },
+  });
+  const restoreDoc = installDocumentExecCommand({
+    pasteValue: "secret-via-paste",
+  });
+  try {
+    assert.equal(await tryReadClipboardText(), "secret-via-paste");
+  } finally {
+    restoreDoc();
+    restoreNav();
+  }
+});
+
+test("tryReadClipboardTextViaExecCommandPaste returns pasted value", () => {
+  const restore = installDocumentExecCommand({
+    pasteValue: "pasted-secret",
+  });
+  try {
+    assert.equal(tryReadClipboardTextViaExecCommandPaste(), "pasted-secret");
   } finally {
     restore();
   }
@@ -115,7 +153,7 @@ test("writeClipboardTextViaExecCommand copies via execCommand", () => {
   }
 });
 
-test("clearOffscreenClipboardIfMatches clears via execCommand when readText is unfocused", async () => {
+test("clearOffscreenClipboardIfMatches clears when paste reads matching secret", async () => {
   let copied = "";
   const restoreNav = installNavigatorClipboard({
     async readText() {
@@ -126,15 +164,46 @@ test("clearOffscreenClipboardIfMatches clears via execCommand when readText is u
     },
   });
   const restoreDoc = installDocumentExecCommand({
+    pasteValue: "secret-login",
     onExecCommand(command, value) {
-      assert.equal(command, "copy");
-      copied = value;
+      if (command === "copy") {
+        copied = value;
+      }
     },
   });
   try {
     const result = await clearOffscreenClipboardIfMatches("secret-login", "tok-1");
     assert.deepEqual(result, { ok: true, cleared: true, token: "tok-1" });
     assert.equal(copied, " ");
+  } finally {
+    restoreDoc();
+    restoreNav();
+  }
+});
+
+test("clearOffscreenClipboardIfMatches skips clear when clipboard is unreadable", async () => {
+  let copyCalled = false;
+  const restoreNav = installNavigatorClipboard({
+    async readText() {
+      throw new Error("Document is not focused.");
+    },
+  });
+  const restoreDoc = installDocumentExecCommand({
+    execCommandResult: false,
+    onExecCommand(command) {
+      if (command === "copy") {
+        copyCalled = true;
+      }
+    },
+  });
+  try {
+    const result = await clearOffscreenClipboardIfMatches("secret-login", "tok-unreadable");
+    assert.deepEqual(result, {
+      ok: false,
+      cleared: false,
+      reason: "clipboard-unreadable",
+    });
+    assert.equal(copyCalled, false);
   } finally {
     restoreDoc();
     restoreNav();
@@ -157,6 +226,31 @@ test("clearOffscreenClipboardIfMatches skips clear when clipboard changed", asyn
     const result = await clearOffscreenClipboardIfMatches("secret-login", "tok-2");
     assert.deepEqual(result, { ok: true, cleared: false, reason: "clipboard-changed" });
     assert.equal(execCalled, false);
+  } finally {
+    restoreDoc();
+    restoreNav();
+  }
+});
+
+test("clearOffscreenClipboardIfMatches skips clear when paste shows foreign text", async () => {
+  let copied = "";
+  const restoreNav = installNavigatorClipboard({
+    async readText() {
+      throw new Error("Document is not focused.");
+    },
+  });
+  const restoreDoc = installDocumentExecCommand({
+    pasteValue: "MY-OWN-TEXT",
+    onExecCommand(command, value) {
+      if (command === "copy") {
+        copied = value;
+      }
+    },
+  });
+  try {
+    const result = await clearOffscreenClipboardIfMatches("secret-login", "tok-foreign");
+    assert.deepEqual(result, { ok: true, cleared: false, reason: "clipboard-changed" });
+    assert.equal(copied, "");
   } finally {
     restoreDoc();
     restoreNav();

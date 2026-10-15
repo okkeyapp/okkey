@@ -1,9 +1,10 @@
 /**
  * Clipboard clear helpers for the Chromium offscreen document.
  *
- * Prefer `document.execCommand("copy")` over `navigator.clipboard`: the Async
- * Clipboard API requires a focused document, and offscreen pages are usually
- * unfocused (MV3 typical pattern).
+ * Prefer `document.execCommand("copy" | "paste")` over `navigator.clipboard`:
+ * the Async Clipboard API requires a focused document, and offscreen pages are
+ * usually unfocused (MV3 typical pattern). Never clear when the current
+ * clipboard text cannot be read — otherwise foreign user content is wiped.
  */
 
 const CLEARED = " ";
@@ -16,16 +17,45 @@ export type OffscreenClearResult = {
   error?: string;
 };
 
-/** Read clipboard when possible; `null` if unavailable (e.g. document unfocused). */
-export async function tryReadClipboardText(): Promise<string | null> {
-  if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
+/**
+ * Read via execCommand("paste") — works in unfocused Chromium offscreen
+ * documents when the extension has the `clipboardRead` permission.
+ */
+export function tryReadClipboardTextViaExecCommandPaste(): string | null {
+  if (typeof document === "undefined") {
     return null;
   }
+  const textarea = document.createElement("textarea");
+  // Must be editable for paste (no readonly / disabled).
+  textarea.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.value = "";
   try {
-    return await navigator.clipboard.readText();
+    if (!document.execCommand("paste")) {
+      return null;
+    }
+    return textarea.value;
   } catch {
     return null;
+  } finally {
+    document.body.removeChild(textarea);
   }
+}
+
+/**
+ * Read clipboard when possible; `null` if unavailable.
+ * Tries Async Clipboard first, then execCommand("paste") for unfocused offscreen.
+ */
+export async function tryReadClipboardText(): Promise<string | null> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.readText) {
+    try {
+      return await navigator.clipboard.readText();
+    } catch {
+      /* fall through — common when the offscreen document is unfocused */
+    }
+  }
+  return tryReadClipboardTextViaExecCommandPaste();
 }
 
 /**
@@ -67,9 +97,11 @@ export async function clearOffscreenClipboardIfMatches(
 ): Promise<OffscreenClearResult> {
   try {
     const current = await tryReadClipboardText();
-    // When read fails (unfocused offscreen), still attempt clear — same policy
-    // as web vault clipboard clear when read permission is missing.
-    if (current !== null && current !== expectedText) {
+    // Only clear when we can verify the clipboard still holds our copy.
+    if (current === null) {
+      return { ok: false, cleared: false, reason: "clipboard-unreadable" };
+    }
+    if (current !== expectedText) {
       return { ok: true, cleared: false, reason: "clipboard-changed" };
     }
     await writeClipboardTextForOffscreen(CLEARED);
