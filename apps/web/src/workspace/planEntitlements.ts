@@ -1,10 +1,12 @@
 import {
   hasPlanFeature,
   planEntitlementOptionsFromWorkspace,
+  resolveEntitlementPlanTier,
   type DeploymentMode,
   type PlanEntitlementOptions,
   type PlanFeature,
   type PlanFeatureOverrides,
+  type PlanTier,
 } from "@okkey/types";
 
 type WorkspaceLike = {
@@ -35,6 +37,14 @@ export function webPlanEntitlementOptions(workspace?: WorkspaceLike | null): Pla
     deploymentMode: webDeploymentMode(),
     enterpriseModulesActive: webEnterpriseModulesActive(),
   };
+}
+
+/**
+ * Catalog tier for plan labels /settings/plan on this client.
+ * Self-hosted: modules only (ignore DB `plan_tier`). SaaS: workspace `plan_tier`.
+ */
+export function webDisplayPlanTier(workspace?: WorkspaceLike | null): PlanTier {
+  return resolveEntitlementPlanTier(workspace?.planTier, webPlanEntitlementOptions(workspace));
 }
 
 /** Web feature gate: self-host → modules; SaaS → `plan_tier`. */
