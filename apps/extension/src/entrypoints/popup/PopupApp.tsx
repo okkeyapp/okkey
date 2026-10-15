@@ -84,6 +84,10 @@ import {
 } from "../../lib/extensionVaultSession";
 import { clearPinFailures, isPinLocked, recordPinFailure } from "../../lib/pinRateLimit";
 import {
+  WEB_BASE_URL_UNREACHABLE_ERROR,
+  probeWebBaseUrl,
+} from "../../lib/probeWebBaseUrl";
+import {
   clearSession,
   normalizeWebBaseUrl,
   readDeviceId,
@@ -222,6 +226,9 @@ export function PopupApp() {
       }
       if (message === WEB_BASE_URL_SCHEME_ERROR) {
         return t("auth.extension.errorBaseUrlScheme");
+      }
+      if (message === WEB_BASE_URL_UNREACHABLE_ERROR) {
+        return t("auth.extension.errorServerUnreachable");
       }
       return message;
     },
@@ -568,6 +575,8 @@ export function PopupApp() {
         effectiveHostMode === "saas" ? OKKEY_SAAS_WEB_BASE_URL : baseUrlInput;
       const webBaseUrl = normalizeWebBaseUrl(rawUrl);
       const apiBaseUrl = resolveApiBaseFromWebBase(webBaseUrl);
+      // Reachability before PKCE / auth tab — avoids chrome-error:// and stuck signing-in.
+      await probeWebBaseUrl(webBaseUrl);
       const previous = await readProfile();
       if (previous && previous.webBaseUrl !== webBaseUrl) {
         if (session) {
@@ -1064,10 +1073,10 @@ export function PopupApp() {
                 })();
               }}
             >
-              Continue
+              {t("auth.extension.signingInContinue")}
             </Button>
             <Button type="button" variant="ghost" className="w-full" onClick={() => setScreen("server")}>
-              Back
+              {t("auth.extension.signingInBack")}
             </Button>
           </div>
           </div>
@@ -1158,7 +1167,7 @@ export function PopupApp() {
               setScreen("server");
             }}
           >
-            Back
+            {t("auth.extension.signingInBack")}
           </Button>
         </AuthShell>
       </PopupFrame>
