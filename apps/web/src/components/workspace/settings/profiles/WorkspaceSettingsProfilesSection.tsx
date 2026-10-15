@@ -27,7 +27,7 @@ export default function WorkspaceSettingsProfilesSection({
   resourcePermissions = null,
 }: WorkspaceSettingsProfilesSectionProps) {
   const core = useAuthenticatedCoreClient();
-  const canManageCustom = canManageCustomWorkspaceProfiles(workspace?.planTier);
+  const canManageCustom = canManageCustomWorkspaceProfiles(workspace);
   const canOpenBuiltInCards = workspaceHasPlanFeature(workspace, "customWorkspaceProfiles");
   const EnterpriseProfilesSection = enterpriseProfilesModule.EnterpriseProfilesSection;
   const BuiltInProfileCardPopup = enterpriseProfilesModule.BuiltInProfileCardPopup;

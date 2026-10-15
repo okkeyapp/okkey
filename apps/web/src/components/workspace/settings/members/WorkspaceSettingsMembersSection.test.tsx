@@ -349,6 +349,38 @@ describe("WorkspaceSettingsMembersSection", () => {
     expect(screen.queryByRole("button", { name: /owner@example.com/i })).not.toBeInTheDocument();
   });
 
+  it("mounts enterprise members read-only when plan override forbids additionalWorkspaceMembers", async () => {
+    enterpriseMembersMock.AdditionalMembersSection = ({ readOnly }) => (
+      <div data-testid="enterprise-members">{readOnly ? "read-only" : "editable"}</div>
+    );
+
+    coreMock.listWorkspaceMembers.mockResolvedValue({
+      members: [ownerMember],
+      actorPermissions: { members: { get: 2, post: 1, put: 1, delete: 1 } },
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsMembersSection
+          workspaceId="w1"
+          workspace={{
+            ...freeWorkspace,
+            planTier: "ENTERPRISE",
+            planCustomOverride: true,
+            planFeatureOverrides: { additionalWorkspaceMembers: false },
+          }}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("enterprise-members")).toHaveTextContent("read-only");
+    });
+    expect(screen.getByText("Примечание")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /owner@example.com/i })).not.toBeInTheDocument();
+  });
+
   it("FREE + stub: invitee/pending member visible and revocable", async () => {
     coreMock.listWorkspaceMembers.mockResolvedValue({
       members: [ownerMember, activeMember, pendingInvitee],

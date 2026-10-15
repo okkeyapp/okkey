@@ -56,6 +56,10 @@ vi.mock("../../../../auth/AuthVaultContext", () => ({
 function renderProfilesSection(
   planTier: PlanTier = "FREE",
   resourcePermissions: WorkspaceResourcePermissionDto | null = null,
+  planOptions?: {
+    planCustomOverride?: boolean;
+    planFeatureOverrides?: Record<string, boolean>;
+  },
 ) {
   return render(
     <MemoryRouter>
@@ -68,8 +72,8 @@ function renderProfilesSection(
             name: "Test",
             ownerId: "user-1",
             planTier,
-            planCustomOverride: false,
-            planFeatureOverrides: {},
+            planCustomOverride: planOptions?.planCustomOverride ?? false,
+            planFeatureOverrides: planOptions?.planFeatureOverrides ?? {},
             deletedItemsRetentionDays: 30,
             allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
             maxFileSizeMb: 2,
@@ -177,6 +181,25 @@ describe("WorkspaceSettingsProfilesSection", () => {
     enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInProfileCardPopup = null;
     renderProfilesSection("FREE");
+
+    await waitFor(() => {
+      expect(screen.getByText("Built-in profiles")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Enterprise profiles read-only")).toBeInTheDocument();
+    expect(screen.getByText("Change your plan")).toBeInTheDocument();
+  });
+
+  it("mounts enterprise section read-only when plan override forbids customWorkspaceProfiles", async () => {
+    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
+      return <p>{readOnly ? "Enterprise profiles read-only" : "Enterprise profiles editable"}</p>;
+    }
+
+    enterpriseModuleMock.EnterpriseProfilesSection = EnterpriseStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInProfileCardPopup = null;
+    renderProfilesSection("ENTERPRISE", null, {
+      planCustomOverride: true,
+      planFeatureOverrides: { customWorkspaceProfiles: false },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Built-in profiles")).toBeInTheDocument();

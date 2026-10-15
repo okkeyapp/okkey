@@ -57,6 +57,10 @@ beforeEach(() => {
 function renderRolesSection(
   planTier: PlanTier = "FREE",
   resourcePermissions: WorkspaceResourcePermissionDto | null = null,
+  planOptions?: {
+    planCustomOverride?: boolean;
+    planFeatureOverrides?: Record<string, boolean>;
+  },
 ) {
   return render(
     <MemoryRouter>
@@ -69,8 +73,8 @@ function renderRolesSection(
           name: "Test",
           ownerId: "user-1",
           planTier,
-          planCustomOverride: false,
-          planFeatureOverrides: {},
+          planCustomOverride: planOptions?.planCustomOverride ?? false,
+          planFeatureOverrides: planOptions?.planFeatureOverrides ?? {},
           deletedItemsRetentionDays: 30,
           allowedFileExtensions: ["jpg", "png", "pdf", "zip", "rar"],
           maxFileSizeMb: 2,
@@ -193,6 +197,22 @@ describe("WorkspaceSettingsRolesSection", () => {
     enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
     enterpriseModuleMock.BuiltInRoleCardPopup = null;
     renderRolesSection("FREE");
+
+    expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
+  });
+
+  it("mounts enterprise section read-only when plan override forbids customWorkspaceRoles", () => {
+    function EnterpriseStub({ readOnly }: { readOnly?: boolean }) {
+      return <p>{readOnly ? "Enterprise roles read-only" : "Enterprise roles editable"}</p>;
+    }
+
+    enterpriseModuleMock.EnterpriseRolesSection = EnterpriseStub as ComponentType<unknown>;
+    enterpriseModuleMock.BuiltInRoleCardPopup = null;
+    renderRolesSection("ENTERPRISE", null, {
+      planCustomOverride: true,
+      planFeatureOverrides: { customWorkspaceRoles: false },
+    });
 
     expect(screen.getByText("Enterprise roles read-only")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Change your plan" })).toHaveAttribute("href", "/settings/plan");
