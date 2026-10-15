@@ -42,7 +42,7 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 - No keylogging, no scraping of unrelated page content for ads/analytics.
 - No selling browsing data.
 - No injecting or evaluating remote scripts; all code ships in the store package.
-- No mandatory connection to `app.okkey.io`; the user points the extension at **their** Okkey deployment (self-host / localhost for development).
+- User configures their own self-hosted Okkey instance URL; Okkey does not offer a hosted cloud service for the extension (localhost is fine for development).
 
 **Why `<all_urls>` instead of optional hosts only:** Autofill must work on first visit to sites the user already saved. Requiring a per-origin click-grant before every new site breaks the core password-manager UX. This matches industry practice (Bitwarden, 1Password, etc.).
 
@@ -55,7 +55,7 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 ## Firefox / AMO data practices (summary)
 
 - **Data collected by the extension locally:** vault ciphertext cache, preferences, auth session tokens for the configured instance.
-- **Data transmitted:** only to the **user-configured** Okkey server URL (sync, device registration, encrypted item blobs). Not to a fixed Okkey SaaS unless the user enters that URL themselves.
+- **Data transmitted:** only to the **user-configured** Okkey server URL (sync, device registration, encrypted item blobs). User configures their own self-hosted Okkey instance URL; Okkey does not offer a hosted cloud service for the extension.
 - **Does not sell data / no third-party ad trackers** in the extension package.
 
 When AMO asks for a privacy policy URL, use the public GitHub URL documented in [URLS.md](./URLS.md) ([PRIVACY.md](./PRIVACY.md)).
