@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   generateRecoverySecret,
   initCrypto,
@@ -31,21 +31,25 @@ type ScreenStep = "prompt" | "saving" | "secret";
 
 export default function RecoveryKeyRequiredScreen(props: {
   phase: Extract<RecoveryKeyGatePhase, "required" | "unavailable">;
+  /** Wrap exists but export was never acknowledged — mint a new secret to save. */
+  needsNewSecret?: boolean;
   onRetryStatus: () => void;
   onEnrolled: () => void;
 }) {
-  const { phase, onRetryStatus, onEnrolled } = props;
+  const { phase, needsNewSecret = false, onRetryStatus, onEnrolled } = props;
   const { t } = useLocale();
   const { accessToken, vaultKey } = useAuthVault();
-  const [step, setStep] = useState<ScreenStep>("prompt");
+  const [step, setStep] = useState<ScreenStep>(needsNewSecret ? "saving" : "prompt");
   const [secret, setSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exported, setExported] = useState(false);
   const [copied, setCopied] = useState(false);
+  const autoStartedRef = useRef(false);
 
   async function createKey() {
     if (!accessToken || !vaultKey) {
       setError(t("auth.registration.recovery.errorEnroll"));
+      setStep("prompt");
       return;
     }
     setStep("saving");
@@ -67,6 +71,16 @@ export default function RecoveryKeyRequiredScreen(props: {
       setStep("prompt");
     }
   }
+
+  useEffect(() => {
+    if (phase !== "required" || !needsNewSecret || autoStartedRef.current) {
+      return;
+    }
+    autoStartedRef.current = true;
+    void createKey();
+    // Intentionally only on first required+needsNewSecret mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- createKey closes over latest token/vaultKey
+  }, [phase, needsNewSecret]);
 
   async function ackExport(): Promise<void> {
     if (!accessToken) {

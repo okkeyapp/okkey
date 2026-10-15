@@ -508,12 +508,16 @@ export function createApiApp(
       app.route(
         "GET",
         "/workspaces/:workspaceId/capsule-defaults",
-        createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        gateVaultUse(
+          createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        ),
       );
       app.route(
         "PUT",
         "/workspaces/:workspaceId/capsule-defaults",
-        createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        gateVaultUse(
+          createWorkspaceCapsuleDefaultsRoute(deps.capsuleDefaultsService, resolveUserId),
+        ),
       );
     }
     if (deps.itemTemplatesService) {
@@ -738,68 +742,72 @@ export function createApiApp(
     app.route(
       "GET",
       "/workspaces/:workspaceId/capsules",
-      createCapsuleOwnerListRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleOwnerListRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/workspaces/:workspaceId/capsules",
-      createCapsuleCreateRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleCreateRoute(deps.capsuleService, resolveUserId)),
     );
-    app.route("GET", "/capsules/:capsuleId", createCapsuleMetadataRoute(deps.capsuleService));
+    app.route(
+      "GET",
+      "/capsules/:capsuleId",
+      gateVaultUse(createCapsuleMetadataRoute(deps.capsuleService)),
+    );
     app.route(
       "GET",
       "/capsules/:capsuleId/owner",
-      createCapsuleOwnerDetailRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleOwnerDetailRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "PUT",
       "/capsules/:capsuleId",
-      createCapsuleUpdateRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleUpdateRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsules/:capsuleId/open",
-      createCapsuleOpenRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleOpenRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsules/:capsuleId/revoke",
-      createCapsuleRevokeRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleRevokeRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "PATCH",
       "/capsules/:capsuleId/state",
-      createCapsuleStateRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleStateRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "DELETE",
       "/capsules/:capsuleId",
-      createCapsuleDeleteRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleDeleteRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsules/:capsuleId/approval-requests",
-      createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalRequestRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "GET",
       "/capsules/:capsuleId/approval-eligibility",
-      createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalEligibilityRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "GET",
       "/capsule-approval-requests/:requestId",
-      createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalStatusRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "GET",
       "/capsule-approval-requests",
-      createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsulePendingApprovalsRoute(deps.capsuleService, resolveUserId)),
     );
     app.route(
       "POST",
       "/capsule-approval-requests/:requestId/resolve",
-      createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId),
+      gateVaultUse(createCapsuleApprovalResolveRoute(deps.capsuleService, resolveUserId)),
     );
   }
   if (deps.attachmentService) {

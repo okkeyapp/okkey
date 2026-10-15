@@ -79,15 +79,40 @@ describe("ProtectedVaultLayout recovery key step", () => {
     });
   });
 
-  it("shows vault items when a recovery key is already saved", async () => {
-    mocks.getAccountRecoveryStatus.mockResolvedValue({ key: { enrolled: true } });
+  it("shows vault items when a recovery key is saved and exported", async () => {
+    mocks.getAccountRecoveryStatus.mockResolvedValue({
+      key: { enrolled: true, exportedAt: "2026-01-01T00:00:00.000Z" },
+    });
     renderVault();
     expect(await screen.findByText("vault items")).toBeInTheDocument();
     expect(screen.queryByTestId("recovery-key-required")).not.toBeInTheDocument();
   });
 
+  it("keeps the vault hidden when enrolled without export and requires save again", async () => {
+    mocks.getAccountRecoveryStatus.mockResolvedValue({
+      key: { enrolled: true, exportedAt: null },
+    });
+    renderVault();
+
+    expect(await screen.findByText("RECOVERY-SECRET")).toBeInTheDocument();
+    expect(screen.queryByText("vault items")).not.toBeInTheDocument();
+    expect(mocks.enrollAccountRecoveryKey).toHaveBeenCalledOnce();
+
+    const continueButton = screen.getByRole("button", { name: "auth.registration.recovery.next" });
+    expect(continueButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "auth.registration.recovery.copy" }));
+    await waitFor(() => expect(continueButton).toBeEnabled());
+    fireEvent.click(continueButton);
+
+    expect(await screen.findByText("vault items")).toBeInTheDocument();
+    expect(mocks.ackAccountRecoveryKeyExport).toHaveBeenCalledOnce();
+  });
+
   it("keeps the vault hidden until a recovery key is created and saved", async () => {
-    mocks.getAccountRecoveryStatus.mockResolvedValue({ key: { enrolled: false } });
+    mocks.getAccountRecoveryStatus.mockResolvedValue({
+      key: { enrolled: false, exportedAt: null },
+    });
     renderVault();
 
     const create = await screen.findByRole("button", { name: "auth.recovery.required.create" });
