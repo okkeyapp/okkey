@@ -21,7 +21,13 @@ import {
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
 import { CryptoDowngradeInvariantError, VersionConflictError } from "../storage/errors.ts";
-import type { EventRecord, EventsRepository, VaultsRepository } from "../storage/repositories.ts";
+import type {
+  EventRecord,
+  EventsRepository,
+  VaultRecord,
+  VaultsRepository,
+  WorkspacesRepository,
+} from "../storage/repositories.ts";
 import type { VaultItemSoftDeletesRepository } from "../storage/vault-item-soft-deletes.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import type { ApiConfig } from "../config.ts";
@@ -40,6 +46,8 @@ import {
   verifyHybridSignatureForPayload,
 } from "../crypto/hybrid-signature.ts";
 import { isEntityId } from "../entity-id.ts";
+import { type PlanEntitlementRuntimeConfig } from "../plan-entitlements.ts";
+import { evaluateSharedVaultItemCreateGate } from "./shared-vault-item-create-gate.ts";
 
 const SYNC_EVENT_TYPES = new Set([
   "ITEM_CREATE",
@@ -81,6 +89,8 @@ export interface SyncServiceDeps {
   events: Pick<EventsRepository, "listAfterVersion" | "append" | "deleteByVaultAndReferencedItemId">;
   softDeletes?: Pick<VaultItemSoftDeletesRepository, "upsert" | "remove">;
   users?: Pick<UsersRepository, "findById">;
+  /** Required in production to gate ITEM_CREATE on shared vaults after EE→FREE. */
+  workspaces?: Pick<WorkspacesRepository, "findById">;
   config?: Partial<
     Pick<
       ApiConfig,
@@ -90,6 +100,8 @@ export interface SyncServiceDeps {
       | "cryptoRolloutEnabled"
       | "cryptoRolloutState"
       | "cryptoRolloutStopWritePaths"
+      | "deploymentMode"
+      | "enterpriseModulesEnabled"
     >
   >;
   log?: Logger;
@@ -125,6 +137,7 @@ export class SyncService {
   private readonly events: SyncServiceDeps["events"];
   private readonly softDeletes: SyncServiceDeps["softDeletes"];
   private readonly users: SyncServiceDeps["users"];
+  private readonly workspaces: SyncServiceDeps["workspaces"];
   private readonly config: Pick<
     ApiConfig,
     | "allowedCryptoProfileVersions"
@@ -133,6 +146,8 @@ export class SyncService {
     | "cryptoRolloutEnabled"
     | "cryptoRolloutState"
     | "cryptoRolloutStopWritePaths"
+    | "deploymentMode"
+    | "enterpriseModulesEnabled"
   >;
   private readonly log: Logger | undefined;
 
@@ -141,6 +156,7 @@ export class SyncService {
     this.events = deps.events;
     this.softDeletes = deps.softDeletes;
     this.users = deps.users;
+    this.workspaces = deps.workspaces;
     this.config = {
       allowedCryptoProfileVersions: [1, 2],
       deployEnv: "dev",
@@ -148,6 +164,8 @@ export class SyncService {
       cryptoRolloutEnabled: true,
       cryptoRolloutState: "resume",
       cryptoRolloutStopWritePaths: [],
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: false,
       ...deps.config,
     };
     this.log = deps.log;
@@ -199,10 +217,13 @@ export class SyncService {
         rolloutGateViolation.details,
       );
     }
-    await this.ensureVaultReadable(vaultId, userId);
+    const vault = await this.ensureVaultReadable(vaultId, userId);
 
     if (!SYNC_EVENT_TYPES.has(input.eventType)) {
       throw new SyncServiceError("SYNC_INVALID_EVENT_TYPE", 400, "invalid eventType");
+    }
+    if (input.eventType === "ITEM_CREATE") {
+      await this.assertSharedVaultItemCreateAllowed(vault);
     }
     if (!Number.isInteger(input.baseVersion) || input.baseVersion < 0) {
       throw new SyncServiceError(
@@ -461,7 +482,7 @@ export class SyncService {
     }
   }
 
-  private async ensureVaultReadable(vaultId: string, userId: string): Promise<void> {
+  private async ensureVaultReadable(vaultId: string, userId: string): Promise<VaultRecord> {
     const vault = await this.vaults.findById(vaultId);
     if (!vault) {
       throw new SyncServiceError("VAULT_NOT_FOUND", 404, "vault not found");
@@ -470,6 +491,37 @@ export class SyncService {
     const canRead = await this.vaults.canReadVault(vaultId, userId);
     if (!canRead) {
       throw new SyncServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+    return vault;
+  }
+
+  /**
+   * After EE→FREE (no `sharedVaults`), existing shared vaults stay readable/editable,
+   * but new items / move-into shared must be denied.
+   */
+  private async assertSharedVaultItemCreateAllowed(vault: VaultRecord): Promise<void> {
+    if (vault.isPersonal) {
+      return;
+    }
+    if (!this.workspaces) {
+      throw new SyncServiceError(
+        "PLAN_FEATURE_REQUIRED",
+        403,
+        "shared vaults require a paid plan",
+      );
+    }
+    const planConfig: PlanEntitlementRuntimeConfig = {
+      deploymentMode: this.config.deploymentMode,
+      enterpriseModulesEnabled: this.config.enterpriseModulesEnabled,
+    };
+    const workspace = await this.workspaces.findById(vault.workspaceId);
+    const decision = evaluateSharedVaultItemCreateGate({
+      vault,
+      workspace,
+      config: planConfig,
+    });
+    if (!decision.ok) {
+      throw new SyncServiceError(decision.code, decision.statusCode, decision.message);
     }
   }
 
