@@ -1319,6 +1319,7 @@
   "web.workspaceSettings.roles.retry": "Retry",
   "web.workspaceSettings.roles.card.createTitle": "Create role",
   "web.workspaceSettings.roles.card.editTitle": "Edit role",
+  "web.workspaceSettings.roles.card.customTitle": "Custom role",
   "web.workspaceSettings.roles.card.builtInTitle": "Built-in role",
   "web.workspaceSettings.roles.card.nameLabel": "Name",
   "web.workspaceSettings.roles.card.namePlaceholder": "Name",

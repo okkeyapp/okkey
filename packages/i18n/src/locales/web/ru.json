@@ -1319,6 +1319,7 @@
   "web.workspaceSettings.roles.retry": "Повторить",
   "web.workspaceSettings.roles.card.createTitle": "Создать роль",
   "web.workspaceSettings.roles.card.editTitle": "Редактировать роль",
+  "web.workspaceSettings.roles.card.customTitle": "Пользовательская роль",
   "web.workspaceSettings.roles.card.builtInTitle": "Встроенная роль",
   "web.workspaceSettings.roles.card.nameLabel": "Название",
   "web.workspaceSettings.roles.card.namePlaceholder": "Название",
