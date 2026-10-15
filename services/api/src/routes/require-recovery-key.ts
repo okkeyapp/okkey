@@ -5,9 +5,9 @@ import { json, type RouteHandler } from "../http.ts";
 
 export const RECOVERY_KEY_REQUIRED_CODE = "RECOVERY_KEY_REQUIRED";
 
-/** Vault and item routes require a saved recovery key. */
+/** Vault, item, and capsule routes require a saved and exported recovery key. */
 export function requireEnrolledRecoveryKey(
-  service: Pick<AccountRecoveryService, "hasEnrolledRecoveryKey">,
+  service: Pick<AccountRecoveryService, "hasExportedRecoveryKey">,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   handler: RouteHandler,
 ): RouteHandler {
@@ -17,8 +17,8 @@ export function requireEnrolledRecoveryKey(
       await handler(ctx);
       return;
     }
-    const enrolled = await service.hasEnrolledRecoveryKey(userId);
-    if (!enrolled) {
+    const ready = await service.hasExportedRecoveryKey(userId);
+    if (!ready) {
       json(ctx.res, 403, {
         error: RECOVERY_KEY_REQUIRED_CODE,
         message: "Save a recovery key before using the vault",

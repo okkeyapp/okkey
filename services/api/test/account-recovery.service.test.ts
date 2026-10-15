@@ -236,6 +236,7 @@ test("getStatus FREE-only: key entitlement true, paid methods false", async () =
 test("enrollKey persists wrap and enables key settings", async () => {
   const service = createService();
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
+  assert.equal(await service.hasExportedRecoveryKey("u1"), false);
   const result = await service.enrollKey("u1", {
     crypto_version: 2,
     algorithm: "xchacha20-poly1305",
@@ -245,6 +246,9 @@ test("enrollKey persists wrap and enables key settings", async () => {
   assert.equal(result.key.enrolled, true);
   assert.equal(result.settings.keyEnabled, true);
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), true);
+  assert.equal(await service.hasExportedRecoveryKey("u1"), false);
+  await service.ackKeyExport("u1");
+  assert.equal(await service.hasExportedRecoveryKey("u1"), true);
 });
 
 test("updateSettings rejects disabling the recovery key", async () => {

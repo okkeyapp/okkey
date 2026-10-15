@@ -1,7 +1,26 @@
 export type RecoveryKeyGatePhase = "loading" | "required" | "ready" | "unavailable";
 
+export type RecoveryKeyGateStatus = {
+  key: { enrolled: boolean; exportedAt: string | null };
+};
+
+export function isRecoveryKeyReady(key: {
+  enrolled: boolean;
+  exportedAt: string | null;
+}): boolean {
+  return key.enrolled && Boolean(key.exportedAt);
+}
+
+/** Enrolled wrap without export ack — user must create a new secret to save. */
+export function recoveryKeyNeedsNewSecret(key: {
+  enrolled: boolean;
+  exportedAt: string | null;
+}): boolean {
+  return key.enrolled && !key.exportedAt;
+}
+
 export function recoveryKeyGatePhase(input: {
-  status: { key: { enrolled: boolean } } | null;
+  status: RecoveryKeyGateStatus | null;
   loaded: boolean;
   failed: boolean;
 }): RecoveryKeyGatePhase {
@@ -11,5 +30,5 @@ export function recoveryKeyGatePhase(input: {
   if (input.failed || !input.status) {
     return "unavailable";
   }
-  return input.status.key.enrolled ? "ready" : "required";
+  return isRecoveryKeyReady(input.status.key) ? "ready" : "required";
 }

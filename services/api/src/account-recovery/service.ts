@@ -171,6 +171,12 @@ export class AccountRecoveryService {
     return wrap !== null;
   }
 
+  /** Vault use requires the wrap and an export acknowledgement (copy/PDF). */
+  async hasExportedRecoveryKey(userId: string): Promise<boolean> {
+    const wrap = await this.recovery.getWrap(userId);
+    return wrap !== null && wrap.exportedAt !== null;
+  }
+
   async getStatus(userId: string): Promise<AccountRecoveryStatusResponseDto> {
     const entitlements = await this.resolveEntitlements(userId);
     const [wrap, settingsRow, contacts, pendingInvites, servingAsContact] = await Promise.all([
