@@ -1,3 +1,6 @@
+import dns from "node:dns/promises";
+import net from "node:net";
+
 const IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 /** Hosts used to capture Google's generic “no favicon” placeholder bytes (google provider only). */
@@ -6,12 +9,30 @@ const GENERIC_FAVICON_SENTINEL_HOSTS = ["invalid.invalid", "this-domain-does-not
 /** Well-known origin-relative paths tried for the default (direct) provider. */
 const DIRECT_FAVICON_PATHS = ["/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"] as const;
 
+const MAX_REDIRECTS = 5;
+const FETCH_TIMEOUT_MS = 5_000;
+
 export type FaviconProvider = "direct" | "google" | "off";
 
 export type FaviconFetchOptions = {
   /** Default `direct` — fetch from the site origin only. */
   provider?: FaviconProvider;
 };
+
+/** Resolves a hostname to one or more IP addresses (A/AAAA). */
+export type FaviconHostResolver = (hostname: string) => Promise<string[]>;
+
+async function defaultResolveHostAddresses(hostname: string): Promise<string[]> {
+  const results = await dns.lookup(hostname, { all: true, verbatim: true });
+  return results.map((entry) => entry.address);
+}
+
+let hostResolver: FaviconHostResolver = defaultResolveHostAddresses;
+
+/** Test-only: override DNS resolution used before outbound favicon fetches. */
+export function setFaviconHostResolverForTests(resolver: FaviconHostResolver | null): void {
+  hostResolver = resolver ?? defaultResolveHostAddresses;
+}
 
 export function parseHostFromUrl(input: string): string | null {
   const t = input.trim();
@@ -30,16 +51,107 @@ export function parseHostFromUrl(input: string): string | null {
   }
 }
 
+function stripIpv6Brackets(host: string): string {
+  if (host.startsWith("[") && host.endsWith("]")) {
+    return host.slice(1, -1);
+  }
+  return host;
+}
+
 function isIpv4Host(host: string): boolean {
   return IPV4_HOST_RE.test(host);
 }
 
+/** Hostname string checks before DNS (literals, localhost-like names). */
 export function isHostSuitableForFaviconLookup(host: string): boolean {
-  const normalized = host.toLowerCase();
-  if (normalized === "localhost" || normalized.endsWith(".local") || isIpv4Host(normalized)) {
+  const normalized = stripIpv6Brackets(host).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (net.isIP(normalized) !== 0 || isIpv4Host(normalized)) {
+    return false;
+  }
+  if (
+    normalized === "localhost" ||
+    normalized === "localhost.localdomain" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local")
+  ) {
     return false;
   }
   return normalized.includes(".");
+}
+
+/**
+ * True when a resolved address must not be contacted for favicon fetch
+ * (loopback, private, link-local, ULA, unspecified, multicast).
+ */
+export function isDisallowedResolvedAddress(address: string): boolean {
+  const withoutZone = address.trim().toLowerCase().split("%")[0] ?? "";
+  const ip = withoutZone.startsWith("::ffff:") ? withoutZone.slice(7) : withoutZone;
+  const family = net.isIP(ip);
+  if (family === 0) {
+    return true;
+  }
+
+  if (family === 4) {
+    const parts = ip.split(".").map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+      return true;
+    }
+    const [a, b] = parts;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+
+  if (ip === "::" || ip === "::1" || ip === "0:0:0:0:0:0:0:0" || ip === "0:0:0:0:0:0:0:1") {
+    return true;
+  }
+
+  const firstHextet = ip.split(":", 1)[0] ?? "";
+  const firstValue = Number.parseInt(firstHextet || "0", 16);
+  if (!Number.isFinite(firstValue)) {
+    return true;
+  }
+  // fe80::/10 link-local, ff00::/8 multicast, fc00::/7 unique local (ULA)
+  if ((firstValue & 0xffc0) === 0xfe80 || (firstValue & 0xff00) === 0xff00 || (firstValue & 0xfe00) === 0xfc00) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isAllowedFaviconFetchUrl(url: URL): boolean {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return false;
+  }
+  if (url.username || url.password) {
+    return false;
+  }
+  const port = url.port;
+  if (port !== "" && port !== "80" && port !== "443") {
+    return false;
+  }
+  return isHostSuitableForFaviconLookup(url.hostname);
+}
+
+async function hostResolvesToAllowedAddresses(hostname: string): Promise<boolean> {
+  try {
+    const addresses = await hostResolver(hostname);
+    if (addresses.length === 0) {
+      return false;
+    }
+    return addresses.every((address) => !isDisallowedResolvedAddress(address));
+  } catch {
+    return false;
+  }
 }
 
 /** Suitable hosts in URL list order (first match per URL). */
@@ -122,15 +234,54 @@ export function looksLikeImageBytes(bytes: Uint8Array): boolean {
   return false;
 }
 
-async function fetchImageBytes(url: string): Promise<Uint8Array | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+function redirectLocation(response: Response, currentUrl: string): string | null {
+  if (response.status < 300 || response.status >= 400) {
+    return null;
+  }
+  const location = response.headers.get("location");
+  if (!location) {
+    return null;
+  }
   try {
-    const response = await fetch(url, {
+    return new URL(location, currentUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchImageBytes(urlString: string, redirectCount = 0): Promise<Uint8Array | null> {
+  if (redirectCount > MAX_REDIRECTS) {
+    return null;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    return null;
+  }
+
+  if (!isAllowedFaviconFetchUrl(url)) {
+    return null;
+  }
+  if (!(await hostResolvesToAllowedAddresses(url.hostname))) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url.href, {
       signal: controller.signal,
-      redirect: "follow",
+      redirect: "manual",
       headers: { Accept: "image/png,image/x-icon,image/vnd.microsoft.icon,image/*,*/*;q=0.8" },
     });
+
+    const next = redirectLocation(response, url.href);
+    if (next) {
+      return fetchImageBytes(next, redirectCount + 1);
+    }
+
     if (!response.ok) {
       return null;
     }

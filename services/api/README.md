@@ -73,7 +73,8 @@ Note: the storage layer needs `pg` and `redis` dependencies to run.
 
 - `direct` (default) — fetch from the site origin only
 - `off` — disable remote preview
-- `google` — opt-in; uses Google's favicon service
+- `google` — explicit opt-in; sends login-item website domains to Google's favicon
+  service. Prefer `direct` or `off` for self-hosted deployments.
 
 ## Email providers
 

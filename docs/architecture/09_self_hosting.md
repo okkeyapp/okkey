@@ -98,8 +98,8 @@ FAVICON_PROVIDER=direct
 
 Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monograms).
 
-`FAVICON_PROVIDER=google` is an explicit opt-in that uses Google's favicon service.
-Prefer `direct` or `off` for self-hosted deployments.
+`FAVICON_PROVIDER=google` is an explicit opt-in that sends login-item website domains
+to Google's favicon service. Prefer `direct` or `off` for self-hosted deployments.
 
 ---
 
