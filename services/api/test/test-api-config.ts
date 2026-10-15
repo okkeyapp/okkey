@@ -22,6 +22,7 @@ export function createTestApiConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     deployEnv: "dev",
     deploymentMode: "self_hosted",
     defaultWorkspacePlanTier: "FREE",
+    enterpriseModulesRequested: false,
     enterpriseModulesEnabled: false,
     enterpriseModulesPath: "",
     snowflakeNodeId: 1,

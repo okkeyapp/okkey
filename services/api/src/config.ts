@@ -62,6 +62,8 @@ export interface ApiConfig {
   twoFactorBackupCodesCount: number;
   /** In production, only Bearer sessions authenticate; X-User-Id is ignored */
   allowHeaderUserIdAuth: boolean;
+  /** Raw env request: `ENTERPRISE_MODULES=true` (may still fail closed if path unloadable). */
+  enterpriseModulesRequested: boolean;
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
@@ -424,6 +426,7 @@ export function loadConfig(): ApiConfig {
     allowHeaderUserIdAuth:
       nodeEnv !== "production" ||
       parseBoolean(process.env.ALLOW_HEADER_USER_ID_AUTH, false),
+    enterpriseModulesRequested,
     enterpriseModulesEnabled,
     enterpriseModulesPath,
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
