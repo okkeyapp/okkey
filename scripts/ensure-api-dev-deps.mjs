@@ -5,13 +5,17 @@
  * - email packages (`yarn build:email`)
  *
  * WASM is built only when artifacts are missing so restarts stay cheap.
+ * Concurrent `yarn dev:api` + `yarn dev:worker` share a lock so wasm-pack
+ * does not race on `packages/crypto/dist`.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { withDevDepsLock } from "./lib/dev-deps-lock.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const lockPath = join(root, "node_modules", ".cache", "okkey", "ensure-api-dev-deps.lock");
 
 function yarn(script) {
   const result = spawnSync("yarn", [script], {
@@ -41,9 +45,19 @@ function hasRealCryptoWasm() {
   }
 }
 
-if (!hasRealCryptoWasm()) {
-  yarn("build:wasm");
-}
+withDevDepsLock(
+  lockPath,
+  () => {
+    if (!hasRealCryptoWasm()) {
+      yarn("build:wasm");
+    }
 
-yarn("build:ts-sdk");
-yarn("build:email");
+    yarn("build:ts-sdk");
+    yarn("build:email");
+  },
+  {
+    onWait: () => {
+      console.log("waiting for another process to finish ensure-api-dev-deps…");
+    },
+  },
+);

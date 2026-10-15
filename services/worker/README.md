@@ -32,7 +32,7 @@ Copy `services/worker/.env.example` for local overrides.
 | `capsule-cleanup` | 60 seconds | Deletes capsules whose `delete_at` has passed and removes related files from object storage |
 | `email-queue` | Redis BRPOP | Consumes `okkey:email:queue`, sends via `EMAIL_PROVIDER` (smtp/ses/logger/http-api), retries with backoff, dead-letters to `okkey:email:dead` |
 
-On start the worker also runs SQL migrations idempotently (`schema_migrations`), so a compose race with the API is safe.
+On start the worker also runs SQL migrations (`schema_migrations`) under a Postgres advisory lock, so a compose or local race with the API is safe.
 
 ## Email queue (Redis)
 

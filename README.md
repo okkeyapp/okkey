@@ -53,7 +53,7 @@ yarn dev:api
 yarn dev:worker
 ```
 
-`yarn dev:api` and `yarn dev:worker` each run `scripts/ensure-api-dev-deps.mjs` first (WASM if missing, then TS SDK + email; first run needs `wasm-pack`). Prefer starting API before worker if you launch both at once, so the ensure step does not race.
+`yarn dev:api` and `yarn dev:worker` each run `scripts/ensure-api-dev-deps.mjs` first (WASM if missing, then TS SDK + email; first run needs `wasm-pack`). Concurrent starts share a lock so the ensure step does not race.
 
 ## Env policy
 
