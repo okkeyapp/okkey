@@ -76,8 +76,29 @@ import {
   submitLoginFormIfReady,
   watchAndFillAutofillValues,
 } from "../lib/loginFormFields";
-import { isOkkeyWebAppOrigin } from "../lib/okkeyWebAppOrigin";
+import {
+  isOkkeyWebAppOrigin,
+  setConfiguredOkkeyWebBaseUrls,
+} from "../lib/okkeyWebAppOrigin";
 import { shouldFreezeOverlayUpdates } from "../lib/pageBlockingOverlayUi";
+import { readLastServer, readProfile } from "../lib/storage";
+
+/** Profile + lastServer web bases — used to skip overlays on self-host vault UI. */
+async function loadConfiguredOkkeyWebBaseUrls(): Promise<string[]> {
+  const urls: string[] = [];
+  try {
+    const [profile, lastServer] = await Promise.all([readProfile(), readLastServer()]);
+    if (profile?.webBaseUrl) {
+      urls.push(profile.webBaseUrl);
+    }
+    if (lastServer?.webBaseUrl) {
+      urls.push(lastServer.webBaseUrl);
+    }
+  } catch {
+    /* storage unavailable — fall back to static heuristics only */
+  }
+  return urls;
+}
 
 type OverlayMode =
   | "hidden"
@@ -254,7 +275,11 @@ export default defineContentScript({
   matches: ["http://*/*", "https://*/*"],
   allFrames: true,
   runAt: "document_idle",
-  main() {
+  async main() {
+    // Include the connected self-host web origin (e.g. Docker :8080) before any
+    // listeners/paint — static heuristics alone miss images without data-okkey-web-app.
+    setConfiguredOkkeyWebBaseUrls(await loadConfiguredOkkeyWebBaseUrls());
+
     // Never paint autofill overlays on the Okkey vault web app — they close
     // Radix month/year Selects inside item edit datepickers (~1s query/paint).
     // Re-check at paint time too: dialog close can leave orphan toggles if the
