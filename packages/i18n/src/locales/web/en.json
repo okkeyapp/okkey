@@ -1370,6 +1370,7 @@
   "web.workspaceSettings.profiles.retry": "Retry",
   "web.workspaceSettings.profiles.card.createTitle": "Create profile",
   "web.workspaceSettings.profiles.card.editTitle": "Edit profile",
+  "web.workspaceSettings.profiles.card.customTitle": "Custom profile",
   "web.workspaceSettings.profiles.card.builtInTitle": "Built-in profile",
   "web.workspaceSettings.profiles.card.nameLabel": "Name",
   "web.workspaceSettings.profiles.card.namePlaceholder": "Name",

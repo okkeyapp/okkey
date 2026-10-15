@@ -1370,6 +1370,7 @@
   "web.workspaceSettings.profiles.retry": "Повторить",
   "web.workspaceSettings.profiles.card.createTitle": "Создать профиль",
   "web.workspaceSettings.profiles.card.editTitle": "Редактировать профиль",
+  "web.workspaceSettings.profiles.card.customTitle": "Пользовательский профиль",
   "web.workspaceSettings.profiles.card.builtInTitle": "Встроенный профиль",
   "web.workspaceSettings.profiles.card.nameLabel": "Название",
   "web.workspaceSettings.profiles.card.namePlaceholder": "Название",
