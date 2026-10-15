@@ -24,7 +24,6 @@ import {
   popupQuerySearch,
 } from "../../../../routes/popupQuery";
 
-import SharedVaultsUpsell from "./SharedVaultsUpsell";
 import VaultListRow from "./VaultListRow";
 import VaultsSectionHeader from "./VaultsSectionHeader";
 import SettingsListCardSkeleton from "../SettingsListCardSkeleton";
@@ -139,19 +138,7 @@ export default function WorkspaceSettingsVaultsSection({
           personalVaultId={personalVault?.id ?? null}
           resourcePermissions={resourcePermissions}
         />
-      ) : (
-        <section className="flex flex-col gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground">
-              {t("web.workspaceSettings.vaults.shared.title")}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {t("web.workspaceSettings.vaults.shared.subtitle")}
-            </p>
-          </div>
-          <SharedVaultsUpsell t={t} />
-        </section>
-      )}
+      ) : null}
 
       {showPersonalEdit && editingPersonal && core && userId && PersonalVaultCardPopup ? (
         <PersonalVaultCardPopup
