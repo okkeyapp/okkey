@@ -193,6 +193,20 @@ test("self_hosted entitlements ignore plan_tier; use enterpriseModulesActive", (
     true,
   );
   assert.equal(
+    hasPlanFeature("FREE", "filesInItems", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanFeature("ENTERPRISE", "filesInItems", {
+      deploymentMode: "self_hosted",
+      enterpriseModulesActive: false,
+    }),
+    true,
+  );
+  assert.equal(
     getPlanQuotaLimits("FREE", {
       deploymentMode: "self_hosted",
       enterpriseModulesActive: true,
@@ -202,6 +216,13 @@ test("self_hosted entitlements ignore plan_tier; use enterpriseModulesActive", (
 });
 
 test("saas entitlements still use plan_tier", () => {
+  assert.equal(
+    hasPlanFeature("FREE", "filesInItems", {
+      deploymentMode: "saas",
+      enterpriseModulesActive: false,
+    }),
+    false,
+  );
   assert.equal(
     hasPlanFeature("FREE", "sharedVaults", {
       deploymentMode: "saas",

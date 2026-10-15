@@ -128,7 +128,8 @@ const BUSINESS_PAID = {
  * New catalog tiers or features = matrix cells only; call sites stay on {@link hasPlanFeature}.
  *
  * Mapping notes (APP.md + Figma SaaS cards):
- * - FREE: capsules without access settings; no files / monitoring / recovery / shared vaults / seats.
+ * - FREE (SaaS catalog): capsules without access settings; no files / monitoring / recovery / shared vaults / seats.
+ * - Self-hosted FREE (modules off): same FREE matrix, plus {@link SELF_HOSTED_FREE_EXTRA} (`filesInItems`).
  * - PREMIUM: personal paid (files, monitoring, recovery, capsule access settings).
  * - FAMILY: PREMIUM + seats / shared vaults / custom roles & profiles (multi-user personal).
  * - TEAM / ENTERPRISE: full business matrix (same feature set today; ENTERPRISE reserved for future extras).
@@ -139,6 +140,14 @@ export const PLAN_FEATURE_MATRIX: Record<PlanTier, Record<PlanFeature, boolean>>
   FAMILY: { ...FAMILY_PAID },
   TEAM: { ...BUSINESS_PAID },
   ENTERPRISE: { ...BUSINESS_PAID },
+};
+
+/**
+ * Features kept free on self-hosted OSS (modules off), while SaaS FREE stays on the catalog matrix.
+ * Attachments / file fields stay PREMIUM+ on SaaS only.
+ */
+export const SELF_HOSTED_FREE_EXTRA: Readonly<Partial<Record<PlanFeature, boolean>>> = {
+  filesInItems: true,
 };
 
 /**
@@ -228,14 +237,23 @@ export function resolveEntitlementPlanTier(
 /**
  * Resolve whether a plan grants a feature.
  * When custom override is enabled, explicit featureOverrides win over the catalog matrix.
- * On self-hosted, the catalog base comes from {@link resolveEntitlementPlanTier} (not DB tier).
+ * On self-hosted, the catalog base comes from {@link resolveEntitlementPlanTier} (not DB tier);
+ * modules-off also applies {@link SELF_HOSTED_FREE_EXTRA}.
  */
 export function hasPlanFeature(
   planTier: string | null | undefined,
   feature: PlanFeature,
   options?: PlanEntitlementOptions,
 ): boolean {
-  const base = PLAN_FEATURE_MATRIX[resolveEntitlementPlanTier(planTier, options)][feature];
+  const effectiveTier = resolveEntitlementPlanTier(planTier, options);
+  let base = PLAN_FEATURE_MATRIX[effectiveTier][feature];
+  if (
+    options?.deploymentMode === "self_hosted" &&
+    !options.enterpriseModulesActive &&
+    SELF_HOSTED_FREE_EXTRA[feature] === true
+  ) {
+    base = true;
+  }
   if (!options?.customOverride) {
     return base;
   }

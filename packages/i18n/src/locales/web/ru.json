@@ -1686,7 +1686,7 @@
   "web.workspaceSettings.plan.selfHosted.permissions.unlimitedItems": "Неограниченные записи",
   "web.workspaceSettings.plan.selfHosted.permissions.itemCategories": "Категории записей",
   "web.workspaceSettings.plan.selfHosted.permissions.personalVaultOnly": "Только личный сейф",
-  "web.workspaceSettings.plan.selfHosted.permissions.textItemsOnly": "Только текстовые записи",
+  "web.workspaceSettings.plan.selfHosted.permissions.filesInItems": "Записи с файлами",
   "web.workspaceSettings.plan.selfHosted.permissions.totpImportExport": "TOTP, импорт, экспорт",
   "web.workspaceSettings.plan.selfHosted.requestCta": "Отправить заявку",
   "web.workspaceSettings.plan.selfHosted.requestTitle": "Заявка на лицензию",

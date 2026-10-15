@@ -1686,7 +1686,7 @@
   "web.workspaceSettings.plan.selfHosted.permissions.unlimitedItems": "Unlimited items",
   "web.workspaceSettings.plan.selfHosted.permissions.itemCategories": "Item categories",
   "web.workspaceSettings.plan.selfHosted.permissions.personalVaultOnly": "Personal vault only",
-  "web.workspaceSettings.plan.selfHosted.permissions.textItemsOnly": "Text items only",
+  "web.workspaceSettings.plan.selfHosted.permissions.filesInItems": "Items with files",
   "web.workspaceSettings.plan.selfHosted.permissions.totpImportExport": "TOTP, import, export",
   "web.workspaceSettings.plan.selfHosted.requestCta": "Send a request",
   "web.workspaceSettings.plan.selfHosted.requestTitle": "License request",

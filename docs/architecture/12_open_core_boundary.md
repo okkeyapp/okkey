@@ -41,7 +41,7 @@ Entitlements are resolved via `hasPlanFeature` in `@okkey/types` (`PLAN_FEATURE_
 | Deployment | Paid-feature source |
 |---|---|
 | **SaaS** | `workspace.plan_tier` (+ optional custom overrides) |
-| **Self-hosted** | enterprise modules active (env ∧ loadable sibling) → ENTERPRISE matrix; otherwise FREE. **Do not** use `plan_tier` for gating. |
+| **Self-hosted** | enterprise modules active (env ∧ loadable sibling) → ENTERPRISE matrix; otherwise FREE + `SELF_HOSTED_FREE_EXTRA`. **Do not** use `plan_tier` for gating. |
 
 Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same self-host rule).
 
@@ -49,7 +49,7 @@ Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same sel
 |---|---|---|---|---|---|
 | `capsules` | yes | yes | yes | yes | yes |
 | `capsuleAccessSettings` | no | yes | yes | yes | yes |
-| `filesInItems` | no | yes | yes | yes | yes |
+| `filesInItems` | no† | yes | yes | yes | yes |
 | `monitoring` | no | yes | yes | yes | yes |
 | `accountRecovery` | no | yes | yes | yes | yes |
 | `trustedContacts` | no | yes | yes | yes | yes |
@@ -59,6 +59,8 @@ Soft numeric limits live in `PLAN_QUOTA_LIMITS` / `getPlanQuotaLimits` (same sel
 | `customWorkspaceRoles` | no | no | yes | yes | yes |
 | `customWorkspaceProfiles` | no | no | yes | yes | yes |
 | `paidPlanBadge` | no | yes | yes | yes | yes |
+
+† SaaS FREE keeps `filesInItems` off (PREMIUM+). Self-hosted FREE (modules off) enables `filesInItems` via `SELF_HOSTED_FREE_EXTRA` — attachments stay free on-prem.
 
 Do **not** confuse `plan_tier` with `ENTERPRISE_MODULES` (plugin loading).
 
@@ -134,7 +136,7 @@ The open-source Core provides the FREE plan baseline:
 - Workspace settings: profiles view-only for default profiles.
 - Workspace settings: members — owner only in OSS; inviting additional members requires enterprise `workspace-members` plugin **and** `additionalWorkspaceMembers` plan feature.
 - Workspace settings: vaults — personal vault metadata editable when `workspace-shared-vaults` module is injected (popup); default name is set only at create/register. Shared vaults require the same plugin **and** `sharedVaults` plan feature.
-- Files in items require `filesInItems` plan feature (and workspace toggle).
+- Files in items: enabled on self-hosted FREE (`SELF_HOSTED_FREE_EXTRA`); on SaaS require PREMIUM+ `filesInItems` (and workspace toggle either way).
 - Workspace settings: change plan / payments / license surfaces exist as product shells.
 - Personal settings: main settings available.
 - Personal settings: storage available except confidential sections, biometrics, and PIN.

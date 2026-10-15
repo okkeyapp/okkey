@@ -32,7 +32,7 @@ const FREE_PERMISSION_KEYS = [
   "unlimitedItems",
   "itemCategories",
   "personalVaultOnly",
-  "textItemsOnly",
+  "filesInItems",
   "totpImportExport",
 ] as const;
 

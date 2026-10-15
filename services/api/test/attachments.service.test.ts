@@ -43,6 +43,8 @@ function uploadMocks(input: {
   filesInItemsEnabled?: boolean;
   planTier?: string;
   allowedFileExtensions?: string[];
+  deploymentMode?: "saas" | "self_hosted";
+  enterpriseModulesEnabled?: boolean;
 }) {
   let created: { itemId: string } | null = null;
   const storage = {
@@ -103,7 +105,16 @@ function uploadMocks(input: {
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
   return {
-    service: new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) }),
+    service: new AttachmentService({
+      storage,
+      attachments,
+      vaults,
+      workspaces,
+      config: createTestApiConfig({
+        deploymentMode: input.deploymentMode ?? "saas",
+        enterpriseModulesEnabled: input.enterpriseModulesEnabled ?? false,
+      }),
+    }),
     getCreated: () => created,
   };
 }
@@ -204,6 +215,55 @@ test("AttachmentService denies vault access before storage operations", async ()
 
 test("AttachmentService blocks regular item uploads when files in items are disabled", async () => {
   const { service } = uploadMocks({ filesInItemsEnabled: false, planTier: "PREMIUM" });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: REGULAR_ITEM_ID,
+        userId: USER_ID,
+        fileName: "secret.pdf",
+        mimeType: "application/pdf",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "FILES_IN_ITEMS_DISABLED" &&
+      error.statusCode === 403,
+  );
+});
+
+test("AttachmentService allows item uploads on self-hosted FREE when workspace toggle is on", async () => {
+  const { service, getCreated } = uploadMocks({
+    filesInItemsEnabled: true,
+    planTier: "FREE",
+    deploymentMode: "self_hosted",
+    enterpriseModulesEnabled: false,
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: REGULAR_ITEM_ID,
+    userId: USER_ID,
+    fileName: "secret.pdf",
+    mimeType: "application/pdf",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.itemId, REGULAR_ITEM_ID);
+});
+
+test("AttachmentService blocks item uploads on SaaS FREE even when workspace toggle is on", async () => {
+  const { service } = uploadMocks({
+    filesInItemsEnabled: true,
+    planTier: "FREE",
+    deploymentMode: "saas",
+  });
 
   await assert.rejects(
     () =>
