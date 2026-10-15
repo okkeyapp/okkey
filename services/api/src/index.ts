@@ -173,6 +173,7 @@ async function main(): Promise<void> {
     events: storage.repositories.events,
     softDeletes: storage.repositories.vaultItemSoftDeletes,
     users: storage.repositories.users,
+    workspaces: storage.repositories.workspaces,
     config,
     log: logger,
   });

@@ -175,7 +175,7 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
         id: "v1",
         workspaceId: "w1",
         name: "Vault",
-        isPersonal: false,
+        isPersonal: true,
         ownerId: "u1",
         cryptoVersion: 2,
         createdAt: "",
@@ -203,6 +203,120 @@ test("appendEvent requires idempotencyKey for ITEM_CREATE", async () => {
       error instanceof SyncServiceError &&
       error.code === "SYNC_BAD_REQUEST",
   );
+});
+
+test("appendEvent rejects ITEM_CREATE in shared vault without sharedVaults plan", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v-shared",
+        workspaceId: "w1",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    workspaces: {
+      findById: async () => ({
+        id: "w1",
+        name: "Workspace",
+        ownerId: "u1",
+        planTier: "FREE",
+        planCustomOverride: false,
+        planFeatureOverrides: {},
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: false,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.appendEvent("v-shared", "u1", {
+        eventType: "ITEM_CREATE",
+        encryptedBlob: mkBlob("x"),
+        baseVersion: 0,
+        referencedItemId: TEST_ITEM_ID,
+        idempotencyKey: "idem-1",
+      }),
+    (error: unknown) =>
+      error instanceof SyncServiceError &&
+      error.code === "PLAN_FEATURE_REQUIRED" &&
+      error.statusCode === 403,
+  );
+});
+
+test("appendEvent allows ITEM_UPDATE in shared vault without sharedVaults plan", async () => {
+  const service = new SyncService({
+    vaults: {
+      findById: async () => ({
+        id: "v-shared",
+        workspaceId: "w1",
+        name: "Shared",
+        isPersonal: false,
+        ownerId: "u1",
+        cryptoVersion: 2,
+        createdAt: "",
+        updatedAt: "",
+      }),
+      canReadVault: async () => true,
+    },
+    workspaces: {
+      findById: async () => ({
+        id: "w1",
+        name: "Workspace",
+        ownerId: "u1",
+        planTier: "FREE",
+        planCustomOverride: false,
+        planFeatureOverrides: {},
+        createdAt: "",
+        updatedAt: "",
+      }),
+    },
+    config: {
+      deploymentMode: "self_hosted",
+      enterpriseModulesEnabled: false,
+    },
+    events: {
+      listAfterVersion: async () => [],
+      append: async () => ({
+        id: "e1",
+        vaultId: "v-shared",
+        actorId: "u1",
+        eventType: "ITEM_UPDATE",
+        encryptedPayload: new Uint8Array([1]),
+        payloadSchemaVersion: 1,
+        idempotencyKey: null,
+        clientCreatedAt: null,
+        version: 2,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+      deleteByVaultAndReferencedItemId: async () => {},
+    },
+  });
+
+  const event = await service.appendEvent("v-shared", "u1", {
+    eventType: "ITEM_UPDATE",
+    encryptedBlob: mkBlob("x"),
+    baseVersion: 1,
+    referencedItemId: TEST_ITEM_ID,
+  });
+  assert.equal(event.eventType, "ITEM_UPDATE");
+  assert.equal(event.version, 2);
 });
 
 test("appendEvent rejects oversized payload", async () => {
