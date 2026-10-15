@@ -9,7 +9,7 @@ Ready-to-submit pack for **Okkey extension `1.0.0.2`**. Do **not** tag/`Release`
 - [ ] `wxt.config.ts` / built manifest → `"version": "1.0.0.2"` (no Chromium `version_name`, no `*-beta.*`)
 - [ ] Listing copy reviewed: [LISTING.en.md](./LISTING.en.md) / [LISTING.ru.md](./LISTING.ru.md)
 - [ ] Permissions text ready: [PERMISSIONS.md](./PERMISSIONS.md)
-- [ ] Privacy / support URLs: [URLS.md](./URLS.md) (public GitHub blob links)
+- [ ] Privacy / support URLs: [URLS.md](./URLS.md) (official GitHub paste, or substituted instance placeholders)
 - [ ] Screenshots prepared ([assets/README.md](./assets/README.md))
 - [ ] Smoke: load unpacked Chromium + Firefox against a **self-hosted** web+API (not SaaS-only mindset)
 
@@ -83,7 +83,7 @@ Per store console, paste:
 
 1. Short + detailed description ([LISTING.en.md](./LISTING.en.md))
 2. Permission justification single-purpose / host access ([PERMISSIONS.md](./PERMISSIONS.md))
-3. Privacy policy URL + support URL ([URLS.md](./URLS.md)) — public GitHub blob links
+3. Privacy policy URL + support URL ([URLS.md](./URLS.md)) — official GitHub paste or substituted instance URLs
 4. Screenshots / promo tiles ([assets/README.md](./assets/README.md))
 5. Category: Productivity / Privacy & Security (as available)
 

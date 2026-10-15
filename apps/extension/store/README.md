@@ -14,7 +14,7 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 | [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access) |
 | [LISTING.en.md](./LISTING.en.md) | Chrome/Edge/Opera/AMO listing copy (EN) |
 | [LISTING.ru.md](./LISTING.ru.md) | Listing copy (RU) — AMO / optional CWS locale |
-| [URLS.md](./URLS.md) | Public GitHub privacy / support / homepage URLs |
+| [URLS.md](./URLS.md) | Store privacy / support / homepage URLs + self-host placeholders |
 | [PRIVACY.md](./PRIVACY.md) | Privacy policy (linked from store consoles via GitHub) |
 | [SUPPORT.md](./SUPPORT.md) | Support page (linked from store consoles via GitHub) |
 | [assets/README.md](./assets/README.md) | Screenshots / promotional images checklist |
