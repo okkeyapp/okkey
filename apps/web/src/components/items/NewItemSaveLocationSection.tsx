@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
 import { useWorkspaceVaultProfiles } from "../../items/WorkspaceVaultProfilesContext";
+import { filterWritableSaveVaults } from "../../items/filterWritableSaveVaults";
 import { NO_FOLDER_VALUE, folderPathExists, type FlatWorkspaceFolder } from "../../folders/workspaceFolderTree";
 import {
   DEFAULT_SHARED_VAULT_ICON,
@@ -128,6 +129,7 @@ function FolderSelectCreateRow({
   );
 }
 
+
 export default function NewItemSaveLocationSection({
   t,
   workspaceName,
@@ -143,8 +145,8 @@ export default function NewItemSaveLocationSection({
   const { flatFolders, createFolder } = useWorkspaceFolders();
   const { canPostToVault } = useWorkspaceVaultProfiles();
   const writableVaults = useMemo(
-    () => vaults.filter((vault) => canPostToVault(vault.id)),
-    [canPostToVault, vaults],
+    () => filterWritableSaveVaults(vaults, canPostToVault, vaultId),
+    [canPostToVault, vaultId, vaults],
   );
   const selectedVault = writableVaults.find((vault) => vault.id === vaultId) ?? vaults.find((vault) => vault.id === vaultId);
   const selectedFolder =
@@ -253,7 +255,7 @@ export default function NewItemSaveLocationSection({
 export function useDefaultNewItemVaultId(vaults: readonly Vault[], vaultsListReady: boolean): string {
   const { canPostToVault } = useWorkspaceVaultProfiles();
   const writableVaults = useMemo(
-    () => vaults.filter((vault) => canPostToVault(vault.id)),
+    () => filterWritableSaveVaults(vaults, canPostToVault),
     [canPostToVault, vaults],
   );
   const personalVaultId = writableVaults.find((vault) => vault.isPersonal)?.id ?? "";
@@ -273,7 +275,7 @@ export function useSyncedNewItemVaultId(
 ): [string, (vaultId: string) => void] {
   const { canPostToVault } = useWorkspaceVaultProfiles();
   const writableVaults = useMemo(
-    () => vaults.filter((vault) => canPostToVault(vault.id)),
+    () => filterWritableSaveVaults(vaults, canPostToVault),
     [canPostToVault, vaults],
   );
   const defaultVaultId = useDefaultNewItemVaultId(vaults, vaultsListReady);
