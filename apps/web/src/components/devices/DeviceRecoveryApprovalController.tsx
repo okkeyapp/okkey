@@ -202,6 +202,7 @@ export default function DeviceRecoveryApprovalController() {
     os_name: current.osName,
     platform: current.platform,
     user_agent: current.userAgent,
+    device_fingerprint: current.deviceFingerprint,
   };
 
   const dismissRequest = (requestId: string) => {
