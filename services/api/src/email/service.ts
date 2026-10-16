@@ -236,18 +236,16 @@ export type CreateEmailSenderOptions = {
   deliveryMode?: EmailDeliveryMode;
 };
 
-/** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
-export async function createTransportEmailSender(
-  config: ApiConfig,
-  logger: Logger,
-): Promise<EmailSender> {
+/**
+ * Fail-fast config checks for the configured EMAIL_PROVIDER.
+ * Used by the worker transport and by the API even in `queue` mode, so a bad
+ * SES/http-api env cannot leave the process healthy while mail piles up.
+ */
+export function assertEmailTransportConfig(config: ApiConfig): void {
   switch (config.emailProvider) {
     case "logger":
-      return new LoggerEmailSender(logger, {
-        includePlainTextBody: shouldLogPlainTextForLoggerProvider(config),
-      });
     case "smtp":
-      return SmtpEmailSender.fromConfig(config);
+      return;
     case "http-api":
       if (!config.emailApiEndpoint) {
         throw new Error("EMAIL_API_ENDPOINT is required for EMAIL_PROVIDER=http-api");
@@ -255,11 +253,7 @@ export async function createTransportEmailSender(
       if (!config.emailApiKey) {
         throw new Error("EMAIL_API_KEY is required for EMAIL_PROVIDER=http-api");
       }
-      return new HttpApiEmailSender(
-        config.emailApiEndpoint,
-        config.emailApiKey,
-        config.emailApiTimeoutMs,
-      );
+      return;
     case "ses":
       if (!config.sesRegion) {
         throw new Error("EMAIL_SES_REGION is required for EMAIL_PROVIDER=ses");
@@ -270,6 +264,32 @@ export async function createTransportEmailSender(
       if (!config.sesSecretAccessKey) {
         throw new Error("EMAIL_SES_SECRET_ACCESS_KEY is required for EMAIL_PROVIDER=ses");
       }
+      return;
+    default:
+      throw new Error(`unsupported email provider: ${config.emailProvider}`);
+  }
+}
+
+/** Create the provider that actually delivers mail (SMTP / SES / logger / http-api). */
+export async function createTransportEmailSender(
+  config: ApiConfig,
+  logger: Logger,
+): Promise<EmailSender> {
+  assertEmailTransportConfig(config);
+  switch (config.emailProvider) {
+    case "logger":
+      return new LoggerEmailSender(logger, {
+        includePlainTextBody: shouldLogPlainTextForLoggerProvider(config),
+      });
+    case "smtp":
+      return SmtpEmailSender.fromConfig(config);
+    case "http-api":
+      return new HttpApiEmailSender(
+        config.emailApiEndpoint,
+        config.emailApiKey,
+        config.emailApiTimeoutMs,
+      );
+    case "ses":
       return new SesEmailSender({
         region: config.sesRegion,
         accessKeyId: config.sesAccessKeyId,
@@ -286,12 +306,14 @@ export async function createTransportEmailSender(
  * Outbound sender for the API process.
  * In `queue` mode enqueues rendered messages to Redis; worker delivers via transport.
  * In `sync` mode (default outside production) sends immediately — fine for local logger + tests.
+ * Transport config is always validated so queue mode cannot accept mail with a broken provider env.
  */
 export async function createOutboundEmailSender(
   config: ApiConfig,
   logger: Logger,
   redis: EmailQueueRedis,
 ): Promise<EmailSender> {
+  assertEmailTransportConfig(config);
   if (config.emailDeliveryMode === "queue") {
     return new QueuedEmailSender(redis, logger);
   }

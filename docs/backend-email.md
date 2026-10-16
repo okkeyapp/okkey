@@ -32,6 +32,8 @@ Templates are always rendered in the API process. The **transport** step depends
 | `sync` | `NODE_ENV` ≠ `production` | API calls SMTP/SES/logger immediately (good for local `yarn dev:api` + `EMAIL_PROVIDER=logger`) |
 | `queue` | `NODE_ENV=production` | API `LPUSH`es the rendered message to Redis `okkey:email:queue`; **okkey-worker** `BRPOP`s, sends via the same `EMAIL_PROVIDER`, retries on `okkey:email:delayed`, dead-letters to `okkey:email:dead` |
 
+Both API and worker validate `EMAIL_PROVIDER` transport config on startup (including queue mode). A missing SES region / HTTP API endpoint fails the process with a non-zero exit so compose restart/alerts can fire instead of leaving mail stranded in Redis.
+
 Self-host compose sets `EMAIL_DELIVERY_MODE=queue` and runs the worker. Details: [`services/worker/README.md`](../services/worker/README.md).
 
 ## Locale selection

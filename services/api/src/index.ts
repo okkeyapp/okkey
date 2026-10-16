@@ -358,5 +358,6 @@ void main().catch((error: unknown) => {
   logger.error("api server failed to start", {
     error: error instanceof Error ? error.message : "unknown error",
   });
-  process.exitCode = 1;
+  // Force exit: open storage sockets keep the event loop alive if we only set exitCode.
+  process.exit(1);
 });
