@@ -18,7 +18,17 @@ import {
   type EmailDeliveryMode,
   type EmailQueueRedis,
 } from "./queue.ts";
+import { withOkkeyMarkInlineAttachment } from "./inline-attachments.ts";
 import { SesEmailSender } from "./ses-sender.ts";
+
+/** Inline (CID) attachment referenced from HTML as `cid:<cid>`. */
+export interface EmailInlineAttachment {
+  cid: string;
+  filename: string;
+  contentType: string;
+  /** Raw base64 of file bytes (no data: URI prefix). */
+  contentBase64: string;
+}
 
 export interface EmailMessage {
   to: string;
@@ -26,6 +36,8 @@ export interface EmailMessage {
   subject: string;
   text: string;
   html: string;
+  /** Optional; transports also inject the Okkey mark when HTML uses its CID. */
+  inlineAttachments?: EmailInlineAttachment[];
 }
 
 export interface EmailSender {
@@ -100,25 +112,30 @@ export class LoggerEmailSender implements EmailSender {
   }
 }
 
+type NodemailerAttachment = {
+  filename: string;
+  content: Buffer;
+  cid: string;
+  contentType: string;
+  contentDisposition: "inline";
+};
+
+type NodemailerSendMailOptions = {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  attachments?: NodemailerAttachment[];
+};
+
 export class SmtpEmailSender implements EmailSender {
   private readonly transport: {
-    sendMail(options: {
-      from: string;
-      to: string;
-      subject: string;
-      text: string;
-      html: string;
-    }): Promise<unknown>;
+    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
   };
 
   constructor(transport: {
-    sendMail(options: {
-      from: string;
-      to: string;
-      subject: string;
-      text: string;
-      html: string;
-    }): Promise<unknown>;
+    sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
   }) {
     this.transport = transport;
   }
@@ -131,13 +148,7 @@ export class SmtpEmailSender implements EmailSender {
         secure: boolean;
         auth?: { user: string; pass: string };
       }): {
-        sendMail(options: {
-          from: string;
-          to: string;
-          subject: string;
-          text: string;
-          html: string;
-        }): Promise<unknown>;
+        sendMail(options: NodemailerSendMailOptions): Promise<unknown>;
       };
     };
 
@@ -158,13 +169,25 @@ export class SmtpEmailSender implements EmailSender {
   }
 
   async send(message: EmailMessage): Promise<void> {
+    const prepared = withOkkeyMarkInlineAttachment(message);
+    const attachments: NodemailerAttachment[] | undefined =
+      prepared.inlineAttachments && prepared.inlineAttachments.length > 0
+        ? prepared.inlineAttachments.map((item) => ({
+            filename: item.filename,
+            content: Buffer.from(item.contentBase64, "base64"),
+            cid: item.cid,
+            contentType: item.contentType,
+            contentDisposition: "inline",
+          }))
+        : undefined;
     try {
       await this.transport.sendMail({
-        from: message.from,
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
+        from: prepared.from,
+        to: prepared.to,
+        subject: prepared.subject,
+        text: prepared.text,
+        html: prepared.html,
+        ...(attachments ? { attachments } : {}),
       });
     } catch (cause) {
       throw new EmailTemplateError(
@@ -188,6 +211,7 @@ export class HttpApiEmailSender implements EmailSender {
   }
 
   async send(message: EmailMessage): Promise<void> {
+    const prepared = withOkkeyMarkInlineAttachment(message);
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
@@ -200,7 +224,7 @@ export class HttpApiEmailSender implements EmailSender {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify(message),
+        body: JSON.stringify(prepared),
         signal: controller.signal,
       });
 

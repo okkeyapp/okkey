@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 
 import { EmailTemplateError } from "./errors.ts";
+import { buildRawMimeEmail } from "./inline-attachments.ts";
 import type { EmailMessage, EmailSender } from "./service.ts";
 
 export type SesEmailSenderOptions = {
@@ -111,16 +112,14 @@ export class SesEmailSender implements EmailSender {
   }
 
   async send(message: EmailMessage): Promise<void> {
+    // SES Simple content cannot carry CID inline images; send Raw MIME instead.
+    const rawMime = buildRawMimeEmail(message);
     const body = JSON.stringify({
       FromEmailAddress: message.from,
       Destination: { ToAddresses: [message.to] },
       Content: {
-        Simple: {
-          Subject: { Data: message.subject, Charset: "UTF-8" },
-          Body: {
-            Text: { Data: message.text, Charset: "UTF-8" },
-            Html: { Data: message.html, Charset: "UTF-8" },
-          },
+        Raw: {
+          Data: rawMime.toString("base64"),
         },
       },
     });

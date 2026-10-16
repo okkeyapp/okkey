@@ -54,6 +54,8 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.html, /123456/);
   assert.equal(en.html.includes("123 456"), false);
   assert.match(en.html, /Okkey/);
+  assert.match(en.html, /cid:okkey-mark/);
+  assert.equal(en.html.includes("data:image"), false);
   assert.match(en.html, /#f1f5f9/i);
   assert.match(en.html, /no-reply/i);
   assert.match(
