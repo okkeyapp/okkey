@@ -243,6 +243,62 @@ test("startEmailLogin reuses active challenge for same email without sending aga
   assert.equal(sentEmails.length, 1);
 });
 
+test("startEmailLogin mints a new challenge when remaining TTL is low", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    generatedCode: "222000",
+    configOverrides: {
+      authCodeTtlSeconds: 300,
+      authResendCooldownSeconds: 60,
+    },
+  });
+
+  const first = await service.startEmailLogin({
+    email: "near-expiry@example.com",
+    requestIp: "127.0.0.1",
+  });
+  assert.equal(sentEmails.length, 1);
+  assert.equal(first.challengeId, "id-1");
+
+  // Leave ~15s of TTL — below reuse threshold (authResendCooldownSeconds).
+  redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0) + (300 - 15) * 1000);
+
+  const second = await service.startEmailLogin({
+    email: "near-expiry@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.notEqual(second.challengeId, first.challengeId);
+  assert.equal(second.challengeId, "id-2");
+  assert.equal(sentEmails.length, 2);
+  assert.ok(new Date(second.expiresAt).getTime() > new Date(first.expiresAt).getTime());
+});
+
+test("startEmailLogin still reuses when remaining TTL is above cooldown", async () => {
+  const { service, sentEmails, redis } = setupAuthService({
+    generatedCode: "333000",
+    configOverrides: {
+      authCodeTtlSeconds: 300,
+      authResendCooldownSeconds: 60,
+    },
+  });
+
+  const first = await service.startEmailLogin({
+    email: "still-fresh@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  // 61s remaining → still above reuse threshold.
+  redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0) + (300 - 61) * 1000);
+
+  const second = await service.startEmailLogin({
+    email: "still-fresh@example.com",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(second.challengeId, first.challengeId);
+  assert.equal(sentEmails.length, 1);
+});
+
 test("resendEmailCode blocks resend before cooldown", async () => {
   const { service } = setupAuthService();
   const start = await service.startEmailLogin({
