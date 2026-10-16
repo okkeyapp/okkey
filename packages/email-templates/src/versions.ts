@@ -4,6 +4,7 @@ export const EMAIL_TEMPLATE_VERSIONS = {
   device_approval_request: 7,
   workspace_invite: 4,
   two_factor_enabled: 4,
+  two_factor_disabled: 1,
   two_factor_backup_codes_regenerated: 4,
   account_email_changed: 1,
   device_recovery_approval_request: 4,

@@ -8,6 +8,7 @@ export {
   renderPlanChangeRequest,
   renderTrustedContactInvite,
   renderTwoFactorBackupRegenerated,
+  renderTwoFactorDisabled,
   renderTwoFactorEnabled,
   renderWorkspaceInvite,
   listTemplateMeta,

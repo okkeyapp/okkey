@@ -120,44 +120,55 @@ const twoFactorEnabledKeys = {
   cta: "email.twoFactor.enabled.ctaSecurity",
 } as const;
 
+const twoFactorDisabledKeys = {
+  line1: "email.twoFactor.disabled.line1",
+  line2: "email.twoFactor.disabled.line2",
+  cta: "email.twoFactor.disabled.ctaSecurity",
+} as const;
+
 const twoFactorBackupKeys = {
   line1: "email.twoFactor.backupRegen.line1",
   line2: "email.twoFactor.backupRegen.line2",
   cta: "email.twoFactor.backupRegen.ctaSecurity",
 } as const;
 
-export function buildTwoFactorEnabledEmailProps(
+function buildTwoFactorNoticeEmailProps(
   locale: EmailLocale,
   variables: TwoFactorNoticeVariables,
+  keys: { line1: string; line2: string; cta: string },
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
   const standard = buildEmailStandardFooterCopy(locale);
   return {
-    line1: formatEmailMessage(locale, twoFactorEnabledKeys.line1, { whenUtc }),
-    line2: formatEmailMessage(locale, twoFactorEnabledKeys.line2, {}),
+    line1: formatEmailMessage(locale, keys.line1, { whenUtc }),
+    line2: formatEmailMessage(locale, keys.line2, {}),
     securityUrl,
-    ctaLabel: formatEmailMessage(locale, twoFactorEnabledKeys.cta, {}),
+    ctaLabel: formatEmailMessage(locale, keys.cta, {}),
     noReply: standard.noReply,
     ignoreIfMistake: standard.ignoreIfMistake,
   };
+}
+
+export function buildTwoFactorEnabledEmailProps(
+  locale: EmailLocale,
+  variables: TwoFactorNoticeVariables,
+): TwoFactorNoticeEmailProps {
+  return buildTwoFactorNoticeEmailProps(locale, variables, twoFactorEnabledKeys);
+}
+
+export function buildTwoFactorDisabledEmailProps(
+  locale: EmailLocale,
+  variables: TwoFactorNoticeVariables,
+): TwoFactorNoticeEmailProps {
+  return buildTwoFactorNoticeEmailProps(locale, variables, twoFactorDisabledKeys);
 }
 
 export function buildTwoFactorBackupRegeneratedEmailProps(
   locale: EmailLocale,
   variables: TwoFactorNoticeVariables,
 ): TwoFactorNoticeEmailProps {
-  const securityUrl = variables.securitySettingsUrl.trim();
-  const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
-  const standard = buildEmailStandardFooterCopy(locale);
-  return {
-    line1: formatEmailMessage(locale, twoFactorBackupKeys.line1, { whenUtc }),
-    line2: formatEmailMessage(locale, twoFactorBackupKeys.line2, {}),
-    securityUrl,
-    ctaLabel: formatEmailMessage(locale, twoFactorBackupKeys.cta, {}),
-    noReply: standard.noReply,
-    ignoreIfMistake: standard.ignoreIfMistake,
-  };
+  return buildTwoFactorNoticeEmailProps(locale, variables, twoFactorBackupKeys);
 }
 
 export function buildAccountEmailChangedEmailProps(

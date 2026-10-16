@@ -49,6 +49,7 @@ export interface TwoFactorServiceDeps {
   emailTemplates?: Pick<
     EmailTemplateService,
     | "sendTwoFactorEnabledBestEffort"
+    | "sendTwoFactorDisabledBestEffort"
     | "sendTwoFactorBackupCodesRegeneratedBestEffort"
   >;
   now?: () => Date;
@@ -81,6 +82,7 @@ export class TwoFactorService {
   private readonly emailTemplates?: Pick<
     EmailTemplateService,
     | "sendTwoFactorEnabledBestEffort"
+    | "sendTwoFactorDisabledBestEffort"
     | "sendTwoFactorBackupCodesRegeneratedBestEffort"
   >;
   private readonly now: () => Date;
@@ -572,6 +574,7 @@ export class TwoFactorService {
   async disableTwoFactor(
     userId: string,
     input: { totpCode?: string; backupCode?: string },
+    context?: { acceptLanguage?: string },
   ): Promise<void> {
     if (!(await this.users.isTwoFactorEnabled(userId))) {
       throw new TwoFactorError("TWO_FACTOR_NOT_ENABLED", 400, "two-factor not enabled");
@@ -624,5 +627,23 @@ export class TwoFactorService {
     await this.twoFactorRepo.disableTotpAndBackupCodes(userId);
     await this.users.setTwoFactorEnabled(userId, false);
     await this.redis.del(enrollActiveUserKey(userId));
+
+    const user = await this.users.findById(userId);
+    if (user && this.emailTemplates) {
+      void this.emailTemplates.sendTwoFactorDisabledBestEffort({
+        to: user.email,
+        localeHints: {
+          userLocale: user.locale,
+          acceptLanguage: context?.acceptLanguage,
+        },
+        variables: {
+          occurredAtIso: this.now().toISOString(),
+          securitySettingsUrl: buildEmailAppPathUrl(
+            this.config.publicAppBaseUrl,
+            "/items?popup=settings|twoFactor",
+          ),
+        },
+      });
+    }
   }
 }

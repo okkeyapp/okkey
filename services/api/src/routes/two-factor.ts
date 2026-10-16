@@ -267,7 +267,11 @@ export function createTwoFactorDisableRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      await twoFactorService.disableTwoFactor(userId, { totpCode, backupCode });
+      await twoFactorService.disableTwoFactor(
+        userId,
+        { totpCode, backupCode },
+        { acceptLanguage: getHeader(ctx.req, "accept-language") },
+      );
       json(ctx.res, 200, { disabled: true });
     } catch (error) {
       handleTwoFactorError(ctx.requestId, ctx.res, error);
