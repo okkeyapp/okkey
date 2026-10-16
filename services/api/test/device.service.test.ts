@@ -202,6 +202,59 @@ test("registerDevice sends device_approval_request when pending and email deps c
   assert.ok(typeof sends[0].variables.requestedAtIso === "string");
 });
 
+test("registerDevice approval email maps desktop_app clientType to Desktop · App", async () => {
+  const sends: Array<Parameters<EmailTemplateService["sendDeviceApprovalRequest"]>[0]> = [];
+  const service = new DeviceService({
+    devices: {
+      registerOrUpdate: async () => createDeviceRecord({ clientType: "desktop_app" }),
+      reclaimSoleTrusted: async () => null,
+      claimTrustedAfterRecovery: async () => createDeviceRecord({ status: "trusted" }),
+      isTrustedDevice: async () => true,
+      resolveApproval: async () => ({
+        kind: "approved",
+        device: createDeviceRecord({ status: "trusted" }),
+      }),
+      listByUser: async () => [],
+      renameDevice: async () => null,
+      revokeOwned: async () => null,
+      blockPending: async () => null,
+      unblockDevice: async () => null,
+      clearExpiredBlocks: async () => undefined,
+    },
+    config: {
+      deviceApprovalTtlSeconds: 60,
+      publicAppBaseUrl: "https://app.test",
+    },
+    users: {
+      findById: async () => ({
+        id: "u1",
+        email: "owner@test.local",
+        publicKey: "pk",
+        locale: "en",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    },
+    emailTemplates: {
+      sendDeviceApprovalRequest: async (input) => {
+        sends.push(input);
+      },
+    },
+  });
+
+  await service.registerDevice(
+    "u1",
+    "203.0.113.9",
+    createInput({
+      deviceName: "Okkey Desktop",
+      clientType: "desktop_app",
+      deviceFingerprint: "desktop_app-desktop-macos-14.5",
+    }),
+  );
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].variables.platform, "Desktop · App");
+});
+
 test("registerDevice returns trusted for trusted device", async () => {
   const service = createService({
     registerOrUpdate: async () => createDeviceRecord({ status: "trusted" }),

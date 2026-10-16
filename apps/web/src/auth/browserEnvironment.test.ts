@@ -81,6 +81,7 @@ describe("formatClientLabelFromType", () => {
     expect(formatClientLabelFromType("yandex")).toBe("Yandex");
     expect(formatClientLabelFromType("web")).toBe("Web");
     expect(formatClientLabelFromType("desktop")).toBe("App");
+    expect(formatClientLabelFromType("desktop_app")).toBe("App");
   });
 });
 
@@ -109,6 +110,18 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
     expect(formatDeviceChannel(device)).toBe("Extension");
     expect(formatDeviceTitle(device)).toBe("Extension Chrome");
     expect(formatDeviceClientOs(device)).toBe("Extension · Chrome · macOS");
+  });
+
+  it("maps desktop_app client_type to Desktop channel", () => {
+    const device = {
+      device_name: "Okkey Desktop",
+      client_type: "desktop_app",
+      os_name: "macOS",
+      platform: "desktop",
+    };
+    expect(formatDeviceChannel(device)).toBe("Desktop");
+    expect(formatClientLabelFromType("desktop_app")).toBe("App");
+    expect(formatDeviceClientOs(device)).toBe("Desktop · App · macOS");
   });
 
   it("shortens stored legacy full title", () => {
