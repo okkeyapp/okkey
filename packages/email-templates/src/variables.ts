@@ -82,6 +82,7 @@ export type EmailTemplateVariablesMap = {
   device_approval_request: DeviceApprovalRequestVariables;
   workspace_invite: WorkspaceInviteVariables;
   two_factor_enabled: TwoFactorNoticeVariables;
+  two_factor_disabled: TwoFactorNoticeVariables;
   two_factor_backup_codes_regenerated: TwoFactorNoticeVariables;
   device_recovery_approval_request: DeviceRecoveryApprovalRequestVariables;
   contact_recovery_release_request: ContactRecoveryReleaseRequestVariables;

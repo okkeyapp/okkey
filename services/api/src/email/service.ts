@@ -431,6 +431,16 @@ export class EmailTemplateService {
     await this.dispatchRendered(input.to, rendered);
   }
 
+  async sendTwoFactorDisabled(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: TwoFactorNoticeVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("two_factor_disabled", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
   async sendTwoFactorBackupCodesRegenerated(input: {
     to: string;
     localeHints: EmailLocaleHints;
@@ -454,6 +464,23 @@ export class EmailTemplateService {
     } catch (error) {
       const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
       this.logger?.warn("two_factor_enabled email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Same as {@link sendTwoFactorDisabled} but never throws: API success should not depend on mail.
+   */
+  async sendTwoFactorDisabledBestEffort(
+    input: Parameters<EmailTemplateService["sendTwoFactorDisabled"]>[0],
+  ): Promise<void> {
+    try {
+      await this.sendTwoFactorDisabled(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("two_factor_disabled email skipped", {
         code,
         message: error instanceof Error ? error.message : String(error),
       });

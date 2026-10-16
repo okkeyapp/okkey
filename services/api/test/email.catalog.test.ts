@@ -170,6 +170,22 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   assertNoMustachePlaceholders(ru.text);
 });
 
+test("renderEmailTemplate two_factor_disabled en and ru", async () => {
+  const en = await renderEmailTemplate("two_factor_disabled", "en", twoFactorVars);
+  assert.match(en.subject, /two-factor|authentication/i);
+  assert.match(en.subject, /disabled/i);
+  assert.match(en.text, /UTC/i);
+  assert.match(en.text, /re-enable|authenticator/i);
+  assert.equal(en.html.toLowerCase().includes("totp"), false);
+  assertNoMustachePlaceholders(en.text);
+
+  const ru = await renderEmailTemplate("two_factor_disabled", "ru", twoFactorVars);
+  assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
+  assert.match(ru.text, /UTC/);
+  assert.ok(ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})));
+  assertNoMustachePlaceholders(ru.text);
+});
+
 test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async () => {
   const en = await renderEmailTemplate(
     "two_factor_backup_codes_regenerated",
@@ -321,7 +337,7 @@ test("EmailTemplateService workspace_invite renders invite link", async () => {
   assert.match(sent[0].html, /Alex/);
 });
 
-test("EmailTemplateService sendTwoFactorEnabled and sendTwoFactorBackupCodesRegenerated respect explicit ru locale", async () => {
+test("EmailTemplateService sendTwoFactorEnabled/disabled/backupRegen respect explicit ru locale", async () => {
   const sent: Array<{ subject: string }> = [];
   const sender: EmailSender = {
     send: async (m) => {
@@ -338,14 +354,20 @@ test("EmailTemplateService sendTwoFactorEnabled and sendTwoFactorBackupCodesRege
     localeHints: { explicitLocale: "ru" },
     variables: twoFactorVars,
   });
+  await svc.sendTwoFactorDisabled({
+    to: "u@example.com",
+    localeHints: { explicitLocale: "ru" },
+    variables: twoFactorVars,
+  });
   await svc.sendTwoFactorBackupCodesRegenerated({
     to: "u@example.com",
     localeHints: { explicitLocale: "ru" },
     variables: twoFactorVars,
   });
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 3);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
-  assert.equal(sent[1].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
+  assert.equal(sent[1].subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
+  assert.equal(sent[2].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
 });
 
 test("EmailTemplateService device and contact recovery request emails render CTA url", async () => {
@@ -449,10 +471,13 @@ test("device approval footnotes render below EmailShell separator", async () => 
 test("workspace invite and two-factor emails include shared no-reply footer", async () => {
   const invite = await renderEmailTemplate("workspace_invite", "en", workspaceVars);
   const twoFactor = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
+  const twoFactorDisabled = await renderEmailTemplate("two_factor_disabled", "en", twoFactorVars);
   const ignoreEn = formatEmailMessage("en", "email.common.ignoreIfMistake", {});
   const ignoreRu = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
   assert.ok(invite.html.includes(ignoreEn));
   assert.match(invite.html, /no-reply/i);
   assert.ok(twoFactor.html.includes(ignoreRu));
   assert.match(twoFactor.html, /no-reply/i);
+  assert.ok(twoFactorDisabled.html.includes(ignoreEn));
+  assert.match(twoFactorDisabled.html, /no-reply/i);
 });

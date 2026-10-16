@@ -14,6 +14,7 @@ import {
   buildDeviceRecoveryApprovalEmailProps,
   buildTrustedContactInviteEmailProps,
   buildTwoFactorBackupRegeneratedEmailProps,
+  buildTwoFactorDisabledEmailProps,
   buildTwoFactorEnabledEmailProps,
   buildWorkspaceInviteEmailProps,
 } from "./email-props.js";
@@ -182,10 +183,15 @@ export async function renderWorkspaceInvite(
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
+type TwoFactorNoticeTemplateId =
+  | "two_factor_enabled"
+  | "two_factor_disabled"
+  | "two_factor_backup_codes_regenerated";
+
 async function renderTwoFactorNotice(
   locale: EmailLocale,
   variables: TwoFactorNoticeVariables,
-  templateId: "two_factor_enabled" | "two_factor_backup_codes_regenerated",
+  templateId: TwoFactorNoticeTemplateId,
   keys: {
     subject: string;
     plain: string;
@@ -206,7 +212,9 @@ async function renderTwoFactorNotice(
   const props =
     templateId === "two_factor_enabled"
       ? buildTwoFactorEnabledEmailProps(locale, variables)
-      : buildTwoFactorBackupRegeneratedEmailProps(locale, variables);
+      : templateId === "two_factor_disabled"
+        ? buildTwoFactorDisabledEmailProps(locale, variables)
+        : buildTwoFactorBackupRegeneratedEmailProps(locale, variables);
   const { line1, line2 } = props;
   const subject = formatEmailMessage(locale, keys.subject, {});
   const footer = securityUrl
@@ -235,6 +243,17 @@ export function renderTwoFactorEnabled(
     subject: "email.twoFactor.enabled.subject",
     plain: "email.twoFactor.enabled.plain",
     plainFooterUrl: "email.twoFactor.enabled.plainFooterUrl",
+  });
+}
+
+export function renderTwoFactorDisabled(
+  locale: EmailLocale,
+  variables: TwoFactorNoticeVariables,
+): Promise<RenderedEmail> {
+  return renderTwoFactorNotice(locale, variables, "two_factor_disabled", {
+    subject: "email.twoFactor.disabled.subject",
+    plain: "email.twoFactor.disabled.plain",
+    plainFooterUrl: "email.twoFactor.disabled.plainFooterUrl",
   });
 }
 
@@ -469,6 +488,8 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
         return await renderWorkspaceInvite(locale, variables as WorkspaceInviteVariables);
       case "two_factor_enabled":
         return await renderTwoFactorEnabled(locale, variables as TwoFactorNoticeVariables);
+      case "two_factor_disabled":
+        return await renderTwoFactorDisabled(locale, variables as TwoFactorNoticeVariables);
       case "two_factor_backup_codes_regenerated":
         return await renderTwoFactorBackupRegenerated(
           locale,

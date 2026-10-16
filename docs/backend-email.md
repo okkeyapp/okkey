@@ -80,6 +80,7 @@ Transactional mail is sent from `EmailTemplateService` when the corresponding AP
 | `POST /auth/email/start`, `POST /auth/email/resend` | `auth_email_code` | Login / registration challenge; **never** includes TOTP secrets or backup codes. |
 | `POST /devices/register` → `pending_approval` | `device_approval_request` | Best-effort async send; locale from user + `Accept-Language` / body. |
 | `POST /auth/two-factor/totp/enroll/confirm` (success) | `two_factor_enabled` | Best-effort (`sendTwoFactorEnabledBestEffort`). |
+| `POST /auth/two-factor/disable` (success) | `two_factor_disabled` | Best-effort (`sendTwoFactorDisabledBestEffort`). |
 | `POST /auth/two-factor/backup-codes/regenerate` (success) | `two_factor_backup_codes_regenerated` | Best-effort (`sendTwoFactorBackupCodesRegeneratedBestEffort`). |
 | Enterprise `POST /workspaces/:workspaceId/invitations` | `workspace_invite` | Requires `PUBLIC_APP_URL` and a real transport; missing config → `EMAIL_NOT_CONFIGURED` (503). Send failure deletes the pending row → `EMAIL_SEND_FAILED` (503). CTA is `{PUBLIC_APP_URL}/invite/:token`. |
 | `POST /workspaces/:workspaceId/plan-change-requests` | `plan_change_request` | Sent to `OKKEY_SALES_EMAIL` (not the requester). Manual fulfillment only; does not change `plan_tier`. |
