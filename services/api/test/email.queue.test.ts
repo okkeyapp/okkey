@@ -13,6 +13,7 @@ import {
   startEmailQueueConsumer,
   type EmailJob,
 } from "../src/email/queue.ts";
+import { EmailTemplateError } from "../src/email/errors.ts";
 /** Minimal message shape (avoid importing email/service.ts → @okkey/email-templates). */
 type EmailMessage = {
   to: string;
@@ -25,6 +26,7 @@ type EmailMessage = {
 type EmailSender = {
   send(message: EmailMessage): Promise<void>;
 };
+
 
 const sampleMessage: EmailMessage = {
   to: "user@example.com",
@@ -128,4 +130,40 @@ test("email queue consumer retries then dead-letters", async () => {
   // delayed should be empty after dead-letter
   const delayed = await redis.zRangeByScore(EMAIL_DELAYED_KEY, 0, Number.MAX_SAFE_INTEGER, 10);
   assert.equal(delayed.length, 0);
+});
+
+test("email queue dead-letter lastError includes transport cause", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const transport: EmailSender = {
+    async send() {
+      throw new EmailTemplateError("EMAIL_TRANSPORT_ERROR", "smtp send failed", {
+        cause: "connect ECONNREFUSED 127.0.0.1:4019",
+      });
+    },
+  };
+  const consumer = startEmailQueueConsumer({
+    redis,
+    transport,
+    logger: { info() {}, warn() {}, error() {} },
+    pollTimeoutSeconds: 1,
+    options: { maxAttempts: 1, backoffBaseMs: 1, maxBackoffMs: 1 },
+  });
+
+  const job: EmailJob = {
+    id: "job-cause",
+    createdAt: new Date().toISOString(),
+    attempts: 0,
+    message: sampleMessage,
+  };
+  await redis.lPush(EMAIL_QUEUE_KEY, serializeEmailJob(job));
+
+  for (let i = 0; i < 80 && redis.peekList(EMAIL_DEAD_KEY).length === 0; i += 1) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  await consumer.stop();
+
+  assert.equal(redis.peekList(EMAIL_DEAD_KEY).length, 1);
+  const dead = parseEmailJob(redis.peekList(EMAIL_DEAD_KEY)[0]!);
+  assert.match(dead.lastError ?? "", /smtp send failed/);
+  assert.match(dead.lastError ?? "", /ECONNREFUSED 127\.0\.0\.1:4019/);
 });
