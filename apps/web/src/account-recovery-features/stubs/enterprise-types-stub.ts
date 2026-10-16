@@ -16,6 +16,7 @@ export type EnterpriseDeviceRecoveryRequestDto = {
   requestEphemeralPublicB64: string;
   wrapBlob?: EnterpriseEncryptedBlobDto | null;
   requestingDeviceId: string | null;
+  deviceFingerprint: string | null;
   deviceName: string | null;
   platform: string | null;
   osName: string | null;

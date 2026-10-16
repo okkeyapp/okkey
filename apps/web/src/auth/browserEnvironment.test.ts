@@ -112,6 +112,20 @@ describe("formatDeviceClientOs / formatDeviceTitle", () => {
     expect(formatDeviceClientOs(device)).toBe("Extension · Chrome · macOS");
   });
 
+  it("keeps Extension channel from fingerprint when device was renamed", () => {
+    const device = {
+      device_name: "My laptop",
+      client_type: "chrome",
+      os_name: "Linux",
+      device_fingerprint: "extension-chrome-linux-unknown",
+      user_agent:
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    };
+    expect(formatDeviceChannel(device)).toBe("Extension");
+    expect(formatDeviceTitle(device)).toBe("My laptop");
+    expect(formatDeviceClientOs(device)).toBe("Extension · Chrome · Linux");
+  });
+
   it("maps desktop_app client_type to Desktop channel", () => {
     const device = {
       device_name: "Okkey Desktop",
