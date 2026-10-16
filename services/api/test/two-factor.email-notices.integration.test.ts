@@ -287,6 +287,9 @@ test("integration: after TOTP disable, transport receives two_factor_disabled (r
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
   assert.equal(sent[0].to, email);
+  assert.match(sent[0].html, /popup=settings\|twoFactor/);
+  assert.match(sent[0].text, /popup=settings\|twoFactor/);
+  assert.equal(sent[0].html.includes("/settings/security"), false);
   assert.equal(BACKUP_CODE_LIKE.test(sent[0].text), false);
   assert.equal(BACKUP_CODE_LIKE.test(sent[0].html), false);
   assert.equal(sent[0].text.includes("{{"), false);

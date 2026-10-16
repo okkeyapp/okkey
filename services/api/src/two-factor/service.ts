@@ -640,7 +640,7 @@ export class TwoFactorService {
           occurredAtIso: this.now().toISOString(),
           securitySettingsUrl: buildEmailAppPathUrl(
             this.config.publicAppBaseUrl,
-            "/settings/security",
+            "/items?popup=settings|twoFactor",
           ),
         },
       });

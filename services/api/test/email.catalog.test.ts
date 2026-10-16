@@ -182,6 +182,8 @@ test("renderEmailTemplate two_factor_disabled en and ru", async () => {
   const ru = await renderEmailTemplate("two_factor_disabled", "ru", twoFactorVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
   assert.match(ru.text, /UTC/);
+  assert.match(ru.html, /popup=settings\|twoFactor/);
+  assert.match(ru.text, /popup=settings\|twoFactor/);
   assert.ok(ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})));
   assertNoMustachePlaceholders(ru.text);
 });
