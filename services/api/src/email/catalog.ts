@@ -9,6 +9,7 @@ import { EmailTemplateError } from "./errors.ts";
 import type { EmailLocale } from "./locale.ts";
 
 export type {
+  AccountEmailChangedVariables,
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,

@@ -74,6 +74,11 @@ function setup() {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
   const sentEmails: Array<{ to: string; code: string; purpose?: string }> = [];
+  const noticeEmails: Array<{
+    to: string;
+    newEmailMasked: string;
+    securitySettingsUrl: string;
+  }> = [];
   const users = new Map([
     ["u1", userRecord("u1", "old@example.com")],
     ["u2", userRecord("u2", "taken@example.com")],
@@ -104,13 +109,20 @@ function setup() {
           purpose: input.variables.purpose,
         });
       },
+      sendAccountEmailChangedBestEffort: async (input) => {
+        noticeEmails.push({
+          to: input.to,
+          newEmailMasked: input.variables.newEmailMasked,
+          securitySettingsUrl: input.variables.securitySettingsUrl,
+        });
+      },
     },
     config: createTestApiConfig(),
     now: () => redis.now(),
     generateCode: () => "123456",
     generateId: () => `change-${nextId++}`,
   });
-  return { service, sentEmails, users, redis };
+  return { service, sentEmails, noticeEmails, users, redis };
 }
 
 test("email change start sends code to the new email", async () => {
@@ -144,7 +156,7 @@ test("email change rejects existing email", async () => {
 });
 
 test("email change confirm updates user email", async () => {
-  const { service, users } = setup();
+  const { service, users, noticeEmails } = setup();
   const start = await service.start({
     userId: "u1",
     email: "new@example.com",
@@ -160,6 +172,13 @@ test("email change confirm updates user email", async () => {
 
   assert.equal(result.email, "new@example.com");
   assert.equal(users.get("u1")?.email, "new@example.com");
+  assert.equal(noticeEmails.length, 1);
+  assert.equal(noticeEmails[0].to, "old@example.com");
+  assert.equal(noticeEmails[0].newEmailMasked, "n***@example.com");
+  assert.equal(
+    noticeEmails[0].securitySettingsUrl,
+    "https://app.okkey.test/settings/security",
+  );
 });
 
 test("email change confirm reports attempts left for invalid code", async () => {

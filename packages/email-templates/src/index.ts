@@ -1,4 +1,5 @@
 export {
+  renderAccountEmailChanged,
   renderAuthEmailCode,
   renderContactRecoveryReleaseRequest,
   renderDeviceApprovalRequest,
@@ -14,6 +15,7 @@ export {
 export { EmailRenderError, type EmailRenderErrorCode } from "./errors.js";
 export type { RenderedEmail } from "./rendered.js";
 export type {
+  AccountEmailChangedVariables,
   AuthEmailCodePurpose,
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,

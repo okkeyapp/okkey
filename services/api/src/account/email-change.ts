@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
-import type { EmailTemplateService } from "../email/service.ts";
+import { buildEmailAppPathUrl, type EmailTemplateService } from "../email/service.ts";
 import { UniqueConstraintError } from "../storage/errors.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 
@@ -71,7 +71,10 @@ export interface EmailChangeServiceDeps {
     expire(key: string, seconds: number): Promise<boolean>;
   };
   users: Pick<UsersRepository, "findById" | "findByEmail" | "updateEmail">;
-  emailTemplates: Pick<EmailTemplateService, "sendAuthEmailCode">;
+  emailTemplates: Pick<
+    EmailTemplateService,
+    "sendAuthEmailCode" | "sendAccountEmailChangedBestEffort"
+  >;
   config: ApiConfig;
   now?: () => Date;
   generateCode?: () => string;
@@ -84,6 +87,19 @@ function normalizeEmail(email: string): string {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/** Mask local-part for notices: `new@example.com` → `n***@example.com`. */
+export function maskEmailForNotice(email: string): string {
+  const normalized = normalizeEmail(email);
+  const at = normalized.indexOf("@");
+  if (at <= 0) {
+    return "***";
+  }
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const first = local.charAt(0) || "*";
+  return `${first}***@${domain}`;
 }
 
 function createCode(): string {
@@ -236,6 +252,12 @@ export class EmailChangeService {
       throw new EmailChangeError("EMAIL_CHANGE_CODE_INVALID", 400, "invalid code", { attemptsLeft });
     }
 
+    const previous = await this.users.findById(input.userId);
+    if (!previous) {
+      throw new EmailChangeError("EMAIL_CHANGE_USER_NOT_FOUND", 404, "user not found");
+    }
+    const previousEmail = previous.email;
+
     try {
       const updated = await this.users.updateEmail(input.userId, challenge.email);
       if (!updated) {
@@ -249,6 +271,21 @@ export class EmailChangeService {
     } finally {
       await this.deleteChallenge(challenge);
     }
+
+    void this.emailTemplates.sendAccountEmailChangedBestEffort({
+      to: previousEmail,
+      localeHints: {
+        userLocale: previous.locale ?? null,
+      },
+      variables: {
+        newEmailMasked: maskEmailForNotice(challenge.email),
+        occurredAtIso: this.now().toISOString(),
+        securitySettingsUrl: buildEmailAppPathUrl(
+          this.config.publicAppBaseUrl,
+          "/settings/security",
+        ),
+      },
+    });
 
     return { email: challenge.email };
   }
