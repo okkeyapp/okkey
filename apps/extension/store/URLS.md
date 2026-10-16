@@ -4,6 +4,21 @@ This file tells the store publisher **exactly what to paste** into Chrome Web St
 
 The extension is a **self-hosted product client**: it talks only to the Okkey instance URL the user configures. Do **not** use a SaaS app origin as the privacy or support destination for listing fields.
 
+## Live check (2026-10-16)
+
+| URL | HTTP | Use for store? |
+|-----|------|----------------|
+| https://github.com/okkeyapp/okkey | 200 | Homepage (default) |
+| https://github.com/okkeyapp/okkey/blob/dev/apps/extension/store/PRIVACY.md | 200 | Privacy policy |
+| https://github.com/okkeyapp/okkey/blob/dev/apps/extension/store/SUPPORT.md | 200 | Support |
+| https://github.com/okkeyapp/okkey/issues | 200 | Support (issues) alt |
+| https://raw.githubusercontent.com/okkeyapp/okkey/dev/apps/extension/store/PRIVACY.md | 200 | Optional plain-text privacy |
+| https://raw.githubusercontent.com/okkeyapp/okkey/dev/apps/extension/store/SUPPORT.md | 200 | Optional plain-text support |
+| https://okkey.io | 200 | Optional marketing homepage only — **no** privacy/support pages there |
+| https://okkey.app / https://docs.okkey.app | not reachable | Do **not** use |
+
+Re-check before real submit if `dev` tip moved. Privacy/support pages are English OSS docs (acceptable for store URLs); listing **copy** and **screenshots** remain EN+RU.
+
 ## Official open-source listing (default paste)
 
 For the public Okkey extension pack in this repository, paste these **final** URLs as-is. No token left after paste.
@@ -11,6 +26,7 @@ For the public Okkey extension pack in this repository, paste these **final** UR
 | Field | Value |
 |-------|-------|
 | **Homepage** | https://github.com/okkeyapp/okkey |
+| **Homepage (optional alt)** | https://okkey.io — only if the console wants a marketing site; still keep privacy/support on GitHub |
 | **Privacy policy** | https://github.com/okkeyapp/okkey/blob/dev/apps/extension/store/PRIVACY.md |
 | **Support / help** | https://github.com/okkeyapp/okkey/blob/dev/apps/extension/store/SUPPORT.md |
 | **Support (issues)** | https://github.com/okkeyapp/okkey/issues |
@@ -66,6 +82,7 @@ Privacy and support for a private instance belong to **that instance’s operato
 |-----|------|
 | Privacy | [PRIVACY.md](./PRIVACY.md) |
 | Support | [SUPPORT.md](./SUPPORT.md) |
+| Locales | [LOCALES.md](./LOCALES.md) |
 
 ## Listing copy alignment
 
