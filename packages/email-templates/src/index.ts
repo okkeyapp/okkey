@@ -14,6 +14,7 @@ export {
 export { EmailRenderError, type EmailRenderErrorCode } from "./errors.js";
 export type { RenderedEmail } from "./rendered.js";
 export type {
+  AuthEmailCodePurpose,
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,

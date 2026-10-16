@@ -73,7 +73,7 @@ function userRecord(id: string, email: string) {
 function setup() {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
-  const sentEmails: Array<{ to: string; code: string }> = [];
+  const sentEmails: Array<{ to: string; code: string; purpose?: string }> = [];
   const users = new Map([
     ["u1", userRecord("u1", "old@example.com")],
     ["u2", userRecord("u2", "taken@example.com")],
@@ -98,7 +98,11 @@ function setup() {
     },
     emailTemplates: {
       sendAuthEmailCode: async (input) => {
-        sentEmails.push({ to: input.to, code: input.variables.code });
+        sentEmails.push({
+          to: input.to,
+          code: input.variables.code,
+          purpose: input.variables.purpose,
+        });
       },
     },
     config: createTestApiConfig(),
@@ -122,6 +126,7 @@ test("email change start sends code to the new email", async () => {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0].to, "new@example.com");
   assert.equal(sentEmails[0].code, "123456");
+  assert.equal(sentEmails[0].purpose, "email_change");
 });
 
 test("email change rejects existing email", async () => {

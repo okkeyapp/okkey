@@ -72,14 +72,18 @@ export async function renderAuthEmailCode(
     });
   }
   const minutes = Math.ceil(variables.ttlSeconds / 60);
-  const subject = formatEmailMessage(locale, "email.auth.signInCode.subject", {
+  const messagePrefix =
+    variables.purpose === "email_change"
+      ? "email.auth.emailChangeCode"
+      : "email.auth.signInCode";
+  const subject = formatEmailMessage(locale, `${messagePrefix}.subject`, {
     code: variables.code,
   });
   const props = buildAuthSignInCodeEmailProps(locale, variables);
   const standard = buildEmailStandardFooterCopy(locale);
   const plainText = appendStandardFooterPlain(
     [
-      formatEmailMessage(locale, "email.auth.signInCode.plain", {
+      formatEmailMessage(locale, `${messagePrefix}.plain`, {
         code: variables.code,
         minutes,
       }),

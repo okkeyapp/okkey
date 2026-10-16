@@ -13,13 +13,6 @@ export interface AuthSignInCodeEmailProps {
   ignoreIfMistake: string;
 }
 
-function formatOtpDisplay(code: string): string {
-  if (code.length !== 6) {
-    return code;
-  }
-  return `${code.slice(0, 3)} ${code.slice(3)}`;
-}
-
 export function AuthSignInCodeEmail({
   beforeCode,
   code,
@@ -28,7 +21,6 @@ export function AuthSignInCodeEmail({
   noReply,
   ignoreIfMistake,
 }: AuthSignInCodeEmailProps) {
-  const displayCode = formatOtpDisplay(code);
   return (
     <EmailShell
       preview={beforeCode}
@@ -51,7 +43,7 @@ export function AuthSignInCodeEmail({
         >
           <tr>
             <td style={codeCellStyle}>
-              <span style={codeStyle}>{displayCode}</span>
+              <span style={codeStyle}>{code}</span>
             </td>
           </tr>
         </table>

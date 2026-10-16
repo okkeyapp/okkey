@@ -16,17 +16,24 @@ import type {
 } from "./variables.js";
 import type { RecoveryActionEmailProps } from "./components/RecoveryActionEmail.js";
 
+function authEmailCodeMessagePrefix(
+  purpose: AuthEmailCodeVariables["purpose"],
+): "email.auth.signInCode" | "email.auth.emailChangeCode" {
+  return purpose === "email_change" ? "email.auth.emailChangeCode" : "email.auth.signInCode";
+}
+
 export function buildAuthSignInCodeEmailProps(
   locale: EmailLocale,
   variables: AuthEmailCodeVariables,
 ): AuthSignInCodeEmailProps {
   const minutes = Math.ceil(variables.ttlSeconds / 60);
   const standard = buildEmailStandardFooterCopy(locale);
+  const prefix = authEmailCodeMessagePrefix(variables.purpose);
   return {
-    beforeCode: formatEmailMessage(locale, "email.auth.signInCode.beforeCode", {}),
+    beforeCode: formatEmailMessage(locale, `${prefix}.beforeCode`, {}),
     code: variables.code,
-    line2: formatEmailMessage(locale, "email.auth.signInCode.line2", { minutes }),
-    ignore: formatEmailMessage(locale, "email.auth.signInCode.ignore", {}),
+    line2: formatEmailMessage(locale, `${prefix}.line2`, { minutes }),
+    ignore: formatEmailMessage(locale, `${prefix}.ignore`, {}),
     noReply: standard.noReply,
     ignoreIfMistake: standard.ignoreIfMistake,
   };

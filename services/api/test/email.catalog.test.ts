@@ -46,13 +46,22 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(en.subject, /^123456\b/);
   assert.equal(en.subject.includes("123 456"), false);
   assert.match(en.text, /123456/);
-  assert.match(en.html, /123[\s\u00a0]*456/);
+  assert.match(en.html, /123456/);
+  assert.equal(en.html.includes("123 456"), false);
   assert.match(en.html, /Okkey/);
   assert.match(en.html, /#f1f5f9/i);
   assert.match(en.html, /no-reply/i);
   assert.match(
     en.html,
     new RegExp(formatEmailMessage("en", "email.common.ignoreIfMistake", {}), "i"),
+  );
+  assert.ok(
+    formatEmailMessage("en", "email.common.ignoreIfMistake", {}).endsWith("."),
+    "EN ignoreIfMistake must end with a period",
+  );
+  assert.ok(
+    formatEmailMessage("ru", "email.common.ignoreIfMistake", {}).endsWith("."),
+    "RU ignoreIfMistake must end with a period",
   );
   assertNoMustachePlaceholders(en.text);
 
@@ -66,8 +75,48 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   );
   assert.match(ru.subject, /^654321\b/);
   assert.match(ru.text, /654321/);
+  assert.match(ru.html, /654321/);
+  assert.equal(ru.html.includes("654 321"), false);
   assert.match(ru.html, /no-reply/i);
   assert.match(ru.html, /проигнорируйте/i);
+  assertNoMustachePlaceholders(ru.text);
+});
+
+test("renderEmailTemplate auth_email_code email_change purpose uses dedicated copy", async () => {
+  const en = await renderEmailTemplate("auth_email_code", "en", {
+    code: "146805",
+    ttlSeconds: 120,
+    purpose: "email_change",
+  });
+  assert.equal(
+    en.subject,
+    formatEmailMessage("en", "email.auth.emailChangeCode.subject", { code: "146805" }),
+  );
+  assert.match(en.subject, /^146805\b/);
+  assert.match(en.subject, /email change/i);
+  assert.equal(/sign-in/i.test(en.subject), false);
+  assert.match(en.html, /email change/i);
+  assert.equal(/sign-in/i.test(en.html), false);
+  assert.match(en.html, /146805/);
+  assert.equal(en.html.includes("146 805"), false);
+  assertNoMustachePlaceholders(en.text);
+
+  const ru = await renderEmailTemplate("auth_email_code", "ru", {
+    code: "109836",
+    ttlSeconds: 60,
+    purpose: "email_change",
+  });
+  assert.equal(
+    ru.subject,
+    formatEmailMessage("ru", "email.auth.emailChangeCode.subject", { code: "109836" }),
+  );
+  assert.match(ru.subject, /^109836\b/);
+  assert.match(ru.subject, /нового email/i);
+  assert.equal(/код входа/i.test(ru.subject), false);
+  assert.match(ru.html, /нового email/i);
+  assert.equal(/код входа/i.test(ru.html), false);
+  assert.match(ru.html, /109836/);
+  assert.equal(ru.html.includes("109 836"), false);
   assertNoMustachePlaceholders(ru.text);
 });
 
