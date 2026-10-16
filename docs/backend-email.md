@@ -71,6 +71,8 @@ For a given recipient and request:
 | `EMAIL_SEND_FAILED` | Transport failed after successful render |
 | `EMAIL_TRANSPORT_ERROR` | Low-level SMTP/API failure |
 
+HTTP clients that hit a transport/send failure receive **503** with `error: EMAIL_SEND_FAILED` and a generic `message` only — no SMTP host/port, provider body, or other transport `details`. The underlying cause is written to API/worker logs and to dead-letter `lastError` (`okkey:email:dead`).
+
 2FA notices use best-effort send helpers: API success does not depend on mail delivery.
 
 ## API action → email (Core v1)

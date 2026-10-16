@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "../logger.ts";
+import { formatEmailFailureReason } from "./errors.ts";
 import type { EmailMessage, EmailSender } from "./service.ts";
+
 
 /** Ready jobs waiting for a worker (Redis LIST). */
 export const EMAIL_QUEUE_KEY = "okkey:email:queue";
@@ -165,7 +167,7 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
   };
 
   const handleFailure = async (job: EmailJob, error: unknown): Promise<void> => {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatEmailFailureReason(error);
     const nextAttempts = job.attempts + 1;
     const updated: EmailJob = {
       ...job,

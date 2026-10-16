@@ -1,7 +1,8 @@
 import { AuthError, type AuthService } from "../auth/service.ts";
-import { EmailTemplateError } from "../email/errors.ts";
+import { EmailTemplateError, toPublicEmailErrorResponse } from "../email/errors.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
 import { requestClientIp } from "../request-ip.ts";
+
 
 interface StartBody {
   email?: string;
@@ -138,11 +139,11 @@ function handleAuthError(
   }
 
   if (error instanceof EmailTemplateError) {
+    const publicError = toPublicEmailErrorResponse(error);
     json(res, 503, {
-      error: error.code,
-      message: error.message,
+      error: publicError.error,
+      message: publicError.message,
       requestId,
-      ...(error.details ? { details: error.details } : {}),
     });
     return;
   }

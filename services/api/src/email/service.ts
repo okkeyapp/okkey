@@ -387,16 +387,28 @@ export class EmailTemplateService {
       if (cause instanceof EmailTemplateError) {
         const code: EmailTemplateError["code"] =
           cause.code === "EMAIL_TRANSPORT_ERROR" ? "EMAIL_SEND_FAILED" : cause.code;
-        throw new EmailTemplateError(code, cause.message, {
+        const wrapped = new EmailTemplateError(code, cause.message, {
           ...cause.details,
           originalCode: cause.code,
         });
+        this.logger?.error("email send failed", {
+          code: wrapped.code,
+          message: wrapped.message,
+          ...(typeof wrapped.details?.cause === "string"
+            ? { cause: wrapped.details.cause }
+            : {}),
+        });
+        throw wrapped;
       }
-      throw new EmailTemplateError(
-        "EMAIL_SEND_FAILED",
-        "email transport failed",
-        { cause: cause instanceof Error ? cause.message : String(cause) },
-      );
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      this.logger?.error("email send failed", {
+        code: "EMAIL_SEND_FAILED",
+        message: "email transport failed",
+        cause: reason,
+      });
+      throw new EmailTemplateError("EMAIL_SEND_FAILED", "email transport failed", {
+        cause: reason,
+      });
     }
   }
 
