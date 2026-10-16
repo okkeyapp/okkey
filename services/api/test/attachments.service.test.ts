@@ -306,6 +306,55 @@ test("AttachmentService allows workspace logo upload when files in items are dis
   assert.equal(getCreated()?.itemId, WORKSPACE_ID);
 });
 
+test("AttachmentService allows item favicon.png when files in items are disabled", async () => {
+  const { service, getCreated } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "FREE",
+    allowedFileExtensions: ["pdf"],
+    deploymentMode: "saas",
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: REGULAR_ITEM_ID,
+    userId: USER_ID,
+    fileName: "favicon.png",
+    mimeType: "image/png",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.itemId, REGULAR_ITEM_ID);
+});
+
+test("AttachmentService still blocks non-favicon uploads when files in items are disabled", async () => {
+  const { service } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "PREMIUM",
+    allowedFileExtensions: ["png", "pdf"],
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: REGULAR_ITEM_ID,
+        userId: USER_ID,
+        fileName: "photo.png",
+        mimeType: "image/png",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "FILES_IN_ITEMS_DISABLED" &&
+      error.statusCode === 403,
+  );
+});
+
 test("AttachmentService still blocks non-image workspace-system uploads", async () => {
   const { service } = uploadMocks({ filesInItemsEnabled: false, planTier: "FREE" });
 

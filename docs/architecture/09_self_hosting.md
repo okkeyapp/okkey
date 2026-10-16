@@ -90,7 +90,9 @@ CORS_ORIGIN
 ## Favicon preview
 
 Login-item favicon preview (`POST /favicon/preview`) defaults to fetching icons from the website
-origin only (`FAVICON_PROVIDER=direct`).
+itself (`FAVICON_PROVIDER=direct`). For each Website URL field the API probes, in order:
+the full URL (HTML `<link rel=icon>` / related), the subdomain/origin root, then the
+registrable domain root (eTLD+1). Subsequent URL fields use the same order.
 
 ```text
 FAVICON_PROVIDER=direct
@@ -100,6 +102,9 @@ Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monog
 
 `FAVICON_PROVIDER=google` is an explicit opt-in that sends login-item website domains
 to Google's favicon service. Prefer `direct` or `off` for self-hosted deployments.
+
+Record favicon attachments (`favicon.png`) are stored on any plan and are not gated by
+the workspace `filesInItems` entitlement.
 
 ---
 

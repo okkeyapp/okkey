@@ -3,6 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import type { LookupFunction } from "node:net";
+import { parse as parsePublicSuffix } from "tldts";
 
 const IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
@@ -12,11 +13,18 @@ const GENERIC_FAVICON_SENTINEL_HOSTS = ["invalid.invalid", "this-domain-does-not
 /** Well-known origin-relative paths tried for the default (direct) provider. */
 const DIRECT_FAVICON_PATHS = ["/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"] as const;
 
+/** Browser-like UA so sites (and Cloudflare) are less likely to challenge favicon/HTML probes. */
+const FAVICON_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 const MAX_REDIRECTS = 5;
 const FETCH_TIMEOUT_MS = 5_000;
 
 /** Cap response body size for outbound favicon fetches (bytes). */
 export const MAX_FAVICON_RESPONSE_BYTES = 256 * 1024;
+
+/** Cap HTML page bodies used only to discover `<link rel=icon>` candidates. */
+export const MAX_FAVICON_HTML_BYTES = 512 * 1024;
 
 export type FaviconProvider = "direct" | "google" | "off";
 
@@ -288,6 +296,73 @@ export function hostsFromUrls(urls: readonly string[]): string[] {
   return out;
 }
 
+/**
+ * Registrable domain (eTLD+1) for a hostname via Public Suffix List.
+ * Returns null when PSL cannot determine a domain (IP, localhost, unknown).
+ */
+export function registrableDomainFromHost(host: string): string | null {
+  const normalized = stripIpv6Brackets(host).toLowerCase().replace(/^www\./i, "");
+  if (!normalized || !isHostSuitableForFaviconLookup(normalized)) {
+    return null;
+  }
+  const parsed = parsePublicSuffix(normalized, { allowPrivateDomains: true });
+  const domain = parsed.domain?.toLowerCase() ?? null;
+  if (!domain || !isHostSuitableForFaviconLookup(domain)) {
+    return null;
+  }
+  return domain;
+}
+
+function tryParseHttpUrl(input: string): URL | null {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    if (!isAllowedFaviconFetchUrl(url)) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe order for one Website URL field:
+ * full URL → subdomain/origin root → registrable domain root (deduped).
+ */
+export function expandFaviconProbeUrls(input: string): string[] {
+  const url = tryParseHttpUrl(input);
+  if (!url) {
+    return [];
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (candidate: string) => {
+    if (seen.has(candidate)) {
+      return;
+    }
+    seen.add(candidate);
+    out.push(candidate);
+  };
+
+  push(url.href);
+
+  const originRoot = `${url.origin}/`;
+  push(originRoot);
+
+  const host = url.hostname.replace(/^www\./i, "");
+  const domain = registrableDomainFromHost(host);
+  if (domain && domain !== host.toLowerCase()) {
+    push(`${url.protocol}//${domain}/`);
+  }
+
+  return out;
+}
+
 /** @deprecated Use {@link hostsFromUrls} + {@link fetchRemoteFaviconBytesFromUrls}. */
 export function primaryHostFromUrls(urls: readonly string[]): string | null {
   return hostsFromUrls(urls)[0] ?? null;
@@ -383,7 +458,18 @@ function redirectLocation(
   }
 }
 
-async function fetchImageBytes(urlString: string, redirectCount = 0): Promise<Uint8Array | null> {
+type FaviconFetchKind = "image" | "html";
+
+type FaviconFetchedBody = {
+  bytes: Uint8Array;
+  contentType: string;
+};
+
+async function fetchOutboundBytes(
+  urlString: string,
+  kind: FaviconFetchKind,
+  redirectCount = 0,
+): Promise<FaviconFetchedBody | null> {
   if (redirectCount > MAX_REDIRECTS) {
     return null;
   }
@@ -404,6 +490,12 @@ async function fetchImageBytes(urlString: string, redirectCount = 0): Promise<Ui
     return null;
   }
 
+  const maxBytes = kind === "html" ? MAX_FAVICON_HTML_BYTES : MAX_FAVICON_RESPONSE_BYTES;
+  const accept =
+    kind === "html"
+      ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
+      : "image/png,image/x-icon,image/vnd.microsoft.icon,image/*,*/*;q=0.8";
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -411,37 +503,192 @@ async function fetchImageBytes(urlString: string, redirectCount = 0): Promise<Ui
       signal: controller.signal,
       pinned,
       headers: {
-        Accept: "image/png,image/x-icon,image/vnd.microsoft.icon,image/*,*/*;q=0.8",
+        Accept: accept,
+        "User-Agent": FAVICON_USER_AGENT,
       },
     });
 
     const next = redirectLocation(response.status, response.headers, url.href);
     if (next) {
       // Drain unused redirect body so sockets can close cleanly.
-      await response.readBody(MAX_FAVICON_RESPONSE_BYTES).catch(() => null);
-      return fetchImageBytes(next, redirectCount + 1);
+      await response.readBody(maxBytes).catch(() => null);
+      return fetchOutboundBytes(next, kind, redirectCount + 1);
     }
 
     if (response.status < 200 || response.status >= 300) {
-      await response.readBody(MAX_FAVICON_RESPONSE_BYTES).catch(() => null);
+      await response.readBody(maxBytes).catch(() => null);
       return null;
     }
 
     const contentType = (headerValue(response.headers, "content-type") ?? "").toLowerCase();
-    if (contentType && !contentType.startsWith("image/") && !contentType.includes("octet-stream")) {
-      await response.readBody(MAX_FAVICON_RESPONSE_BYTES).catch(() => null);
+    if (kind === "image") {
+      if (contentType && !contentType.startsWith("image/") && !contentType.includes("octet-stream")) {
+        await response.readBody(maxBytes).catch(() => null);
+        return null;
+      }
+    } else if (
+      contentType &&
+      !contentType.includes("text/html") &&
+      !contentType.includes("application/xhtml") &&
+      !contentType.includes("text/plain") &&
+      !contentType.includes("octet-stream")
+    ) {
+      await response.readBody(maxBytes).catch(() => null);
       return null;
     }
 
-    const bytes = await response.readBody(MAX_FAVICON_RESPONSE_BYTES);
-    if (!bytes || bytes.byteLength === 0 || !looksLikeImageBytes(bytes)) {
+    const bytes = await response.readBody(maxBytes);
+    if (!bytes || bytes.byteLength === 0) {
       return null;
     }
-    return bytes;
+    if (kind === "image" && !looksLikeImageBytes(bytes)) {
+      return null;
+    }
+    return { bytes, contentType };
   } catch {
     return null;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function fetchImageBytes(urlString: string): Promise<Uint8Array | null> {
+  const fetched = await fetchOutboundBytes(urlString, "image");
+  return fetched?.bytes ?? null;
+}
+
+type HtmlIconCandidate = {
+  href: string;
+  rel: string;
+  sizes: string;
+};
+
+function parseHtmlAttribute(tag: string, name: string): string | null {
+  const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
+  const match = re.exec(tag);
+  if (!match) {
+    return null;
+  }
+  return (match[1] ?? match[2] ?? match[3] ?? "").trim() || null;
+}
+
+function isIconRelToken(rel: string): boolean {
+  const tokens = rel
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return tokens.some(
+    (token) =>
+      token === "icon" ||
+      token === "shortcut" ||
+      token === "shortcut-icon" ||
+      token === "apple-touch-icon" ||
+      token === "apple-touch-icon-precomposed" ||
+      token === "mask-icon",
+  );
+}
+
+/** Extract `<link rel~=icon|apple-touch-icon>` hrefs from an HTML document. */
+export function extractIconCandidatesFromHtml(html: string, baseUrl: string): HtmlIconCandidate[] {
+  const out: HtmlIconCandidate[] = [];
+  const linkRe = /<link\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(html)) !== null) {
+    const tag = match[0] ?? "";
+    const rel = parseHtmlAttribute(tag, "rel");
+    const href = parseHtmlAttribute(tag, "href");
+    if (!rel || !href || !isIconRelToken(rel)) {
+      continue;
+    }
+    let absolute: string;
+    try {
+      absolute = new URL(href, baseUrl).href;
+    } catch {
+      continue;
+    }
+    out.push({
+      href: absolute,
+      rel: rel.toLowerCase(),
+      sizes: (parseHtmlAttribute(tag, "sizes") ?? "").toLowerCase(),
+    });
+  }
+  return out;
+}
+
+function maxSizeHint(sizes: string): number {
+  if (!sizes || sizes === "any") {
+    return sizes === "any" ? 512 : 0;
+  }
+  let best = 0;
+  for (const part of sizes.split(/\s+/)) {
+    const match = /^(\d+)x(\d+)$/i.exec(part);
+    if (!match) {
+      continue;
+    }
+    const area = Number(match[1]) * Number(match[2]);
+    if (Number.isFinite(area) && area > best) {
+      best = area;
+    }
+  }
+  return best;
+}
+
+function scoreHtmlIconCandidate(candidate: HtmlIconCandidate): number {
+  const rel = candidate.rel;
+  let score = maxSizeHint(candidate.sizes);
+  if (rel.includes("apple-touch-icon")) {
+    score += 10_000;
+  } else if (/\bicon\b/.test(rel)) {
+    score += 5_000;
+  } else if (rel.includes("mask-icon")) {
+    score += 1_000;
+  }
+  // Prefer raster-looking paths over SVG (we do not rasterize SVG).
+  if (/\.svg(\?|#|$)/i.test(candidate.href)) {
+    score -= 50_000;
+  }
+  return score;
+}
+
+async function fetchBestIconFromHtmlPage(pageUrl: string): Promise<Uint8Array | null> {
+  const page = await fetchOutboundBytes(pageUrl, "html");
+  if (!page) {
+    return null;
+  }
+  // Some sites may serve the icon itself at the page URL.
+  if (
+    page.contentType.startsWith("image/") &&
+    looksLikeImageBytes(page.bytes) &&
+    page.bytes.byteLength >= 48 &&
+    page.bytes.byteLength <= MAX_FAVICON_RESPONSE_BYTES
+  ) {
+    return page.bytes;
+  }
+
+  const html = new TextDecoder("utf-8", { fatal: false }).decode(page.bytes);
+  const candidates = extractIconCandidatesFromHtml(html, pageUrl)
+    .slice()
+    .sort((a, b) => scoreHtmlIconCandidate(b) - scoreHtmlIconCandidate(a));
+
+  for (const candidate of candidates) {
+    if (/\.svg(\?|#|$)/i.test(candidate.href)) {
+      continue;
+    }
+    const bytes = await fetchImageBytes(candidate.href);
+    if (bytes && bytes.byteLength >= 48) {
+      return bytes;
+    }
+  }
+  return null;
+}
+
+function isOriginRootUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    return (url.pathname === "/" || url.pathname === "") && !url.search && !url.hash;
+  } catch {
+    return false;
   }
 }
 
@@ -499,7 +746,7 @@ export async function isGenericOrEmptyFavicon(bytes: Uint8Array): Promise<boolea
   return signatures.some((signature) => bytesEqual(bytes, signature));
 }
 
-async function fetchDirectFaviconBytes(host: string): Promise<Uint8Array | null> {
+async function fetchDirectWellKnownFaviconBytes(host: string): Promise<Uint8Array | null> {
   for (const url of buildDirectFaviconUrls(host)) {
     const bytes = await fetchImageBytes(url);
     if (bytes && bytes.byteLength >= 48) {
@@ -507,6 +754,29 @@ async function fetchDirectFaviconBytes(host: string): Promise<Uint8Array | null>
     }
   }
   return null;
+}
+
+/**
+ * Direct provider for one probe URL:
+ * HTML `<link rel=icon>` (and related) first, then well-known origin paths for root probes.
+ */
+async function fetchDirectFaviconForProbeUrl(probeUrl: string): Promise<Uint8Array | null> {
+  const fromHtml = await fetchBestIconFromHtmlPage(probeUrl);
+  if (fromHtml) {
+    return fromHtml;
+  }
+
+  if (!isOriginRootUrl(probeUrl)) {
+    return null;
+  }
+
+  let host: string;
+  try {
+    host = new URL(probeUrl).hostname.replace(/^www\./i, "");
+  } catch {
+    return null;
+  }
+  return fetchDirectWellKnownFaviconBytes(host);
 }
 
 async function fetchGoogleFaviconBytes(host: string): Promise<Uint8Array | null> {
@@ -538,11 +808,13 @@ export async function fetchRemoteFaviconBytes(
     return fetchGoogleFaviconBytes(normalized);
   }
 
-  return fetchDirectFaviconBytes(normalized);
+  // Host-only entry point: treat as origin root (HTML `/` + well-known paths).
+  return fetchDirectFaviconForProbeUrl(`https://${normalized}/`);
 }
 
 /**
- * Walk URLs in list order; return bytes for the first host whose favicon is not generic/empty.
+ * Walk Website URL fields in list order. For each field probe:
+ * full URL → subdomain/origin root → registrable domain root.
  */
 export async function fetchRemoteFaviconBytesFromUrls(
   urls: readonly string[],
@@ -553,11 +825,37 @@ export async function fetchRemoteFaviconBytesFromUrls(
     return null;
   }
 
-  const hosts = hostsFromUrls(urls);
-  for (const host of hosts) {
-    const bytes = await fetchRemoteFaviconBytes(host, options);
-    if (bytes) {
-      return bytes;
+  for (const rawUrl of urls) {
+    const probes = expandFaviconProbeUrls(rawUrl);
+    if (probes.length === 0) {
+      continue;
+    }
+
+    if (provider === "google") {
+      const hosts: string[] = [];
+      const seen = new Set<string>();
+      for (const probe of probes) {
+        const host = parseHostFromUrl(probe);
+        if (!host || seen.has(host)) {
+          continue;
+        }
+        seen.add(host);
+        hosts.push(host);
+      }
+      for (const host of hosts) {
+        const bytes = await fetchGoogleFaviconBytes(host);
+        if (bytes) {
+          return bytes;
+        }
+      }
+      continue;
+    }
+
+    for (const probe of probes) {
+      const bytes = await fetchDirectFaviconForProbeUrl(probe);
+      if (bytes) {
+        return bytes;
+      }
     }
   }
   return null;

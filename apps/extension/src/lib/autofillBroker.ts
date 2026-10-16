@@ -74,6 +74,81 @@ function primaryLoginWebsiteUrl(item: {
   return "";
 }
 
+/** All non-empty URL fields in form order (same probe order as web `/favicon/preview`). */
+function collectItemWebsiteUrls(item: {
+  fields: { type: string; value: { kind: string; url?: string } }[];
+}): string[] {
+  const out: string[] = [];
+  for (const field of item.fields) {
+    if (field.type === "url" && field.value.kind === "url" && field.value.url?.trim()) {
+      out.push(field.value.url.trim());
+    }
+  }
+  return out;
+}
+
+/**
+ * Best-effort website favicon sync after create/update.
+ * Skips manual icons; clears website favicon when no remote icon is found.
+ */
+async function syncWebsiteFaviconForItem(input: {
+  apiBaseUrl: string;
+  accessToken: string;
+  vaultKey: Uint8Array;
+  vault: { id: string };
+  controller: {
+    getItemById: (itemId: string) => ItemPlaintextV2 | undefined;
+    updateItem: (item: ItemPlaintextV2) => Promise<unknown>;
+  };
+  item: ItemPlaintextV2;
+}): Promise<void> {
+  if (input.item.faviconSource === "manual") {
+    return;
+  }
+  const urls = collectItemWebsiteUrls(input.item);
+  if (urls.length === 0) {
+    if (input.item.faviconId || input.item.faviconSource) {
+      const current = input.controller.getItemById(input.item.itemId) ?? input.item;
+      const cleared: ItemPlaintextV2 = { ...current, updatedAtMs: Date.now() };
+      delete cleared.faviconId;
+      delete cleared.faviconSource;
+      await input.controller.updateItem(cleared);
+    }
+    return;
+  }
+
+  const png = await previewFaviconPng(input.apiBaseUrl, input.accessToken, urls);
+  if (!png || png.byteLength === 0) {
+    if (input.item.faviconId || input.item.faviconSource === "website") {
+      const current = input.controller.getItemById(input.item.itemId) ?? input.item;
+      const cleared: ItemPlaintextV2 = { ...current, updatedAtMs: Date.now() };
+      delete cleared.faviconId;
+      delete cleared.faviconSource;
+      await input.controller.updateItem(cleared);
+    }
+    return;
+  }
+
+  const faviconId = await uploadFaviconAttachment({
+    apiBaseUrl: input.apiBaseUrl,
+    accessToken: input.accessToken,
+    vaultId: input.vault.id,
+    itemId: input.item.itemId,
+    vaultKey: input.vaultKey,
+    pngBytes: png,
+  });
+  if (!faviconId) {
+    return;
+  }
+  const current = input.controller.getItemById(input.item.itemId) ?? input.item;
+  await input.controller.updateItem({
+    ...current,
+    faviconId,
+    faviconSource: "website",
+    updatedAtMs: Date.now(),
+  });
+}
+
 async function resolveUnlockUserId(): Promise<{ userId: string; unlocked: boolean } | null> {
   const session = await readSession();
   if (!session) {
@@ -831,6 +906,31 @@ export async function handleAutofillSave(input: {
           }),
         };
         await controller.updateItem(updated);
+        // Refresh website favicon when the URL (or other login fields) change.
+        try {
+          const vault =
+            vaults.find((entry) => entry.id === updated.vaultId) ??
+            vaults.find((entry) => entry.isPersonal) ??
+            vaults[0];
+          if (vault) {
+            const vaultKey = await resolveVaultItemEncryptionKey({
+              vault,
+              accountVaultKey: fresh.vaultKey,
+              core,
+              encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+            });
+            await syncWebsiteFaviconForItem({
+              apiBaseUrl: profile.apiBaseUrl,
+              accessToken: session.access_token,
+              vaultKey,
+              vault,
+              controller,
+              item: updated,
+            });
+          }
+        } catch {
+          /* favicon optional */
+        }
         await touchExtensionUnlockSession(session.user_id);
         return { status: "ok", itemId: existingItem.itemId };
       }
@@ -869,41 +969,26 @@ export async function handleAutofillSave(input: {
         }),
       };
 
-      const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, [input.websiteUrl]);
-
       await controller.createItem(item);
 
       // Best-effort favicon after create.
-      if (png && png.byteLength > 0) {
-        try {
-          const vaultKey = await resolveVaultItemEncryptionKey({
-            vault: personal,
-            accountVaultKey: fresh.vaultKey,
-            core,
-            encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
-          });
-          const faviconId = await uploadFaviconAttachment({
-            apiBaseUrl: profile.apiBaseUrl,
-            accessToken: session.access_token,
-            vaultId: personal.id,
-            itemId,
-            vaultKey,
-            pngBytes: png,
-          });
-          if (faviconId) {
-            const created = controller.getItemById(itemId);
-            if (created) {
-              await controller.updateItem({
-                ...created,
-                faviconId,
-                faviconSource: "website",
-                updatedAtMs: Date.now(),
-              });
-            }
-          }
-        } catch {
-          // Item is saved; favicon is optional.
-        }
+      try {
+        const vaultKey = await resolveVaultItemEncryptionKey({
+          vault: personal,
+          accountVaultKey: fresh.vaultKey,
+          core,
+          encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+        });
+        await syncWebsiteFaviconForItem({
+          apiBaseUrl: profile.apiBaseUrl,
+          accessToken: session.access_token,
+          vaultKey,
+          vault: personal,
+          controller,
+          item,
+        });
+      } catch {
+        // Item is saved; favicon is optional.
       }
 
       await touchExtensionUnlockSession(session.user_id);
@@ -1065,13 +1150,38 @@ export async function handleAutofillSaveFormCommit(
         ) {
           return { status: "error", message: "ITEM_NOT_FOUND" };
         }
-        await controller.updateItem({
+        const merged: ItemPlaintextV2 = {
           ...item,
           createdAtMs: existing.createdAtMs,
           updatedAtMs: Date.now(),
           faviconId: item.faviconId ?? existing.faviconId,
           faviconSource: item.faviconSource ?? existing.faviconSource,
-        });
+        };
+        await controller.updateItem(merged);
+        try {
+          const vault =
+            vaults.find((entry) => entry.id === merged.vaultId) ??
+            vaults.find((entry) => entry.isPersonal) ??
+            vaults[0];
+          if (vault) {
+            const vaultKey = await resolveVaultItemEncryptionKey({
+              vault,
+              accountVaultKey: fresh.vaultKey,
+              core,
+              encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+            });
+            await syncWebsiteFaviconForItem({
+              apiBaseUrl: profile.apiBaseUrl,
+              accessToken: session.access_token,
+              vaultKey,
+              vault,
+              controller,
+              item: merged,
+            });
+          }
+        } catch {
+          /* favicon optional */
+        }
         await touchExtensionUnlockSession(session.user_id);
         return { status: "ok", itemId: item.itemId };
       }
@@ -1087,40 +1197,23 @@ export async function handleAutofillSaveFormCommit(
       };
       await controller.createItem(toCreate);
 
-      const websiteUrl = primaryLoginWebsiteUrl(toCreate);
-      if (websiteUrl) {
-        try {
-          const png = await previewFaviconPng(profile.apiBaseUrl, session.access_token, [websiteUrl]);
-          if (png && png.byteLength > 0) {
-            const vaultKey = await resolveVaultItemEncryptionKey({
-              vault,
-              accountVaultKey: fresh.vaultKey,
-              core,
-              encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
-            });
-            const faviconId = await uploadFaviconAttachment({
-              apiBaseUrl: profile.apiBaseUrl,
-              accessToken: session.access_token,
-              vaultId: vault.id,
-              itemId: toCreate.itemId,
-              vaultKey,
-              pngBytes: png,
-            });
-            if (faviconId) {
-              const created = controller.getItemById(toCreate.itemId);
-              if (created) {
-                await controller.updateItem({
-                  ...created,
-                  faviconId,
-                  faviconSource: "website",
-                  updatedAtMs: Date.now(),
-                });
-              }
-            }
-          }
-        } catch {
-          /* favicon optional */
-        }
+      try {
+        const vaultKey = await resolveVaultItemEncryptionKey({
+          vault,
+          accountVaultKey: fresh.vaultKey,
+          core,
+          encryptedPrivateKeyPayload: bundle.encrypted_private_key.payload,
+        });
+        await syncWebsiteFaviconForItem({
+          apiBaseUrl: profile.apiBaseUrl,
+          accessToken: session.access_token,
+          vaultKey,
+          vault,
+          controller,
+          item: toCreate,
+        });
+      } catch {
+        /* favicon optional */
       }
 
       await touchExtensionUnlockSession(session.user_id);
