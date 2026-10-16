@@ -377,7 +377,12 @@ export class DeviceService {
       },
       variables: {
         deviceName: input.deviceName,
-        platform: `${deviceChannelLabel(input)} · ${clientTypeLabel(input.clientType)}`,
+        platform: `${deviceChannelLabel({
+          platform: input.platform,
+          clientType: input.clientType,
+          deviceName: input.deviceName,
+          deviceFingerprint: input.deviceFingerprint,
+        })} · ${clientTypeLabel(input.clientType)}`,
         osName: cleanString(input.osName, "unknown"),
         requestIp: ip,
         country,
@@ -655,11 +660,19 @@ function cleanString(value: string, fallback: string): string {
   return trimmed.length > 0 ? trimmed.slice(0, 255) : fallback;
 }
 
+/** Channel labels aligned with UI `formatDeviceChannel` (`@okkey/ui`). */
 function deviceChannelLabel(input: {
   platform: string;
   clientType: string;
   deviceName: string;
+  deviceFingerprint?: string;
 }): string {
+  const fingerprint = (input.deviceFingerprint ?? "").trim().toLowerCase();
+  if (fingerprint.startsWith("extension-")) return "Extension";
+  if (fingerprint.startsWith("mobile_app-")) return "Mobile";
+  if (fingerprint.startsWith("desktop_app-")) return "Desktop";
+  if (fingerprint.startsWith("web_app-")) return "Web";
+
   const fromName = input.deviceName.trim().match(/^(Web|Mobile|Desktop|Extension)\b/u);
   if (fromName?.[1]) {
     return fromName[1];
@@ -669,12 +682,14 @@ function deviceChannelLabel(input: {
   if (input.platform.trim().toLowerCase() === "mobile" || clientType.includes("mobile")) {
     return "Mobile";
   }
-  if (clientType === "desktop") return "Desktop";
+  if (clientType.includes("desktop")) return "Desktop";
   return "Web";
 }
 
+/** Client labels aligned with UI `formatClientLabelFromType` (`@okkey/ui`). */
 function clientTypeLabel(clientType: string): string {
   const value = clientType.trim().toLowerCase();
+  if (!value || value === "unknown") return "App";
   const labels: Record<string, string> = {
     chrome: "Chrome",
     safari: "Safari",
@@ -685,11 +700,18 @@ function clientTypeLabel(clientType: string): string {
     vivaldi: "Vivaldi",
     tor: "Tor",
     web: "Web",
+    web_app: "Web",
     mobile: "App",
+    mobile_app: "App",
     desktop: "App",
+    desktop_app: "App",
     extension: "Extension",
   };
-  return labels[value] ?? (value || "App");
+  if (labels[value]) return labels[value];
+  if (value.includes("extension")) return "Extension";
+  if (value.includes("mobile") || value.includes("desktop")) return "App";
+  if (value.includes("browser") || value.includes("web")) return "Web";
+  return value;
 }
 
 function normalizeFingerprint(value: string | null | undefined): string | null {

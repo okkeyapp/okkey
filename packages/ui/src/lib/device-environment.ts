@@ -241,7 +241,7 @@ export function formatDeviceChannel(
   const clientType = device.client_type?.trim().toLowerCase() ?? "";
   if (clientType.includes("extension")) return "Extension";
   if (device.platform === "mobile" || clientType.includes("mobile")) return "Mobile";
-  if (clientType === "desktop") return "Desktop";
+  if (clientType.includes("desktop")) return "Desktop";
 
   // UA parse last — it cannot distinguish Extension from Web.
   if (parsed) {
