@@ -1623,6 +1623,7 @@
   "web.invite.alreadyMember": "Вы уже участник этого пространства.",
   "web.invite.emailMismatch": "Приглашение отправлено на другой адрес электронной почты.",
   "web.invite.errorGeneric": "Не удалось обработать приглашение. Попробуйте ещё раз.",
+  "web.invite.errorRateLimited": "Слишком много попыток, повторите через {minutes} мин.",
   "account.restore.enterprise.devices.intro": "Создайте запрос на восстановление, затем подтвердите его на другом доверенном устройстве с разблокированным хранилищем.",
   "account.restore.enterprise.devices.start": "Запросить восстановление через устройство",
   "account.restore.enterprise.devices.statusTitle": "Восстановление через устройство",
