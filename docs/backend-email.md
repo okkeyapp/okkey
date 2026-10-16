@@ -34,6 +34,8 @@ Templates are always rendered in the API process. The **transport** step depends
 
 Both API and worker validate `EMAIL_PROVIDER` transport config on startup (including queue mode). A missing SES region / HTTP API endpoint fails the process with a non-zero exit so compose restart/alerts can fire instead of leaving mail stranded in Redis.
 
+In queue mode, SES / `http-api` responses with HTTP **4xx** (except **429**) are treated as permanent and dead-lettered immediately; **429**, **5xx**, network/SMTP failures still retry with backoff (default 5 attempts).
+
 Self-host compose sets `EMAIL_DELIVERY_MODE=queue` and runs the worker. Details: [`services/worker/README.md`](../services/worker/README.md).
 
 ## Locale selection

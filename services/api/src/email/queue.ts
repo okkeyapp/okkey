@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "../logger.ts";
-import { formatEmailFailureReason } from "./errors.ts";
+import { formatEmailFailureReason, isRetryableEmailSendFailure } from "./errors.ts";
 import type { EmailMessage, EmailSender } from "./service.ts";
 
 
@@ -174,13 +174,15 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
       attempts: nextAttempts,
       lastError: message,
     };
-    if (nextAttempts >= maxAttempts) {
+    const retryable = isRetryableEmailSendFailure(error);
+    if (!retryable || nextAttempts >= maxAttempts) {
       await deps.redis.lPush(EMAIL_DEAD_KEY, serializeEmailJob(updated));
       deps.logger.error("email job dead-lettered", {
         jobId: job.id,
         attempts: nextAttempts,
         to: job.message.to,
         error: message,
+        ...(retryable ? {} : { retryable: false }),
       });
       return;
     }

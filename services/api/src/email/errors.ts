@@ -61,3 +61,33 @@ export function toPublicEmailErrorResponse(error: EmailTemplateError): {
     message: error.message,
   };
 }
+
+/** HTTP status attached by SES / http-api transports (`details.status`). */
+export function emailTransportHttpStatus(error: unknown): number | undefined {
+  if (!(error instanceof EmailTemplateError)) {
+    return undefined;
+  }
+  const status = error.details?.status;
+  if (typeof status === "number" && Number.isFinite(status)) {
+    return status;
+  }
+  return undefined;
+}
+
+/**
+ * Whether the email queue consumer should retry after a transport failure.
+ * Permanent HTTP 4xx (except 429) are not retryable; unknown/SMTP/5xx/429 are.
+ */
+export function isRetryableEmailSendFailure(error: unknown): boolean {
+  const status = emailTransportHttpStatus(error);
+  if (status === undefined) {
+    return true;
+  }
+  if (status === 429) {
+    return true;
+  }
+  if (status >= 400 && status < 500) {
+    return false;
+  }
+  return true;
+}
