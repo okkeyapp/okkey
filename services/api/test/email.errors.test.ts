@@ -3,8 +3,21 @@ import assert from "node:assert/strict";
 import {
   EmailTemplateError,
   formatEmailFailureReason,
+  sanitizeEmailSubjectForLogs,
   toPublicEmailErrorResponse,
 } from "../src/email/errors.ts";
+
+test("sanitizeEmailSubjectForLogs redacts digit runs", () => {
+  assert.equal(
+    sanitizeEmailSubjectForLogs("123456 is your Okkey sign-in code"),
+    "****** is your Okkey sign-in code",
+  );
+  assert.equal(
+    sanitizeEmailSubjectForLogs("654321 — код подтверждения нового email в Okkey"),
+    "****** — код подтверждения нового email в Okkey",
+  );
+  assert.equal(sanitizeEmailSubjectForLogs("Invitation to workspace"), "Invitation to workspace");
+});
 
 test("toPublicEmailErrorResponse strips transport cause from client payload", () => {
   const error = new EmailTemplateError("EMAIL_SEND_FAILED", "smtp send failed", {

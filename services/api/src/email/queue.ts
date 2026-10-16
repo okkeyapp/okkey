@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "../logger.ts";
-import { formatEmailFailureReason, isRetryableEmailSendFailure } from "./errors.ts";
+import {
+  formatEmailFailureReason,
+  isRetryableEmailSendFailure,
+  sanitizeEmailSubjectForLogs,
+} from "./errors.ts";
 import type { EmailMessage, EmailSender } from "./service.ts";
 
 
@@ -160,7 +164,7 @@ export class QueuedEmailSender implements EmailSender {
     this.logger?.info("email enqueued", {
       jobId: job.id,
       to: message.to,
-      subject: message.subject,
+      subject: sanitizeEmailSubjectForLogs(message.subject),
     });
   }
 }
@@ -260,7 +264,7 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
         jobId: job.id,
         attempts: job.attempts,
         to: job.message.to,
-        subject: job.message.subject,
+        subject: sanitizeEmailSubjectForLogs(job.message.subject),
       });
     } catch (error) {
       await handleFailure(job, error);

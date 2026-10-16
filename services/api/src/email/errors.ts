@@ -26,6 +26,14 @@ export function isEmailTransportFailureCode(code: EmailPipelineErrorCode): boole
 }
 
 /**
+ * Redact digit runs in email subjects before writing them to logs.
+ * Keeps template wording visible while stripping numeric tokens from the subject line.
+ */
+export function sanitizeEmailSubjectForLogs(subject: string): string {
+  return subject.replace(/\d+/g, (digits) => "*".repeat(digits.length));
+}
+
+/**
  * Internal/ops-facing reason (logs, dead-letter). Includes transport `cause` when present.
  */
 export function formatEmailFailureReason(error: unknown): string {

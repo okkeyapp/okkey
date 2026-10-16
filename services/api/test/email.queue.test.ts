@@ -94,6 +94,50 @@ test("QueuedEmailSender pushes serialized jobs to Redis list", async () => {
   assert.ok(job.id.length > 0);
 });
 
+test("QueuedEmailSender and consumer log redacted subjects", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const entries: Array<{ message: string; extra: Record<string, unknown> }> = [];
+  const logger = {
+    info(message: string, extra?: Record<string, unknown>) {
+      entries.push({ message, extra: extra ?? {} });
+    },
+    warn() {},
+    error() {},
+  };
+  const codeSubject = "146805 is your Okkey email change code";
+  const message: EmailMessage = {
+    ...sampleMessage,
+    subject: codeSubject,
+  };
+  await new QueuedEmailSender(redis, logger).send(message);
+  const queuedRaw = redis.peekList(EMAIL_QUEUE_KEY)[0]!;
+  assert.equal(parseEmailJob(queuedRaw).message.subject, codeSubject);
+
+  const enqueued = entries.find((e) => e.message === "email enqueued");
+  assert.ok(enqueued);
+  assert.equal(enqueued.extra.subject, "****** is your Okkey email change code");
+  assert.equal(JSON.stringify(enqueued.extra).includes("146805"), false);
+
+  const transport: EmailSender = {
+    async send() {},
+  };
+  const consumer = startEmailQueueConsumer({
+    redis,
+    transport,
+    logger,
+    pollTimeoutSeconds: 1,
+  });
+  for (let i = 0; i < 40 && !entries.some((e) => e.message === "email job sent"); i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await consumer.stop();
+
+  const sent = entries.find((e) => e.message === "email job sent");
+  assert.ok(sent);
+  assert.equal(sent.extra.subject, "****** is your Okkey email change code");
+  assert.equal(JSON.stringify(sent.extra).includes("146805"), false);
+});
+
 test("email queue consumer sends via transport and clears queue", async () => {
   const redis = new MemoryEmailQueueRedis();
   const sent: EmailMessage[] = [];
