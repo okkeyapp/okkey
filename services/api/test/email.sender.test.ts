@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assertEmailTransportConfig,
   createEmailSender,
+  createOutboundEmailSender,
   HttpApiEmailSender,
   LoggerEmailSender,
   type EmailMessage,
 } from "../src/email/service.ts";
 import type { ApiConfig } from "../src/config.ts";
+import { MemoryEmailQueueRedis, QueuedEmailSender } from "../src/email/queue.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig({ emailApiTimeoutMs: 1000 });
@@ -202,6 +205,54 @@ test("createEmailSender validates http-api config", async () => {
       ),
     /EMAIL_API_ENDPOINT is required/,
   );
+});
+
+test("assertEmailTransportConfig rejects incomplete ses env", () => {
+  assert.throws(
+    () =>
+      assertEmailTransportConfig({
+        ...baseConfig,
+        emailProvider: "ses",
+        sesRegion: "",
+        sesAccessKeyId: "id",
+        sesSecretAccessKey: "secret",
+      }),
+    /EMAIL_SES_REGION is required/,
+  );
+});
+
+test("createOutboundEmailSender validates transport even in queue mode", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  await assert.rejects(
+    () =>
+      createOutboundEmailSender(
+        {
+          ...baseConfig,
+          emailProvider: "ses",
+          emailDeliveryMode: "queue",
+          sesRegion: "",
+          sesAccessKeyId: "id",
+          sesSecretAccessKey: "secret",
+        },
+        { info() {}, warn() {}, error() {} },
+        redis,
+      ),
+    /EMAIL_SES_REGION is required/,
+  );
+});
+
+test("createOutboundEmailSender returns QueuedEmailSender when queue mode is valid", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const sender = await createOutboundEmailSender(
+    {
+      ...baseConfig,
+      emailProvider: "logger",
+      emailDeliveryMode: "queue",
+    },
+    { info() {}, warn() {}, error() {} },
+    redis,
+  );
+  assert.ok(sender instanceof QueuedEmailSender);
 });
 
 test("HttpApiEmailSender posts payload to configured endpoint", async () => {

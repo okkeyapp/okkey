@@ -98,13 +98,16 @@ async function main(): Promise<void> {
     attachments: attachmentService,
   });
 
+  // Validate/create transport before starting jobs so a bad EMAIL_* env exits
+  // instead of leaving purge/capsule timers + open Redis/Postgres sockets alive.
+  const emailTransport = await createTransportEmailSender(config, logger);
+
   const jobs = startBackgroundJobs({
     itemPurgeService,
     capsuleService,
     logger,
   });
 
-  const emailTransport = await createTransportEmailSender(config, logger);
   const emailConsumer = startEmailQueueConsumer({
     redis: storage.redis,
     transport: emailTransport,
@@ -138,5 +141,7 @@ void main().catch((error: unknown) => {
   logger.error("worker failed to start", {
     error: error instanceof Error ? error.message : "unknown error",
   });
-  process.exitCode = 1;
+  // Force exit: open storage sockets (and any started jobs) keep the event loop
+  // alive if we only set process.exitCode.
+  process.exit(1);
 });

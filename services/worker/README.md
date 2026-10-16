@@ -34,6 +34,8 @@ Copy `services/worker/.env.example` for local overrides.
 
 On start the worker also runs SQL migrations (`schema_migrations`) under a Postgres advisory lock, so a compose or local race with the API is safe.
 
+If `EMAIL_PROVIDER` transport config is invalid (e.g. `ses` without `EMAIL_SES_REGION`), the worker logs `worker failed to start` and **exits with code 1** (does not stay alive while other jobs run). The API applies the same transport checks on startup, including when `EMAIL_DELIVERY_MODE=queue`.
+
 ## Email queue (Redis)
 
 Keys:
