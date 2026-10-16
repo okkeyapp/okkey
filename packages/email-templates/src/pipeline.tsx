@@ -1,5 +1,5 @@
 import { formatEmailMessage, type EmailLocale } from "@okkey/i18n";
-import { render } from "@react-email/render";
+import { renderEmailHtml, renderEmailPlainText } from "./render-email.js";
 import * as React from "react";
 import { AuthSignInCodeEmail } from "./components/AuthSignInCodeEmail.js";
 import { DeviceApprovalEmail } from "./components/DeviceApprovalEmail.js";
@@ -95,7 +95,7 @@ export async function renderAuthEmailCode(
     standard,
   );
   const element = <AuthSignInCodeEmail {...props} />;
-  const html = await render(element);
+  const html = renderEmailHtml(element);
   return { subject, html, text: plainText };
 }
 
@@ -146,8 +146,8 @@ export async function renderDeviceApprovalRequest(
   );
   const subject = formatEmailMessage(locale, "email.device.approval.subject", {});
   const element = <DeviceApprovalEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -180,8 +180,8 @@ export async function renderWorkspaceInvite(
     standard,
   );
   const element = <WorkspaceInviteEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -232,8 +232,8 @@ async function renderTwoFactorNotice(
     standard,
   );
   const element = <TwoFactorNoticeEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -306,8 +306,8 @@ export async function renderAccountEmailChanged(
     standard,
   );
   const element = <TwoFactorNoticeEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -364,8 +364,8 @@ export async function renderDeviceRecoveryApprovalRequest(
   );
   const subject = formatEmailMessage(locale, "email.device.recovery.subject", {});
   const element = <DeviceApprovalEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -403,8 +403,8 @@ export async function renderContactRecoveryReleaseRequest(
   );
   const subject = formatEmailMessage(locale, "email.contacts.recovery.subject", {});
   const element = <RecoveryActionEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -440,8 +440,8 @@ export async function renderTrustedContactInvite(
   );
   const subject = formatEmailMessage(locale, "email.contacts.invite.subject", {});
   const element = <RecoveryActionEmail {...props} />;
-  const html = await render(element);
-  const text = await render(element, { plainText: true });
+  const html = renderEmailHtml(element);
+  const text = renderEmailPlainText(element);
   return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
@@ -509,7 +509,7 @@ export async function renderPlanChangeRequest(
       ignoreIfMistake={standard.ignoreIfMistake}
     />
   );
-  const html = await render(element);
+  const html = renderEmailHtml(element);
   return { subject, html, text: plainText };
 }
 
