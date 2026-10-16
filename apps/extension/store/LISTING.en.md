@@ -1,10 +1,19 @@
 # Store listing — English (`1.0.0.2`)
 
-Use for Chrome Web Store, Edge Add-ons, Opera Add-ons, and Firefox AMO (default locale).
+Use for Chrome Web Store, Edge Add-ons, Opera Add-ons, and Firefox AMO.  
+**This release requires EN and RU** — Russian: [LISTING.ru.md](./LISTING.ru.md). Locale console steps: [LOCALES.md](./LOCALES.md).
+
+Package short string (`_locales/en` → `extDescription`) must stay in sync with **Short description** below.
+
+## Name
+
+```text
+Okkey
+```
 
 ## Short description
 
-**Limit ~132 characters (CWS manifest / short field).** Manifest already uses a close variant.
+**Limit ~132 characters (CWS / manifest short field).**
 
 ```text
 Self-hosted password manager: client-side vault, Q-day ready crypto, secure autofill.
@@ -17,6 +26,8 @@ Q-day ready, self-hosted password manager with client-side encryption, autofill,
 ```
 
 ## Detailed description
+
+**Edge Add-ons:** description per language must be **≥250** and ≤10 000 characters (this block qualifies).
 
 ```text
 Okkey is a self-hosted password manager built for maximum client-side protection — including cryptography designed with a post-quantum (Q-day) threat model in mind.
@@ -49,3 +60,10 @@ Extension build: 1.0.0.2.
 
 - Productivity / Privacy & Security  
 - Tags: password manager, autofill, self-hosted, encryption, 2FA, TOTP, privacy
+
+## Screenshot captions (optional; for AMO / Edge)
+
+1. Unlocked vault popup — browse and open saved items  
+2. Autofill suggestions on a login form  
+3. Server URL — connect the extension to your Okkey instance  
+4. Local unlock with master password  

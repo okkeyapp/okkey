@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "Okkey",
+    "description": "Extension name shown in the browser and store listing."
+  },
+  "extDescription": {
+    "message": "Self-hosted password manager: client-side vault, Q-day ready crypto, secure autofill.",
+    "description": "Short store / install description (keep ≤132 characters)."
+  },
+  "actionTitle": {
+    "message": "Okkey",
+    "description": "Toolbar button tooltip."
+  }
+}
