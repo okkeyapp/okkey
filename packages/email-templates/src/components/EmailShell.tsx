@@ -1,7 +1,7 @@
 import { Body, Container, Head, Html, Img, Preview, Section, Text } from "@react-email/components";
 import * as React from "react";
 
-import { OKKEY_MARK_PNG_DATA_URI } from "../assets/okkey-mark-data-uri.js";
+import { OKKEY_MARK_CID } from "../assets/okkey-mark.js";
 
 export const EMAIL_FONT_FAMILY =
   'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -39,7 +39,7 @@ export function EmailShell({ preview, footer, children }: EmailShellProps) {
               <tr>
                 <td style={logoCellStyle}>
                   <Img
-                    src={OKKEY_MARK_PNG_DATA_URI}
+                    src={`cid:${OKKEY_MARK_CID}`}
                     width={32}
                     height={32}
                     alt="Okkey"

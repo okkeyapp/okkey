@@ -3,7 +3,7 @@
 Transactional email uses:
 
 1. **`@okkey/i18n`** — ICU MessageFormat strings in `packages/i18n/src/locales/email/{en,ru}.json` (no HTML in translations; namespaced keys `email.*`).
-2. **`@okkey/email-templates`** — React Email components and render pipeline (`renderEmailTemplate` → `subject`, `html`, `text`).
+2. **`@okkey/email-templates`** — React Email components and render pipeline (`renderEmailTemplate` → `subject`, `html`, `text`). The shell logo is `cid:okkey-mark` (not a `data:` URI); SMTP/SES/HTTP transports attach the PNG inline.
 3. **`services/api`** — locale resolution, transport (`logger` / `smtp` / `ses` / `http-api`), feature hooks.
 
 ## Environment
@@ -96,6 +96,6 @@ Transactional mail is sent from `EmailTemplateService` when the corresponding AP
 ## Related paths
 
 - `packages/i18n/` — locales + `formatEmailMessage`
-- `packages/email-templates/` — React Email + `renderEmailTemplate`
-- `services/api/src/email/` — transport, `EmailTemplateService`, locale helpers
+- `packages/email-templates/` — React Email + `renderEmailTemplate` (logo CID: `okkey-mark`)
+- `services/api/src/email/` — transport, `EmailTemplateService`, locale helpers, CID inline attachment injection
 - `docs/architecture/06_backend_architecture.md` — backend overview

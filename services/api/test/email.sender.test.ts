@@ -313,11 +313,24 @@ test("SesEmailSender posts SigV4-signed SES v2 payload", async () => {
     from: "no-reply@okkey.local",
     subject: "Code",
     text: "123456",
-    html: "<p>123456</p>",
+    html: '<p><img src="cid:okkey-mark" alt="Okkey" />123456</p>',
   });
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails");
   assert.match(calls[0].authorization ?? "", /^AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE\//);
   assert.match(calls[0].body ?? "", /"FromEmailAddress":"no-reply@okkey.local"/);
+  assert.match(calls[0].body ?? "", /"Raw":\{"Data":"/);
+  assert.equal((calls[0].body ?? "").includes('"Simple"'), false);
+  const parsed = JSON.parse(calls[0].body ?? "{}") as {
+    Content?: { Raw?: { Data?: string } };
+  };
+  const raw = Buffer.from(parsed.Content?.Raw?.Data ?? "", "base64").toString("utf8");
+  assert.match(raw, /Content-ID: <okkey-mark>/);
+  assert.match(raw, /image\/png/);
+  const htmlB64 = Buffer.from(
+    '<p><img src="cid:okkey-mark" alt="Okkey" />123456</p>',
+    "utf8",
+  ).toString("base64");
+  assert.ok(raw.includes(htmlB64), "raw MIME must include base64 HTML with cid:okkey-mark");
 });

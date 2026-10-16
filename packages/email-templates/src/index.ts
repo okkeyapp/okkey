@@ -29,3 +29,11 @@ export type {
   WorkspaceInviteVariables,
 } from "./variables.js";
 export { EMAIL_TEMPLATE_VERSIONS, type EmailTemplateId } from "./versions.js";
+export {
+  OKKEY_MARK_CID,
+  OKKEY_MARK_CONTENT_TYPE,
+  OKKEY_MARK_FILENAME,
+  OKKEY_MARK_PNG_BASE64,
+  okkeyMarkInlineAttachment,
+  type OkkeyMarkInlineAttachment,
+} from "./assets/okkey-mark.js";

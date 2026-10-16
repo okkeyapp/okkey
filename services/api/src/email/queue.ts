@@ -89,6 +89,7 @@ export function parseEmailJob(raw: string): EmailJob {
       throw new Error(`email job message.${field} must be a string`);
     }
   }
+  const inlineAttachments = parseInlineAttachments(msg.inlineAttachments);
   return {
     id: typeof record.id === "string" ? record.id : randomUUID(),
     createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
@@ -100,8 +101,42 @@ export function parseEmailJob(raw: string): EmailJob {
       subject: msg.subject as string,
       text: msg.text as string,
       html: msg.html as string,
+      ...(inlineAttachments ? { inlineAttachments } : {}),
     },
   };
+}
+
+function parseInlineAttachments(
+  value: unknown,
+): EmailMessage["inlineAttachments"] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("email job message.inlineAttachments must be an array");
+  }
+  if (value.length === 0) {
+    return undefined;
+  }
+  const attachments: NonNullable<EmailMessage["inlineAttachments"]> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      throw new Error("email job inline attachment must be an object");
+    }
+    const row = item as Record<string, unknown>;
+    for (const field of ["cid", "filename", "contentType", "contentBase64"] as const) {
+      if (typeof row[field] !== "string" || (row[field] as string).length === 0) {
+        throw new Error(`email job inline attachment.${field} must be a non-empty string`);
+      }
+    }
+    attachments.push({
+      cid: row.cid as string,
+      filename: row.filename as string,
+      contentType: row.contentType as string,
+      contentBase64: row.contentBase64 as string,
+    });
+  }
+  return attachments;
 }
 
 /** API-side sender: enqueue rendered messages instead of hitting SMTP in the request path. */
