@@ -49,6 +49,8 @@ export interface EmailChangeConfirmInput {
   userId: string;
   challengeId: string;
   code: string;
+  locale?: string;
+  acceptLanguage?: string;
   requestIp: string;
 }
 
@@ -276,13 +278,15 @@ export class EmailChangeService {
       to: previousEmail,
       localeHints: {
         userLocale: previous.locale ?? null,
+        explicitLocale: input.locale,
+        acceptLanguage: input.acceptLanguage,
       },
       variables: {
         newEmailMasked: maskEmailForNotice(challenge.email),
         occurredAtIso: this.now().toISOString(),
         securitySettingsUrl: buildEmailAppPathUrl(
           this.config.publicAppBaseUrl,
-          "/settings/security",
+          "/items?popup=settings|twoFactor",
         ),
       },
     });

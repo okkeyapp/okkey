@@ -194,7 +194,7 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
 const accountEmailChangedVars = {
   newEmailMasked: "n***@example.com",
   occurredAtIso: "2026-01-01T12:00:00.000Z",
-  securitySettingsUrl: "https://app.example/settings/security",
+  securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
 } as const;
 
 test("renderEmailTemplate account_email_changed en and ru", async () => {
@@ -210,7 +210,9 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
     en.html,
     new RegExp(formatEmailMessage("en", "email.common.ignoreIfMistake", {}), "i"),
   );
-  assert.match(en.html, /settings\/security/);
+  assert.match(en.html, /popup=settings\|twoFactor/);
+  assert.match(en.text, /popup=settings\|twoFactor/);
+  assert.equal(en.html.includes("/settings/security"), false);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("account_email_changed", "ru", accountEmailChangedVars);
@@ -221,6 +223,7 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   assert.match(ru.html, /n\*\*\*@example\.com/);
   assert.match(ru.html, /изменён/i);
   assert.match(ru.html, /проигнорируйте/i);
+  assert.match(ru.html, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
 });
 

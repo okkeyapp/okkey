@@ -16,6 +16,7 @@ interface ResendBody {
 interface ConfirmBody {
   challengeId?: string;
   code?: string;
+  locale?: string;
 }
 
 type ResolveUserId = (req: Parameters<typeof getHeader>[0]) => Promise<string | null>;
@@ -123,6 +124,8 @@ export function createAccountEmailChangeConfirmRoute(
         userId,
         challengeId: body.challengeId,
         code: body.code,
+        locale: body.locale,
+        acceptLanguage: getHeader(ctx.req, "accept-language"),
         requestIp: requestClientIp(ctx.req, trustedProxyHops),
       });
       json(ctx.res, 200, result);
