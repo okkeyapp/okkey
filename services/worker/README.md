@@ -30,7 +30,7 @@ Copy `services/worker/.env.example` for local overrides.
 |-----|-------------------|--------------|
 | `item-purge` | 1 hour | Hard-deletes soft-deleted vault items past workspace retention; removes attachment objects from S3/MinIO |
 | `capsule-cleanup` | 60 seconds | Deletes capsules whose `delete_at` has passed and removes related files from object storage |
-| `email-queue` | Redis BRPOP | Consumes `okkey:email:queue`, sends via `EMAIL_PROVIDER` (smtp/ses/logger/http-api), retries with backoff, dead-letters to `okkey:email:dead` |
+| `email-queue` | Redis BRPOP | Consumes `okkey:email:queue`, sends via `EMAIL_PROVIDER` (smtp/ses/logger/http-api), retries with backoff (permanent HTTP 4xx except 429 → immediate dead-letter), dead-letters to `okkey:email:dead` |
 
 On start the worker also runs SQL migrations (`schema_migrations`) under a Postgres advisory lock, so a compose or local race with the API is safe.
 
@@ -44,7 +44,7 @@ Keys:
 |-----|------|---------|
 | `okkey:email:queue` | LIST | Ready jobs (API `LPUSH`, worker `BRPOP`) |
 | `okkey:email:delayed` | ZSET | Retries; score = unix ms when eligible |
-| `okkey:email:dead` | LIST | Failed after max attempts (default 5) |
+| `okkey:email:dead` | LIST | Failed after max attempts (default 5), or permanent HTTP 4xx (except 429) from SES / http-api |
 
 Payload: JSON `{ id, createdAt, attempts, message: { to, from, subject, text, html }, lastError? }`.
 
