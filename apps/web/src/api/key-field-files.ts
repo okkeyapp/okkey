@@ -64,6 +64,8 @@ export async function uploadEncryptedAttachment(input: {
   name: string;
   mimeType: string;
   sizeBytes?: number;
+  /** Marks record/template favicon uploads so the API skips files-in-items and size gates. */
+  purpose?: "item-favicon";
   onProgress?: (percent: number) => void;
 }): Promise<KeyFieldFileValue> {
   const encrypted = await encryptAttachmentPayload(input.vaultKey, input.plaintext, {
@@ -83,6 +85,9 @@ export async function uploadEncryptedAttachment(input: {
     xhr.setRequestHeader("X-File-Name", encodeURIComponent(input.name));
     xhr.setRequestHeader("X-File-Size", String(input.sizeBytes ?? input.plaintext.byteLength));
     xhr.setRequestHeader("X-Encrypted-Key", bytesToBase64(encrypted.encryptedKey));
+    if (input.purpose) {
+      xhr.setRequestHeader("X-Attachment-Purpose", input.purpose);
+    }
 
     xhr.upload.onprogress = (event) => {
       if (!input.onProgress || !event.lengthComputable) {

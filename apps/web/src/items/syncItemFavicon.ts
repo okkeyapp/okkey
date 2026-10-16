@@ -56,6 +56,7 @@ async function uploadFaviconAttachment(input: {
     name: FAVICON_ATTACHMENT_NAME,
     mimeType: FAVICON_ATTACHMENT_MIME_TYPE,
     sizeBytes: input.pngBytes.byteLength,
+    purpose: "item-favicon",
   });
 }
 

@@ -43,6 +43,7 @@ function uploadMocks(input: {
   filesInItemsEnabled?: boolean;
   planTier?: string;
   allowedFileExtensions?: string[];
+  maxFileSizeMb?: number;
   deploymentMode?: "saas" | "self_hosted";
   enterpriseModulesEnabled?: boolean;
 }) {
@@ -100,6 +101,7 @@ function uploadMocks(input: {
         filesInItemsEnabled: input.filesInItemsEnabled ?? false,
         planTier: input.planTier ?? "PREMIUM",
         allowedFileExtensions: input.allowedFileExtensions ?? ["pdf", "zip"],
+        ...(input.maxFileSizeMb !== undefined ? { maxFileSizeMb: input.maxFileSizeMb } : {}),
       });
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
@@ -306,7 +308,7 @@ test("AttachmentService allows workspace logo upload when files in items are dis
   assert.equal(getCreated()?.itemId, WORKSPACE_ID);
 });
 
-test("AttachmentService allows item favicon.png when files in items are disabled", async () => {
+test("AttachmentService allows item-favicon purpose when files in items are disabled", async () => {
   const { service, getCreated } = uploadMocks({
     filesInItemsEnabled: false,
     planTier: "FREE",
@@ -323,10 +325,37 @@ test("AttachmentService allows item favicon.png when files in items are disabled
     encryptedBody: Uint8Array.from([1, 2, 3]),
     encryptedKey: Uint8Array.from([4, 5, 6]),
     sizeBytes: 123,
+    purpose: "item-favicon",
   });
 
   assert.equal(result.attachmentId, "1000000000000000003");
   assert.equal(getCreated()?.itemId, REGULAR_ITEM_ID);
+});
+
+test("AttachmentService does not treat favicon.png name alone as item favicon", async () => {
+  const { service } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "PREMIUM",
+    allowedFileExtensions: ["png", "pdf"],
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: REGULAR_ITEM_ID,
+        userId: USER_ID,
+        fileName: "favicon.png",
+        mimeType: "image/png",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "FILES_IN_ITEMS_DISABLED" &&
+      error.statusCode === 403,
+  );
 });
 
 test("AttachmentService still blocks non-favicon uploads when files in items are disabled", async () => {
@@ -352,6 +381,58 @@ test("AttachmentService still blocks non-favicon uploads when files in items are
       error instanceof AttachmentServiceError &&
       error.code === "FILES_IN_ITEMS_DISABLED" &&
       error.statusCode === 403,
+  );
+});
+
+test("AttachmentService skips workspace size limit for item-favicon purpose", async () => {
+  // 1 byte workspace cap would reject ordinary uploads; favicon purpose uses its own absolute cap.
+  const { service, getCreated } = uploadMocks({
+    filesInItemsEnabled: true,
+    planTier: "PREMIUM",
+    allowedFileExtensions: ["pdf"],
+    maxFileSizeMb: 1 / (1024 * 1024),
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: REGULAR_ITEM_ID,
+    userId: USER_ID,
+    fileName: "site-icon.png",
+    mimeType: "image/png",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+    purpose: "item-favicon",
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.itemId, REGULAR_ITEM_ID);
+});
+
+test("AttachmentService still enforces size limit for favicon.png without purpose", async () => {
+  const { service } = uploadMocks({
+    filesInItemsEnabled: true,
+    planTier: "PREMIUM",
+    allowedFileExtensions: ["png", "pdf"],
+    maxFileSizeMb: 1 / (1024 * 1024),
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: REGULAR_ITEM_ID,
+        userId: USER_ID,
+        fileName: "favicon.png",
+        mimeType: "image/png",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "FILE_TOO_LARGE" &&
+      error.statusCode === 413,
   );
 });
 

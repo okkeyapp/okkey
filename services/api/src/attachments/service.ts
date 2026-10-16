@@ -20,6 +20,11 @@ export class AttachmentServiceError extends Error {
   }
 }
 
+/** Explicit client marker for record/template website icons (not keyed by file name). */
+export const ATTACHMENT_PURPOSE_ITEM_FAVICON = "item-favicon" as const;
+
+export type AttachmentUploadPurpose = typeof ATTACHMENT_PURPOSE_ITEM_FAVICON;
+
 export interface AttachmentUploadInput {
   vaultId: string;
   itemId: string;
@@ -29,6 +34,8 @@ export interface AttachmentUploadInput {
   encryptedBody: Uint8Array;
   encryptedKey: Uint8Array;
   sizeBytes: number;
+  /** When set to item-favicon, skip files-in-items and workspace attachment size limits. */
+  purpose?: AttachmentUploadPurpose;
 }
 
 export interface AttachmentUploadResult {
@@ -74,12 +81,12 @@ export class AttachmentService {
     await this.assertVaultAccess(input.vaultId, input.userId);
 
     const uploadLimits = await this.resolveUploadLimits(input.vaultId, input.itemId);
-    // Record favicons persist on any plan, independent of the files-in-items entitlement.
-    const isItemFaviconAttachment = isItemFaviconAttachmentFileName(input.fileName);
+    // Record favicons persist on any plan via an explicit purpose header — not file name.
+    const isItemFaviconAttachment = input.purpose === ATTACHMENT_PURPOSE_ITEM_FAVICON;
 
     // Workspace branding logo uses workspaceId as a synthetic item id; that path must
     // stay available when "files in items" is disabled for regular vault item uploads.
-    // Item favicon.png uploads are also exempt (monogram/website icons are not "files in items").
+    // Item favicon purpose uploads are also exempt (website icons are not "files in items").
     if (
       !uploadLimits.filesInItemsEnabled &&
       !uploadLimits.isWorkspaceSystemAttachment &&
@@ -95,10 +102,11 @@ export class AttachmentService {
     if (input.encryptedBody.byteLength === 0) {
       throw new AttachmentServiceError("BAD_REQUEST", 400, "File body is required");
     }
-    if (input.sizeBytes <= 0 || input.sizeBytes > uploadLimits.maxSizeBytes) {
+    const maxSizeBytes = isItemFaviconAttachment ? ITEM_FAVICON_MAX_SIZE_BYTES : uploadLimits.maxSizeBytes;
+    if (input.sizeBytes <= 0 || input.sizeBytes > maxSizeBytes) {
       throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
     }
-    if (input.encryptedBody.byteLength > uploadLimits.maxSizeBytes + ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES) {
+    if (input.encryptedBody.byteLength > maxSizeBytes + ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES) {
       throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
     }
     const allowedExtensions = isItemFaviconAttachment
@@ -268,14 +276,9 @@ export class AttachmentService {
 /** Image types accepted by workspace branding logo upload UI. */
 const WORKSPACE_LOGO_ALLOWED_EXTENSIONS = ["png", "jpg", "webp", "gif"] as const;
 
-/** Record favicon uploads always use this client-side name (`favicon.png`). */
-const ITEM_FAVICON_ATTACHMENT_NAME = "favicon.png";
+/** Absolute cap for item favicon uploads (independent of workspace maxFileSizeMb). */
+export const ITEM_FAVICON_MAX_SIZE_BYTES = 256 * 1024;
 const ITEM_FAVICON_ALLOWED_EXTENSIONS = ["png"] as const;
-
-function isItemFaviconAttachmentFileName(fileName: string): boolean {
-  const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();
-  return baseName.toLowerCase() === ITEM_FAVICON_ATTACHMENT_NAME;
-}
 
 function attachmentExtensionFromFileName(fileName: string): string {
   const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();

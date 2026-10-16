@@ -65,6 +65,7 @@ describe("syncTemplateFaviconForSnapshot", () => {
       name: "favicon.png",
       mimeType: "image/png",
       sizeBytes: pngBytes.byteLength,
+      purpose: "item-favicon",
     });
     expect(synced.faviconId).toBe("1000000000000000003");
     expect(synced.faviconSource).toBe("website");

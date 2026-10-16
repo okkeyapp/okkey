@@ -89,6 +89,7 @@ export async function syncTemplateFaviconForSnapshot(
       name: TEMPLATE_FAVICON_NAME,
       mimeType: TEMPLATE_FAVICON_MIME_TYPE,
       sizeBytes: pngBytes.byteLength,
+      purpose: "item-favicon",
     });
     return { faviconId: uploadedFavicon.attachmentId, faviconSource, uploadedFavicon };
   }
