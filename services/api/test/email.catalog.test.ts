@@ -34,6 +34,10 @@ function assertNoMustachePlaceholders(s: string): void {
   assert.equal(s.includes("{{"), false);
 }
 
+function assertNoNulBytes(s: string): void {
+  assert.equal(s.includes("\0"), false, "email body must not contain U+0000");
+}
+
 test("renderEmailTemplate auth_email_code en and ru", async () => {
   const en = await renderEmailTemplate("auth_email_code", "en", {
     code: "123456",
@@ -64,6 +68,8 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
     "RU ignoreIfMistake must end with a period",
   );
   assertNoMustachePlaceholders(en.text);
+  assertNoNulBytes(en.html);
+  assertNoNulBytes(en.text);
 
   const ru = await renderEmailTemplate("auth_email_code", "ru", {
     code: "654321",
@@ -80,6 +86,8 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
   assert.match(ru.html, /no-reply/i);
   assert.match(ru.html, /проигнорируйте/i);
   assertNoMustachePlaceholders(ru.text);
+  assertNoNulBytes(ru.html);
+  assertNoNulBytes(ru.text);
 });
 
 test("renderEmailTemplate auth_email_code email_change purpose uses dedicated copy", async () => {
@@ -161,6 +169,8 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   assert.equal(en.text.toLowerCase().includes("backup"), false);
   assert.equal(en.html.toLowerCase().includes("totp"), false);
   assertNoMustachePlaceholders(en.text);
+  assertNoNulBytes(en.html);
+  assertNoNulBytes(en.text);
 
   const ru = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
@@ -168,6 +178,8 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assert.match(ru.text, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
+  assertNoNulBytes(ru.html);
+  assertNoNulBytes(ru.text);
 });
 
 test("renderEmailTemplate two_factor_disabled en and ru", async () => {
@@ -197,6 +209,8 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   assert.match(en.subject, /backup codes|regenerated/i);
   assert.match(en.text, /Previous codes|no longer valid/i);
   assertNoMustachePlaceholders(en.text);
+  assertNoNulBytes(en.html);
+  assertNoNulBytes(en.text);
 
   const ru = await renderEmailTemplate(
     "two_factor_backup_codes_regenerated",
@@ -207,6 +221,39 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   assert.ok(ru.text.includes(formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {})));
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
+  assertNoNulBytes(ru.html);
+  assertNoNulBytes(ru.text);
+});
+
+test("rendered email HTML and plain text have no NUL bytes", async () => {
+  // React 18 streaming SSR (`renderToPipeableStream`) can emit raw U+0000 at
+  // content-length-sensitive offsets in HTML and plain text (incl. mid-word RU CTAs).
+  // Templates render via `renderToStaticMarkup` to avoid that path.
+  const lengthSensitiveTwoFactor = {
+    ...twoFactorVars,
+    occurredAtIso: "2026-01-10T00:00:00.000Z",
+  } as const;
+  const samples = await Promise.all([
+    renderEmailTemplate("two_factor_enabled", "en", lengthSensitiveTwoFactor),
+    renderEmailTemplate("two_factor_enabled", "ru", lengthSensitiveTwoFactor),
+    renderEmailTemplate("two_factor_backup_codes_regenerated", "en", lengthSensitiveTwoFactor),
+    renderEmailTemplate("two_factor_backup_codes_regenerated", "ru", lengthSensitiveTwoFactor),
+    renderEmailTemplate("two_factor_disabled", "ru", lengthSensitiveTwoFactor),
+    renderEmailTemplate("auth_email_code", "en", { code: "123456", ttlSeconds: 120 }),
+    renderEmailTemplate("auth_email_code", "ru", { code: "123456", ttlSeconds: 120 }),
+    renderEmailTemplate("device_approval_request", "en", deviceVars),
+    renderEmailTemplate("device_approval_request", "ru", deviceVars),
+  ]);
+  for (const rendered of samples) {
+    assertNoNulBytes(rendered.html);
+    assertNoNulBytes(rendered.text);
+    assert.match(rendered.html, /data-skip-in-text/);
+  }
+  const ruEnabled = samples[1];
+  assert.match(ruEnabled.html, /безопасности/);
+  assert.match(ruEnabled.text, /безопасности/);
+  assert.equal(ruEnabled.html.includes("безопасно\0сти"), false);
+  assert.equal(ruEnabled.text.includes("безопасно\0сти"), false);
 });
 
 const accountEmailChangedVars = {
