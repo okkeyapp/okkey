@@ -22,7 +22,11 @@ const BACKUP_CODE_LIKE = /\b[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{2}\b/;
 test("integration: after TOTP enroll confirm, transport receives two_factor_enabled (ru) without backup codes", async (t) => {
   const base = loadConfig();
   const fixed = new Date("2026-06-20T09:00:00.000Z");
-  const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 4 };
+  const config: ApiConfig = {
+    ...base,
+    twoFactorBackupCodesCount: 4,
+    publicAppBaseUrl: "https://app.okkey.test",
+  };
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
     return;
@@ -93,6 +97,9 @@ test("integration: after TOTP enroll confirm, transport receives two_factor_enab
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.equal(sent[0].to, email);
+  assert.match(sent[0].html, /popup=settings\|twoFactor/);
+  assert.match(sent[0].text, /popup=settings\|twoFactor/);
+  assert.equal(sent[0].html.includes("/settings/security"), false);
   for (const code of backupCodes) {
     assert.equal(sent[0].text.includes(code), false, "plaintext backup codes must not appear in email");
     assert.equal(sent[0].html.includes(code), false, "backup codes must not appear in HTML");
@@ -106,7 +113,11 @@ test("integration: after TOTP enroll confirm, transport receives two_factor_enab
 test("integration: after backup regeneration, transport receives two_factor_backup_codes_regenerated (ru)", async (t) => {
   const base = loadConfig();
   const fixed = new Date("2026-06-20T10:30:00.000Z");
-  const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 3 };
+  const config: ApiConfig = {
+    ...base,
+    twoFactorBackupCodesCount: 3,
+    publicAppBaseUrl: "https://app.okkey.test",
+  };
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
     return;
@@ -183,6 +194,8 @@ test("integration: after backup regeneration, transport receives two_factor_back
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
   assert.equal(sent[0].to, email);
+  assert.match(sent[0].html, /popup=settings\|twoFactor/);
+  assert.equal(sent[0].html.includes("/settings/security"), false);
   for (const code of newCodes) {
     assert.equal(sent[0].text.includes(code), false);
     assert.equal(sent[0].html.includes(code), false);

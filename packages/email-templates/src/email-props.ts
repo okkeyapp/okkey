@@ -243,7 +243,7 @@ export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
 
 export const previewSampleTwoFactor: TwoFactorNoticeVariables = {
   occurredAtIso: "2026-01-15T10:00:00.000Z",
-  securitySettingsUrl: "https://app.okkey.local/settings/security",
+  securitySettingsUrl: "https://app.okkey.local/items?popup=settings|twoFactor",
 };
 
 export const previewSampleTrustedContactInvite: TrustedContactInviteVariables = {
