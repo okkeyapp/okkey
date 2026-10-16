@@ -5,13 +5,10 @@ import {
   isLoopbackHostname,
   normalizeWebBaseUrl,
   resolveApiBaseFromWebBase,
-<<<<<<< HEAD
   STORAGE_KEYS,
   wipeAllExtensionData,
-=======
   WEB_BASE_URL_REQUIRED_ERROR,
   WEB_BASE_URL_SCHEME_ERROR,
->>>>>>> d4b2f08 (fix(extension): validate server URL scheme before https prefix)
 } from "./storage.ts";
 
 test("normalizeWebBaseUrl adds https and strips path", () => {
