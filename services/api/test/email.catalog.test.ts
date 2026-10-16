@@ -583,3 +583,41 @@ test("workspace invite and two-factor emails include shared no-reply footer", as
   assert.ok(twoFactorDisabled.html.includes(ignoreEn));
   assert.match(twoFactorDisabled.html, /no-reply/i);
 });
+
+test("RU email copy uses consistent typography and lowercase вы", async () => {
+  const blockNote = formatEmailMessage("ru", "email.device.approval.noteBlockIfNotYou", {});
+  const ignoreMistake = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
+  const backupLine2 = formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {});
+
+  assert.ok(blockNote.endsWith("."), "device approval RU block note must end with a period");
+  assert.ok(blockNote.includes(" вы "), "device approval should address with lowercase вы");
+  assert.equal(blockNote.includes("Вы"), false, "device approval must not capitalize Вы");
+  assert.equal(blockNote.includes("Вам"), false);
+
+  assert.ok(ignoreMistake.includes(" вы "), "shared footer should address with lowercase вы");
+  assert.equal(ignoreMistake.includes(" - "), false, "shared footer must not use hyphen as a dash");
+  assert.ok(
+    ignoreMistake.includes("—") || ignoreMistake.includes(","),
+    "prefer em dash or comma over hyphen",
+  );
+
+  assert.equal(backupLine2.includes("ответе приложения"), false);
+  assert.ok(backupLine2.includes("в приложении"));
+  assert.ok(backupLine2.includes("показываются"), "backup RU should say codes are shown in the app");
+  assert.ok(backupLine2.includes("—"), "backup RU should use an em dash");
+
+  const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
+  assert.ok(ru.text.includes(blockNote));
+  assert.ok(ru.text.includes(ignoreMistake));
+  assert.equal(ru.text.includes("Вы "), false);
+  assert.equal(ru.text.includes("Вам "), false);
+  assert.equal(ru.text.includes(" по ошибке - "), false);
+
+  const backup = await renderEmailTemplate(
+    "two_factor_backup_codes_regenerated",
+    "ru",
+    twoFactorVars,
+  );
+  assert.ok(backup.text.includes(backupLine2));
+  assert.equal(backup.text.includes("ответе приложения"), false);
+});
