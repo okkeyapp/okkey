@@ -131,14 +131,28 @@ export class AttachmentService {
     });
 
     try {
-      await this.attachments.create({
-        id: stored.attachmentId,
-        vaultId: input.vaultId,
-        itemId: input.itemId,
-        storageKey: stored.storageKey,
-        encryptedKey: input.encryptedKey,
-        size: stored.sizeBytes,
-      });
+      if (isItemFaviconAttachment) {
+        // Single icon-field slot per record/template: replace any previous item-favicon row.
+        const { replaced } = await this.attachments.replaceItemFavicon({
+          id: stored.attachmentId,
+          vaultId: input.vaultId,
+          itemId: input.itemId,
+          storageKey: stored.storageKey,
+          encryptedKey: input.encryptedKey,
+          size: stored.sizeBytes,
+        });
+        await this.deleteStorageRecords(replaced);
+      } else {
+        await this.attachments.create({
+          id: stored.attachmentId,
+          vaultId: input.vaultId,
+          itemId: input.itemId,
+          storageKey: stored.storageKey,
+          encryptedKey: input.encryptedKey,
+          size: stored.sizeBytes,
+          purpose: null,
+        });
+      }
     } catch (error) {
       await this.storage.deleteByStorageKey(stored.storageKey).catch(() => undefined);
       throw error;

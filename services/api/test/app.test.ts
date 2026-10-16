@@ -96,6 +96,8 @@ test("OPTIONS request is handled by cors middleware", async () => {
   assert.match(allowHeaders, /x-device-fingerprint/);
   assert.match(allowHeaders, /x-device-id/);
   assert.match(allowHeaders, /authorization/);
+  assert.match(allowHeaders, /x-attachment-purpose/);
+  assert.match(allowHeaders, /x-encrypted-key/);
 });
 
 test("OPTIONS echoes matching origin from comma-separated CORS_ORIGIN", async () => {

@@ -55,6 +55,7 @@ export function createCorsMiddleware(corsOriginConfig: string): Middleware {
         "X-File-Mime-Type",
         "X-File-Size",
         "X-Encrypted-Key",
+        "X-Attachment-Purpose",
       ].join(", "),
     );
 

@@ -104,7 +104,9 @@ Set `FAVICON_PROVIDER=off` to disable remote preview (clients fall back to monog
 to Google's favicon service. Prefer `direct` or `off` for self-hosted deployments.
 
 Record favicon attachments (upload purpose `item-favicon`) are stored on any plan and are
-not gated by the workspace `filesInItems` entitlement or attachment size limits.
+not gated by the workspace `filesInItems` entitlement or attachment size limits. The API keeps
+at most one `item-favicon` attachment per record/template (new upload replaces the previous
+icon-slot object).
 
 ---
 

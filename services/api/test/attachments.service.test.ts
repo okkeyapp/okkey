@@ -46,8 +46,11 @@ function uploadMocks(input: {
   maxFileSizeMb?: number;
   deploymentMode?: "saas" | "self_hosted";
   enterpriseModulesEnabled?: boolean;
+  existingItemFavicon?: { id: string; storageKey: string };
 }) {
-  let created: { itemId: string } | null = null;
+  let created: { itemId: string; purpose: string | null } | null = null;
+  const deletedStorageKeys: string[] = [];
+  let replacedFaviconCalls = 0;
   const storage = {
     async upload(params: { fileName: string }) {
       return {
@@ -58,13 +61,13 @@ function uploadMocks(input: {
         sizeBytes: 123,
       };
     },
-    async deleteByStorageKey() {
-      return;
+    async deleteByStorageKey(storageKey: string) {
+      deletedStorageKeys.push(storageKey);
     },
   } as unknown as KeyFieldFileStorage;
   const attachments = {
-    async create(record: { itemId: string }) {
-      created = { itemId: record.itemId };
+    async create(record: { itemId: string; purpose?: string | null }) {
+      created = { itemId: record.itemId, purpose: record.purpose ?? null };
       return {
         id: "1000000000000000003",
         vaultId: VAULT_ID,
@@ -72,7 +75,46 @@ function uploadMocks(input: {
         storageKey: `attachments/${VAULT_ID}/1000000000000000003`,
         encryptedKey: Uint8Array.from([4, 5, 6]),
         size: 123,
+        purpose: record.purpose ?? null,
         createdAt: "",
+      };
+    },
+    async replaceItemFavicon(record: {
+      id: string;
+      vaultId: string;
+      itemId: string;
+      storageKey: string;
+    }) {
+      replacedFaviconCalls += 1;
+      assert.equal(record.vaultId, VAULT_ID);
+      assert.equal(record.itemId, REGULAR_ITEM_ID);
+      created = { itemId: record.itemId, purpose: "item-favicon" };
+      const replaced = input.existingItemFavicon
+        ? [
+            {
+              id: input.existingItemFavicon.id,
+              vaultId: VAULT_ID,
+              itemId: REGULAR_ITEM_ID,
+              storageKey: input.existingItemFavicon.storageKey,
+              encryptedKey: Uint8Array.from([9]),
+              size: 10,
+              purpose: "item-favicon",
+              createdAt: "",
+            },
+          ]
+        : [];
+      return {
+        record: {
+          id: record.id,
+          vaultId: record.vaultId,
+          itemId: record.itemId,
+          storageKey: record.storageKey,
+          encryptedKey: Uint8Array.from([4, 5, 6]),
+          size: 123,
+          purpose: "item-favicon",
+          createdAt: "",
+        },
+        replaced,
       };
     },
   } as unknown as AttachmentsRepository;
@@ -118,6 +160,8 @@ function uploadMocks(input: {
       }),
     }),
     getCreated: () => created,
+    getDeletedStorageKeys: () => deletedStorageKeys,
+    getReplacedFaviconCalls: () => replacedFaviconCalls,
   };
 }
 
@@ -309,7 +353,7 @@ test("AttachmentService allows workspace logo upload when files in items are dis
 });
 
 test("AttachmentService allows item-favicon purpose when files in items are disabled", async () => {
-  const { service, getCreated } = uploadMocks({
+  const { service, getCreated, getReplacedFaviconCalls } = uploadMocks({
     filesInItemsEnabled: false,
     planTier: "FREE",
     allowedFileExtensions: ["pdf"],
@@ -330,6 +374,67 @@ test("AttachmentService allows item-favicon purpose when files in items are disa
 
   assert.equal(result.attachmentId, "1000000000000000003");
   assert.equal(getCreated()?.itemId, REGULAR_ITEM_ID);
+  assert.equal(getCreated()?.purpose, "item-favicon");
+  assert.equal(getReplacedFaviconCalls(), 1);
+});
+
+test("AttachmentService replaces previous item-favicon slot on upload", async () => {
+  const previousStorageKey = `attachments/${VAULT_ID}/1000000000000000008`;
+  const { service, getCreated, getDeletedStorageKeys, getReplacedFaviconCalls } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "FREE",
+    allowedFileExtensions: ["pdf"],
+    deploymentMode: "saas",
+    existingItemFavicon: {
+      id: "1000000000000000008",
+      storageKey: previousStorageKey,
+    },
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: REGULAR_ITEM_ID,
+    userId: USER_ID,
+    fileName: "site-icon.png",
+    mimeType: "image/png",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+    purpose: "item-favicon",
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.purpose, "item-favicon");
+  assert.equal(getReplacedFaviconCalls(), 1);
+  assert.deepEqual(getDeletedStorageKeys(), [previousStorageKey]);
+});
+
+test("AttachmentService does not replace favicon slot for regular uploads", async () => {
+  const { service, getCreated, getReplacedFaviconCalls, getDeletedStorageKeys } = uploadMocks({
+    filesInItemsEnabled: true,
+    planTier: "PREMIUM",
+    allowedFileExtensions: ["png", "pdf"],
+    existingItemFavicon: {
+      id: "1000000000000000008",
+      storageKey: `attachments/${VAULT_ID}/1000000000000000008`,
+    },
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: REGULAR_ITEM_ID,
+    userId: USER_ID,
+    fileName: "photo.png",
+    mimeType: "image/png",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.purpose, null);
+  assert.equal(getReplacedFaviconCalls(), 0);
+  assert.deepEqual(getDeletedStorageKeys(), []);
 });
 
 test("AttachmentService does not treat favicon.png name alone as item favicon", async () => {
