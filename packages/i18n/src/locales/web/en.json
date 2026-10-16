@@ -1623,6 +1623,7 @@
   "web.invite.alreadyMember": "You are already a member of this workspace.",
   "web.invite.emailMismatch": "This invitation was sent to a different email address.",
   "web.invite.errorGeneric": "Could not process this invitation. Try again.",
+  "web.invite.errorRateLimited": "Too many attempts. Try again in {minutes} min.",
   "account.restore.enterprise.devices.intro": "Start a recovery request, then approve it on another trusted device where your vault is unlocked.",
   "account.restore.enterprise.devices.start": "Request recovery from trusted device",
   "account.restore.enterprise.devices.statusTitle": "Device recovery",

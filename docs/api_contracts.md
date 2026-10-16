@@ -1082,7 +1082,7 @@ Invite create (`POST /workspaces/:workspaceId/invitations`) requires `PUBLIC_APP
 
 ### `GET /invitations/:token`
 
-**Auth:** none (rate-limited by IP using the same window as email start).
+**Auth:** none (rate-limited by IP; same window as email start via `AUTH_RATE_LIMIT_WINDOW_SECONDS`, separate budget `INVITE_PREVIEW_RATE_LIMIT_PER_IP`, default 60).
 
 **Response `200`:**
 
@@ -1094,7 +1094,7 @@ Invite create (`POST /workspaces/:workspaceId/invitations`) requires `PUBLIC_APP
 | `inviterDisplayName` | string |
 | `expiresAt` | ISO-8601 |
 
-**Errors:** `NOT_FOUND` 404, `AUTH_RATE_LIMITED` 429.
+**Errors:** `NOT_FOUND` 404, `AUTH_RATE_LIMITED` 429 (optional `details.retryAfterSeconds`).
 
 ### `POST /invitations/:token/accept`
 

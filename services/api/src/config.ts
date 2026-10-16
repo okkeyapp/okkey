@@ -45,6 +45,11 @@ export interface ApiConfig {
   authRateLimitWindowSeconds: number;
   authRateLimitStartPerEmail: number;
   authRateLimitStartPerIp: number;
+  /**
+   * Public invite preview (`GET /invitations/:token`) per-IP budget.
+   * Separate from email-start: each invite open can issue several GETs.
+   */
+  invitePreviewRateLimitPerIp: number;
   authRateLimitConfirmPerIp: number;
   authRateLimitResendPerIp: number;
   registrationAuthStateTtlSeconds: number;
@@ -376,6 +381,10 @@ export function loadConfig(): ApiConfig {
     authRateLimitStartPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_START_PER_IP,
       10,
+    ),
+    invitePreviewRateLimitPerIp: parsePositiveInt(
+      process.env.INVITE_PREVIEW_RATE_LIMIT_PER_IP,
+      60,
     ),
     authRateLimitConfirmPerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_CONFIRM_PER_IP,
