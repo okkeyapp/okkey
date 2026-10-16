@@ -17,6 +17,7 @@ const deviceVars = {
   osName: "Android",
   requestIp: "198.51.100.2",
   helpUrl: "https://app.example/items?popup=settings|devices",
+  requestedAtIso: "2026-10-16T07:09:00.000Z",
 } as const;
 
 const workspaceVars = {
@@ -133,15 +134,19 @@ test("renderEmailTemplate device_approval_request en and ru", async () => {
   assert.match(en.subject, /device|approval/i);
   assert.match(en.text, /Mobile Android - App/);
   assert.match(en.text, /Mobile · App · Android/);
+  assert.match(en.text, /Oct 16, 2026, 7:09 AM UTC/);
   assert.match(en.html, /Mobile Android - App/);
   assert.match(en.html, /Okkey/);
   assert.match(en.html, /#3B82F6/i);
+  assert.match(en.html, /Oct 16, 2026, 7:09 AM UTC/);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("device_approval_request", "ru", deviceVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.device.approval.subject", {}));
   assert.match(ru.text, /Mobile Android - App/);
   assert.match(ru.text, /Mobile · App · Android/);
+  assert.match(ru.text, /07:09 UTC/);
+  assert.equal(ru.text.includes("UTC UTC"), false);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -165,7 +170,8 @@ test("renderEmailTemplate workspace_invite en and ru", async () => {
 test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   const en = await renderEmailTemplate("two_factor_enabled", "en", twoFactorVars);
   assert.match(en.subject, /two-factor|authentication/i);
-  assert.match(en.text, /UTC/i);
+  assert.match(en.text, /Jan 1, 2026, 12:00 PM UTC/);
+  assert.equal(en.text.includes("UTC UTC"), false);
   assert.equal(en.text.toLowerCase().includes("backup"), false);
   assert.equal(en.html.toLowerCase().includes("totp"), false);
   assertNoMustachePlaceholders(en.text);
@@ -174,7 +180,8 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
 
   const ru = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
-  assert.match(ru.text, /UTC/);
+  assert.match(ru.text, /12:00 UTC/);
+  assert.equal(ru.text.includes("UTC UTC"), false);
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assert.match(ru.text, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
@@ -186,14 +193,16 @@ test("renderEmailTemplate two_factor_disabled en and ru", async () => {
   const en = await renderEmailTemplate("two_factor_disabled", "en", twoFactorVars);
   assert.match(en.subject, /two-factor|authentication/i);
   assert.match(en.subject, /disabled/i);
-  assert.match(en.text, /UTC/i);
+  assert.match(en.text, /Jan 1, 2026, 12:00 PM UTC/);
+  assert.equal(en.text.includes("UTC UTC"), false);
   assert.match(en.text, /re-enable|authenticator/i);
   assert.equal(en.html.toLowerCase().includes("totp"), false);
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("two_factor_disabled", "ru", twoFactorVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.disabled.subject", {}));
-  assert.match(ru.text, /UTC/);
+  assert.match(ru.text, /12:00 UTC/);
+  assert.equal(ru.text.includes("UTC UTC"), false);
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assert.match(ru.text, /popup=settings\|twoFactor/);
   assert.ok(ru.html.includes(formatEmailMessage("ru", "email.common.ignoreIfMistake", {})));
@@ -208,6 +217,8 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   );
   assert.match(en.subject, /backup codes|regenerated/i);
   assert.match(en.text, /Previous codes|no longer valid/i);
+  assert.match(en.text, /Jan 1, 2026, 12:00 PM UTC/);
+  assert.equal(en.text.includes("UTC UTC"), false);
   assertNoMustachePlaceholders(en.text);
   assertNoNulBytes(en.html);
   assertNoNulBytes(en.text);
@@ -219,6 +230,8 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   );
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
   assert.ok(ru.text.includes(formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {})));
+  assert.match(ru.text, /12:00 UTC/);
+  assert.equal(ru.text.includes("UTC UTC"), false);
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
   assertNoNulBytes(ru.html);
@@ -270,6 +283,8 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   );
   assert.match(en.html, /n\*\*\*@example\.com/);
   assert.match(en.text, /n\*\*\*@example\.com/);
+  assert.match(en.text, /Jan 1, 2026, 12:00 PM UTC/);
+  assert.equal(en.text.includes("UTC UTC"), false);
   assert.match(en.html, /no-reply/i);
   assert.match(
     en.html,
@@ -287,6 +302,8 @@ test("renderEmailTemplate account_email_changed en and ru", async () => {
   );
   assert.match(ru.html, /n\*\*\*@example\.com/);
   assert.match(ru.html, /изменён/i);
+  assert.match(ru.text, /12:00 UTC/);
+  assert.equal(ru.text.includes("UTC UTC"), false);
   assert.match(ru.html, /проигнорируйте/i);
   assert.match(ru.html, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
