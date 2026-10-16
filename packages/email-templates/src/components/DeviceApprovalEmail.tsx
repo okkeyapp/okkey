@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
 import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface DeviceApprovalEmailProps {
   lead: string;
@@ -17,7 +18,10 @@ export interface DeviceApprovalEmailProps {
   ctaLabel: string;
   noteNoUrl: string;
   noteBlockIfNotYou: string;
-  noteIgnoreIfMistake: string;
+  /** Optional contextual note (e.g. recovery “did not start”). */
+  noteIgnoreIfMistake?: string;
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
 export function DeviceApprovalEmail({
@@ -33,16 +37,28 @@ export function DeviceApprovalEmail({
   noteNoUrl,
   noteBlockIfNotYou,
   noteIgnoreIfMistake,
+  noReply,
+  ignoreIfMistake,
 }: DeviceApprovalEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
+  const contextual =
+    noteIgnoreIfMistake && noteIgnoreIfMistake.trim().length > 0 ? (
+      <>
+        <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
+        <Text style={footnoteStyle}>{noteIgnoreIfMistake}</Text>
+      </>
+    ) : (
+      <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
+    );
   return (
     <EmailShell
       preview={lead}
       footer={
-        <>
-          <Text style={footnoteStyle}>{noteBlockIfNotYou}</Text>
-          <Text style={footnoteStyleLast}>{noteIgnoreIfMistake}</Text>
-        </>
+        <EmailStandardFooter
+          footnotes={contextual}
+          noReply={noReply}
+          ignoreIfMistake={ignoreIfMistake}
+        />
       }
     >
       <Text style={leadStyle}>{lead}</Text>
@@ -100,11 +116,4 @@ const footnoteStyle: React.CSSProperties = {
   lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,
   margin: "0 0 8px",
-};
-
-const footnoteStyleLast: React.CSSProperties = {
-  fontSize: "13px",
-  lineHeight: "20px",
-  color: EMAIL_SECONDARY_TEXT,
-  margin: 0,
 };

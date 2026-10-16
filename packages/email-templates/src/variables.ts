@@ -1,6 +1,11 @@
+/** Why the OTP was issued; selects subject/body copy for `auth_email_code`. */
+export type AuthEmailCodePurpose = "sign_in" | "email_change";
+
 export interface AuthEmailCodeVariables {
   code: string;
   ttlSeconds: number;
+  /** Defaults to `sign_in` when omitted (login / registration OTP). */
+  purpose?: AuthEmailCodePurpose;
 }
 
 export interface DeviceApprovalRequestVariables {

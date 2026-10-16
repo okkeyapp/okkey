@@ -288,6 +288,7 @@ export class EmailChangeService {
       variables: {
         code,
         ttlSeconds: this.config.authCodeTtlSeconds,
+        purpose: "email_change",
       },
     });
   }

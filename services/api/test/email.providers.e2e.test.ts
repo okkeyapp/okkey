@@ -175,7 +175,7 @@ test("e2e: smtp provider sends auth email via SMTP server", async (t) => {
   });
 
   assert.equal(response.status, 200);
-  assert.match(smtpRaw, /Subject: Your Okkey sign-in code/i);
+  assert.match(smtpRaw, /Subject: 123456 is your Okkey sign-in code/i);
   assert.match(smtpRaw, /123456/);
 });
 
@@ -234,5 +234,8 @@ test("e2e: http-api provider posts email payload to external api", async (t) => 
   assert.equal(providerAuthHeader, "Bearer test-api-key");
   assert.match(providerRequestBody, /"to":"user@example.com"/);
   const parsed = JSON.parse(providerRequestBody) as { subject?: string };
-  assert.equal(parsed.subject, formatEmailMessage("ru", "email.auth.signInCode.subject", {}));
+  assert.equal(
+    parsed.subject,
+    formatEmailMessage("ru", "email.auth.signInCode.subject", { code: "123456" }),
+  );
 });

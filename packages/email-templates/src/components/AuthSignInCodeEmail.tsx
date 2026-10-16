@@ -2,25 +2,36 @@ import { Section, Text } from "@react-email/components";
 import * as React from "react";
 
 import { EMAIL_CANVAS, EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface AuthSignInCodeEmailProps {
   beforeCode: string;
   code: string;
   line2: string;
   ignore: string;
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
-function formatOtpDisplay(code: string): string {
-  if (code.length !== 6) {
-    return code;
-  }
-  return `${code.slice(0, 3)} ${code.slice(3)}`;
-}
-
-export function AuthSignInCodeEmail({ beforeCode, code, line2, ignore }: AuthSignInCodeEmailProps) {
-  const displayCode = formatOtpDisplay(code);
+export function AuthSignInCodeEmail({
+  beforeCode,
+  code,
+  line2,
+  ignore,
+  noReply,
+  ignoreIfMistake,
+}: AuthSignInCodeEmailProps) {
   return (
-    <EmailShell preview={beforeCode} footer={ignore}>
+    <EmailShell
+      preview={beforeCode}
+      footer={
+        <EmailStandardFooter
+          footnotes={<Text style={footnoteStyle}>{ignore}</Text>}
+          noReply={noReply}
+          ignoreIfMistake={ignoreIfMistake}
+        />
+      }
+    >
       <Text style={leadStyle}>{beforeCode}</Text>
       <Section style={codeWrapStyle}>
         <table
@@ -32,7 +43,7 @@ export function AuthSignInCodeEmail({ beforeCode, code, line2, ignore }: AuthSig
         >
           <tr>
             <td style={codeCellStyle}>
-              <span style={codeStyle}>{displayCode}</span>
+              <span style={codeStyle}>{code}</span>
             </td>
           </tr>
         </table>
@@ -78,6 +89,13 @@ const codeStyle: React.CSSProperties = {
 const noteStyle: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "22px",
+  color: EMAIL_SECONDARY_TEXT,
+  margin: "0 0 8px",
+};
+
+const footnoteStyle: React.CSSProperties = {
+  fontSize: "13px",
+  lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,
   margin: "0 0 8px",
 };

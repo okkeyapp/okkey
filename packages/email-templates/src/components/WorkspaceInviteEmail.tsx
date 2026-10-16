@@ -3,16 +3,28 @@ import * as React from "react";
 
 import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
 import { EMAIL_PRIMARY_TEXT, EmailShell } from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface WorkspaceInviteEmailProps {
   intro: string;
   ctaLabel: string;
   inviteUrl: string;
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
-export function WorkspaceInviteEmail({ intro, ctaLabel, inviteUrl }: WorkspaceInviteEmailProps) {
+export function WorkspaceInviteEmail({
+  intro,
+  ctaLabel,
+  inviteUrl,
+  noReply,
+  ignoreIfMistake,
+}: WorkspaceInviteEmailProps) {
   return (
-    <EmailShell preview={intro}>
+    <EmailShell
+      preview={intro}
+      footer={<EmailStandardFooter noReply={noReply} ignoreIfMistake={ignoreIfMistake} />}
+    >
       <Text style={leadStyle}>{intro}</Text>
       <Section style={ctaWrapStyle}>
         <EmailPrimaryButton href={inviteUrl}>{ctaLabel}</EmailPrimaryButton>
