@@ -27,7 +27,7 @@ const workspaceVars = {
 
 const twoFactorVars = {
   occurredAtIso: "2026-01-01T12:00:00.000Z",
-  securitySettingsUrl: "https://app.example/settings/security",
+  securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
 } as const;
 
 function assertNoMustachePlaceholders(s: string): void {
@@ -165,6 +165,8 @@ test("renderEmailTemplate two_factor_enabled en and ru", async () => {
   const ru = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.enabled.subject", {}));
   assert.match(ru.text, /UTC/);
+  assert.match(ru.html, /popup=settings\|twoFactor/);
+  assert.match(ru.text, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -185,6 +187,7 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   );
   assert.equal(ru.subject, formatEmailMessage("ru", "email.twoFactor.backupRegen.subject", {}));
   assert.ok(ru.text.includes(formatEmailMessage("ru", "email.twoFactor.backupRegen.line2", {})));
+  assert.match(ru.html, /popup=settings\|twoFactor/);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -207,10 +210,11 @@ test("renderEmailTemplate throws EMAIL_TEMPLATE_MISSING_VARIABLE when code missi
 test("two_factor_enabled template body contains no backup codes or totp secrets", async () => {
   const rendered = await renderEmailTemplate("two_factor_enabled", "en", {
     occurredAtIso: "2026-01-01T12:00:00.000Z",
-    securitySettingsUrl: "https://app.example/settings/security",
+    securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
   });
   assert.equal(rendered.text.toLowerCase().includes("backup"), false);
   assert.equal(rendered.html.toLowerCase().includes("totp"), false);
+  assert.match(rendered.html, /popup=settings\|twoFactor/);
 });
 
 test("resolveEmailLocaleForRecipient prefers user locale over Accept-Language", () => {
