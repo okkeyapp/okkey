@@ -122,7 +122,11 @@ function challengeKey(id: string): string {
   return `auth:challenge:${id}`;
 }
 
-/** Maps normalized email → active challenge id (same TTL as challenge) to avoid duplicate sends on restart. */
+/**
+ * Maps normalized email → active challenge id (same TTL as challenge).
+ * Restart reuses the challenge while remaining TTL exceeds the resend cooldown;
+ * near expiry mints a fresh challenge and sends a new email.
+ */
 function emailActiveChallengeKey(email: string): string {
   return `auth:email:active-challenge:${email}`;
 }
@@ -189,11 +193,18 @@ export class AuthService {
     if (mappedId) {
       const existing = await this.peekValidChallenge(mappedId);
       if (existing && existing.email === email) {
-        return {
-          challengeId: existing.id,
-          expiresAt: existing.expiresAt,
-          resendAvailableAt: existing.resendAvailableAt,
-        };
+        const remainingSeconds = Math.floor(
+          (new Date(existing.expiresAt).getTime() - this.now().getTime()) / 1000,
+        );
+        // Reuse only while enough TTL remains; near expiry → mint + email below.
+        if (remainingSeconds > this.config.authResendCooldownSeconds) {
+          return {
+            challengeId: existing.id,
+            expiresAt: existing.expiresAt,
+            resendAvailableAt: existing.resendAvailableAt,
+          };
+        }
+        await this.redis.del(challengeKey(existing.id));
       }
       await this.redis.del(emailActiveChallengeKey(email));
     }
