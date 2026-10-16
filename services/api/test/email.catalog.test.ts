@@ -39,19 +39,35 @@ test("renderEmailTemplate auth_email_code en and ru", async () => {
     code: "123456",
     ttlSeconds: 120,
   });
-  assert.match(en.subject, /sign-in code/i);
+  assert.equal(
+    en.subject,
+    formatEmailMessage("en", "email.auth.signInCode.subject", { code: "123456" }),
+  );
+  assert.match(en.subject, /^123456\b/);
+  assert.equal(en.subject.includes("123 456"), false);
   assert.match(en.text, /123456/);
   assert.match(en.html, /123[\s\u00a0]*456/);
   assert.match(en.html, /Okkey/);
   assert.match(en.html, /#f1f5f9/i);
+  assert.match(en.html, /no-reply/i);
+  assert.match(
+    en.html,
+    new RegExp(formatEmailMessage("en", "email.common.ignoreIfMistake", {}), "i"),
+  );
   assertNoMustachePlaceholders(en.text);
 
   const ru = await renderEmailTemplate("auth_email_code", "ru", {
     code: "654321",
     ttlSeconds: 60,
   });
-  assert.equal(ru.subject, formatEmailMessage("ru", "email.auth.signInCode.subject", {}));
+  assert.equal(
+    ru.subject,
+    formatEmailMessage("ru", "email.auth.signInCode.subject", { code: "654321" }),
+  );
+  assert.match(ru.subject, /^654321\b/);
   assert.match(ru.text, /654321/);
+  assert.match(ru.html, /no-reply/i);
+  assert.match(ru.html, /проигнорируйте/i);
   assertNoMustachePlaceholders(ru.text);
 });
 
@@ -361,16 +377,29 @@ test("EmailTemplateService sendTrustedContactInvite renders inviter details", as
   assert.match(sent[0].html, /popup=settings\|recovery/);
   assert.equal(sent[0].text.includes("{{"), false);
   // Footnotes must appear after the body separator (auth-code pattern).
-  const ignore = formatEmailMessage("ru", "email.contacts.invite.noteIgnore", {});
+  const ignore = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
   const ignoreIdx = sent[0].html.indexOf(ignore);
   const lastHr = sent[0].html.lastIndexOf("<hr");
   assert.ok(ignoreIdx > lastHr && lastHr > 0, "invite footnote must be below separator");
+  assert.match(sent[0].html, /no-reply/i);
 });
 
 test("device approval footnotes render below EmailShell separator", async () => {
   const en = await renderEmailTemplate("device_approval_request", "en", deviceVars);
-  const note = formatEmailMessage("en", "email.device.approval.noteIgnoreIfMistake", {});
+  const note = formatEmailMessage("en", "email.common.ignoreIfMistake", {});
   const noteIdx = en.html.indexOf(note);
   const lastHr = en.html.lastIndexOf("<hr");
   assert.ok(noteIdx > lastHr && lastHr > 0, "device approval footnote must be below separator");
+  assert.match(en.html, /no-reply/i);
+});
+
+test("workspace invite and two-factor emails include shared no-reply footer", async () => {
+  const invite = await renderEmailTemplate("workspace_invite", "en", workspaceVars);
+  const twoFactor = await renderEmailTemplate("two_factor_enabled", "ru", twoFactorVars);
+  const ignoreEn = formatEmailMessage("en", "email.common.ignoreIfMistake", {});
+  const ignoreRu = formatEmailMessage("ru", "email.common.ignoreIfMistake", {});
+  assert.ok(invite.html.includes(ignoreEn));
+  assert.match(invite.html, /no-reply/i);
+  assert.ok(twoFactor.html.includes(ignoreRu));
+  assert.match(twoFactor.html, /no-reply/i);
 });

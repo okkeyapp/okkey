@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { EmailPrimaryButton } from "./EmailPrimaryButton.js";
 import { EMAIL_PRIMARY_TEXT, EMAIL_SECONDARY_TEXT, EmailShell } from "./EmailShell.js";
+import { EmailStandardFooter } from "./EmailStandardFooter.js";
 
 export interface RecoveryActionEmailProps {
   lead: string;
@@ -14,6 +15,8 @@ export interface RecoveryActionEmailProps {
   ctaLabel: string;
   noteNoUrl: string;
   noteIgnore: string;
+  noReply: string;
+  ignoreIfMistake: string;
 }
 
 /** Shared layout for enterprise recovery notify emails (device approve / contact release / invite). */
@@ -26,12 +29,20 @@ export function RecoveryActionEmail({
   ctaLabel,
   noteNoUrl,
   noteIgnore,
+  noReply,
+  ignoreIfMistake,
 }: RecoveryActionEmailProps) {
   const hasUrl = helpUrl.trim().length > 0;
   return (
     <EmailShell
       preview={lead}
-      footer={<Text style={footnoteStyle}>{noteIgnore}</Text>}
+      footer={
+        <EmailStandardFooter
+          footnotes={<Text style={footnoteStyle}>{noteIgnore}</Text>}
+          noReply={noReply}
+          ignoreIfMistake={ignoreIfMistake}
+        />
+      }
     >
       <Text style={leadStyle}>{lead}</Text>
       <Section style={listStyle}>
@@ -84,5 +95,5 @@ const footnoteStyle: React.CSSProperties = {
   fontSize: "13px",
   lineHeight: "20px",
   color: EMAIL_SECONDARY_TEXT,
-  margin: 0,
+  margin: "0 0 8px",
 };

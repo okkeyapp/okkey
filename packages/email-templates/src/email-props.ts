@@ -4,6 +4,7 @@ import type { DeviceApprovalEmailProps } from "./components/DeviceApprovalEmail.
 import type { TwoFactorNoticeEmailProps } from "./components/TwoFactorNoticeEmail.js";
 import type { WorkspaceInviteEmailProps } from "./components/WorkspaceInviteEmail.js";
 import { formatUtcWhen } from "./format-utc.js";
+import { buildEmailStandardFooterCopy } from "./standard-footer.js";
 import type {
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,
@@ -20,11 +21,14 @@ export function buildAuthSignInCodeEmailProps(
   variables: AuthEmailCodeVariables,
 ): AuthSignInCodeEmailProps {
   const minutes = Math.ceil(variables.ttlSeconds / 60);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     beforeCode: formatEmailMessage(locale, "email.auth.signInCode.beforeCode", {}),
     code: variables.code,
     line2: formatEmailMessage(locale, "email.auth.signInCode.line2", { minutes }),
     ignore: formatEmailMessage(locale, "email.auth.signInCode.ignore", {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -65,11 +69,7 @@ export function buildDeviceApprovalEmailProps(
     "email.device.approval.noteBlockIfNotYou",
     {},
   );
-  const noteIgnoreIfMistake = formatEmailMessage(
-    locale,
-    "email.device.approval.noteIgnoreIfMistake",
-    {},
-  );
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead,
     deviceLine,
@@ -81,7 +81,8 @@ export function buildDeviceApprovalEmailProps(
     ctaLabel,
     noteNoUrl,
     noteBlockIfNotYou,
-    noteIgnoreIfMistake,
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -95,7 +96,14 @@ export function buildWorkspaceInviteEmailProps(
     workspaceName: variables.workspaceName,
   });
   const ctaLabel = formatEmailMessage(locale, "email.workspaceInvite.ctaAccept", {});
-  return { intro, ctaLabel, inviteUrl };
+  const standard = buildEmailStandardFooterCopy(locale);
+  return {
+    intro,
+    ctaLabel,
+    inviteUrl,
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
+  };
 }
 
 const twoFactorEnabledKeys = {
@@ -116,11 +124,14 @@ export function buildTwoFactorEnabledEmailProps(
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     line1: formatEmailMessage(locale, twoFactorEnabledKeys.line1, { whenUtc }),
     line2: formatEmailMessage(locale, twoFactorEnabledKeys.line2, {}),
     securityUrl,
     ctaLabel: formatEmailMessage(locale, twoFactorEnabledKeys.cta, {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -130,11 +141,14 @@ export function buildTwoFactorBackupRegeneratedEmailProps(
 ): TwoFactorNoticeEmailProps {
   const securityUrl = variables.securitySettingsUrl.trim();
   const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     line1: formatEmailMessage(locale, twoFactorBackupKeys.line1, { whenUtc }),
     line2: formatEmailMessage(locale, twoFactorBackupKeys.line2, {}),
     securityUrl,
     ctaLabel: formatEmailMessage(locale, twoFactorBackupKeys.cta, {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -146,6 +160,7 @@ export function buildDeviceRecoveryApprovalEmailProps(
   const locationParts = [variables.city, variables.country].filter(
     (part): part is string => typeof part === "string" && part.trim().length > 0,
   );
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.device.recovery.lead", {}),
     deviceLine: formatEmailMessage(locale, "email.device.approval.deviceLine", {
@@ -174,6 +189,8 @@ export function buildDeviceRecoveryApprovalEmailProps(
     noteNoUrl: formatEmailMessage(locale, "email.device.recovery.noteNoUrl", {}),
     noteBlockIfNotYou: formatEmailMessage(locale, "email.device.approval.noteBlockIfNotYou", {}),
     noteIgnoreIfMistake: formatEmailMessage(locale, "email.device.recovery.noteIgnore", {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -181,6 +198,7 @@ export function buildContactRecoveryReleaseEmailProps(
   locale: EmailLocale,
   variables: ContactRecoveryReleaseRequestVariables,
 ): RecoveryActionEmailProps {
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.contacts.recovery.lead", {}),
     detailLine: formatEmailMessage(locale, "email.contacts.recovery.accountLine", {
@@ -196,6 +214,8 @@ export function buildContactRecoveryReleaseEmailProps(
     ctaLabel: formatEmailMessage(locale, "email.contacts.recovery.cta", {}),
     noteNoUrl: formatEmailMessage(locale, "email.contacts.recovery.noteNoUrl", {}),
     noteIgnore: formatEmailMessage(locale, "email.contacts.recovery.noteIgnore", {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
@@ -203,6 +223,7 @@ export function buildTrustedContactInviteEmailProps(
   locale: EmailLocale,
   variables: TrustedContactInviteVariables,
 ): RecoveryActionEmailProps {
+  const standard = buildEmailStandardFooterCopy(locale);
   return {
     lead: formatEmailMessage(locale, "email.contacts.invite.lead", {
       inviter: variables.inviterDisplayName,
@@ -215,6 +236,8 @@ export function buildTrustedContactInviteEmailProps(
     ctaLabel: formatEmailMessage(locale, "email.contacts.invite.cta", {}),
     noteNoUrl: formatEmailMessage(locale, "email.contacts.invite.noteNoUrl", {}),
     noteIgnore: formatEmailMessage(locale, "email.contacts.invite.noteIgnore", {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
   };
 }
 
