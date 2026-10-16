@@ -26,11 +26,11 @@ export function isEmailTransportFailureCode(code: EmailPipelineErrorCode): boole
 }
 
 /**
- * Redact digit runs in email subjects before writing them to logs.
- * Keeps template wording visible while stripping numeric tokens from the subject line.
+ * Redact a leading 6-digit verification code in an email subject for logs / dead-letter storage.
+ * Leaves other digits (e.g. workspace names mid-subject) unchanged.
  */
 export function sanitizeEmailSubjectForLogs(subject: string): string {
-  return subject.replace(/\d+/g, (digits) => "*".repeat(digits.length));
+  return subject.replace(/^\d{6}\b/, "******");
 }
 
 /**

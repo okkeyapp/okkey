@@ -215,7 +215,14 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
     };
     const retryable = isRetryableEmailSendFailure(error);
     if (!retryable || nextAttempts >= maxAttempts) {
-      await deps.redis.lPush(EMAIL_DEAD_KEY, serializeEmailJob(updated));
+      const deadLetterJob: EmailJob = {
+        ...updated,
+        message: {
+          ...updated.message,
+          subject: sanitizeEmailSubjectForLogs(updated.message.subject),
+        },
+      };
+      await deps.redis.lPush(EMAIL_DEAD_KEY, serializeEmailJob(deadLetterJob));
       deps.logger.error("email job dead-lettered", {
         jobId: job.id,
         attempts: nextAttempts,

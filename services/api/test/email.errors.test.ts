@@ -7,7 +7,7 @@ import {
   toPublicEmailErrorResponse,
 } from "../src/email/errors.ts";
 
-test("sanitizeEmailSubjectForLogs redacts digit runs", () => {
+test("sanitizeEmailSubjectForLogs redacts leading verification code only", () => {
   assert.equal(
     sanitizeEmailSubjectForLogs("123456 is your Okkey sign-in code"),
     "****** is your Okkey sign-in code",
@@ -17,6 +17,14 @@ test("sanitizeEmailSubjectForLogs redacts digit runs", () => {
     "****** — код подтверждения нового email в Okkey",
   );
   assert.equal(sanitizeEmailSubjectForLogs("Invitation to workspace"), "Invitation to workspace");
+  assert.equal(
+    sanitizeEmailSubjectForLogs("Plan request Pro — Workspace42"),
+    "Plan request Pro — Workspace42",
+  );
+  assert.equal(
+    sanitizeEmailSubjectForLogs("Заявка на тариф Team — Офис 123"),
+    "Заявка на тариф Team — Офис 123",
+  );
 });
 
 test("toPublicEmailErrorResponse strips transport cause from client payload", () => {
