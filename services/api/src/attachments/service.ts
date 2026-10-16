@@ -74,10 +74,17 @@ export class AttachmentService {
     await this.assertVaultAccess(input.vaultId, input.userId);
 
     const uploadLimits = await this.resolveUploadLimits(input.vaultId, input.itemId);
+    // Record favicons persist on any plan, independent of the files-in-items entitlement.
+    const isItemFaviconAttachment = isItemFaviconAttachmentFileName(input.fileName);
 
     // Workspace branding logo uses workspaceId as a synthetic item id; that path must
     // stay available when "files in items" is disabled for regular vault item uploads.
-    if (!uploadLimits.filesInItemsEnabled && !uploadLimits.isWorkspaceSystemAttachment) {
+    // Item favicon.png uploads are also exempt (monogram/website icons are not "files in items").
+    if (
+      !uploadLimits.filesInItemsEnabled &&
+      !uploadLimits.isWorkspaceSystemAttachment &&
+      !isItemFaviconAttachment
+    ) {
       throw new AttachmentServiceError(
         "FILES_IN_ITEMS_DISABLED",
         403,
@@ -94,9 +101,12 @@ export class AttachmentService {
     if (input.encryptedBody.byteLength > uploadLimits.maxSizeBytes + ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES) {
       throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
     }
+    const allowedExtensions = isItemFaviconAttachment
+      ? [...ITEM_FAVICON_ALLOWED_EXTENSIONS]
+      : uploadLimits.allowedExtensions;
     if (
-      uploadLimits.allowedExtensions.length > 0 &&
-      !isAllowedAttachmentExtension(input.fileName, uploadLimits.allowedExtensions)
+      allowedExtensions.length > 0 &&
+      !isAllowedAttachmentExtension(input.fileName, allowedExtensions)
     ) {
       throw new AttachmentServiceError("INVALID_FILE_TYPE", 400, "File type is not allowed");
     }
@@ -257,6 +267,15 @@ export class AttachmentService {
 
 /** Image types accepted by workspace branding logo upload UI. */
 const WORKSPACE_LOGO_ALLOWED_EXTENSIONS = ["png", "jpg", "webp", "gif"] as const;
+
+/** Record favicon uploads always use this client-side name (`favicon.png`). */
+const ITEM_FAVICON_ATTACHMENT_NAME = "favicon.png";
+const ITEM_FAVICON_ALLOWED_EXTENSIONS = ["png"] as const;
+
+function isItemFaviconAttachmentFileName(fileName: string): boolean {
+  const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();
+  return baseName.toLowerCase() === ITEM_FAVICON_ATTACHMENT_NAME;
+}
 
 function attachmentExtensionFromFileName(fileName: string): string {
   const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();

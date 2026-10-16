@@ -3,6 +3,8 @@ import { afterEach, describe, test } from "node:test";
 
 import {
   bytesEqual,
+  expandFaviconProbeUrls,
+  extractIconCandidatesFromHtml,
   hostsFromUrls,
   isAllowedFaviconFetchUrl,
   isDisallowedResolvedAddress,
@@ -10,6 +12,7 @@ import {
   looksLikeImageBytes,
   MAX_FAVICON_RESPONSE_BYTES,
   parseFaviconProvider,
+  registrableDomainFromHost,
   fetchRemoteFaviconBytes,
   fetchRemoteFaviconBytesFromUrls,
   setFaviconHostResolverForTests,
@@ -85,6 +88,61 @@ describe("hostsFromUrls", () => {
         "https://example.com",
       ]),
       ["example.com"],
+    );
+  });
+});
+
+describe("expandFaviconProbeUrls", () => {
+  test("expands full URL → origin root → registrable domain root", () => {
+    assert.deepEqual(expandFaviconProbeUrls("https://docs.github.com/en/get-started"), [
+      "https://docs.github.com/en/get-started",
+      "https://docs.github.com/",
+      "https://github.com/",
+    ]);
+  });
+
+  test("dedupes when host is already the registrable domain", () => {
+    assert.deepEqual(expandFaviconProbeUrls("https://github.com/okkeyapp/okkey"), [
+      "https://github.com/okkeyapp/okkey",
+      "https://github.com/",
+    ]);
+  });
+
+  test("handles multi-part public suffixes", () => {
+    assert.deepEqual(expandFaviconProbeUrls("https://foo.bar.co.uk/path"), [
+      "https://foo.bar.co.uk/path",
+      "https://foo.bar.co.uk/",
+      "https://bar.co.uk/",
+    ]);
+  });
+});
+
+describe("registrableDomainFromHost", () => {
+  test("returns eTLD+1", () => {
+    assert.equal(registrableDomainFromHost("docs.github.com"), "github.com");
+    assert.equal(registrableDomainFromHost("login.microsoftonline.com"), "microsoftonline.com");
+    assert.equal(registrableDomainFromHost("github.com"), "github.com");
+  });
+});
+
+describe("extractIconCandidatesFromHtml", () => {
+  test("parses icon and apple-touch-icon link tags", () => {
+    const html = `
+      <html><head>
+        <link rel="stylesheet" href="/app.css">
+        <link rel="shortcut icon" href="/legacy.ico">
+        <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+        <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.example.com/apple.png">
+      </head></html>
+    `;
+    const candidates = extractIconCandidatesFromHtml(html, "https://example.com/login");
+    assert.deepEqual(
+      candidates.map((c) => c.href),
+      [
+        "https://example.com/legacy.ico",
+        "https://example.com/icon-32.png",
+        "https://cdn.example.com/apple.png",
+      ],
     );
   });
 });
@@ -208,11 +266,20 @@ describe("fetchRemoteFaviconBytes provider=off", () => {
 describe("fetchRemoteFaviconBytes provider=direct", () => {
   test("direct provider requests the site origin with pinned address", async () => {
     setFaviconHostResolverForTests(async () => ["93.184.216.34"]);
-    const { requested } = mockOutbound(() => ({
-      status: 200,
-      headers: { "content-type": "text/html" },
-      body: new TextEncoder().encode("not-an-image"),
-    }));
+    const { requested } = mockOutbound((url) => {
+      if (url.pathname === "/" || url.pathname === "") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode("<html><head></head></html>"),
+        };
+      }
+      return {
+        status: 200,
+        headers: { "content-type": "text/html" },
+        body: new TextEncoder().encode("not-an-image"),
+      };
+    });
 
     await fetchRemoteFaviconBytes("example.com", { provider: "direct" });
 
@@ -222,6 +289,122 @@ describe("fetchRemoteFaviconBytes provider=direct", () => {
       assert.doesNotMatch(entry.href, /google\.com/i);
       assert.equal(entry.pinnedAddress, "93.184.216.34");
     }
+  });
+
+  test("reads link rel=icon from the full page URL before well-known paths", async () => {
+    setFaviconHostResolverForTests(async (hostname) => {
+      if (hostname === "cdn.example.com" || hostname === "example.com") {
+        return ["93.184.216.34"];
+      }
+      return ["8.8.8.8"];
+    });
+    const icon = pngBytes(96);
+    const { requested } = mockOutbound((url) => {
+      if (url.href === "https://login.example.com/common") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+          body: new TextEncoder().encode(
+            `<html><head><link rel="shortcut icon" href="https://cdn.example.com/fav.ico"></head></html>`,
+          ),
+        };
+      }
+      if (url.href === "https://cdn.example.com/fav.ico") {
+        return {
+          status: 200,
+          headers: { "content-type": "image/x-icon" },
+          body: icon,
+        };
+      }
+      return { status: 404 };
+    });
+
+    const bytes = await fetchRemoteFaviconBytesFromUrls(["https://login.example.com/common"], {
+      provider: "direct",
+    });
+    assert.ok(bytes);
+    assert.equal(bytes.byteLength, 96);
+    assert.ok(requested.some((entry) => entry.href === "https://login.example.com/common"));
+    assert.ok(requested.some((entry) => entry.href === "https://cdn.example.com/fav.ico"));
+    assert.ok(!requested.some((entry) => entry.href.endsWith("/favicon.ico")));
+  });
+
+  test("falls back to registrable domain root when subdomain has no icon", async () => {
+    setFaviconHostResolverForTests(async (hostname) => {
+      if (hostname === "api.github.com" || hostname === "github.com") {
+        return ["140.82.112.3"];
+      }
+      return ["8.8.8.8"];
+    });
+    const icon = pngBytes(80);
+    const { requested } = mockOutbound((url) => {
+      if (url.hostname === "api.github.com") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode("<html></html>"),
+        };
+      }
+      if (url.href === "https://github.com/" || url.pathname === "/") {
+        if (url.hostname === "github.com" && (url.pathname === "/" || url.pathname === "")) {
+          return {
+            status: 200,
+            headers: { "content-type": "text/html" },
+            body: new TextEncoder().encode("<html></html>"),
+          };
+        }
+      }
+      if (url.href === "https://github.com/favicon.ico") {
+        return {
+          status: 200,
+          headers: { "content-type": "image/png" },
+          body: icon,
+        };
+      }
+      return { status: 404 };
+    });
+
+    const bytes = await fetchRemoteFaviconBytesFromUrls(["https://api.github.com/repos"], {
+      provider: "direct",
+    });
+    assert.ok(bytes);
+    assert.equal(bytes.byteLength, 80);
+    assert.ok(requested.some((entry) => entry.href === "https://api.github.com/repos"));
+    assert.ok(requested.some((entry) => entry.href === "https://github.com/favicon.ico"));
+  });
+
+  test("tries subsequent URL fields after the first field fails", async () => {
+    setFaviconHostResolverForTests(async (hostname) => {
+      if (hostname === "no-such-host.invalid") {
+        return ["198.18.0.1"];
+      }
+      return ["93.184.216.34"];
+    });
+    const icon = pngBytes(72);
+    mockOutbound((url) => {
+      if (url.hostname === "docs.github.com" && url.pathname === "/favicon.ico") {
+        return {
+          status: 200,
+          headers: { "content-type": "image/png" },
+          body: icon,
+        };
+      }
+      if (url.hostname === "docs.github.com") {
+        return {
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: new TextEncoder().encode("<html></html>"),
+        };
+      }
+      return { status: 404 };
+    });
+
+    const bytes = await fetchRemoteFaviconBytesFromUrls(
+      ["https://no-such-host.invalid/x", "https://docs.github.com/en"],
+      { provider: "direct" },
+    );
+    assert.ok(bytes);
+    assert.equal(bytes.byteLength, 72);
   });
 
   test("skips hosts that resolve to disallowed addresses", async () => {
