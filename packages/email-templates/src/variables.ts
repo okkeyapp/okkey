@@ -31,6 +31,14 @@ export interface TwoFactorNoticeVariables {
   securitySettingsUrl: string;
 }
 
+/** Notify the previous address after a successful account email change. */
+export interface AccountEmailChangedVariables {
+  /** Masked new address shown in the notice (e.g. `n***@example.com`). */
+  newEmailMasked: string;
+  occurredAtIso: string;
+  securitySettingsUrl: string;
+}
+
 export interface DeviceRecoveryApprovalRequestVariables {
   helpUrl: string;
   /** ISO timestamp when the recovery request was created. */
@@ -83,6 +91,7 @@ export type EmailTemplateVariablesMap = {
   workspace_invite: WorkspaceInviteVariables;
   two_factor_enabled: TwoFactorNoticeVariables;
   two_factor_backup_codes_regenerated: TwoFactorNoticeVariables;
+  account_email_changed: AccountEmailChangedVariables;
   device_recovery_approval_request: DeviceRecoveryApprovalRequestVariables;
   contact_recovery_release_request: ContactRecoveryReleaseRequestVariables;
   trusted_contact_invite: TrustedContactInviteVariables;

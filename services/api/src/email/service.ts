@@ -2,6 +2,7 @@ import type { Logger } from "../logger.ts";
 import type { ApiConfig } from "../config.ts";
 import {
   renderEmailTemplate,
+  type AccountEmailChangedVariables,
   type AuthEmailCodeVariables,
   type ContactRecoveryReleaseRequestVariables,
   type DeviceApprovalRequestVariables,
@@ -471,6 +472,33 @@ export class EmailTemplateService {
     } catch (error) {
       const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
       this.logger?.warn("two_factor_backup_codes_regenerated email skipped", {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async sendAccountEmailChanged(input: {
+    to: string;
+    localeHints: EmailLocaleHints;
+    variables: AccountEmailChangedVariables;
+  }): Promise<void> {
+    const locale = this.resolveLocale(input.localeHints);
+    const rendered = await renderEmailTemplate("account_email_changed", locale, input.variables);
+    await this.dispatchRendered(input.to, rendered);
+  }
+
+  /**
+   * Same as {@link sendAccountEmailChanged} but never throws: confirm must succeed even if mail fails.
+   */
+  async sendAccountEmailChangedBestEffort(
+    input: Parameters<EmailTemplateService["sendAccountEmailChanged"]>[0],
+  ): Promise<void> {
+    try {
+      await this.sendAccountEmailChanged(input);
+    } catch (error) {
+      const code = error instanceof EmailTemplateError ? error.code : "EMAIL_SEND_FAILED";
+      this.logger?.warn("account_email_changed email skipped", {
         code,
         message: error instanceof Error ? error.message : String(error),
       });

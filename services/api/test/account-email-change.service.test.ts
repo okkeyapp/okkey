@@ -74,6 +74,16 @@ function setup() {
   const redis = new InMemoryRedis();
   redis.setNow(Date.UTC(2026, 0, 1, 12, 0, 0));
   const sentEmails: Array<{ to: string; code: string; purpose?: string }> = [];
+  const noticeEmails: Array<{
+    to: string;
+    newEmailMasked: string;
+    securitySettingsUrl: string;
+    localeHints: {
+      userLocale?: string | null;
+      explicitLocale?: string | null;
+      acceptLanguage?: string | null;
+    };
+  }> = [];
   const users = new Map([
     ["u1", userRecord("u1", "old@example.com")],
     ["u2", userRecord("u2", "taken@example.com")],
@@ -104,13 +114,21 @@ function setup() {
           purpose: input.variables.purpose,
         });
       },
+      sendAccountEmailChangedBestEffort: async (input) => {
+        noticeEmails.push({
+          to: input.to,
+          newEmailMasked: input.variables.newEmailMasked,
+          securitySettingsUrl: input.variables.securitySettingsUrl,
+          localeHints: { ...input.localeHints },
+        });
+      },
     },
     config: createTestApiConfig(),
     now: () => redis.now(),
     generateCode: () => "123456",
     generateId: () => `change-${nextId++}`,
   });
-  return { service, sentEmails, users, redis };
+  return { service, sentEmails, noticeEmails, users, redis };
 }
 
 test("email change start sends code to the new email", async () => {
@@ -144,7 +162,7 @@ test("email change rejects existing email", async () => {
 });
 
 test("email change confirm updates user email", async () => {
-  const { service, users } = setup();
+  const { service, users, noticeEmails } = setup();
   const start = await service.start({
     userId: "u1",
     email: "new@example.com",
@@ -155,11 +173,52 @@ test("email change confirm updates user email", async () => {
     userId: "u1",
     challengeId: start.challengeId,
     code: "123456",
+    locale: "ru",
+    acceptLanguage: "ru-RU,ru;q=0.9",
     requestIp: "127.0.0.1",
   });
 
   assert.equal(result.email, "new@example.com");
   assert.equal(users.get("u1")?.email, "new@example.com");
+  assert.equal(noticeEmails.length, 1);
+  assert.equal(noticeEmails[0].to, "old@example.com");
+  assert.equal(noticeEmails[0].newEmailMasked, "n***@example.com");
+  assert.equal(
+    noticeEmails[0].securitySettingsUrl,
+    "https://app.okkey.test/items?popup=settings|twoFactor",
+  );
+  assert.equal(noticeEmails[0].localeHints.explicitLocale, "ru");
+  assert.equal(noticeEmails[0].localeHints.acceptLanguage, "ru-RU,ru;q=0.9");
+  assert.equal(noticeEmails[0].localeHints.userLocale, "ru");
+});
+
+test("email change confirm notice uses request Accept-Language when user locale is empty", async () => {
+  const { service, users, noticeEmails } = setup();
+  users.set("u1", { ...users.get("u1")!, locale: null });
+
+  const start = await service.start({
+    userId: "u1",
+    email: "new@example.com",
+    requestIp: "127.0.0.1",
+    acceptLanguage: "ru",
+  });
+
+  await service.confirm({
+    userId: "u1",
+    challengeId: start.challengeId,
+    code: "123456",
+    acceptLanguage: "ru",
+    requestIp: "127.0.0.1",
+  });
+
+  assert.equal(noticeEmails.length, 1);
+  assert.equal(noticeEmails[0].localeHints.userLocale, null);
+  assert.equal(noticeEmails[0].localeHints.explicitLocale, undefined);
+  assert.equal(noticeEmails[0].localeHints.acceptLanguage, "ru");
+  assert.equal(
+    noticeEmails[0].securitySettingsUrl,
+    "https://app.okkey.test/items?popup=settings|twoFactor",
+  );
 });
 
 test("email change confirm reports attempts left for invalid code", async () => {

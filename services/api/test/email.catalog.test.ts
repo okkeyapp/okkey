@@ -191,6 +191,42 @@ test("renderEmailTemplate two_factor_backup_codes_regenerated en and ru", async 
   assertNoMustachePlaceholders(ru.text);
 });
 
+const accountEmailChangedVars = {
+  newEmailMasked: "n***@example.com",
+  occurredAtIso: "2026-01-01T12:00:00.000Z",
+  securitySettingsUrl: "https://app.example/items?popup=settings|twoFactor",
+} as const;
+
+test("renderEmailTemplate account_email_changed en and ru", async () => {
+  const en = await renderEmailTemplate("account_email_changed", "en", accountEmailChangedVars);
+  assert.equal(
+    en.subject,
+    formatEmailMessage("en", "email.account.emailChanged.subject", {}),
+  );
+  assert.match(en.html, /n\*\*\*@example\.com/);
+  assert.match(en.text, /n\*\*\*@example\.com/);
+  assert.match(en.html, /no-reply/i);
+  assert.match(
+    en.html,
+    new RegExp(formatEmailMessage("en", "email.common.ignoreIfMistake", {}), "i"),
+  );
+  assert.match(en.html, /popup=settings\|twoFactor/);
+  assert.match(en.text, /popup=settings\|twoFactor/);
+  assert.equal(en.html.includes("/settings/security"), false);
+  assertNoMustachePlaceholders(en.text);
+
+  const ru = await renderEmailTemplate("account_email_changed", "ru", accountEmailChangedVars);
+  assert.equal(
+    ru.subject,
+    formatEmailMessage("ru", "email.account.emailChanged.subject", {}),
+  );
+  assert.match(ru.html, /n\*\*\*@example\.com/);
+  assert.match(ru.html, /изменён/i);
+  assert.match(ru.html, /проигнорируйте/i);
+  assert.match(ru.html, /popup=settings\|twoFactor/);
+  assertNoMustachePlaceholders(ru.text);
+});
+
 test("formatEmailMessage falls back to English when key exists only in en bundle", () => {
   assert.equal(formatEmailMessage("ru", "email.qa.fallbackProbeOnlyInEn", {}), "QA_FALLBACK_EN_ONLY");
 });

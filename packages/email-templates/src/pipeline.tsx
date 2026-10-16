@@ -8,6 +8,7 @@ import { WorkspaceInviteEmail } from "./components/WorkspaceInviteEmail.js";
 import { PlanChangeRequestEmail } from "./components/PlanChangeRequestEmail.js";
 import { RecoveryActionEmail } from "./components/RecoveryActionEmail.js";
 import {
+  buildAccountEmailChangedEmailProps,
   buildAuthSignInCodeEmailProps,
   buildContactRecoveryReleaseEmailProps,
   buildDeviceApprovalEmailProps,
@@ -24,6 +25,7 @@ import {
   buildEmailStandardFooterCopy,
 } from "./standard-footer.js";
 import type {
+  AccountEmailChangedVariables,
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
@@ -247,6 +249,47 @@ export function renderTwoFactorBackupRegenerated(
     plain: "email.twoFactor.backupRegen.plain",
     plainFooterUrl: "email.twoFactor.backupRegen.plainFooterUrl",
   });
+}
+
+export async function renderAccountEmailChanged(
+  locale: EmailLocale,
+  variables: AccountEmailChangedVariables,
+): Promise<RenderedEmail> {
+  assertRequired("account_email_changed", variables as unknown as Record<string, unknown>, [
+    "newEmailMasked",
+    "occurredAtIso",
+  ]);
+  if (
+    variables.securitySettingsUrl === undefined ||
+    variables.securitySettingsUrl === null
+  ) {
+    throw new EmailRenderError("EMAIL_TEMPLATE_MISSING_VARIABLE", "missing: securitySettingsUrl", {
+      templateId: "account_email_changed",
+      details: { key: "securitySettingsUrl" },
+    });
+  }
+  const securityUrl = variables.securitySettingsUrl.trim();
+  const props = buildAccountEmailChangedEmailProps(locale, variables);
+  const { line1, line2 } = props;
+  const subject = formatEmailMessage(locale, "email.account.emailChanged.subject", {});
+  const footer = securityUrl
+    ? formatEmailMessage(locale, "email.account.emailChanged.plainFooterUrl", {
+        url: securityUrl,
+      })
+    : "";
+  const standard = buildEmailStandardFooterCopy(locale);
+  const plainText = appendStandardFooterPlain(
+    formatEmailMessage(locale, "email.account.emailChanged.plain", {
+      line1,
+      line2,
+      footer,
+    }),
+    standard,
+  );
+  const element = <TwoFactorNoticeEmail {...props} />;
+  const html = await render(element);
+  const text = await render(element, { plainText: true });
+  return { subject, html, text: text.trim().length > 0 ? text : plainText };
 }
 
 export async function renderDeviceRecoveryApprovalRequest(
@@ -473,6 +516,11 @@ export async function renderEmailTemplate<Id extends EmailTemplateId>(
         return await renderTwoFactorBackupRegenerated(
           locale,
           variables as TwoFactorNoticeVariables,
+        );
+      case "account_email_changed":
+        return await renderAccountEmailChanged(
+          locale,
+          variables as AccountEmailChangedVariables,
         );
       case "device_recovery_approval_request":
         return await renderDeviceRecoveryApprovalRequest(

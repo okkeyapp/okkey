@@ -6,6 +6,7 @@ import type { WorkspaceInviteEmailProps } from "./components/WorkspaceInviteEmai
 import { formatUtcWhen } from "./format-utc.js";
 import { buildEmailStandardFooterCopy } from "./standard-footer.js";
 import type {
+  AccountEmailChangedVariables,
   AuthEmailCodeVariables,
   ContactRecoveryReleaseRequestVariables,
   DeviceApprovalRequestVariables,
@@ -159,6 +160,26 @@ export function buildTwoFactorBackupRegeneratedEmailProps(
   };
 }
 
+export function buildAccountEmailChangedEmailProps(
+  locale: EmailLocale,
+  variables: AccountEmailChangedVariables,
+): TwoFactorNoticeEmailProps {
+  const securityUrl = variables.securitySettingsUrl.trim();
+  const whenUtc = formatUtcWhen(locale, variables.occurredAtIso);
+  const standard = buildEmailStandardFooterCopy(locale);
+  return {
+    line1: formatEmailMessage(locale, "email.account.emailChanged.line1", {
+      newEmailMasked: variables.newEmailMasked,
+      whenUtc,
+    }),
+    line2: formatEmailMessage(locale, "email.account.emailChanged.line2", {}),
+    securityUrl,
+    ctaLabel: formatEmailMessage(locale, "email.account.emailChanged.ctaSecurity", {}),
+    noReply: standard.noReply,
+    ignoreIfMistake: standard.ignoreIfMistake,
+  };
+}
+
 export function buildDeviceRecoveryApprovalEmailProps(
   locale: EmailLocale,
   variables: DeviceRecoveryApprovalRequestVariables,
@@ -272,6 +293,12 @@ export const previewSampleWorkspaceInvite: WorkspaceInviteVariables = {
 };
 
 export const previewSampleTwoFactor: TwoFactorNoticeVariables = {
+  occurredAtIso: "2026-01-15T10:00:00.000Z",
+  securitySettingsUrl: "https://app.okkey.local/items?popup=settings|twoFactor",
+};
+
+export const previewSampleAccountEmailChanged: AccountEmailChangedVariables = {
+  newEmailMasked: "n***@example.com",
   occurredAtIso: "2026-01-15T10:00:00.000Z",
   securitySettingsUrl: "https://app.okkey.local/items?popup=settings|twoFactor",
 };
