@@ -41,6 +41,35 @@ describe("resolveKeyFormFieldLabel", () => {
     expect(resolvedRu).toBe(customLabel);
   });
 
+  it("localizes website URL preset and legacy Website labels", () => {
+    const enMessages = createKeyFormEditorMessages("en");
+    const ruMessages = createKeyFormEditorMessages("ru");
+
+    expect(
+      resolveKeyFormFieldLabel(
+        { id: "website-1", type: "url", label: "website URL", editableLabel: true },
+        enMessages,
+        { sectionId: "websites" },
+      ),
+    ).toBe(enMessages.fieldLabels.url);
+
+    expect(
+      resolveKeyFormFieldLabel(
+        { id: "website-1", type: "url", label: "website URL", editableLabel: true },
+        ruMessages,
+        { sectionId: "websites" },
+      ),
+    ).toBe(ruMessages.fieldLabels.url);
+
+    expect(
+      resolveKeyFormFieldLabel(
+        { id: "website-1", type: "url", label: "Website", editableLabel: true },
+        ruMessages,
+        { sectionId: "websites" },
+      ),
+    ).toBe(ruMessages.fieldLabels.url);
+  });
+
   it("restores translated labels for saved items in card view", () => {
     const ruMessages = createKeyFormEditorMessages("ru");
     const enMessages = createKeyFormEditorMessages("en");
