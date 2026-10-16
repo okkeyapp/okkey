@@ -108,6 +108,11 @@ function defaultLabelsForKey(labelKey: string): Set<string> {
     }
   }
 
+  // Legacy preset/import labels that predate matching EN fieldLabels.url.
+  if (labelKey === "url") {
+    labels.add("Website");
+  }
+
   defaultLabelsByKey.set(labelKey, labels);
   return labels;
 }
