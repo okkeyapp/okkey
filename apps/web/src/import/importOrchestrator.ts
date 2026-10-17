@@ -13,7 +13,7 @@ import {
 } from "@okkey/ui";
 
 import { deleteKeyFieldFileAttachment, uploadEncryptedAttachment } from "../api/key-field-files";
-import { syncItemFaviconForPlaintext } from "../items/syncItemFavicon";
+import { applyFaviconToItem, syncItemFaviconForPlaintext } from "../items/syncItemFavicon";
 
 export type ImportOrchestratorProgress = {
   phase: "parsing" | "importing" | "done";
@@ -39,6 +39,7 @@ export async function runVaultImport(params: {
   vaultKey: Uint8Array;
   exportPassword?: string;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  updateItem?: (item: ItemPlaintextV2) => Promise<string>;
   assignItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
   createFolder?: (label: string, parentFolderId?: string | null) => Promise<string>;
   setItemFavorite?: (itemId: string, favorite: boolean) => Promise<void>;
@@ -95,6 +96,7 @@ export async function runVaultImport(params: {
         accessToken: params.accessToken,
         vaultKey: params.vaultKey,
         createItem: params.createItem,
+        updateItem: params.updateItem,
       });
       const itemId = imported.itemId;
       for (const warning of imported.attachmentWarnings) {
@@ -225,34 +227,21 @@ async function importDraftItem(params: {
   accessToken: string;
   vaultKey: Uint8Array;
   createItem: (item: ItemPlaintextV2) => Promise<string>;
+  updateItem?: (item: ItemPlaintextV2) => Promise<string>;
 }): Promise<{ itemId: string; attachmentWarnings: string[] }> {
   let item: ItemPlaintextV2 = { ...params.draft.item, vaultId: params.vaultId };
   const attachmentWarnings: string[] = [];
   const uploadedFiles: KeyFieldFileValue[] = [];
+  const faviconSyncInput =
+    params.draft.faviconPng && params.draft.faviconPng.byteLength > 0
+      ? {
+          faviconSource: item.faviconSource ?? ("manual" as const),
+          manualFaviconPng: params.draft.faviconPng,
+        }
+      : undefined;
 
-  try {
-    const faviconSync = await syncItemFaviconForPlaintext(
-      params.accessToken,
-      params.vaultKey,
-      item,
-      undefined,
-      params.draft.faviconPng && params.draft.faviconPng.byteLength > 0
-        ? {
-            faviconSource: item.faviconSource ?? "manual",
-            manualFaviconPng: params.draft.faviconPng,
-          }
-        : undefined,
-    );
-    item = faviconSync.item;
-    if (faviconSync.uploadedFavicon) {
-      uploadedFiles.push(faviconSync.uploadedFavicon);
-    }
-  } catch {
-    // Favicon fetch/upload is best-effort; import should still succeed without it.
-  }
-
-  // Upload attachments before createItem (same pattern as favicon / NewItemPopup),
-  // so the first persisted plaintext already includes file fields.
+  // Upload regular attachments before createItem so the first persisted plaintext
+  // already includes file fields. Favicons require the item to exist first.
   for (const attachment of params.draft.attachments) {
     try {
       const mimeType = resolveKeyFieldFileMimeType(attachment.fileName, attachment.mimeType);
@@ -278,9 +267,10 @@ async function importDraftItem(params: {
     }
   }
 
+  const itemWithoutFavicon = applyFaviconToItem(item, undefined, undefined);
+  let itemId: string;
   try {
-    const itemId = await params.createItem(item);
-    return { itemId, attachmentWarnings };
+    itemId = await params.createItem(itemWithoutFavicon);
   } catch (error) {
     await Promise.allSettled(
       uploadedFiles.map((file) =>
@@ -294,6 +284,27 @@ async function importDraftItem(params: {
     );
     throw error;
   }
+
+  try {
+    const faviconSync = await syncItemFaviconForPlaintext(
+      params.accessToken,
+      params.vaultKey,
+      itemWithoutFavicon,
+      undefined,
+      faviconSyncInput,
+    );
+    item = faviconSync.item;
+    if (faviconSync.uploadedFavicon) {
+      uploadedFiles.push(faviconSync.uploadedFavicon);
+    }
+    if ((item.faviconId || item.faviconSource) && params.updateItem) {
+      await params.updateItem(item);
+    }
+  } catch {
+    // Favicon fetch/upload is best-effort; import should still succeed without it.
+  }
+
+  return { itemId, attachmentWarnings };
 }
 
 const IMPORT_ATTACHMENTS_SECTION_ID = "attachments";

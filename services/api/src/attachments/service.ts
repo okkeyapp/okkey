@@ -1,6 +1,7 @@
 import type { KeyFieldFileStorage } from "../storage/key-field-file-storage.ts";
 import type { AttachmentsRepository, AttachmentRecord } from "../storage/attachments.ts";
-import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type { EventsRepository, VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import {
   DEFAULT_MAX_FILE_SIZE_MB,
   maxFileSizeBytesFromMb,
@@ -20,6 +21,11 @@ export class AttachmentServiceError extends Error {
   }
 }
 
+/** Explicit client marker for record/template website icons (not keyed by file name). */
+export const ATTACHMENT_PURPOSE_ITEM_FAVICON = "item-favicon" as const;
+
+export type AttachmentUploadPurpose = typeof ATTACHMENT_PURPOSE_ITEM_FAVICON;
+
 export interface AttachmentUploadInput {
   vaultId: string;
   itemId: string;
@@ -29,6 +35,8 @@ export interface AttachmentUploadInput {
   encryptedBody: Uint8Array;
   encryptedKey: Uint8Array;
   sizeBytes: number;
+  /** When set to item-favicon, skip files-in-items and workspace attachment size limits. */
+  purpose?: AttachmentUploadPurpose;
 }
 
 export interface AttachmentUploadResult {
@@ -50,6 +58,8 @@ export interface AttachmentServiceDeps {
   attachments: AttachmentsRepository;
   vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   workspaces: Pick<WorkspacesRepository, "findById">;
+  events: Pick<EventsRepository, "hasReferencedItemId">;
+  templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   config: PlanEntitlementRuntimeConfig;
 }
 
@@ -60,6 +70,8 @@ export class AttachmentService {
   private readonly attachments: AttachmentsRepository;
   private readonly vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   private readonly workspaces: Pick<WorkspacesRepository, "findById">;
+  private readonly events: Pick<EventsRepository, "hasReferencedItemId">;
+  private readonly templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   private readonly config: PlanEntitlementRuntimeConfig;
 
   constructor(deps: AttachmentServiceDeps) {
@@ -67,6 +79,8 @@ export class AttachmentService {
     this.attachments = deps.attachments;
     this.vaults = deps.vaults;
     this.workspaces = deps.workspaces;
+    this.events = deps.events;
+    this.templates = deps.templates;
     this.config = deps.config;
   }
 
@@ -74,12 +88,12 @@ export class AttachmentService {
     await this.assertVaultAccess(input.vaultId, input.userId);
 
     const uploadLimits = await this.resolveUploadLimits(input.vaultId, input.itemId);
-    // Record favicons persist on any plan, independent of the files-in-items entitlement.
-    const isItemFaviconAttachment = isItemFaviconAttachmentFileName(input.fileName);
+    // Record favicons persist on any plan via an explicit purpose header — not file name.
+    const isItemFaviconAttachment = input.purpose === ATTACHMENT_PURPOSE_ITEM_FAVICON;
 
     // Workspace branding logo uses workspaceId as a synthetic item id; that path must
     // stay available when "files in items" is disabled for regular vault item uploads.
-    // Item favicon.png uploads are also exempt (monogram/website icons are not "files in items").
+    // Item favicon purpose uploads are also exempt (website icons are not "files in items").
     if (
       !uploadLimits.filesInItemsEnabled &&
       !uploadLimits.isWorkspaceSystemAttachment &&
@@ -92,13 +106,18 @@ export class AttachmentService {
       );
     }
 
+    if (isItemFaviconAttachment) {
+      await this.assertItemFaviconTargetExists(input.vaultId, input.itemId);
+    }
+
     if (input.encryptedBody.byteLength === 0) {
       throw new AttachmentServiceError("BAD_REQUEST", 400, "File body is required");
     }
-    if (input.sizeBytes <= 0 || input.sizeBytes > uploadLimits.maxSizeBytes) {
+    const maxSizeBytes = isItemFaviconAttachment ? ITEM_FAVICON_MAX_SIZE_BYTES : uploadLimits.maxSizeBytes;
+    if (input.sizeBytes <= 0 || input.sizeBytes > maxSizeBytes) {
       throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
     }
-    if (input.encryptedBody.byteLength > uploadLimits.maxSizeBytes + ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES) {
+    if (input.encryptedBody.byteLength > maxSizeBytes + ENCRYPTED_BODY_SIZE_OVERHEAD_BYTES) {
       throw new AttachmentServiceError("FILE_TOO_LARGE", 413, "File is too large");
     }
     const allowedExtensions = isItemFaviconAttachment
@@ -123,14 +142,28 @@ export class AttachmentService {
     });
 
     try {
-      await this.attachments.create({
-        id: stored.attachmentId,
-        vaultId: input.vaultId,
-        itemId: input.itemId,
-        storageKey: stored.storageKey,
-        encryptedKey: input.encryptedKey,
-        size: stored.sizeBytes,
-      });
+      if (isItemFaviconAttachment) {
+        // Single icon-field slot per record/template: replace any previous item-favicon row.
+        const { replaced } = await this.attachments.replaceItemFavicon({
+          id: stored.attachmentId,
+          vaultId: input.vaultId,
+          itemId: input.itemId,
+          storageKey: stored.storageKey,
+          encryptedKey: input.encryptedKey,
+          size: stored.sizeBytes,
+        });
+        await this.deleteStorageRecords(replaced);
+      } else {
+        await this.attachments.create({
+          id: stored.attachmentId,
+          vaultId: input.vaultId,
+          itemId: input.itemId,
+          storageKey: stored.storageKey,
+          encryptedKey: input.encryptedKey,
+          size: stored.sizeBytes,
+          purpose: null,
+        });
+      }
     } catch (error) {
       await this.storage.deleteByStorageKey(stored.storageKey).catch(() => undefined);
       throw error;
@@ -219,6 +252,30 @@ export class AttachmentService {
     }
   }
 
+  /**
+   * Item-favicon uploads are only for an existing vault item (event-log referenced id)
+   * or a workspace item template in the same workspace as the vault.
+   */
+  private async assertItemFaviconTargetExists(vaultId: string, itemId: string): Promise<void> {
+    if (await this.events.hasReferencedItemId(vaultId, itemId)) {
+      return;
+    }
+
+    const vault = await this.vaults.findById(vaultId);
+    if (vault) {
+      const template = await this.templates.findById(vault.workspaceId, itemId);
+      if (template) {
+        return;
+      }
+    }
+
+    throw new AttachmentServiceError(
+      "ITEM_NOT_FOUND",
+      404,
+      "Item or template not found for favicon upload",
+    );
+  }
+
   private async resolveUploadLimits(
     vaultId: string,
     itemId: string,
@@ -268,14 +325,9 @@ export class AttachmentService {
 /** Image types accepted by workspace branding logo upload UI. */
 const WORKSPACE_LOGO_ALLOWED_EXTENSIONS = ["png", "jpg", "webp", "gif"] as const;
 
-/** Record favicon uploads always use this client-side name (`favicon.png`). */
-const ITEM_FAVICON_ATTACHMENT_NAME = "favicon.png";
+/** Absolute cap for item favicon uploads (independent of workspace maxFileSizeMb). */
+export const ITEM_FAVICON_MAX_SIZE_BYTES = 256 * 1024;
 const ITEM_FAVICON_ALLOWED_EXTENSIONS = ["png"] as const;
-
-function isItemFaviconAttachmentFileName(fileName: string): boolean {
-  const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();
-  return baseName.toLowerCase() === ITEM_FAVICON_ATTACHMENT_NAME;
-}
 
 function attachmentExtensionFromFileName(fileName: string): string {
   const baseName = fileName.trim().split(/[/\\]/).pop() ?? fileName.trim();

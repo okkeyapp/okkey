@@ -578,6 +578,7 @@ async function uploadFaviconAttachment(input: {
           "X-File-Name": encodeURIComponent("favicon.png"),
           "X-File-Size": String(input.pngBytes.byteLength),
           "X-Encrypted-Key": bytesToBase64(encrypted.encryptedKey),
+          "X-Attachment-Purpose": "item-favicon",
         },
         body: encrypted.encryptedBody,
       },

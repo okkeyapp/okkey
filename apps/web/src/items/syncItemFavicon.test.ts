@@ -67,6 +67,7 @@ describe("syncItemFaviconForPlaintext", () => {
       name: "favicon.png",
       mimeType: "image/png",
       sizeBytes: png.byteLength,
+      purpose: "item-favicon",
     });
     expect(synced.item.faviconId).toBe("1000000000000000009");
     expect(synced.item.faviconSource).toBe("manual");
