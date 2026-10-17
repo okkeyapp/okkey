@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "../logger.ts";
-import { formatEmailFailureReason, isRetryableEmailSendFailure } from "./errors.ts";
+import {
+  formatEmailFailureReason,
+  isRetryableEmailSendFailure,
+  sanitizeEmailSubjectForLogs,
+} from "./errors.ts";
 import type { EmailMessage, EmailSender } from "./service.ts";
 
 
@@ -160,7 +164,7 @@ export class QueuedEmailSender implements EmailSender {
     this.logger?.info("email enqueued", {
       jobId: job.id,
       to: message.to,
-      subject: message.subject,
+      subject: sanitizeEmailSubjectForLogs(message.subject),
     });
   }
 }
@@ -211,7 +215,14 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
     };
     const retryable = isRetryableEmailSendFailure(error);
     if (!retryable || nextAttempts >= maxAttempts) {
-      await deps.redis.lPush(EMAIL_DEAD_KEY, serializeEmailJob(updated));
+      const deadLetterJob: EmailJob = {
+        ...updated,
+        message: {
+          ...updated.message,
+          subject: sanitizeEmailSubjectForLogs(updated.message.subject),
+        },
+      };
+      await deps.redis.lPush(EMAIL_DEAD_KEY, serializeEmailJob(deadLetterJob));
       deps.logger.error("email job dead-lettered", {
         jobId: job.id,
         attempts: nextAttempts,
@@ -260,7 +271,7 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
         jobId: job.id,
         attempts: job.attempts,
         to: job.message.to,
-        subject: job.message.subject,
+        subject: sanitizeEmailSubjectForLogs(job.message.subject),
       });
     } catch (error) {
       await handleFailure(job, error);

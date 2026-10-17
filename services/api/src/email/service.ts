@@ -11,7 +11,7 @@ import {
   type WorkspaceInviteVariables,
   type TwoFactorNoticeVariables,
 } from "./catalog.ts";
-import { EmailTemplateError } from "./errors.ts";
+import { EmailTemplateError, sanitizeEmailSubjectForLogs } from "./errors.ts";
 import { resolveEmailLocaleForRecipient, type EmailLocaleHintsInput } from "./locale.ts";
 import {
   QueuedEmailSender,
@@ -106,7 +106,7 @@ export class LoggerEmailSender implements EmailSender {
     this.logger.info("email sent", {
       to: message.to,
       from: message.from,
-      subject: message.subject,
+      subject: sanitizeEmailSubjectForLogs(message.subject),
       ...(this.includePlainTextBody ? { plainText: message.text } : {}),
     });
   }

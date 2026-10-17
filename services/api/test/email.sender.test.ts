@@ -14,7 +14,7 @@ import { createTestApiConfig } from "./test-api-config.ts";
 
 const baseConfig: ApiConfig = createTestApiConfig({ emailApiTimeoutMs: 1000 });
 
-test("LoggerEmailSender info log omits text and html bodies (no secret leakage)", async () => {
+test("LoggerEmailSender info log omits text/html and redacts digits in subject", async () => {
   const entries: Array<{ message: string; extra: Record<string, unknown> }> = [];
   const logger = {
     info(message: string, extra?: Record<string, unknown>) {
@@ -27,13 +27,14 @@ test("LoggerEmailSender info log omits text and html bodies (no secret leakage)"
   const payload: EmailMessage = {
     to: "user@example.com",
     from: "no-reply@okkey.local",
-    subject: "Your code",
+    subject: "123456 is your Okkey sign-in code",
     text: "SECRET_PLAIN_BODY_123456",
     html: "<p>SECRET_HTML_123456</p>",
   };
   await sender.send(payload);
   const row = entries.find((e) => e.message === "email sent");
   assert.ok(row);
+  assert.equal(row.extra.subject, "****** is your Okkey sign-in code");
   assert.equal(row.extra.plainText, undefined);
   assert.equal(row.extra.text, undefined);
   assert.equal(row.extra.html, undefined);

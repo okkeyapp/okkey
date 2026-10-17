@@ -94,6 +94,50 @@ test("QueuedEmailSender pushes serialized jobs to Redis list", async () => {
   assert.ok(job.id.length > 0);
 });
 
+test("QueuedEmailSender and consumer log redacted subjects", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const entries: Array<{ message: string; extra: Record<string, unknown> }> = [];
+  const logger = {
+    info(message: string, extra?: Record<string, unknown>) {
+      entries.push({ message, extra: extra ?? {} });
+    },
+    warn() {},
+    error() {},
+  };
+  const codeSubject = "146805 is your Okkey email change code";
+  const message: EmailMessage = {
+    ...sampleMessage,
+    subject: codeSubject,
+  };
+  await new QueuedEmailSender(redis, logger).send(message);
+  const queuedRaw = redis.peekList(EMAIL_QUEUE_KEY)[0]!;
+  assert.equal(parseEmailJob(queuedRaw).message.subject, codeSubject);
+
+  const enqueued = entries.find((e) => e.message === "email enqueued");
+  assert.ok(enqueued);
+  assert.equal(enqueued.extra.subject, "****** is your Okkey email change code");
+  assert.equal(JSON.stringify(enqueued.extra).includes("146805"), false);
+
+  const transport: EmailSender = {
+    async send() {},
+  };
+  const consumer = startEmailQueueConsumer({
+    redis,
+    transport,
+    logger,
+    pollTimeoutSeconds: 1,
+  });
+  for (let i = 0; i < 40 && !entries.some((e) => e.message === "email job sent"); i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await consumer.stop();
+
+  const sent = entries.find((e) => e.message === "email job sent");
+  assert.ok(sent);
+  assert.equal(sent.extra.subject, "****** is your Okkey email change code");
+  assert.equal(JSON.stringify(sent.extra).includes("146805"), false);
+});
+
 test("email queue consumer sends via transport and clears queue", async () => {
   const redis = new MemoryEmailQueueRedis();
   const sent: EmailMessage[] = [];
@@ -164,6 +208,47 @@ test("email queue consumer retries then dead-letters", async () => {
   assert.equal(delayed.length, 0);
 });
 
+
+test("email queue dead-letter sanitizes leading verification code in subject", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const transport: EmailSender = {
+    async send() {
+      throw transportErrorWithStatus(400, "email api send failed: status 400");
+    },
+  };
+  const consumer = startEmailQueueConsumer({
+    redis,
+    transport,
+    logger: { info() {}, warn() {}, error() {} },
+    pollTimeoutSeconds: 1,
+    options: { maxAttempts: 5, backoffBaseMs: 1, maxBackoffMs: 1 },
+  });
+
+  const codeSubject = "109836 is your Okkey email change code";
+  const job: EmailJob = {
+    id: "job-dlq-subject",
+    createdAt: new Date().toISOString(),
+    attempts: 0,
+    message: {
+      ...sampleMessage,
+      subject: codeSubject,
+      text: "code body 109836",
+    },
+  };
+  await redis.lPush(EMAIL_QUEUE_KEY, serializeEmailJob(job));
+
+  for (let i = 0; i < 40 && redis.peekList(EMAIL_DEAD_KEY).length === 0; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await consumer.stop();
+
+  assert.equal(redis.peekList(EMAIL_DEAD_KEY).length, 1);
+  const dead = parseEmailJob(redis.peekList(EMAIL_DEAD_KEY)[0]!);
+  assert.equal(dead.message.subject, "****** is your Okkey email change code");
+  assert.equal(dead.message.subject.includes("109836"), false);
+  // Delivery payload on the live queue is unchanged until dead-letter; body in DLQ stays as stored.
+  assert.equal(dead.message.text, "code body 109836");
+});
 
 test("email queue dead-letter lastError includes transport cause", async () => {
   const redis = new MemoryEmailQueueRedis();

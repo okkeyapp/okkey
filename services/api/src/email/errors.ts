@@ -26,6 +26,14 @@ export function isEmailTransportFailureCode(code: EmailPipelineErrorCode): boole
 }
 
 /**
+ * Redact a leading 6-digit verification code in an email subject for logs / dead-letter storage.
+ * Leaves other digits (e.g. workspace names mid-subject) unchanged.
+ */
+export function sanitizeEmailSubjectForLogs(subject: string): string {
+  return subject.replace(/^\d{6}\b/, "******");
+}
+
+/**
  * Internal/ops-facing reason (logs, dead-letter). Includes transport `cause` when present.
  */
 export function formatEmailFailureReason(error: unknown): string {
