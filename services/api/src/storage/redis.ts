@@ -15,6 +15,7 @@ type RedisClientLike = {
   expire(key: string, seconds: number): Promise<boolean>;
   lPush(key: string, ...values: string[]): Promise<number>;
   rPop(key: string): Promise<string | null>;
+  lRem(key: string, count: number, element: string): Promise<number>;
   brPop(
     key: string,
     timeoutSeconds: number,
@@ -144,6 +145,14 @@ export class RedisCache {
       return await this.client.rPop(key);
     } catch (error) {
       throw new StorageQueryError("redis rPop failed", error);
+    }
+  }
+
+  async lRem(key: string, count: number, element: string): Promise<number> {
+    try {
+      return await this.client.lRem(key, count, element);
+    } catch (error) {
+      throw new StorageQueryError("redis lRem failed", error);
     }
   }
 

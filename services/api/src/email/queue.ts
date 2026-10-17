@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Logger } from "../logger.ts";
 import {
   extractLeadingEmailVerificationCode,
@@ -16,12 +16,9 @@ export const EMAIL_QUEUE_KEY = "okkey:email:queue";
 export const EMAIL_DELAYED_KEY = "okkey:email:delayed";
 /** Dead-letter after max attempts (Redis LIST). */
 export const EMAIL_DEAD_KEY = "okkey:email:dead";
-/**
- * AES-256 key (base64url) used to seal original delivery payloads on dead-letter jobs
- * that contain a verification code. Separate from the dead-letter list so dumps of
- * `okkey:email:dead` never include open codes.
- */
-export const EMAIL_DEAD_SEAL_KEY = "okkey:email:dead:seal-key";
+
+/** Domain-separated label so the seal key is not shared with other SESSION_SECRET derivations. */
+const DEAD_LETTER_SEAL_LABEL = "okkey:email:dead-letter-seal:v1";
 
 export type EmailDeliveryMode = "sync" | "queue";
 
@@ -33,7 +30,8 @@ export type EmailJob = {
   lastError?: string;
   /**
    * Sealed original `message` for dead-letter jobs whose open fields were redacted.
-   * Re-queue the same JSON onto `okkey:email:queue`; the consumer unseals before send.
+   * Re-queue the same JSON onto `okkey:email:queue`; the consumer unseals before send
+   * and removes a matching copy from the dead-letter list.
    */
   sealedDelivery?: string;
 };
@@ -43,11 +41,11 @@ export type EmailQueueRedis = {
   rPop(key: string): Promise<string | null>;
   /** Blocking pop from the right; timeoutSeconds 0 = wait forever. Returns null on timeout. */
   brPop(key: string, timeoutSeconds: number): Promise<string | null>;
+  /** Remove up to `count` matching members (0 = all). */
+  lRem(key: string, count: number, element: string): Promise<number>;
   zAdd(key: string, score: number, member: string): Promise<number>;
   zRangeByScore(key: string, min: number, max: number, limit: number): Promise<string[]>;
   zRem(key: string, ...members: string[]): Promise<number>;
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
 };
 
 export type EmailQueueOptions = {
@@ -132,26 +130,16 @@ export function parseEmailJob(raw: string): EmailJob {
 
 const SEAL_PREFIX = "v1";
 
-/** Persist / load the AES-256 key used for dead-letter delivery seals. */
-export async function resolveDeadLetterSealKey(redis: EmailQueueRedis): Promise<Buffer> {
-  const existing = await redis.get(EMAIL_DEAD_SEAL_KEY);
-  if (existing) {
-    const key = Buffer.from(existing, "base64url");
-    if (key.length === 32) {
-      return key;
-    }
+/**
+ * Derive a stable AES-256 key from `EMAIL_DEAD_LETTER_SEAL_KEY` (or a fallback secret).
+ * Same secret → same key across restarts and worker replicas (no Redis race).
+ */
+export function resolveDeadLetterSealKey(secret: string): Buffer {
+  const trimmed = secret.trim();
+  if (!trimmed) {
+    throw new Error("email dead-letter seal secret is empty");
   }
-  const generated = randomBytes(32);
-  await redis.set(EMAIL_DEAD_SEAL_KEY, generated.toString("base64url"));
-  const confirmed = await redis.get(EMAIL_DEAD_SEAL_KEY);
-  if (!confirmed) {
-    throw new Error("failed to persist email dead-letter seal key");
-  }
-  const key = Buffer.from(confirmed, "base64url");
-  if (key.length !== 32) {
-    throw new Error("email dead-letter seal key has invalid length");
-  }
-  return key;
+  return createHash("sha256").update(`${DEAD_LETTER_SEAL_LABEL}:${trimmed}`, "utf8").digest();
 }
 
 /** Seal a full delivery message for storage alongside a redacted dead-letter job. */
@@ -206,10 +194,7 @@ export function unsealEmailDelivery(sealed: string, key: Buffer): EmailMessage {
  * Build the Redis dead-letter payload: open fields never contain a verification code;
  * the original message is sealed when a leading code was present.
  */
-export async function prepareEmailDeadLetterJob(
-  redis: EmailQueueRedis,
-  job: EmailJob,
-): Promise<EmailJob> {
+export function prepareEmailDeadLetterJob(job: EmailJob, sealKey: Buffer): EmailJob {
   const code = extractLeadingEmailVerificationCode(job.message.subject);
   if (!code) {
     // Already redacted (re-dead-letter after requeue) or non-code mail — keep as-is.
@@ -221,24 +206,19 @@ export async function prepareEmailDeadLetterJob(
       },
     };
   }
-  const key = await resolveDeadLetterSealKey(redis);
   return {
     ...job,
     message: redactEmailMessageForDeadLetter(job.message),
-    sealedDelivery: sealEmailDelivery(job.message, key),
+    sealedDelivery: sealEmailDelivery(job.message, sealKey),
   };
 }
 
 /** Resolve the message that should actually be sent (unseal dead-letter requeues). */
-export async function resolveEmailJobDeliveryMessage(
-  redis: EmailQueueRedis,
-  job: EmailJob,
-): Promise<EmailMessage> {
+export function resolveEmailJobDeliveryMessage(job: EmailJob, sealKey: Buffer): EmailMessage {
   if (!job.sealedDelivery) {
     return job.message;
   }
-  const key = await resolveDeadLetterSealKey(redis);
-  return unsealEmailDelivery(job.sealedDelivery, key);
+  return unsealEmailDelivery(job.sealedDelivery, sealKey);
 }
 
 function parseInlineAttachments(
@@ -308,6 +288,8 @@ export type EmailQueueConsumerDeps = {
   redis: EmailQueueRedis;
   transport: EmailSender;
   logger: Pick<Logger, "info" | "warn" | "error">;
+  /** AES-256 key from {@link resolveDeadLetterSealKey} (`EMAIL_DEAD_LETTER_SEAL_KEY` / session secret). */
+  deadLetterSealKey: Buffer;
   options?: EmailQueueOptions;
   /** BRPOP timeout; also used as delayed-scan cadence when idle (default 2s). */
   pollTimeoutSeconds?: number;
@@ -346,7 +328,7 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
     };
     const retryable = isRetryableEmailSendFailure(error);
     if (!retryable || nextAttempts >= maxAttempts) {
-      const deadLetterJob = await prepareEmailDeadLetterJob(deps.redis, updated);
+      const deadLetterJob = prepareEmailDeadLetterJob(updated, deps.deadLetterSealKey);
       await deps.redis.lPush(EMAIL_DEAD_KEY, serializeEmailJob(deadLetterJob));
       deps.logger.error("email job dead-lettered", {
         jobId: job.id,
@@ -391,13 +373,17 @@ export function startEmailQueueConsumer(deps: EmailQueueConsumerDeps): EmailQueu
     }
 
     try {
-      const delivery = await resolveEmailJobDeliveryMessage(deps.redis, job);
+      const delivery = resolveEmailJobDeliveryMessage(job, deps.deadLetterSealKey);
       await deps.transport.send(delivery);
+      // Ops often LPUSH the dead-letter JSON onto the live queue without LREM;
+      // drop any exact copy still sitting in the DLQ after a successful send.
+      const removed = await deps.redis.lRem(EMAIL_DEAD_KEY, 0, raw);
       deps.logger.info("email job sent", {
         jobId: job.id,
         attempts: job.attempts,
         to: delivery.to,
         subject: sanitizeEmailSubjectForLogs(delivery.subject),
+        ...(removed > 0 ? { deadLetterRemoved: removed } : {}),
       });
     } catch (error) {
       await handleFailure(job, error);
@@ -449,20 +435,11 @@ function delay(ms: number): Promise<void> {
 export class MemoryEmailQueueRedis implements EmailQueueRedis {
   private readonly lists = new Map<string, string[]>();
   private readonly zsets = new Map<string, Map<string, number>>();
-  private readonly kv = new Map<string, string>();
   private readonly waiters: Array<{
     key: string;
     resolve: (value: string | null) => void;
     timer: ReturnType<typeof setTimeout>;
   }> = [];
-
-  async get(key: string): Promise<string | null> {
-    return this.kv.get(key) ?? null;
-  }
-
-  async set(key: string, value: string): Promise<void> {
-    this.kv.set(key, value);
-  }
 
   async lPush(key: string, ...values: string[]): Promise<number> {
     const list = this.lists.get(key) ?? [];
@@ -479,6 +456,41 @@ export class MemoryEmailQueueRedis implements EmailQueueRedis {
     const value = list.pop() ?? null;
     this.lists.set(key, list);
     return value;
+  }
+
+  async lRem(key: string, count: number, element: string): Promise<number> {
+    const list = this.lists.get(key) ?? [];
+    let removed = 0;
+    const next: string[] = [];
+    if (count === 0) {
+      for (const item of list) {
+        if (item === element) {
+          removed += 1;
+        } else {
+          next.push(item);
+        }
+      }
+    } else if (count > 0) {
+      for (const item of list) {
+        if (item === element && removed < count) {
+          removed += 1;
+        } else {
+          next.push(item);
+        }
+      }
+    } else {
+      const limit = -count;
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const item = list[i]!;
+        if (item === element && removed < limit) {
+          removed += 1;
+          continue;
+        }
+        next.unshift(item);
+      }
+    }
+    this.lists.set(key, next);
+    return removed;
   }
 
   async brPop(key: string, timeoutSeconds: number): Promise<string | null> {

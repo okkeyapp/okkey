@@ -16,7 +16,7 @@ import { CapsuleService } from "./capsule/service.ts";
 import { MmdbGeoIpLookup } from "./capsule/geoip.ts";
 import { loadConfig } from "./config.ts";
 import { initEntityIdGenerator } from "./entity-id.ts";
-import { startEmailQueueConsumer } from "./email/queue.ts";
+import { resolveDeadLetterSealKey, startEmailQueueConsumer } from "./email/queue.ts";
 import { createTransportEmailSender } from "./email/service.ts";
 import { ItemPurgeService } from "./item-purge/service.ts";
 import { startBackgroundJobs } from "./jobs/background-jobs.ts";
@@ -114,6 +114,7 @@ async function main(): Promise<void> {
     redis: storage.redis,
     transport: emailTransport,
     logger,
+    deadLetterSealKey: resolveDeadLetterSealKey(config.emailDeadLetterSealSecret),
   });
 
   logger.info("worker started", {
