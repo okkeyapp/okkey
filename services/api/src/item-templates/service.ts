@@ -1,4 +1,4 @@
-import type { WorkspacesRepository } from "../storage/repositories.ts";
+import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import { WORKSPACE_ITEM_CATEGORY_IDS } from "../item-category-preferences/service.ts";
 import type { AttachmentService } from "../attachments/service.ts";
@@ -17,6 +17,25 @@ export class ItemTemplatesServiceError extends Error {
 
 const allowedCategoryIdSet = new Set<string>(WORKSPACE_ITEM_CATEGORY_IDS);
 
+/** Structural section keys kept in stored template payloads. */
+export const TEMPLATE_SECTION_STRUCTURE_KEYS = ["id", "variant", "title", "fields"] as const;
+
+/** Structural field keys kept in stored template payloads (`value` is always cleared). */
+export const TEMPLATE_FIELD_STRUCTURE_KEYS = [
+  "id",
+  "type",
+  "label",
+  "value",
+  "editableLabel",
+  "secret",
+  "secretKind",
+  "deletable",
+  "required",
+  "urlAutofillScope",
+  "disableClickCopy",
+  "selectOptions",
+] as const;
+
 export type ItemTemplatePayload = {
   record_name: string;
   vault_id: string;
@@ -29,24 +48,40 @@ export type ItemTemplatePayload = {
 export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "isOwnerOrAdmin">;
+  vaults: Pick<VaultsRepository, "canReadVault">;
   attachments?: Pick<AttachmentService, "purgeForTemplate">;
 }
 
 export class ItemTemplatesService {
   private readonly templates: ItemTemplatesServiceDeps["templates"];
   private readonly workspaces: ItemTemplatesServiceDeps["workspaces"];
+  private readonly vaults: ItemTemplatesServiceDeps["vaults"];
   private readonly attachments?: ItemTemplatesServiceDeps["attachments"];
 
   constructor(deps: ItemTemplatesServiceDeps) {
     this.templates = deps.templates;
     this.workspaces = deps.workspaces;
+    this.vaults = deps.vaults;
     this.attachments = deps.attachments;
   }
 
   async list(workspaceId: string, userId: string) {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const rows = await this.templates.listByWorkspace(workspaceId);
-    return rows.map(toTemplateDto);
+    const visible = [];
+    for (const row of rows) {
+      const vaultId =
+        typeof row.payloadJson.vault_id === "string" ? row.payloadJson.vault_id.trim() : "";
+      if (!vaultId) {
+        continue;
+      }
+      const canRead = await this.vaults.canReadVault(vaultId, userId);
+      if (!canRead) {
+        continue;
+      }
+      visible.push(toTemplateDto(row));
+    }
+    return visible;
   }
 
   async create(
@@ -214,30 +249,47 @@ function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, favi
   return [...ids];
 }
 
-/** Keep section/field structure; drop pre-filled values from the stored payload. */
+function pickKnownKeys(source: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in source) {
+      next[key] = source[key];
+    }
+  }
+  return next;
+}
+
+/**
+ * Keep only known structural section/field keys; force empty field values.
+ * Unknown keys (e.g. note, defaultValue, history) are dropped.
+ */
 export function stripTemplateSectionValues(sections: unknown[]): unknown[] {
-  return sections.map((section) => {
+  if (!Array.isArray(sections)) {
+    return [];
+  }
+  const result: Record<string, unknown>[] = [];
+  for (const section of sections) {
     if (!section || typeof section !== "object" || Array.isArray(section)) {
-      return section;
+      continue;
     }
-    const typed = section as Record<string, unknown>;
-    const fields = typed.fields;
-    if (!Array.isArray(fields)) {
-      return { ...typed };
-    }
-    return {
-      ...typed,
-      fields: fields.map((field) => {
-        if (!field || typeof field !== "object" || Array.isArray(field)) {
-          return field;
-        }
-        const next = { ...(field as Record<string, unknown>) };
-        next.value = "";
-        delete next.copyValue;
-        return next;
-      }),
-    };
-  });
+    const src = section as Record<string, unknown>;
+    const next = pickKnownKeys(src, TEMPLATE_SECTION_STRUCTURE_KEYS.filter((key) => key !== "fields"));
+    const fields = Array.isArray(src.fields) ? src.fields : [];
+    next.fields = fields.flatMap((field) => {
+      if (!field || typeof field !== "object" || Array.isArray(field)) {
+        return [];
+      }
+      const fieldSrc = field as Record<string, unknown>;
+      const fieldOut = pickKnownKeys(
+        fieldSrc,
+        TEMPLATE_FIELD_STRUCTURE_KEYS.filter((key) => key !== "value"),
+      );
+      fieldOut.value = "";
+      return [fieldOut];
+    });
+    result.push(next);
+  }
+  return result;
 }
 
 function normalizeTemplatePayload(raw: ItemTemplatePayload): Record<string, unknown> {

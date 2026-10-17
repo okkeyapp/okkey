@@ -42,11 +42,13 @@ beforeEach(() => {
 });
 
 describe("structure-only template payloads", () => {
-  it("strips field values and copyValue while keeping labels/types", () => {
-    const sections: KeyFormEditorSection[] = [
+  it("allowlists structural keys and clears values", () => {
+    const sections = [
       {
         id: "primary",
-        variant: "primary",
+        variant: "primary" as const,
+        title: "Login",
+        note: "drop-section-key",
         fields: [
           {
             id: "password",
@@ -55,15 +57,18 @@ describe("structure-only template payloads", () => {
             value: "s3cret",
             copyValue: "s3cret",
             secret: true,
+            defaultValue: "nope",
+            history: ["a"],
           },
         ],
       },
-    ];
+    ] as unknown as KeyFormEditorSection[];
 
     expect(stripTemplateSectionValues(sections)).toEqual([
       {
         id: "primary",
         variant: "primary",
+        title: "Login",
         fields: [
           {
             id: "password",

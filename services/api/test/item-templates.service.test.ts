@@ -15,13 +15,32 @@ function workspacesStub(options?: { isOwnerOrAdmin?: boolean }) {
   };
 }
 
-test("stripTemplateSectionValues clears field values and copyValue", () => {
+function vaultsStub(options?: { readableVaultIds?: string[] }) {
+  const readable = new Set(options?.readableVaultIds ?? ["1000000000000000002", "vault-1"]);
+  return {
+    canReadVault: async (vaultId: string) => readable.has(vaultId),
+  };
+}
+
+test("stripTemplateSectionValues allowlists structural keys and clears values", () => {
   const stripped = stripTemplateSectionValues([
     {
       id: "login",
+      variant: "primary",
+      title: "Login",
+      note: "should-drop",
       fields: [
-        { id: "password", type: "password", label: "Password", value: "s3cret", copyValue: "s3cret" },
-        { id: "note", type: "text", label: "Note", value: "hello" },
+        {
+          id: "password",
+          type: "password",
+          label: "Password",
+          value: "s3cret",
+          copyValue: "s3cret",
+          secret: true,
+          defaultValue: "nope",
+          history: ["a"],
+        },
+        { id: "note", type: "text", label: "Note", value: "hello", note: "drop-me" },
       ],
     },
   ]);
@@ -29,8 +48,10 @@ test("stripTemplateSectionValues clears field values and copyValue", () => {
   assert.deepEqual(stripped, [
     {
       id: "login",
+      variant: "primary",
+      title: "Login",
       fields: [
-        { id: "password", type: "password", label: "Password", value: "" },
+        { id: "password", type: "password", label: "Password", value: "", secret: true },
         { id: "note", type: "text", label: "Note", value: "" },
       ],
     },
@@ -46,6 +67,7 @@ test("ItemTemplatesService.create rejects empty template name", async () => {
       },
     } as never,
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -79,6 +101,7 @@ test("ItemTemplatesService.create rejects unknown category id", async () => {
       },
     } as never,
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -133,6 +156,7 @@ test("ItemTemplatesService.create stores structure-only payload", async () => {
       },
     } as never,
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   const template = await service.create("ws-1", "user-1", {
@@ -208,6 +232,7 @@ test("ItemTemplatesService.list strips legacy field values from responses", asyn
       },
     } as never,
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   const [template] = await service.list("ws-1", "user-2");
@@ -218,6 +243,57 @@ test("ItemTemplatesService.list strips legacy field values from responses", asyn
       fields: [{ type: "password", value: "" }],
     },
   ]);
+});
+
+test("ItemTemplatesService.list returns only templates for vaults the member can read", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [
+        {
+          id: "1000000000000000001",
+          workspaceId: "ws-1",
+          name: "Readable vault template",
+          categoryId: "login",
+          payloadJson: {
+            vault_id: "1000000000000000002",
+            folder_id: "__none__",
+            sections: [{ id: "primary", fields: [{ id: "login", type: "text", label: "Login", value: "" }] }],
+            tags: [],
+          },
+          faviconId: null,
+          createdBy: "user-1",
+          createdAt: "",
+          updatedAt: "",
+        },
+        {
+          id: "1000000000000000003",
+          workspaceId: "ws-1",
+          name: "Hidden vault template",
+          categoryId: "login",
+          payloadJson: {
+            vault_id: "1000000000000000099",
+            folder_id: "__none__",
+            sections: [{ id: "primary", fields: [{ id: "login", type: "text", label: "Secret layout", value: "" }] }],
+            tags: [],
+          },
+          faviconId: null,
+          createdBy: "user-1",
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub({ readableVaultIds: ["1000000000000000002"] }),
+  });
+
+  const templates = await service.list("ws-1", "user-2");
+  assert.equal(templates.length, 1);
+  assert.equal(templates[0]?.id, "1000000000000000001");
+  assert.equal(templates[0]?.name, "Readable vault template");
 });
 
 test("ItemTemplatesService.update rejects missing template", async () => {
@@ -232,6 +308,7 @@ test("ItemTemplatesService.update rejects missing template", async () => {
       delete: async () => false,
     },
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -306,6 +383,7 @@ test("ItemTemplatesService.update persists template changes for creator", async 
       delete: async () => false,
     },
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   const template = await service.update("ws-1", "user-1", "1000000000000000001", {
@@ -355,6 +433,7 @@ test("ItemTemplatesService.update rejects non-creator non-admin member", async (
       delete: async () => false,
     },
     workspaces: workspacesStub({ isOwnerOrAdmin: false }),
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -424,6 +503,7 @@ test("ItemTemplatesService.update allows workspace admin for another member temp
       delete: async () => false,
     },
     workspaces: workspacesStub({ isOwnerOrAdmin: true }),
+    vaults: vaultsStub(),
   });
 
   const template = await service.update("ws-1", "admin-1", "1000000000000000001", {
@@ -451,6 +531,7 @@ test("ItemTemplatesService.delete rejects missing template", async () => {
       delete: async () => false,
     } as never,
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -486,6 +567,7 @@ test("ItemTemplatesService.delete rejects non-creator non-admin member", async (
       },
     } as never,
     workspaces: workspacesStub({ isOwnerOrAdmin: false }),
+    vaults: vaultsStub(),
   });
 
   await assert.rejects(
@@ -538,6 +620,7 @@ test("ItemTemplatesService.delete purges template attachments by template id", a
       delete: async () => true,
     } as never,
     workspaces: workspacesStub(),
+    vaults: vaultsStub(),
     attachments: {
       async purgeForTemplate(templateId: string, referencedAttachmentIds: Iterable<string>) {
         purgedTemplateId = templateId;

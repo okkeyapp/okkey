@@ -253,6 +253,7 @@ async function main(): Promise<void> {
   const itemTemplatesService = new ItemTemplatesService({
     templates: storage.repositories.workspaceItemTemplates,
     workspaces: storage.repositories.workspaces,
+    vaults: storage.repositories.vaults,
     attachments: attachmentService,
   });
   const itemPurgeService = new ItemPurgeService({

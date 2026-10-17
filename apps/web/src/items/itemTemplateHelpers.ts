@@ -28,16 +28,40 @@ export type ItemTemplateFormSnapshot = {
   attachmentItemId?: string;
 };
 
-/** Keep field structure; omit pre-filled values from the template payload. */
+/** Keep known structural keys only; omit pre-filled values and unknown keys. */
 export function stripTemplateSectionValues(sections: KeyFormEditorSection[]): KeyFormEditorSection[] {
-  return structuredClone(sections).map((section) => ({
-    ...section,
-    fields: section.fields.map((field) => {
-      const next = { ...field, value: "" };
-      delete next.copyValue;
-      return next;
-    }),
-  }));
+  return sections.map((section) => {
+    const nextSection: KeyFormEditorSection = {
+      id: section.id,
+      variant: section.variant,
+      fields: section.fields.map((field) => {
+        const nextField: KeyFormEditorSection["fields"][number] = {
+          id: field.id,
+          type: field.type,
+          label: field.label,
+          value: "",
+        };
+        if (field.editableLabel !== undefined) nextField.editableLabel = field.editableLabel;
+        if (field.secret !== undefined) nextField.secret = field.secret;
+        if (field.secretKind !== undefined) nextField.secretKind = field.secretKind;
+        if (field.deletable !== undefined) nextField.deletable = field.deletable;
+        if (field.required !== undefined) nextField.required = field.required;
+        if (field.urlAutofillScope !== undefined) nextField.urlAutofillScope = field.urlAutofillScope;
+        if (field.disableClickCopy !== undefined) nextField.disableClickCopy = field.disableClickCopy;
+        if (field.selectOptions !== undefined) {
+          nextField.selectOptions = field.selectOptions.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }));
+        }
+        return nextField;
+      }),
+    };
+    if (section.title !== undefined) {
+      nextSection.title = section.title;
+    }
+    return nextSection;
+  });
 }
 
 function buildStructureOnlyPayload(
