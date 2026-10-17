@@ -49,6 +49,8 @@ function uploadMocks(input: {
   existingItemFavicon?: { id: string; storageKey: string };
   /** When false, item-favicon target lookup fails (default: item exists). */
   itemExists?: boolean;
+  /** When true, item is soft-deleted (default: not deleted). */
+  itemSoftDeleted?: boolean;
   templateExists?: boolean;
 }) {
   let created: { itemId: string; purpose: string | null } | null = null;
@@ -156,6 +158,11 @@ function uploadMocks(input: {
       return input.itemExists !== false;
     },
   };
+  const softDeletes = {
+    async exists() {
+      return input.itemSoftDeleted === true;
+    },
+  };
   const templates = {
     async findById() {
       if (!input.templateExists) {
@@ -182,6 +189,7 @@ function uploadMocks(input: {
       vaults,
       workspaces,
       events,
+      softDeletes,
       templates,
       config: createTestApiConfig({
         deploymentMode: input.deploymentMode ?? "saas",
@@ -198,6 +206,11 @@ function emptyEventsAndTemplates() {
   return {
     events: {
       async hasReferencedItemId() {
+        return false;
+      },
+    },
+    softDeletes: {
+      async exists() {
         return false;
       },
     },
@@ -443,6 +456,38 @@ test("AttachmentService rejects item-favicon purpose for unknown itemId", async 
     allowedFileExtensions: ["pdf"],
     deploymentMode: "saas",
     itemExists: false,
+    templateExists: false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: REGULAR_ITEM_ID,
+        userId: USER_ID,
+        fileName: "favicon.png",
+        mimeType: "image/png",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+        purpose: "item-favicon",
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "ITEM_NOT_FOUND" &&
+      error.statusCode === 404,
+  );
+  assert.equal(getReplacedFaviconCalls(), 0);
+});
+
+test("AttachmentService rejects item-favicon purpose for soft-deleted item", async () => {
+  const { service, getReplacedFaviconCalls } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "FREE",
+    allowedFileExtensions: ["pdf"],
+    deploymentMode: "saas",
+    itemExists: true,
+    itemSoftDeleted: true,
     templateExists: false,
   });
 

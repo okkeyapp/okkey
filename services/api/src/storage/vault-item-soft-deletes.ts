@@ -53,6 +53,21 @@ export class VaultItemSoftDeletesRepository {
     );
   }
 
+  /** True when the vault item is currently soft-deleted (in retention before purge). */
+  async exists(vaultId: string, itemId: string): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM vault_item_soft_deletes
+          WHERE vault_id = $1 AND item_id = $2::bigint
+        ) AS exists
+      `,
+      [vaultId, itemId],
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
   async listExpired(nowMs = Date.now()): Promise<ExpiredSoftDeleteRecord[]> {
     const rows = await this.db.query<{
       vault_id: string;

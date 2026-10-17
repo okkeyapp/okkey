@@ -1,6 +1,7 @@
 import type { KeyFieldFileStorage } from "../storage/key-field-file-storage.ts";
 import type { AttachmentsRepository, AttachmentRecord } from "../storage/attachments.ts";
 import type { EventsRepository, VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type { VaultItemSoftDeletesRepository } from "../storage/vault-item-soft-deletes.ts";
 import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import {
   DEFAULT_MAX_FILE_SIZE_MB,
@@ -59,6 +60,7 @@ export interface AttachmentServiceDeps {
   vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   workspaces: Pick<WorkspacesRepository, "findById">;
   events: Pick<EventsRepository, "hasReferencedItemId">;
+  softDeletes: Pick<VaultItemSoftDeletesRepository, "exists">;
   templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   config: PlanEntitlementRuntimeConfig;
 }
@@ -71,6 +73,7 @@ export class AttachmentService {
   private readonly vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   private readonly workspaces: Pick<WorkspacesRepository, "findById">;
   private readonly events: Pick<EventsRepository, "hasReferencedItemId">;
+  private readonly softDeletes: Pick<VaultItemSoftDeletesRepository, "exists">;
   private readonly templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   private readonly config: PlanEntitlementRuntimeConfig;
 
@@ -80,6 +83,7 @@ export class AttachmentService {
     this.vaults = deps.vaults;
     this.workspaces = deps.workspaces;
     this.events = deps.events;
+    this.softDeletes = deps.softDeletes;
     this.templates = deps.templates;
     this.config = deps.config;
   }
@@ -253,11 +257,19 @@ export class AttachmentService {
   }
 
   /**
-   * Item-favicon uploads are only for an existing vault item (event-log referenced id)
-   * or a workspace item template in the same workspace as the vault.
+   * Item-favicon uploads are only for an existing non-deleted vault item
+   * (event-log referenced id not in soft-delete retention) or a workspace item
+   * template in the same workspace as the vault.
    */
   private async assertItemFaviconTargetExists(vaultId: string, itemId: string): Promise<void> {
     if (await this.events.hasReferencedItemId(vaultId, itemId)) {
+      if (await this.softDeletes.exists(vaultId, itemId)) {
+        throw new AttachmentServiceError(
+          "ITEM_NOT_FOUND",
+          404,
+          "Item or template not found for favicon upload",
+        );
+      }
       return;
     }
 
