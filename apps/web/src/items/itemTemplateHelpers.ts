@@ -28,6 +28,56 @@ export type ItemTemplateFormSnapshot = {
   attachmentItemId?: string;
 };
 
+/** Keep known structural keys only; omit pre-filled values and unknown keys. */
+export function stripTemplateSectionValues(sections: KeyFormEditorSection[]): KeyFormEditorSection[] {
+  return sections.map((section) => {
+    const nextSection: KeyFormEditorSection = {
+      id: section.id,
+      variant: section.variant,
+      fields: section.fields.map((field) => {
+        const nextField: KeyFormEditorSection["fields"][number] = {
+          id: field.id,
+          type: field.type,
+          label: field.label,
+          value: "",
+        };
+        if (field.editableLabel !== undefined) nextField.editableLabel = field.editableLabel;
+        if (field.secret !== undefined) nextField.secret = field.secret;
+        if (field.secretKind !== undefined) nextField.secretKind = field.secretKind;
+        if (field.deletable !== undefined) nextField.deletable = field.deletable;
+        if (field.required !== undefined) nextField.required = field.required;
+        if (field.urlAutofillScope !== undefined) nextField.urlAutofillScope = field.urlAutofillScope;
+        if (field.disableClickCopy !== undefined) nextField.disableClickCopy = field.disableClickCopy;
+        if (field.selectOptions !== undefined) {
+          nextField.selectOptions = field.selectOptions.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }));
+        }
+        return nextField;
+      }),
+    };
+    if (section.title !== undefined) {
+      nextSection.title = section.title;
+    }
+    return nextSection;
+  });
+}
+
+function buildStructureOnlyPayload(
+  snapshot: ItemTemplateFormSnapshot,
+  faviconSource?: ItemFaviconSource,
+) {
+  return {
+    record_name: "",
+    vault_id: snapshot.vaultId,
+    folder_id: snapshot.folderId,
+    sections: stripTemplateSectionValues(snapshot.sections),
+    tags: [] as string[],
+    ...(faviconSource ? { favicon_source: faviconSource } : {}),
+  };
+}
+
 export function buildTemplateUpdatePayload(
   snapshot: ItemTemplateFormSnapshot,
   templateName: string,
@@ -37,14 +87,7 @@ export function buildTemplateUpdatePayload(
   return {
     name: templateName.trim(),
     category_id: snapshot.categoryId,
-    payload: {
-      record_name: snapshot.recordName,
-      vault_id: snapshot.vaultId,
-      folder_id: snapshot.folderId,
-      sections: structuredClone(snapshot.sections),
-      tags: [...snapshot.tags],
-      ...(faviconSource ? { favicon_source: faviconSource } : {}),
-    },
+    payload: buildStructureOnlyPayload(snapshot, faviconSource),
     favicon_id: faviconId ?? null,
   };
 }
@@ -60,14 +103,7 @@ export function buildTemplateCreatePayload(
     id: templateId,
     name: templateName.trim(),
     category_id: snapshot.categoryId,
-    payload: {
-      record_name: snapshot.recordName,
-      vault_id: snapshot.vaultId,
-      folder_id: snapshot.folderId,
-      sections: structuredClone(snapshot.sections),
-      tags: [...snapshot.tags],
-      ...(faviconSource ? { favicon_source: faviconSource } : {}),
-    },
+    payload: buildStructureOnlyPayload(snapshot, faviconSource),
     ...(faviconId ? { favicon_id: faviconId } : {}),
   };
 }
@@ -134,8 +170,10 @@ export function buildTemplatePrefillValues(
     recordName: "",
     vaultId: template.payload.vault_id,
     folderId: template.payload.folder_id,
-    sections: structuredClone(template.payload.sections) as KeyFormEditorSection[],
-    tags: [...template.payload.tags],
+    sections: stripTemplateSectionValues(
+      structuredClone(template.payload.sections) as KeyFormEditorSection[],
+    ),
+    tags: [],
     attachmentItemId: template.id,
     ...(template.favicon_id ? { faviconId: template.favicon_id } : {}),
     ...(template.favicon_id ? { faviconItemId: template.id } : {}),

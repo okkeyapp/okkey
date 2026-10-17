@@ -90,6 +90,7 @@ Self-hosted recommendations:
 - Metrics and alerting for API latency, error rate, DB health, and Redis memory.
 - Daily Postgres backups with retention policy.
 - Object storage backups or replication if available.
+- After applying migration `0037` (item templates structure-only): templates no longer store pre-filled field values (existing templates become empty forms). Cleared data can remain in WAL and older backups — run `VACUUM (FULL) workspace_item_templates` (or a full-DB vacuum) and rotate backups. See `docs/architecture/09_self_hosting.md`.
 
 SaaS recommendations:
 - Multi-zone database backups and point-in-time recovery.

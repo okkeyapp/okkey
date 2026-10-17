@@ -177,6 +177,16 @@ Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `
 
 On API (and worker) start, SQL files under `services/api/migrations/` are applied in order and recorded in `schema_migrations`.
 
+### Item templates structure-only (`0037`)
+
+Workspace item templates store form structure only (section/field layout). Pre-filled field values are not kept on the server.
+
+After upgrading past migration `0037_item_templates_structure_only.sql`:
+
+- Existing templates become empty forms (labels/types remain; previous field values are cleared).
+- Cleared row data may still exist in Postgres WAL segments and in older backups until those are rotated.
+- Recommended post-upgrade hygiene: run `VACUUM (FULL) workspace_item_templates;` during a maintenance window (or a full-database `VACUUM (FULL)` if preferred), then rotate backups so retained dumps no longer include the previous payloads.
+
 ---
 
 ## Enterprise Features

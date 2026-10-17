@@ -1,4 +1,4 @@
-import type { WorkspacesRepository } from "../storage/repositories.ts";
+import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
 import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import { WORKSPACE_ITEM_CATEGORY_IDS } from "../item-category-preferences/service.ts";
 import type { AttachmentService } from "../attachments/service.ts";
@@ -17,6 +17,25 @@ export class ItemTemplatesServiceError extends Error {
 
 const allowedCategoryIdSet = new Set<string>(WORKSPACE_ITEM_CATEGORY_IDS);
 
+/** Structural section keys kept in stored template payloads. */
+export const TEMPLATE_SECTION_STRUCTURE_KEYS = ["id", "variant", "title", "fields"] as const;
+
+/** Structural field keys kept in stored template payloads (`value` is always cleared). */
+export const TEMPLATE_FIELD_STRUCTURE_KEYS = [
+  "id",
+  "type",
+  "label",
+  "value",
+  "editableLabel",
+  "secret",
+  "secretKind",
+  "deletable",
+  "required",
+  "urlAutofillScope",
+  "disableClickCopy",
+  "selectOptions",
+] as const;
+
 export type ItemTemplatePayload = {
   record_name: string;
   vault_id: string;
@@ -28,25 +47,41 @@ export type ItemTemplatePayload = {
 
 export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
-  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "isOwnerOrAdmin">;
+  vaults: Pick<VaultsRepository, "canReadVault">;
   attachments?: Pick<AttachmentService, "purgeForTemplate">;
 }
 
 export class ItemTemplatesService {
   private readonly templates: ItemTemplatesServiceDeps["templates"];
   private readonly workspaces: ItemTemplatesServiceDeps["workspaces"];
+  private readonly vaults: ItemTemplatesServiceDeps["vaults"];
   private readonly attachments?: ItemTemplatesServiceDeps["attachments"];
 
   constructor(deps: ItemTemplatesServiceDeps) {
     this.templates = deps.templates;
     this.workspaces = deps.workspaces;
+    this.vaults = deps.vaults;
     this.attachments = deps.attachments;
   }
 
   async list(workspaceId: string, userId: string) {
     await this.assertWorkspaceAccess(workspaceId, userId);
     const rows = await this.templates.listByWorkspace(workspaceId);
-    return rows.map(toTemplateDto);
+    const visible = [];
+    for (const row of rows) {
+      const vaultId =
+        typeof row.payloadJson.vault_id === "string" ? row.payloadJson.vault_id.trim() : "";
+      if (!vaultId) {
+        continue;
+      }
+      const canRead = await this.vaults.canReadVault(vaultId, userId);
+      if (!canRead) {
+        continue;
+      }
+      visible.push(toTemplateDto(row));
+    }
+    return visible;
   }
 
   async create(
@@ -95,6 +130,7 @@ export class ItemTemplatesService {
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
+    await this.assertCanMutateTemplate(workspaceId, userId, existing.createdBy);
     const name = input.name.trim();
     if (!name) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_NAME", 400, "template name is required");
@@ -128,6 +164,7 @@ export class ItemTemplatesService {
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
+    await this.assertCanMutateTemplate(workspaceId, userId, existing.createdBy);
     await this.attachments?.purgeForTemplate(
       normalizedTemplateId,
       collectTemplateAttachmentIds(existing.payloadJson, existing.faviconId),
@@ -146,6 +183,21 @@ export class ItemTemplatesService {
     }
     const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
     if (!hasAccess) {
+      throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+  }
+
+  /** Creator, workspace owner, or admin may update/delete a template. */
+  private async assertCanMutateTemplate(
+    workspaceId: string,
+    userId: string,
+    createdBy: string,
+  ): Promise<void> {
+    if (userId === createdBy) {
+      return;
+    }
+    const isManager = await this.workspaces.isOwnerOrAdmin(workspaceId, userId);
+    if (!isManager) {
       throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
     }
   }
@@ -197,15 +249,56 @@ function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, favi
   return [...ids];
 }
 
+function pickKnownKeys(source: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in source) {
+      next[key] = source[key];
+    }
+  }
+  return next;
+}
+
+/**
+ * Keep only known structural section/field keys; force empty field values.
+ * Unknown keys (e.g. note, defaultValue, history) are dropped.
+ */
+export function stripTemplateSectionValues(sections: unknown[]): unknown[] {
+  if (!Array.isArray(sections)) {
+    return [];
+  }
+  const result: Record<string, unknown>[] = [];
+  for (const section of sections) {
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      continue;
+    }
+    const src = section as Record<string, unknown>;
+    const next = pickKnownKeys(src, TEMPLATE_SECTION_STRUCTURE_KEYS.filter((key) => key !== "fields"));
+    const fields = Array.isArray(src.fields) ? src.fields : [];
+    next.fields = fields.flatMap((field) => {
+      if (!field || typeof field !== "object" || Array.isArray(field)) {
+        return [];
+      }
+      const fieldSrc = field as Record<string, unknown>;
+      const fieldOut = pickKnownKeys(
+        fieldSrc,
+        TEMPLATE_FIELD_STRUCTURE_KEYS.filter((key) => key !== "value"),
+      );
+      fieldOut.value = "";
+      return [fieldOut];
+    });
+    result.push(next);
+  }
+  return result;
+}
+
 function normalizeTemplatePayload(raw: ItemTemplatePayload): Record<string, unknown> {
   return {
-    record_name: typeof raw.record_name === "string" ? raw.record_name : "",
+    record_name: "",
     vault_id: typeof raw.vault_id === "string" ? raw.vault_id : "",
     folder_id: typeof raw.folder_id === "string" ? raw.folder_id : "",
-    sections: Array.isArray(raw.sections) ? raw.sections : [],
-    tags: Array.isArray(raw.tags)
-      ? raw.tags.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean)
-      : [],
+    sections: Array.isArray(raw.sections) ? stripTemplateSectionValues(raw.sections) : [],
+    tags: [],
     ...(raw.favicon_source === "manual" || raw.favicon_source === "website"
       ? { favicon_source: raw.favicon_source }
       : {}),
@@ -222,18 +315,17 @@ function toTemplateDto(row: {
   updatedAt: string;
 }) {
   const payload = row.payloadJson;
+  const sections = Array.isArray(payload.sections) ? stripTemplateSectionValues(payload.sections) : [];
   return {
     id: row.id,
     name: row.name,
     category_id: row.categoryId,
     payload: {
-      record_name: typeof payload.record_name === "string" ? payload.record_name : "",
+      record_name: "",
       vault_id: typeof payload.vault_id === "string" ? payload.vault_id : "",
       folder_id: typeof payload.folder_id === "string" ? payload.folder_id : "",
-      sections: Array.isArray(payload.sections) ? payload.sections : [],
-      tags: Array.isArray(payload.tags)
-        ? payload.tags.filter((tag): tag is string => typeof tag === "string")
-        : [],
+      sections,
+      tags: [],
       ...(payload.favicon_source === "manual" || payload.favicon_source === "website"
         ? { favicon_source: payload.favicon_source }
         : {}),
