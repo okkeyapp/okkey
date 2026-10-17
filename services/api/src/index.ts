@@ -245,6 +245,7 @@ async function main(): Promise<void> {
         vaults: storage.repositories.vaults,
         workspaces: storage.repositories.workspaces,
         events: storage.repositories.events,
+        softDeletes: storage.repositories.vaultItemSoftDeletes,
         templates: storage.repositories.workspaceItemTemplates,
         config,
       })

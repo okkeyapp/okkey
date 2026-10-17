@@ -106,8 +106,9 @@ to Google's favicon service. Prefer `direct` or `off` for self-hosted deployment
 Record favicon attachments (upload purpose `item-favicon`) are stored on any plan and are
 not gated by the workspace `filesInItems` entitlement or attachment size limits. The API keeps
 at most one `item-favicon` attachment per record/template (new upload replaces the previous
-icon-slot object) and accepts the purpose only when `itemId` already exists as a vault item
-(event-log `referenced_item_id`) or a workspace item template in that vault's workspace.
+icon-slot object) and accepts the purpose only when `itemId` already exists as a
+**non-deleted** vault item (event-log `referenced_item_id` and not in
+`vault_item_soft_deletes`) or a workspace item template in that vault's workspace.
 
 ---
 
