@@ -166,46 +166,19 @@ export default function EditItemPopup({
         },
         async () => {
           const draftTemplateId = generateEntityId();
-          const templateFiles = await formRef.current!.uploadPendingFiles(
-            {
-              itemId: draftTemplateId,
-              vaultId: snapshot.vaultId,
-              folderId: snapshot.folderId,
-              recordName: snapshot.recordName,
-              categoryId: snapshot.categoryId,
-              sections: snapshot.sections,
-              tags: snapshot.tags,
-            },
-            { targetItemId: draftTemplateId, sourceItemId: snapshot.attachmentItemId },
-          );
-          const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections };
+          // Templates store structure only — skip field-file uploads.
           // Create the template first so item-favicon uploads can target an existing row.
-          let response;
-          try {
-            response = await core.createWorkspaceItemTemplate(
-              workspaceId,
-              buildTemplateCreatePayload(draftTemplateId, uploadedSnapshot, templateName),
-            );
-          } catch (error) {
-            await Promise.allSettled(
-              templateFiles.uploadedFiles.map((file) =>
-                deleteKeyFieldFileAttachment({
-                  accessToken,
-                  vaultId: uploadedSnapshot.vaultId,
-                  itemId: draftTemplateId,
-                  file,
-                }),
-              ),
-            );
-            throw error;
-          }
+          const response = await core.createWorkspaceItemTemplate(
+            workspaceId,
+            buildTemplateCreatePayload(draftTemplateId, snapshot, templateName),
+          );
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
             const favicon = await syncTemplateFaviconForSnapshot(
               accessToken,
               vaultKey,
               draftTemplateId,
-              uploadedSnapshot,
+              snapshot,
               faviconSyncInput,
             );
             uploadedFavicon = favicon.uploadedFavicon;
@@ -214,7 +187,7 @@ export default function EditItemPopup({
                 workspaceId,
                 draftTemplateId,
                 buildTemplateUpdatePayload(
-                  uploadedSnapshot,
+                  snapshot,
                   templateName,
                   favicon.faviconId ?? null,
                   favicon.faviconSource,
@@ -225,7 +198,7 @@ export default function EditItemPopup({
             if (uploadedFavicon) {
               await deleteKeyFieldFileAttachment({
                 accessToken,
-                vaultId: uploadedSnapshot.vaultId,
+                vaultId: snapshot.vaultId,
                 itemId: draftTemplateId,
                 file: uploadedFavicon,
               }).catch(() => undefined);

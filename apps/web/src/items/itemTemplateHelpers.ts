@@ -28,6 +28,32 @@ export type ItemTemplateFormSnapshot = {
   attachmentItemId?: string;
 };
 
+/** Keep field structure; omit pre-filled values from the template payload. */
+export function stripTemplateSectionValues(sections: KeyFormEditorSection[]): KeyFormEditorSection[] {
+  return structuredClone(sections).map((section) => ({
+    ...section,
+    fields: section.fields.map((field) => {
+      const next = { ...field, value: "" };
+      delete next.copyValue;
+      return next;
+    }),
+  }));
+}
+
+function buildStructureOnlyPayload(
+  snapshot: ItemTemplateFormSnapshot,
+  faviconSource?: ItemFaviconSource,
+) {
+  return {
+    record_name: "",
+    vault_id: snapshot.vaultId,
+    folder_id: snapshot.folderId,
+    sections: stripTemplateSectionValues(snapshot.sections),
+    tags: [] as string[],
+    ...(faviconSource ? { favicon_source: faviconSource } : {}),
+  };
+}
+
 export function buildTemplateUpdatePayload(
   snapshot: ItemTemplateFormSnapshot,
   templateName: string,
@@ -37,14 +63,7 @@ export function buildTemplateUpdatePayload(
   return {
     name: templateName.trim(),
     category_id: snapshot.categoryId,
-    payload: {
-      record_name: snapshot.recordName,
-      vault_id: snapshot.vaultId,
-      folder_id: snapshot.folderId,
-      sections: structuredClone(snapshot.sections),
-      tags: [...snapshot.tags],
-      ...(faviconSource ? { favicon_source: faviconSource } : {}),
-    },
+    payload: buildStructureOnlyPayload(snapshot, faviconSource),
     favicon_id: faviconId ?? null,
   };
 }
@@ -60,14 +79,7 @@ export function buildTemplateCreatePayload(
     id: templateId,
     name: templateName.trim(),
     category_id: snapshot.categoryId,
-    payload: {
-      record_name: snapshot.recordName,
-      vault_id: snapshot.vaultId,
-      folder_id: snapshot.folderId,
-      sections: structuredClone(snapshot.sections),
-      tags: [...snapshot.tags],
-      ...(faviconSource ? { favicon_source: faviconSource } : {}),
-    },
+    payload: buildStructureOnlyPayload(snapshot, faviconSource),
     ...(faviconId ? { favicon_id: faviconId } : {}),
   };
 }
@@ -134,8 +146,10 @@ export function buildTemplatePrefillValues(
     recordName: "",
     vaultId: template.payload.vault_id,
     folderId: template.payload.folder_id,
-    sections: structuredClone(template.payload.sections) as KeyFormEditorSection[],
-    tags: [...template.payload.tags],
+    sections: stripTemplateSectionValues(
+      structuredClone(template.payload.sections) as KeyFormEditorSection[],
+    ),
+    tags: [],
     attachmentItemId: template.id,
     ...(template.favicon_id ? { faviconId: template.favicon_id } : {}),
     ...(template.favicon_id ? { faviconItemId: template.id } : {}),

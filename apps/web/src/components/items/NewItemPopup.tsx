@@ -263,46 +263,19 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
         },
         async () => {
           const draftTemplateId = generateEntityId();
-          const templateFiles = await formRef.current!.uploadPendingFiles(
-            {
-              itemId: draftTemplateId,
-              vaultId: snapshot.vaultId,
-              folderId: snapshot.folderId,
-              recordName: snapshot.recordName,
-              categoryId: snapshot.categoryId,
-              sections: snapshot.sections,
-              tags: snapshot.tags,
-            },
-            { targetItemId: draftTemplateId, sourceItemId: snapshot.attachmentItemId },
-          );
-          const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections };
+          // Templates store structure only — skip field-file uploads.
           // Create the template first so item-favicon uploads can target an existing row.
-          let response;
-          try {
-            response = await core.createWorkspaceItemTemplate(
-              workspaceId,
-              buildTemplateCreatePayload(draftTemplateId, uploadedSnapshot, templateName),
-            );
-          } catch (error) {
-            await Promise.allSettled(
-              templateFiles.uploadedFiles.map((file) =>
-                deleteKeyFieldFileAttachment({
-                  accessToken,
-                  vaultId: uploadedSnapshot.vaultId,
-                  itemId: draftTemplateId,
-                  file,
-                }),
-              ),
-            );
-            throw error;
-          }
+          const response = await core.createWorkspaceItemTemplate(
+            workspaceId,
+            buildTemplateCreatePayload(draftTemplateId, snapshot, templateName),
+          );
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
             const favicon = await syncTemplateFaviconForSnapshot(
               accessToken,
               vaultKey,
               draftTemplateId,
-              uploadedSnapshot,
+              snapshot,
               faviconSyncInput,
             );
             uploadedFavicon = favicon.uploadedFavicon;
@@ -311,7 +284,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
                 workspaceId,
                 draftTemplateId,
                 buildTemplateUpdatePayload(
-                  uploadedSnapshot,
+                  snapshot,
                   templateName,
                   favicon.faviconId ?? null,
                   favicon.faviconSource,
@@ -322,7 +295,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             if (uploadedFavicon) {
               await deleteKeyFieldFileAttachment({
                 accessToken,
-                vaultId: uploadedSnapshot.vaultId,
+                vaultId: snapshot.vaultId,
                 itemId: draftTemplateId,
                 file: uploadedFavicon,
               }).catch(() => undefined);
@@ -379,28 +352,15 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           error: t("web.updateItemTemplatePopup.saveErrorGeneric"),
         },
         async () => {
-          const templateFiles = await formRef.current!.uploadPendingFiles(
-            {
-              itemId: templateId,
-              vaultId: snapshot.vaultId,
-              folderId: snapshot.folderId,
-              recordName: snapshot.recordName,
-              categoryId: snapshot.categoryId,
-              sections: snapshot.sections,
-              tags: snapshot.tags,
-            },
-            { targetItemId: templateId, sourceItemId: snapshot.attachmentItemId ?? templateId },
-          );
-          const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections, attachmentItemId: templateId };
           const favicon = await syncTemplateFaviconForSnapshot(
             accessToken,
             vaultKey,
             templateId,
-            uploadedSnapshot,
+            snapshot,
             faviconSyncInput,
           );
           const body = buildTemplateUpdatePayload(
-            uploadedSnapshot,
+            snapshot,
             templateName,
             favicon.faviconId ?? null,
             favicon.faviconSource,
@@ -408,36 +368,22 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           try {
             await core.updateWorkspaceItemTemplate(workspaceId, templateId, body);
           } catch (error) {
-            const filesToDelete = favicon.uploadedFavicon
-              ? [...templateFiles.uploadedFiles, favicon.uploadedFavicon]
-              : templateFiles.uploadedFiles;
-            await Promise.allSettled(
-              filesToDelete.map((file) =>
+            if (favicon.uploadedFavicon) {
+              await Promise.allSettled([
                 deleteKeyFieldFileAttachment({
                   accessToken,
-                  vaultId: uploadedSnapshot.vaultId,
+                  vaultId: snapshot.vaultId,
                   itemId: templateId,
-                  file,
+                  file: favicon.uploadedFavicon,
                 }),
-              ),
-            );
+              ]);
+            }
             throw error;
           }
-          await deleteRemovedKeyFieldFiles(
-            formRef.current?.getFileBaselineSections() ?? [],
-            uploadedSnapshot.sections,
-            (file) =>
-              deleteKeyFieldFileAttachment({
-                accessToken,
-                vaultId: uploadedSnapshot.vaultId,
-                itemId: templateId,
-                file,
-              }),
-          );
           if (activeTemplate.favicon_id && activeTemplate.favicon_id !== (favicon.faviconId ?? null)) {
             await deleteKeyFieldFileAttachment({
               accessToken,
-              vaultId: uploadedSnapshot.vaultId,
+              vaultId: snapshot.vaultId,
               itemId: templateId,
               file: keyFieldFileValueFromFaviconId(activeTemplate.favicon_id),
             });

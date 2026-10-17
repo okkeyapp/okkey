@@ -28,7 +28,7 @@ export type ItemTemplatePayload = {
 
 export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
-  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess">;
+  workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "isOwnerOrAdmin">;
   attachments?: Pick<AttachmentService, "purgeForTemplate">;
 }
 
@@ -95,6 +95,7 @@ export class ItemTemplatesService {
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
+    await this.assertCanMutateTemplate(workspaceId, userId, existing.createdBy);
     const name = input.name.trim();
     if (!name) {
       throw new ItemTemplatesServiceError("INVALID_TEMPLATE_NAME", 400, "template name is required");
@@ -128,6 +129,7 @@ export class ItemTemplatesService {
     if (!existing) {
       throw new ItemTemplatesServiceError("TEMPLATE_NOT_FOUND", 404, "template not found");
     }
+    await this.assertCanMutateTemplate(workspaceId, userId, existing.createdBy);
     await this.attachments?.purgeForTemplate(
       normalizedTemplateId,
       collectTemplateAttachmentIds(existing.payloadJson, existing.faviconId),
@@ -146,6 +148,21 @@ export class ItemTemplatesService {
     }
     const hasAccess = await this.workspaces.hasAccess(workspaceId, userId);
     if (!hasAccess) {
+      throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+  }
+
+  /** Creator, workspace owner, or admin may update/delete a template. */
+  private async assertCanMutateTemplate(
+    workspaceId: string,
+    userId: string,
+    createdBy: string,
+  ): Promise<void> {
+    if (userId === createdBy) {
+      return;
+    }
+    const isManager = await this.workspaces.isOwnerOrAdmin(workspaceId, userId);
+    if (!isManager) {
       throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
     }
   }
@@ -197,15 +214,39 @@ function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, favi
   return [...ids];
 }
 
+/** Keep section/field structure; drop pre-filled values from the stored payload. */
+export function stripTemplateSectionValues(sections: unknown[]): unknown[] {
+  return sections.map((section) => {
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      return section;
+    }
+    const typed = section as Record<string, unknown>;
+    const fields = typed.fields;
+    if (!Array.isArray(fields)) {
+      return { ...typed };
+    }
+    return {
+      ...typed,
+      fields: fields.map((field) => {
+        if (!field || typeof field !== "object" || Array.isArray(field)) {
+          return field;
+        }
+        const next = { ...(field as Record<string, unknown>) };
+        next.value = "";
+        delete next.copyValue;
+        return next;
+      }),
+    };
+  });
+}
+
 function normalizeTemplatePayload(raw: ItemTemplatePayload): Record<string, unknown> {
   return {
-    record_name: typeof raw.record_name === "string" ? raw.record_name : "",
+    record_name: "",
     vault_id: typeof raw.vault_id === "string" ? raw.vault_id : "",
     folder_id: typeof raw.folder_id === "string" ? raw.folder_id : "",
-    sections: Array.isArray(raw.sections) ? raw.sections : [],
-    tags: Array.isArray(raw.tags)
-      ? raw.tags.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean)
-      : [],
+    sections: Array.isArray(raw.sections) ? stripTemplateSectionValues(raw.sections) : [],
+    tags: [],
     ...(raw.favicon_source === "manual" || raw.favicon_source === "website"
       ? { favicon_source: raw.favicon_source }
       : {}),
@@ -222,18 +263,17 @@ function toTemplateDto(row: {
   updatedAt: string;
 }) {
   const payload = row.payloadJson;
+  const sections = Array.isArray(payload.sections) ? stripTemplateSectionValues(payload.sections) : [];
   return {
     id: row.id,
     name: row.name,
     category_id: row.categoryId,
     payload: {
-      record_name: typeof payload.record_name === "string" ? payload.record_name : "",
+      record_name: "",
       vault_id: typeof payload.vault_id === "string" ? payload.vault_id : "",
       folder_id: typeof payload.folder_id === "string" ? payload.folder_id : "",
-      sections: Array.isArray(payload.sections) ? payload.sections : [],
-      tags: Array.isArray(payload.tags)
-        ? payload.tags.filter((tag): tag is string => typeof tag === "string")
-        : [],
+      sections,
+      tags: [],
       ...(payload.favicon_source === "manual" || payload.favicon_source === "website"
         ? { favicon_source: payload.favicon_source }
         : {}),
