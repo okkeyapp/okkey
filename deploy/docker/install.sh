@@ -234,6 +234,7 @@ if [[ ! -f .env ]]; then
   cp "./${ENV_EXAMPLE_NAME}" .env
   JWT="$(gen_secret)"
   SESSION="$(gen_secret)"
+  EMAIL_DEAD_SEAL="$(gen_secret)"
   PG_PASS="$(gen_secret)"
   MINIO_PASS="$(gen_secret)"
 
@@ -250,6 +251,7 @@ if [[ ! -f .env ]]; then
 
   replace_env JWT_SECRET "$JWT"
   replace_env SESSION_SECRET "$SESSION"
+  replace_env EMAIL_DEAD_LETTER_SEAL_KEY "$EMAIL_DEAD_SEAL"
   replace_env POSTGRES_PASSWORD "$PG_PASS"
   replace_env MINIO_ROOT_PASSWORD "$MINIO_PASS"
 
@@ -304,7 +306,7 @@ if [[ ! -f .env ]]; then
     log "==> Wrote custom ports/URLs into .env (WEB_PORT=${WEB_PORT:-}, API_PORT=${API_PORT:-})"
   fi
 
-  log "==> Generated JWT_SECRET, SESSION_SECRET, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
+  log "==> Generated JWT_SECRET, SESSION_SECRET, EMAIL_DEAD_LETTER_SEAL_KEY, POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD"
 else
   log "==> Reusing existing .env"
   if [[ -n "${OKKEY_IMAGE_TAG:-}" ]] || [[ -n "${OKKEY_CHANNEL:-}" ]]; then

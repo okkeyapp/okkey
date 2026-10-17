@@ -56,7 +56,7 @@ This will:
 
 1. Create `~/okkey` (override with `OKKEY_INSTALL_DIR`)
 2. Download `docker-compose.prod.yml` + `.env.example` from `OKKEY_REF`
-3. Generate `JWT_SECRET`, `SESSION_SECRET`, Postgres and MinIO passwords
+3. Generate `JWT_SECRET`, `SESSION_SECRET`, `EMAIL_DEAD_LETTER_SEAL_KEY`, Postgres and MinIO passwords
 4. `docker compose pull && up -d`
 
 Then open **http://localhost:8080** (web) and check **http://localhost:4000/health** (API). After `up -d`, `install.sh` prints a large **OKKEY** banner and the web URL (`PUBLIC_APP_URL`, or `http://localhost:$WEB_PORT`).
@@ -167,6 +167,14 @@ API runs with `RUN_BACKGROUND_JOBS=false` and `EMAIL_DELIVERY_MODE=queue`; the w
 Default `EMAIL_PROVIDER=logger` (codes appear in **worker** logs when queued). For real mail set SMTP vars in `.env` (see `.env.example` and [`docs/backend-email.md`](../../docs/backend-email.md)).
 
 Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:email:dead`. Keep the worker up or mail will sit in the queue.
+
+### Re-queue a dead-letter job
+
+1. Inspect: `redis-cli LRANGE okkey:email:dead 0 -1` (verification-code mail is redacted; original is in `sealedDelivery`).
+2. Copy the JSON entry and `LPUSH okkey:email:queue '<json>'`.
+3. After a successful send the worker removes matching DLQ copies automatically (`LREM`). Manual cleanup if needed: `redis-cli LREM okkey:email:dead 0 '<json>'`.
+
+`EMAIL_DEAD_LETTER_SEAL_KEY` must stay stable across restarts (install.sh writes it into `.env` on first install). If unset, the worker falls back to `SESSION_SECRET`.
 
 ## TLS / domain
 

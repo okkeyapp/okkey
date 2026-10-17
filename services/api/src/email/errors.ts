@@ -33,6 +33,33 @@ export function sanitizeEmailSubjectForLogs(subject: string): string {
   return subject.replace(/^\d{6}\b/, "******");
 }
 
+/** Leading 6-digit verification code from an auth / email-change subject, if present. */
+export function extractLeadingEmailVerificationCode(subject: string): string | undefined {
+  const match = /^(\d{6})\b/.exec(subject);
+  return match?.[1];
+}
+
+/**
+ * Redact a verification code from subject / text / html for durable dead-letter inspection.
+ * Only the code taken from a leading subject token is replaced (exact substring).
+ */
+export function redactEmailMessageForDeadLetter<
+  T extends { subject: string; text: string; html: string },
+>(message: T): T {
+  const code = extractLeadingEmailVerificationCode(message.subject);
+  const subject = sanitizeEmailSubjectForLogs(message.subject);
+  if (!code) {
+    return { ...message, subject };
+  }
+  const redact = (value: string): string => value.split(code).join("******");
+  return {
+    ...message,
+    subject,
+    text: redact(message.text),
+    html: redact(message.html),
+  };
+}
+
 /**
  * Internal/ops-facing reason (logs, dead-letter). Includes transport `cause` when present.
  */
