@@ -6,18 +6,21 @@
 
 Store packaging uses **Chrome / Edge / AMO numeric** `1.0.0.N` only. Do **not** put product SemVer with a beta string (`1.0.0-beta.2`) in `manifest.version`, `version_name`, listing version fields, or zip filenames. No Chromium `version_name`.
 
+**Listing locales for this release: EN + RU** (copy, screenshots, console fields). See [LOCALES.md](./LOCALES.md).
+
 This folder is the **ready-to-submit** pack for browser stores. It does **not** submit to stores and does **not** create git tags / GitHub Releases on `main`.
 
 | Doc | Purpose |
 |-----|---------|
-| [SUBMIT-CHECKLIST.md](./SUBMIT-CHECKLIST.md) | Per-store submit steps (CWS / Edge / AMO); AMO blocked until Firefox verified; listing screenshots blocked until live captures |
+| [SUBMIT-CHECKLIST.md](./SUBMIT-CHECKLIST.md) | Per-store submit steps (CWS / Edge / AMO); AMO blocked until Firefox verified; screenshots blocked until live EN+RU captures |
+| [LOCALES.md](./LOCALES.md) | How EN+RU locales work on CWS / Edge / AMO; package `_locales` prerequisite |
 | [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access) |
 | [LISTING.en.md](./LISTING.en.md) | Chrome/Edge/Opera/AMO listing copy (EN) |
-| [LISTING.ru.md](./LISTING.ru.md) | Listing copy (RU) — AMO / optional CWS locale |
-| [URLS.md](./URLS.md) | Store privacy / support / homepage URLs + self-host placeholders |
+| [LISTING.ru.md](./LISTING.ru.md) | Listing copy (RU) — required this release |
+| [URLS.md](./URLS.md) | Store privacy / support / homepage URLs + live-check notes |
 | [PRIVACY.md](./PRIVACY.md) | Privacy policy (linked from store consoles via GitHub) |
 | [SUPPORT.md](./SUPPORT.md) | Support page (linked from store consoles via GitHub) |
-| [assets/README.md](./assets/README.md) | Screenshots / promo tiles (mockups today — replace before publish) |
+| [assets/README.md](./assets/README.md) | Screenshots / promo tiles (`*-en.png` / `*-ru.png`; mockups today — replace before publish) |
 
 ## Artifact map
 

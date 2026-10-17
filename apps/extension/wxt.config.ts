@@ -40,9 +40,11 @@ export default defineConfig({
     // Product SemVer (e.g. 1.0.0-beta.2) is for GitHub Releases / images — not store packaging.
     const manifestVersion = "1.0.0.2";
     return {
-      name: "Okkey",
-      description:
-        "Self-hosted, client-side password manager with post-quantum ready crypto and autofill.",
+      // Store consoles expose EN+RU listing locales from package `_locales/`.
+      // In-app UI still uses `@okkey/i18n` + chrome.storage (not browser.i18n).
+      default_locale: "en",
+      name: "__MSG_extName__",
+      description: "__MSG_extDescription__",
       version: manifestVersion,
       homepage_url: "https://github.com/okkeyapp/okkey",
       icons: {
@@ -52,7 +54,7 @@ export default defineConfig({
         128: "icon-128.png",
       },
       action: {
-        default_title: "Okkey",
+        default_title: "__MSG_actionTitle__",
         default_icon: {
           16: "icon-16.png",
           32: "icon-32.png",
