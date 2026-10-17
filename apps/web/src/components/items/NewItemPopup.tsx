@@ -9,7 +9,11 @@ import { deleteKeyFieldFileAttachment } from "../../api/key-field-files";
 import { useAuthVault, useAuthenticatedCoreClient } from "../../auth/AuthVaultContext";
 import { usePopupZoneGate } from "../../auth/usePopupZoneGate";
 import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments";
-import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
+import {
+  applyFaviconToItem,
+  keyFieldFileValueFromFaviconId,
+  syncItemFaviconForPlaintext,
+} from "../../items/syncItemFavicon";
 import {
   buildTemplateCreatePayload,
   buildTemplatePrefillValues,
@@ -80,7 +84,7 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [saveTemplateError, setSaveTemplateError] = useState<string | null>(null);
   const [pendingExitAction, setPendingExitAction] = useState<PendingNewItemExitAction | null>(null);
-  const { createItem, getItemById, filesInItemsEnabled, resolveVaultEncryptionKey } = useWorkspaceItems();
+  const { createItem, updateItem, getItemById, filesInItemsEnabled, resolveVaultEncryptionKey } = useWorkspaceItems();
   const { canPostToVault } = useWorkspaceVaultProfiles();
   const { assignItemToFolder, itemFolderByItemId } = useWorkspaceFolders();
   const { accessToken, vaultKey } = useAuthVault();
@@ -272,29 +276,16 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
             { targetItemId: draftTemplateId, sourceItemId: snapshot.attachmentItemId },
           );
           const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections };
-          const favicon = await syncTemplateFaviconForSnapshot(
-            accessToken,
-            vaultKey,
-            draftTemplateId,
-            uploadedSnapshot,
-            faviconSyncInput,
-          );
-          const body = buildTemplateCreatePayload(
-            draftTemplateId,
-            uploadedSnapshot,
-            templateName,
-            favicon.faviconId,
-            favicon.faviconSource,
-          );
+          // Create the template first so item-favicon uploads can target an existing row.
           let response;
           try {
-            response = await core.createWorkspaceItemTemplate(workspaceId, body);
+            response = await core.createWorkspaceItemTemplate(
+              workspaceId,
+              buildTemplateCreatePayload(draftTemplateId, uploadedSnapshot, templateName),
+            );
           } catch (error) {
-            const filesToDelete = favicon.uploadedFavicon
-              ? [...templateFiles.uploadedFiles, favicon.uploadedFavicon]
-              : templateFiles.uploadedFiles;
             await Promise.allSettled(
-              filesToDelete.map((file) =>
+              templateFiles.uploadedFiles.map((file) =>
                 deleteKeyFieldFileAttachment({
                   accessToken,
                   vaultId: uploadedSnapshot.vaultId,
@@ -303,6 +294,39 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
                 }),
               ),
             );
+            throw error;
+          }
+          let uploadedFavicon: KeyFieldFileValue | undefined;
+          try {
+            const favicon = await syncTemplateFaviconForSnapshot(
+              accessToken,
+              vaultKey,
+              draftTemplateId,
+              uploadedSnapshot,
+              faviconSyncInput,
+            );
+            uploadedFavicon = favicon.uploadedFavicon;
+            if (favicon.faviconId || favicon.faviconSource) {
+              await core.updateWorkspaceItemTemplate(
+                workspaceId,
+                draftTemplateId,
+                buildTemplateUpdatePayload(
+                  uploadedSnapshot,
+                  templateName,
+                  favicon.faviconId ?? null,
+                  favicon.faviconSource,
+                ),
+              );
+            }
+          } catch (error) {
+            if (uploadedFavicon) {
+              await deleteKeyFieldFileAttachment({
+                accessToken,
+                vaultId: uploadedSnapshot.vaultId,
+                itemId: draftTemplateId,
+                file: uploadedFavicon,
+              }).catch(() => undefined);
+            }
             throw error;
           }
           await refreshTemplates();
@@ -499,26 +523,42 @@ export default function NewItemPopup({ t, workspaceId, workspaceName, vaults, va
           const itemVaultKey = await resolveVaultEncryptionKey(payload.vaultId);
           const { payload: uploadedPayload, uploadedFiles } = await formRef.current!.uploadPendingFiles(payload);
           let item = buildItemFromNewItemSavePayload(uploadedPayload);
+          // Persist the item before favicon upload so the API can verify the item id exists.
+          const itemWithoutFavicon = applyFaviconToItem(item, undefined, undefined);
           let createdItemId: string;
+          try {
+            createdItemId = await createItem(itemWithoutFavicon);
+          } catch (error) {
+            await Promise.allSettled(
+              uploadedFiles.map((file) =>
+                deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
+              ),
+            );
+            throw error;
+          }
           let uploadedFavicon: KeyFieldFileValue | undefined;
           try {
             const faviconSync = await syncItemFaviconForPlaintext(
               accessToken,
               itemVaultKey,
-              item,
+              itemWithoutFavicon,
               undefined,
               faviconSyncInput,
             );
             item = faviconSync.item;
             uploadedFavicon = faviconSync.uploadedFavicon;
-            createdItemId = await createItem(item);
+            if (item.faviconId || item.faviconSource) {
+              await updateItem(item);
+            }
           } catch (error) {
-            const filesToDelete = uploadedFavicon ? [...uploadedFiles, uploadedFavicon] : uploadedFiles;
-            await Promise.allSettled(
-              filesToDelete.map((file) =>
-                deleteKeyFieldFileAttachment({ accessToken, vaultId: uploadedPayload.vaultId, itemId: uploadedPayload.itemId, file }),
-              ),
-            );
+            if (uploadedFavicon) {
+              await deleteKeyFieldFileAttachment({
+                accessToken,
+                vaultId: uploadedPayload.vaultId,
+                itemId: uploadedPayload.itemId,
+                file: uploadedFavicon,
+              }).catch(() => undefined);
+            }
             throw error;
           }
           await deleteRemovedKeyFieldFiles(

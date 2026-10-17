@@ -47,6 +47,9 @@ function uploadMocks(input: {
   deploymentMode?: "saas" | "self_hosted";
   enterpriseModulesEnabled?: boolean;
   existingItemFavicon?: { id: string; storageKey: string };
+  /** When false, item-favicon target lookup fails (default: item exists). */
+  itemExists?: boolean;
+  templateExists?: boolean;
 }) {
   let created: { itemId: string; purpose: string | null } | null = null;
   const deletedStorageKeys: string[] = [];
@@ -148,12 +151,38 @@ function uploadMocks(input: {
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
+  const events = {
+    async hasReferencedItemId() {
+      return input.itemExists !== false;
+    },
+  };
+  const templates = {
+    async findById() {
+      if (!input.templateExists) {
+        return null;
+      }
+      return {
+        id: REGULAR_ITEM_ID,
+        workspaceId: WORKSPACE_ID,
+        name: "Template",
+        categoryId: "login",
+        payloadJson: {},
+        faviconId: null,
+        createdBy: USER_ID,
+        createdAt: "",
+        updatedAt: "",
+      };
+    },
+  };
+
   return {
     service: new AttachmentService({
       storage,
       attachments,
       vaults,
       workspaces,
+      events,
+      templates,
       config: createTestApiConfig({
         deploymentMode: input.deploymentMode ?? "saas",
         enterpriseModulesEnabled: input.enterpriseModulesEnabled ?? false,
@@ -162,6 +191,21 @@ function uploadMocks(input: {
     getCreated: () => created,
     getDeletedStorageKeys: () => deletedStorageKeys,
     getReplacedFaviconCalls: () => replacedFaviconCalls,
+  };
+}
+
+function emptyEventsAndTemplates() {
+  return {
+    events: {
+      async hasReferencedItemId() {
+        return false;
+      },
+    },
+    templates: {
+      async findById() {
+        return null;
+      },
+    },
   };
 }
 
@@ -200,7 +244,14 @@ test("AttachmentService removes uploaded object when metadata insert fails", asy
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
+  const service = new AttachmentService({
+    storage,
+    attachments,
+    vaults,
+    workspaces,
+    ...emptyEventsAndTemplates(),
+    config: createTestApiConfig({ deploymentMode: "saas" }),
+  });
 
   await assert.rejects(() =>
     service.upload({
@@ -240,7 +291,14 @@ test("AttachmentService denies vault access before storage operations", async ()
     },
   } as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
+  const service = new AttachmentService({
+    storage,
+    attachments,
+    vaults,
+    workspaces,
+    ...emptyEventsAndTemplates(),
+    config: createTestApiConfig({ deploymentMode: "saas" }),
+  });
 
   await assert.rejects(
     () =>
@@ -376,6 +434,63 @@ test("AttachmentService allows item-favicon purpose when files in items are disa
   assert.equal(getCreated()?.itemId, REGULAR_ITEM_ID);
   assert.equal(getCreated()?.purpose, "item-favicon");
   assert.equal(getReplacedFaviconCalls(), 1);
+});
+
+test("AttachmentService rejects item-favicon purpose for unknown itemId", async () => {
+  const { service, getReplacedFaviconCalls } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "FREE",
+    allowedFileExtensions: ["pdf"],
+    deploymentMode: "saas",
+    itemExists: false,
+    templateExists: false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.upload({
+        vaultId: VAULT_ID,
+        itemId: REGULAR_ITEM_ID,
+        userId: USER_ID,
+        fileName: "favicon.png",
+        mimeType: "image/png",
+        encryptedBody: Uint8Array.from([1, 2, 3]),
+        encryptedKey: Uint8Array.from([4, 5, 6]),
+        sizeBytes: 123,
+        purpose: "item-favicon",
+      }),
+    (error: unknown) =>
+      error instanceof AttachmentServiceError &&
+      error.code === "ITEM_NOT_FOUND" &&
+      error.statusCode === 404,
+  );
+  assert.equal(getReplacedFaviconCalls(), 0);
+});
+
+test("AttachmentService allows item-favicon purpose for existing workspace template", async () => {
+  const { service, getCreated } = uploadMocks({
+    filesInItemsEnabled: false,
+    planTier: "FREE",
+    allowedFileExtensions: ["pdf"],
+    deploymentMode: "saas",
+    itemExists: false,
+    templateExists: true,
+  });
+
+  const result = await service.upload({
+    vaultId: VAULT_ID,
+    itemId: REGULAR_ITEM_ID,
+    userId: USER_ID,
+    fileName: "favicon.png",
+    mimeType: "image/png",
+    encryptedBody: Uint8Array.from([1, 2, 3]),
+    encryptedKey: Uint8Array.from([4, 5, 6]),
+    sizeBytes: 123,
+    purpose: "item-favicon",
+  });
+
+  assert.equal(result.attachmentId, "1000000000000000003");
+  assert.equal(getCreated()?.purpose, "item-favicon");
 });
 
 test("AttachmentService replaces previous item-favicon slot on upload", async () => {
@@ -597,7 +712,14 @@ test("AttachmentService purges all item attachment objects", async () => {
   const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
   const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
+  const service = new AttachmentService({
+    storage,
+    attachments,
+    vaults,
+    workspaces,
+    ...emptyEventsAndTemplates(),
+    config: createTestApiConfig({ deploymentMode: "saas" }),
+  });
 
   await service.purgeForItem("1000000000000000001", "1000000000000000002");
 
@@ -642,7 +764,14 @@ test("AttachmentService purges all attachment objects by item id", async () => {
   const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
   const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
+  const service = new AttachmentService({
+    storage,
+    attachments,
+    vaults,
+    workspaces,
+    ...emptyEventsAndTemplates(),
+    config: createTestApiConfig({ deploymentMode: "saas" }),
+  });
 
   await service.purgeForItemId("1000000000000000002");
 
@@ -706,7 +835,14 @@ test("AttachmentService purges template attachments by scope and referenced ids"
   const vaults = {} as unknown as Pick<VaultsRepository, "canReadVault" | "findById">;
   const workspaces = {} as unknown as Pick<WorkspacesRepository, "findById">;
 
-  const service = new AttachmentService({ storage, attachments, vaults, workspaces, config: createTestApiConfig({ deploymentMode: "saas" }) });
+  const service = new AttachmentService({
+    storage,
+    attachments,
+    vaults,
+    workspaces,
+    ...emptyEventsAndTemplates(),
+    config: createTestApiConfig({ deploymentMode: "saas" }),
+  });
 
   await service.purgeForTemplate("1000000000000000002", ["1000000000000000003", "1000000000000000004"]);
 

@@ -1,6 +1,7 @@
 import type { KeyFieldFileStorage } from "../storage/key-field-file-storage.ts";
 import type { AttachmentsRepository, AttachmentRecord } from "../storage/attachments.ts";
-import type { VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type { EventsRepository, VaultsRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type { WorkspaceItemTemplatesRepository } from "../storage/workspace-item-templates.ts";
 import {
   DEFAULT_MAX_FILE_SIZE_MB,
   maxFileSizeBytesFromMb,
@@ -57,6 +58,8 @@ export interface AttachmentServiceDeps {
   attachments: AttachmentsRepository;
   vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   workspaces: Pick<WorkspacesRepository, "findById">;
+  events: Pick<EventsRepository, "hasReferencedItemId">;
+  templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   config: PlanEntitlementRuntimeConfig;
 }
 
@@ -67,6 +70,8 @@ export class AttachmentService {
   private readonly attachments: AttachmentsRepository;
   private readonly vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   private readonly workspaces: Pick<WorkspacesRepository, "findById">;
+  private readonly events: Pick<EventsRepository, "hasReferencedItemId">;
+  private readonly templates: Pick<WorkspaceItemTemplatesRepository, "findById">;
   private readonly config: PlanEntitlementRuntimeConfig;
 
   constructor(deps: AttachmentServiceDeps) {
@@ -74,6 +79,8 @@ export class AttachmentService {
     this.attachments = deps.attachments;
     this.vaults = deps.vaults;
     this.workspaces = deps.workspaces;
+    this.events = deps.events;
+    this.templates = deps.templates;
     this.config = deps.config;
   }
 
@@ -97,6 +104,10 @@ export class AttachmentService {
         403,
         "File uploads in items are disabled for this workspace",
       );
+    }
+
+    if (isItemFaviconAttachment) {
+      await this.assertItemFaviconTargetExists(input.vaultId, input.itemId);
     }
 
     if (input.encryptedBody.byteLength === 0) {
@@ -239,6 +250,30 @@ export class AttachmentService {
     if (!allowed) {
       throw new AttachmentServiceError("FORBIDDEN", 403, "Vault access denied");
     }
+  }
+
+  /**
+   * Item-favicon uploads are only for an existing vault item (event-log referenced id)
+   * or a workspace item template in the same workspace as the vault.
+   */
+  private async assertItemFaviconTargetExists(vaultId: string, itemId: string): Promise<void> {
+    if (await this.events.hasReferencedItemId(vaultId, itemId)) {
+      return;
+    }
+
+    const vault = await this.vaults.findById(vaultId);
+    if (vault) {
+      const template = await this.templates.findById(vault.workspaceId, itemId);
+      if (template) {
+        return;
+      }
+    }
+
+    throw new AttachmentServiceError(
+      "ITEM_NOT_FOUND",
+      404,
+      "Item or template not found for favicon upload",
+    );
   }
 
   private async resolveUploadLimits(

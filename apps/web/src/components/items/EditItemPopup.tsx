@@ -14,6 +14,7 @@ import { deleteRemovedKeyFieldFiles } from "../../items/keyFieldFileAttachments"
 import { itemPlaintextToKeyFormSections } from "../../items/itemPlaintextToKeyFormSections";
 import {
   buildTemplateCreatePayload,
+  buildTemplateUpdatePayload,
   syncTemplateFaviconForSnapshot,
 } from "../../items/itemTemplateHelpers";
 import { keyFieldFileValueFromFaviconId, syncItemFaviconForPlaintext } from "../../items/syncItemFavicon";
@@ -178,29 +179,16 @@ export default function EditItemPopup({
             { targetItemId: draftTemplateId, sourceItemId: snapshot.attachmentItemId },
           );
           const uploadedSnapshot = { ...snapshot, sections: templateFiles.payload.sections };
-          const favicon = await syncTemplateFaviconForSnapshot(
-            accessToken,
-            vaultKey,
-            draftTemplateId,
-            uploadedSnapshot,
-            faviconSyncInput,
-          );
-          const body = buildTemplateCreatePayload(
-            draftTemplateId,
-            uploadedSnapshot,
-            templateName,
-            favicon.faviconId,
-            favicon.faviconSource,
-          );
+          // Create the template first so item-favicon uploads can target an existing row.
           let response;
           try {
-            response = await core.createWorkspaceItemTemplate(workspaceId, body);
+            response = await core.createWorkspaceItemTemplate(
+              workspaceId,
+              buildTemplateCreatePayload(draftTemplateId, uploadedSnapshot, templateName),
+            );
           } catch (error) {
-            const filesToDelete = favicon.uploadedFavicon
-              ? [...templateFiles.uploadedFiles, favicon.uploadedFavicon]
-              : templateFiles.uploadedFiles;
             await Promise.allSettled(
-              filesToDelete.map((file) =>
+              templateFiles.uploadedFiles.map((file) =>
                 deleteKeyFieldFileAttachment({
                   accessToken,
                   vaultId: uploadedSnapshot.vaultId,
@@ -209,6 +197,39 @@ export default function EditItemPopup({
                 }),
               ),
             );
+            throw error;
+          }
+          let uploadedFavicon: KeyFieldFileValue | undefined;
+          try {
+            const favicon = await syncTemplateFaviconForSnapshot(
+              accessToken,
+              vaultKey,
+              draftTemplateId,
+              uploadedSnapshot,
+              faviconSyncInput,
+            );
+            uploadedFavicon = favicon.uploadedFavicon;
+            if (favicon.faviconId || favicon.faviconSource) {
+              await core.updateWorkspaceItemTemplate(
+                workspaceId,
+                draftTemplateId,
+                buildTemplateUpdatePayload(
+                  uploadedSnapshot,
+                  templateName,
+                  favicon.faviconId ?? null,
+                  favicon.faviconSource,
+                ),
+              );
+            }
+          } catch (error) {
+            if (uploadedFavicon) {
+              await deleteKeyFieldFileAttachment({
+                accessToken,
+                vaultId: uploadedSnapshot.vaultId,
+                itemId: draftTemplateId,
+                file: uploadedFavicon,
+              }).catch(() => undefined);
+            }
             throw error;
           }
           await refreshTemplates();

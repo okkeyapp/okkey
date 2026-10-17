@@ -2689,6 +2689,21 @@ export class EventsRepository {
     return rows.length;
   }
 
+  /** True when the vault event log has referenced this client item id (create/update/delete). */
+  async hasReferencedItemId(vaultId: string, referencedItemId: string): Promise<boolean> {
+    const rows = await this.db.query<{ exists: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM events
+          WHERE vault_id = $1 AND referenced_item_id = $2::bigint
+        ) AS exists
+      `,
+      [vaultId, referencedItemId],
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
   async listAfterVersion(vaultId: string, afterVersion: number): Promise<EventRecord[]> {
     const rows = await this.db.query<{
       id: string;
