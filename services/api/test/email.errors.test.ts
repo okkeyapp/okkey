@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   EmailTemplateError,
+  extractLeadingEmailVerificationCode,
   formatEmailFailureReason,
+  redactEmailMessageForDeadLetter,
   sanitizeEmailSubjectForLogs,
   toPublicEmailErrorResponse,
 } from "../src/email/errors.ts";
@@ -25,6 +27,24 @@ test("sanitizeEmailSubjectForLogs redacts leading verification code only", () =>
     sanitizeEmailSubjectForLogs("Заявка на тариф Team — Офис 123"),
     "Заявка на тариф Team — Офис 123",
   );
+});
+
+test("extractLeadingEmailVerificationCode reads only a leading 6-digit token", () => {
+  assert.equal(extractLeadingEmailVerificationCode("109836 is your Okkey email change code"), "109836");
+  assert.equal(extractLeadingEmailVerificationCode("Invitation to workspace"), undefined);
+  assert.equal(extractLeadingEmailVerificationCode("****** is your Okkey sign-in code"), undefined);
+});
+
+test("redactEmailMessageForDeadLetter strips the leading code from subject and bodies", () => {
+  const redacted = redactEmailMessageForDeadLetter({
+    subject: "109836 is your Okkey email change code",
+    text: "Your Okkey email change verification code is 109836.",
+    html: "<p>109836</p><p>Workspace42</p>",
+  });
+  assert.equal(redacted.subject, "****** is your Okkey email change code");
+  assert.equal(redacted.text, "Your Okkey email change verification code is ******.");
+  assert.equal(redacted.html, "<p>******</p><p>Workspace42</p>");
+  assert.equal(JSON.stringify(redacted).includes("109836"), false);
 });
 
 test("toPublicEmailErrorResponse strips transport cause from client payload", () => {

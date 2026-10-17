@@ -36,6 +36,8 @@ Both API and worker validate `EMAIL_PROVIDER` transport config on startup (inclu
 
 In queue mode, SES / `http-api` responses with HTTP **4xx** (except **429**) are treated as permanent and dead-lettered immediately; **429**, **5xx**, network/SMTP failures still retry with backoff (default 5 attempts).
 
+Dead-letter entries for messages whose subject starts with a 6-digit verification code keep only a redacted `message` in `okkey:email:dead`; the original delivery payload is sealed (`sealedDelivery`) with a key at `okkey:email:dead:seal-key`. Re-queue the dead-letter JSON onto `okkey:email:queue` as-is — the worker unseals before sending.
+
 Self-host compose sets `EMAIL_DELIVERY_MODE=queue` and runs the worker. Details: [`services/worker/README.md`](../services/worker/README.md).
 
 ## Locale selection
