@@ -1,39 +1,43 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
- * After unlock, personal-data bootstrap creates a list row and may open Edit record.
- * Wait for the list row (bootstrap settled), then dismiss any open dialogs —
- * including the "Leave without saving?" confirm that dirty forms show on Close.
+ * Personal-data bootstrap creates a list row and often opens `#editItem`.
+ * Closing via the animated header Close button is flaky ("element is not stable")
+ * and dirty prefill trips "Leave without saving?". Prefer Cancel → Continue, which
+ * goes through the same router clear as the product close path.
  */
 export async function dismissOpenItemDialog(page: Page): Promise<void> {
-  // Prefer the list row: it appears once bootstrap has created the item.
-  // Do not use locator.or(...).toBeVisible() — both can be visible (strict mode).
   await expect(page.getByRole("button", { name: /personal data/i }).first()).toBeVisible({
     timeout: 30_000,
   });
 
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const leaveHeading = page.getByRole("heading", { name: /leave without saving/i });
-    if (await leaveHeading.isVisible().catch(() => false)) {
-      await page.getByRole("button", { name: /^continue$/i }).click();
-      await expect(leaveHeading).toBeHidden({ timeout: 10_000 });
-      continue;
-    }
+  const editItem = page.locator("#editItem");
+  if (!(await editItem.isVisible().catch(() => false))) {
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 5_000 });
+    return;
+  }
 
-    const dialog = page.getByRole("dialog").first();
-    if (!(await dialog.isVisible().catch(() => false))) {
-      break;
-    }
+  await expect(editItem).toHaveAttribute("data-state", "open", { timeout: 10_000 });
+  await editItem.getByRole("button", { name: /^cancel$/i }).click({ force: true });
 
-    const close = dialog.getByRole("button", { name: /^close$/i });
-    if (await close.isVisible().catch(() => false)) {
-      await close.click();
-    } else {
-      await page.keyboard.press("Escape");
+  const leave = page.getByRole("heading", { name: /leave without saving/i });
+  if (await leave.isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: /^continue$/i }).click({ force: true });
+    await expect(leave).toBeHidden({ timeout: 10_000 });
+  } else {
+    // Race: confirm may appear just after Cancel.
+    try {
+      await leave.waitFor({ state: "visible", timeout: 3_000 });
+      await page.getByRole("button", { name: /^continue$/i }).click({ force: true });
+      await expect(leave).toBeHidden({ timeout: 10_000 });
+    } catch {
+      // Form was not dirty — Cancel already cleared the popup.
     }
   }
 
+  await expect(editItem).toBeHidden({ timeout: 15_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 15_000 });
+  await expect(page).not.toHaveURL(/popup=editItem/i);
 }
 
 /** Create a Login / Password item via the new-item popup (qa/web 7.1 subset). */
@@ -46,7 +50,7 @@ export async function createLoginItem(
   // Sidebar also has a compact "Create item"; prefer the shell top bar.
   await page.getByTestId("items-shell-topbar").getByRole("button", { name: /^create item$/i }).click();
 
-  const picker = page.getByRole("dialog");
+  const picker = page.locator("#newItem").or(page.getByRole("dialog"));
   await expect(picker.getByText("Login / Password", { exact: true }).last()).toBeVisible({
     timeout: 15_000,
   });

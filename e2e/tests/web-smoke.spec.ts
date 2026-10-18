@@ -8,7 +8,7 @@ import {
 } from "../helpers/auth";
 import { assertVaultBlobsHaveNoPlaintext } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
-import { createLoginItem, dismissOpenItemDialog } from "../helpers/items";
+import { createLoginItem } from "../helpers/items";
 
 /**
  * Minimal browser smoke covering qa/web scenarios from enterprise#110:
@@ -55,8 +55,8 @@ test("1) bootstrap registration → recovery export → unlock", async () => {
   });
   recoveryKey = result.recoveryKey;
   await expect(page.getByTestId("items-shell-topbar")).toBeVisible();
-  // Bootstrap opens personal-data Edit; dismiss so later steps start clean.
-  await dismissOpenItemDialog(page);
+  // Leave personal-data Edit open; test 2 navigates /items (clears popup) and
+  // createLoginItem dismisses Cancel→Continue if bootstrap re-opens it.
 });
 
 test("2) create Login item → reload → DB has no plaintext", async () => {
