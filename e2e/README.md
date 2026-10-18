@@ -53,6 +53,6 @@ E2E_EXTENSION=1 xvfb-run --auto-servernum yarn test:browser -- extension-smoke
 
 ## CI
 
-Workflow `.github/workflows/browser-e2e.yml` runs on `pull_request`, push to `dev`,
-schedule, and `workflow_dispatch`. Web is built like `apps/web/Dockerfile`;
-extension is built and exercised under `xvfb-run`.
+Workflow `.github/workflows/browser-e2e.yml` runs on push to `dev`, schedule, and
+`workflow_dispatch`. Web is built like `apps/web/Dockerfile`; extension is built
+and exercised under `xvfb-run`.
