@@ -55,8 +55,6 @@ test("1) bootstrap registration → recovery export → unlock", async () => {
   });
   recoveryKey = result.recoveryKey;
   await expect(page.getByTestId("items-shell-topbar")).toBeVisible();
-  // Leave personal-data Edit open; test 2 navigates /items (clears popup) and
-  // createLoginItem dismisses Cancel→Continue if bootstrap re-opens it.
 });
 
 test("2) create Login item → reload → DB has no plaintext", async () => {
@@ -84,7 +82,14 @@ test("3) second browser → device confirm → item decrypts", async () => {
 
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
 
-  const second = await browserRef.newContext({ locale: "en-US" });
+  // Device fingerprints are derived from UA (`web_app-{browser}-{os}-…`). A second
+  // Chromium context with the default Playwright UA shares the primary fingerprint
+  // and is treated as already trusted (skips /account/device-pending → lock).
+  const second = await browserRef.newContext({
+    locale: "en-US",
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0",
+  });
   const page2 = await second.newPage();
   try {
     await signInWithEmailOtp(page2, email);
