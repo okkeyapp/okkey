@@ -17,7 +17,7 @@ import { createLoginItem } from "../helpers/items";
  * 4) forgot master password → recovery key → new password → items readable
  *
  * Shared browser context keeps vault storage across steps. Needs empty users
- * table (fresh CI Postgres) and API with AUTH_E2E_FIXED_CODE.
+ * table (fresh CI Postgres) and SMTP → Mailpit for OTP (no API createCode bypass).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -95,14 +95,12 @@ test("3) second browser → device confirm → item decrypts", async () => {
   const page2 = await second.newPage();
   try {
     await signInWithEmailOtp(page2, email);
-    await expect(page2).toHaveURL(/device-pending|account\/lock|items/, { timeout: 60_000 });
+    await expect(page2).toHaveURL(/\/account\/device-pending/, { timeout: 60_000 });
 
-    if (/device-pending/.test(page2.url())) {
-      const trust = page.getByRole("button", { name: /^trust device$/i });
-      await expect(trust).toBeVisible({ timeout: 60_000 });
-      await trust.click();
-      await expect(page2).toHaveURL(/account\/lock|items/, { timeout: 60_000 });
-    }
+    const trust = page.getByRole("button", { name: /^trust device$/i });
+    await expect(trust).toBeVisible({ timeout: 60_000 });
+    await trust.click();
+    await expect(page2).toHaveURL(/\/account\/lock|\/items/, { timeout: 60_000 });
 
     if (await page2.getByRole("heading", { name: /vault is locked/i }).isVisible().catch(() => false)) {
       await unlockWithMasterPassword(page2, E2E_MASTER_PASSWORD);
@@ -120,17 +118,23 @@ test("4) recovery key → new master password → items readable", async () => {
   test.skip(!email || !recoveryKey, "registration did not run");
 
   await page.goto("/account/lock");
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByRole("link", { name: /forgot master password/i }).click();
   await expect(page.getByRole("heading", { name: /forgot master password/i })).toBeVisible({
     timeout: 30_000,
   });
 
-  // Method select (when more than one recovery method is available).
-  const methodSelect = page.locator("#restore-method");
-  if (await methodSelect.isVisible().catch(() => false)) {
-    await methodSelect.click();
+  // Wait for recovery status to finish loading, then choose key when a chooser exists.
+  await expect(page.locator("#restore-method")).toBeVisible({ timeout: 30_000 });
+  const methodTrigger = page.locator("#restore-method");
+  // If key fields are not yet shown, open the select and pick Recovery key.
+  if (!(await page.locator("#restore-recovery-key").isVisible().catch(() => false))) {
+    await methodTrigger.click();
     await page.getByRole("option", { name: /recovery key/i }).click();
   }
+  await expect(page.locator("#restore-recovery-key")).toBeVisible({ timeout: 15_000 });
 
   await page.locator("#restore-recovery-key").fill(recoveryKey);
   await page.locator("#restore-new-password").fill(NEW_MASTER);
@@ -138,17 +142,17 @@ test("4) recovery key → new master password → items readable", async () => {
   await page.getByRole("button", { name: /^restore access$/i }).click();
 
   const newKeyHeading = page.getByRole("heading", { name: /save your new recovery key/i });
-  if (await newKeyHeading.isVisible({ timeout: 30_000 }).catch(() => false)) {
-    const cont = page.getByRole("button", { name: /^continue$/i });
-    await expect(cont).toBeDisabled();
-    await page.getByRole("button", { name: /^copy$/i }).click();
-    await expect(cont).toBeEnabled({ timeout: 15_000 });
-    await cont.click();
-  }
+  await expect(newKeyHeading).toBeVisible({ timeout: 60_000 });
+  const cont = page.getByRole("button", { name: /^continue$/i });
+  await expect(cont).toBeDisabled();
+  await page.getByRole("button", { name: /^copy$/i }).click();
+  await expect(cont).toBeEnabled({ timeout: 15_000 });
+  await cont.click();
 
-  if (await page.getByRole("heading", { name: /vault is locked/i }).isVisible().catch(() => false)) {
-    await unlockWithMasterPassword(page, NEW_MASTER);
-  }
+  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  await unlockWithMasterPassword(page, NEW_MASTER);
 
   await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
     timeout: 60_000,

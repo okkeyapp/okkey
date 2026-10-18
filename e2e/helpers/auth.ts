@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
-import { E2E_MASTER_PASSWORD, E2E_OTP_CODE } from "./env";
+import { E2E_MASTER_PASSWORD } from "./env";
+import { waitForMailpitOtp } from "./mailpit";
 
 /** qa/web 3.1–3.6 + 4.5: empty-DB bootstrap → recovery export → unlock. */
 export async function registerBootstrapAndUnlock(
@@ -54,12 +55,15 @@ export async function registerBootstrapAndUnlock(
   return { recoveryKey };
 }
 
-/** Email + fixed OTP (`AUTH_E2E_FIXED_CODE` on API, non-prod). Auto-submits on 6 digits. */
-export async function signInWithEmailOtp(page: Page, email: string, otp = E2E_OTP_CODE): Promise<void> {
+/** Email login + OTP from Mailpit (real SMTP path). Auto-submits on 6 digits. */
+export async function signInWithEmailOtp(page: Page, email: string): Promise<void> {
+  const sinceMs = Date.now();
   await page.goto("/auth/email");
   await page.locator("#auth-email").fill(email);
   await page.getByRole("button", { name: /^sign in$/i }).click();
   await expect(page.getByLabel(/digit 1 of 6/i)).toBeVisible({ timeout: 30_000 });
+
+  const otp = await waitForMailpitOtp(email, { sinceMs });
   for (let i = 0; i < 6; i += 1) {
     await page.getByLabel(new RegExp(`digit ${i + 1} of 6`, "i")).fill(otp[i]!);
   }

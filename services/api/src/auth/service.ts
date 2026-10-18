@@ -108,18 +108,7 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/**
- * Browser e2e (Playwright) may set AUTH_E2E_FIXED_CODE=123456 so OTP can be entered
- * without scraping mail. Never honored when DEPLOY_ENV is prod/production.
- */
 function createCode(): string {
-  const fixed = process.env.AUTH_E2E_FIXED_CODE?.trim();
-  if (fixed && /^\d{6}$/.test(fixed)) {
-    const deployEnv = (process.env.DEPLOY_ENV ?? "dev").toLowerCase().trim();
-    if (deployEnv !== "prod" && deployEnv !== "production") {
-      return fixed;
-    }
-  }
   return String(randomInt(0, 1_000_000)).padStart(6, "0");
 }
 

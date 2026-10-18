@@ -1,6 +1,7 @@
 name: Browser E2E
 
 on:
+  pull_request:
   push:
     branches:
       - dev
@@ -36,6 +37,11 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.22.3
+        ports:
+          - 1025:1025
+          - 8025:8025
     env:
       RUST_TOOLCHAIN: 1.86.0
       WASM_PACK_VERSION: 0.13.1
@@ -46,10 +52,13 @@ jobs:
       NODE_ENV: development
       JWT_SECRET: test-jwt-secret
       SESSION_SECRET: test-session-secret
-      EMAIL_PROVIDER: logger
+      EMAIL_PROVIDER: smtp
+      EMAIL_DELIVERY_MODE: sync
       EMAIL_DEFAULT_LOCALE: en
       EMAIL_FROM: no-reply@okkey.local
-      AUTH_E2E_FIXED_CODE: "424242"
+      EMAIL_SMTP_HOST: 127.0.0.1
+      EMAIL_SMTP_PORT: "1025"
+      EMAIL_SMTP_SECURE: "false"
       CRYPTO_ALLOWED_PROFILE_VERSIONS: 1,2
       CRYPTO_ROLLOUT_MODE: compat
       CRYPTO_ROLLOUT_ENABLED: "true"
@@ -62,6 +71,8 @@ jobs:
       E2E_BASE_URL: http://127.0.0.1:4173
       E2E_API_BASE_URL: http://127.0.0.1:4000
       E2E_DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
+      E2E_MAILPIT_URL: http://127.0.0.1:8025
+      E2E_EXTENSION: "1"
       VITE_API_BASE_URL: http://127.0.0.1:4000
       VITE_APP_ENV: development
       PORT: "4000"
@@ -90,16 +101,21 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build WASM + email + web
+      - name: Build web like apps/web/Dockerfile
         run: |
           yarn build:wasm
-          yarn build:email
-          yarn build:web
+          yarn build:ts-sdk
+          yarn build:i18n
+          yarn build:email-templates
+          yarn --cwd apps/web vite build
+
+      - name: Build Chromium extension
+        run: yarn build:extension:chromium
 
       - name: Install Playwright Chromium
         run: yarn test:browser:install
 
-      - name: Wait for Postgres and Redis
+      - name: Wait for Postgres, Redis, Mailpit
         shell: bash
         run: |
           set -euo pipefail
@@ -116,6 +132,9 @@ jobs:
           }
           wait_for_port 127.0.0.1 5432 postgres 120
           wait_for_port 127.0.0.1 6379 redis 120
+          wait_for_port 127.0.0.1 1025 mailpit-smtp 120
+          wait_for_port 127.0.0.1 8025 mailpit-http 120
+          curl -sf http://127.0.0.1:8025/api/v1/info >/dev/null
 
       - name: Start API
         shell: bash
@@ -151,8 +170,8 @@ jobs:
           tail -n 200 /tmp/okkey-web.log || true
           exit 1
 
-      - name: Run browser e2e smoke
-        run: yarn test:browser
+      - name: Run browser e2e smoke (xvfb for extension)
+        run: xvfb-run --auto-servernum yarn test:browser
 
       - name: Upload Playwright report
         if: always()
@@ -164,6 +183,10 @@ jobs:
             e2e/test-results/
           if-no-files-found: ignore
 
-      - name: Dump API logs on failure
+      - name: Dump API / web logs on failure
         if: failure()
-        run: tail -n 300 /tmp/okkey-api.log || true
+        run: |
+          echo "===== API log ====="
+          tail -n 300 /tmp/okkey-api.log || true
+          echo "===== Web preview log ====="
+          tail -n 300 /tmp/okkey-web.log || true

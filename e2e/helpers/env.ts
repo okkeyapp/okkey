@@ -1,12 +1,12 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Shared e2e env (web preview + API). Defaults match CI / local docs. */
+/** Shared e2e env (web preview + API + Mailpit). Defaults match CI / local docs. */
 
 export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:4173";
 export const E2E_API_BASE_URL = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:4000";
-/** Must match AUTH_E2E_FIXED_CODE on the API process (non-prod only). */
-export const E2E_OTP_CODE = process.env.E2E_OTP_CODE ?? process.env.AUTH_E2E_FIXED_CODE ?? "424242";
+/** Mailpit HTTP API (SMTP 1025 in CI). OTP is read from here — never injected into API createCode(). */
+export const E2E_MAILPIT_URL = process.env.E2E_MAILPIT_URL ?? "http://127.0.0.1:8025";
 export const E2E_MASTER_PASSWORD = process.env.E2E_MASTER_PASSWORD ?? "e2e-master-pass";
 export const E2E_DATABASE_URL =
   process.env.E2E_DATABASE_URL ??

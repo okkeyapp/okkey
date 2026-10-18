@@ -6,8 +6,9 @@ import { extensionBuildReady, launchExtensionContext } from "../helpers/extensio
 
 /**
  * qa/extension smoke (enterprise#110 scenario 5): load unpacked Chromium extension.
- * Full PKCE → autofill → lock-timeout needs a live stack + web session; this harness
- * verifies persistent-context load. Set E2E_EXTENSION=1 and build the extension to run.
+ *
+ * CI runs this under xvfb with E2E_EXTENSION=1 after `yarn build:extension:chromium`.
+ * Full PKCE → autofill → lock-timeout is out of scope for this harness (follow-up).
  */
 test.describe("extension smoke", () => {
   test.skip(
