@@ -208,7 +208,11 @@ test("integration: after backup regeneration, transport receives two_factor_back
 test("integration: after TOTP disable, transport receives two_factor_disabled (ru)", async (t) => {
   const base = loadConfig();
   const fixed = new Date("2026-06-20T11:00:00.000Z");
-  const config: ApiConfig = { ...base, twoFactorBackupCodesCount: 3 };
+  const config: ApiConfig = {
+    ...base,
+    twoFactorBackupCodesCount: 3,
+    publicAppBaseUrl: "https://app.okkey.test",
+  };
   const storage = await createIntegrationStorage(t, config);
   if (!storage) {
     return;

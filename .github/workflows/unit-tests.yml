@@ -1,0 +1,258 @@
+name: Unit Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+
+jobs:
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: okkey
+          POSTGRES_USER: okkey
+          POSTGRES_PASSWORD: okkey
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U okkey -d okkey"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      RUST_TOOLCHAIN: 1.86.0
+      WASM_PACK_VERSION: 0.13.1
+      CARGO_NET_RETRY: "10"
+      DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
+      REDIS_URL: redis://127.0.0.1:6379
+      DEPLOY_ENV: dev
+      NODE_ENV: test
+      JWT_SECRET: test-jwt-secret
+      SESSION_SECRET: test-session-secret
+      EMAIL_PROVIDER: logger
+      EMAIL_DEFAULT_LOCALE: en
+      EMAIL_FROM: no-reply@okkey.local
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: 1,2
+      CRYPTO_ROLLOUT_MODE: compat
+      CRYPTO_ROLLOUT_ENABLED: "true"
+      CRYPTO_ROLLOUT_STATE: resume
+      # Env only — API integration tests use LocalObjectStorage (MinIO not required).
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: okkey
+      S3_ACCESS_KEY: okkey
+      S3_SECRET_KEY: okkey-minio
+      S3_FORCE_PATH_STYLE: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: yarn
+
+      - name: Bootstrap crypto-wasm path for Yarn
+        run: node scripts/ensure-crypto-wasm-dist.mjs
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: bash scripts/ci/install-wasm-pack.sh
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Wait for Postgres and Redis ports
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for_port() {
+            local host="$1"
+            local port="$2"
+            local name="$3"
+            local timeout="${4:-120}"
+            local elapsed=0
+            until (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; do
+              elapsed=$((elapsed + 1))
+              if [ "${elapsed}" -ge "${timeout}" ]; then
+                echo "::error::${name} is not reachable at ${host}:${port} after ${timeout}s"
+                return 1
+              fi
+              sleep 1
+            done
+            echo "${name} is reachable at ${host}:${port}"
+          }
+
+          wait_for_port 127.0.0.1 5432 postgres 120
+          wait_for_port 127.0.0.1 6379 redis 120
+
+      - name: Run API unit and integration tests
+        run: yarn test:api
+
+      - name: Run API e2e tests
+        run: yarn test:e2e
+
+  clients:
+    name: clients
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUST_TOOLCHAIN: 1.86.0
+      WASM_PACK_VERSION: 0.13.1
+      CARGO_NET_RETRY: "10"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: yarn
+
+      - name: Bootstrap crypto-wasm path for Yarn
+        run: node scripts/ensure-crypto-wasm-dist.mjs
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: bash scripts/ci/install-wasm-pack.sh
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build WASM and shared TypeScript packages
+        run: |
+          set -euo pipefail
+          yarn build:wasm
+          yarn build:ts-sdk
+          yarn build:i18n
+          yarn --cwd packages/ui build
+          yarn --cwd packages/import build
+
+      - name: Run web tests
+        run: yarn test:web
+
+      - name: Run extension tests
+        run: yarn --cwd apps/extension test
+
+      - name: Run packages/import tests
+        run: yarn --cwd packages/import test
+
+      - name: Run packages/vault tests
+        run: yarn --cwd packages/vault test
+
+      - name: Run packages/vault-ui tests
+        run: yarn --cwd packages/vault-ui test
+
+      - name: Run packages/ui tests
+        run: yarn --cwd packages/ui test
+
+      - name: Run packages/id tests
+        run: node --test packages/id/test/*.test.mjs
+
+  crypto:
+    name: crypto
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RUST_TOOLCHAIN: 1.86.0
+      WASM_PACK_VERSION: 0.13.1
+      CARGO_NET_RETRY: "10"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: yarn
+
+      - name: Bootstrap crypto-wasm path for Yarn
+        run: node scripts/ensure-crypto-wasm-dist.mjs
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: bash scripts/ci/install-wasm-pack.sh
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run Rust crypto-engine tests
+        run: yarn check:crypto
+
+      - name: Build packages needed by crypto JS tests
+        run: |
+          set -euo pipefail
+          yarn build:wasm
+          yarn build:ts-sdk
+          yarn --cwd packages/api build
+          yarn --cwd packages/ui build
+          yarn --cwd packages/vault build
+
+      - name: Run packages/crypto JS tests
+        run: node --test packages/crypto/test/*.test.mjs
+
+  unit-tests:
+    name: unit-tests
+    if: always()
+    needs:
+      - api
+      - clients
+      - crypto
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all unit-test jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          results=(
+            "api=${{ needs.api.result }}"
+            "clients=${{ needs.clients.result }}"
+            "crypto=${{ needs.crypto.result }}"
+          )
+          failed=0
+          for entry in "${results[@]}"; do
+            name="${entry%%=*}"
+            result="${entry#*=}"
+            echo "${name}: ${result}"
+            if [[ "${result}" != "success" ]]; then
+              failed=1
+            fi
+          done
+          if [[ "${failed}" -ne 0 ]]; then
+            echo "::error::One or more unit-test jobs failed"
+            exit 1
+          fi
