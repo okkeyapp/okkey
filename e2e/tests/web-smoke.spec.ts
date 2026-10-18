@@ -8,7 +8,7 @@ import {
 } from "../helpers/auth";
 import { assertVaultBlobsHaveNoPlaintext } from "../helpers/db";
 import { E2E_MASTER_PASSWORD, uniqueEmail } from "../helpers/env";
-import { createLoginItem } from "../helpers/items";
+import { createLoginItem, dismissOpenItemDialog } from "../helpers/items";
 
 /**
  * Minimal browser smoke covering qa/web scenarios from enterprise#110:
