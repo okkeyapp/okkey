@@ -12,10 +12,12 @@ import {
   QueuedEmailSender,
   computeEmailRetryDelayMs,
   parseEmailJob,
+  resolveDeadLetterSealKey,
   resolveEmailDeliveryMode,
   serializeEmailJob,
   startEmailQueueConsumer,
   type EmailJob,
+  type EmailQueueConsumerDeps,
 } from "../src/email/queue.ts";
 /** Minimal message shape (avoid importing email/service.ts → @okkey/email-templates). */
 type EmailMessage = {
@@ -38,9 +40,30 @@ const sampleMessage: EmailMessage = {
   html: "<p>body</p>",
 };
 
+const TEST_SEAL_KEY = resolveDeadLetterSealKey("unit-test-email-dead-letter-seal");
+
+function startTestConsumer(
+  deps: Omit<EmailQueueConsumerDeps, "deadLetterSealKey" | "logger"> &
+    Partial<Pick<EmailQueueConsumerDeps, "logger" | "deadLetterSealKey">>,
+) {
+  return startEmailQueueConsumer({
+    logger: { info() {}, warn() {}, error() {} },
+    deadLetterSealKey: TEST_SEAL_KEY,
+    ...deps,
+  });
+}
+
 function transportErrorWithStatus(status: number, message: string): EmailTemplateError {
   return new EmailTemplateError("EMAIL_TRANSPORT_ERROR", message, { status });
 }
+
+test("resolveDeadLetterSealKey is stable for the same secret", () => {
+  const a = resolveDeadLetterSealKey("same-secret");
+  const b = resolveDeadLetterSealKey("same-secret");
+  assert.equal(a.equals(b), true);
+  assert.equal(a.length, 32);
+  assert.equal(resolveDeadLetterSealKey("other-secret").equals(a), false);
+});
 
 test("resolveEmailDeliveryMode defaults queue in production, sync elsewhere", () => {
   assert.equal(resolveEmailDeliveryMode("production", undefined), "queue");
@@ -121,7 +144,7 @@ test("QueuedEmailSender and consumer log redacted subjects", async () => {
   const transport: EmailSender = {
     async send() {},
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger,
@@ -146,7 +169,7 @@ test("email queue consumer sends via transport and clears queue", async () => {
       sent.push(message);
     },
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger: { info() {}, warn() {}, error() {} },
@@ -174,7 +197,7 @@ test("email queue consumer retries then dead-letters", async () => {
       throw new Error("smtp down");
     },
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger: { info() {}, warn() {}, error() {} },
@@ -209,14 +232,14 @@ test("email queue consumer retries then dead-letters", async () => {
 });
 
 
-test("email queue dead-letter sanitizes leading verification code in subject", async () => {
+test("email queue dead-letter redacts verification code and seals delivery for requeue", async () => {
   const redis = new MemoryEmailQueueRedis();
   const transport: EmailSender = {
     async send() {
       throw transportErrorWithStatus(400, "email api send failed: status 400");
     },
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger: { info() {}, warn() {}, error() {} },
@@ -224,7 +247,8 @@ test("email queue dead-letter sanitizes leading verification code in subject", a
     options: { maxAttempts: 5, backoffBaseMs: 1, maxBackoffMs: 1 },
   });
 
-  const codeSubject = "109836 is your Okkey email change code";
+  const code = "109836";
+  const codeSubject = `${code} is your Okkey email change code`;
   const job: EmailJob = {
     id: "job-dlq-subject",
     createdAt: new Date().toISOString(),
@@ -232,7 +256,8 @@ test("email queue dead-letter sanitizes leading verification code in subject", a
     message: {
       ...sampleMessage,
       subject: codeSubject,
-      text: "code body 109836",
+      text: `code body ${code}`,
+      html: `<p>${code}</p>`,
     },
   };
   await redis.lPush(EMAIL_QUEUE_KEY, serializeEmailJob(job));
@@ -243,11 +268,83 @@ test("email queue dead-letter sanitizes leading verification code in subject", a
   await consumer.stop();
 
   assert.equal(redis.peekList(EMAIL_DEAD_KEY).length, 1);
-  const dead = parseEmailJob(redis.peekList(EMAIL_DEAD_KEY)[0]!);
+  const deadRaw = redis.peekList(EMAIL_DEAD_KEY)[0]!;
+  assert.equal(deadRaw.includes(code), false);
+  const dead = parseEmailJob(deadRaw);
   assert.equal(dead.message.subject, "****** is your Okkey email change code");
-  assert.equal(dead.message.subject.includes("109836"), false);
-  // Delivery payload on the live queue is unchanged until dead-letter; body in DLQ stays as stored.
-  assert.equal(dead.message.text, "code body 109836");
+  assert.equal(dead.message.text, "code body ******");
+  assert.equal(dead.message.html, "<p>******</p>");
+  assert.ok(dead.sealedDelivery);
+  assert.equal(dead.sealedDelivery.includes(code), false);
+});
+
+test("requeued dead-letter job unseals and sends the original verification code", async () => {
+  const redis = new MemoryEmailQueueRedis();
+  const failing: EmailSender = {
+    async send() {
+      throw transportErrorWithStatus(400, "email api send failed: status 400");
+    },
+  };
+  const failConsumer = startTestConsumer({
+    redis,
+    transport: failing,
+    logger: { info() {}, warn() {}, error() {} },
+    pollTimeoutSeconds: 1,
+    options: { maxAttempts: 5, backoffBaseMs: 1, maxBackoffMs: 1 },
+  });
+
+  const code = "582917";
+  const original: EmailMessage = {
+    ...sampleMessage,
+    subject: `${code} is your Okkey sign-in code`,
+    text: `Your Okkey verification code is ${code}.`,
+    html: `<strong>${code}</strong>`,
+  };
+  await redis.lPush(
+    EMAIL_QUEUE_KEY,
+    serializeEmailJob({
+      id: "job-dlq-requeue",
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+      message: original,
+    }),
+  );
+
+  for (let i = 0; i < 40 && redis.peekList(EMAIL_DEAD_KEY).length === 0; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await failConsumer.stop();
+
+  const deadRaw = redis.peekList(EMAIL_DEAD_KEY)[0]!;
+  assert.equal(deadRaw.includes(code), false);
+
+  const sent: EmailMessage[] = [];
+  const okTransport: EmailSender = {
+    async send(message) {
+      sent.push(message);
+    },
+  };
+  const okConsumer = startTestConsumer({
+    redis,
+    transport: okTransport,
+    logger: { info() {}, warn() {}, error() {} },
+    pollTimeoutSeconds: 1,
+  });
+  // Ops resend: LPUSH the dead-letter JSON onto the live queue without LREM.
+  assert.equal(redis.peekList(EMAIL_DEAD_KEY).length, 1);
+  await redis.lPush(EMAIL_QUEUE_KEY, deadRaw!);
+
+  for (let i = 0; i < 40 && sent.length === 0; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await okConsumer.stop();
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.subject, original.subject);
+  assert.equal(sent[0]!.text, original.text);
+  assert.equal(sent[0]!.html, original.html);
+  // Successful send removes the matching DLQ copy automatically.
+  assert.equal(redis.peekList(EMAIL_DEAD_KEY).length, 0);
 });
 
 test("email queue dead-letter lastError includes transport cause", async () => {
@@ -259,7 +356,7 @@ test("email queue dead-letter lastError includes transport cause", async () => {
       });
     },
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger: { info() {}, warn() {}, error() {} },
@@ -295,7 +392,7 @@ test("email queue consumer dead-letters permanent HTTP 4xx without retry", async
       throw transportErrorWithStatus(403, "ses send failed: status 403");
     },
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger: { info() {}, warn() {}, error() {} },
@@ -334,7 +431,7 @@ test("email queue consumer still retries HTTP 429", async () => {
       throw transportErrorWithStatus(429, "email api send failed: status 429");
     },
   };
-  const consumer = startEmailQueueConsumer({
+  const consumer = startTestConsumer({
     redis,
     transport,
     logger: { info() {}, warn() {}, error() {} },

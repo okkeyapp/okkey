@@ -46,7 +46,9 @@ Keys:
 | `okkey:email:delayed` | ZSET | Retries; score = unix ms when eligible |
 | `okkey:email:dead` | LIST | Failed after max attempts (default 5), or permanent HTTP 4xx (except 429) from SES / http-api |
 
-Payload: JSON `{ id, createdAt, attempts, message: { to, from, subject, text, html }, lastError? }`.
+Payload: JSON `{ id, createdAt, attempts, message: { to, from, subject, text, html }, lastError?, sealedDelivery? }`.
+
+Dead-letter jobs that carried a leading verification code store a redacted `message` (subject/body) plus `sealedDelivery` (AES-GCM of the original). Seal key: env `EMAIL_DEAD_LETTER_SEAL_KEY` (install.sh generates it; falls back to `SESSION_SECRET`). Re-queue by `LPUSH`ing the same JSON onto `okkey:email:queue`; the consumer unseals before send and `LREM`s matching copies from `okkey:email:dead`.
 
 ### Delivery modes (`EMAIL_DELIVERY_MODE`)
 

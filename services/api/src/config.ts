@@ -87,6 +87,12 @@ export interface ApiConfig {
    * `queue` — API enqueues to Redis; worker delivers (production / self-host default).
    */
   emailDeliveryMode: EmailDeliveryMode;
+  /**
+   * Secret for sealing verification-code payloads in the email dead-letter queue.
+   * Prefer dedicated `EMAIL_DEAD_LETTER_SEAL_KEY` (install.sh generates it); falls back to
+   * `SESSION_SECRET` so upgrades without a reinstall keep a stable key across restarts.
+   */
+  emailDeadLetterSealSecret: string;
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;
@@ -444,6 +450,8 @@ export function loadConfig(): ApiConfig {
     salesEmail: resolveSalesEmail(nodeEnv, process.env.OKKEY_SALES_EMAIL),
     emailProvider: (process.env.EMAIL_PROVIDER ?? "logger") as EmailProvider,
     emailDeliveryMode: resolveEmailDeliveryMode(nodeEnv, process.env.EMAIL_DELIVERY_MODE),
+    emailDeadLetterSealSecret:
+      (process.env.EMAIL_DEAD_LETTER_SEAL_KEY ?? "").trim() || sessionSecret,
     smtpHost: process.env.EMAIL_SMTP_HOST ?? "localhost",
     smtpPort: parsePositiveInt(process.env.EMAIL_SMTP_PORT, 1025),
     smtpSecure: parseBoolean(process.env.EMAIL_SMTP_SECURE, false),
