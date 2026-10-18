@@ -11,6 +11,9 @@ import {
   WEB_BASE_URL_SCHEME_ERROR,
 } from "./storage.ts";
 
+/** Keep in sync with `VAULT_UNLOCK_SESSION_STORAGE_KEY` in `@okkey/vault`. */
+const UNLOCK_SESSION_STORAGE_KEY = "okkey.vault.unlockSession.v1";
+
 test("normalizeWebBaseUrl adds https and strips path", () => {
   assert.equal(normalizeWebBaseUrl("okkey.app"), "https://okkey.app");
   assert.equal(normalizeWebBaseUrl("http://localhost:5173/foo"), "http://localhost:5173");
@@ -81,35 +84,92 @@ test("wipeAllExtensionData removes vault device unlock/prefs and keeps lastServe
     "okkey.vault.pinAttempts.v1.u.u1": JSON.stringify({ failures: [], lockedUntil: null }),
     "unrelated.key": "keep-me",
   };
+  const sessionStore: Record<string, unknown> = {
+    [UNLOCK_SESSION_STORAGE_KEY]: JSON.stringify({
+      v: 1,
+      user_id: "u1",
+      vault_key_b64: "AAAA",
+      password_share_c_b64: "BBBB",
+      last_activity_at: Date.now(),
+      idle_lock_ms: 3_600_000,
+    }),
+  };
+
+  type StorageAreaMock = {
+    get: (keys?: unknown) => Promise<Record<string, unknown>>;
+    set: (items: Record<string, unknown>) => Promise<void>;
+    remove: (keys: string | string[]) => Promise<void>;
+  };
 
   const g = globalThis as {
     browser?: {
       storage?: {
-        local?: {
-          get: (keys?: unknown) => Promise<Record<string, unknown>>;
-          remove: (keys: string | string[]) => Promise<void>;
-        };
+        local?: StorageAreaMock;
+        session?: StorageAreaMock;
+      };
+    };
+    chrome?: {
+      storage?: {
+        local?: StorageAreaMock;
+        session?: StorageAreaMock;
       };
     };
   };
   const prevBrowser = g.browser;
+  const prevChrome = g.chrome;
+
+  const localArea: StorageAreaMock = {
+    async get(keys) {
+      if (keys == null) {
+        return { ...store };
+      }
+      return {};
+    },
+    async set() {},
+    async remove(keys) {
+      const list = Array.isArray(keys) ? keys : [keys];
+      for (const key of list) {
+        delete store[key];
+      }
+    },
+  };
+  const sessionArea: StorageAreaMock = {
+    async get(keys) {
+      if (typeof keys === "string") {
+        return keys in sessionStore ? { [keys]: sessionStore[keys] } : {};
+      }
+      if (Array.isArray(keys)) {
+        const out: Record<string, unknown> = {};
+        for (const key of keys) {
+          if (key in sessionStore) out[key] = sessionStore[key];
+        }
+        return out;
+      }
+      return { ...sessionStore };
+    },
+    async set(items) {
+      Object.assign(sessionStore, items);
+    },
+    async remove(keys) {
+      const list = Array.isArray(keys) ? keys : [keys];
+      for (const key of list) {
+        delete sessionStore[key];
+      }
+    },
+  };
+
   try {
     g.browser = {
       storage: {
-        local: {
-          async get(keys) {
-            if (keys == null) {
-              return { ...store };
-            }
-            return {};
-          },
-          async remove(keys) {
-            const list = Array.isArray(keys) ? keys : [keys];
-            for (const key of list) {
-              delete store[key];
-            }
-          },
-        },
+        local: localArea,
+        session: sessionArea,
+      },
+    };
+    // Prefer chrome in extensionSessionStorage — mirror both roots for wipe.
+    g.chrome = {
+      storage: {
+        local: localArea,
+        session: sessionArea,
       },
     };
 
@@ -124,7 +184,13 @@ test("wipeAllExtensionData removes vault device unlock/prefs and keeps lastServe
     assert.equal(store["okkey.vault.deviceUnlock.v1.u.u1"], undefined);
     assert.equal(store["okkey.vault.devicePrefs.v1.u.u1"], undefined);
     assert.equal(store["okkey.vault.pinAttempts.v1.u.u1"], undefined);
+    assert.equal(
+      sessionStore[UNLOCK_SESSION_STORAGE_KEY],
+      undefined,
+      "session unlock material must not survive wipe",
+    );
   } finally {
     g.browser = prevBrowser;
+    g.chrome = prevChrome;
   }
 });
