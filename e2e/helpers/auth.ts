@@ -80,3 +80,21 @@ export async function unlockWithMasterPassword(
   await page.getByRole("button", { name: /^unlock$/i }).click();
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
 }
+
+/**
+ * Full navigation to /items reloads the SPA — vault session is locked again.
+ * Wait for either lock or items shell (avoid racing isVisible on a still-loading page).
+ */
+export async function gotoItemsUnlocked(
+  page: Page,
+  masterPassword = E2E_MASTER_PASSWORD,
+): Promise<void> {
+  await page.goto("/items");
+  const lock = page.getByRole("heading", { name: /vault is locked/i });
+  const topbar = page.getByTestId("items-shell-topbar");
+  await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });
+  if (await lock.isVisible().catch(() => false)) {
+    await unlockWithMasterPassword(page, masterPassword);
+  }
+  await expect(topbar).toBeVisible({ timeout: 60_000 });
+}
