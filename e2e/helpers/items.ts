@@ -1,16 +1,16 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
- * After unlock, personal-data bootstrap may open Edit record asynchronously.
- * Wait until that settles (edit dialog or list row), then dismiss dialogs —
+ * After unlock, personal-data bootstrap creates a list row and may open Edit record.
+ * Wait for the list row (bootstrap settled), then dismiss any open dialogs —
  * including the "Leave without saving?" confirm that dirty forms show on Close.
  */
 export async function dismissOpenItemDialog(page: Page): Promise<void> {
-  const editRecord = page.getByRole("dialog").filter({
-    has: page.getByRole("heading", { name: /^edit record$/i }),
+  // Prefer the list row: it appears once bootstrap has created the item.
+  // Do not use locator.or(...).toBeVisible() — both can be visible (strict mode).
+  await expect(page.getByRole("button", { name: /personal data/i }).first()).toBeVisible({
+    timeout: 30_000,
   });
-  const personalDataRow = page.getByRole("button", { name: /personal data/i });
-  await expect(editRecord.or(personalDataRow)).toBeVisible({ timeout: 30_000 });
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const leaveHeading = page.getByRole("heading", { name: /leave without saving/i });
