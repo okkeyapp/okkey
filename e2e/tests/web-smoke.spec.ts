@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import {
+  gotoItemsUnlocked,
   registerBootstrapAndUnlock,
   signInWithEmailOtp,
   unlockWithMasterPassword,
@@ -58,11 +59,7 @@ test("1) bootstrap registration → recovery export → unlock", async () => {
 
 test("2) create Login item → reload → DB has no plaintext", async () => {
   test.skip(!email, "registration did not run");
-  await page.goto("/items");
-  if (await page.getByRole("heading", { name: /vault is locked/i }).isVisible().catch(() => false)) {
-    await unlockWithMasterPassword(page, E2E_MASTER_PASSWORD);
-  }
-  await expect(page.getByTestId("items-shell-topbar")).toBeVisible({ timeout: 60_000 });
+  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
 
   await createLoginItem(page, {
     title: LOGIN_TITLE,
@@ -72,9 +69,7 @@ test("2) create Login item → reload → DB has no plaintext", async () => {
   });
 
   await page.reload();
-  if (await page.getByRole("heading", { name: /vault is locked/i }).isVisible().catch(() => false)) {
-    await unlockWithMasterPassword(page, E2E_MASTER_PASSWORD);
-  }
+  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
   await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
     timeout: 60_000,
   });
@@ -85,11 +80,7 @@ test("2) create Login item → reload → DB has no plaintext", async () => {
 test("3) second browser → device confirm → item decrypts", async () => {
   test.skip(!email, "registration did not run");
 
-  await page.goto("/items");
-  if (await page.getByRole("heading", { name: /vault is locked/i }).isVisible().catch(() => false)) {
-    await unlockWithMasterPassword(page, E2E_MASTER_PASSWORD);
-  }
-  await expect(page.getByTestId("items-shell-topbar")).toBeVisible({ timeout: 60_000 });
+  await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
 
   const second = await browserRef.newContext({ locale: "en-US" });
   const page2 = await second.newPage();
@@ -102,7 +93,10 @@ test("3) second browser → device confirm → item decrypts", async () => {
     await trust.click();
     await expect(page2).toHaveURL(/\/account\/lock|\/items/, { timeout: 60_000 });
 
-    if (await page2.getByRole("heading", { name: /vault is locked/i }).isVisible().catch(() => false)) {
+    const lock2 = page2.getByRole("heading", { name: /vault is locked/i });
+    const topbar2 = page2.getByTestId("items-shell-topbar");
+    await expect(lock2.or(topbar2)).toBeVisible({ timeout: 60_000 });
+    if (await lock2.isVisible().catch(() => false)) {
       await unlockWithMasterPassword(page2, E2E_MASTER_PASSWORD);
     }
 
@@ -128,10 +122,9 @@ test("4) recovery key → new master password → items readable", async () => {
 
   // Wait for recovery status to finish loading, then choose key when a chooser exists.
   await expect(page.locator("#restore-method")).toBeVisible({ timeout: 30_000 });
-  const methodTrigger = page.locator("#restore-method");
   // If key fields are not yet shown, open the select and pick Recovery key.
   if (!(await page.locator("#restore-recovery-key").isVisible().catch(() => false))) {
-    await methodTrigger.click();
+    await page.locator("#restore-method").click();
     await page.getByRole("option", { name: /recovery key/i }).click();
   }
   await expect(page.locator("#restore-recovery-key")).toBeVisible({ timeout: 15_000 });
