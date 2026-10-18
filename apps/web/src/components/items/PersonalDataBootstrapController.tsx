@@ -60,6 +60,10 @@ export default function PersonalDataBootstrapController({
   locationRef.current = location;
 
   useEffect(() => {
+    // Browser e2e builds set this so smoke is not raced by `#editItem`.
+    if (import.meta.env.VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP === "1") {
+      return;
+    }
     if (
       !vaultUnlocked ||
       !bootstrapped ||

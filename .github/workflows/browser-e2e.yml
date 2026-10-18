@@ -1,0 +1,191 @@
+name: Browser E2E
+
+on:
+  push:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  browser-e2e:
+    name: browser-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: okkey
+          POSTGRES_USER: okkey
+          POSTGRES_PASSWORD: okkey
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U okkey -d okkey"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.22.3
+        ports:
+          - 1025:1025
+          - 8025:8025
+    env:
+      RUST_TOOLCHAIN: 1.86.0
+      WASM_PACK_VERSION: 0.13.1
+      CARGO_NET_RETRY: "10"
+      DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
+      REDIS_URL: redis://127.0.0.1:6379
+      DEPLOY_ENV: dev
+      NODE_ENV: development
+      JWT_SECRET: test-jwt-secret
+      SESSION_SECRET: test-session-secret
+      EMAIL_PROVIDER: smtp
+      EMAIL_DELIVERY_MODE: sync
+      EMAIL_DEFAULT_LOCALE: en
+      EMAIL_FROM: no-reply@okkey.local
+      EMAIL_SMTP_HOST: 127.0.0.1
+      EMAIL_SMTP_PORT: "1025"
+      EMAIL_SMTP_SECURE: "false"
+      CRYPTO_ALLOWED_PROFILE_VERSIONS: 1,2
+      CRYPTO_ROLLOUT_MODE: compat
+      CRYPTO_ROLLOUT_ENABLED: "true"
+      CRYPTO_ROLLOUT_STATE: resume
+      CORS_ORIGIN: http://127.0.0.1:4173,http://localhost:4173
+      WEBAUTHN_RP_ID: 127.0.0.1
+      WEBAUTHN_RP_NAME: Okkey
+      WEBAUTHN_ORIGINS: http://127.0.0.1:4173
+      PUBLIC_APP_BASE_URL: http://127.0.0.1:4173
+      E2E_BASE_URL: http://127.0.0.1:4173
+      E2E_API_BASE_URL: http://127.0.0.1:4000
+      E2E_DATABASE_URL: postgresql://okkey:okkey@127.0.0.1:5432/okkey
+      E2E_MAILPIT_URL: http://127.0.0.1:8025
+      E2E_EXTENSION: "1"
+      VITE_API_BASE_URL: http://127.0.0.1:4000
+      VITE_APP_ENV: development
+      # Skip personal-data Edit popup in browser smoke (baked into vite build).
+      VITE_E2E_DISABLE_PERSONAL_DATA_BOOTSTRAP: "1"
+      PORT: "4000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: yarn
+
+      - name: Bootstrap crypto-wasm path for Yarn
+        run: node scripts/ensure-crypto-wasm-dist.mjs
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: bash scripts/ci/install-wasm-pack.sh
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build web like apps/web/Dockerfile
+        run: |
+          yarn build:wasm
+          yarn build:ts-sdk
+          yarn build:i18n
+          yarn build:email-templates
+          yarn --cwd apps/web vite build
+
+      - name: Build Chromium extension
+        run: yarn build:extension:chromium
+
+      - name: Install Playwright Chromium
+        run: yarn test:browser:install
+
+      - name: Wait for Postgres, Redis, Mailpit
+        shell: bash
+        run: |
+          set -euo pipefail
+          wait_for_port() {
+            local host="$1" port="$2" name="$3" timeout="${4:-120}" elapsed=0
+            until (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; do
+              elapsed=$((elapsed + 1))
+              if [ "${elapsed}" -ge "${timeout}" ]; then
+                echo "::error::${name} is not reachable at ${host}:${port}"
+                return 1
+              fi
+              sleep 1
+            done
+          }
+          wait_for_port 127.0.0.1 5432 postgres 120
+          wait_for_port 127.0.0.1 6379 redis 120
+          wait_for_port 127.0.0.1 1025 mailpit-smtp 120
+          wait_for_port 127.0.0.1 8025 mailpit-http 120
+          curl -sf http://127.0.0.1:8025/api/v1/info >/dev/null
+
+      - name: Start API
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup yarn dev:api:serve > /tmp/okkey-api.log 2>&1 &
+          echo $! > /tmp/okkey-api.pid
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:4000/health >/dev/null; then
+              echo "API is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::API failed to start"
+          tail -n 200 /tmp/okkey-api.log || true
+          exit 1
+
+      - name: Start web preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup yarn --cwd apps/web preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/okkey-web.log 2>&1 &
+          echo $! > /tmp/okkey-web.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+              echo "Web preview is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Web preview failed to start"
+          tail -n 200 /tmp/okkey-web.log || true
+          exit 1
+
+      - name: Run browser e2e smoke (xvfb for extension)
+        run: xvfb-run --auto-servernum yarn test:browser
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: ignore
+
+      - name: Dump API / web logs on failure
+        if: failure()
+        run: |
+          echo "===== API log ====="
+          tail -n 300 /tmp/okkey-api.log || true
+          echo "===== Web preview log ====="
+          tail -n 300 /tmp/okkey-web.log || true
