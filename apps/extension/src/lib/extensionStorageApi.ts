@@ -14,6 +14,7 @@ type StorageAreaLike = {
   get: (keys?: string | string[] | null | Record<string, unknown>) => Promise<Record<string, unknown>>;
   set: (items: Record<string, unknown>) => Promise<void>;
   remove: (keys: string | string[]) => Promise<void>;
+  clear?: () => Promise<void>;
 };
 
 type ExtensionApiRoot = {

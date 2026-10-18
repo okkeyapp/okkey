@@ -1,7 +1,7 @@
 import { extensionSessionStorage } from "./extensionStorageApi.ts";
 
-/** Keep in sync with `VAULT_UNLOCK_SESSION_STORAGE_KEY` in `@okkey/vault`. */
-const UNLOCK_SESSION_STORAGE_KEY = "okkey.vault.unlockSession.v1";
+/** Broadcast after a full local wipe so the service worker can drop in-memory caches. */
+export const EXTENSION_DATA_WIPED_MSG = "okkey.extension.dataWiped" as const;
 
 /** chrome.storage.local profile + session for the extension (one active profile). */
 
@@ -78,7 +78,8 @@ export async function readSession(): Promise<ExtensionSession | null> {
   }
   const exp = Date.parse(raw.expires_at);
   if (!Number.isFinite(exp) || Date.now() >= exp) {
-    await clearSession();
+    // Expired account token must not leave unlock / pending-save material behind.
+    await wipeAllExtensionData();
     return null;
   }
   return raw;
@@ -194,9 +195,20 @@ export async function writeLastServer(value: Omit<ExtensionLastServer, "updatedA
 }
 
 /**
- * Logout + wipe local profile cache (session, PKCE, device keys, vault bundle,
- * device unlock) and the in-memory unlock session in chrome.storage.session.
- * Keeps lastServer preference.
+ * Clear chrome.storage.session (unlock session, pending save offers, …) and
+ * notify the service worker to drop in-memory caches. Local account data stays.
+ */
+export async function clearExtensionSessionArea(): Promise<void> {
+  await clearExtensionSessionStorage();
+  notifyExtensionDataWiped();
+}
+
+/**
+ * Clear all extension-owned local state except the last-server preference.
+ * Also clears chrome.storage.session (unlock session, pending save offers, …)
+ * and notifies the service worker to drop in-memory caches.
+ *
+ * Call this before network logout / revoke when the account session ends.
  */
 export async function wipeAllExtensionData(): Promise<void> {
   const all = await storageArea().get(null);
@@ -215,15 +227,38 @@ export async function wipeAllExtensionData(): Promise<void> {
   });
   await Promise.all([
     keysToRemove.length > 0 ? storageArea().remove(keysToRemove) : Promise.resolve(),
-    // Unlock material lives in session storage — must not survive logout / change-server.
-    clearSessionUnlockStorage(),
+    clearExtensionSessionStorage(),
   ]);
+  notifyExtensionDataWiped();
 }
 
-async function clearSessionUnlockStorage(): Promise<void> {
+async function clearExtensionSessionStorage(): Promise<void> {
   const area = extensionSessionStorage();
   if (!area) return;
-  await area.remove(UNLOCK_SESSION_STORAGE_KEY);
+  if (typeof area.clear === "function") {
+    await area.clear();
+    return;
+  }
+  // Fallback when clear() is unavailable (tests / partial APIs).
+  const bag = await area.get(null);
+  const keys = Object.keys(bag);
+  if (keys.length > 0) {
+    await area.remove(keys);
+  }
+}
+
+function notifyExtensionDataWiped(): void {
+  try {
+    const runtime = (globalThis as { browser?: { runtime?: { sendMessage?: (msg: unknown) => unknown } } })
+      .browser?.runtime;
+    if (typeof runtime?.sendMessage === "function") {
+      void Promise.resolve(runtime.sendMessage({ type: EXTENSION_DATA_WIPED_MSG })).catch(() => {
+        /* popup / node tests may have no SW listener */
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 /**

@@ -131,7 +131,12 @@ export async function readVaultUnlockSessionIfFresh(
   storageKey: string = VAULT_UNLOCK_SESSION_STORAGE_KEY,
 ): Promise<VaultUnlockSessionFreshResult | null> {
   const rec = parseRecord(await storageGet(storage, storageKey));
-  if (!rec || rec.user_id !== userId) {
+  if (!rec) {
+    return null;
+  }
+  // Restore only for the active account — drop leftover material from another user.
+  if (rec.user_id !== userId) {
+    await storageRemove(storage, storageKey);
     return null;
   }
   const now = Date.now();

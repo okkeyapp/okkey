@@ -22,9 +22,10 @@ import {
   type AutofillItemCategory,
 } from "@okkey/vault";
 
-import { createCoreClient } from "./api";
+import { createCoreClient, isUnauthorizedApiError } from "./api";
 import { EMAIL_OTP_URL } from "./autofillFieldClassify";
 import {
+  clearAllPendingSaveOffers,
   clearPendingSaveOffer,
   getPendingSaveOffer,
   markPendingSaveDismissed,
@@ -51,8 +52,17 @@ import {
 } from "./autofillMessages";
 import { readExtensionUnlockSessionIfFresh, touchExtensionUnlockSession } from "./extensionVaultSession";
 import { initExtensionCrypto } from "./initExtensionCrypto";
-import { readProfile, readSession } from "./storage";
+import { readProfile, readSession, wipeAllExtensionData } from "./storage";
 import { readExtensionVaultBundle, readStoredCurrentWorkspaceId } from "./vaultStorage";
+
+async function wipeIfUnauthorized(err: unknown): Promise<boolean> {
+  if (!isUnauthorizedApiError(err)) {
+    return false;
+  }
+  await wipeAllExtensionData();
+  await clearAllPendingSaveOffers();
+  return true;
+}
 
 export {
   clearPendingSaveOffer,
@@ -814,7 +824,10 @@ export async function handleAutofillSaveContext(): Promise<AutofillSaveContextRe
       vaults: options,
       defaultVaultId: defaultVault.id,
     };
-  } catch {
+  } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     return { status: "locked" };
   }
 }
@@ -998,6 +1011,9 @@ export async function handleAutofillSave(input: {
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }
@@ -1103,6 +1119,9 @@ export async function handleAutofillSaveFormDraft(
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }
@@ -1223,6 +1242,9 @@ export async function handleAutofillSaveFormCommit(
       controller.dispose();
     }
   } catch (err: unknown) {
+    if (await wipeIfUnauthorized(err)) {
+      return { status: "signed-out" };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { status: "error", message };
   }

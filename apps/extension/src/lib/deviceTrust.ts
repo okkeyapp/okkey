@@ -1,7 +1,7 @@
 import type { CoreApiClient } from "@okkey/api";
 import type { DeviceListItemDto, DeviceRegisterResponseDto } from "@okkey/types";
 
-import { randomDevicePublicKeyB64, randomDeviceShareB64 } from "./api";
+import { isUnauthorizedApiError, randomDevicePublicKeyB64, randomDeviceShareB64 } from "./api";
 import { parseBrowserEnvironment } from "./browserEnvironment";
 import {
   clearDeviceDeferred,
@@ -123,6 +123,10 @@ export async function resolveExtensionDeviceTrust(
   try {
     listed = await core.listDevices(fingerprint);
   } catch (error: unknown) {
+    // Let the popup wipe local state on expired/revoked Bearer tokens.
+    if (isUnauthorizedApiError(error)) {
+      throw error;
+    }
     return {
       status: "error",
       deviceId: null,

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   isLoopbackHostname,
   normalizeWebBaseUrl,
+  readSession,
   resolveApiBaseFromWebBase,
   STORAGE_KEYS,
   wipeAllExtensionData,
@@ -13,6 +14,104 @@ import {
 
 /** Keep in sync with `VAULT_UNLOCK_SESSION_STORAGE_KEY` in `@okkey/vault`. */
 const UNLOCK_SESSION_STORAGE_KEY = "okkey.vault.unlockSession.v1";
+const PENDING_SAVE_SESSION_KEY = "okkey.autofill.pendingSaveByTab";
+
+type StorageAreaMock = {
+  get: (keys?: unknown) => Promise<Record<string, unknown>>;
+  set: (items: Record<string, unknown>) => Promise<void>;
+  remove: (keys: string | string[]) => Promise<void>;
+  clear?: () => Promise<void>;
+};
+
+function installStorageMocks(input: {
+  local: Record<string, unknown>;
+  session: Record<string, unknown>;
+}): {
+  local: Record<string, unknown>;
+  session: Record<string, unknown>;
+  restore: () => void;
+} {
+  const store = input.local;
+  const sessionStore = input.session;
+  const g = globalThis as {
+    browser?: {
+      storage?: { local?: StorageAreaMock; session?: StorageAreaMock };
+      runtime?: { sendMessage?: (msg: unknown) => Promise<unknown> };
+    };
+    chrome?: {
+      storage?: { local?: StorageAreaMock; session?: StorageAreaMock };
+    };
+  };
+  const prevBrowser = g.browser;
+  const prevChrome = g.chrome;
+
+  const localArea: StorageAreaMock = {
+    async get(keys) {
+      if (keys == null) {
+        return { ...store };
+      }
+      if (typeof keys === "string") {
+        return keys in store ? { [keys]: store[keys] } : {};
+      }
+      return {};
+    },
+    async set(items) {
+      Object.assign(store, items);
+    },
+    async remove(keys) {
+      const list = Array.isArray(keys) ? keys : [keys];
+      for (const key of list) {
+        delete store[key];
+      }
+    },
+  };
+  const sessionArea: StorageAreaMock = {
+    async get(keys) {
+      if (typeof keys === "string") {
+        return keys in sessionStore ? { [keys]: sessionStore[keys] } : {};
+      }
+      if (Array.isArray(keys)) {
+        const out: Record<string, unknown> = {};
+        for (const key of keys) {
+          if (key in sessionStore) out[key] = sessionStore[key];
+        }
+        return out;
+      }
+      return { ...sessionStore };
+    },
+    async set(items) {
+      Object.assign(sessionStore, items);
+    },
+    async remove(keys) {
+      const list = Array.isArray(keys) ? keys : [keys];
+      for (const key of list) {
+        delete sessionStore[key];
+      }
+    },
+    async clear() {
+      for (const key of Object.keys(sessionStore)) {
+        delete sessionStore[key];
+      }
+    },
+  };
+
+  g.browser = {
+    storage: { local: localArea, session: sessionArea },
+    runtime: { async sendMessage() { return { ok: true }; } },
+  };
+  g.chrome = {
+    storage: { local: localArea, session: sessionArea },
+  };
+
+  return {
+    local: store,
+    session: sessionStore,
+    restore() {
+      g.browser = prevBrowser;
+      g.chrome = prevChrome;
+    },
+  };
+}
 
 test("normalizeWebBaseUrl adds https and strips path", () => {
   assert.equal(normalizeWebBaseUrl("okkey.app"), "https://okkey.app");
@@ -64,133 +163,105 @@ test("isLoopbackHostname", () => {
   assert.equal(isLoopbackHostname("localhost.example.com"), false);
 });
 
-test("wipeAllExtensionData removes vault device unlock/prefs and keeps lastServer", async () => {
-  const store: Record<string, unknown> = {
-    [STORAGE_KEYS.lastServer]: {
-      hostMode: "self-hosted",
-      webBaseUrl: "https://vault.example.com",
-      updatedAt: 1,
+test("wipeAllExtensionData clears session storage and local vault keys, keeps lastServer", async () => {
+  const mocks = installStorageMocks({
+    local: {
+      [STORAGE_KEYS.lastServer]: {
+        hostMode: "self-hosted",
+        webBaseUrl: "https://vault.example.com",
+        updatedAt: 1,
+      },
+      [STORAGE_KEYS.session]: { access_token: "t", user_id: "u1", expires_at: "2099-01-01T00:00:00Z" },
+      [STORAGE_KEYS.profile]: {
+        webBaseUrl: "https://vault.example.com",
+        apiBaseUrl: "https://vault.example.com",
+        updatedAt: 1,
+      },
+      "okkey.extension.deviceId": "dev-1",
+      "okkey.extension.vaultBundle.u.u1": { v: 1 },
+      "okkey.extension.workspace.current.u.u1": "ws-1",
+      "okkey.vault.deviceUnlock.v1.u.u1": JSON.stringify({ pin: { kdfSaltB64: "s", ciphertextB64: "c" } }),
+      "okkey.vault.devicePrefs.v1.u.u1": JSON.stringify({ pinEnabled: true }),
+      "okkey.vault.pinAttempts.v1.u.u1": JSON.stringify({ failures: [], lockedUntil: null }),
+      "unrelated.key": "keep-me",
     },
-    [STORAGE_KEYS.session]: { access_token: "t", user_id: "u1", expires_at: "2099-01-01T00:00:00Z" },
-    [STORAGE_KEYS.profile]: {
-      webBaseUrl: "https://vault.example.com",
-      apiBaseUrl: "https://vault.example.com",
-      updatedAt: 1,
+    session: {
+      [UNLOCK_SESSION_STORAGE_KEY]: JSON.stringify({
+        v: 1,
+        user_id: "u1",
+        vault_key_b64: "AAAA",
+        password_share_c_b64: "BBBB",
+        last_activity_at: Date.now(),
+        idle_lock_ms: 3_600_000,
+      }),
+      [PENDING_SAVE_SESSION_KEY]: {
+        "12": { username: "a", password: "secret", captureUrl: "https://ex.test/login", websiteUrl: "https://ex.test/login", createdAt: Date.now() },
+      },
     },
-    "okkey.extension.deviceId": "dev-1",
-    "okkey.extension.vaultBundle.u.u1": { v: 1 },
-    "okkey.vault.deviceUnlock.v1.u.u1": JSON.stringify({ pin: { kdfSaltB64: "s", ciphertextB64: "c" } }),
-    "okkey.vault.devicePrefs.v1.u.u1": JSON.stringify({ pinEnabled: true }),
-    "okkey.vault.pinAttempts.v1.u.u1": JSON.stringify({ failures: [], lockedUntil: null }),
-    "unrelated.key": "keep-me",
-  };
-  const sessionStore: Record<string, unknown> = {
-    [UNLOCK_SESSION_STORAGE_KEY]: JSON.stringify({
-      v: 1,
-      user_id: "u1",
-      vault_key_b64: "AAAA",
-      password_share_c_b64: "BBBB",
-      last_activity_at: Date.now(),
-      idle_lock_ms: 3_600_000,
-    }),
-  };
-
-  type StorageAreaMock = {
-    get: (keys?: unknown) => Promise<Record<string, unknown>>;
-    set: (items: Record<string, unknown>) => Promise<void>;
-    remove: (keys: string | string[]) => Promise<void>;
-  };
-
-  const g = globalThis as {
-    browser?: {
-      storage?: {
-        local?: StorageAreaMock;
-        session?: StorageAreaMock;
-      };
-    };
-    chrome?: {
-      storage?: {
-        local?: StorageAreaMock;
-        session?: StorageAreaMock;
-      };
-    };
-  };
-  const prevBrowser = g.browser;
-  const prevChrome = g.chrome;
-
-  const localArea: StorageAreaMock = {
-    async get(keys) {
-      if (keys == null) {
-        return { ...store };
-      }
-      return {};
-    },
-    async set() {},
-    async remove(keys) {
-      const list = Array.isArray(keys) ? keys : [keys];
-      for (const key of list) {
-        delete store[key];
-      }
-    },
-  };
-  const sessionArea: StorageAreaMock = {
-    async get(keys) {
-      if (typeof keys === "string") {
-        return keys in sessionStore ? { [keys]: sessionStore[keys] } : {};
-      }
-      if (Array.isArray(keys)) {
-        const out: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (key in sessionStore) out[key] = sessionStore[key];
-        }
-        return out;
-      }
-      return { ...sessionStore };
-    },
-    async set(items) {
-      Object.assign(sessionStore, items);
-    },
-    async remove(keys) {
-      const list = Array.isArray(keys) ? keys : [keys];
-      for (const key of list) {
-        delete sessionStore[key];
-      }
-    },
-  };
+  });
 
   try {
-    g.browser = {
-      storage: {
-        local: localArea,
-        session: sessionArea,
-      },
-    };
-    // Prefer chrome in extensionSessionStorage — mirror both roots for wipe.
-    g.chrome = {
-      storage: {
-        local: localArea,
-        session: sessionArea,
-      },
-    };
-
     await wipeAllExtensionData();
 
-    assert.ok(store[STORAGE_KEYS.lastServer], "lastServer preference must survive wipe");
-    assert.equal(store["unrelated.key"], "keep-me");
-    assert.equal(store[STORAGE_KEYS.session], undefined);
-    assert.equal(store[STORAGE_KEYS.profile], undefined);
-    assert.equal(store["okkey.extension.deviceId"], undefined);
-    assert.equal(store["okkey.extension.vaultBundle.u.u1"], undefined);
-    assert.equal(store["okkey.vault.deviceUnlock.v1.u.u1"], undefined);
-    assert.equal(store["okkey.vault.devicePrefs.v1.u.u1"], undefined);
-    assert.equal(store["okkey.vault.pinAttempts.v1.u.u1"], undefined);
-    assert.equal(
-      sessionStore[UNLOCK_SESSION_STORAGE_KEY],
-      undefined,
-      "session unlock material must not survive wipe",
-    );
+    assert.ok(mocks.local[STORAGE_KEYS.lastServer], "lastServer preference must survive wipe");
+    assert.equal(mocks.local["unrelated.key"], "keep-me");
+    assert.equal(mocks.local[STORAGE_KEYS.session], undefined);
+    assert.equal(mocks.local[STORAGE_KEYS.profile], undefined);
+    assert.equal(mocks.local["okkey.extension.deviceId"], undefined);
+    assert.equal(mocks.local["okkey.extension.vaultBundle.u.u1"], undefined);
+    assert.equal(mocks.local["okkey.extension.workspace.current.u.u1"], undefined);
+    assert.equal(mocks.local["okkey.vault.deviceUnlock.v1.u.u1"], undefined);
+    assert.equal(mocks.local["okkey.vault.devicePrefs.v1.u.u1"], undefined);
+    assert.equal(mocks.local["okkey.vault.pinAttempts.v1.u.u1"], undefined);
+    assert.equal(Object.keys(mocks.session).length, 0, "session storage must be cleared");
   } finally {
-    g.browser = prevBrowser;
-    g.chrome = prevChrome;
+    mocks.restore();
+  }
+});
+
+test("readSession wipe on expiry clears unlock session and pending save", async () => {
+  const mocks = installStorageMocks({
+    local: {
+      [STORAGE_KEYS.lastServer]: {
+        hostMode: "self-hosted",
+        webBaseUrl: "https://vault.example.com",
+        updatedAt: 1,
+      },
+      [STORAGE_KEYS.session]: {
+        access_token: "t",
+        user_id: "u1",
+        expires_at: "2000-01-01T00:00:00Z",
+      },
+      [STORAGE_KEYS.profile]: {
+        webBaseUrl: "https://vault.example.com",
+        apiBaseUrl: "https://vault.example.com",
+        updatedAt: 1,
+      },
+      "okkey.extension.vaultBundle.u.u1": { v: 1 },
+    },
+    session: {
+      [UNLOCK_SESSION_STORAGE_KEY]: JSON.stringify({
+        v: 1,
+        user_id: "u1",
+        vault_key_b64: "AAAA",
+        password_share_c_b64: "BBBB",
+        last_activity_at: Date.now(),
+        idle_lock_ms: 3_600_000,
+      }),
+      [PENDING_SAVE_SESSION_KEY]: {
+        "7": { username: "a", password: "secret", captureUrl: "https://ex.test/", websiteUrl: "https://ex.test/", createdAt: Date.now() },
+      },
+    },
+  });
+
+  try {
+    const session = await readSession();
+    assert.equal(session, null);
+    assert.equal(mocks.local[STORAGE_KEYS.session], undefined);
+    assert.equal(mocks.local["okkey.extension.vaultBundle.u.u1"], undefined);
+    assert.ok(mocks.local[STORAGE_KEYS.lastServer], "lastServer survives expiry wipe");
+    assert.equal(Object.keys(mocks.session).length, 0);
+  } finally {
+    mocks.restore();
   }
 });
