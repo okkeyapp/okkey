@@ -25,6 +25,7 @@ import type {
   DeviceListResponseDto,
   DevicePatchRequestDto,
   DevicePatchResponseDto,
+  DeviceRevokeRequestDto,
   DeviceRevokeResponseDto,
   EncryptedBlobDto,
   SyncAppendEventRequestDto,
@@ -934,10 +935,26 @@ export class CoreApiClient {
     );
   }
 
-  revokeDevice(deviceId: string, reason?: string): Promise<DeviceRevokeResponseDto> {
+  revokeDevice(
+    deviceId: string,
+    reason?: string,
+    options?: { signOut?: boolean; callerDeviceId?: string },
+  ): Promise<DeviceRevokeResponseDto> {
+    const body: DeviceRevokeRequestDto = {};
+    if (reason !== undefined) {
+      body.reason = reason;
+    }
+    if (options?.signOut) {
+      body.sign_out = true;
+    }
+    const headers =
+      options?.callerDeviceId !== undefined
+        ? { "X-Device-Id": options.callerDeviceId }
+        : undefined;
     return this.api.post<DeviceRevokeResponseDto>(
       `/devices/${encodeURIComponent(deviceId)}/revoke`,
-      reason !== undefined ? { reason } : {},
+      body,
+      headers ? { headers } : undefined,
     );
   }
 

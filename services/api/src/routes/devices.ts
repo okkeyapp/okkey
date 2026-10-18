@@ -47,6 +47,8 @@ interface PatchDeviceBody {
 
 interface RevokeDeviceBody {
   reason?: string;
+  /** Explicit sign-out path may revoke the caller device (e.g. extension logout). */
+  sign_out?: boolean;
 }
 
 async function getRequestIp(
@@ -289,6 +291,15 @@ export function createRevokeDeviceRoute(
       if (!userId) {
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
+      }
+      const callerDeviceId = getHeader(ctx.req, "x-device-id");
+      const allowCurrent = body.sign_out === true;
+      if (callerDeviceId && callerDeviceId === deviceId && !allowCurrent) {
+        throw new DeviceServiceError(
+          "DEVICE_REVOKE_CURRENT_FORBIDDEN",
+          403,
+          "cannot revoke the current device",
+        );
       }
       const result = await deviceService.revokeDevice(userId, deviceId, body.reason);
       json(ctx.res, 200, {

@@ -1510,6 +1510,16 @@ export interface DevicePatchResponseDto {
   device_name: string;
 }
 
+/** `POST /devices/:deviceId/revoke` request body. */
+export interface DeviceRevokeRequestDto {
+  reason?: string;
+  /**
+   * When true, allows revoking the caller device identified by `X-Device-Id`
+   * (sign-out / logout path). Omitted or false rejects that case with 403.
+   */
+  sign_out?: boolean;
+}
+
 /** `POST /devices/:deviceId/revoke` success body. */
 export interface DeviceRevokeResponseDto {
   device_id: EntityId;
