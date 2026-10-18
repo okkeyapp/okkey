@@ -220,6 +220,7 @@ async function main(): Promise<void> {
     recovery: storage.repositories.accountRecovery,
     workspaces: storage.repositories.workspaces,
     users: storage.repositories.users,
+    devices: storage.repositories.devices,
     emailTemplates,
     publicAppBaseUrl: config.publicAppBaseUrl,
     config,

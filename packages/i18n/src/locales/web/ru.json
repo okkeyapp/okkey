@@ -256,6 +256,7 @@
   "web.settingsPopup.recovery.error.generic": "Не удалось обновить настройки восстановления. Попробуйте ещё раз.",
   "web.settingsPopup.recovery.error.entitlement": "Этот метод восстановления требует платный тариф.",
   "web.settingsPopup.recovery.error.contactsInsufficient": "Сначала добавьте минимум 3 подтверждённых контакта.",
+  "web.settingsPopup.recovery.error.devicesInsufficient": "Сначала добавьте минимум 2 доверенных устройства, включая текущее.",
   "web.settingsPopup.recovery.error.contactNotFound": "Контакт должен быть существующим пользователем Okkey.",
   "web.settingsPopup.recovery.error.contactExists": "Этот контакт уже приглашён.",
   "web.settingsPopup.recovery.error.invalidEmail": "Введите корректный email.",

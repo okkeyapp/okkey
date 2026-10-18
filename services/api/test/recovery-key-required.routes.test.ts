@@ -146,6 +146,7 @@ test("hasEnrolledRecoveryKey follows the stored wrap", async () => {
       loadVaultUnlockRow: async () => null,
       loadAccountProfile: async () => null,
     },
+    devices: { listByUser: async () => [] },
   });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
   present = true;
@@ -165,6 +166,7 @@ test("hasExportedRecoveryKey requires export acknowledgement", async () => {
       loadVaultUnlockRow: async () => null,
       loadAccountProfile: async () => null,
     },
+    devices: { listByUser: async () => [] },
   });
   assert.equal(await service.hasExportedRecoveryKey("u1"), false);
   wrap = { userId: "u1", exportedAt: null };

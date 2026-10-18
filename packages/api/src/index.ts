@@ -850,8 +850,12 @@ export class CoreApiClient {
 
   patchAccountRecoverySettings(
     body: AccountRecoverySettingsUpdateRequestDto,
+    options?: { currentFingerprint?: string },
   ): Promise<AccountRecoveryStatusResponseDto> {
-    return this.api.patch<AccountRecoveryStatusResponseDto>("/account/recovery/settings", body);
+    const fingerprint = options?.currentFingerprint?.trim();
+    return this.api.patch<AccountRecoveryStatusResponseDto>("/account/recovery/settings", body, {
+      headers: fingerprint ? { "X-Device-Fingerprint": fingerprint } : undefined,
+    });
   }
 
   enrollAccountRecoveryKey(

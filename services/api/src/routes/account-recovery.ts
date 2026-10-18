@@ -91,11 +91,17 @@ export function createAccountRecoverySettingsPatchRoute(
         json(ctx.res, 400, errorPayload("RECOVERY_BAD_REQUEST", "invalid json", ctx.requestId));
         return;
       }
-      const status = await service.updateSettings(userId, {
-        keyEnabled: body.keyEnabled,
-        devicesEnabled: body.devicesEnabled,
-        contactsEnabled: body.contactsEnabled,
-      });
+      const currentFingerprint =
+        getHeader(ctx.req, "x-device-fingerprint") ?? undefined;
+      const status = await service.updateSettings(
+        userId,
+        {
+          keyEnabled: body.keyEnabled,
+          devicesEnabled: body.devicesEnabled,
+          contactsEnabled: body.contactsEnabled,
+        },
+        { currentFingerprint },
+      );
       json(ctx.res, 200, status);
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);

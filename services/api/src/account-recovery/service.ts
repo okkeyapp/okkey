@@ -1,5 +1,7 @@
 import {
+  canEnableTrustedDevicesRecovery,
   MIN_TRUSTED_CONTACTS_CONFIRMED,
+  MIN_TRUSTED_DEVICES_FOR_RECOVERY,
   resolveAccountRecoveryEntitlements,
   type AccountRecoveryEntitlements,
   type AccountRecoveryKeyEnrollResponseDto,
@@ -7,6 +9,7 @@ import {
   type AccountRecoveryStatusResponseDto,
   type EncryptedBlobDto,
   type TrustedContactDto,
+  type TrustedDeviceGateItem,
 } from "@okkey/types";
 
 import { generateEntityId } from "../entity-id.ts";
@@ -17,7 +20,11 @@ import {
   type PlanEntitlementRuntimeConfig,
 } from "../plan-entitlements.ts";
 import type { AccountRecoveryRepository } from "../storage/account-recovery.ts";
-import type { UsersRepository, WorkspacesRepository } from "../storage/repositories.ts";
+import type {
+  DevicesRepository,
+  UsersRepository,
+  WorkspacesRepository,
+} from "../storage/repositories.ts";
 
 export class AccountRecoveryError extends Error {
   readonly code: string;
@@ -44,6 +51,8 @@ export interface AccountRecoveryServiceDeps {
     UsersRepository,
     "findById" | "findByEmail" | "loadVaultUnlockRow" | "loadAccountProfile"
   >;
+  /** Used to enforce the trusted-devices recovery enable gate. */
+  devices: Pick<DevicesRepository, "listByUser">;
   emailTemplates?: Pick<EmailTemplateService, "sendTrustedContactInviteBestEffort">;
   publicAppBaseUrl?: string;
   /** When set, self-hosted recovery gates on modules instead of `plan_tier`. */
@@ -121,10 +130,11 @@ function mapContact(record: {
   };
 }
 
-function defaultSettings(entitlements: AccountRecoveryEntitlements): AccountRecoverySettingsDto {
+function defaultSettings(_entitlements: AccountRecoveryEntitlements): AccountRecoverySettingsDto {
   return {
     keyEnabled: true,
-    devicesEnabled: entitlements.trustedDevices,
+    // Off until the user explicitly enables after meeting the trusted-device minimum.
+    devicesEnabled: false,
     contactsEnabled: false,
   };
 }
@@ -145,6 +155,7 @@ export class AccountRecoveryService {
   private readonly recovery: AccountRecoveryServiceDeps["recovery"];
   private readonly workspaces: AccountRecoveryServiceDeps["workspaces"];
   private readonly users: AccountRecoveryServiceDeps["users"];
+  private readonly devices: AccountRecoveryServiceDeps["devices"];
   private readonly emailTemplates?: AccountRecoveryServiceDeps["emailTemplates"];
   private readonly publicAppBaseUrl: string;
   private readonly config?: PlanEntitlementRuntimeConfig;
@@ -153,6 +164,7 @@ export class AccountRecoveryService {
     this.recovery = deps.recovery;
     this.workspaces = deps.workspaces;
     this.users = deps.users;
+    this.devices = deps.devices;
     this.emailTemplates = deps.emailTemplates;
     this.publicAppBaseUrl = deps.publicAppBaseUrl ?? "";
     this.config = deps.config;
@@ -239,6 +251,7 @@ export class AccountRecoveryService {
       devicesEnabled?: boolean;
       contactsEnabled?: boolean;
     },
+    options?: { currentFingerprint?: string | null },
   ): Promise<AccountRecoveryStatusResponseDto> {
     const entitlements = await this.resolveEntitlements(userId);
     const current = await this.getStatus(userId);
@@ -248,12 +261,31 @@ export class AccountRecoveryService {
       contactsEnabled: patch.contactsEnabled ?? current.settings.contactsEnabled,
     };
 
-    if (patch.devicesEnabled === true && !entitlements.trustedDevices) {
-      throw new AccountRecoveryError(
-        "RECOVERY_ENTITLEMENT_REQUIRED",
-        403,
-        "trusted devices recovery requires a paid plan entitlement",
+    if (patch.devicesEnabled === true) {
+      if (!entitlements.trustedDevices) {
+        throw new AccountRecoveryError(
+          "RECOVERY_ENTITLEMENT_REQUIRED",
+          403,
+          "trusted devices recovery requires a paid plan entitlement",
+        );
+      }
+      const gateItems = await this.listTrustedDeviceGateItems(
+        userId,
+        options?.currentFingerprint,
       );
+      if (!canEnableTrustedDevicesRecovery(gateItems)) {
+        const trustedCount = gateItems.filter((d) => d.status === "trusted").length;
+        throw new AccountRecoveryError(
+          "RECOVERY_DEVICES_INSUFFICIENT",
+          400,
+          `at least ${MIN_TRUSTED_DEVICES_FOR_RECOVERY} trusted devices including the current one are required`,
+          {
+            min: MIN_TRUSTED_DEVICES_FOR_RECOVERY,
+            trusted: trustedCount,
+            hasCurrentTrusted: gateItems.some((d) => d.status === "trusted" && d.is_current),
+          },
+        );
+      }
     }
     if (patch.contactsEnabled === true) {
       if (!entitlements.trustedContacts) {
@@ -542,6 +574,32 @@ export class AccountRecoveryService {
     }
 
     return this.getStatus(contactUserId);
+  }
+
+  private async listTrustedDeviceGateItems(
+    userId: string,
+    currentFingerprint?: string | null,
+  ): Promise<TrustedDeviceGateItem[]> {
+    const normalized =
+      typeof currentFingerprint === "string" && currentFingerprint.trim().length > 0
+        ? currentFingerprint.trim().toLowerCase()
+        : null;
+    const records = await this.devices.listByUser(userId, ["trusted", "pending", "blocked"]);
+    return records.map((record) => {
+      const status =
+        record.status === "pending"
+          ? "pending_approval"
+          : record.status === "blocked"
+            ? "blocked"
+            : "trusted";
+      return {
+        status,
+        is_current:
+          normalized !== null &&
+          record.status === "trusted" &&
+          record.deviceFingerprint.toLowerCase() === normalized,
+      };
+    });
   }
 
   private assertValidRecoveryWrap(blob: EncryptedBlobDto): void {
