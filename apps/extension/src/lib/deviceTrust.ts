@@ -92,7 +92,11 @@ export async function revokeExtensionDeviceBestEffort(
     return;
   }
   try {
-    await core.revokeDevice(id, "signed out from extension");
+    // sign_out allows revoking the caller device (blocked by default on the API).
+    await core.revokeDevice(id, "signed out from extension", {
+      signOut: true,
+      callerDeviceId: id,
+    });
   } catch {
     // Ignore — local wipe still proceeds.
   }

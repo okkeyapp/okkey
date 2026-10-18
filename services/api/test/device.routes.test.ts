@@ -388,3 +388,55 @@ test("POST /devices/:id/revoke revokes owned device", async () => {
   const payload = JSON.parse(res.body) as { device_id: string; status: string };
   assert.equal(payload.status, "revoked");
 });
+
+test("POST /devices/:id/revoke rejects revoking the caller device", async () => {
+  let revoked = false;
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/current/revoke",
+    headers: { "x-user-id": "u1", "x-device-id": "current" },
+    body: {},
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => {
+        revoked = true;
+        return { deviceId: "current", status: "revoked" };
+      },
+    }),
+  });
+  assert.equal(res.statusCode, 403);
+  const payload = JSON.parse(res.body) as { error: string };
+  assert.equal(payload.error, "DEVICE_REVOKE_CURRENT_FORBIDDEN");
+  assert.equal(revoked, false);
+});
+
+test("POST /devices/:id/revoke allows caller device with sign_out", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/current/revoke",
+    headers: { "x-user-id": "u1", "x-device-id": "current" },
+    body: { sign_out: true, reason: "signed out from extension" },
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => ({ deviceId: "current", status: "revoked" }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { device_id: string; status: string };
+  assert.equal(payload.device_id, "current");
+  assert.equal(payload.status, "revoked");
+});
+
+test("POST /devices/:id/revoke still revokes a different device when caller header is set", async () => {
+  const res = await dispatch({
+    method: "POST",
+    url: "/devices/other/revoke",
+    headers: { "x-user-id": "u1", "x-device-id": "current" },
+    body: { reason: "not now" },
+    deviceService: createDeviceServiceStub({
+      revokeDevice: async () => ({ deviceId: "other", status: "revoked" }),
+    }),
+  });
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as { device_id: string; status: string };
+  assert.equal(payload.device_id, "other");
+  assert.equal(payload.status, "revoked");
+});
