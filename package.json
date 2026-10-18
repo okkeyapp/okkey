@@ -29,7 +29,8 @@
   "workspaces": [
     "packages/*",
     "apps/web",
-    "apps/extension"
+    "apps/extension",
+    "e2e"
   ],
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
@@ -97,6 +98,8 @@
     "test:crypto:contracts": "yarn build:wasm && node --test packages/crypto/test/hybrid.contracts.test.mjs && cargo test --locked --manifest-path rust/crypto-engine/Cargo.toml hybrid_golden_layout_sha256_matches_cross_layer_fixture",
     "test:security": "yarn build:wasm && yarn build:ts-sdk && yarn build:email && node --experimental-strip-types --test --test-force-exit --test-concurrency=1 --test-timeout=180000 services/api/test/security-qday-downgrade-strip.test.ts services/api/test/security-qday-missing-pq-malformed-envelope.test.ts services/api/test/security-qday-mixed-device-replay-rollback.test.ts",
     "test:e2e": "yarn build:email && node --experimental-strip-types --test services/api/test/*.e2e.test.ts",
+    "test:browser": "yarn --cwd e2e test",
+    "test:browser:install": "yarn --cwd e2e install:browsers",
     "verify:crypto:bootstrap": "node scripts/verify-crypto-bootstrap.mjs",
     "verify:crypto:repro": "node scripts/verify-crypto-reproducibility.mjs",
     "build:crypto:provenance": "node scripts/generate-crypto-provenance.mjs",
