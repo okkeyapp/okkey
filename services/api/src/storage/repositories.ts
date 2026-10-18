@@ -527,6 +527,30 @@ export class WorkspacesRepository {
     return Boolean(rows[0]?.can_access);
   }
 
+  /** Workspace owner or member with builtin owner/admin role. */
+  async isOwnerOrAdmin(workspaceId: string, userId: string): Promise<boolean> {
+    const rows = await this.db.query<{ ok: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM workspaces w
+          LEFT JOIN workspace_members wm
+            ON wm.workspace_id = w.id
+           AND wm.user_id = $2
+          LEFT JOIN roles r
+            ON r.id = wm.role_id
+          WHERE w.id = $1
+            AND (
+              w.owner_id = $2
+              OR COALESCE(r.builtin_key, '') IN ('owner', 'admin')
+            )
+        ) AS ok
+      `,
+      [workspaceId, userId],
+    );
+    return Boolean(rows[0]?.ok);
+  }
+
   async updateGeneralSettings(
     workspaceId: string,
     input: {

@@ -22,6 +22,8 @@ test("migration directory lists every numbered SQL file in order", () => {
   assert.ok(files.includes("0033_account_recovery.sql"));
   assert.ok(files.includes("0034_backup_codes_exported_at.sql"));
   assert.ok(files.includes("0035_personal_data_bootstrap_dismissed.sql"));
+  assert.ok(files.includes("0037_item_templates_structure_only.sql"));
+  assert.ok(files.includes("0038_item_templates_structure_allowlist.sql"));
   const sorted = [...files].sort((left, right) => left.localeCompare(right));
   assert.deepEqual(files, sorted);
 });
