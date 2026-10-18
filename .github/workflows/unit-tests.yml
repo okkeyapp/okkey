@@ -213,8 +213,17 @@ jobs:
       - name: Run Rust crypto-engine tests
         run: yarn check:crypto
 
+      - name: Build packages needed by crypto JS tests
+        run: |
+          set -euo pipefail
+          yarn build:wasm
+          yarn build:ts-sdk
+          yarn --cwd packages/api build
+          yarn --cwd packages/ui build
+          yarn --cwd packages/vault build
+
       - name: Run packages/crypto JS tests
-        run: yarn build:wasm && node --test packages/crypto/test/*.test.mjs
+        run: node --test packages/crypto/test/*.test.mjs
 
   unit-tests:
     name: unit-tests
