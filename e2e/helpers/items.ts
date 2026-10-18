@@ -5,7 +5,8 @@ export async function createLoginItem(
   page: Page,
   input: { title: string; login: string; password: string; url: string },
 ): Promise<void> {
-  await page.getByRole("button", { name: /create item/i }).click();
+  // Sidebar also has a compact "Create item"; prefer the shell top bar.
+  await page.getByTestId("items-shell-topbar").getByRole("button", { name: /^create item$/i }).click();
   await page.getByRole("button", { name: /login \/ password/i }).click();
 
   await expect(page.getByRole("heading", { name: /new item/i })).toBeVisible({ timeout: 15_000 });
@@ -31,7 +32,8 @@ export async function createLoginItem(
     }
   }
 
-  await page.getByRole("button", { name: /^save$/i }).click();
+  // Prefer the dialog/popup Save over any other Save on the page.
+  await page.getByRole("button", { name: /^save$/i }).last().click();
   await expect(page.getByText(input.title, { exact: false }).first()).toBeVisible({
     timeout: 30_000,
   });
