@@ -335,6 +335,7 @@
   "web.settingsPopup.devices.error.notFound": "Device not found.",
   "web.settingsPopup.devices.error.accessDenied": "A trusted device is required to approve.",
   "web.settingsPopup.devices.error.expired": "This approval request has expired.",
+  "web.settingsPopup.devices.error.revokeCurrentForbidden": "You can’t revoke the device you’re currently using.",
   "web.settingsPopup.securityScore.title": "Account security",
   "web.settingsPopup.securityScore.level.excellent": "Excellent account protection",
   "web.settingsPopup.securityScore.level.good": "Good account protection",

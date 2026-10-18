@@ -6,7 +6,37 @@ import {
 } from "../device/service.ts";
 import { resolveClientIpForGeo } from "../capsule/geoip.ts";
 import type { ApiConfig } from "../config.ts";
+import { isEntityId } from "../entity-id.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import type { SessionService } from "../session/service.ts";
+
+/** PostgreSQL `bigint` max (signed). Reject larger snowflake strings before querying. */
+const MAX_PG_BIGINT = 9223372036854775807n;
+
+type SessionDeviceBinding = Pick<
+  SessionService,
+  "bindAccessTokenDevice" | "resolveAccessToken" | "revokeSessionsForDevice" | "revokeAccessToken"
+>;
+
+function getBearerToken(req: IncomingMessage): string | null {
+  const auth = getHeader(req, "authorization");
+  if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
+    return null;
+  }
+  const token = auth.slice(7).trim();
+  return token || null;
+}
+
+function isValidDeviceIdParam(value: string): boolean {
+  if (!isEntityId(value)) {
+    return false;
+  }
+  try {
+    return BigInt(value) <= MAX_PG_BIGINT;
+  } catch {
+    return false;
+  }
+}
 
 interface RegisterDeviceMetadataBody {
   platform?: string;
@@ -114,6 +144,7 @@ export function createRegisterDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
   trustedProxyHops = 0,
+  sessionService?: Pick<SessionDeviceBinding, "bindAccessTokenDevice">,
 ): RouteHandler {
   return async (ctx) => {
     let body: RegisterDeviceBody;
@@ -172,6 +203,11 @@ export function createRegisterDeviceRoute(
         reclaimSoleTrusted,
         claimAfterRecovery,
       });
+
+      const accessToken = getBearerToken(ctx.req);
+      if (accessToken && sessionService) {
+        await sessionService.bindAccessTokenDevice(accessToken, userId, result.deviceId);
+      }
 
       json(ctx.res, 200, {
         device_id: result.deviceId,
@@ -266,6 +302,10 @@ export function createPatchDeviceRoute(
 export function createRevokeDeviceRoute(
   deviceService: DeviceService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  sessionService?: Pick<
+    SessionDeviceBinding,
+    "resolveAccessToken" | "revokeSessionsForDevice" | "revokeAccessToken"
+  >,
 ): RouteHandler {
   return async (ctx) => {
     const deviceId = ctx.params.deviceId;
@@ -274,6 +314,14 @@ export function createRevokeDeviceRoute(
         ctx.res,
         400,
         errorPayload("DEVICE_BAD_REQUEST", "deviceId is required", ctx.requestId),
+      );
+      return;
+    }
+    if (!isValidDeviceIdParam(deviceId)) {
+      json(
+        ctx.res,
+        400,
+        errorPayload("DEVICE_BAD_REQUEST", "deviceId is invalid", ctx.requestId),
       );
       return;
     }
@@ -292,9 +340,16 @@ export function createRevokeDeviceRoute(
         json(ctx.res, 401, errorPayload("AUTH_REQUIRED", "auth required", ctx.requestId));
         return;
       }
-      const callerDeviceId = getHeader(ctx.req, "x-device-id");
+      const accessToken = getBearerToken(ctx.req);
+      let sessionDeviceId: string | null = null;
+      if (accessToken && sessionService) {
+        const resolved = await sessionService.resolveAccessToken(accessToken);
+        sessionDeviceId = resolved?.deviceId ?? null;
+      }
+      // Prefer session binding; fall back to X-Device-Id (header-auth / unbound session).
+      const currentDeviceId = sessionDeviceId ?? getHeader(ctx.req, "x-device-id") ?? null;
       const allowCurrent = body.sign_out === true;
-      if (callerDeviceId && callerDeviceId === deviceId && !allowCurrent) {
+      if (currentDeviceId && currentDeviceId === deviceId && !allowCurrent) {
         throw new DeviceServiceError(
           "DEVICE_REVOKE_CURRENT_FORBIDDEN",
           403,
@@ -302,6 +357,12 @@ export function createRevokeDeviceRoute(
         );
       }
       const result = await deviceService.revokeDevice(userId, deviceId, body.reason);
+      if (sessionService) {
+        await sessionService.revokeSessionsForDevice(userId, deviceId);
+        if (allowCurrent && accessToken) {
+          await sessionService.revokeAccessToken(accessToken);
+        }
+      }
       json(ctx.res, 200, {
         device_id: result.deviceId,
         status: result.status,

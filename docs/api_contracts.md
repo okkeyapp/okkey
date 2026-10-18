@@ -348,7 +348,7 @@ On successful `POST /auth/session/bootstrap` or `POST /auth/two-factor/verify`, 
 | `user_id` | Authenticated user. |
 | `token_hash` | SHA-256 (hex) of the opaque `access_token`; the raw token appears **only** in the JSON response. |
 | `expires_at` | Now + `SESSION_TTL_SECONDS`. |
-| `device_id` | **`NULL` at issuance.** Device binding for vault crypto (`4.7`) is handled by `POST /devices/register` and related flows using the authenticated user; linking `sessions.device_id` after device registration may be added later without changing the login/2FA contract. |
+| `device_id` | **`NULL` at issuance** for email/2FA bootstrap. After `POST /devices/register` (Bearer), Core binds `sessions.device_id` to the registered device. Registration complete mints the session with the first device id already set. |
 
 Token rotation / refresh is **not** implemented in Core v1; clients treat the access token as a long-lived session handle until expiry or explicit logout (when implemented).
 
@@ -1116,13 +1116,15 @@ Renames a trusted or pending device owned by the user.
 
 Revokes a trusted or pending device owned by the authenticated user (settings dismiss / revoke). Does **not** require `X-Device-Id`. Approval-flow reject with a trusted approver remains `POST …/reject`.
 
+The **current device** is the session’s `device_id` (set after register). If the session is unbound, Core falls back to `X-Device-Id`. Revoking the current device is rejected unless `sign_out: true` (explicit logout). On success, Core deletes server sessions bound to that device; with `sign_out: true` it also deletes the caller’s access-token session.
+
 **Auth:** Bearer (or allowed `X-User-Id`).
 
-**Request body:** optional `{ "reason": "string" }`.
+**Request body:** optional `{ "reason": "string", "sign_out": true }`.
 
 **Response `200`:** `{ "device_id": "uuid", "status": "revoked" }`
 
-**Errors:** `AUTH_REQUIRED` 401, `DEVICE_NOT_FOUND` 404.
+**Errors:** `AUTH_REQUIRED` 401, `DEVICE_BAD_REQUEST` 400 (invalid id), `DEVICE_REVOKE_CURRENT_FORBIDDEN` 403, `DEVICE_NOT_FOUND` 404.
 
 ---
 

@@ -3100,6 +3100,37 @@ export class SessionsRepository {
       : null;
   }
 
+  async bindDevice(input: {
+    tokenHash: string;
+    userId: string;
+    deviceId: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET device_id = $3
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.deviceId],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteByDeviceId(input: { userId: string; deviceId: string }): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE user_id = $1 AND device_id = $2
+        RETURNING id
+      `,
+      [input.userId, input.deviceId],
+    );
+    return rows.length;
+  }
+
   async deleteByTokenHash(tokenHash: string): Promise<boolean> {
     const rows = await this.db.query<{ id: string }>(
       `

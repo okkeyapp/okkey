@@ -724,7 +724,12 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/register",
-      createRegisterDeviceRoute(deps.deviceService, resolveUserId, config.trustedProxyHops),
+      createRegisterDeviceRoute(
+        deps.deviceService,
+        resolveUserId,
+        config.trustedProxyHops,
+        deps.sessionService,
+      ),
     );
     app.route(
       "PATCH",
@@ -734,7 +739,7 @@ export function createApiApp(
     app.route(
       "POST",
       "/devices/:deviceId/revoke",
-      createRevokeDeviceRoute(deps.deviceService, resolveUserId),
+      createRevokeDeviceRoute(deps.deviceService, resolveUserId, deps.sessionService),
     );
     app.route(
       "POST",
