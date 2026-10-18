@@ -55,13 +55,13 @@ test("1) bootstrap registration → recovery export → unlock", async () => {
   });
   recoveryKey = result.recoveryKey;
   await expect(page.getByTestId("items-shell-topbar")).toBeVisible();
+  // Bootstrap opens personal-data Edit; dismiss so later steps start clean.
+  await dismissOpenItemDialog(page);
 });
 
 test("2) create Login item → reload → DB has no plaintext", async () => {
   test.skip(!email, "registration did not run");
   await gotoItemsUnlocked(page, E2E_MASTER_PASSWORD);
-  // New accounts auto-open personal-data edit; close it before creating a Login item.
-  await dismissOpenItemDialog(page);
 
   await createLoginItem(page, {
     title: LOGIN_TITLE,
