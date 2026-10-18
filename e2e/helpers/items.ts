@@ -8,12 +8,9 @@ export async function createLoginItem(
   // Sidebar also has a compact "Create item"; prefer the shell top bar.
   await page.getByTestId("items-shell-topbar").getByRole("button", { name: /^create item$/i }).click();
 
-  // Favorites expose a sortable duplicate (aria-roledescription=sortable). Prefer the card tile.
-  await page
-    .locator('[role="button"]:not([aria-roledescription="sortable"])')
-    .filter({ hasText: /login\s*\/\s*password/i })
-    .first()
-    .click({ timeout: 15_000 });
+  // Category chooser: favorites DnD wraps tiles (aria-disabled / unstable). Click by exact
+  // visible label with force so Playwright does not wait on the sortable sensors.
+  await page.getByText("Login / Password", { exact: true }).last().click({ force: true, timeout: 15_000 });
 
   await expect(page.getByRole("heading", { name: /new item/i })).toBeVisible({ timeout: 15_000 });
 
