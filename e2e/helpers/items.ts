@@ -7,10 +7,13 @@ export async function createLoginItem(
 ): Promise<void> {
   // Sidebar also has a compact "Create item"; prefer the shell top bar.
   await page.getByTestId("items-shell-topbar").getByRole("button", { name: /^create item$/i }).click();
-  // Favorites list duplicates the category as a sortable (aria-disabled) control — skip it.
+
+  // Favorites expose a sortable duplicate (aria-roledescription=sortable). Prefer the card tile.
   await page
-    .getByRole("button", { name: /login \/ password/i, disabled: false })
-    .click();
+    .locator('[role="button"]:not([aria-roledescription="sortable"])')
+    .filter({ hasText: /login\s*\/\s*password/i })
+    .first()
+    .click({ timeout: 15_000 });
 
   await expect(page.getByRole("heading", { name: /new item/i })).toBeVisible({ timeout: 15_000 });
 
