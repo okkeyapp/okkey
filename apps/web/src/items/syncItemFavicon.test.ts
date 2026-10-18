@@ -3,7 +3,12 @@ import { ITEM_CATEGORY_LOGIN } from "@okkey/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as keyFieldFilesApi from "../api/key-field-files";
+import { previewItemFavicon } from "../api/item-favicons";
 import { applyFaviconToItem, syncItemFaviconForPlaintext } from "./syncItemFavicon";
+
+vi.mock("../api/item-favicons", () => ({
+  previewItemFavicon: vi.fn(async () => null),
+}));
 
 function baseItem(overrides: Partial<ItemPlaintextV2> = {}): ItemPlaintextV2 {
   return {
@@ -141,5 +146,41 @@ describe("syncItemFaviconForPlaintext", () => {
     expect(synced.item.faviconId).toBe("1000000000000000010");
     expect(synced.item.faviconSource).toBe("manual");
     expect(synced.uploadedFavicon?.attachmentId).toBe("1000000000000000010");
+  });
+
+  it("asks for icons in website-field order: first URL, then the next URL fields (QA favicon)", async () => {
+    vi.mocked(previewItemFavicon).mockClear();
+    const item = baseItem({
+      fields: [
+        {
+          id: "url-1",
+          type: "url",
+          sectionId: "websites",
+          order: 0,
+          value: { kind: "url", url: " https://app.example.com/login " },
+        },
+        {
+          id: "note",
+          type: "text",
+          sectionId: "notes",
+          order: 1,
+          value: { kind: "text", text: "https://ignored.example" },
+        },
+        {
+          id: "url-2",
+          type: "url",
+          sectionId: "websites",
+          order: 2,
+          value: { kind: "url", url: "https://other.example.net/path" },
+        },
+      ],
+    });
+
+    await syncItemFaviconForPlaintext("token", new Uint8Array([1]), item);
+
+    expect(previewItemFavicon).toHaveBeenCalledWith("token", [
+      "https://app.example.com/login",
+      "https://other.example.net/path",
+    ]);
   });
 });

@@ -15,7 +15,7 @@
     "zip:firefox": "wxt zip -b firefox",
     "zip:store": "wxt zip -b chrome && wxt zip -b firefox",
     "compile": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/lib/*.test.ts",
+    "test": "node --experimental-strip-types --import ./test/register-asset-loader.mjs --test src/lib/*.test.ts",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

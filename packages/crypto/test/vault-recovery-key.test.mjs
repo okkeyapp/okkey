@@ -30,6 +30,29 @@ test("recovery secret generate + wrap/unwrap round-trip", async () => {
   assert.deepEqual(unwrapped, vaultKey);
 });
 
+test("rotate replaces the wrap so the old recovery key no longer unwraps", async () => {
+  const vaultKey = crypto.getRandomValues(new Uint8Array(32));
+  const oldSecret = await generateRecoverySecret();
+  const newSecret = await generateRecoverySecret();
+  const wrapped = await wrapVaultKeyWithRecoverySecret(
+    vaultKey,
+    new TextEncoder().encode(oldSecret),
+  );
+  const rotated = await wrapVaultKeyWithRecoverySecret(
+    vaultKey,
+    new TextEncoder().encode(newSecret),
+  );
+  await assert.rejects(() =>
+    unwrapVaultKeyWithRecoverySecret(new TextEncoder().encode(oldSecret), rotated),
+  );
+  const unwrapped = await unwrapVaultKeyWithRecoverySecret(
+    new TextEncoder().encode(newSecret),
+    rotated,
+  );
+  assert.deepEqual(unwrapped, vaultKey);
+  assert.notEqual(rotated.payload, wrapped.payload);
+});
+
 test("recovery unwrap fails with wrong secret", async () => {
   const vaultKey = crypto.getRandomValues(new Uint8Array(32));
   const secret = await generateRecoverySecret();

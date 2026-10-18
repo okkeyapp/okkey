@@ -7,6 +7,9 @@ const WINDOW_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
+/** Extension unlock PIN length. Shared with the popup so tests can lock the contract. */
+export const PIN_LENGTH = 6;
+
 type PinAttemptState = {
   failures: number[];
   lockedUntil: number | null;
