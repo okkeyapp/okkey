@@ -256,6 +256,7 @@
   "web.settingsPopup.recovery.error.generic": "Could not update recovery settings. Try again.",
   "web.settingsPopup.recovery.error.entitlement": "This recovery method requires a paid plan entitlement.",
   "web.settingsPopup.recovery.error.contactsInsufficient": "Add at least 3 confirmed contacts first.",
+  "web.settingsPopup.recovery.error.devicesInsufficient": "Add at least 2 trusted devices, including this one, first.",
   "web.settingsPopup.recovery.error.contactNotFound": "Contact must be an existing Okkey user.",
   "web.settingsPopup.recovery.error.contactExists": "This contact is already invited.",
   "web.settingsPopup.recovery.error.invalidEmail": "Enter a valid email address.",

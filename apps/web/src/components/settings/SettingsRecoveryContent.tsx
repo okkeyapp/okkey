@@ -117,6 +117,8 @@ function recoveryErrorMessage(err: unknown, t: SettingsRecoveryContentProps["t"]
         return t("web.settingsPopup.recovery.error.entitlement");
       case "RECOVERY_CONTACTS_INSUFFICIENT":
         return t("web.settingsPopup.recovery.error.contactsInsufficient");
+      case "RECOVERY_DEVICES_INSUFFICIENT":
+        return t("web.settingsPopup.recovery.error.devicesInsufficient");
       case "RECOVERY_CONTACT_NOT_FOUND":
         return t("web.settingsPopup.recovery.error.contactNotFound");
       case "RECOVERY_CONTACT_EXISTS":
@@ -377,7 +379,11 @@ export default function SettingsRecoveryContent({ t }: SettingsRecoveryContentPr
       prev ? { ...prev, settings: { ...prev.settings, devicesEnabled: checked } } : prev,
     );
     try {
-      const next = await core.patchAccountRecoverySettings({ devicesEnabled: checked });
+      const fingerprint = await getOrCreateDeviceFingerprint();
+      const next = await core.patchAccountRecoverySettings(
+        { devicesEnabled: checked },
+        { currentFingerprint: fingerprint },
+      );
       setStatus((prev) =>
         prev
           ? {
