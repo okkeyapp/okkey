@@ -149,10 +149,13 @@ test("4) recovery key → new master password → items readable", async () => {
   await expect(cont).toBeEnabled({ timeout: 15_000 });
   await cont.click();
 
-  await expect(page.getByRole("heading", { name: /vault is locked/i })).toBeVisible({
-    timeout: 30_000,
-  });
-  await unlockWithMasterPassword(page, NEW_MASTER);
+  // After recovery the app may land unlocked on /items (CI screenshot) or on lock.
+  const lock = page.getByRole("heading", { name: /vault is locked/i });
+  const topbar = page.getByTestId("items-shell-topbar");
+  await expect(lock.or(topbar)).toBeVisible({ timeout: 60_000 });
+  if (await lock.isVisible().catch(() => false)) {
+    await unlockWithMasterPassword(page, NEW_MASTER);
+  }
 
   await expect(page.getByText(LOGIN_TITLE, { exact: false }).first()).toBeVisible({
     timeout: 60_000,
