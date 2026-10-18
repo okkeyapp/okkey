@@ -294,8 +294,15 @@ test("getStatus FREE-only: key entitlement true, paid methods false", async () =
   assert.equal(status.settings.devicesEnabled, false);
 });
 
+test("getStatus PREMIUM defaults devicesEnabled off until explicitly enabled", async () => {
+  const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
+  const status = await service.getStatus("u1");
+  assert.equal(status.entitlements.trustedDevices, true);
+  assert.equal(status.settings.devicesEnabled, false);
+});
+
 test("enrollKey persists wrap and enables key settings", async () => {
-  const service = createService();
+  const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);
   assert.equal(await service.hasExportedRecoveryKey("u1"), false);
   const result = await service.enrollKey("u1", {
@@ -306,10 +313,13 @@ test("enrollKey persists wrap and enables key settings", async () => {
   });
   assert.equal(result.key.enrolled, true);
   assert.equal(result.settings.keyEnabled, true);
+  assert.equal(result.settings.devicesEnabled, false);
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), true);
   assert.equal(await service.hasExportedRecoveryKey("u1"), false);
   await service.ackKeyExport("u1");
   assert.equal(await service.hasExportedRecoveryKey("u1"), true);
+  const status = await service.getStatus("u1");
+  assert.equal(status.settings.devicesEnabled, false);
 });
 
 test("updateSettings rejects disabling the recovery key", async () => {

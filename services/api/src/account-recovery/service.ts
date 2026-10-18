@@ -130,10 +130,11 @@ function mapContact(record: {
   };
 }
 
-function defaultSettings(entitlements: AccountRecoveryEntitlements): AccountRecoverySettingsDto {
+function defaultSettings(_entitlements: AccountRecoveryEntitlements): AccountRecoverySettingsDto {
   return {
     keyEnabled: true,
-    devicesEnabled: entitlements.trustedDevices,
+    // Off until the user explicitly enables after meeting the trusted-device minimum.
+    devicesEnabled: false,
     contactsEnabled: false,
   };
 }
