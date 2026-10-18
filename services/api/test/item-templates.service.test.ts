@@ -15,10 +15,29 @@ function workspacesStub(options?: { isOwnerOrAdmin?: boolean }) {
   };
 }
 
-function vaultsStub(options?: { readableVaultIds?: string[] }) {
-  const readable = new Set(options?.readableVaultIds ?? ["1000000000000000002", "vault-1"]);
+function vaultsStub(options?: {
+  readableVaultIds?: string[];
+  vaultWorkspaceById?: Record<string, string>;
+  canReadThrows?: boolean;
+}) {
+  const readable = new Set(options?.readableVaultIds ?? ["1000000000000000002"]);
+  const vaultWorkspaceById = options?.vaultWorkspaceById ?? {
+    "1000000000000000002": "ws-1",
+  };
   return {
-    canReadVault: async (vaultId: string) => readable.has(vaultId),
+    findById: async (vaultId: string) => {
+      const workspaceId = vaultWorkspaceById[vaultId];
+      if (!workspaceId) {
+        return null;
+      }
+      return { id: vaultId, workspaceId };
+    },
+    canReadVault: async (vaultId: string) => {
+      if (options?.canReadThrows) {
+        throw new Error("invalid input syntax for type bigint");
+      }
+      return readable.has(vaultId);
+    },
   };
 }
 
@@ -37,11 +56,18 @@ test("stripTemplateSectionValues allowlists structural keys and clears values", 
           value: "s3cret",
           copyValue: "s3cret",
           secret: true,
+          secretKind: "not-a-kind",
+          editableLabel: "yes",
           defaultValue: "nope",
           history: ["a"],
         },
-        { id: "note", type: "text", label: "Note", value: "hello", note: "drop-me" },
+        { id: "note", type: "text", label: "Note", value: "hello", note: "drop-me", required: true },
+        { id: 12, type: "text", label: "bad-id-type", value: "x" },
       ],
+    },
+    {
+      id: 99,
+      fields: [{ id: "x", type: "text", label: "y", value: "z" }],
     },
   ]);
 
@@ -52,7 +78,7 @@ test("stripTemplateSectionValues allowlists structural keys and clears values", 
       title: "Login",
       fields: [
         { id: "password", type: "password", label: "Password", value: "", secret: true },
-        { id: "note", type: "text", label: "Note", value: "" },
+        { id: "note", type: "text", label: "Note", value: "", required: true },
       ],
     },
   ]);
@@ -78,7 +104,7 @@ test("ItemTemplatesService.create rejects empty template name", async () => {
         category_id: "login",
         payload: {
           record_name: "",
-          vault_id: "vault-1",
+          vault_id: "1000000000000000002",
           folder_id: "__none__",
           sections: [],
           tags: [],
@@ -112,7 +138,7 @@ test("ItemTemplatesService.create rejects unknown category id", async () => {
         category_id: "unknown",
         payload: {
           record_name: "Title",
-          vault_id: "vault-1",
+          vault_id: "1000000000000000002",
           folder_id: "__none__",
           sections: [],
           tags: ["work"],
@@ -216,7 +242,16 @@ test("ItemTemplatesService.list strips legacy field values from responses", asyn
             folder_id: "__none__",
             sections: [
               {
-                fields: [{ type: "password", value: "legacy-secret", copyValue: "legacy-secret" }],
+                id: "primary",
+                fields: [
+                  {
+                    id: "password",
+                    type: "password",
+                    label: "Password",
+                    value: "legacy-secret",
+                    copyValue: "legacy-secret",
+                  },
+                ],
               },
             ],
             tags: ["x"],
@@ -240,7 +275,8 @@ test("ItemTemplatesService.list strips legacy field values from responses", asyn
   assert.deepEqual(template.payload.tags, []);
   assert.deepEqual(template.payload.sections, [
     {
-      fields: [{ type: "password", value: "" }],
+      id: "primary",
+      fields: [{ id: "password", type: "password", label: "Password", value: "" }],
     },
   ]);
 });
@@ -296,6 +332,165 @@ test("ItemTemplatesService.list returns only templates for vaults the member can
   assert.equal(templates[0]?.name, "Readable vault template");
 });
 
+
+test("ItemTemplatesService.create rejects non-numeric vault_id", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub(),
+  });
+
+  await assert.rejects(
+    () =>
+      service.create("ws-1", "user-1", {
+        id: "1000000000000000001",
+        name: "My template",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "abc",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "INVALID_VAULT_ID");
+      assert.equal(error.statusCode, 400);
+      return true;
+    },
+  );
+});
+
+test("ItemTemplatesService.create rejects vault outside workspace or without read access", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub({
+      readableVaultIds: [],
+      vaultWorkspaceById: { "1000000000000000002": "other-ws" },
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.create("ws-1", "user-1", {
+        id: "1000000000000000001",
+        name: "My template",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "INVALID_VAULT_ID");
+      return true;
+    },
+  );
+
+  const denied = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub({
+      readableVaultIds: [],
+      vaultWorkspaceById: { "1000000000000000002": "ws-1" },
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      denied.create("ws-1", "user-1", {
+        id: "1000000000000000001",
+        name: "My template",
+        category_id: "login",
+        payload: {
+          record_name: "",
+          vault_id: "1000000000000000002",
+          folder_id: "__none__",
+          sections: [],
+          tags: [],
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ItemTemplatesServiceError);
+      assert.equal(error.code, "ACCESS_DENIED");
+      return true;
+    },
+  );
+});
+
+test("ItemTemplatesService.list skips non-numeric vault_id without failing the workspace list", async () => {
+  const service = new ItemTemplatesService({
+    templates: {
+      listByWorkspace: async () => [
+        {
+          id: "1000000000000000001",
+          workspaceId: "ws-1",
+          name: "Broken",
+          categoryId: "login",
+          payloadJson: {
+            vault_id: "abc",
+            folder_id: "__none__",
+            sections: [],
+            tags: [],
+          },
+          faviconId: null,
+          createdBy: "user-1",
+          createdAt: "",
+          updatedAt: "",
+        },
+        {
+          id: "1000000000000000003",
+          workspaceId: "ws-1",
+          name: "Good",
+          categoryId: "login",
+          payloadJson: {
+            vault_id: "1000000000000000002",
+            folder_id: "__none__",
+            sections: [],
+            tags: [],
+          },
+          faviconId: null,
+          createdBy: "user-1",
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+      create: async () => {
+        throw new Error("should not be called");
+      },
+    } as never,
+    workspaces: workspacesStub(),
+    vaults: vaultsStub({ canReadThrows: false, readableVaultIds: ["1000000000000000002"] }),
+  });
+
+  const templates = await service.list("ws-1", "user-2");
+  assert.equal(templates.length, 1);
+  assert.equal(templates[0]?.id, "1000000000000000003");
+});
+
+
 test("ItemTemplatesService.update rejects missing template", async () => {
   const service = new ItemTemplatesService({
     templates: {
@@ -318,7 +513,7 @@ test("ItemTemplatesService.update rejects missing template", async () => {
         category_id: "login",
         payload: {
           record_name: "",
-          vault_id: "vault-1",
+          vault_id: "1000000000000000002",
           folder_id: "__none__",
           sections: [],
           tags: [],

@@ -17,6 +17,10 @@ export class ItemTemplatesServiceError extends Error {
 
 const allowedCategoryIdSet = new Set<string>(WORKSPACE_ITEM_CATEGORY_IDS);
 
+const SECTION_VARIANTS = new Set(["primary", "additional"]);
+const SECRET_KINDS = new Set(["password", "single-line", "multi-line"]);
+const URL_AUTOFILL_SCOPES = new Set(["entire-site", "exact-url", "none"]);
+
 /** Structural section keys kept in stored template payloads. */
 export const TEMPLATE_SECTION_STRUCTURE_KEYS = ["id", "variant", "title", "fields"] as const;
 
@@ -48,7 +52,7 @@ export type ItemTemplatePayload = {
 export interface ItemTemplatesServiceDeps {
   templates: WorkspaceItemTemplatesRepository;
   workspaces: Pick<WorkspacesRepository, "findById" | "hasAccess" | "isOwnerOrAdmin">;
-  vaults: Pick<VaultsRepository, "canReadVault">;
+  vaults: Pick<VaultsRepository, "canReadVault" | "findById">;
   attachments?: Pick<AttachmentService, "purgeForTemplate">;
 }
 
@@ -72,10 +76,16 @@ export class ItemTemplatesService {
     for (const row of rows) {
       const vaultId =
         typeof row.payloadJson.vault_id === "string" ? row.payloadJson.vault_id.trim() : "";
-      if (!vaultId) {
+      // Skip broken / non-entity vault ids so one bad row cannot fail the whole list.
+      if (!vaultId || !isEntityId(vaultId)) {
         continue;
       }
-      const canRead = await this.vaults.canReadVault(vaultId, userId);
+      let canRead = false;
+      try {
+        canRead = await this.vaults.canReadVault(vaultId, userId);
+      } catch {
+        continue;
+      }
       if (!canRead) {
         continue;
       }
@@ -102,7 +112,8 @@ export class ItemTemplatesService {
     if (!allowedCategoryIdSet.has(categoryId)) {
       throw new ItemTemplatesServiceError("INVALID_CATEGORY_ID", 400, "unknown category id");
     }
-    const payload = normalizeTemplatePayload(input.payload);
+    const vaultId = await this.assertTemplateVault(workspaceId, userId, input.payload.vault_id);
+    const payload = normalizeTemplatePayload(input.payload, vaultId);
     const row = await this.templates.create({
       workspaceId,
       id: templateId,
@@ -139,7 +150,8 @@ export class ItemTemplatesService {
     if (!allowedCategoryIdSet.has(categoryId)) {
       throw new ItemTemplatesServiceError("INVALID_CATEGORY_ID", 400, "unknown category id");
     }
-    const payload = normalizeTemplatePayload(input.payload);
+    const vaultId = await this.assertTemplateVault(workspaceId, userId, input.payload.vault_id);
+    const payload = normalizeTemplatePayload(input.payload, vaultId);
     const row = await this.templates.update({
       workspaceId,
       templateId: normalizedTemplateId,
@@ -201,6 +213,27 @@ export class ItemTemplatesService {
       throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
     }
   }
+
+  /** vault_id must be an entity id of a vault in this workspace that the actor can read. */
+  private async assertTemplateVault(
+    workspaceId: string,
+    userId: string,
+    vaultIdRaw: unknown,
+  ): Promise<string> {
+    const vaultId = typeof vaultIdRaw === "string" ? vaultIdRaw.trim() : "";
+    if (!isEntityId(vaultId)) {
+      throw new ItemTemplatesServiceError("INVALID_VAULT_ID", 400, "vault id is required");
+    }
+    const vault = await this.vaults.findById(vaultId);
+    if (!vault || vault.workspaceId !== workspaceId) {
+      throw new ItemTemplatesServiceError("INVALID_VAULT_ID", 400, "vault not found in workspace");
+    }
+    const canRead = await this.vaults.canReadVault(vaultId, userId);
+    if (!canRead) {
+      throw new ItemTemplatesServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+    return vaultId;
+  }
 }
 
 function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, faviconId: string | null): string[] {
@@ -249,19 +282,35 @@ function collectTemplateAttachmentIds(payloadJson: Record<string, unknown>, favi
   return [...ids];
 }
 
-function pickKnownKeys(source: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
-  const next: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (key in source) {
-      next[key] = source[key];
-    }
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function normalizeSelectOptions(value: unknown): Array<{ value: string; label: string }> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
   }
-  return next;
+  const options: Array<{ value: string; label: string }> = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const option = entry as Record<string, unknown>;
+    if (typeof option.value !== "string" || typeof option.label !== "string") {
+      continue;
+    }
+    options.push({ value: option.value, label: option.label });
+  }
+  return options;
 }
 
 /**
- * Keep only known structural section/field keys; force empty field values.
- * Unknown keys (e.g. note, defaultValue, history) are dropped.
+ * Keep only known structural section/field keys with expected value types;
+ * force empty field values. Unknown keys and wrong-typed values are dropped.
  */
 export function stripTemplateSectionValues(sections: unknown[]): unknown[] {
   if (!Array.isArray(sections)) {
@@ -273,18 +322,59 @@ export function stripTemplateSectionValues(sections: unknown[]): unknown[] {
       continue;
     }
     const src = section as Record<string, unknown>;
-    const next = pickKnownKeys(src, TEMPLATE_SECTION_STRUCTURE_KEYS.filter((key) => key !== "fields"));
+    const id = asNonEmptyString(src.id);
+    if (id === undefined) {
+      continue;
+    }
+    const next: Record<string, unknown> = { id };
+    const variant = asNonEmptyString(src.variant);
+    if (variant !== undefined && SECTION_VARIANTS.has(variant)) {
+      next.variant = variant;
+    }
+    const title = asNonEmptyString(src.title);
+    if (title !== undefined) {
+      next.title = title;
+    }
     const fields = Array.isArray(src.fields) ? src.fields : [];
     next.fields = fields.flatMap((field) => {
       if (!field || typeof field !== "object" || Array.isArray(field)) {
         return [];
       }
       const fieldSrc = field as Record<string, unknown>;
-      const fieldOut = pickKnownKeys(
-        fieldSrc,
-        TEMPLATE_FIELD_STRUCTURE_KEYS.filter((key) => key !== "value"),
-      );
-      fieldOut.value = "";
+      const fieldId = asNonEmptyString(fieldSrc.id);
+      const type = asNonEmptyString(fieldSrc.type);
+      const label = asNonEmptyString(fieldSrc.label);
+      if (fieldId === undefined || type === undefined || label === undefined) {
+        return [];
+      }
+      const fieldOut: Record<string, unknown> = {
+        id: fieldId,
+        type,
+        label,
+        value: "",
+      };
+      const editableLabel = asBoolean(fieldSrc.editableLabel);
+      if (editableLabel !== undefined) fieldOut.editableLabel = editableLabel;
+      const secret = asBoolean(fieldSrc.secret);
+      if (secret !== undefined) fieldOut.secret = secret;
+      const secretKind = asNonEmptyString(fieldSrc.secretKind);
+      if (secretKind !== undefined && SECRET_KINDS.has(secretKind)) {
+        fieldOut.secretKind = secretKind;
+      }
+      const deletable = asBoolean(fieldSrc.deletable);
+      if (deletable !== undefined) fieldOut.deletable = deletable;
+      const required = asBoolean(fieldSrc.required);
+      if (required !== undefined) fieldOut.required = required;
+      const urlAutofillScope = asNonEmptyString(fieldSrc.urlAutofillScope);
+      if (urlAutofillScope !== undefined && URL_AUTOFILL_SCOPES.has(urlAutofillScope)) {
+        fieldOut.urlAutofillScope = urlAutofillScope;
+      }
+      const disableClickCopy = asBoolean(fieldSrc.disableClickCopy);
+      if (disableClickCopy !== undefined) fieldOut.disableClickCopy = disableClickCopy;
+      const selectOptions = normalizeSelectOptions(fieldSrc.selectOptions);
+      if (selectOptions !== undefined) {
+        fieldOut.selectOptions = selectOptions;
+      }
       return [fieldOut];
     });
     result.push(next);
@@ -292,10 +382,10 @@ export function stripTemplateSectionValues(sections: unknown[]): unknown[] {
   return result;
 }
 
-function normalizeTemplatePayload(raw: ItemTemplatePayload): Record<string, unknown> {
+function normalizeTemplatePayload(raw: ItemTemplatePayload, vaultId: string): Record<string, unknown> {
   return {
     record_name: "",
-    vault_id: typeof raw.vault_id === "string" ? raw.vault_id : "",
+    vault_id: vaultId,
     folder_id: typeof raw.folder_id === "string" ? raw.folder_id : "",
     sections: Array.isArray(raw.sections) ? stripTemplateSectionValues(raw.sections) : [],
     tags: [],

@@ -177,15 +177,16 @@ Tag scheme (see [`deploy/docker/README.md`](../../deploy/docker/README.md) and `
 
 On API (and worker) start, SQL files under `services/api/migrations/` are applied in order and recorded in `schema_migrations`.
 
-### Item templates structure-only (`0037`)
+### Item templates structure-only (`0037` / `0038`)
 
 Workspace item templates store form structure only (section/field layout). Pre-filled field values are not kept on the server.
 
-After upgrading past migration `0037_item_templates_structure_only.sql`:
+After upgrading past migrations `0037_item_templates_structure_only.sql` and `0038_item_templates_structure_allowlist.sql`:
 
 - Existing templates become empty forms (labels/types remain; previous field values are cleared).
-- Cleared row data may still exist in Postgres WAL segments and in older backups until those are rotated.
-- Recommended post-upgrade hygiene: run `VACUUM (FULL) workspace_item_templates;` during a maintenance window (or a full-database `VACUUM (FULL)` if preferred), then rotate backups so retained dumps no longer include the previous payloads.
+- Cleared values may still exist in Postgres `pg_wal`, archived WAL / PITR history, replicas, filesystem/volume snapshots, and older logical backups until those are rotated or expire.
+- Recommended post-upgrade hygiene during a maintenance window: `VACUUM (FULL) workspace_item_templates;`, then rotate backups/snapshots so retained dumps no longer include previous payloads.
+- Warning: `VACUUM (FULL)` takes an **exclusive lock** on the table and blocks reads/writes for the duration of the rewrite. Prefer a quiet window.
 
 ---
 

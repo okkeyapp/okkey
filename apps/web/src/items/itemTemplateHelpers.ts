@@ -28,40 +28,69 @@ export type ItemTemplateFormSnapshot = {
   attachmentItemId?: string;
 };
 
-/** Keep known structural keys only; omit pre-filled values and unknown keys. */
+const SECTION_VARIANTS = new Set(["primary", "additional"]);
+const SECRET_KINDS = new Set(["password", "single-line", "multi-line"]);
+const URL_AUTOFILL_SCOPES = new Set(["entire-site", "exact-url", "none"]);
+
+/** Keep known structural keys with expected types; omit pre-filled values and unknown keys. */
 export function stripTemplateSectionValues(sections: KeyFormEditorSection[]): KeyFormEditorSection[] {
-  return sections.map((section) => {
+  const result: KeyFormEditorSection[] = [];
+  for (const section of sections) {
+    if (typeof section.id !== "string") {
+      continue;
+    }
     const nextSection: KeyFormEditorSection = {
       id: section.id,
-      variant: section.variant,
-      fields: section.fields.map((field) => {
-        const nextField: KeyFormEditorSection["fields"][number] = {
-          id: field.id,
-          type: field.type,
-          label: field.label,
-          value: "",
-        };
-        if (field.editableLabel !== undefined) nextField.editableLabel = field.editableLabel;
-        if (field.secret !== undefined) nextField.secret = field.secret;
-        if (field.secretKind !== undefined) nextField.secretKind = field.secretKind;
-        if (field.deletable !== undefined) nextField.deletable = field.deletable;
-        if (field.required !== undefined) nextField.required = field.required;
-        if (field.urlAutofillScope !== undefined) nextField.urlAutofillScope = field.urlAutofillScope;
-        if (field.disableClickCopy !== undefined) nextField.disableClickCopy = field.disableClickCopy;
-        if (field.selectOptions !== undefined) {
-          nextField.selectOptions = field.selectOptions.map((option) => ({
-            value: option.value,
-            label: option.label,
-          }));
-        }
-        return nextField;
-      }),
+      variant:
+        typeof section.variant === "string" && SECTION_VARIANTS.has(section.variant)
+          ? section.variant
+          : "primary",
+      fields: [],
     };
-    if (section.title !== undefined) {
+    if (typeof section.title === "string") {
       nextSection.title = section.title;
     }
-    return nextSection;
-  });
+    for (const field of section.fields ?? []) {
+      if (
+        typeof field.id !== "string" ||
+        typeof field.type !== "string" ||
+        typeof field.label !== "string"
+      ) {
+        continue;
+      }
+      const nextField: KeyFormEditorSection["fields"][number] = {
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        value: "",
+      };
+      if (typeof field.editableLabel === "boolean") nextField.editableLabel = field.editableLabel;
+      if (typeof field.secret === "boolean") nextField.secret = field.secret;
+      if (typeof field.secretKind === "string" && SECRET_KINDS.has(field.secretKind)) {
+        nextField.secretKind = field.secretKind;
+      }
+      if (typeof field.deletable === "boolean") nextField.deletable = field.deletable;
+      if (typeof field.required === "boolean") nextField.required = field.required;
+      if (typeof field.urlAutofillScope === "string" && URL_AUTOFILL_SCOPES.has(field.urlAutofillScope)) {
+        nextField.urlAutofillScope = field.urlAutofillScope;
+      }
+      if (typeof field.disableClickCopy === "boolean") nextField.disableClickCopy = field.disableClickCopy;
+      if (Array.isArray(field.selectOptions)) {
+        nextField.selectOptions = field.selectOptions
+          .filter(
+            (option): option is { value: string; label: string } =>
+              !!option &&
+              typeof option === "object" &&
+              typeof option.value === "string" &&
+              typeof option.label === "string",
+          )
+          .map((option) => ({ value: option.value, label: option.label }));
+      }
+      nextSection.fields.push(nextField);
+    }
+    result.push(nextSection);
+  }
+  return result;
 }
 
 function buildStructureOnlyPayload(

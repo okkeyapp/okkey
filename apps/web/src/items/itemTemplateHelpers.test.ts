@@ -42,7 +42,7 @@ beforeEach(() => {
 });
 
 describe("structure-only template payloads", () => {
-  it("allowlists structural keys and clears values", () => {
+  it("allowlists structural keys with typed values and clears values", () => {
     const sections = [
       {
         id: "primary",
@@ -57,6 +57,8 @@ describe("structure-only template payloads", () => {
             value: "s3cret",
             copyValue: "s3cret",
             secret: true,
+            secretKind: "not-a-kind",
+            editableLabel: "yes",
             defaultValue: "nope",
             history: ["a"],
           },
