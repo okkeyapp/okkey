@@ -66,6 +66,8 @@ function devicesErrorMessage(
         return t("web.settingsPopup.devices.error.accessDenied");
       case "DEVICE_APPROVAL_EXPIRED":
         return t("web.settingsPopup.devices.error.expired");
+      case "DEVICE_REVOKE_CURRENT_FORBIDDEN":
+        return t("web.settingsPopup.devices.error.revokeCurrentForbidden");
       default:
         return t("web.settingsPopup.devices.error.generic");
     }

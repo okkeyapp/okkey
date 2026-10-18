@@ -14,13 +14,20 @@ export class SessionServiceError extends Error {
 }
 
 export interface SessionServiceDeps {
-  sessions: SessionsRepository;
+  sessions: Pick<
+    SessionsRepository,
+    | "createSession"
+    | "findValidByTokenHash"
+    | "bindDevice"
+    | "deleteByDeviceId"
+    | "deleteByTokenHash"
+  >;
   config: Pick<ApiConfig, "sessionTtlSeconds">;
   now?: () => Date;
 }
 
 export class SessionService {
-  private readonly sessions: SessionsRepository;
+  private readonly sessions: SessionServiceDeps["sessions"];
   private readonly config: Pick<ApiConfig, "sessionTtlSeconds">;
   private readonly now: () => Date;
 
@@ -38,7 +45,10 @@ export class SessionService {
     return randomBytes(32).toString("hex");
   }
 
-  async createSession(userId: string): Promise<{ accessToken: string; expiresAt: string }> {
+  async createSession(
+    userId: string,
+    deviceId?: string | null,
+  ): Promise<{ accessToken: string; expiresAt: string }> {
     const accessToken = this.mintAccessToken();
     const now = this.now();
     const expires = new Date(now.getTime() + this.config.sessionTtlSeconds * 1000);
@@ -47,11 +57,14 @@ export class SessionService {
       userId,
       tokenHash: this.hashAccessToken(accessToken),
       expiresAtIso: expiresAt,
+      deviceId: deviceId ?? null,
     });
     return { accessToken, expiresAt };
   }
 
-  async resolveAccessToken(token: string): Promise<{ userId: string } | null> {
+  async resolveAccessToken(
+    token: string,
+  ): Promise<{ userId: string; sessionId: string; deviceId: string | null } | null> {
     const trimmed = token.trim();
     if (!trimmed) {
       return null;
@@ -61,6 +74,39 @@ export class SessionService {
       this.hashAccessToken(trimmed),
       nowIso,
     );
-    return row ? { userId: row.userId } : null;
+    return row
+      ? { userId: row.userId, sessionId: row.id, deviceId: row.deviceId }
+      : null;
+  }
+
+  /** Attach a registered device to the caller's current access-token session. */
+  async bindAccessTokenDevice(
+    accessToken: string,
+    userId: string,
+    deviceId: string,
+  ): Promise<void> {
+    const trimmed = accessToken.trim();
+    if (!trimmed || !deviceId) {
+      return;
+    }
+    await this.sessions.bindDevice({
+      tokenHash: this.hashAccessToken(trimmed),
+      userId,
+      deviceId,
+    });
+  }
+
+  /** End all server sessions bound to a device (revoke / sign-out). */
+  async revokeSessionsForDevice(userId: string, deviceId: string): Promise<void> {
+    await this.sessions.deleteByDeviceId({ userId, deviceId });
+  }
+
+  /** End the session for a specific access token (sign-out when unbound). */
+  async revokeAccessToken(accessToken: string): Promise<void> {
+    const trimmed = accessToken.trim();
+    if (!trimmed) {
+      return;
+    }
+    await this.sessions.deleteByTokenHash(this.hashAccessToken(trimmed));
   }
 }

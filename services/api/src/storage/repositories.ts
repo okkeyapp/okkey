@@ -2944,15 +2944,16 @@ export class SessionsRepository {
     userId: string;
     tokenHash: string;
     expiresAtIso: string;
+    deviceId?: string | null;
   }): Promise<{ id: string }> {
     const id = generateEntityId();
     const rows = await this.db.query<{ id: string }>(
       `
         INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at)
-        VALUES ($1, $2, NULL, $3, $4::timestamptz)
+        VALUES ($1, $2, $3, $4, $5::timestamptz)
         RETURNING id
       `,
-      [id, input.userId, input.tokenHash, input.expiresAtIso],
+      [id, input.userId, input.deviceId ?? null, input.tokenHash, input.expiresAtIso],
     );
     const row = rows[0];
     if (!row) {
@@ -2972,10 +2973,14 @@ export class SessionsRepository {
   async findValidByTokenHash(
     tokenHash: string,
     nowIso: string,
-  ): Promise<{ id: string; userId: string } | null> {
-    const rows = await this.db.query<{ id: string; user_id: string }>(
+  ): Promise<{ id: string; userId: string; deviceId: string | null } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_id: string | null;
+    }>(
       `
-        SELECT id, user_id
+        SELECT id, user_id, device_id
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -2983,7 +2988,52 @@ export class SessionsRepository {
       [tokenHash, nowIso],
     );
     const row = rows[0];
-    return row ? { id: row.id, userId: row.user_id } : null;
+    return row
+      ? { id: row.id, userId: row.user_id, deviceId: row.device_id }
+      : null;
+  }
+
+  async bindDevice(input: {
+    tokenHash: string;
+    userId: string;
+    deviceId: string;
+  }): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE sessions
+        SET device_id = $3
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND expires_at > now()
+        RETURNING id
+      `,
+      [input.tokenHash, input.userId, input.deviceId],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteByDeviceId(input: { userId: string; deviceId: string }): Promise<number> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE user_id = $1 AND device_id = $2
+        RETURNING id
+      `,
+      [input.userId, input.deviceId],
+    );
+    return rows.length;
+  }
+
+  async deleteByTokenHash(tokenHash: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE token_hash = $1
+        RETURNING id
+      `,
+      [tokenHash],
+    );
+    return rows.length > 0;
   }
 }
 

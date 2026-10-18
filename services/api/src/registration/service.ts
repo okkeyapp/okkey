@@ -141,7 +141,7 @@ export class RegistrationService {
     ) {
       return base as RegisterCompleteResult;
     }
-    const session = await this.sessionService.createSession(base.userId);
+    const session = await this.sessionService.createSession(base.userId, base.deviceId);
     return {
       userId: base.userId,
       workspaceId: base.workspaceId,
@@ -262,7 +262,7 @@ export class RegistrationService {
         });
       });
 
-      const session = await this.sessionService.createSession(bundle.userId);
+      const session = await this.sessionService.createSession(bundle.userId, bundle.deviceId);
       const result: RegisterCompleteResult = {
         userId: bundle.userId,
         workspaceId: bundle.workspaceId,
