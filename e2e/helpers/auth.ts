@@ -22,7 +22,7 @@ export async function registerBootstrapAndUnlock(
   await page.locator("#auth-email").fill(input.email);
   await page.getByRole("button", { name: /^sign in$/i }).click();
 
-  await expect(page.getByRole("heading", { name: /registration in okkey/i })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /register with okkey/i })).toBeVisible({
     timeout: 30_000,
   });
   await page.locator("#auth-reg-first-name").fill(firstName);
