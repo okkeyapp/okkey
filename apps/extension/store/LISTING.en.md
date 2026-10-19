@@ -63,7 +63,6 @@ Extension build: 1.0.0.2.
 
 ## Screenshot captions (optional; for AMO / Edge)
 
-1. Unlocked vault popup — browse and open saved items  
-2. Autofill suggestions on a login form  
-3. Server URL — connect the extension to your Okkey instance  
-4. Local unlock with master password  
+1. Vault is locked — local unlock with master password  
+2. Unlocked vault popup — browse and open saved items  
+3. Autofill suggestions on a login form  

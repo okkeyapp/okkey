@@ -48,7 +48,7 @@ Docs: [Publish a Microsoft Edge extension](https://learn.microsoft.com/en-us/mic
 | Default locale | `en` |
 | Listing text | EN **and** RU (name/summary/description per locale in Developer Hub) |
 | Screenshots | **One shared set** for the whole listing (AMO does not do per-locale screenshot sets) |
-| Our rule | Upload **all** live EN + RU PNGs into that single set (8 screenshots); localize captions if the form allows |
+| Our rule | Upload **all** live EN + RU PNGs into that single set (6 screenshots); localize captions if the form allows |
 | Privacy / support | [URLS.md](./URLS.md) |
 
 Docs: [Create an appealing listing](https://extensionworkshop.com/documentation/develop/create-an-appealing-listing/).
@@ -58,10 +58,14 @@ Docs: [Create an appealing listing](https://extensionworkshop.com/documentation/
 See [assets/README.md](./assets/README.md). Canonical:
 
 ```text
-screenshot-01-vault-popup-en.png … screenshot-04-unlock-en.png
-screenshot-01-vault-popup-ru.png … screenshot-04-unlock-ru.png
+screenshot-01-vault-is-locked-en.png
+screenshot-01-vault-is-locked-ru.png
+screenshot-02-vault-popup-en.png
+screenshot-02-vault-popup-ru.png
+screenshot-03-autofill-en.png
+screenshot-03-autofill-ru.png
 promo-small-440x280-en.png
 promo-small-440x280-ru.png   # Edge RU (and AMO set); not used by CWS promo field
 ```
 
-Mockups in `assets/` are **not** publishable until replaced with live product captures.
+Live captures in `assets/` are publishable for this release (no `server-url` shot).

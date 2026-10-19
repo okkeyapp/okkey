@@ -12,7 +12,7 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 
 | Doc | Purpose |
 |-----|---------|
-| [SUBMIT-CHECKLIST.md](./SUBMIT-CHECKLIST.md) | Per-store submit steps (CWS / Edge / AMO); AMO blocked until Firefox verified; screenshots partial (server-url + size TBD) |
+| [SUBMIT-CHECKLIST.md](./SUBMIT-CHECKLIST.md) | Per-store submit steps (CWS / Edge / AMO); AMO blocked until Firefox verified; live EN+RU screenshots present |
 | [LOCALES.md](./LOCALES.md) | How EN+RU locales work on CWS / Edge / AMO; package `_locales` prerequisite |
 | [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access) |
 | [LISTING.en.md](./LISTING.en.md) | Chrome/Edge/Opera/AMO listing copy (EN) |
@@ -20,7 +20,7 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 | [URLS.md](./URLS.md) | Store privacy / support / homepage URLs + live-check notes |
 | [PRIVACY.md](./PRIVACY.md) | Privacy policy (linked from store consoles via GitHub) |
 | [SUPPORT.md](./SUPPORT.md) | Support page (linked from store consoles via GitHub) |
-| [assets/README.md](./assets/README.md) | Screenshots / promo tiles (`*-en.png` / `*-ru.png`; live partial — server-url missing) |
+| [assets/README.md](./assets/README.md) | Screenshots / promo tiles (`*-en.png` / `*-ru.png`; 3 scenes × EN+RU live) |
 
 ## Artifact map
 

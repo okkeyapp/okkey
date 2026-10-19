@@ -14,7 +14,7 @@ Ready-to-submit pack for **Okkey extension `1.0.0.2`**. This folder documents pa
 | **Firefox AMO** | Firefox zip + sources | **Blocked** until a verified Firefox build exists (see [AMO](#5-firefox-amo--blocked)) |
 | **Yandex Browser** | — | No separate package — users install from **CWS** (and/or Opera) |
 
-**Listing screenshots — partially unblocked.** Live EN+RU captures for vault popup, autofill, unlock + promo are in [assets/](./assets/). Still missing: `screenshot-03-server-url-{en,ru}.png`. Pixel size is **600×450** (stores usually want 1280×800 or 640×400) — confirm console accept before submit (see [assets/README.md](./assets/README.md)).
+**Listing screenshots — ready.** Live EN+RU captures (3 scenes × 2 locales at 1280×800) + promo 440×280 are in [assets/](./assets/). Order: vault-is-locked → vault-popup → autofill. No `server-url` shot this release.
 
 Self-host framing only (FREE / ENTERPRISE on the user’s instance). Do **not** promise a hosted Okkey cloud service in any store form.
 
@@ -28,7 +28,7 @@ Self-host framing only (FREE / ENTERPRISE on the user’s instance). Do **not** 
 - [ ] Locale console plan reviewed: [LOCALES.md](./LOCALES.md)
 - [ ] Permissions text ready: [PERMISSIONS.md](./PERMISSIONS.md)
 - [ ] Privacy / support / homepage URLs live: [URLS.md](./URLS.md) (official GitHub paste, or substituted instance placeholders)
-- [ ] Screenshots / promo under [assets/](./assets/) are **live** EN+RU for popup/autofill/unlock + promo; **server-url** still missing; confirm store-accepted dimensions
+- [ ] Screenshots / promo under [assets/](./assets/) are **live** EN+RU (01 vault-is-locked, 02 vault-popup, 03 autofill @ 1280×800) + `promo-small-440x280-{en,ru}.png`
 - [ ] Smoke: load unpacked Chromium against a **self-hosted** web+API
 
 ## 1. Build Chromium zip (CWS / Edge / Opera)
