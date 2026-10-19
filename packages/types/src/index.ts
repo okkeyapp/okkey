@@ -528,6 +528,8 @@ export interface VaultAccessResponseDto {
   vaultId: EntityId;
   members: VaultAccessMemberDto[];
   invitations: VaultAccessInvitationDto[];
+  /** Current vault event-log head (`MAX(events.version)`). Used as `baseVersion` for revokes. */
+  latestVersion?: number;
 }
 
 /**
