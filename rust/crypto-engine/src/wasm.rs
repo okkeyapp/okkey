@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use sha2::{Digest, Sha256};
 
-use crate::{aead, encoding, hybrid, kdf, mlkem768, sign, x25519};
+use crate::{aead, ed25519_x25519, encoding, hybrid, kdf, mlkem768, sign, x25519};
 use getrandom::getrandom;
 
 #[wasm_bindgen]
@@ -88,6 +88,22 @@ pub fn x25519_keypair() -> Vec<u8> {
 #[wasm_bindgen]
 pub fn x25519_shared(private_key: &[u8], peer_public_key: &[u8]) -> Result<Vec<u8>, JsValue> {
   x25519::derive_shared_secret(private_key, peer_public_key).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Ed25519 SigningKey seed → X25519 private scalar bytes (libsodium-compatible).
+#[wasm_bindgen]
+pub fn ed25519_secret_to_x25519(ed25519_seed: &[u8]) -> Result<Vec<u8>, JsValue> {
+  ed25519_x25519::secret_to_x25519(ed25519_seed)
+    .map(|k| k.to_vec())
+    .map_err(|e| JsValue::from_str(&e))
+}
+
+/// Ed25519 verifying key → X25519 public key (libsodium-compatible).
+#[wasm_bindgen]
+pub fn ed25519_public_to_x25519(ed25519_public: &[u8]) -> Result<Vec<u8>, JsValue> {
+  ed25519_x25519::public_to_x25519(ed25519_public)
+    .map(|k| k.to_vec())
+    .map_err(|e| JsValue::from_str(&e))
 }
 
 #[wasm_bindgen]

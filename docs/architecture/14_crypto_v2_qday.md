@@ -94,14 +94,23 @@ Core primitive entrypoints for hybrid transport:
 
 - `generate_pq_keys()` -> `[mlkem768_decapsulation_key || mlkem768_encapsulation_key]`
 - `encrypt_hybrid(sender_private_key, recipient_public_key, recipient_pq_public_key, aad, plaintext)` -> `hybrid_envelope_v1`
+  - `recipient_public_key` is **X25519**; `sender_private_key` is unused (ephemeral X25519 is generated inside)
 - `decrypt_hybrid(recipient_private_key, recipient_pq_private_key, aad, envelope)` -> `plaintext`
+- `ed25519_secret_to_x25519` / `ed25519_public_to_x25519` — libsodium-compatible conversion so vault wraps bind the ECC leg to existing Ed25519 identity (`users.public_key`) without a separate X25519 column
+
+Vault key wrap (`packages/crypto` `wrapVaultKeyForRecipient` / `unwrapVaultKeyForSelf`):
+
+- New writes: `meta.ecc_mode = "per_user_ed25519_x25519_v1"` (convert recipient Ed25519 → X25519, then hybrid encrypt)
+- Legacy unwrap: `meta.ecc_mode = "interim_static_v1"` (or missing) uses RFC7748 Alice; do not emit new interim wraps
 
 TypeScript wrapper names in `@okkey/crypto`:
 
 - `generatePQKeys()`
 - `encryptHybrid(...)`
 - `decryptHybrid(...)`
+- `ed25519SecretToX25519(...)` / `ed25519PublicToX25519(...)`
 - `hybridEnvelopeFixedHeaderLen()`
+- `wrapVaultKeyForRecipient(...)` / `unwrapVaultKeyForSelf(...)`
 
 ---
 
