@@ -14,7 +14,8 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 |-----|---------|
 | [SUBMIT-CHECKLIST.md](./SUBMIT-CHECKLIST.md) | Per-store submit steps (CWS / Edge / AMO); AMO blocked until Firefox verified; live EN+RU screenshots present |
 | [LOCALES.md](./LOCALES.md) | How EN+RU locales work on CWS / Edge / AMO; package `_locales` prerequisite |
-| [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access) |
+| [PERMISSIONS.md](./PERMISSIONS.md) | Store review justification (autofill / host access); Firefox data_collection + lint triage |
+| [SOURCES.md](./SOURCES.md) | AMO `*-sources.zip` layout + reviewer rebuild steps |
 | [LISTING.en.md](./LISTING.en.md) | Chrome/Edge/Opera/AMO listing copy (EN) |
 | [LISTING.ru.md](./LISTING.ru.md) | Listing copy (RU) — required this release |
 | [URLS.md](./URLS.md) | Store privacy / support / homepage URLs + live-check notes |
@@ -30,6 +31,6 @@ This folder is the **ready-to-submit** pack for browser stores. It does **not** 
 | Edge | **Same Chromium zip** | [Edge Add-ons](https://partner.microsoft.com/dashboard) |
 | Opera | **Same Chromium zip** | [Opera Add-ons](https://addons.opera.com/developer/) |
 | Yandex Browser | Install from **CWS** (no separate package) | via Chrome Web Store listing |
-| Firefox | `yarn zip:extension:firefox` → `apps/extension/output/okkeyextension-1.0.0.2-firefox.zip` (+ `*-sources.zip` for AMO) | [AMO](https://addons.mozilla.org/developers/) — **blocked** until Firefox package verified (see checklist) |
+| Firefox | `yarn zip:extension:firefox` → `apps/extension/output/okkeyextension-1.0.0.2-firefox.zip` (+ monorepo `*-sources.zip` for AMO; see [SOURCES.md](./SOURCES.md)) | [AMO](https://addons.mozilla.org/developers/) — pack/lint prep; smoke + submit manual (see checklist) |
 
 Zips are gitignored (`*.zip`, `apps/extension/output/`). Rebuild before each upload.
