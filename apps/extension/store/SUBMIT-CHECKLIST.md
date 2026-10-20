@@ -11,7 +11,7 @@ Ready-to-submit pack for **Okkey extension `1.0.0.2`**. This folder documents pa
 | **Chrome Web Store** | Chromium zip | Ready to rehearse (build → upload → paste listing) |
 | **Edge Add-ons** | Same Chromium zip | Ready to rehearse |
 | **Opera Add-ons** | Same Chromium zip | Optional Chromium mirror (P1) |
-| **Firefox AMO** | Firefox zip + sources | **Blocked** until a verified Firefox build exists (see [AMO](#5-firefox-amo--blocked)) |
+| **Firefox AMO** | Firefox zip + sources | **Prep in progress** — reproducible `*-sources.zip` + data_collection / lint triage (see [AMO](#5-firefox-amo); smoke still manual) |
 | **Yandex Browser** | — | No separate package — users install from **CWS** (and/or Opera) |
 
 **Listing screenshots — ready.** Live EN+RU captures (3 scenes × 2 locales at 1280×800) + promo 440×280 are in [assets/](./assets/). Order: vault-is-locked → vault-popup → autofill. No `server-url` shot this release.
@@ -104,15 +104,17 @@ Optional: mirror store metadata from the CWS listing where Partner Center allows
 
 Same Chromium zip as CWS/Edge. Paste **EN and RU** listing where Opera supports locales; same **live-capture** screenshot rule (EN+RU). Helps Yandex users who prefer Opera Add-ons as a fallback to CWS.
 
-## 5. Firefox AMO — **BLOCKED**
+## 5. Firefox AMO
 
-**Do not upload to AMO yet.** AMO stays blocked until a **verified** Firefox package exists:
+**Do not submit to the AMO console from automation.** Upload only after pack + lint below are green and Саша completes temporary-addon smoke.
 
-1. `yarn zip:extension:firefox` produces `okkeyextension-1.0.0.2-firefox.zip` and `okkeyextension-1.0.0.2-sources.zip` without errors.
-2. Temporary add-on smoke passes (`about:debugging` → Load Temporary Add-on → `firefox-mv3/manifest.json`).
-3. `npx web-ext lint --source-dir apps/extension/output/firefox-mv3` reports **no errors** (warnings triaged).
+Unblock checklist:
 
-When those checks pass, clear the blocked flag in this section and run the steps below.
+1. `yarn zip:extension:firefox` produces `okkeyextension-1.0.0.2-firefox.zip` and a **monorepo-shaped** `okkeyextension-1.0.0.2-sources.zip` without errors — rebuild steps in [SOURCES.md](./SOURCES.md).
+2. Temporary add-on smoke passes (`about:debugging` → Load Temporary Add-on → `firefox-mv3/manifest.json`) — **manual (Саша)**.
+3. `npx web-ext lint --source-dir apps/extension/output/firefox-mv3` reports **no errors**; remaining warnings triaged in [PERMISSIONS.md](./PERMISSIONS.md) (§ Firefox web-ext lint).
+
+When smoke + lint are done, mark this section Ready and run the steps below.
 
 ### AMO steps (after unblock)
 

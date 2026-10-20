@@ -22,7 +22,7 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 | `tabs` | Know the active tab URL for autofill matching, open the self-hosted web app for login/edit deep links, and coordinate save-password prompts after navigation. |
 | `idle` | Lock the unlocked vault when the OS locks / device sleeps (`chrome.idle`), including while the popup is closed. |
 | `alarms` | Run vault idle-lock and clipboard auto-clear timers in the service worker after the popup is closed. |
-| `offscreen` | Clear the system clipboard from a Chromium offscreen document after the configured timeout (MV3 service workers cannot use the Clipboard API). |
+| `offscreen` | **Chromium only.** Clear the system clipboard from an offscreen document after the configured timeout (MV3 service workers cannot use the Clipboard API). **Omitted on Firefox** — Firefox has no `offscreen` API; the same clear runs via `navigator.clipboard` in the background script (`extensionVaultLifecycle`). |
 | `clipboardRead` / `clipboardWrite` | Read/clear the clipboard only to remove values the user copied from Okkey vault fields (matched by an internal copy token + exact text). Ordinary copies outside Okkey are not cleared. |
 | Host permission `<all_urls>` | Content scripts must run on arbitrary http(s) origins to **detect login/register forms** and **autofill** credentials the user explicitly saved for those sites. Password managers cannot limit hosts to a fixed allowlist. |
 
@@ -59,6 +59,36 @@ Okkey is a self-hosted password manager extension. Users set their own Okkey web
 - **Does not sell data / no third-party ad trackers** in the extension package.
 
 When AMO asks for a privacy policy URL, use the public GitHub URL documented in [URLS.md](./URLS.md) ([PRIVACY.md](./PRIVACY.md)).
+
+### `data_collection_permissions` (manifest / gecko)
+
+New AMO submissions require `browser_specific_settings.gecko.data_collection_permissions` (linter: `MISSING_DATA_COLLECTION_PERMISSIONS`). Okkey declares:
+
+```json
+"data_collection_permissions": {
+  "required": ["authenticationInfo", "browsingActivity", "websiteContent"]
+}
+```
+
+| Type | Why |
+|------|-----|
+| `authenticationInfo` | Sign-in / device registration / vault unlock against the user-configured instance; encrypted credential blobs sync to that server. |
+| `browsingActivity` | Active tab URL is used to match saved login website URLs for autofill suggestions. |
+| `websiteContent` | Content scripts read login/register form fields on pages the user visits in order to detect and fill. |
+
+Not declared: third-party analytics, ad trackers, or Okkey-operated cloud. All network I/O goes to the **user-set** Server URL.
+
+`strict_min_version` remains `121.0` (MV3 / API floor). Firefox 140+ shows the built-in data-collection consent UI; on 121–139 reviewers / users still see this document + [PRIVACY.md](./PRIVACY.md).
+
+### Firefox web-ext lint triage
+
+| Code | Severity | Disposition |
+|------|----------|-------------|
+| `MISSING_DATA_COLLECTION_PERMISSIONS` | error (submit blocker) | **Fixed** — see gecko `data_collection_permissions` above. |
+| Unsupported `offscreen` permission | warning/error on Firefox | **Fixed** — `offscreen` is Chromium-only in `wxt.config.ts`. |
+| `UNSAFE_VAR_ASSIGNMENT` | warning | **Keep with justification** — content-script / generator overlays assign to `innerHTML` / `insertAdjacentHTML` inside an extension **shadow DOM**. Dynamic user strings go through `escapeHtml`; markup templates and SVG icon snippets are extension-controlled constants (not remote HTML). No page-origin HTML is assigned into the overlay. Refactoring every assignment to pure DOM APIs is out of scope for this pack; treat remaining hits as reviewed false positives for XSS. |
+
+Sources rebuild: [SOURCES.md](./SOURCES.md).
 
 ---
 

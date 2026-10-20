@@ -24,9 +24,6 @@ export default defineConfig({
       syncCryptoWasmPublicAsset();
     },
   },
-  suppressWarnings: {
-    firefoxDataCollection: true,
-  },
   // Store zips use manifest `version` (1.0.0.N), not package.json SemVer (yarn workspaces
   // reject four-part versions — keep package.json at 1.0.0).
   zip: {
@@ -34,11 +31,97 @@ export default defineConfig({
     // WXT 0.20.x: {{version}} = manifest.version (store numeric). No {{modeSuffix}} yet.
     artifactTemplate: "{{name}}-{{version}}-{{browser}}.zip",
     sourcesTemplate: "{{name}}-{{version}}-sources.zip",
+    // AMO reviewers need a monorepo-shaped sources zip (not apps/extension alone).
+    // See store/SOURCES.md for rebuild steps.
+    sourcesRoot: repoRoot,
+    // Narrow globs: WXT cannot exclude a subset of an include match
+    // (`include || !exclude`), so avoid `apps/extension/**` / `packages/crypto/**`.
+    includeSources: [
+      "package.json",
+      "yarn.lock",
+      "rust-toolchain.toml",
+      ".tool-versions",
+      "AGENTS.md",
+      "ARCHITECTURE.md",
+      "README.md",
+      "scripts/verify-crypto-bootstrap.mjs",
+      // Extension (no output/, node_modules/, store screenshot assets, prebuilt wasm)
+      "apps/extension/package.json",
+      "apps/extension/wxt.config.ts",
+      "apps/extension/tsconfig.json",
+      "apps/extension/tailwind.config.ts",
+      "apps/extension/postcss.config.js",
+      "apps/extension/README.md",
+      "apps/extension/src/**",
+      "apps/extension/assets/**",
+      "apps/extension/public/_locales/**",
+      "apps/extension/public/fonts/**",
+      "apps/extension/public/icons/**",
+      "apps/extension/public/icon-*.png",
+      "apps/extension/store/*.md",
+      // Shared packages — sources only (rebuild dist / wasm)
+      "packages/api/package.json",
+      "packages/api/tsconfig.json",
+      "packages/api/src/**",
+      "packages/auth/package.json",
+      "packages/auth/tsconfig.json",
+      "packages/auth/src/**",
+      "packages/crypto/package.json",
+      "packages/crypto/tsconfig.json",
+      "packages/crypto/README.md",
+      "packages/crypto/scripts/**",
+      "packages/crypto/src/**",
+      "packages/i18n/package.json",
+      "packages/i18n/tsconfig.json",
+      "packages/i18n/src/**",
+      "packages/id/package.json",
+      "packages/id/tsconfig.json",
+      "packages/id/src/**",
+      "packages/sync/package.json",
+      "packages/sync/tsconfig.json",
+      "packages/sync/src/**",
+      "packages/types/package.json",
+      "packages/types/tsconfig.json",
+      "packages/types/src/**",
+      "packages/ui/package.json",
+      "packages/ui/tsconfig.json",
+      "packages/ui/src/**",
+      "packages/vault/package.json",
+      "packages/vault/tsconfig.json",
+      "packages/vault/src/**",
+      "packages/vault-ui/package.json",
+      "packages/vault-ui/tsconfig.json",
+      "packages/vault-ui/src/**",
+      // Rust crypto engine (no fuzz/)
+      "rust/crypto-engine/Cargo.toml",
+      "rust/crypto-engine/Cargo.lock",
+      "rust/crypto-engine/src/**",
+    ],
+    // WXT filter is `includeMatch || !excludeMatch` (not a pure allowlist).
+    // Excluding `**` forces only `includeSources` paths into the AMO sources zip.
+    excludeSources: ["**"],
+    // `.tool-versions` is listed in includeSources (explicit glob entry).
+    dotSources: true,
   },
   manifest: ({ browser }) => {
     // Chrome / Edge / AMO: dotted integers only. No Chromium `version_name`, no `*-beta.*`.
     // Product SemVer (e.g. 1.0.0-beta.2) is for GitHub Releases / images — not store packaging.
     const manifestVersion = "1.0.0.2";
+    const chromiumOnlyPermissions = ["offscreen"] as const;
+    const sharedPermissions = [
+      "storage",
+      "tabs",
+      "idle",
+      "alarms",
+      "clipboardRead",
+      "clipboardWrite",
+    ] as const;
+    // Firefox has no offscreen documents — clipboard clear uses navigator.clipboard in the
+    // background (see extensionVaultLifecycle). Declaring `offscreen` trips web-ext lint.
+    const permissions =
+      browser === "firefox"
+        ? [...sharedPermissions]
+        : [...sharedPermissions, ...chromiumOnlyPermissions];
     return {
       // Store consoles expose EN+RU listing locales from package `_locales/`.
       // In-app UI still uses `@okkey/i18n` + chrome.storage (not browser.i18n).
@@ -62,7 +145,7 @@ export default defineConfig({
           128: "icon-128.png",
         },
       },
-      permissions: ["storage", "tabs", "idle", "alarms", "offscreen", "clipboardRead", "clipboardWrite"],
+      permissions,
       // Crypto unlock instantiates WASM; MV3 default CSP is script-src 'self' only.
       content_security_policy: {
         // blob: required for decrypted favicon / workspace-logo object URLs in <img>.
@@ -90,7 +173,15 @@ export default defineConfig({
             browser_specific_settings: {
               gecko: {
                 id: "extension@okkey.io",
+                // Built-in data-collection consent exists from Firefox 140; keep 121 for
+                // API floor and document older-Firefox note in store/PERMISSIONS.md.
                 strict_min_version: "121.0",
+                // Required for new AMO submissions (MISSING_DATA_COLLECTION_PERMISSIONS).
+                // Password-manager sync to the user-configured self-host transmits auth
+                // material + uses tab URL / form DOM locally for autofill matching.
+                data_collection_permissions: {
+                  required: ["authenticationInfo", "browsingActivity", "websiteContent"],
+                },
               },
             },
           }
