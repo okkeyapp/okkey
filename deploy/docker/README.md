@@ -178,11 +178,24 @@ Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:e
 
 ## TLS / domain
 
-Put a reverse proxy (Caddy, Traefik, nginx) in front of `web` and `api`, then set:
+**Primary edge template:** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
+
+```bash
+# From a checkout of deploy/docker (recommended for --build):
+cd deploy/docker
+OKKEY_WEB_HOST=app.example.com OKKEY_API_HOST=api.example.com \
+  ./proxy/scripts/gen-self-signed.sh
+docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
+  --env-file .env up -d --build proxy
+./proxy/verify-tls.sh app.example.com 443
+```
+
+Then set in `.env`:
 
 - `PUBLIC_APP_URL=https://app.example.com`
 - `OKKEY_API_PUBLIC_URL=https://api.example.com`
 - `CORS_ORIGIN` / `WEBAUTHN_ORIGINS` / `WEBAUTHN_RP_ID` accordingly
+- `OKKEY_WEB_HOST` / `OKKEY_API_HOST` (proxy server_name values)
 
 ## Local image build (developers)
 

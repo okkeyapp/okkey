@@ -1,0 +1,36 @@
+# Optional edge reverse-proxy overlay for self-host.
+# Primary stack (Q-Day #3): nginx + OpenSSL ≥ 3.5 / X25519MLKEM768 / TLS 1.3 only.
+#
+# From the install dir that already has docker-compose.prod.yml (e.g. ~/okkey):
+#
+#   # copy proxy/ next to compose (or keep repo checkout paths)
+#   docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
+#     --env-file .env up -d --build proxy
+#
+# Set PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL / CORS / WebAuthn to the HTTPS hosts
+# before (or after) bringing the proxy up. See proxy/README.md.
+
+services:
+  proxy:
+    build:
+      # Paths are relative to this file's directory (deploy/docker/proxy/).
+      context: ./nginx
+      dockerfile: Dockerfile
+      args:
+        OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}
+        NGINX_VERSION: ${OKKEY_PROXY_NGINX_VERSION:-1.28.0}
+    image: ${OKKEY_PROXY_IMAGE:-okkey-edge-nginx:openssl35}
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    ports:
+      - "${OKKEY_PROXY_HTTP_PORT:-80}:80"
+      - "${OKKEY_PROXY_HTTPS_PORT:-443}:443"
+    environment:
+      OKKEY_WEB_HOST: ${OKKEY_WEB_HOST:-app.example.com}
+      OKKEY_API_HOST: ${OKKEY_API_HOST:-api.example.com}
+      OKKEY_WEB_UPSTREAM: ${OKKEY_WEB_UPSTREAM:-web:80}
+      OKKEY_API_UPSTREAM: ${OKKEY_API_UPSTREAM:-api:4000}
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
