@@ -1,6 +1,10 @@
 /**
  * Client-side registration crypto: split-key VaultKey = A ⊕ B ⊕ C (32-byte XOR),
  * C = Argon2id(master_password, salt). Backend receives only A and encrypted artifacts.
+ *
+ * Q-Day #2 / q2-6: shares A/B/C (incl. new-device share B) stay opaque 32-byte
+ * local material — not hybrid ECC+PQ KEM envelopes. PQ applies to identity keys
+ * (`userPublicPqKey` / ML-KEM) at registration, not to share-B transport.
  */
 import {
   b64_encode,

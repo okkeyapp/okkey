@@ -10,6 +10,7 @@ import type {
   DeviceRecord,
   DevicesRepository,
 } from "../storage/repositories.ts";
+import { assertOpaqueSplitKeyShare } from "../registration/split-key-transport-policy.ts";
 
 export class DeviceServiceError extends Error {
   readonly code: string;
@@ -174,8 +175,15 @@ export class DeviceService {
     }
 
     const deviceShareBytes = Uint8Array.from(Buffer.from(input.deviceShare, "base64"));
-    if (deviceShareBytes.length === 0) {
-      throw new DeviceServiceError("DEVICE_BAD_REQUEST", 400, "device_share is empty");
+    try {
+      // q2-6: share B is opaque 32-byte local material — reject hybrid envelopes.
+      assertOpaqueSplitKeyShare(deviceShareBytes, "device_share");
+    } catch (error: unknown) {
+      throw new DeviceServiceError(
+        "DEVICE_BAD_REQUEST",
+        400,
+        error instanceof Error ? error.message : "invalid device_share",
+      );
     }
 
     try {

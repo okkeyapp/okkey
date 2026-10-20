@@ -99,7 +99,7 @@ async function dispatch(input: {
 function registerBody() {
   return {
     device_public_key: Buffer.from("pk").toString("base64"),
-    device_share: Buffer.from("share").toString("base64"),
+    device_share: Buffer.alloc(32, 5).toString("base64"),
     device_fingerprint: "a".repeat(64),
     device_name: "MacBook Pro",
     platform: "desktop",
