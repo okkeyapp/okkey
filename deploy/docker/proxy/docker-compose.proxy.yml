@@ -1,11 +1,15 @@
 # Optional edge reverse-proxy overlay for self-host.
 # Primary stack (Q-Day #3): nginx + OpenSSL ≥ 3.5 / X25519MLKEM768 / TLS 1.3 only.
 #
-# From the install dir that already has docker-compose.prod.yml (e.g. ~/okkey):
+# From the install dir that already has docker-compose.prod.yml (e.g. ~/okkey
+# or a repo checkout of deploy/docker/). Keep proxy/ as a sibling of that compose:
 #
-#   # copy proxy/ next to compose (or keep repo checkout paths)
 #   docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
 #     --env-file .env up -d --build proxy
+#
+# Bind/build paths below are relative to the Compose project directory (the dir
+# of docker-compose.prod.yml), NOT to this overlay file — so they use ./proxy/…
+# (no symlinks under deploy/docker/ needed).
 #
 # Set PUBLIC_APP_URL / OKKEY_API_PUBLIC_URL / CORS / WebAuthn to the HTTPS hosts
 # before (or after) bringing the proxy up. See proxy/README.md.
@@ -13,8 +17,7 @@
 services:
   proxy:
     build:
-      # Paths are relative to this file's directory (deploy/docker/proxy/).
-      context: ./nginx
+      context: ./proxy/nginx
       dockerfile: Dockerfile
       args:
         OPENSSL_VERSION: ${OKKEY_PROXY_OPENSSL_VERSION:-3.5.0}
@@ -33,4 +36,4 @@ services:
       OKKEY_WEB_UPSTREAM: ${OKKEY_WEB_UPSTREAM:-web:80}
       OKKEY_API_UPSTREAM: ${OKKEY_API_UPSTREAM:-api:4000}
     volumes:
-      - ./certs:/etc/nginx/certs:ro
+      - ./proxy/certs:/etc/nginx/certs:ro

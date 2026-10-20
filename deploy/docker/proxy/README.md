@@ -23,17 +23,17 @@ Classical-only clients are **not** accommodated on this default route (compat li
 ## Quick start (overlay on existing install)
 
 Assume Core is already installed (e.g. `~/okkey` with `docker-compose.prod.yml` + `.env`).
+Compose project directory = that install dir (sibling of `proxy/`). Overlay bind/build
+paths are anchored there as `./proxy/nginx` and `./proxy/certs` — run compose from
+the install dir; do not symlink `nginx`/`certs` next to `docker-compose.prod.yml`.
 
 ```bash
 INSTALL_DIR=~/okkey
 REF=dev   # or your OKKEY_REF
 
-mkdir -p "$INSTALL_DIR/proxy"
-curl -fsSL "https://raw.githubusercontent.com/okkeyapp/okkey/${REF}/deploy/docker/proxy/docker-compose.proxy.yml" \
-  -o "$INSTALL_DIR/proxy/docker-compose.proxy.yml"
-# Prefer a git checkout of deploy/docker/proxy for the full tree (Dockerfile + templates).
-# Or copy the directory from a clone:
+# Prefer a git checkout / full tree copy (Dockerfile + templates + certs dir):
 #   cp -a deploy/docker/proxy "$INSTALL_DIR/proxy"
+# Overlay-only curl is not enough for --build (needs nginx/ + certs/).
 
 cd "$INSTALL_DIR"
 # If using a monorepo checkout instead of ~/okkey copies, run from deploy/docker:
@@ -41,7 +41,7 @@ cd "$INSTALL_DIR"
 
 export OKKEY_WEB_HOST=app.example.com
 export OKKEY_API_HOST=api.example.com
-./proxy/scripts/gen-self-signed.sh   # or mount real certs into proxy/certs/
+./proxy/scripts/gen-self-signed.sh   # writes proxy/certs/; or mount real certs there
 
 # Point Core at HTTPS hosts (edit .env), then:
 docker compose -f docker-compose.prod.yml -f proxy/docker-compose.proxy.yml \
