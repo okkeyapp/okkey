@@ -10,6 +10,8 @@ import {
   hybrid_verify_v1,
   x25519_keypair,
   x25519_shared,
+  ed25519_secret_to_x25519,
+  ed25519_public_to_x25519,
   b64_encode,
   b64_decode,
   sha256,
@@ -100,6 +102,14 @@ export function x25519Keypair(): Uint8Array {
 
 export function x25519Shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array {
   return withWasmError("x25519Shared", () => x25519_shared(privateKey, peerPublicKey));
+}
+
+export function ed25519SecretToX25519(ed25519Seed: Uint8Array): Uint8Array {
+  return withWasmError("ed25519SecretToX25519", () => ed25519_secret_to_x25519(ed25519Seed));
+}
+
+export function ed25519PublicToX25519(ed25519Public: Uint8Array): Uint8Array {
+  return withWasmError("ed25519PublicToX25519", () => ed25519_public_to_x25519(ed25519Public));
 }
 
 export function b64Encode(data: Uint8Array): string {
@@ -242,6 +252,8 @@ export {
 export {
   HYBRID_VAULT_KEY_WRAP_SCHEME,
   VAULT_KEY_WRAP_AAD,
+  PER_USER_ECC_MODE,
+  INTERIM_STATIC_ECC_MODE,
   generateSharedVaultKey,
   wrapVaultKeyForRecipient,
   unwrapVaultKeyForSelf,

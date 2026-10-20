@@ -22,6 +22,10 @@ declare module "@okkey/crypto-wasm" {
   ): boolean;
   export function x25519_keypair(): Uint8Array;
   export function x25519_shared(privateKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
+  /** Ed25519 SigningKey seed → X25519 private scalar bytes. */
+  export function ed25519_secret_to_x25519(ed25519Seed: Uint8Array): Uint8Array;
+  /** Ed25519 verifying key → X25519 public key. */
+  export function ed25519_public_to_x25519(ed25519Public: Uint8Array): Uint8Array;
   export function b64_encode(data: Uint8Array): string;
   export function b64_decode(s: string): Uint8Array;
   export function sha256(data: Uint8Array): Uint8Array;
