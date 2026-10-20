@@ -22,8 +22,8 @@ import type { SessionService } from "../session/service.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
+import { assertOpaqueSplitKeyShare } from "./split-key-transport-policy.ts";
 
-const SHARE_LEN = 32;
 const KDF_SALT_LEN = 16;
 const ED25519_PK_LEN = 32;
 /** ML-KEM-768 encapsulation key (FIPS 203). */
@@ -310,18 +310,14 @@ export class RegistrationService {
   }
 
   private validateCryptoPayload(input: RegisterCompleteInput): void {
-    if (input.serverKeyShare.length !== SHARE_LEN) {
+    try {
+      assertOpaqueSplitKeyShare(input.serverKeyShare, "server_key_share");
+      assertOpaqueSplitKeyShare(input.deviceShare, "device_share");
+    } catch (error: unknown) {
       throw new RegistrationError(
         "CRYPTO_PAYLOAD_INVALID",
         400,
-        "server_key_share must be 32 bytes",
-      );
-    }
-    if (input.deviceShare.length !== SHARE_LEN) {
-      throw new RegistrationError(
-        "CRYPTO_PAYLOAD_INVALID",
-        400,
-        "device_share must be 32 bytes",
+        error instanceof Error ? error.message : "invalid split-key share",
       );
     }
     if (input.passwordKdfSalt.length !== KDF_SALT_LEN) {

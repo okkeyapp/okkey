@@ -13,7 +13,7 @@ function createInput(overrides?: Partial<RegisterDeviceInput>): RegisterDeviceIn
   return {
     deviceFingerprint: "a".repeat(64),
     devicePublicKey: Buffer.from("public-key").toString("base64"),
-    deviceShare: Buffer.from("share").toString("base64"),
+    deviceShare: Buffer.alloc(32, 5).toString("base64"),
     deviceName: "MacBook Pro",
     platform: "desktop",
     osName: "macOS",
@@ -32,7 +32,7 @@ function createDeviceRecord(overrides?: Record<string, unknown>) {
     deviceFingerprint: "a".repeat(64),
     deviceName: "MacBook Pro",
     devicePublicKey: Buffer.from("public-key").toString("base64"),
-    deviceShare: new Uint8Array([1, 2]),
+    deviceShare: new Uint8Array(32).fill(1),
     platform: "desktop",
     osName: "macOS",
     osVersion: "14.5",
@@ -119,6 +119,40 @@ test("registerDevice returns pending_approval for new device", async () => {
   const result = await service.registerDevice("u1", "127.0.0.1", createInput());
   assert.equal(result.status, "pending_approval");
   assert.equal(result.deviceId, "d1");
+});
+
+test("q2-6: registerDevice rejects non-opaque device_share (not hybrid KEM)", async () => {
+  const service = createService({
+    registerOrUpdate: async () => {
+      throw new Error("registerOrUpdate must not run for invalid share");
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ deviceShare: Buffer.from("share").toString("base64") }),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+  );
+
+  await assert.rejects(
+    () =>
+      service.registerDevice(
+        "u1",
+        "127.0.0.1",
+        createInput({ deviceShare: Buffer.alloc(1216, 9).toString("base64") }),
+      ),
+    (err: unknown) =>
+      err instanceof DeviceServiceError &&
+      err.code === "DEVICE_BAD_REQUEST" &&
+      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+  );
 });
 
 test("registerDevice claimAfterRecovery becomes sole trusted without pending", async () => {

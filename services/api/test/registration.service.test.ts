@@ -78,6 +78,20 @@ test("completeRegistration rejects short server_key_share", async () => {
   );
 });
 
+test("q2-6: completeRegistration rejects hybrid-sized device_share (opaque only)", async () => {
+  const service = createService();
+  const input = baseInput();
+  input.deviceShare = new Uint8Array(1216).fill(9);
+  await assert.rejects(
+    () => service.completeRegistration(input),
+    (err: unknown) =>
+      err instanceof RegistrationError &&
+      err.code === "CRYPTO_PAYLOAD_INVALID" &&
+      err.statusCode === 400 &&
+      /32 opaque bytes|not hybrid KEM/u.test(err.message),
+  );
+});
+
 test("completeRegistration rejects unsupported kdf version", async () => {
   const service = createService();
   const input = baseInput();
