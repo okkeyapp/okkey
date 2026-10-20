@@ -1,6 +1,10 @@
 /**
  * Capsule payload crypto helpers (client-side only).
  * Wire format: 24-byte nonce || ciphertext+tag (XChaCha20-Poly1305).
+ *
+ * Q-Day #2 / q2-5: guest key delivery is OOB URL fragment
+ * (`encodeCapsuleKeyFragment`) — not hybrid ECC+PQ KEM. Owner recovery of the
+ * capsule key is AEAD under the account VaultKey only.
  */
 import { aead_decrypt, aead_encrypt, random_bytes } from "@okkey/crypto-wasm";
 import { ensureWasm } from "./wasm-init.js";
