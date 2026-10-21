@@ -7,7 +7,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE="${ROOT}/../../docker/proxy/nginx/conf.d/okkey.conf.template"
 STAGE_ENV="${ROOT}/overlays/stage.env.example"
 PROD_ENV="${ROOT}/overlays/prod.env.example"
+COMPAT_ENV="${ROOT}/overlays/compat.env.example"
 COMPOSE="${ROOT}/docker-compose.edge.yml"
+PROXY_POLICY="${ROOT}/../../docker/proxy/policy-compat.sh"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -55,5 +57,25 @@ done
 grep -q 'OKKEY_SAAS_ENV=stage' "${STAGE_ENV}" || fail "stage.env.example must set OKKEY_SAAS_ENV=stage"
 grep -q 'OKKEY_SAAS_ENV=prod' "${PROD_ENV}" || fail "prod.env.example must set OKKEY_SAAS_ENV=prod"
 
+echo "==> stage/prod examples must not enable compat by default"
+for f in "${STAGE_ENV}" "${PROD_ENV}"; do
+  if grep -Eiv '^[[:space:]]*#' "${f}" | grep -Eq '^[[:space:]]*OKKEY_COMPAT_ENABLED=1'; then
+    fail "${f} must not set OKKEY_COMPAT_ENABLED=1 (compat is opt-in via compat.env.example)"
+  fi
+done
+
+echo "==> compat overlay example defaults off"
+[[ -f "${COMPAT_ENV}" ]] || fail "missing ${COMPAT_ENV}"
+grep -q 'OKKEY_COMPAT_ENABLED=0' "${COMPAT_ENV}" \
+  || fail "compat.env.example must default OKKEY_COMPAT_ENABLED=0"
+
+grep -q 'OKKEY_COMPAT_ENABLED: \${OKKEY_COMPAT_ENABLED:-0}' "${COMPOSE}" \
+  || fail "edge compose must default OKKEY_COMPAT_ENABLED to 0"
+
+echo "==> shared proxy compat policy (isolation / sunset gates)"
+[[ -x "${PROXY_POLICY}" ]] || fail "missing ${PROXY_POLICY}"
+"${PROXY_POLICY}"
+
 echo "OK: stage+prod SaaS edge configs share hybrid-only X25519MLKEM768 / TLS 1.3 policy"
 echo "OK: prod overlay reviewed — no silent downgrade knobs in env examples"
+echo "OK: compat classical listeners remain explicit/isolated/time-boxed (off by default)"

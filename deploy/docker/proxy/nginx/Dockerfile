@@ -72,6 +72,7 @@ ENV PATH="/usr/local/openssl/bin:${PATH}"
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY conf.d/okkey.conf.template /etc/nginx/templates/okkey.conf.template
+COPY conf.d/okkey-compat.conf.template /etc/nginx/templates/okkey-compat.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh \
   && /usr/local/openssl/bin/openssl version \

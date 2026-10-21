@@ -8,7 +8,7 @@
 | Note only | Caddy ≥ 2.10 | `x25519mlkem768` (set `curves` hybrid-only for strict) |
 | Note only | Traefik ≥ 3.5 | `X25519MLKEM768` |
 
-Classical-only clients are **not** accommodated on this default route (compat listeners → later Q-Day #3 subtask).
+Classical-only clients are **not** on the default route. Optional **compat listeners** (q3-4) use separate hostnames, classical `X25519` only, and require an explicit sunset — see [Compat listeners](#compat-listeners-classical-only).
 
 ## Layout
 
@@ -17,8 +17,12 @@ Classical-only clients are **not** accommodated on this default route (compat li
 | `docker-compose.proxy.yml` | Optional compose overlay (`proxy` service) |
 | `nginx/Dockerfile` | Builds nginx against OpenSSL 3.5.x |
 | `nginx/conf.d/okkey.conf.template` | Strict TLS + reverse proxy to `web` / `api` |
+| `nginx/conf.d/okkey-compat.conf.template` | Optional classical-only listeners (separate hosts) |
+| `compat.env.example` | Opt-in env knobs (disabled by default) |
+| `policy-compat.sh` | Static review: strict hybrid-only + compat isolation/sunset gates |
 | `scripts/gen-self-signed.sh` | Local smoke certs (not for production) |
 | `verify-tls.sh` | `s_client` + TLS 1.2 rejection check |
+| `verify-compat.sh` | Strict rejects classical-only; optional compat host accepts classical |
 
 ## Quick start (overlay on existing install)
 
@@ -94,3 +98,36 @@ ssl_ecdh_curve X25519MLKEM768;
 ```
 
 Confirm with `nginx -V` / `openssl version` that the linked OpenSSL is ≥ 3.5 and lists `X25519MLKEM768`.
+
+## Compat listeners (classical-only)
+
+**Default: off.** Never merge classical groups onto the strict `server_name` hosts.
+
+| Rule | Enforcement |
+|------|-------------|
+| Explicit | `OKKEY_COMPAT_ENABLED=1` (compose defaults to `0`) |
+| Isolated | `OKKEY_COMPAT_WEB_HOST` / `OKKEY_COMPAT_API_HOST` must differ from strict hosts (entrypoint refuses collisions) |
+| Time-boxed | `OKKEY_COMPAT_SUNSET=YYYY-MM-DD` + `OKKEY_COMPAT_OWNER` required; past sunset → container refuses to start |
+| Classical-only | compat template: `ssl_protocols TLSv1.2 TLSv1.3;` + `ssl_ecdh_curve X25519;` (no `X25519MLKEM768`) |
+| Optional allowlist | `OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8,…` → nginx `allow`/`deny all` |
+
+```bash
+# Static policy (no live edge required):
+./proxy/policy-compat.sh
+
+# Live: strict must reject classical-only; pass compat host only when enabled:
+./proxy/verify-compat.sh app.example.com 443
+./proxy/verify-compat.sh app.example.com 443 compat-app.example.com 443
+```
+
+Enable (example — also ensure cert SANs cover the compat hostnames):
+
+```bash
+# In install .env (see compat.env.example):
+OKKEY_COMPAT_ENABLED=1
+OKKEY_COMPAT_WEB_HOST=compat-app.example.com
+OKKEY_COMPAT_API_HOST=compat-api.example.com
+OKKEY_COMPAT_SUNSET=2026-12-31
+OKKEY_COMPAT_OWNER=sre-oncall@example.com
+# OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8
+```
