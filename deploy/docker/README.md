@@ -178,7 +178,9 @@ Self-host uses Redis keys `okkey:email:queue` / `okkey:email:delayed` / `okkey:e
 
 ## TLS / domain
 
-**Primary edge template:** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
+**Primary edge template (self-host):** [`proxy/`](./proxy/) — nginx + OpenSSL ≥ 3.5, default hybrid group `X25519MLKEM768`, TLS 1.3 only (no silent classical downgrade). Caddy/Traefik are notes-only; see [`proxy/README.md`](./proxy/README.md).
+
+**SaaS stage/prod edge:** [`../saas/edge/`](../saas/edge/) — same nginx image + hybrid group; overlays `stage.env` / `prod.env`.
 
 ```bash
 # From a checkout of deploy/docker (recommended for --build).
