@@ -35,5 +35,12 @@ services:
       OKKEY_API_HOST: ${OKKEY_API_HOST:-api.example.com}
       OKKEY_WEB_UPSTREAM: ${OKKEY_WEB_UPSTREAM:-web:80}
       OKKEY_API_UPSTREAM: ${OKKEY_API_UPSTREAM:-api:4000}
+      # Compat classical listeners (q3-4): off by default. See compat.env.example.
+      OKKEY_COMPAT_ENABLED: ${OKKEY_COMPAT_ENABLED:-0}
+      OKKEY_COMPAT_WEB_HOST: ${OKKEY_COMPAT_WEB_HOST:-}
+      OKKEY_COMPAT_API_HOST: ${OKKEY_COMPAT_API_HOST:-}
+      OKKEY_COMPAT_SUNSET: ${OKKEY_COMPAT_SUNSET:-}
+      OKKEY_COMPAT_OWNER: ${OKKEY_COMPAT_OWNER:-}
+      OKKEY_COMPAT_ALLOW_CIDRS: ${OKKEY_COMPAT_ALLOW_CIDRS:-}
     volumes:
       - ./proxy/certs:/etc/nginx/certs:ro

@@ -27,8 +27,16 @@ services:
       OKKEY_API_HOST: ${OKKEY_API_HOST:?set OKKEY_API_HOST in overlay env}
       OKKEY_WEB_UPSTREAM: ${OKKEY_WEB_UPSTREAM:?set OKKEY_WEB_UPSTREAM in overlay env}
       OKKEY_API_UPSTREAM: ${OKKEY_API_UPSTREAM:?set OKKEY_API_UPSTREAM in overlay env}
+      # Compat classical listeners (q3-4): off by default. See overlays/compat.env.example.
+      OKKEY_COMPAT_ENABLED: ${OKKEY_COMPAT_ENABLED:-0}
+      OKKEY_COMPAT_WEB_HOST: ${OKKEY_COMPAT_WEB_HOST:-}
+      OKKEY_COMPAT_API_HOST: ${OKKEY_COMPAT_API_HOST:-}
+      OKKEY_COMPAT_SUNSET: ${OKKEY_COMPAT_SUNSET:-}
+      OKKEY_COMPAT_OWNER: ${OKKEY_COMPAT_OWNER:-}
+      OKKEY_COMPAT_ALLOW_CIDRS: ${OKKEY_COMPAT_ALLOW_CIDRS:-}
     volumes:
       - ./certs:/etc/nginx/certs:ro
-    # TLS policy is compiled into the image template (ssl_protocols TLSv1.3;
+    # Default TLS policy is compiled into the image template (ssl_protocols TLSv1.3;
     # ssl_ecdh_curve X25519MLKEM768). Do not mount an alternate site conf that
     # re-introduces classical groups or TLS ≤ 1.2 on the default listener.
+    # Compat classical hosts are opt-in via OKKEY_COMPAT_* only.
