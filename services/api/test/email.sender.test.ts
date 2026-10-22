@@ -5,6 +5,7 @@ import {
   createEmailSender,
   createOutboundEmailSender,
   HttpApiEmailSender,
+  isOutboundEmailDeliverable,
   LoggerEmailSender,
   type EmailMessage,
 } from "../src/email/service.ts";
@@ -219,6 +220,44 @@ test("assertEmailTransportConfig rejects incomplete ses env", () => {
         sesSecretAccessKey: "secret",
       }),
     /EMAIL_SES_REGION is required/,
+  );
+});
+
+test("isOutboundEmailDeliverable is false for logger and incomplete providers", () => {
+  assert.equal(
+    isOutboundEmailDeliverable({ ...baseConfig, emailProvider: "logger" }),
+    false,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({
+      ...baseConfig,
+      emailProvider: "smtp",
+      smtpHost: "smtp.example.com",
+    }),
+    true,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({ ...baseConfig, emailProvider: "smtp", smtpHost: "  " }),
+    false,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({
+      ...baseConfig,
+      emailProvider: "ses",
+      sesRegion: "",
+      sesAccessKeyId: "id",
+      sesSecretAccessKey: "secret",
+    }),
+    false,
+  );
+  assert.equal(
+    isOutboundEmailDeliverable({
+      ...baseConfig,
+      emailProvider: "http-api",
+      emailApiEndpoint: "https://mail.example/send",
+      emailApiKey: "k",
+    }),
+    true,
   );
 });
 

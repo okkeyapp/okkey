@@ -46,6 +46,8 @@ export function createWorkspacePlanChangeRequestStatusRoute(
       json(ctx.res, 200, {
         submitted: result.submitted,
         sent_at: result.sentAt,
+        sales_email_deliverable: result.salesEmailDeliverable,
+        sales_email: result.salesEmail,
       });
     } catch (error) {
       if (error instanceof PlanChangeRequestServiceError) {

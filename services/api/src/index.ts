@@ -8,7 +8,11 @@ import { createApiApp } from "./app.ts";
 import { isEnterpriseBackendLoadable, loadConfig } from "./config.ts";
 import { DeviceService } from "./device/service.ts";
 import { json } from "./http.ts";
-import { createOutboundEmailSender, EmailTemplateService } from "./email/service.ts";
+import {
+  createOutboundEmailSender,
+  EmailTemplateService,
+  isOutboundEmailDeliverable,
+} from "./email/service.ts";
 import { createLogger } from "./logger.ts";
 import { SessionService } from "./session/service.ts";
 import { ExtensionAuthService } from "./extension-auth/service.ts";
@@ -139,6 +143,7 @@ async function main(): Promise<void> {
     users: storage.repositories.users,
     emailTemplates,
     salesEmail: config.salesEmail,
+    salesEmailDeliverable: isOutboundEmailDeliverable(config),
     deploymentMode: config.deploymentMode,
     publicAppBaseUrl: config.publicAppBaseUrl,
   });

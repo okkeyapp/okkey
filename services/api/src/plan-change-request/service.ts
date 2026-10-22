@@ -69,6 +69,7 @@ export class PlanChangeRequestService {
   private readonly users: Pick<UsersRepository, "loadAccountProfile">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
   private readonly salesEmail: string;
+  private readonly salesEmailDeliverable: boolean;
   private readonly deploymentMode: DeploymentMode;
   private readonly publicAppBaseUrl: string;
 
@@ -81,6 +82,11 @@ export class PlanChangeRequestService {
     users: Pick<UsersRepository, "loadAccountProfile">;
     emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
     salesEmail: string;
+    /**
+     * When false (`EMAIL_PROVIDER=logger` or incomplete transport config),
+     * submit is rejected and clients should use mailto instead.
+     */
+    salesEmailDeliverable?: boolean;
     deploymentMode: DeploymentMode;
     publicAppBaseUrl?: string;
   }) {
@@ -89,6 +95,7 @@ export class PlanChangeRequestService {
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.salesEmail = deps.salesEmail.trim();
+    this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.deploymentMode = deps.deploymentMode;
     this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
   }
@@ -96,7 +103,12 @@ export class PlanChangeRequestService {
   async getStatus(input: {
     workspaceId: string;
     actorUserId: string;
-  }): Promise<{ submitted: boolean; sentAt: string | null }> {
+  }): Promise<{
+    submitted: boolean;
+    sentAt: string | null;
+    salesEmailDeliverable: boolean;
+    salesEmail: string;
+  }> {
     try {
       await assertWorkspacePermission(
         this.db,
@@ -121,15 +133,23 @@ export class PlanChangeRequestService {
     return {
       submitted: workspace.planChangeRequestSentAt != null,
       sentAt: workspace.planChangeRequestSentAt,
+      salesEmailDeliverable: this.isSalesEmailDeliverable(),
+      salesEmail: this.salesEmail,
     };
   }
 
+  private isSalesEmailDeliverable(): boolean {
+    return Boolean(this.salesEmail) && this.salesEmailDeliverable;
+  }
+
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
-    if (!this.salesEmail) {
+    if (!this.isSalesEmailDeliverable()) {
       throw new PlanChangeRequestServiceError(
         "EMAIL_NOT_CONFIGURED",
         503,
-        "sales email is not configured",
+        this.salesEmail
+          ? "outbound email is not deliverable; use mailto"
+          : "sales email is not configured",
       );
     }
 

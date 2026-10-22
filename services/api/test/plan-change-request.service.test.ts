@@ -11,6 +11,7 @@ function makeService(overrides?: {
   planTier?: string;
   send?: (input: unknown) => Promise<void>;
   salesEmail?: string;
+  salesEmailDeliverable?: boolean;
   sentAt?: string | null;
   memberCount?: number;
   publicAppBaseUrl?: string;
@@ -21,6 +22,7 @@ function makeService(overrides?: {
   let markCalls = 0;
   const service = new PlanChangeRequestService({
     salesEmail: overrides?.salesEmail ?? "sales@example.com",
+    salesEmailDeliverable: overrides?.salesEmailDeliverable,
     deploymentMode: overrides?.deploymentMode ?? "self_hosted",
     publicAppBaseUrl: overrides?.publicAppBaseUrl ?? "https://vault.example",
     db: {
@@ -100,6 +102,19 @@ test("PlanChangeRequestService rejects missing sales email", async () => {
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "EMAIL_NOT_CONFIGURED",
   );
+});
+
+test("PlanChangeRequestService rejects when outbound email is not deliverable (logger)", async () => {
+  const { service, sent, getMarkCalls } = makeService({
+    salesEmailDeliverable: false,
+  });
+  await assert.rejects(
+    () => service.submit(baseSubmit),
+    (error: unknown) =>
+      error instanceof PlanChangeRequestServiceError && error.code === "EMAIL_NOT_CONFIGURED",
+  );
+  assert.equal(sent.length, 0);
+  assert.equal(getMarkCalls(), 0);
 });
 
 test("PlanChangeRequestService rejects invalid tier and email", async () => {
@@ -229,16 +244,23 @@ test("PlanChangeRequestService SaaS falls back to countMembers when count omitte
   assert.equal(payload.variables.workspaceMemberCount, 9);
 });
 
-test("PlanChangeRequestService getStatus reports submitted flag", async () => {
+test("PlanChangeRequestService getStatus reports submitted flag and deliverability", async () => {
   const pending = makeService({ sentAt: null });
   assert.deepEqual(await pending.service.getStatus({ workspaceId: "ws_1", actorUserId: "user_1" }), {
     submitted: false,
     sentAt: null,
+    salesEmailDeliverable: true,
+    salesEmail: "sales@example.com",
   });
-  const done = makeService({ sentAt: "2026-10-22T12:00:00.000Z" });
+  const done = makeService({
+    sentAt: "2026-10-22T12:00:00.000Z",
+    salesEmailDeliverable: false,
+  });
   assert.deepEqual(await done.service.getStatus({ workspaceId: "ws_1", actorUserId: "user_1" }), {
     submitted: true,
     sentAt: "2026-10-22T12:00:00.000Z",
+    salesEmailDeliverable: false,
+    salesEmail: "sales@example.com",
   });
 });
 

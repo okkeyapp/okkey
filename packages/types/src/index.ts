@@ -1230,6 +1230,15 @@ export interface WorkspacePlanChangeRequestStatusDto {
   submitted: boolean;
   /** ISO timestamp when the request email was sent; null if never submitted. */
   sent_at: string | null;
+  /**
+   * True when the API can deliver the sales/license request email via a real
+   * transport (`smtp` | `ses` | `http-api` with valid config). False for
+   * `EMAIL_PROVIDER=logger` or incomplete provider config — clients should
+   * open `mailto:` instead of the in-app form.
+   */
+  sales_email_deliverable: boolean;
+  /** Sales inbox for mailto fallback (`OKKEY_SALES_EMAIL` / default get-license@okkey.io). */
+  sales_email: string;
 }
 
 /** @deprecated Use WorkspaceBuiltInRoleDto */

@@ -34,4 +34,19 @@ describe("SelfHostedFreePlanSection", () => {
       screen.queryByText("web.workspaceSettings.plan.selfHosted.nonFreeTitle"),
     ).not.toBeInTheDocument();
   });
+
+  it("does not mount the request form popup when core client is unavailable (mailto path)", () => {
+    render(
+      <SelfHostedFreePlanSection
+        workspaceId="ws-1"
+        planTier="FREE"
+        canRequest
+        t={(key) => key}
+      />,
+    );
+
+    expect(
+      screen.queryByText("web.workspaceSettings.plan.selfHosted.requestTitle"),
+    ).not.toBeInTheDocument();
+  });
 });
