@@ -34,12 +34,14 @@ function AlertInfoIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-const FREE_PERMISSION_KEYS = [
-  "unlimitedItems",
-  "itemCategories",
-  "personalVaultOnly",
-  "filesInItems",
-  "totpImportExport",
+/** Top enterprise marketing features for the self-host upsell list. */
+const ENTERPRISE_FEATURE_KEYS = [
+  "unlimitedMembers",
+  "unlimitedSharedVaults",
+  "unlimitedStorage",
+  "customRoles",
+  "customProfiles",
+  "prioritySupport",
 ] as const;
 
 /** Default upgrade target for self-hosted FREE sales inquiries (no plan picker). */
@@ -213,51 +215,42 @@ export default function SelfHostedFreePlanSection({
   const ctaDisabled = !canRequest || !statusReady;
   const sentAtLabel =
     sentAt != null ? formatLicenseRequestSentAt(sentAt, profile.locale) : "";
+  const statusText = showSuccess
+    ? t("web.workspaceSettings.plan.selfHosted.requestStatusSent", { datetime: sentAtLabel })
+    : t("web.workspaceSettings.plan.selfHosted.requestStatusIdle");
+  const ctaLabel = showSuccess
+    ? t("web.workspaceSettings.plan.request.sendAgain")
+    : t("web.workspaceSettings.plan.selfHosted.requestCta");
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
-      <Alert variant="info">
+      <Alert variant="default">
         <AlertInfoIcon className="size-4" />
         <AlertTitle>{t("web.workspaceSettings.plan.selfHosted.freeTitle")}</AlertTitle>
         <AlertDescription>
-          <p className="mb-3">{t("web.workspaceSettings.plan.selfHosted.freeIntro")}</p>
-          <ul className="list-disc space-y-1 pl-5">
-            {FREE_PERMISSION_KEYS.map((key) => (
-              <li key={key}>
-                {t(`web.workspaceSettings.plan.selfHosted.permissions.${key}`)}
-              </li>
-            ))}
-          </ul>
+          <p>{t("web.workspaceSettings.plan.selfHosted.freeIntro")}</p>
         </AlertDescription>
       </Alert>
 
-      {showSuccess ? (
-        <div className="flex flex-col gap-3">
-          <Alert variant="info">
-            <AlertInfoIcon className="size-4" />
-            <AlertTitle>{t("web.workspaceSettings.plan.request.successTitle")}</AlertTitle>
-            <AlertDescription>
-              <p>{t("web.workspaceSettings.plan.request.successBody")}</p>
-              {sentAtLabel ? (
-                <p className="mt-2">
-                  {t("web.workspaceSettings.plan.request.sentAt", { datetime: sentAtLabel })}
-                </p>
-              ) : null}
-            </AlertDescription>
-          </Alert>
-          <div>
-            <Button type="button" variant="outline" disabled={ctaDisabled} onClick={openRequestPopup}>
-              {t("web.workspaceSettings.plan.request.sendAgain")}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div>
+      <Alert variant="info">
+        <AlertInfoIcon className="size-4" />
+        <AlertTitle>{t("plan.enterprise")}</AlertTitle>
+        <AlertDescription>
+          <p className="mb-3">{t("web.workspaceSettings.plan.selfHosted.enterpriseUpsellIntro")}</p>
+          <ul className="mb-3 list-disc space-y-1 pl-5">
+            {ENTERPRISE_FEATURE_KEYS.map((key) => (
+              <li key={key}>
+                {t(`web.workspaceSettings.plan.selfHosted.enterpriseFeatures.${key}`)}
+              </li>
+            ))}
+            <li>{t("web.workspaceSettings.plan.selfHosted.enterpriseFeatures.andMore")}</li>
+          </ul>
+          <p className="mb-3">{statusText}</p>
           <Button type="button" disabled={ctaDisabled} onClick={openRequestPopup}>
-            {t("web.workspaceSettings.plan.selfHosted.requestCta")}
+            {ctaLabel}
           </Button>
-        </div>
-      )}
+        </AlertDescription>
+      </Alert>
 
       <SelfHostedSalesRequestPopup
         open={popupOpen}

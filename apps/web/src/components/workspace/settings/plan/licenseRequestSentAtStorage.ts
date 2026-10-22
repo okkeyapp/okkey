@@ -36,11 +36,13 @@ export function formatLicenseRequestSentAt(iso: string, locale: string): string 
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
+  // e.g. RU `22.10.2026, 16:13` / EN-GB `22/10/2026, 16:13`
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-GB", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hourCycle: "h23",
   }).format(date);
 }

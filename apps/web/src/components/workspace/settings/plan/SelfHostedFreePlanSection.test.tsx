@@ -40,7 +40,7 @@ describe("SelfHostedFreePlanSection", () => {
     writeSentAt.mockReset();
   });
 
-  it("shows FREE notice and sales CTA even when planTier prop is ENTERPRISE", () => {
+  it("shows FREE note + enterprise info CTA even when planTier prop is ENTERPRISE", () => {
     render(
       <SelfHostedFreePlanSection
         workspaceId="ws-1"
@@ -51,6 +51,10 @@ describe("SelfHostedFreePlanSection", () => {
     );
 
     expect(screen.getByText("web.workspaceSettings.plan.selfHosted.freeTitle")).toBeInTheDocument();
+    expect(screen.getByText("plan.enterprise")).toBeInTheDocument();
+    expect(
+      screen.getByText("web.workspaceSettings.plan.selfHosted.requestStatusIdle"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
     ).toBeInTheDocument();
@@ -103,7 +107,7 @@ describe("SelfHostedFreePlanSection", () => {
     expect(mailtoHref).toContain("Reply%20email%3A%20reply%40okkey.local");
     expect(mailtoHref).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
     expect(
-      screen.getByText("web.workspaceSettings.plan.request.successTitle"),
+      screen.getByText(/web\.workspaceSettings\.plan\.selfHosted\.requestStatusSent/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
@@ -112,7 +116,7 @@ describe("SelfHostedFreePlanSection", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows success with send-again when SMTP deliverable and submitted", async () => {
+  it("shows sent status with send-again when SMTP deliverable and submitted", async () => {
     getStatus.mockResolvedValue({
       submitted: true,
       sent_at: "2026-10-22T12:00:00.000Z",
@@ -135,7 +139,7 @@ describe("SelfHostedFreePlanSection", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("web.workspaceSettings.plan.request.successTitle"),
+        screen.getByText(/web\.workspaceSettings\.plan\.selfHosted\.requestStatusSent/),
       ).toBeInTheDocument();
     });
     expect(
@@ -145,7 +149,7 @@ describe("SelfHostedFreePlanSection", () => {
       screen.queryByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("web.workspaceSettings.plan.selfHosted.alreadySentTitle"),
+      screen.queryByText("web.workspaceSettings.plan.request.successTitle"),
     ).not.toBeInTheDocument();
   });
 
