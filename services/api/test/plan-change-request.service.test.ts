@@ -5,6 +5,7 @@ import {
   PlanChangeRequestService,
   PlanChangeRequestServiceError,
 } from "../src/plan-change-request/service.ts";
+import type { DeploymentMode } from "../src/config.ts";
 
 function makeService(overrides?: {
   planTier?: string;
@@ -13,13 +14,14 @@ function makeService(overrides?: {
   sentAt?: string | null;
   memberCount?: number;
   publicAppBaseUrl?: string;
+  deploymentMode?: DeploymentMode;
   markSent?: () => Promise<boolean>;
 }) {
   const sent: unknown[] = [];
   let markCalls = 0;
   const service = new PlanChangeRequestService({
     salesEmail: overrides?.salesEmail ?? "sales@example.com",
-    deploymentMode: "self_hosted",
+    deploymentMode: overrides?.deploymentMode ?? "self_hosted",
     publicAppBaseUrl: overrides?.publicAppBaseUrl ?? "https://vault.example",
     db: {
       query: async (sql: string) => {
@@ -81,18 +83,20 @@ function makeService(overrides?: {
   return { service, sent, getMarkCalls: () => markCalls };
 }
 
+const baseSubmit = {
+  workspaceId: "ws_1",
+  actorUserId: "user_1",
+  requestedPlanTier: "ENTERPRISE",
+  contactEmail: "a@b.co",
+  locale: "ru",
+  region: "RU" as string | null,
+  workspaceMemberCount: 3,
+};
+
 test("PlanChangeRequestService rejects missing sales email", async () => {
   const { service } = makeService({ salesEmail: "  " });
   await assert.rejects(
-    () =>
-      service.submit({
-        workspaceId: "ws_1",
-        actorUserId: "user_1",
-        requestedPlanTier: "PREMIUM",
-        contactEmail: "a@b.co",
-        locale: "ru",
-        region: "RU",
-      }),
+    () => service.submit({ ...baseSubmit, requestedPlanTier: "PREMIUM" }),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "EMAIL_NOT_CONFIGURED",
   );
@@ -103,12 +107,9 @@ test("PlanChangeRequestService rejects invalid tier and email", async () => {
   await assert.rejects(
     () =>
       service.submit({
-        workspaceId: "ws_1",
-        actorUserId: "user_1",
+        ...baseSubmit,
         requestedPlanTier: "PREMIUM",
         contactEmail: "not-an-email",
-        locale: "ru",
-        region: "RU",
       }),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "INVALID_REQUEST",
@@ -116,12 +117,21 @@ test("PlanChangeRequestService rejects invalid tier and email", async () => {
   await assert.rejects(
     () =>
       service.submit({
-        workspaceId: "ws_1",
-        actorUserId: "user_1",
+        ...baseSubmit,
         requestedPlanTier: "GOLD",
-        contactEmail: "a@b.co",
-        locale: "ru",
-        region: "RU",
+      }),
+    (error: unknown) =>
+      error instanceof PlanChangeRequestServiceError && error.code === "INVALID_REQUEST",
+  );
+});
+
+test("PlanChangeRequestService rejects missing member count on self-hosted", async () => {
+  const { service } = makeService();
+  await assert.rejects(
+    () =>
+      service.submit({
+        ...baseSubmit,
+        workspaceMemberCount: undefined,
       }),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "INVALID_REQUEST",
@@ -133,19 +143,41 @@ test("PlanChangeRequestService rejects when already submitted", async () => {
     sentAt: "2026-10-22T10:00:00.000Z",
   });
   await assert.rejects(
-    () =>
-      service.submit({
-        workspaceId: "ws_1",
-        actorUserId: "user_1",
-        requestedPlanTier: "ENTERPRISE",
-        contactEmail: "a@b.co",
-        locale: "ru",
-        region: null,
-      }),
+    () => service.submit(baseSubmit),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "ALREADY_SUBMITTED",
   );
   assert.equal(sent.length, 0);
+});
+
+test("PlanChangeRequestService allows self-hosted license request when plan_tier is already ENTERPRISE", async () => {
+  const { service, sent, getMarkCalls } = makeService({
+    planTier: "ENTERPRISE",
+  });
+  const result = await service.submit({
+    ...baseSubmit,
+    contactEmail: "reply@corp.example",
+    workspaceMemberCount: 12,
+  });
+  assert.deepEqual(result, { submitted: true });
+  assert.equal(sent.length, 1);
+  const payload = sent[0] as { variables: Record<string, unknown> };
+  assert.equal(payload.variables.currentPlanTier, "ENTERPRISE");
+  assert.equal(payload.variables.requestedPlanTier, "ENTERPRISE");
+  assert.equal(payload.variables.workspaceMemberCount, 12);
+  assert.equal(getMarkCalls(), 1);
+});
+
+test("PlanChangeRequestService still rejects SaaS downgrade / same-tier", async () => {
+  const { service } = makeService({
+    deploymentMode: "saas",
+    planTier: "ENTERPRISE",
+  });
+  await assert.rejects(
+    () => service.submit(baseSubmit),
+    (error: unknown) =>
+      error instanceof PlanChangeRequestServiceError && error.code === "PLAN_DOWNGRADE_FORBIDDEN",
+  );
 });
 
 test("PlanChangeRequestService sends auto fields and marks sent", async () => {
@@ -160,6 +192,7 @@ test("PlanChangeRequestService sends auto fields and marks sent", async () => {
     contactEmail: "reply@corp.example",
     locale: "en",
     region: "US",
+    workspaceMemberCount: 7,
   });
   assert.deepEqual(result, { submitted: true });
   assert.equal(sent.length, 1);
@@ -176,6 +209,24 @@ test("PlanChangeRequestService sends auto fields and marks sent", async () => {
   assert.equal(payload.variables.region, "RU");
   assert.equal(payload.variables.locale, "en");
   assert.equal(getMarkCalls(), 1);
+});
+
+test("PlanChangeRequestService SaaS falls back to countMembers when count omitted", async () => {
+  const { service, sent } = makeService({
+    deploymentMode: "saas",
+    planTier: "FREE",
+    memberCount: 9,
+  });
+  await service.submit({
+    workspaceId: "ws_1",
+    actorUserId: "user_1",
+    requestedPlanTier: "TEAM",
+    contactEmail: "a@b.co",
+    locale: "en",
+    region: null,
+  });
+  const payload = sent[0] as { variables: Record<string, unknown> };
+  assert.equal(payload.variables.workspaceMemberCount, 9);
 });
 
 test("PlanChangeRequestService getStatus reports submitted flag", async () => {
@@ -198,15 +249,7 @@ test("PlanChangeRequestService does not mark sent when email fails", async () =>
     },
   });
   await assert.rejects(
-    () =>
-      service.submit({
-        workspaceId: "ws_1",
-        actorUserId: "user_1",
-        requestedPlanTier: "ENTERPRISE",
-        contactEmail: "a@b.co",
-        locale: "ru",
-        region: "RU",
-      }),
+    () => service.submit(baseSubmit),
     (error: unknown) =>
       error instanceof PlanChangeRequestServiceError && error.code === "EMAIL_SEND_FAILED",
   );

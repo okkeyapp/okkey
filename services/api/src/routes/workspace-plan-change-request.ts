@@ -14,6 +14,7 @@ type PlanChangeRequestBody = {
   contact_email?: unknown;
   locale?: unknown;
   region?: unknown;
+  workspace_member_count?: unknown;
 };
 
 export function createWorkspacePlanChangeRequestStatusRoute(
@@ -97,6 +98,13 @@ export function createWorkspacePlanChangeRequestRoute(
           ? body.region.trim().toUpperCase()
           : "";
     const region = regionRaw === "" ? null : regionRaw;
+    const workspaceMemberCountRaw = body.workspace_member_count;
+    let workspaceMemberCount: number | undefined;
+    if (typeof workspaceMemberCountRaw === "number") {
+      workspaceMemberCount = workspaceMemberCountRaw;
+    } else if (typeof workspaceMemberCountRaw === "string" && workspaceMemberCountRaw.trim()) {
+      workspaceMemberCount = Number(workspaceMemberCountRaw.trim());
+    }
 
     try {
       const result = await service.submit({
@@ -106,6 +114,7 @@ export function createWorkspacePlanChangeRequestRoute(
         contactEmail,
         locale,
         region,
+        workspaceMemberCount,
       });
       json(ctx.res, 200, result);
     } catch (error) {

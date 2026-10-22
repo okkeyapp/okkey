@@ -48,6 +48,11 @@ export type PlanChangeRequestInput = {
   contactEmail: string;
   locale: string;
   region: string | null;
+  /**
+   * Expected seats / members from the form (integer ≥ 1).
+   * Required on self-hosted; SaaS may omit (server falls back to live member count).
+   */
+  workspaceMemberCount?: number;
 };
 
 /** Sales-facing label: `saas` | `self-hosted`. */
@@ -149,6 +154,21 @@ export class PlanChangeRequestService {
     const locale =
       input.locale === "ru" || input.locale === "en" ? input.locale : "en";
 
+    const rawMemberCount = input.workspaceMemberCount;
+    const clientMemberCountValid =
+      typeof rawMemberCount === "number" &&
+      Number.isInteger(rawMemberCount) &&
+      Number.isSafeInteger(rawMemberCount) &&
+      rawMemberCount >= 1;
+
+    if (this.deploymentMode !== "saas" && !clientMemberCountValid) {
+      throw new PlanChangeRequestServiceError(
+        "INVALID_REQUEST",
+        400,
+        "workspace member count must be an integer >= 1",
+      );
+    }
+
     try {
       await assertWorkspacePermission(
         this.db,
@@ -179,7 +199,12 @@ export class PlanChangeRequestService {
     }
 
     const currentPlanTier = normalizePlanTier(workspace.planTier);
-    if (!canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)) {
+    // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB
+    // `plan_tier` (modules gate). Skip the ladder so ENTERPRISE→ENTERPRISE license requests work.
+    if (
+      this.deploymentMode === "saas" &&
+      !canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)
+    ) {
       throw new PlanChangeRequestServiceError(
         "PLAN_DOWNGRADE_FORBIDDEN",
         400,
@@ -196,7 +221,9 @@ export class PlanChangeRequestService {
       input.region && /^[A-Z]{2}$/.test(input.region) ? input.region : null;
     const region = regionFromProfile ?? regionFromInput;
 
-    const workspaceMemberCount = await this.workspaces.countMembers(input.workspaceId);
+    const workspaceMemberCount = clientMemberCountValid
+      ? (rawMemberCount as number)
+      : await this.workspaces.countMembers(input.workspaceId);
     const workspaceUrl = this.publicAppBaseUrl;
 
     try {

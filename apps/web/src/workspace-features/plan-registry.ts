@@ -6,6 +6,8 @@ export type WorkspaceSettingsPlanSectionProps = {
   planTier: string | null | undefined;
   t: (messageKey: string, values?: WebMessageValues) => string;
   canRequest: boolean;
+  /** Workspace display name for license-request auto fields (optional). */
+  workspaceName?: string;
 };
 
 /**

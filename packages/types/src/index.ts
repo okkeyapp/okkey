@@ -1213,6 +1213,11 @@ export interface WorkspacePlanChangeRequestDto {
    * Server prefers the account billing region when set.
    */
   region: string | null;
+  /**
+   * Expected workspace member / seat count from the license request form (integer ≥ 1).
+   * Required for self-hosted license purchase requests; SaaS may omit (server counts members).
+   */
+  workspace_member_count?: number;
 }
 
 /** `POST /workspaces/:workspaceId/plan-change-requests` success body. */

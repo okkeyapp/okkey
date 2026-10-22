@@ -201,6 +201,7 @@ export default function WorkspaceSettingsPage({
               <PlanSection
                 workspaceId={workspaceId}
                 planTier={webDisplayPlanTier(workspace)}
+                workspaceName={workspace?.name}
                 t={t}
                 canRequest={Boolean(sectionPermissions && sectionPermissions.put >= 1)}
               />

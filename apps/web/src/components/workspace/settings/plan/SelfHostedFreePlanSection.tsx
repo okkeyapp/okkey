@@ -45,6 +45,8 @@ type SelfHostedFreePlanSectionProps = {
   planTier: string | null | undefined;
   t: (messageKey: string, values?: WebMessageValues) => string;
   canRequest: boolean;
+  /** Workspace display name for auto hidden fields. */
+  workspaceName?: string;
 };
 
 /**
@@ -56,6 +58,7 @@ export default function SelfHostedFreePlanSection({
   workspaceId,
   t,
   canRequest,
+  workspaceName = "",
 }: SelfHostedFreePlanSectionProps) {
   const core = useAuthenticatedCoreClient();
   const profile = usePlanRequestProfile();
@@ -66,6 +69,9 @@ export default function SelfHostedFreePlanSection({
   const [success, setSuccess] = useState(false);
   const [alreadySent, setAlreadySent] = useState(false);
   const [statusReady, setStatusReady] = useState(false);
+
+  const workspaceUrl =
+    typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +105,7 @@ export default function SelfHostedFreePlanSection({
     contactEmail: string;
     locale: "en" | "ru";
     region: RegionCode | null;
+    workspaceMemberCount: number;
   }) {
     if (!core || alreadySent) {
       return;
@@ -111,6 +118,7 @@ export default function SelfHostedFreePlanSection({
         contact_email: input.contactEmail,
         locale: input.locale,
         region: input.region,
+        workspace_member_count: input.workspaceMemberCount,
       });
       setSuccess(true);
       setAlreadySent(true);
@@ -180,6 +188,9 @@ export default function SelfHostedFreePlanSection({
         initialLocale={profile.locale}
         initialRegion={profile.region}
         initialEmail={profile.email}
+        senderEmail={profile.email}
+        workspaceName={workspaceName}
+        workspaceUrl={workspaceUrl}
         submitting={submitting}
         errorMessage={submitError}
         success={success}
