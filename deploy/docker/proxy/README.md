@@ -23,6 +23,7 @@ Classical-only clients are **not** on the default route. Optional **compat liste
 | `scripts/gen-self-signed.sh` | Local smoke certs (not for production) |
 | `verify-tls.sh` | `s_client` + TLS 1.2 rejection check |
 | `verify-compat.sh` | Strict rejects classical-only; optional compat host accepts classical |
+| `rollback-drill.sh` | Exercise 6.19 rollback checklist once (compat enable → restore hybrid default) |
 
 ## Quick start (overlay on existing install)
 
@@ -131,3 +132,18 @@ OKKEY_COMPAT_SUNSET=2026-12-31
 OKKEY_COMPAT_OWNER=sre-oncall@example.com
 # OKKEY_COMPAT_ALLOW_CIDRS=10.0.0.0/8
 ```
+
+## Rollback drill (6.19)
+
+Approved emergency path: enable the pre-approved **compat** profile on isolated hosts, keep HTTPS, then restore hybrid-only default (`OKKEY_COMPAT_ENABLED=0`). Never put classical curves on the strict default `server_name`.
+
+```bash
+# Dry-run against manifests (no live edge required):
+./proxy/rollback-drill.sh
+
+# After a live enable/restore on real hosts (OpenSSL ≥ 3.5 client):
+STRICT_HOST=app.example.com COMPAT_HOST=compat-app.example.com ./proxy/rollback-drill.sh
+./proxy/verify-tls.sh app.example.com 443
+```
+
+Evidence: `docs/security/6.19-tls-transport-qday-evidence.md` §1 / §4.

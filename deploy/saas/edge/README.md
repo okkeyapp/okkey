@@ -73,4 +73,17 @@ openssl s_client -connect app.stage.okkey.app:443 -tls1_3 \
 curl -I --tls-max 1.2 https://app.stage.okkey.app/   # must fail
 ```
 
-Expect negotiated group **`X25519MLKEM768`**. Capture the snippet for the later evidence subtask (q3-5); do not put secrets in the record.
+Expect negotiated group **`X25519MLKEM768`**. Capture the snippet for the evidence record; do not put secrets in the record.
+
+## Rollback drill (6.19)
+
+Same approved path as self-host: enable isolated classical compat hosts → restore `OKKEY_COMPAT_ENABLED=0`. Shared script:
+
+```bash
+../../docker/proxy/rollback-drill.sh
+# optional live hosts:
+STRICT_HOST=app.stage.okkey.app COMPAT_HOST=compat-app.stage.okkey.app \
+  ../../docker/proxy/rollback-drill.sh
+```
+
+See `deploy/docker/proxy/README.md` § Rollback drill and evidence §1 / §4.
