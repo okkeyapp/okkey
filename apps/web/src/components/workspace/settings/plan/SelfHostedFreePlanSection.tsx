@@ -15,21 +15,60 @@ import {
 import SelfHostedSalesRequestPopup from "./SelfHostedSalesRequestPopup";
 import { usePlanRequestProfile } from "./usePlanRequestProfile";
 
-function AlertInfoIcon(props: SVGProps<SVGSVGElement>) {
+/** Checkmark-in-circle for FREE current-plan Note alert. */
+function PlanCheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden {...props}>
+      <path
+        d="M14.6673 7.38723V8.00056C14.6665 9.43818 14.201 10.837 13.3402 11.9884C12.4794 13.1399 11.2695 13.9822 9.89089 14.3898C8.51227 14.7974 7.03882 14.7485 5.6903 14.2503C4.34177 13.7521 3.19042 12.8313 2.40796 11.6253C1.6255 10.4193 1.25385 8.9926 1.34844 7.5581C1.44303 6.1236 1.99879 4.75811 2.93284 3.66528C3.86689 2.57244 5.12917 1.81082 6.53144 1.49399C7.93371 1.17717 9.40083 1.32212 10.714 1.90723M6.00065 7.33382L8.00065 9.33382L14.6673 2.66715"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Building for Enterprise Info alert (upsell on FREE). */
+function PlanBuildingIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
       aria-hidden
       {...props}
     >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4" />
-      <path d="M12 8h.01" />
+      <path d="M2 14H14" strokeLinecap="round" strokeLinejoin="round" stroke="currentColor" />
+      <path d="M6 5.3335H6.66667" strokeLinecap="round" strokeLinejoin="round" stroke="currentColor" />
+      <path d="M6 8H6.66667" strokeLinecap="round" strokeLinejoin="round" stroke="currentColor" />
+      <path
+        d="M6 10.6665H6.66667"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        stroke="currentColor"
+      />
+      <path
+        d="M9.33337 5.3335H10"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        stroke="currentColor"
+      />
+      <path d="M9.33337 8H10" strokeLinecap="round" strokeLinejoin="round" stroke="currentColor" />
+      <path
+        d="M9.33337 10.6665H10"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        stroke="currentColor"
+      />
+      <path
+        d="M3.33337 14V3.33333C3.33337 2.97971 3.47385 2.64057 3.7239 2.39052C3.97395 2.14048 4.31309 2 4.66671 2H11.3334C11.687 2 12.0261 2.14048 12.2762 2.39052C12.5262 2.64057 12.6667 2.97971 12.6667 3.33333V14"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        stroke="currentColor"
+      />
     </svg>
   );
 }
@@ -225,7 +264,7 @@ export default function SelfHostedFreePlanSection({
   return (
     <div className="flex max-w-xl flex-col gap-6">
       <Alert variant="default">
-        <AlertInfoIcon className="size-4" />
+        <PlanCheckIcon className="size-4 shrink-0" />
         <AlertTitle>{t("web.workspaceSettings.plan.selfHosted.freeTitle")}</AlertTitle>
         <AlertDescription>
           <p>{t("web.workspaceSettings.plan.selfHosted.freeIntro")}</p>
@@ -233,7 +272,7 @@ export default function SelfHostedFreePlanSection({
       </Alert>
 
       <Alert variant="info">
-        <AlertInfoIcon className="size-4" />
+        <PlanBuildingIcon className="size-4 shrink-0" />
         <AlertTitle>{t("plan.enterprise")}</AlertTitle>
         <AlertDescription>
           <p className="mb-3">{t("web.workspaceSettings.plan.selfHosted.enterpriseUpsellIntro")}</p>
