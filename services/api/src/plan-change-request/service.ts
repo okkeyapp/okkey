@@ -17,6 +17,7 @@ export class PlanChangeRequestServiceError extends Error {
     | "WORKSPACE_NOT_FOUND"
     | "INVALID_REQUEST"
     | "PLAN_DOWNGRADE_FORBIDDEN"
+    | "ALREADY_SUBMITTED"
     | "EMAIL_NOT_CONFIGURED"
     | "EMAIL_SEND_FAILED";
   readonly status: number;
@@ -27,6 +28,7 @@ export class PlanChangeRequestServiceError extends Error {
       | "WORKSPACE_NOT_FOUND"
       | "INVALID_REQUEST"
       | "PLAN_DOWNGRADE_FORBIDDEN"
+      | "ALREADY_SUBMITTED"
       | "EMAIL_NOT_CONFIGURED"
       | "EMAIL_SEND_FAILED",
     status: number,
@@ -46,8 +48,6 @@ export type PlanChangeRequestInput = {
   contactEmail: string;
   locale: string;
   region: string | null;
-  /** Expected number of workspace members / seats (integer ≥ 1). */
-  workspaceMemberCount: number;
 };
 
 /** Sales-facing label: `saas` | `self-hosted`. */
@@ -57,19 +57,27 @@ export function salesDeploymentLabel(mode: DeploymentMode): "saas" | "self-hoste
 
 export class PlanChangeRequestService {
   private readonly db: QueryExecutor;
-  private readonly workspaces: Pick<WorkspacesRepository, "findById">;
+  private readonly workspaces: Pick<
+    WorkspacesRepository,
+    "findById" | "countMembers" | "markPlanChangeRequestSent"
+  >;
   private readonly users: Pick<UsersRepository, "loadAccountProfile">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
   private readonly salesEmail: string;
   private readonly deploymentMode: DeploymentMode;
+  private readonly publicAppBaseUrl: string;
 
   constructor(deps: {
     db: QueryExecutor;
-    workspaces: Pick<WorkspacesRepository, "findById">;
+    workspaces: Pick<
+      WorkspacesRepository,
+      "findById" | "countMembers" | "markPlanChangeRequestSent"
+    >;
     users: Pick<UsersRepository, "loadAccountProfile">;
     emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
     salesEmail: string;
     deploymentMode: DeploymentMode;
+    publicAppBaseUrl?: string;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
@@ -77,6 +85,38 @@ export class PlanChangeRequestService {
     this.emailTemplates = deps.emailTemplates;
     this.salesEmail = deps.salesEmail.trim();
     this.deploymentMode = deps.deploymentMode;
+    this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+  }
+
+  async getStatus(input: {
+    workspaceId: string;
+    actorUserId: string;
+  }): Promise<{ submitted: boolean; sentAt: string | null }> {
+    try {
+      await assertWorkspacePermission(
+        this.db,
+        input.workspaceId,
+        input.actorUserId,
+        "billing",
+        "get",
+      );
+    } catch {
+      throw new PlanChangeRequestServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+
+    const workspace = await this.workspaces.findById(input.workspaceId);
+    if (!workspace) {
+      throw new PlanChangeRequestServiceError(
+        "WORKSPACE_NOT_FOUND",
+        404,
+        "workspace not found",
+      );
+    }
+
+    return {
+      submitted: workspace.planChangeRequestSentAt != null,
+      sentAt: workspace.planChangeRequestSentAt,
+    };
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
@@ -108,20 +148,6 @@ export class PlanChangeRequestService {
 
     const locale =
       input.locale === "ru" || input.locale === "en" ? input.locale : "en";
-    const region =
-      input.region && /^[A-Z]{2}$/.test(input.region) ? input.region : null;
-    const workspaceMemberCount = input.workspaceMemberCount;
-    if (
-      !Number.isInteger(workspaceMemberCount) ||
-      workspaceMemberCount < 1 ||
-      !Number.isFinite(workspaceMemberCount)
-    ) {
-      throw new PlanChangeRequestServiceError(
-        "INVALID_REQUEST",
-        400,
-        "workspace member count must be an integer >= 1",
-      );
-    }
 
     try {
       await assertWorkspacePermission(
@@ -144,6 +170,14 @@ export class PlanChangeRequestService {
       );
     }
 
+    if (workspace.planChangeRequestSentAt != null) {
+      throw new PlanChangeRequestServiceError(
+        "ALREADY_SUBMITTED",
+        409,
+        "plan change request already submitted",
+      );
+    }
+
     const currentPlanTier = normalizePlanTier(workspace.planTier);
     if (!canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)) {
       throw new PlanChangeRequestServiceError(
@@ -154,6 +188,16 @@ export class PlanChangeRequestService {
     }
 
     const profile = await this.users.loadAccountProfile(input.actorUserId);
+    const regionFromProfile =
+      profile?.billingRegion && /^[A-Z]{2}$/.test(profile.billingRegion)
+        ? profile.billingRegion
+        : null;
+    const regionFromInput =
+      input.region && /^[A-Z]{2}$/.test(input.region) ? input.region : null;
+    const region = regionFromProfile ?? regionFromInput;
+
+    const workspaceMemberCount = await this.workspaces.countMembers(input.workspaceId);
+    const workspaceUrl = this.publicAppBaseUrl;
 
     try {
       await this.emailTemplates.sendPlanChangeRequest({
@@ -165,6 +209,7 @@ export class PlanChangeRequestService {
         variables: {
           workspaceId: workspace.id,
           workspaceName: workspace.name,
+          workspaceUrl,
           currentPlanTier,
           requestedPlanTier,
           contactEmail,
@@ -183,6 +228,8 @@ export class PlanChangeRequestService {
         error instanceof Error ? error.message : "email send failed",
       );
     }
+
+    await this.workspaces.markPlanChangeRequestSent(input.workspaceId);
 
     return { submitted: true };
   }

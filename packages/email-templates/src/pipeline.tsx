@@ -461,6 +461,7 @@ export async function renderPlanChangeRequest(
     "deploymentMode",
     "actorUserId",
   ]);
+  // workspaceUrl may be empty when PUBLIC_APP_URL is unset; rendered as "—".
   const subject = formatEmailMessage(locale, "email.planChangeRequest.subject", {
     plan: variables.requestedPlanTier,
     workspaceName: variables.workspaceName,
@@ -470,6 +471,9 @@ export async function renderPlanChangeRequest(
     formatEmailMessage(locale, "email.planChangeRequest.workspace", {
       workspaceName: variables.workspaceName,
       workspaceId: variables.workspaceId,
+    }),
+    formatEmailMessage(locale, "email.planChangeRequest.workspaceUrl", {
+      url: variables.workspaceUrl.trim() || "—",
     }),
     formatEmailMessage(locale, "email.planChangeRequest.deploymentMode", {
       mode: variables.deploymentMode,

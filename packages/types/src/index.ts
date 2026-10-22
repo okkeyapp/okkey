@@ -140,6 +140,11 @@ export interface Workspace {
   logoVaultId?: string | null;
   /** Encrypted logo attachment id. */
   logoAttachmentId?: string | null;
+  /**
+   * When set, a plan-change / license purchase request email was already sent for this workspace.
+   * ISO timestamp string from the API.
+   */
+  planChangeRequestSentAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1201,17 +1206,25 @@ export interface WorkspacePlanChangeRequestDto {
   requested_plan_tier: PlanTier;
   /** Contact email for sales follow-up (defaults to account email when omitted). */
   contact_email: string;
-  /** UI locale (`en` | `ru`). */
+  /** UI locale (`en` | `ru`); server may also use account locale. */
   locale: string;
-  /** Billing region ISO 3166-1 alpha-2, or empty when unset. */
+  /**
+   * Billing region ISO 3166-1 alpha-2 hint from the client (browser detect).
+   * Server prefers the account billing region when set.
+   */
   region: string | null;
-  /** Expected number of workspace members / seats (integer ≥ 1). */
-  workspace_member_count: number;
 }
 
 /** `POST /workspaces/:workspaceId/plan-change-requests` success body. */
 export interface WorkspacePlanChangeRequestResponseDto {
   submitted: true;
+}
+
+/** `GET /workspaces/:workspaceId/plan-change-requests` status body. */
+export interface WorkspacePlanChangeRequestStatusDto {
+  submitted: boolean;
+  /** ISO timestamp when the request email was sent; null if never submitted. */
+  sent_at: string | null;
 }
 
 /** @deprecated Use WorkspaceBuiltInRoleDto */

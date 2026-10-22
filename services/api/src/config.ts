@@ -77,8 +77,8 @@ export interface ApiConfig {
   publicAppBaseUrl: string;
   emailFrom: string;
   /**
-   * Sales inbox for workspace plan-change requests (manual fulfillment).
-   * Override with `OKKEY_SALES_EMAIL`. Defaults: local/dev → aleksandr-zoryn@ya.ru; else hello@okkey.io.
+   * Sales inbox for workspace plan-change / license purchase requests (manual fulfillment).
+   * Override with `OKKEY_SALES_EMAIL`. Defaults: local/dev → aleksandr-zoryn@ya.ru; else get-license@okkey.io.
    */
   salesEmail: string;
   emailProvider: EmailProvider;
@@ -304,7 +304,7 @@ function parseDeploymentMode(value: string | undefined): DeploymentMode {
   throw new Error(`OKKEY_DEPLOYMENT_MODE must be "self_hosted" or "saas", got: ${value}`);
 }
 
-/** Sales inbox for plan-change request emails (`OKKEY_SALES_EMAIL`). */
+/** Sales inbox for plan-change / license purchase request emails (`OKKEY_SALES_EMAIL`). */
 function resolveSalesEmail(nodeEnv: NodeEnv, raw: string | undefined): string {
   const trimmed = raw?.trim() ?? "";
   if (trimmed) {
@@ -313,7 +313,7 @@ function resolveSalesEmail(nodeEnv: NodeEnv, raw: string | undefined): string {
   if (nodeEnv === "development" || nodeEnv === "test") {
     return "aleksandr-zoryn@ya.ru";
   }
-  return "hello@okkey.io";
+  return "get-license@okkey.io";
 }
 
 export function loadConfig(): ApiConfig {

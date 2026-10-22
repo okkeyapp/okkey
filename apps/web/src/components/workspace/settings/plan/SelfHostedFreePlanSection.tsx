@@ -2,7 +2,7 @@ import type { WebMessageValues } from "@okkey/i18n";
 import { Alert, AlertDescription, AlertTitle, Button } from "@okkey/ui";
 import { ApiRequestError } from "@okkey/api";
 import type { SVGProps } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import type { RegionCode } from "../../../../regions/regions";
@@ -64,14 +64,43 @@ export default function SelfHostedFreePlanSection({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [alreadySent, setAlreadySent] = useState(false);
+  const [statusReady, setStatusReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatusReady(false);
+    void (async () => {
+      if (!core) {
+        if (!cancelled) {
+          setStatusReady(true);
+        }
+        return;
+      }
+      try {
+        const status = await core.getWorkspacePlanChangeRequestStatus(workspaceId);
+        if (!cancelled) {
+          setAlreadySent(status.submitted);
+        }
+      } catch {
+        /* best-effort; CTA stays available until a successful submit */
+      } finally {
+        if (!cancelled) {
+          setStatusReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core, workspaceId]);
 
   async function handleSubmit(input: {
     contactEmail: string;
     locale: "en" | "ru";
     region: RegionCode | null;
-    workspaceMemberCount: number;
   }) {
-    if (!core) {
+    if (!core || alreadySent) {
       return;
     }
     setSubmitting(true);
@@ -82,10 +111,17 @@ export default function SelfHostedFreePlanSection({
         contact_email: input.contactEmail,
         locale: input.locale,
         region: input.region,
-        workspace_member_count: input.workspaceMemberCount,
       });
       setSuccess(true);
+      setAlreadySent(true);
     } catch (error) {
+      if (error instanceof ApiRequestError && error.body.error === "ALREADY_SUBMITTED") {
+        setAlreadySent(true);
+        setPopupOpen(false);
+        setSuccess(false);
+        setSubmitError(null);
+        return;
+      }
       const message =
         error instanceof ApiRequestError
           ? error.message
@@ -95,6 +131,8 @@ export default function SelfHostedFreePlanSection({
       setSubmitting(false);
     }
   }
+
+  const ctaDisabled = !canRequest || !statusReady || alreadySent;
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
@@ -113,19 +151,29 @@ export default function SelfHostedFreePlanSection({
         </AlertDescription>
       </Alert>
 
-      <div>
-        <Button
-          type="button"
-          disabled={!canRequest}
-          onClick={() => {
-            setPopupOpen(true);
-            setSuccess(false);
-            setSubmitError(null);
-          }}
-        >
-          {t("web.workspaceSettings.plan.selfHosted.requestCta")}
-        </Button>
-      </div>
+      {alreadySent ? (
+        <Alert variant="info">
+          <AlertInfoIcon className="size-4" />
+          <AlertTitle>{t("web.workspaceSettings.plan.selfHosted.alreadySentTitle")}</AlertTitle>
+          <AlertDescription>
+            {t("web.workspaceSettings.plan.selfHosted.alreadySentBody")}
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <div>
+          <Button
+            type="button"
+            disabled={ctaDisabled}
+            onClick={() => {
+              setPopupOpen(true);
+              setSuccess(false);
+              setSubmitError(null);
+            }}
+          >
+            {t("web.workspaceSettings.plan.selfHosted.requestCta")}
+          </Button>
+        </div>
+      )}
 
       <SelfHostedSalesRequestPopup
         open={popupOpen}

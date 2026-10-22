@@ -6,21 +6,13 @@ import {
   Button,
   Input,
   Popup,
-  SearchableSelect,
-  SearchableSelectContent,
-  SearchableSelectItem,
-  SearchableSelectTrigger,
 } from "@okkey/ui";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
-  detectBrowserRegion,
-  formatRegionName,
   normalizeRegionCode,
-  REGION_CODES,
   type RegionCode,
 } from "../../../../regions/regions";
-import { parseMemberCount } from "./parseMemberCount";
 
 type SelfHostedSalesRequestPopupProps = {
   open: boolean;
@@ -36,11 +28,13 @@ type SelfHostedSalesRequestPopupProps = {
     contactEmail: string;
     locale: WebLocale;
     region: RegionCode | null;
-    workspaceMemberCount: number;
   }) => void;
 };
 
-/** Self-hosted FREE sales contact: member count + region + email (locale sent silently). */
+/**
+ * Self-hosted FREE license request: contact email only.
+ * Workspace name/URL/region/locale/sender/member count are filled server-side (or silently from profile).
+ */
 export default function SelfHostedSalesRequestPopup({
   open,
   initialLocale,
@@ -54,31 +48,16 @@ export default function SelfHostedSalesRequestPopup({
   onSubmit,
 }: SelfHostedSalesRequestPopupProps) {
   const formId = useId();
-  const [region, setRegion] = useState<RegionCode | null>(
-    () => normalizeRegionCode(initialRegion) ?? detectBrowserRegion(),
-  );
   const [email, setEmail] = useState(initialEmail);
-  const [memberCountInput, setMemberCountInput] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    setRegion(normalizeRegionCode(initialRegion) ?? detectBrowserRegion());
     setEmail(initialEmail);
-    setMemberCountInput("");
     setLocalError(null);
-  }, [open, initialRegion, initialEmail]);
-
-  const regionOptions = useMemo(
-    () =>
-      REGION_CODES.map((code) => ({
-        code,
-        label: formatRegionName(code, initialLocale),
-      })),
-    [initialLocale],
-  );
+  }, [open, initialEmail]);
 
   if (!open) {
     return null;
@@ -92,9 +71,7 @@ export default function SelfHostedSalesRequestPopup({
   }
 
   const emailTrimmed = email.trim();
-  const memberCount = parseMemberCount(memberCountInput);
-  const canSubmit =
-    emailTrimmed.includes("@") && memberCount !== null && !submitting && !success;
+  const canSubmit = emailTrimmed.includes("@") && !submitting && !success;
 
   return (
     <Popup
@@ -133,7 +110,7 @@ export default function SelfHostedSalesRequestPopup({
           className="flex w-full flex-col gap-5"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!canSubmit || memberCount === null) {
+            if (!canSubmit) {
               return;
             }
             if (!emailTrimmed.includes("@") || emailTrimmed.length < 3) {
@@ -144,8 +121,7 @@ export default function SelfHostedSalesRequestPopup({
             onSubmit({
               contactEmail: emailTrimmed,
               locale: initialLocale,
-              region,
-              workspaceMemberCount: memberCount,
+              region: normalizeRegionCode(initialRegion),
             });
           }}
         >
@@ -159,50 +135,6 @@ export default function SelfHostedSalesRequestPopup({
               <AlertDescription>{localError ?? errorMessage}</AlertDescription>
             </Alert>
           )}
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-members`}>
-              {t("web.workspaceSettings.plan.request.memberCountLabel")}
-            </label>
-            <Input
-              id={`${formId}-members`}
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              value={memberCountInput}
-              disabled={submitting}
-              aria-invalid={memberCountInput.trim() !== "" && memberCount === null}
-              onChange={(event) => setMemberCountInput(event.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">
-              {t("web.settingsPopup.general.region")}
-            </span>
-            <SearchableSelect
-              value={region ?? ""}
-              onValueChange={(value) => setRegion(normalizeRegionCode(value))}
-              selectedLabel={region ? formatRegionName(region, initialLocale) : undefined}
-              placeholder={t("web.settingsPopup.general.regionHint")}
-              searchPlaceholder={t("web.settingsPopup.general.regionSearch")}
-              searchEmptyMessage={t("web.settingsPopup.general.regionEmpty")}
-            >
-              <SearchableSelectTrigger className="font-normal" />
-              <SearchableSelectContent>
-                {regionOptions.map((option) => (
-                  <SearchableSelectItem
-                    key={option.code}
-                    value={option.code}
-                    label={option.label}
-                    searchText={`${option.code} ${option.label}`}
-                  >
-                    <span className="truncate">{option.label}</span>
-                  </SearchableSelectItem>
-                ))}
-              </SearchableSelectContent>
-            </SearchableSelect>
-          </div>
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-email`}>

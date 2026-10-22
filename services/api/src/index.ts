@@ -140,6 +140,7 @@ async function main(): Promise<void> {
     emailTemplates,
     salesEmail: config.salesEmail,
     deploymentMode: config.deploymentMode,
+    publicAppBaseUrl: config.publicAppBaseUrl,
   });
   const workspaceBuiltInRolesService = new WorkspaceBuiltInRolesService({
     roles: storage.repositories.workspaceRoles,

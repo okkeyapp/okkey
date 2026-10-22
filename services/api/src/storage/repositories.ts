@@ -384,15 +384,17 @@ export interface WorkspaceRecord {
   tileColor: string | null;
   logoVaultId: string | null;
   logoAttachmentId: string | null;
+  /** ISO timestamp when a plan-change / license request email was sent; null if never. */
+  planChangeRequestSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 const WORKSPACE_SELECT_COLUMNS =
-  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, created_at, updated_at";
+  "id, name, owner_id, plan_tier, plan_custom_override, plan_feature_overrides, deleted_items_retention_days, allowed_file_extensions, max_file_size_mb, files_in_items_enabled, capsule_policies, monitoring_card_settings, tile_color, logo_vault_id, logo_attachment_id, plan_change_request_sent_at, created_at, updated_at";
 
 const WORKSPACE_SELECT_COLUMNS_W =
-  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.created_at, w.updated_at";
+  "w.id, w.name, w.owner_id, w.plan_tier, w.plan_custom_override, w.plan_feature_overrides, w.deleted_items_retention_days, w.allowed_file_extensions, w.max_file_size_mb, w.files_in_items_enabled, w.capsule_policies, w.monitoring_card_settings, w.tile_color, w.logo_vault_id, w.logo_attachment_id, w.plan_change_request_sent_at, w.created_at, w.updated_at";
 
 type WorkspaceRow = BaseRow & {
   name: string;
@@ -409,6 +411,7 @@ type WorkspaceRow = BaseRow & {
   tile_color: string | null;
   logo_vault_id: string | null;
   logo_attachment_id: string | null;
+  plan_change_request_sent_at?: string | Date | null;
 };
 
 export class WorkspacesRepository {
@@ -449,6 +452,31 @@ export class WorkspacesRepository {
       [id],
     );
     return rows[0] ? mapWorkspace(rows[0]) : null;
+  }
+
+  async countMembers(workspaceId: string): Promise<number> {
+    const rows = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM workspace_members WHERE workspace_id = $1`,
+      [workspaceId],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Marks the workspace plan-change request as sent if not already set.
+   * @returns true when this call set the timestamp (first successful send).
+   */
+  async markPlanChangeRequestSent(workspaceId: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        UPDATE workspaces
+        SET plan_change_request_sent_at = now(), updated_at = now()
+        WHERE id = $1 AND plan_change_request_sent_at IS NULL
+        RETURNING id
+      `,
+      [workspaceId],
+    );
+    return rows.length > 0;
   }
 
   async getDeletedItemsRetentionDays(id: string): Promise<number | null> {
@@ -3007,6 +3035,7 @@ function mapUser(
 }
 
 function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
+  const sentAt = row.plan_change_request_sent_at;
   return {
     id: row.id,
     name: row.name,
@@ -3029,6 +3058,12 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     tileColor: row.tile_color,
     logoVaultId: row.logo_vault_id,
     logoAttachmentId: row.logo_attachment_id,
+    planChangeRequestSentAt:
+      sentAt == null
+        ? null
+        : typeof sentAt === "string"
+          ? sentAt
+          : sentAt.toISOString(),
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
