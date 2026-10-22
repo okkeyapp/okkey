@@ -46,9 +46,8 @@ export function buildLicenseMailto(fields: LicenseMailtoFields): string {
     lines.push(`Reply email: ${reply}`);
   }
 
-  const query = new URLSearchParams({
-    subject,
-    body: lines.join("\n"),
-  });
-  return `mailto:${to}?${query.toString()}`;
+  // Mailto clients treat `+` as a literal plus; use encodeURIComponent (%20 for spaces).
+  const subjectEnc = encodeURIComponent(subject);
+  const bodyEnc = encodeURIComponent(lines.join("\n"));
+  return `mailto:${to}?subject=${subjectEnc}&body=${bodyEnc}`;
 }

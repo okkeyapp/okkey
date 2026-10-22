@@ -15,6 +15,10 @@ describe("buildLicenseMailto", () => {
     });
 
     expect(href.startsWith(`mailto:${DEFAULT_LICENSE_SALES_EMAIL}?`)).toBe(true);
+    // Mailto must use %20, not application/x-www-form-urlencoded `+` for spaces.
+    expect(href).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
+    expect(href).toContain("subject=License%20request%3A%20Acme");
+    expect(href).toContain("Workspace%20name%3A%20Acme");
     const query = new URL(href).searchParams;
     expect(query.get("subject")).toBe("License request: Acme");
     const body = query.get("body") ?? "";
@@ -25,6 +29,20 @@ describe("buildLicenseMailto", () => {
     expect(body).toContain("Locale: ru");
     expect(body).toContain("Sender: owner@acme.test");
     expect(body).toContain("Reply email: reply@acme.test");
+  });
+
+  it("encodes multi-word workspace labels with %20 (not +)", () => {
+    const href = buildLicenseMailto({
+      workspaceName: "Okkey team",
+      workspaceUrl: "https://okkey.example",
+      region: null,
+      locale: "en",
+      senderEmail: "a@b.co",
+    });
+    expect(href).toContain("License%20request%3A%20Okkey%20team");
+    expect(href).toContain("Workspace%20name%3A%20Okkey%20team");
+    expect(href).not.toContain("Okkey+team");
+    expect(href).not.toContain("Workspace+name");
   });
 
   it("uses sales_email from API when provided", () => {
