@@ -80,15 +80,12 @@
   "email.contacts.invite.noteIgnore": "If you do not know this person or do not want to help, decline in the app.",
   "email.contacts.invite.textFooterWithUrl": "Respond here: {helpUrl}",
   "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}",
-  "email.planChangeRequest.subject": "Plan request {plan} — {workspaceName}",
-  "email.planChangeRequest.lead": "New Okkey plan change request.",
-  "email.planChangeRequest.workspace": "Workspace: {workspaceName} ({workspaceId})",
-  "email.planChangeRequest.workspaceUrl": "URL: {url}",
-  "email.planChangeRequest.deploymentMode": "Deployment: {mode}",
-  "email.planChangeRequest.contactEmail": "Contact email: {email}",
-  "email.planChangeRequest.accountEmail": "Account email: {email}",
-  "email.planChangeRequest.locale": "Locale: {locale}",
-  "email.planChangeRequest.workspaceMemberCount": "Workspace members: {count}",
-  "email.planChangeRequest.region": "Region: {region}",
-  "email.planChangeRequest.actor": "User: {userId}"
+  "email.planChangeRequest.subject": "License request: {workspaceName}",
+  "email.planChangeRequest.workspaceName": "Workspace name: {value}",
+  "email.planChangeRequest.workspaceUrl": "Workspace URL: {value}",
+  "email.planChangeRequest.members": "Members: {value}",
+  "email.planChangeRequest.region": "Region: {value}",
+  "email.planChangeRequest.locale": "Locale: {value}",
+  "email.planChangeRequest.sender": "Sender: {value}",
+  "email.planChangeRequest.replyEmail": "Reply email: {value}"
 }

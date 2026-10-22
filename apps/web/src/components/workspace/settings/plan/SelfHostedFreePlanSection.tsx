@@ -60,8 +60,8 @@ type SelfHostedFreePlanSectionProps = {
  * Self-host display is driven by modules (this section mounts only when modules are off),
  * not by workspace `plan_tier`.
  *
- * When outbound email is not deliverable (`sales_email_deliverable: false`), the CTA opens
- * a members-only popup, then a prefilled `mailto:` on confirm — same success UI as SMTP.
+ * Same popup for SMTP and mailto (reply email + members + hidden autos). Delivery only:
+ * API send when `sales_email_deliverable`, else prefilled `mailto:` with identical copy.
  */
 export default function SelfHostedFreePlanSection({
   workspaceId,
@@ -142,16 +142,22 @@ export default function SelfHostedFreePlanSection({
     }
   }
 
-  function openMailto(memberCount: number) {
+  function openMailto(input: {
+    contactEmail: string;
+    locale: "en" | "ru";
+    region: RegionCode | null;
+    workspaceMemberCount: number;
+  }) {
     const href = buildLicenseMailto({
       salesEmail,
       workspaceName,
       workspaceUrl,
-      memberCount,
-      region: profile.region,
-      locale: profile.locale,
+      memberCount: input.workspaceMemberCount,
+      region: input.region ?? profile.region,
+      locale: input.locale,
+      emailLocale: input.locale,
       senderEmail: profile.email,
-      replyEmail: profile.email,
+      replyEmail: input.contactEmail,
     });
     window.location.href = href;
   }
@@ -163,7 +169,7 @@ export default function SelfHostedFreePlanSection({
     workspaceMemberCount: number;
   }) {
     if (!salesEmailDeliverable) {
-      openMailto(input.workspaceMemberCount);
+      openMailto(input);
       markSubmitted(new Date().toISOString());
       setPopupOpen(false);
       setSubmitError(null);
@@ -261,7 +267,6 @@ export default function SelfHostedFreePlanSection({
         senderEmail={profile.email}
         workspaceName={workspaceName}
         workspaceUrl={workspaceUrl}
-        requireContactEmail={salesEmailDeliverable}
         submitting={submitting}
         errorMessage={submitError}
         t={t}

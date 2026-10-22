@@ -1,4 +1,8 @@
-import { formatEmailMessage, type EmailLocale } from "@okkey/i18n";
+import {
+  buildLicenseRequestEmailCopy,
+  formatEmailMessage,
+  type EmailLocale,
+} from "@okkey/i18n";
 import { renderEmailHtml, renderEmailPlainText } from "./render-email.js";
 import * as React from "react";
 import { AuthSignInCodeEmail } from "./components/AuthSignInCodeEmail.js";
@@ -461,54 +465,21 @@ export async function renderPlanChangeRequest(
     "deploymentMode",
     "actorUserId",
   ]);
+  // Same plain field list as mailto (logger): subject + body from shared builder.
   // workspaceUrl may be empty when PUBLIC_APP_URL is unset; rendered as "—".
-  const subject = formatEmailMessage(locale, "email.planChangeRequest.subject", {
-    plan: variables.requestedPlanTier,
+  const copy = buildLicenseRequestEmailCopy(locale, {
     workspaceName: variables.workspaceName,
+    workspaceUrl: variables.workspaceUrl,
+    memberCount: variables.workspaceMemberCount,
+    region: variables.region.trim() || null,
+    locale: variables.locale,
+    senderEmail: variables.accountEmail,
+    replyEmail: variables.contactEmail,
   });
-  const lead = formatEmailMessage(locale, "email.planChangeRequest.lead", {});
-  const lines = [
-    formatEmailMessage(locale, "email.planChangeRequest.workspace", {
-      workspaceName: variables.workspaceName,
-      workspaceId: variables.workspaceId,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.workspaceUrl", {
-      url: variables.workspaceUrl.trim() || "—",
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.deploymentMode", {
-      mode: variables.deploymentMode,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.contactEmail", {
-      email: variables.contactEmail,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.accountEmail", {
-      email: variables.accountEmail,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.locale", {
-      locale: variables.locale,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.workspaceMemberCount", {
-      count: String(variables.workspaceMemberCount),
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.region", {
-      region: variables.region.trim() || "—",
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.actor", {
-      userId: variables.actorUserId,
-    }),
-  ];
-  const standard = buildEmailStandardFooterCopy(locale);
-  const plainText = appendStandardFooterPlain([lead, ...lines].join("\n"), standard);
-  const element = (
-    <PlanChangeRequestEmail
-      lead={lead}
-      lines={lines}
-      noReply={standard.noReply}
-      ignoreIfMistake={standard.ignoreIfMistake}
-    />
-  );
+  // Subject + plain body match mailto exactly (no extra lead/footer in text).
+  const element = <PlanChangeRequestEmail lines={copy.lines} />;
   const html = renderEmailHtml(element);
-  return { subject, html, text: plainText };
+  return { subject: copy.subject, html, text: copy.body };
 }
 
 export async function renderEmailTemplate<Id extends EmailTemplateId>(

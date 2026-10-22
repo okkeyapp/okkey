@@ -59,7 +59,7 @@ describe("SelfHostedFreePlanSection", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens members-only popup on mailto path instead of jumping to mailto", async () => {
+  it("opens the same popup on mailto path (reply email + members) then mailto", async () => {
     let mailtoHref = "";
     const locationStub = {
       origin: "http://localhost",
@@ -89,10 +89,9 @@ describe("SelfHostedFreePlanSection", () => {
     expect(
       screen.getAllByText("web.workspaceSettings.plan.selfHosted.requestTitle").length,
     ).toBeGreaterThan(0);
-    expect(
-      screen.queryByLabelText("web.workspaceSettings.plan.request.emailLabel"),
-    ).not.toBeInTheDocument();
 
+    const email = screen.getByLabelText("web.workspaceSettings.plan.request.emailLabel");
+    fireEvent.change(email, { target: { value: "reply@okkey.local" } });
     const members = screen.getByLabelText("web.workspaceSettings.plan.request.memberCountLabel");
     fireEvent.change(members, { target: { value: "7" } });
     fireEvent.click(
@@ -101,6 +100,7 @@ describe("SelfHostedFreePlanSection", () => {
 
     expect(mailtoHref.startsWith("mailto:get-license@okkey.io?")).toBe(true);
     expect(mailtoHref).toContain("Members%3A%207");
+    expect(mailtoHref).toContain("Reply%20email%3A%20reply%40okkey.local");
     expect(mailtoHref).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
     expect(
       screen.getByText("web.workspaceSettings.plan.request.successTitle"),

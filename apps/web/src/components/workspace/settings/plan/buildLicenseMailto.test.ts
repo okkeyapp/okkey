@@ -1,34 +1,37 @@
+import { buildLicenseRequestEmailCopy } from "@okkey/i18n";
 import { describe, expect, it } from "vitest";
 
 import { buildLicenseMailto, DEFAULT_LICENSE_SALES_EMAIL } from "./buildLicenseMailto";
 
 describe("buildLicenseMailto", () => {
-  it("prefills subject/body and defaults sales inbox", () => {
-    const href = buildLicenseMailto({
+  it("prefills subject/body identical to shared builder and defaults sales inbox", () => {
+    const fields = {
       workspaceName: "Acme",
       workspaceUrl: "https://vault.example",
       memberCount: 12,
       region: "RU",
       locale: "ru",
+      emailLocale: "ru",
       senderEmail: "owner@acme.test",
       replyEmail: "reply@acme.test",
-    });
+    };
+    const href = buildLicenseMailto(fields);
+    const copy = buildLicenseRequestEmailCopy("ru", fields);
 
     expect(href.startsWith(`mailto:${DEFAULT_LICENSE_SALES_EMAIL}?`)).toBe(true);
     // Mailto must use %20, not application/x-www-form-urlencoded `+` for spaces.
     expect(href).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
-    expect(href).toContain("subject=License%20request%3A%20Acme");
-    expect(href).toContain("Workspace%20name%3A%20Acme");
     const query = new URL(href).searchParams;
-    expect(query.get("subject")).toBe("License request: Acme");
-    const body = query.get("body") ?? "";
-    expect(body).toContain("Workspace name: Acme");
-    expect(body).toContain("Workspace URL: https://vault.example");
-    expect(body).toContain("Members: 12");
-    expect(body).toContain("Region: RU");
-    expect(body).toContain("Locale: ru");
-    expect(body).toContain("Sender: owner@acme.test");
-    expect(body).toContain("Reply email: reply@acme.test");
+    expect(query.get("subject")).toBe(copy.subject);
+    expect(query.get("body")).toBe(copy.body);
+    expect(copy.subject).toBe("Заявка на лицензию: Acme");
+    expect(copy.body).toContain("Название пространства: Acme");
+    expect(copy.body).toContain("URL пространства: https://vault.example");
+    expect(copy.body).toContain("Участники: 12");
+    expect(copy.body).toContain("Регион: RU");
+    expect(copy.body).toContain("Язык: ru");
+    expect(copy.body).toContain("Отправитель: owner@acme.test");
+    expect(copy.body).toContain("Email для связи: reply@acme.test");
   });
 
   it("encodes multi-word workspace labels with %20 (not +)", () => {

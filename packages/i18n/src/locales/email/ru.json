@@ -79,15 +79,12 @@
   "email.contacts.invite.noteIgnore": "Если вы не знаете этого человека или не хотите помогать — отклоните приглашение в приложении.",
   "email.contacts.invite.textFooterWithUrl": "Ответить: {helpUrl}",
   "email.contacts.invite.plain": "{lead}\n{detailLine}\n{whatToDo}\n{footer}\n{noteIgnore}",
-  "email.planChangeRequest.subject": "Заявка на тариф {plan} — {workspaceName}",
-  "email.planChangeRequest.lead": "Новая заявка на смену тарифа Okkey.",
-  "email.planChangeRequest.workspace": "Пространство: {workspaceName} ({workspaceId})",
-  "email.planChangeRequest.workspaceUrl": "URL: {url}",
-  "email.planChangeRequest.deploymentMode": "Тип развёртывания: {mode}",
-  "email.planChangeRequest.contactEmail": "Email для связи: {email}",
-  "email.planChangeRequest.accountEmail": "Email аккаунта: {email}",
-  "email.planChangeRequest.locale": "Язык: {locale}",
-  "email.planChangeRequest.workspaceMemberCount": "Количество участников пространства: {count}",
-  "email.planChangeRequest.region": "Регион: {region}",
-  "email.planChangeRequest.actor": "Пользователь: {userId}"
+  "email.planChangeRequest.subject": "Заявка на лицензию: {workspaceName}",
+  "email.planChangeRequest.workspaceName": "Название пространства: {value}",
+  "email.planChangeRequest.workspaceUrl": "URL пространства: {value}",
+  "email.planChangeRequest.members": "Участники: {value}",
+  "email.planChangeRequest.region": "Регион: {value}",
+  "email.planChangeRequest.locale": "Язык: {value}",
+  "email.planChangeRequest.sender": "Отправитель: {value}",
+  "email.planChangeRequest.replyEmail": "Email для связи: {value}"
 }

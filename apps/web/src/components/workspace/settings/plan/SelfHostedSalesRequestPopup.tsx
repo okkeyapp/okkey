@@ -19,7 +19,7 @@ type SelfHostedSalesRequestPopupProps = {
   open: boolean;
   initialLocale: WebLocale;
   initialRegion: string | null;
-  /** Prefill for reply / contact email (editable when `requireContactEmail`). */
+  /** Prefill for reply / contact email (editable). */
   initialEmail: string;
   /** Account email — auto, hidden (sender). */
   senderEmail: string;
@@ -27,11 +27,6 @@ type SelfHostedSalesRequestPopupProps = {
   workspaceName: string;
   /** Instance / workspace URL — auto, hidden. */
   workspaceUrl: string;
-  /**
-   * When true (SMTP / deliverable), show reply-email field.
-   * When false (logger / mailto), only member count is editable.
-   */
-  requireContactEmail?: boolean;
   submitting?: boolean;
   errorMessage?: string | null;
   t: (messageKey: string, values?: WebMessageValues) => string;
@@ -46,8 +41,9 @@ type SelfHostedSalesRequestPopupProps = {
 
 /**
  * Self-hosted FREE license request.
- * Visible (manual): member count; reply email only when outbound email is deliverable.
- * Hidden (auto from settings): workspace name, URL, region, language, sender email.
+ * Same popup for SMTP and mailto: reply email + members (visible);
+ * workspace name/URL/region/locale/sender (hidden autos).
+ * Delivery path differs only after submit.
  */
 export default function SelfHostedSalesRequestPopup({
   open,
@@ -57,7 +53,6 @@ export default function SelfHostedSalesRequestPopup({
   senderEmail,
   workspaceName,
   workspaceUrl,
-  requireContactEmail = true,
   submitting = false,
   errorMessage = null,
   t,
@@ -93,7 +88,7 @@ export default function SelfHostedSalesRequestPopup({
 
   const emailTrimmed = email.trim();
   const memberCount = parseMemberCount(memberCountInput);
-  const emailOk = !requireContactEmail || emailTrimmed.includes("@");
+  const emailOk = emailTrimmed.includes("@");
   const canSubmit = emailOk && memberCount !== null && !submitting;
 
   return (
@@ -125,14 +120,13 @@ export default function SelfHostedSalesRequestPopup({
           if (!canSubmit || memberCount === null) {
             return;
           }
-          const contactEmail = requireContactEmail ? emailTrimmed : (senderEmail.trim() || emailTrimmed);
-          if (requireContactEmail && (!contactEmail.includes("@") || contactEmail.length < 3)) {
+          if (!emailTrimmed.includes("@") || emailTrimmed.length < 3) {
             setLocalError(t("web.workspaceSettings.plan.request.invalidEmail"));
             return;
           }
           setLocalError(null);
           onSubmit({
-            contactEmail: contactEmail || senderEmail.trim(),
+            contactEmail: emailTrimmed,
             locale: initialLocale,
             region,
             workspaceMemberCount: memberCount,
@@ -157,21 +151,19 @@ export default function SelfHostedSalesRequestPopup({
           </Alert>
         )}
 
-        {requireContactEmail ? (
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-email`}>
-              {t("web.workspaceSettings.plan.request.emailLabel")}
-            </label>
-            <Input
-              id={`${formId}-email`}
-              type="email"
-              autoComplete="email"
-              value={email}
-              disabled={submitting}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </div>
-        ) : null}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-email`}>
+            {t("web.workspaceSettings.plan.request.emailLabel")}
+          </label>
+          <Input
+            id={`${formId}-email`}
+            type="email"
+            autoComplete="email"
+            value={email}
+            disabled={submitting}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </div>
 
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-members`}>

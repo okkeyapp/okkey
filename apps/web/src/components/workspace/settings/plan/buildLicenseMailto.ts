@@ -1,53 +1,40 @@
+import {
+  buildLicenseRequestEmailCopy,
+  type LicenseRequestEmailFields,
+} from "@okkey/i18n";
+
 /** Default sales inbox when API does not return `sales_email`. */
 export const DEFAULT_LICENSE_SALES_EMAIL = "get-license@okkey.io";
 
-export type LicenseMailtoFields = {
+export type LicenseMailtoFields = LicenseRequestEmailFields & {
   salesEmail?: string | null;
-  workspaceName: string;
-  workspaceUrl: string;
-  /** Expected seats; omitted from body when null/undefined. */
-  memberCount?: number | null;
-  region: string | null;
-  locale: string;
-  senderEmail: string;
-  replyEmail?: string | null;
+  /**
+   * Locale for subject/body labels (`en` | `ru`).
+   * Also written into the Locale field via `fields.locale` when callers set both the same.
+   */
+  emailLocale?: string;
 };
 
 /**
- * Prefills a license-request mailto with auto fields from workspace/settings.
- * Used when outbound email is not deliverable (`sales_email_deliverable: false`).
+ * Prefills a license-request mailto with the same subject/body as SMTP
+ * (`buildLicenseRequestEmailCopy`). Used when outbound email is not deliverable.
  */
 export function buildLicenseMailto(fields: LicenseMailtoFields): string {
   const to =
     (fields.salesEmail ?? "").trim() || DEFAULT_LICENSE_SALES_EMAIL;
-  const workspaceLabel = fields.workspaceName.trim() || "workspace";
-  const subject = `License request: ${workspaceLabel}`;
-
-  const lines: string[] = [
-    `Workspace name: ${fields.workspaceName.trim() || "—"}`,
-    `Workspace URL: ${fields.workspaceUrl.trim() || "—"}`,
-  ];
-  if (
-    typeof fields.memberCount === "number" &&
-    Number.isFinite(fields.memberCount) &&
-    fields.memberCount >= 1
-  ) {
-    lines.push(`Members: ${fields.memberCount}`);
-  } else {
-    lines.push("Members: ");
-  }
-  lines.push(
-    `Region: ${fields.region?.trim() || "—"}`,
-    `Locale: ${fields.locale.trim() || "—"}`,
-    `Sender: ${fields.senderEmail.trim() || "—"}`,
-  );
-  const reply = (fields.replyEmail ?? fields.senderEmail).trim();
-  if (reply) {
-    lines.push(`Reply email: ${reply}`);
-  }
+  const emailLocale = fields.emailLocale ?? fields.locale;
+  const { subject, body } = buildLicenseRequestEmailCopy(emailLocale, {
+    workspaceName: fields.workspaceName,
+    workspaceUrl: fields.workspaceUrl,
+    memberCount: fields.memberCount,
+    region: fields.region,
+    locale: fields.locale,
+    senderEmail: fields.senderEmail,
+    replyEmail: fields.replyEmail,
+  });
 
   // Mailto clients treat `+` as a literal plus; use encodeURIComponent (%20 for spaces).
   const subjectEnc = encodeURIComponent(subject);
-  const bodyEnc = encodeURIComponent(lines.join("\n"));
+  const bodyEnc = encodeURIComponent(body);
   return `mailto:${to}?subject=${subjectEnc}&body=${bodyEnc}`;
 }
