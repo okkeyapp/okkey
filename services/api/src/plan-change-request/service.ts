@@ -130,10 +130,15 @@ export class PlanChangeRequestService {
       );
     }
 
+    const salesEmailDeliverable = this.isSalesEmailDeliverable();
+    // Already-sent / no-resend only applies when outbound email is deliverable (real SMTP).
+    // Logger / mailto path always reports not submitted so clients keep showing mailto.
+    const submitted =
+      salesEmailDeliverable && workspace.planChangeRequestSentAt != null;
     return {
-      submitted: workspace.planChangeRequestSentAt != null,
-      sentAt: workspace.planChangeRequestSentAt,
-      salesEmailDeliverable: this.isSalesEmailDeliverable(),
+      submitted,
+      sentAt: submitted ? workspace.planChangeRequestSentAt : null,
+      salesEmailDeliverable,
       salesEmail: this.salesEmail,
     };
   }

@@ -84,8 +84,6 @@
   "email.planChangeRequest.workspace": "Пространство: {workspaceName} ({workspaceId})",
   "email.planChangeRequest.workspaceUrl": "URL: {url}",
   "email.planChangeRequest.deploymentMode": "Тип развёртывания: {mode}",
-  "email.planChangeRequest.currentPlan": "Текущий тариф: {plan}",
-  "email.planChangeRequest.requestedPlan": "Запрошенный тариф: {plan}",
   "email.planChangeRequest.contactEmail": "Email для связи: {email}",
   "email.planChangeRequest.accountEmail": "Email аккаунта: {email}",
   "email.planChangeRequest.locale": "Язык: {locale}",

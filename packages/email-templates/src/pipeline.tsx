@@ -478,12 +478,6 @@ export async function renderPlanChangeRequest(
     formatEmailMessage(locale, "email.planChangeRequest.deploymentMode", {
       mode: variables.deploymentMode,
     }),
-    formatEmailMessage(locale, "email.planChangeRequest.currentPlan", {
-      plan: variables.currentPlanTier,
-    }),
-    formatEmailMessage(locale, "email.planChangeRequest.requestedPlan", {
-      plan: variables.requestedPlanTier,
-    }),
     formatEmailMessage(locale, "email.planChangeRequest.contactEmail", {
       email: variables.contactEmail,
     }),

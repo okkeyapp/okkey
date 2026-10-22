@@ -85,8 +85,6 @@
   "email.planChangeRequest.workspace": "Workspace: {workspaceName} ({workspaceId})",
   "email.planChangeRequest.workspaceUrl": "URL: {url}",
   "email.planChangeRequest.deploymentMode": "Deployment: {mode}",
-  "email.planChangeRequest.currentPlan": "Current plan: {plan}",
-  "email.planChangeRequest.requestedPlan": "Requested plan: {plan}",
   "email.planChangeRequest.contactEmail": "Contact email: {email}",
   "email.planChangeRequest.accountEmail": "Account email: {email}",
   "email.planChangeRequest.locale": "Locale: {locale}",

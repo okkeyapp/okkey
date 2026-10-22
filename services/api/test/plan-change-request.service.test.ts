@@ -252,16 +252,32 @@ test("PlanChangeRequestService getStatus reports submitted flag and deliverabili
     salesEmailDeliverable: true,
     salesEmail: "sales@example.com",
   });
-  const done = makeService({
+  const loggerPath = makeService({
     sentAt: "2026-10-22T12:00:00.000Z",
     salesEmailDeliverable: false,
   });
-  assert.deepEqual(await done.service.getStatus({ workspaceId: "ws_1", actorUserId: "user_1" }), {
-    submitted: true,
+  assert.deepEqual(
+    await loggerPath.service.getStatus({ workspaceId: "ws_1", actorUserId: "user_1" }),
+    {
+      submitted: false,
+      sentAt: null,
+      salesEmailDeliverable: false,
+      salesEmail: "sales@example.com",
+    },
+  );
+  const smtpDone = makeService({
     sentAt: "2026-10-22T12:00:00.000Z",
-    salesEmailDeliverable: false,
-    salesEmail: "sales@example.com",
+    salesEmailDeliverable: true,
   });
+  assert.deepEqual(
+    await smtpDone.service.getStatus({ workspaceId: "ws_1", actorUserId: "user_1" }),
+    {
+      submitted: true,
+      sentAt: "2026-10-22T12:00:00.000Z",
+      salesEmailDeliverable: true,
+      salesEmail: "sales@example.com",
+    },
+  );
 });
 
 test("PlanChangeRequestService does not mark sent when email fails", async () => {

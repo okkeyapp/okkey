@@ -169,7 +169,10 @@ export default function SelfHostedFreePlanSection({
     window.location.href = href;
   }
 
-  const ctaDisabled = !canRequest || !statusReady || alreadySent;
+  // No-resend / already-sent only after a real deliverable (SMTP) submit.
+  // Mailto path (`sales_email_deliverable: false`, e.g. EMAIL_PROVIDER=logger) always shows the CTA.
+  const blockResend = alreadySent && salesEmailDeliverable;
+  const ctaDisabled = !canRequest || !statusReady || blockResend;
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
@@ -188,7 +191,7 @@ export default function SelfHostedFreePlanSection({
         </AlertDescription>
       </Alert>
 
-      {alreadySent ? (
+      {blockResend ? (
         <Alert variant="info">
           <AlertInfoIcon className="size-4" />
           <AlertTitle>{t("web.workspaceSettings.plan.selfHosted.alreadySentTitle")}</AlertTitle>
