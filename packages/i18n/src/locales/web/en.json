@@ -1702,7 +1702,7 @@
   "web.workspaceSettings.plan.selfHosted.requestDescription": "The Okkey team will get in touch about a self-hosted license.",
   "web.workspaceSettings.plan.selfHosted.requestSubmit": "Send",
   "web.workspaceSettings.plan.selfHosted.alreadySentTitle": "Request already sent",
-  "web.workspaceSettings.plan.selfHosted.alreadySentBody": "A license request email was already sent for this workspace. You cannot submit another one.",
+  "web.workspaceSettings.plan.selfHosted.alreadySentBody": "A license request email was already sent for this workspace.",
   "web.workspaceSettings.plan.selfHosted.nonFreeTitle": "Workspace plan",
   "web.workspaceSettings.plan.selfHosted.nonFreeBody": "Managing a self-hosted license requires the Okkey enterprise build.",
   "extension.vault.workspace": "Workspace",

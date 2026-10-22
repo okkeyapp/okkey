@@ -1702,7 +1702,7 @@
   "web.workspaceSettings.plan.selfHosted.requestDescription": "Команда Okkey свяжется с вами по поводу лицензии для self-hosted.",
   "web.workspaceSettings.plan.selfHosted.requestSubmit": "Отправить",
   "web.workspaceSettings.plan.selfHosted.alreadySentTitle": "Письмо уже отправлено",
-  "web.workspaceSettings.plan.selfHosted.alreadySentBody": "Заявка на лицензию для этого пространства уже отправлена. Повторная отправка недоступна.",
+  "web.workspaceSettings.plan.selfHosted.alreadySentBody": "Заявка на лицензию для этого пространства уже отправлена.",
   "web.workspaceSettings.plan.selfHosted.nonFreeTitle": "Тариф пространства",
   "web.workspaceSettings.plan.selfHosted.nonFreeBody": "Для управления лицензией self-hosted нужен enterprise-сборочный образ Okkey.",
   "extension.vault.workspace": "Воркспейс",
