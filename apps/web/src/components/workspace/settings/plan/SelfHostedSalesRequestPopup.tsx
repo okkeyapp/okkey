@@ -19,7 +19,7 @@ type SelfHostedSalesRequestPopupProps = {
   open: boolean;
   initialLocale: WebLocale;
   initialRegion: string | null;
-  /** Prefill for reply / contact email (editable). */
+  /** Prefill for reply / contact email (editable when `requireContactEmail`). */
   initialEmail: string;
   /** Account email — auto, hidden (sender). */
   senderEmail: string;
@@ -27,9 +27,13 @@ type SelfHostedSalesRequestPopupProps = {
   workspaceName: string;
   /** Instance / workspace URL — auto, hidden. */
   workspaceUrl: string;
+  /**
+   * When true (SMTP / deliverable), show reply-email field.
+   * When false (logger / mailto), only member count is editable.
+   */
+  requireContactEmail?: boolean;
   submitting?: boolean;
   errorMessage?: string | null;
-  success?: boolean;
   t: (messageKey: string, values?: WebMessageValues) => string;
   onClose: () => void;
   onSubmit: (input: {
@@ -42,7 +46,7 @@ type SelfHostedSalesRequestPopupProps = {
 
 /**
  * Self-hosted FREE license request.
- * Visible (manual): reply email + expected member count.
+ * Visible (manual): member count; reply email only when outbound email is deliverable.
  * Hidden (auto from settings): workspace name, URL, region, language, sender email.
  */
 export default function SelfHostedSalesRequestPopup({
@@ -53,9 +57,9 @@ export default function SelfHostedSalesRequestPopup({
   senderEmail,
   workspaceName,
   workspaceUrl,
+  requireContactEmail = true,
   submitting = false,
   errorMessage = null,
-  success = false,
   t,
   onClose,
   onSubmit,
@@ -89,8 +93,8 @@ export default function SelfHostedSalesRequestPopup({
 
   const emailTrimmed = email.trim();
   const memberCount = parseMemberCount(memberCountInput);
-  const canSubmit =
-    emailTrimmed.includes("@") && memberCount !== null && !submitting && !success;
+  const emailOk = !requireContactEmail || emailTrimmed.includes("@");
+  const canSubmit = emailOk && memberCount !== null && !submitting;
 
   return (
     <Popup
@@ -103,66 +107,57 @@ export default function SelfHostedSalesRequestPopup({
       panelClassName="min-h-0"
       contentClassName="pt-0 pb-1"
       footer={
-        success ? (
-          <Button type="button" onClick={handleClose}>
-            {t("web.workspaceSettings.plan.request.successClose")}
+        <>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
+            {t("web.newItemPopup.cancel")}
           </Button>
-        ) : (
-          <>
-            <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
-              {t("web.newItemPopup.cancel")}
-            </Button>
-            <Button type="submit" form={formId} disabled={!canSubmit}>
-              {t("web.workspaceSettings.plan.selfHosted.requestSubmit")}
-            </Button>
-          </>
-        )
+          <Button type="submit" form={formId} disabled={!canSubmit}>
+            {t("web.workspaceSettings.plan.selfHosted.requestSubmit")}
+          </Button>
+        </>
       }
     >
-      {success ? (
+      <form
+        id={formId}
+        className="flex w-full flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!canSubmit || memberCount === null) {
+            return;
+          }
+          const contactEmail = requireContactEmail ? emailTrimmed : (senderEmail.trim() || emailTrimmed);
+          if (requireContactEmail && (!contactEmail.includes("@") || contactEmail.length < 3)) {
+            setLocalError(t("web.workspaceSettings.plan.request.invalidEmail"));
+            return;
+          }
+          setLocalError(null);
+          onSubmit({
+            contactEmail: contactEmail || senderEmail.trim(),
+            locale: initialLocale,
+            region,
+            workspaceMemberCount: memberCount,
+          });
+        }}
+      >
         <p className="text-sm leading-5 text-muted-foreground">
-          {t("web.workspaceSettings.plan.request.successBody")}
+          {t("web.workspaceSettings.plan.selfHosted.requestDescription")}
         </p>
-      ) : (
-        <form
-          id={formId}
-          className="flex w-full flex-col gap-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!canSubmit || memberCount === null) {
-              return;
-            }
-            if (!emailTrimmed.includes("@") || emailTrimmed.length < 3) {
-              setLocalError(t("web.workspaceSettings.plan.request.invalidEmail"));
-              return;
-            }
-            setLocalError(null);
-            onSubmit({
-              contactEmail: emailTrimmed,
-              locale: initialLocale,
-              region,
-              workspaceMemberCount: memberCount,
-            });
-          }}
-        >
-          <p className="text-sm leading-5 text-muted-foreground">
-            {t("web.workspaceSettings.plan.selfHosted.requestDescription")}
-          </p>
 
-          {/* Auto fields — filled from user/workspace settings, not editable */}
-          <input type="hidden" name="workspace_name" value={workspaceName} readOnly />
-          <input type="hidden" name="workspace_url" value={workspaceUrl} readOnly />
-          <input type="hidden" name="region" value={region ?? ""} readOnly />
-          <input type="hidden" name="locale" value={initialLocale} readOnly />
-          <input type="hidden" name="sender_email" value={senderEmail} readOnly />
+        {/* Auto fields — filled from user/workspace settings, not editable */}
+        <input type="hidden" name="workspace_name" value={workspaceName} readOnly />
+        <input type="hidden" name="workspace_url" value={workspaceUrl} readOnly />
+        <input type="hidden" name="region" value={region ?? ""} readOnly />
+        <input type="hidden" name="locale" value={initialLocale} readOnly />
+        <input type="hidden" name="sender_email" value={senderEmail} readOnly />
 
-          {(localError || errorMessage) && (
-            <Alert variant="error">
-              <AlertTitle>{t("web.workspaceSettings.plan.request.errorTitle")}</AlertTitle>
-              <AlertDescription>{localError ?? errorMessage}</AlertDescription>
-            </Alert>
-          )}
+        {(localError || errorMessage) && (
+          <Alert variant="error">
+            <AlertTitle>{t("web.workspaceSettings.plan.request.errorTitle")}</AlertTitle>
+            <AlertDescription>{localError ?? errorMessage}</AlertDescription>
+          </Alert>
+        )}
 
+        {requireContactEmail ? (
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-email`}>
               {t("web.workspaceSettings.plan.request.emailLabel")}
@@ -176,24 +171,24 @@ export default function SelfHostedSalesRequestPopup({
               onChange={(event) => setEmail(event.target.value)}
             />
           </div>
+        ) : null}
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-members`}>
-              {t("web.workspaceSettings.plan.request.memberCountLabel")}
-            </label>
-            <Input
-              id={`${formId}-members`}
-              type="number"
-              min={1}
-              step={1}
-              inputMode="numeric"
-              value={memberCountInput}
-              disabled={submitting}
-              onChange={(event) => setMemberCountInput(event.target.value)}
-            />
-          </div>
-        </form>
-      )}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground" htmlFor={`${formId}-members`}>
+            {t("web.workspaceSettings.plan.request.memberCountLabel")}
+          </label>
+          <Input
+            id={`${formId}-members`}
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            value={memberCountInput}
+            disabled={submitting}
+            onChange={(event) => setMemberCountInput(event.target.value)}
+          />
+        </div>
+      </form>
     </Popup>
   );
 }

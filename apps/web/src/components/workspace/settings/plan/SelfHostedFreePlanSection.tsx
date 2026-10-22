@@ -7,6 +7,11 @@ import { useEffect, useState } from "react";
 import { useAuthenticatedCoreClient } from "../../../../auth/AuthVaultContext";
 import type { RegionCode } from "../../../../regions/regions";
 import { buildLicenseMailto, DEFAULT_LICENSE_SALES_EMAIL } from "./buildLicenseMailto";
+import {
+  formatLicenseRequestSentAt,
+  readLicenseRequestSentAt,
+  writeLicenseRequestSentAt,
+} from "./licenseRequestSentAtStorage";
 import SelfHostedSalesRequestPopup from "./SelfHostedSalesRequestPopup";
 import { usePlanRequestProfile } from "./usePlanRequestProfile";
 
@@ -56,7 +61,7 @@ type SelfHostedFreePlanSectionProps = {
  * not by workspace `plan_tier`.
  *
  * When outbound email is not deliverable (`sales_email_deliverable: false`), the CTA opens
- * a prefilled `mailto:` instead of the in-app form (no fake logger "success").
+ * a members-only popup, then a prefilled `mailto:` on confirm — same success UI as SMTP.
  */
 export default function SelfHostedFreePlanSection({
   workspaceId,
@@ -70,8 +75,8 @@ export default function SelfHostedFreePlanSection({
   const [popupOpen, setPopupOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [alreadySent, setAlreadySent] = useState(false);
+  /** ISO timestamp of last successful submit (SMTP API or mailto confirm). */
+  const [sentAt, setSentAt] = useState<string | null>(null);
   const [statusReady, setStatusReady] = useState(false);
   /** Prefer mailto until status confirms a real transport (avoids logger fake success). */
   const [salesEmailDeliverable, setSalesEmailDeliverable] = useState(false);
@@ -87,6 +92,7 @@ export default function SelfHostedFreePlanSection({
       if (!core) {
         if (!cancelled) {
           setSalesEmailDeliverable(false);
+          setSentAt(readLicenseRequestSentAt(workspaceId));
           setStatusReady(true);
         }
         return;
@@ -94,17 +100,24 @@ export default function SelfHostedFreePlanSection({
       try {
         const status = await core.getWorkspacePlanChangeRequestStatus(workspaceId);
         if (!cancelled) {
-          setAlreadySent(status.submitted);
           setSalesEmailDeliverable(status.sales_email_deliverable === true);
           const inbox = (status.sales_email ?? "").trim();
           if (inbox) {
             setSalesEmail(inbox);
+          }
+          if (status.sales_email_deliverable === true && status.submitted && status.sent_at) {
+            setSentAt(status.sent_at);
+          } else if (status.sales_email_deliverable !== true) {
+            setSentAt(readLicenseRequestSentAt(workspaceId));
+          } else {
+            setSentAt(null);
           }
         }
       } catch {
         /* best-effort; mailto fallback when status unknown */
         if (!cancelled) {
           setSalesEmailDeliverable(false);
+          setSentAt(readLicenseRequestSentAt(workspaceId));
         }
       } finally {
         if (!cancelled) {
@@ -117,13 +130,47 @@ export default function SelfHostedFreePlanSection({
     };
   }, [core, workspaceId]);
 
+  function openRequestPopup() {
+    setPopupOpen(true);
+    setSubmitError(null);
+  }
+
+  function markSubmitted(iso: string) {
+    setSentAt(iso);
+    if (!salesEmailDeliverable) {
+      writeLicenseRequestSentAt(workspaceId, iso);
+    }
+  }
+
+  function openMailto(memberCount: number) {
+    const href = buildLicenseMailto({
+      salesEmail,
+      workspaceName,
+      workspaceUrl,
+      memberCount,
+      region: profile.region,
+      locale: profile.locale,
+      senderEmail: profile.email,
+      replyEmail: profile.email,
+    });
+    window.location.href = href;
+  }
+
   async function handleSubmit(input: {
     contactEmail: string;
     locale: "en" | "ru";
     region: RegionCode | null;
     workspaceMemberCount: number;
   }) {
-    if (!core || alreadySent || !salesEmailDeliverable) {
+    if (!salesEmailDeliverable) {
+      openMailto(input.workspaceMemberCount);
+      markSubmitted(new Date().toISOString());
+      setPopupOpen(false);
+      setSubmitError(null);
+      return;
+    }
+
+    if (!core) {
       return;
     }
     setSubmitting(true);
@@ -136,13 +183,13 @@ export default function SelfHostedFreePlanSection({
         region: input.region,
         workspace_member_count: input.workspaceMemberCount,
       });
-      setSuccess(true);
-      setAlreadySent(true);
+      markSubmitted(new Date().toISOString());
+      setPopupOpen(false);
     } catch (error) {
       if (error instanceof ApiRequestError && error.body.error === "ALREADY_SUBMITTED") {
-        setAlreadySent(true);
+        // Legacy servers may still reject re-send; show success and keep form usable after refresh.
+        markSubmitted(sentAt ?? new Date().toISOString());
         setPopupOpen(false);
-        setSuccess(false);
         setSubmitError(null);
         return;
       }
@@ -156,23 +203,10 @@ export default function SelfHostedFreePlanSection({
     }
   }
 
-  function openMailto() {
-    const href = buildLicenseMailto({
-      salesEmail,
-      workspaceName,
-      workspaceUrl,
-      region: profile.region,
-      locale: profile.locale,
-      senderEmail: profile.email,
-      replyEmail: profile.email,
-    });
-    window.location.href = href;
-  }
-
-  // No-resend / already-sent only after a real deliverable (SMTP) submit.
-  // Mailto path (`sales_email_deliverable: false`, e.g. EMAIL_PROVIDER=logger) always shows the CTA.
-  const blockResend = alreadySent && salesEmailDeliverable;
-  const ctaDisabled = !canRequest || !statusReady || blockResend;
+  const showSuccess = sentAt != null;
+  const ctaDisabled = !canRequest || !statusReady;
+  const sentAtLabel =
+    sentAt != null ? formatLicenseRequestSentAt(sentAt, profile.locale) : "";
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
@@ -191,58 +225,55 @@ export default function SelfHostedFreePlanSection({
         </AlertDescription>
       </Alert>
 
-      {blockResend ? (
-        <Alert variant="info">
-          <AlertInfoIcon className="size-4" />
-          <AlertTitle>{t("web.workspaceSettings.plan.selfHosted.alreadySentTitle")}</AlertTitle>
-          <AlertDescription>
-            {t("web.workspaceSettings.plan.selfHosted.alreadySentBody")}
-          </AlertDescription>
-        </Alert>
+      {showSuccess ? (
+        <div className="flex flex-col gap-3">
+          <Alert variant="info">
+            <AlertInfoIcon className="size-4" />
+            <AlertTitle>{t("web.workspaceSettings.plan.request.successTitle")}</AlertTitle>
+            <AlertDescription>
+              <p>{t("web.workspaceSettings.plan.request.successBody")}</p>
+              {sentAtLabel ? (
+                <p className="mt-2">
+                  {t("web.workspaceSettings.plan.request.sentAt", { datetime: sentAtLabel })}
+                </p>
+              ) : null}
+            </AlertDescription>
+          </Alert>
+          <div>
+            <Button type="button" variant="outline" disabled={ctaDisabled} onClick={openRequestPopup}>
+              {t("web.workspaceSettings.plan.request.sendAgain")}
+            </Button>
+          </div>
+        </div>
       ) : (
         <div>
-          <Button
-            type="button"
-            disabled={ctaDisabled}
-            onClick={() => {
-              if (!salesEmailDeliverable) {
-                openMailto();
-                return;
-              }
-              setPopupOpen(true);
-              setSuccess(false);
-              setSubmitError(null);
-            }}
-          >
+          <Button type="button" disabled={ctaDisabled} onClick={openRequestPopup}>
             {t("web.workspaceSettings.plan.selfHosted.requestCta")}
           </Button>
         </div>
       )}
 
-      {salesEmailDeliverable ? (
-        <SelfHostedSalesRequestPopup
-          open={popupOpen}
-          initialLocale={profile.locale}
-          initialRegion={profile.region}
-          initialEmail={profile.email}
-          senderEmail={profile.email}
-          workspaceName={workspaceName}
-          workspaceUrl={workspaceUrl}
-          submitting={submitting}
-          errorMessage={submitError}
-          success={success}
-          t={t}
-          onClose={() => {
-            if (submitting) {
-              return;
-            }
-            setPopupOpen(false);
-            setSuccess(false);
-            setSubmitError(null);
-          }}
-          onSubmit={handleSubmit}
-        />
-      ) : null}
+      <SelfHostedSalesRequestPopup
+        open={popupOpen}
+        initialLocale={profile.locale}
+        initialRegion={profile.region}
+        initialEmail={profile.email}
+        senderEmail={profile.email}
+        workspaceName={workspaceName}
+        workspaceUrl={workspaceUrl}
+        requireContactEmail={salesEmailDeliverable}
+        submitting={submitting}
+        errorMessage={submitError}
+        t={t}
+        onClose={() => {
+          if (submitting) {
+            return;
+          }
+          setPopupOpen(false);
+          setSubmitError(null);
+        }}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }

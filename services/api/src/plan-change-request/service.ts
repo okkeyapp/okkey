@@ -215,13 +215,8 @@ export class PlanChangeRequestService {
       );
     }
 
-    if (workspace.planChangeRequestSentAt != null) {
-      throw new PlanChangeRequestServiceError(
-        "ALREADY_SUBMITTED",
-        409,
-        "plan change request already submitted",
-      );
-    }
+    // Re-send is allowed: each successful submit updates `plan_change_request_sent_at`
+    // so the UI can show the latest datetime and “Send again”.
 
     const currentPlanTier = normalizePlanTier(workspace.planTier);
     // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB

@@ -1690,6 +1690,8 @@
   "web.workspaceSettings.plan.request.successTitle": "Request sent",
   "web.workspaceSettings.plan.request.successBody": "The form was submitted — wait for a reply at the email you provided.",
   "web.workspaceSettings.plan.request.successClose": "Close",
+  "web.workspaceSettings.plan.request.sentAt": "Submitted: {datetime}",
+  "web.workspaceSettings.plan.request.sendAgain": "Send again",
   "web.workspaceSettings.plan.selfHosted.freeTitle": "Free plan",
   "web.workspaceSettings.plan.selfHosted.freeIntro": "This workspace is on Free with the following capabilities:",
   "web.workspaceSettings.plan.selfHosted.permissions.unlimitedItems": "Unlimited items",

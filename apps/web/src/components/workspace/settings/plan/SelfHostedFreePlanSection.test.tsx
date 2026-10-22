@@ -1,11 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SelfHostedFreePlanSection from "./SelfHostedFreePlanSection";
 
-const { getStatus, useCore } = vi.hoisted(() => ({
+const { getStatus, requestChange, useCore, readSentAt, writeSentAt } = vi.hoisted(() => ({
   getStatus: vi.fn(),
+  requestChange: vi.fn(),
   useCore: vi.fn(),
+  readSentAt: vi.fn((): string | null => null),
+  writeSentAt: vi.fn(),
 }));
 
 vi.mock("../../../../auth/AuthVaultContext", () => ({
@@ -20,11 +23,21 @@ vi.mock("./usePlanRequestProfile", () => ({
   }),
 }));
 
+vi.mock("./licenseRequestSentAtStorage", () => ({
+  readLicenseRequestSentAt: (...args: unknown[]) => readSentAt(...args),
+  writeLicenseRequestSentAt: (...args: unknown[]) => writeSentAt(...args),
+  formatLicenseRequestSentAt: (iso: string) => `fmt:${iso}`,
+}));
+
 describe("SelfHostedFreePlanSection", () => {
   beforeEach(() => {
     getStatus.mockReset();
+    requestChange.mockReset();
     useCore.mockReset();
     useCore.mockReturnValue(null);
+    readSentAt.mockReset();
+    readSentAt.mockReturnValue(null);
+    writeSentAt.mockReset();
   });
 
   it("shows FREE notice and sales CTA even when planTier prop is ENTERPRISE", () => {
@@ -46,32 +59,18 @@ describe("SelfHostedFreePlanSection", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not mount the request form popup when core client is unavailable (mailto path)", () => {
-    render(
-      <SelfHostedFreePlanSection
-        workspaceId="ws-1"
-        planTier="FREE"
-        canRequest
-        t={(key) => key}
-      />,
-    );
-
-    expect(
-      screen.queryByText("web.workspaceSettings.plan.selfHosted.requestTitle"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps mailto CTA when not deliverable even if submitted flag is set", async () => {
-    getStatus.mockResolvedValue({
-      submitted: true,
-      sent_at: "2026-10-22T12:00:00.000Z",
-      sales_email_deliverable: false,
-      sales_email: "get-license@okkey.io",
-    });
-    useCore.mockReturnValue({
-      getWorkspacePlanChangeRequestStatus: getStatus,
-      requestWorkspacePlanChange: vi.fn(),
-    });
+  it("opens members-only popup on mailto path instead of jumping to mailto", async () => {
+    let mailtoHref = "";
+    const locationStub = {
+      origin: "http://localhost",
+      get href() {
+        return mailtoHref || "http://localhost/";
+      },
+      set href(value: string) {
+        mailtoHref = value;
+      },
+    };
+    vi.stubGlobal("location", locationStub);
 
     render(
       <SelfHostedFreePlanSection
@@ -82,17 +81,38 @@ describe("SelfHostedFreePlanSection", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
-      ).toBeEnabled();
-    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
+    );
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
-      screen.queryByText("web.workspaceSettings.plan.selfHosted.alreadySentTitle"),
+      screen.getAllByText("web.workspaceSettings.plan.selfHosted.requestTitle").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByLabelText("web.workspaceSettings.plan.request.emailLabel"),
     ).not.toBeInTheDocument();
+
+    const members = screen.getByLabelText("web.workspaceSettings.plan.request.memberCountLabel");
+    fireEvent.change(members, { target: { value: "7" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
+    );
+
+    expect(mailtoHref.startsWith("mailto:get-license@okkey.io?")).toBe(true);
+    expect(mailtoHref).toContain("Members%3A%207");
+    expect(mailtoHref).not.toMatch(/[?&](?:subject|body)=[^&]*\+/);
+    expect(
+      screen.getByText("web.workspaceSettings.plan.request.successTitle"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+    ).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
   });
 
-  it("shows already-sent only when SMTP deliverable and submitted", async () => {
+  it("shows success with send-again when SMTP deliverable and submitted", async () => {
     getStatus.mockResolvedValue({
       submitted: true,
       sent_at: "2026-10-22T12:00:00.000Z",
@@ -101,7 +121,7 @@ describe("SelfHostedFreePlanSection", () => {
     });
     useCore.mockReturnValue({
       getWorkspacePlanChangeRequestStatus: getStatus,
-      requestWorkspacePlanChange: vi.fn(),
+      requestWorkspacePlanChange: requestChange,
     });
 
     render(
@@ -115,11 +135,69 @@ describe("SelfHostedFreePlanSection", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("web.workspaceSettings.plan.selfHosted.alreadySentTitle"),
+        screen.getByText("web.workspaceSettings.plan.request.successTitle"),
       ).toBeInTheDocument();
     });
     expect(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestCta" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("web.workspaceSettings.plan.selfHosted.alreadySentTitle"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reopens full SMTP form on send again and allows another API submit", async () => {
+    getStatus.mockResolvedValue({
+      submitted: true,
+      sent_at: "2026-10-22T12:00:00.000Z",
+      sales_email_deliverable: true,
+      sales_email: "get-license@okkey.io",
+    });
+    requestChange.mockResolvedValue({ submitted: true });
+    useCore.mockReturnValue({
+      getWorkspacePlanChangeRequestStatus: getStatus,
+      requestWorkspacePlanChange: requestChange,
+    });
+
+    render(
+      <SelfHostedFreePlanSection
+        workspaceId="ws-1"
+        planTier="FREE"
+        canRequest
+        t={(key) => key}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+      ).toBeEnabled();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.request.sendAgain" }),
+    );
+
+    const email = screen.getByLabelText("web.workspaceSettings.plan.request.emailLabel");
+    fireEvent.change(email, { target: { value: "reply@okkey.local" } });
+    fireEvent.change(screen.getByLabelText("web.workspaceSettings.plan.request.memberCountLabel"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "web.workspaceSettings.plan.selfHosted.requestSubmit" }),
+    );
+
+    await waitFor(() => {
+      expect(requestChange).toHaveBeenCalledWith(
+        "ws-1",
+        expect.objectContaining({
+          contact_email: "reply@okkey.local",
+          workspace_member_count: 3,
+        }),
+      );
+    });
   });
 });

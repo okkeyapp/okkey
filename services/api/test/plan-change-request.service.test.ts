@@ -153,16 +153,14 @@ test("PlanChangeRequestService rejects missing member count on self-hosted", asy
   );
 });
 
-test("PlanChangeRequestService rejects when already submitted", async () => {
-  const { service, sent } = makeService({
+test("PlanChangeRequestService allows re-submit after already submitted", async () => {
+  const { service, sent, getMarkCalls } = makeService({
     sentAt: "2026-10-22T10:00:00.000Z",
   });
-  await assert.rejects(
-    () => service.submit(baseSubmit),
-    (error: unknown) =>
-      error instanceof PlanChangeRequestServiceError && error.code === "ALREADY_SUBMITTED",
-  );
-  assert.equal(sent.length, 0);
+  const result = await service.submit(baseSubmit);
+  assert.deepEqual(result, { submitted: true });
+  assert.equal(sent.length, 1);
+  assert.equal(getMarkCalls(), 1);
 });
 
 test("PlanChangeRequestService allows self-hosted license request when plan_tier is already ENTERPRISE", async () => {

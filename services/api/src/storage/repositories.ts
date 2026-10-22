@@ -463,15 +463,15 @@ export class WorkspacesRepository {
   }
 
   /**
-   * Marks the workspace plan-change request as sent if not already set.
-   * @returns true when this call set the timestamp (first successful send).
+   * Marks (or refreshes) the workspace plan-change request sent timestamp.
+   * @returns true when a matching workspace row was updated.
    */
   async markPlanChangeRequestSent(workspaceId: string): Promise<boolean> {
     const rows = await this.db.query<{ id: string }>(
       `
         UPDATE workspaces
         SET plan_change_request_sent_at = now(), updated_at = now()
-        WHERE id = $1 AND plan_change_request_sent_at IS NULL
+        WHERE id = $1
         RETURNING id
       `,
       [workspaceId],

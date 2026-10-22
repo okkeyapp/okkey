@@ -1690,6 +1690,8 @@
   "web.workspaceSettings.plan.request.successTitle": "Заявка отправлена",
   "web.workspaceSettings.plan.request.successBody": "Форма отправлена — ожидайте ответа на указанный email.",
   "web.workspaceSettings.plan.request.successClose": "Закрыть",
+  "web.workspaceSettings.plan.request.sentAt": "Отправлено: {datetime}",
+  "web.workspaceSettings.plan.request.sendAgain": "Отправить снова",
   "web.workspaceSettings.plan.selfHosted.freeTitle": "Бесплатный тариф",
   "web.workspaceSettings.plan.selfHosted.freeIntro": "Сейчас пространство на тарифе Free со следующими возможностями:",
   "web.workspaceSettings.plan.selfHosted.permissions.unlimitedItems": "Неограниченные записи",
