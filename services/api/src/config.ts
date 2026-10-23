@@ -16,6 +16,10 @@ import {
 } from "./enterpriseEnv.ts";
 import { resolveEmailDeliveryMode, type EmailDeliveryMode } from "./email/queue.ts";
 import { parseFaviconProvider, type FaviconProvider } from "./favicon/fetch-remote.ts";
+import {
+  parseUpdateApplyMode,
+  type UpdateApplyMode,
+} from "./updates/apply-update.ts";
 
 type NodeEnv = "development" | "test" | "production";
 type EmailProvider = "logger" | "smtp" | "http-api" | "ses";
@@ -71,6 +75,29 @@ export interface ApiConfig {
   /** Load enterprise backend plugins from `enterpriseModulesPath`. */
   enterpriseModulesEnabled: boolean;
   enterpriseModulesPath: string;
+  /**
+   * Optional HTTPS feed for GET /updates/check (self-host). Empty = no remote check.
+   * Prefer `updateFeedPath` in isolated/perimeter installs (no outbound).
+   */
+  updateFeedUrl: string;
+  /** Optional local JSON feed path (takes precedence over URL when set). */
+  updateFeedPath: string;
+  updateFeedTimeoutMs: number;
+  /**
+   * Self-host apply path: `off` (501) | `agent` | `hook` | `version_file`.
+   * API never mounts docker.sock; agent/hook run outside the web container.
+   */
+  updateApplyMode: UpdateApplyMode;
+  /** Signed / host update agent URL for `updateApplyMode=agent`. */
+  updateAgentUrl: string;
+  updateAgentTimeoutMs: number;
+  /** Executable hook path for `updateApplyMode=hook` (compose pull script, etc.). */
+  updateApplyHook: string;
+  /**
+   * Mutable version JSON for GET /version + `version_file` apply
+   * (`{ "okkey": "1.0.1", "enterprise": "1.0.1" | null }`).
+   */
+  updateVersionFilePath: string;
   defaultEmailLocale: string;
   /** Base URL for links in transactional email (e.g. https://app.example.com); empty = text-only hints */
   publicAppBaseUrl: string;
@@ -443,6 +470,14 @@ export function loadConfig(): ApiConfig {
     enterpriseModulesRequested,
     enterpriseModulesEnabled,
     enterpriseModulesPath,
+    updateFeedUrl: (process.env.OKKEY_UPDATE_FEED_URL ?? "").trim(),
+    updateFeedPath: (process.env.OKKEY_UPDATE_FEED_PATH ?? "").trim(),
+    updateFeedTimeoutMs: parsePositiveInt(process.env.OKKEY_UPDATE_FEED_TIMEOUT_MS, 5000),
+    updateApplyMode: parseUpdateApplyMode(process.env.OKKEY_UPDATE_APPLY_MODE),
+    updateAgentUrl: (process.env.OKKEY_UPDATE_AGENT_URL ?? "").trim(),
+    updateAgentTimeoutMs: parsePositiveInt(process.env.OKKEY_UPDATE_AGENT_TIMEOUT_MS, 120_000),
+    updateApplyHook: (process.env.OKKEY_UPDATE_APPLY_HOOK ?? "").trim(),
+    updateVersionFilePath: (process.env.OKKEY_VERSION_FILE ?? "").trim(),
     defaultEmailLocale: process.env.EMAIL_DEFAULT_LOCALE ?? "en",
     publicAppBaseUrl: (process.env.PUBLIC_APP_URL ?? "").trim(),
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@okkey.local",

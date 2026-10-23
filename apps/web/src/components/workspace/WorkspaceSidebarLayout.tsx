@@ -62,6 +62,7 @@ export type WorkspaceSidebarLayoutProps = {
   | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
+  | "footerVersion"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
   | "showVaultHeaderPlus"
@@ -157,6 +158,7 @@ export default function WorkspaceSidebarLayout({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  footerVersion,
   vaultHeaderPlusAriaLabel,
   folderHeaderPlusAriaLabel,
   showVaultHeaderPlus,
@@ -201,6 +203,7 @@ export default function WorkspaceSidebarLayout({
           folderEmptyLabel={folderEmptyLabel}
           accountMenu={accountMenu}
           footerPlainLinkLabels={footerPlainLinkLabels}
+          footerVersion={footerVersion}
           vaultHeaderPlusAriaLabel={vaultHeaderPlusAriaLabel}
           folderHeaderPlusAriaLabel={folderHeaderPlusAriaLabel}
           showVaultHeaderPlus={showVaultHeaderPlus}

@@ -22,7 +22,16 @@ import {
   type OkkeySidebarVaultItem,
   workspaceSwitcherActiveItemClassName,
 } from "@okkey/ui";
-import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  type ComponentProps,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import workspaceTenancyModule from "@okkey-enterprise/workspace-tenancy";
 import { tryCompletePendingVaultWraps } from "@okkey-enterprise/workspace-members";
@@ -47,6 +56,9 @@ import { SectionReauthProvider, useSectionReauth } from "../auth/SectionReauthCo
 import WorkspaceErrorState from "../pages/workspace/WorkspaceErrorState";
 import CreateWorkspacePopup from "../pages/workspaces/CreateWorkspacePopup";
 import { createWorkspaceRequest, toastWorkspaceCreated } from "../pages/workspaces/createWorkspaceFlow";
+import SystemUpdatesPopup, {
+  type SystemUpdatesPopupMode,
+} from "../components/workspace/SystemUpdatesPopup";
 import NewItemPopup from "../components/items/NewItemPopup";
 import EditItemPopup from "../components/items/EditItemPopup";
 import PersonalDataBootstrapController from "../components/items/PersonalDataBootstrapController";
@@ -107,6 +119,17 @@ import {
 } from "../routes/paths";
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
+import SystemUpdatesPlaque from "../components/workspace/SystemUpdatesPlaque";
+import { formatInstanceVersionLabel, useInstanceVersion } from "./useInstanceVersion";
+import {
+  dismissAvailableUpdates,
+  isUpdateNoticeDismissed,
+} from "./updateDismissStorage";
+import {
+  formatAvailableUpdatesSummary,
+  hasAvailableUpdates,
+  useUpdateCheck,
+} from "./useUpdateCheck";
 
 function SharedVaultMembersIcon({ className }: { className?: string }) {
   return (
@@ -189,6 +212,26 @@ const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAut
 
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
+  const { info: instanceVersion, refetch: refetchInstanceVersion } = useInstanceVersion();
+  const [updatesPlanTier, setUpdatesPlanTier] = useState<string>("FREE");
+  const {
+    info: updateCheck,
+    refetch: refetchUpdateCheck,
+    setInfo: setUpdateCheck,
+  } = useUpdateCheck(updatesPlanTier);
+  const updateFromToSummary = updateCheck ? formatAvailableUpdatesSummary(updateCheck) : null;
+  const [updatesPopupOpen, setUpdatesPopupOpen] = useState(false);
+  const [updatesPopupMode, setUpdatesPopupMode] = useState<SystemUpdatesPopupMode>("available");
+  const [updatesDismissed, setUpdatesDismissed] = useState(false);
+  useEffect(() => {
+    if (!updateCheck || !hasAvailableUpdates(updateCheck)) {
+      setUpdatesDismissed(false);
+      return;
+    }
+    setUpdatesDismissed(isUpdateNoticeDismissed(updateCheck));
+  }, [updateCheck]);
+  const showUpdateNotice =
+    hasAvailableUpdates(updateCheck) && !updatesDismissed;
   const { userId, profile, logout, passwordShareC, vaultKey, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -427,6 +470,51 @@ export default function WorkspaceRoutesLayout() {
     () => workspaceList.find((w) => w.id === resolvedWorkspaceId),
     [workspaceList, resolvedWorkspaceId],
   );
+
+  useEffect(() => {
+    if (!currentWorkspace) {
+      return;
+    }
+    setUpdatesPlanTier(webDisplayPlanTier(currentWorkspace));
+  }, [currentWorkspace]);
+
+  const handleUpdatesPlaqueClick = useCallback(() => {
+    if (!instanceVersion || instanceVersion.deploymentMode !== "self_hosted") {
+      return;
+    }
+    setUpdatesPopupOpen(true);
+    if (showUpdateNotice) {
+      setUpdatesPopupMode("available");
+      return;
+    }
+    setUpdatesPopupMode("loading");
+    void (async () => {
+      const next = await refetchUpdateCheck();
+      if (hasAvailableUpdates(next) && next && !isUpdateNoticeDismissed(next)) {
+        setUpdatesPopupMode("available");
+        return;
+      }
+      setUpdatesPopupMode("up_to_date");
+    })();
+  }, [instanceVersion, refetchUpdateCheck, showUpdateNotice]);
+
+  const footerVersionNode =
+    instanceVersion?.deploymentMode === "self_hosted" ? (
+      <>
+        {updateFromToSummary && showUpdateNotice ? (
+          <span className="sr-only" data-testid="sidebar-update-from-to">
+            {updateFromToSummary}
+          </span>
+        ) : null}
+        <SystemUpdatesPlaque
+          versionLabel={formatInstanceVersionLabel(instanceVersion, t)}
+          updateAvailable={showUpdateNotice}
+          checkLabel={t("web.updates.check")}
+          availableLabel={t("web.updates.notice")}
+          onClick={handleUpdatesPlaqueClick}
+        />
+      </>
+    ) : null;
 
   const workspaceFoldersState = useWorkspaceFoldersState({
     userId: userId ?? "",
@@ -809,6 +897,32 @@ export default function WorkspaceRoutesLayout() {
 
   return (
     <SectionReauthProvider>
+      {updatesPopupOpen ? (
+        <SystemUpdatesPopup
+          open={updatesPopupOpen}
+          mode={updatesPopupMode}
+          info={updateCheck}
+          t={t}
+          onClose={() => setUpdatesPopupOpen(false)}
+          onIgnore={() => {
+            if (updateCheck) {
+              dismissAvailableUpdates(updateCheck);
+            }
+            setUpdatesDismissed(true);
+            setUpdatesPopupOpen(false);
+          }}
+          onApplied={() => {
+            void (async () => {
+              await refetchInstanceVersion();
+              const next = await refetchUpdateCheck();
+              if (next && !hasAvailableUpdates(next)) {
+                setUpdateCheck(next);
+              }
+              setUpdatesDismissed(false);
+            })();
+          }}
+        />
+      ) : null}
       <CreateWorkspacePopup
         open={createWorkspaceOpen}
         submitting={createWorkspaceSubmitting}
@@ -900,6 +1014,7 @@ export default function WorkspaceRoutesLayout() {
                   documentation: t("web.nav.documentation"),
                   help: t("web.nav.help"),
                 }}
+                footerVersion={footerVersionNode}
                 openFoldersSettingsPopup={openFoldersSettingsPopup}
                 openNewVaultPopup={openNewVaultPopup}
                 core={core}
@@ -944,6 +1059,7 @@ type WorkspaceShellWithItemsProps = {
   folderTreeForItems: OkkeySidebarFolderTreeNode[];
   accountMenu: OkkeyAppSidebarAccountMenu | undefined;
   footerPlainLinkLabels: { documentation: string; help: string };
+  footerVersion: ReactNode;
   openFoldersSettingsPopup: () => void;
   openNewVaultPopup: (event: PointerEvent<HTMLButtonElement>) => void;
   core: ReturnType<typeof useAuthenticatedCoreClient>;
@@ -981,6 +1097,7 @@ function WorkspaceShellWithItems({
   folderTreeForItems,
   accountMenu,
   footerPlainLinkLabels,
+  footerVersion,
   openFoldersSettingsPopup,
   openNewVaultPopup,
   core,
@@ -1113,6 +1230,7 @@ function WorkspaceShellWithItems({
             folderEmptyLabel={t("web.nav.foldersEmpty")}
             accountMenu={accountMenu}
             footerPlainLinkLabels={footerPlainLinkLabels}
+            footerVersion={footerVersion}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
             folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
             showVaultHeaderPlus={canShowVaultHeaderPlus}

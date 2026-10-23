@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createApiApp } from "../src/app.ts";
 import type { ApiConfig } from "../src/config.ts";
 import { createTestApiConfig } from "./test-api-config.ts";
@@ -53,8 +56,9 @@ async function dispatch(
   logger = createLoggerStub(),
   readyCheck: () => Promise<void> = async () => {},
   headers?: Record<string, string>,
+  config: ApiConfig = testConfig,
 ): Promise<{ res: MockResponse; logger: ReturnType<typeof createLoggerStub> }> {
-  const app = createApiApp(testConfig, logger, { readyCheck });
+  const app = createApiApp(config, logger, { readyCheck });
   const handler = app.handler();
   const req = { method, url, headers: headers ?? {} } as IncomingMessage;
   const res = new MockResponse();
@@ -75,6 +79,150 @@ test("GET /health returns 200 and ok status payload", async () => {
   const payload = JSON.parse(res.body) as { status: string; service: string };
   assert.equal(payload.status, "ok");
   assert.equal(payload.service, "okkey-api");
+});
+
+test("GET /version returns build/version payload", async () => {
+  const previous = process.env.OKKEY_VERSION;
+  process.env.OKKEY_VERSION = "test-version-1";
+  try {
+    const { res } = await dispatch("GET", "/version");
+    assert.equal(res.statusCode, 200);
+    const payload = JSON.parse(res.body) as {
+      okkey: string;
+      enterprise: string | null;
+      deploymentMode: string;
+      enterpriseModulesEnabled: boolean;
+      requestId: string;
+    };
+    assert.equal(payload.okkey, "test-version-1");
+    assert.equal(payload.enterprise, null);
+    assert.equal(payload.deploymentMode, "self_hosted");
+    assert.equal(payload.enterpriseModulesEnabled, false);
+    assert.ok(payload.requestId);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OKKEY_VERSION;
+    } else {
+      process.env.OKKEY_VERSION = previous;
+    }
+  }
+});
+
+test("GET /updates/check returns empty when feed not configured", async () => {
+  const { res } = await dispatch("GET", "/updates/check");
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body) as {
+    feedConfigured: boolean;
+    available: unknown[];
+    deploymentMode: string;
+  };
+  assert.equal(payload.deploymentMode, "self_hosted");
+  assert.equal(payload.feedConfigured, false);
+  assert.deepEqual(payload.available, []);
+});
+
+test("GET /updates/check returns from→to from mock feed path", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "okkey-updates-check-"));
+  const feedPath = path.join(dir, "feed.json");
+  writeFileSync(
+    feedPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      components: [{ id: "okkey", version: "1.0.0-betta.4", notes: "mock staging" }],
+    }),
+    "utf8",
+  );
+  const previous = process.env.OKKEY_VERSION;
+  process.env.OKKEY_VERSION = "1.0.0-betta.3";
+  try {
+    const config = createTestApiConfig({
+      corsOrigin: "http://localhost:5173,http://localhost:3000",
+      databaseUrl: "postgresql://okkey:okkey@localhost:5432/okkey",
+      redisUrl: "redis://localhost:6379",
+      updateFeedPath: feedPath,
+    });
+    const { res } = await dispatch("GET", "/updates/check", createLoggerStub(), async () => {}, undefined, config);
+    assert.equal(res.statusCode, 200);
+    const payload = JSON.parse(res.body) as {
+      feedConfigured: boolean;
+      available: Array<{ id: string; from: string; to: string; notes: string | null }>;
+    };
+    assert.equal(payload.feedConfigured, true);
+    assert.equal(payload.available.length, 1);
+    assert.equal(payload.available[0]?.id, "okkey");
+    assert.equal(payload.available[0]?.from, "1.0.0-betta.3");
+    assert.equal(payload.available[0]?.to, "1.0.0-betta.4");
+    assert.equal(payload.available[0]?.notes, "mock staging");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OKKEY_VERSION;
+    } else {
+      process.env.OKKEY_VERSION = previous;
+    }
+  }
+});
+
+test("POST /updates/apply returns 501 when apply mode is off", async () => {
+  const { res } = await dispatch("POST", "/updates/apply");
+  assert.equal(res.statusCode, 501);
+  const payload = JSON.parse(res.body) as {
+    error: string;
+    applied: boolean;
+    deploymentMode: string;
+  };
+  assert.equal(payload.error, "UPDATE_APPLY_UNAVAILABLE");
+  assert.equal(payload.applied, false);
+  assert.equal(payload.deploymentMode, "self_hosted");
+});
+
+test("POST /updates/apply version_file mode returns applied true", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "okkey-apply-route-"));
+  const feedPath = path.join(dir, "feed.json");
+  const versionFilePath = path.join(dir, "version.json");
+  writeFileSync(
+    feedPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      components: [{ id: "okkey", version: "1.0.0-betta.4", notes: "mock" }],
+    }),
+    "utf8",
+  );
+  writeFileSync(versionFilePath, JSON.stringify({ okkey: "1.0.0-betta.3" }), "utf8");
+  const previous = process.env.OKKEY_VERSION;
+  delete process.env.OKKEY_VERSION;
+  try {
+    const config = createTestApiConfig({
+      corsOrigin: "http://localhost:5173,http://localhost:3000",
+      databaseUrl: "postgresql://okkey:okkey@localhost:5432/okkey",
+      redisUrl: "redis://localhost:6379",
+      updateFeedPath: feedPath,
+      updateApplyMode: "version_file",
+      updateVersionFilePath: versionFilePath,
+    });
+    const { res } = await dispatch(
+      "POST",
+      "/updates/apply",
+      createLoggerStub(),
+      async () => {},
+      undefined,
+      config,
+    );
+    assert.equal(res.statusCode, 200);
+    const payload = JSON.parse(res.body) as {
+      applied: boolean;
+      mode: string;
+      current: { okkey: string };
+    };
+    assert.equal(payload.applied, true);
+    assert.equal(payload.mode, "version_file");
+    assert.equal(payload.current.okkey, "1.0.0-betta.4");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OKKEY_VERSION;
+    } else {
+      process.env.OKKEY_VERSION = previous;
+    }
+  }
 });
 
 test("unknown route returns 404", async () => {
