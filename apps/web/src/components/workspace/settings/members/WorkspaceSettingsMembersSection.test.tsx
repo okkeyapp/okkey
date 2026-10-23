@@ -127,6 +127,7 @@ const freeWorkspace = {
   capsulePolicies: {
     allowMode: "all" as const,
     allowMemberIds: [],
+    allowedCapsuleTypes: ["text", "file", "item"] as const,
     forceMaxViews: 0,
     requireTimeDeactivation: false,
     requireAccess: false,
@@ -195,6 +196,7 @@ describe("WorkspaceSettingsMembersSection", () => {
             capsulePolicies: {
               allowMode: "all",
               allowMemberIds: [],
+              allowedCapsuleTypes: ["text", "file", "item"] as const,
               forceMaxViews: 0,
               requireTimeDeactivation: false,
               requireAccess: false,
@@ -259,6 +261,7 @@ describe("WorkspaceSettingsMembersSection", () => {
             capsulePolicies: {
               allowMode: "all",
               allowMemberIds: [],
+              allowedCapsuleTypes: ["text", "file", "item"] as const,
               forceMaxViews: 0,
               requireTimeDeactivation: false,
               requireAccess: false,
@@ -322,6 +325,7 @@ describe("WorkspaceSettingsMembersSection", () => {
             capsulePolicies: {
               allowMode: "all",
               allowMemberIds: [],
+              allowedCapsuleTypes: ["text", "file", "item"] as const,
               forceMaxViews: 0,
               requireTimeDeactivation: false,
               requireAccess: false,

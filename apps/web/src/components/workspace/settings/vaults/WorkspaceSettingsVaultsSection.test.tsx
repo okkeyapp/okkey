@@ -90,6 +90,7 @@ const freeWorkspace = {
   capsulePolicies: {
     allowMode: "all" as const,
     allowMemberIds: [] as string[],
+    allowedCapsuleTypes: ["text", "file", "item"] as const,
     forceMaxViews: 0,
     requireTimeDeactivation: false,
     requireAccess: false,

@@ -136,6 +136,7 @@ async function main(): Promise<void> {
   const workspaceSettingsService = new WorkspaceSettingsService({
     workspaces: storage.repositories.workspaces,
     db: storage.postgres,
+    config,
   });
   const planChangeRequestService = new PlanChangeRequestService({
     db: storage.postgres,

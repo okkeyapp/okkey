@@ -25,8 +25,14 @@ import {
   type OkkeySidebarFolderTreeNode,
 } from "@okkey/ui";
 import type { WebLocale } from "@okkey/i18n";
+import {
+  DEFAULT_WORKSPACE_CAPSULE_POLICIES,
+  isCapsuleAllowedForMember,
+  isCapsuleTypeAllowed,
+} from "@okkey/types";
 import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
+import type { WorkspaceShellOutletContext } from "../../pages/workspace/WorkspaceSectionPage";
 
 import { useLocale } from "../../locale/LocaleContext";
 import { useWorkspaceFolders } from "../../folders/WorkspaceFoldersContext";
@@ -730,6 +736,12 @@ export default function ItemsListLeftPane({
     getItemCreatedByUserId,
   } = useWorkspaceItems();
   const { canPutItem, canDeleteItem, canUseFunction } = useWorkspaceVaultProfiles();
+  const { userId } = useAuthVault();
+  const outletContext = useOutletContext<WorkspaceShellOutletContext | undefined>();
+  const capsulePolicies =
+    outletContext?.workspace?.capsulePolicies ?? DEFAULT_WORKSPACE_CAPSULE_POLICIES;
+  const capsulesAllowedForMember = isCapsuleAllowedForMember(capsulePolicies, userId);
+  const itemCapsuleTypeAllowed = isCapsuleTypeAllowed(capsulePolicies, "item");
   const [searchParams, setSearchParams] = useSearchParams();
   const workspaceId = searchParams.get(WORKSPACE_QUERY_PARAM)?.trim() ?? "";
   const vaultQ = searchParams.get(VAULT_QUERY_PARAM)?.trim() ?? "";
@@ -938,7 +950,10 @@ export default function ItemsListLeftPane({
       canEdit: canPutItem(row.vaultId, createdBy),
       canCopy: canUseFunction(row.vaultId, "save_to_personal"),
       canFavorite: canUseFunction(row.vaultId, "favorite"),
-      canCreateCapsule: canUseFunction(row.vaultId, "create_capsules"),
+      canCreateCapsule:
+        canUseFunction(row.vaultId, "create_capsules") &&
+        capsulesAllowedForMember &&
+        itemCapsuleTypeAllowed,
       canArchive: canUseFunction(row.vaultId, "archive"),
       canDelete: canDeleteItem(row.vaultId, createdBy),
     };
