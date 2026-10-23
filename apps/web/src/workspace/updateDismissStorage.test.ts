@@ -36,8 +36,10 @@ function memoryStorage(): Storage {
 const base: UpdateCheckInfo = {
   deploymentMode: "self_hosted",
   feedConfigured: true,
-  current: { okkey: "1.0.0", enterprise: null },
-  available: [{ id: "okkey", from: "1.0.0", to: "1.0.1", notes: null }],
+  current: { okkey: "1.0.0-betta.3", enterprise: null },
+  available: [
+    { id: "okkey", from: "1.0.0-betta.3", to: "1.0.0-betta.4", notes: null },
+  ],
 };
 
 describe("updateDismissStorage", () => {
@@ -57,13 +59,17 @@ describe("updateDismissStorage", () => {
   it("hides notice after dismiss until target version changes", () => {
     expect(isUpdateNoticeDismissed(base)).toBe(false);
     dismissAvailableUpdates(base);
-    expect(readDismissedUpdatesFingerprint()).toBe("okkey:1.0.1");
-    expect(window.localStorage.getItem(UPDATE_DISMISS_STORAGE_KEY)).toBe("okkey:1.0.1");
+    expect(readDismissedUpdatesFingerprint()).toBe("okkey:1.0.0-betta.4");
+    expect(window.localStorage.getItem(UPDATE_DISMISS_STORAGE_KEY)).toBe(
+      "okkey:1.0.0-betta.4",
+    );
     expect(isUpdateNoticeDismissed(base)).toBe(true);
 
     const newer: UpdateCheckInfo = {
       ...base,
-      available: [{ id: "okkey", from: "1.0.0", to: "1.0.2", notes: null }],
+      available: [
+        { id: "okkey", from: "1.0.0-betta.3", to: "1.0.0-betta.5", notes: null },
+      ],
     };
     expect(isUpdateNoticeDismissed(newer)).toBe(false);
   });

@@ -44,16 +44,24 @@ export default function DevUISidebarPage() {
             <OkkeyAppSidebar
               className="h-full min-h-0"
               footerVersion={
-                <div className="flex flex-col gap-1" data-testid="sidebar-instance-version-label">
-                  <span>Version 1.0.0 · Enterprise 1.0.0-beta.1</span>
-                  <button
-                    type="button"
+                <button
+                  type="button"
+                  data-testid="sidebar-updates-plaque"
+                  className="flex w-full flex-col gap-0.5 rounded-lg bg-[rgba(0,0,0,0.05)] px-2 py-2 text-left dark:bg-[rgba(255,255,255,0.08)]"
+                >
+                  <span
+                    className="truncate text-xs leading-4 text-muted-foreground"
+                    data-testid="sidebar-instance-version-label"
+                  >
+                    Okkey v1.0.0-betta.3
+                  </span>
+                  <span
+                    className="truncate text-xs font-medium leading-4 text-primary underline"
                     data-testid="sidebar-update-notice"
-                    className="w-fit max-w-full truncate text-left text-xs font-medium leading-4 text-primary underline-offset-2 hover:underline"
                   >
                     Update available
-                  </button>
-                </div>
+                  </span>
+                </button>
               }
             >
               <OkkeyAppSidebarToolbar />

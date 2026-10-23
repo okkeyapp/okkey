@@ -6,8 +6,9 @@ export type ApplySystemUpdateResult =
   | { ok: false; error: "UPDATE_APPLY_UNAVAILABLE" | "APPLY_FAILED"; message: string | null };
 
 /**
- * POST /updates/apply. Until the signed update agent exists the API returns 501;
- * this helper maps that to a typed failure without mutating local state.
+ * POST /updates/apply.
+ * Success when API has OKKEY_UPDATE_APPLY_MODE=agent|hook|version_file.
+ * Maps 501 UPDATE_APPLY_UNAVAILABLE when apply mode is off.
  */
 export async function applySystemUpdate(): Promise<ApplySystemUpdateResult> {
   const headers: Record<string, string> = {

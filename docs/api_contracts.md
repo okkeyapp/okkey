@@ -71,14 +71,14 @@ Malformed route parameters (missing `workspaceId` / `vaultId` in path) may retur
 
 ### `GET /version`
 
-Returns the running Core build string and, when enterprise modules are loaded, the enterprise sibling version. Resolution order for Core: `OKKEY_VERSION` → `APP_VERSION` → `OKKEY_IMAGE_TAG` → root `package.json` → `"unknown"`. Enterprise: `OKKEY_ENTERPRISE_VERSION` → sibling `package.json`, else `null` when modules are off.
+Returns the running Core build string and, when enterprise modules are loaded, the enterprise sibling version. Resolution order for Core: `OKKEY_VERSION` → `APP_VERSION` → `OKKEY_VERSION_FILE` → root `package.json` (skips npm placeholders `0.0.0`/`0.0.1`) → product-like `OKKEY_IMAGE_TAG` (`1.0.0` / `1.0.0-betta.N`; tags like `dev` skipped) → default **`1.0.0-betta.3`**. Enterprise: `OKKEY_ENTERPRISE_VERSION` → version file → sibling `package.json` → same string as Core. Product scheme (spelling **betta**): main `1.0.0-betta.1`, dev `1.0.0-betta.2`, this track `1.0.0-betta.3` → stable `1.0.0`. The web plaque shows only Core as `Okkey v{okkey}` (no enterprise split).
 
 Example `200`:
 
 ```json
 {
-  "okkey": "1.0.0",
-  "enterprise": "1.0.0-beta.1",
+  "okkey": "1.0.0-betta.3",
+  "enterprise": "1.0.0-betta.3",
   "deploymentMode": "self_hosted",
   "enterpriseModulesEnabled": true,
   "requestId": "req_01HZZZZ",
@@ -90,7 +90,7 @@ Orthogonal to licensing: clients may call this with a missing/expired license.
 
 ### `GET /updates/check`
 
-Self-host update feed probe. Config: `OKKEY_UPDATE_FEED_PATH` (preferred, perimeter file) and/or `OKKEY_UPDATE_FEED_URL` (optional remote). Empty both → `feedConfigured: false`, `available: []` (no call to license.okkey.io). SaaS always returns empty `available`. Does **not** consult license validity.
+Self-host update feed probe. Config: `OKKEY_UPDATE_FEED_PATH` (preferred, perimeter file) and/or `OKKEY_UPDATE_FEED_URL` (optional remote). Empty both → `feedConfigured: false`, `available: []` (no call to license.okkey.io). SaaS always returns empty `available`. Does **not** consult license validity. Optional query `planTier` (workspace entitlement): `FREE` (default) considers only the `okkey` feed component; `ENTERPRISE` also considers `okkey-enterprise` when a current enterprise version is known. Do not gate solely on `enterpriseModulesEnabled`.
 
 Feed JSON (`schemaVersion: 1`):
 
@@ -99,8 +99,8 @@ Feed JSON (`schemaVersion: 1`):
   "schemaVersion": 1,
   "generatedAt": "2026-10-23T00:00:00.000Z",
   "components": [
-    { "id": "okkey", "version": "1.0.1", "notes": "optional", "packageUrl": "optional", "digest": "optional" },
-    { "id": "okkey-enterprise", "version": "1.0.1" }
+    { "id": "okkey", "version": "1.0.0-betta.4", "notes": "optional", "packageUrl": "optional", "digest": "optional" },
+    { "id": "okkey-enterprise", "version": "1.0.0-betta.4" }
   ]
 }
 ```
@@ -111,9 +111,9 @@ Example `200` when an update is available:
 {
   "deploymentMode": "self_hosted",
   "feedConfigured": true,
-  "current": { "okkey": "1.0.0", "enterprise": null },
+  "current": { "okkey": "1.0.0-betta.3", "enterprise": null },
   "available": [
-    { "id": "okkey", "from": "1.0.0", "to": "1.0.1", "notes": "fixes", "packageUrl": null, "digest": null }
+    { "id": "okkey", "from": "1.0.0-betta.3", "to": "1.0.0-betta.4", "notes": "fixes", "packageUrl": null, "digest": null }
   ],
   "requestId": "req_01HZZZZ",
   "time": "2026-10-23T16:00:00.000Z"
@@ -124,15 +124,39 @@ On feed load failure with a configured source: `502` + `error: "UPDATE_FEED_UNAV
 
 ### `POST /updates/apply`
 
-Self-host only. Requests package apply for available updates. The API process **never** mounts docker.sock and does **not** apply unsigned packages. Until a separate signed update agent is wired, the route returns `501` + `error: "UPDATE_APPLY_UNAVAILABLE"` with `applied: false` (instance unchanged). SaaS → `404`. Orthogonal to licensing.
+Self-host only. Applies available updates **without** mounting docker.sock in the API process. Modes via `OKKEY_UPDATE_APPLY_MODE`:
+
+| Mode | Env | Behavior |
+|---|---|---|
+| `off` (default) | — | `501` + `UPDATE_APPLY_UNAVAILABLE` |
+| `agent` | `OKKEY_UPDATE_AGENT_URL` | POST to signed update agent; optional write `OKKEY_VERSION_FILE` |
+| `hook` | `OKKEY_UPDATE_APPLY_HOOK` | Run host script (compose pull / restart); optional version file |
+| `version_file` | `OKKEY_VERSION_FILE` | Local/dev smoke: write target versions so `GET /version` advances |
+
+SaaS → `404`. Orthogonal to licensing.
+
+Success `200`:
+
+```json
+{
+  "applied": true,
+  "mode": "version_file",
+  "current": { "okkey": "1.0.0-betta.4", "enterprise": null },
+  "deploymentMode": "self_hosted",
+  "requestId": "req_01HZZZZ",
+  "time": "2026-10-23T16:00:00.000Z"
+}
+```
+
+When mode is off:
 
 ```json
 {
   "error": "UPDATE_APPLY_UNAVAILABLE",
-  "message": "Update agent is not configured. …",
+  "message": "Update apply is not configured. …",
   "applied": false,
   "deploymentMode": "self_hosted",
-  "current": { "okkey": "1.0.0", "enterprise": null },
+  "current": { "okkey": "1.0.0-betta.3", "enterprise": null },
   "requestId": "req_01HZZZZ",
   "time": "2026-10-23T16:00:00.000Z"
 }

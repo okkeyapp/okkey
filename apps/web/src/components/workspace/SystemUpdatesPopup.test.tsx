@@ -13,10 +13,10 @@ vi.mock("../../workspace/applySystemUpdate", () => ({
 const info: UpdateCheckInfo = {
   deploymentMode: "self_hosted",
   feedConfigured: true,
-  current: { okkey: "1.0.0", enterprise: "1.0.0-beta.1" },
+  current: { okkey: "1.0.0-betta.3", enterprise: "1.0.0-betta.3" },
   available: [
-    { id: "okkey", from: "1.0.0", to: "1.0.1", notes: "core fixes" },
-    { id: "okkey-enterprise", from: "1.0.0-beta.1", to: "1.0.0-beta.2", notes: null },
+    { id: "okkey", from: "1.0.0-betta.3", to: "1.0.0-betta.4", notes: "core fixes\nmore polish" },
+    { id: "okkey-enterprise", from: "1.0.0-betta.3", to: "1.0.0-betta.4", notes: null },
   ],
 };
 
@@ -25,16 +25,17 @@ describe("SystemUpdatesPopup", () => {
     applySystemUpdate.mockReset();
   });
 
-  it("renders from→to rows and wires Ignore", () => {
+  it("renders version + changelog and wires Ignore", () => {
     const onClose = vi.fn();
     const onIgnore = vi.fn();
     render(
       <SystemUpdatesPopup
         open
+        mode="available"
         info={info}
         t={(key, values) => {
-          if (key === "web.updatesPopup.fromTo" && values) {
-            return `${String(values.from)} → ${String(values.to)}`;
+          if (key === "web.updatesPopup.versionLine" && values) {
+            return `Okkey v${String(values.version)}`;
           }
           return key;
         }}
@@ -44,10 +45,13 @@ describe("SystemUpdatesPopup", () => {
     );
 
     expect(screen.getByTestId("system-updates-popup")).toBeInTheDocument();
-    expect(screen.getByTestId("system-updates-item-okkey")).toHaveTextContent("1.0.0 → 1.0.1");
-    expect(screen.getByTestId("system-updates-item-okkey")).toHaveTextContent("core fixes");
-    expect(screen.getByTestId("system-updates-item-okkey-enterprise")).toHaveTextContent(
-      "1.0.0-beta.1 → 1.0.0-beta.2",
+    expect(screen.getByTestId("system-updates-target-version")).toHaveTextContent(
+      "Okkey v1.0.0-betta.4",
+    );
+    expect(screen.getByTestId("system-updates-changelog")).toHaveTextContent("core fixes");
+    expect(screen.getByTestId("system-updates-and-more")).toHaveAttribute(
+      "href",
+      "https://github.com/okkeyapp/okkey/releases/tag/v1.0.0-betta.4",
     );
 
     fireEvent.click(screen.getByTestId("system-updates-ignore"));
@@ -64,6 +68,7 @@ describe("SystemUpdatesPopup", () => {
     render(
       <SystemUpdatesPopup
         open
+        mode="available"
         info={info}
         t={(key) => key}
         onClose={vi.fn()}
@@ -80,10 +85,25 @@ describe("SystemUpdatesPopup", () => {
     expect(applySystemUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it("shows up-to-date alert", () => {
+    render(
+      <SystemUpdatesPopup
+        open
+        mode="up_to_date"
+        info={null}
+        t={(key) => key}
+        onClose={vi.fn()}
+        onIgnore={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("system-updates-up-to-date")).toBeInTheDocument();
+  });
+
   it("renders nothing when closed", () => {
     const { container } = render(
       <SystemUpdatesPopup
         open={false}
+        mode="available"
         info={info}
         t={(key) => key}
         onClose={vi.fn()}

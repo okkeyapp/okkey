@@ -99,10 +99,41 @@ export function parseUpdateFeedDocument(raw: unknown): UpdateFeedDocument {
   };
 }
 
+type ParsedProductVersion = {
+  core: number[];
+  /** null = stable release (e.g. `1.0.0`). */
+  prerelease: { label: string; n: number } | null;
+};
+
+/**
+ * Parse product versions: `1.0.0`, `1.0.0-betta.3` (intentional spelling **betta**).
+ * Returns null for opaque tags (`dev`, `staging-2`).
+ */
+export function parseProductVersion(raw: string): ParsedProductVersion | null {
+  const v = raw.trim().replace(/^v/i, "");
+  if (v === "") {
+    return null;
+  }
+  const match = /^(\d+(?:\.\d+)*)(?:-([A-Za-z]+)\.(\d+))?$/.exec(v);
+  if (!match) {
+    return null;
+  }
+  const core = match[1]!.split(".").map((p) => Number(p));
+  if (match[2] !== undefined && match[3] !== undefined) {
+    return {
+      core,
+      prerelease: { label: match[2].toLowerCase(), n: Number(match[3]) },
+    };
+  }
+  return { core, prerelease: null };
+}
+
 /**
  * Compare version strings for "is feed newer than current?".
- * Prefer dotted numeric / semver-like; otherwise any non-equal feed version counts as available
- * (supports mock tags like `staging-2` vs `dev`).
+ * Product scheme: `1.0.0-betta.N` prereleases, then stable `1.0.0`.
+ * - `1.0.0-betta.4` > `1.0.0-betta.3`
+ * - stable `1.0.0` > any `1.0.0-betta.*`
+ * Opaque tags (`staging-2` vs `dev`): any non-equal feed counts as available.
  */
 export function isFeedVersionNewer(current: string, feed: string): boolean {
   const a = current.trim();
@@ -111,29 +142,50 @@ export function isFeedVersionNewer(current: string, feed: string): boolean {
     return false;
   }
 
-  const parseParts = (v: string): number[] | null => {
-    const core = v.replace(/^v/i, "").split("-")[0] ?? v;
-    if (!/^\d+(\.\d+)*$/.test(core)) {
-      return null;
-    }
-    return core.split(".").map((p) => Number(p));
-  };
-
-  const pa = parseParts(a);
-  const pb = parseParts(b);
+  const pa = parseProductVersion(a);
+  const pb = parseProductVersion(b);
   if (pa && pb) {
-    const len = Math.max(pa.length, pb.length);
+    const len = Math.max(pa.core.length, pb.core.length);
     for (let i = 0; i < len; i += 1) {
-      const x = pa[i] ?? 0;
-      const y = pb[i] ?? 0;
+      const x = pa.core[i] ?? 0;
+      const y = pb.core[i] ?? 0;
       if (y > x) return true;
       if (y < x) return false;
     }
-    // Equal numeric core: treat pre-release / tag suffix difference as newer when strings differ.
-    return b !== a;
+    // Equal numeric core: stable > any prerelease; else compare label then N.
+    if (pa.prerelease === null && pb.prerelease === null) {
+      return false;
+    }
+    if (pa.prerelease !== null && pb.prerelease === null) {
+      return true; // feed is stable
+    }
+    if (pa.prerelease === null && pb.prerelease !== null) {
+      return false; // current already stable
+    }
+    const la = pa.prerelease!;
+    const lb = pb.prerelease!;
+    if (la.label !== lb.label) {
+      return lb.label > la.label;
+    }
+    return lb.n > la.n;
   }
 
   return true;
+}
+
+/**
+ * Which feed components to consider for this workspace plan.
+ * FREE (and non-ENTERPRISE) → okkey only; ENTERPRISE → okkey + okkey-enterprise.
+ * Gate on plan_tier / entitlement, not only enterpriseModulesEnabled.
+ */
+export function updateComponentsForPlanTier(
+  planTier: string | null | undefined,
+): ReadonlySet<UpdateFeedComponentId> {
+  const tier = (planTier ?? "").trim().toUpperCase();
+  if (tier === "ENTERPRISE") {
+    return new Set<UpdateFeedComponentId>(["okkey", "okkey-enterprise"]);
+  }
+  return new Set<UpdateFeedComponentId>(["okkey"]);
 }
 
 export function diffAvailableUpdates(input: {
@@ -142,6 +194,11 @@ export function diffAvailableUpdates(input: {
   currentOkkey: string;
   currentEnterprise: string | null;
   feed: UpdateFeedDocument | null;
+  /**
+   * Workspace plan_tier (or entitlement). Defaults to FREE-style (okkey only).
+   * ENTERPRISE also considers okkey-enterprise when a current enterprise version is known.
+   */
+  planTier?: string | null;
 }): UpdateCheckResult {
   const current = {
     okkey: input.currentOkkey,
@@ -157,8 +214,12 @@ export function diffAvailableUpdates(input: {
     };
   }
 
+  const allowed = updateComponentsForPlanTier(input.planTier);
   const available: AvailableUpdate[] = [];
   for (const component of input.feed.components) {
+    if (!allowed.has(component.id)) {
+      continue;
+    }
     if (component.id === "okkey") {
       if (isFeedVersionNewer(input.currentOkkey, component.version)) {
         available.push({
@@ -172,7 +233,7 @@ export function diffAvailableUpdates(input: {
       }
       continue;
     }
-    // okkey-enterprise: only when enterprise is installed (current version known).
+    // okkey-enterprise: ENTERPRISE plan only, and only when a current version is known.
     if (input.currentEnterprise === null) {
       continue;
     }

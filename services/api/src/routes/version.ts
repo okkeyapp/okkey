@@ -8,6 +8,7 @@ export function createVersionRouteHandler(config: ApiConfig): RouteHandler {
       deploymentMode: config.deploymentMode,
       enterpriseModulesEnabled: config.enterpriseModulesEnabled,
       enterpriseModulesPath: config.enterpriseModulesPath,
+      versionFilePath: config.updateVersionFilePath || null,
     });
     json(ctx.res, 200, {
       ...payload,

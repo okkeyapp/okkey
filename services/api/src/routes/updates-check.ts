@@ -7,9 +7,21 @@ import {
 } from "../updates/load-update-feed.ts";
 import { resolveInstanceVersion } from "../version/resolve-instance-version.ts";
 
+function readPlanTierQuery(reqUrl: string | undefined): string | null {
+  try {
+    const requestUrl = new URL(reqUrl ?? "/", "http://localhost");
+    const raw = requestUrl.searchParams.get("planTier")?.trim() ?? "";
+    return raw === "" ? null : raw;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * GET /updates/check — public, orthogonal to licensing.
  * SaaS always returns available=[]; self-host reads configured feed URL/path.
+ * Optional `?planTier=` gates which feed components are considered
+ * (FREE → okkey only; ENTERPRISE → okkey + okkey-enterprise).
  */
 export function createUpdatesCheckRouteHandler(config: ApiConfig): RouteHandler {
   return async (ctx) => {
@@ -17,7 +29,9 @@ export function createUpdatesCheckRouteHandler(config: ApiConfig): RouteHandler 
       deploymentMode: config.deploymentMode,
       enterpriseModulesEnabled: config.enterpriseModulesEnabled,
       enterpriseModulesPath: config.enterpriseModulesPath,
+      versionFilePath: config.updateVersionFilePath || null,
     });
+    const planTier = readPlanTierQuery(ctx.req.url);
 
     const source = {
       url: config.updateFeedUrl ?? "",
@@ -33,6 +47,7 @@ export function createUpdatesCheckRouteHandler(config: ApiConfig): RouteHandler 
         currentOkkey: instance.okkey,
         currentEnterprise: instance.enterprise,
         feed: null,
+        planTier,
       });
       json(ctx.res, 200, {
         ...payload,
@@ -50,6 +65,7 @@ export function createUpdatesCheckRouteHandler(config: ApiConfig): RouteHandler 
         currentOkkey: instance.okkey,
         currentEnterprise: instance.enterprise,
         feed,
+        planTier,
       });
       json(ctx.res, 200, {
         ...payload,

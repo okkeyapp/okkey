@@ -1,5 +1,5 @@
 import type { WebMessageValues } from "@okkey/i18n";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getApiBaseUrl } from "../api/client";
 
@@ -40,50 +40,67 @@ function parseVersionResponse(body: VersionResponseBody): InstanceVersionInfo | 
   };
 }
 
+export async function fetchInstanceVersion(
+  signal?: AbortSignal,
+): Promise<InstanceVersionInfo | null> {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/version`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal,
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const body = (await response.json()) as VersionResponseBody;
+    return parseVersionResponse(body);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Fetch GET /version once for the workspace shell footer.
+ * Fetch GET /version for the workspace shell footer.
  * Fail-soft: returns null when the API is unreachable or the payload is invalid.
  */
-export function useInstanceVersion(): InstanceVersionInfo | null {
+export function useInstanceVersion(): {
+  info: InstanceVersionInfo | null;
+  refetch: () => Promise<InstanceVersionInfo | null>;
+} {
   const [info, setInfo] = useState<InstanceVersionInfo | null>(null);
+
+  const refetch = useCallback(async (): Promise<InstanceVersionInfo | null> => {
+    const parsed = await fetchInstanceVersion();
+    setInfo(parsed);
+    return parsed;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
-      try {
-        const response = await fetch(`${getApiBaseUrl()}/version`, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok || cancelled) {
-          return;
-        }
-        const body = (await response.json()) as VersionResponseBody;
-        const parsed = parseVersionResponse(body);
-        if (!cancelled && parsed) {
-          setInfo(parsed);
-        }
-      } catch {
-        // API unreachable during boot — omit version line.
+      const parsed = await fetchInstanceVersion(controller.signal);
+      if (!cancelled) {
+        setInfo(parsed);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
-  return info;
+  return { info, refetch };
 }
 
+/**
+ * Single product line for the sidebar plaque: `Okkey v{okkey}` from `/version`.
+ * Do not split okkey vs okkey-enterprise in the UI — versions coincide for product display.
+ */
 export function formatInstanceVersionLabel(
   info: InstanceVersionInfo,
   t: (key: string, values?: WebMessageValues) => string,
 ): string {
-  if (info.enterprise) {
-    return t("web.nav.versionWithEnterprise", {
-      version: info.okkey,
-      enterprise: info.enterprise,
-    });
-  }
-  return t("web.nav.version", { version: info.okkey });
+  return t("web.nav.okkeyVersion", { version: info.okkey });
 }
