@@ -99,7 +99,10 @@ import {
   createWorkspaceItemTemplatesUpdateRoute,
 } from "./routes/workspace-item-templates.ts";
 import { createWorkspaceSettingsRoute } from "./routes/workspace-settings.ts";
-import { createWorkspacePlanChangeRequestRoute } from "./routes/workspace-plan-change-request.ts";
+import {
+  createWorkspacePlanChangeRequestRoute,
+  createWorkspacePlanChangeRequestStatusRoute,
+} from "./routes/workspace-plan-change-request.ts";
 import {
   createWorkspaceBuiltInRolesListRoute,
   createWorkspaceCustomRoleDeleteRoute,
@@ -588,6 +591,14 @@ export function createApiApp(
       );
     }
     if (deps.planChangeRequestService) {
+      app.route(
+        "GET",
+        "/workspaces/:workspaceId/plan-change-requests",
+        createWorkspacePlanChangeRequestStatusRoute(
+          deps.planChangeRequestService,
+          resolveUserId,
+        ),
+      );
       app.route(
         "POST",
         "/workspaces/:workspaceId/plan-change-requests",

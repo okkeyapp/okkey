@@ -72,13 +72,15 @@ export interface TrustedContactInviteVariables {
 export interface PlanChangeRequestVariables {
   workspaceId: string;
   workspaceName: string;
+  /** Public app base URL (`PUBLIC_APP_URL`); may be empty when unset. */
+  workspaceUrl: string;
   currentPlanTier: string;
   requestedPlanTier: string;
   contactEmail: string;
   accountEmail: string;
   locale: string;
   region: string;
-  /** Expected number of workspace members / seats (integer ≥ 1). */
+  /** Actual workspace member count (from `workspace_members`). */
   workspaceMemberCount: number;
   /** Deployment label for sales: `saas` or `self-hosted`. */
   deploymentMode: string;

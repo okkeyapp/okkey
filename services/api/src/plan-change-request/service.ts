@@ -17,6 +17,7 @@ export class PlanChangeRequestServiceError extends Error {
     | "WORKSPACE_NOT_FOUND"
     | "INVALID_REQUEST"
     | "PLAN_DOWNGRADE_FORBIDDEN"
+    | "ALREADY_SUBMITTED"
     | "EMAIL_NOT_CONFIGURED"
     | "EMAIL_SEND_FAILED";
   readonly status: number;
@@ -27,6 +28,7 @@ export class PlanChangeRequestServiceError extends Error {
       | "WORKSPACE_NOT_FOUND"
       | "INVALID_REQUEST"
       | "PLAN_DOWNGRADE_FORBIDDEN"
+      | "ALREADY_SUBMITTED"
       | "EMAIL_NOT_CONFIGURED"
       | "EMAIL_SEND_FAILED",
     status: number,
@@ -46,8 +48,11 @@ export type PlanChangeRequestInput = {
   contactEmail: string;
   locale: string;
   region: string | null;
-  /** Expected number of workspace members / seats (integer ≥ 1). */
-  workspaceMemberCount: number;
+  /**
+   * Expected seats / members from the form (integer ≥ 1).
+   * Required on self-hosted; SaaS may omit (server falls back to live member count).
+   */
+  workspaceMemberCount?: number;
 };
 
 /** Sales-facing label: `saas` | `self-hosted`. */
@@ -57,34 +62,99 @@ export function salesDeploymentLabel(mode: DeploymentMode): "saas" | "self-hoste
 
 export class PlanChangeRequestService {
   private readonly db: QueryExecutor;
-  private readonly workspaces: Pick<WorkspacesRepository, "findById">;
+  private readonly workspaces: Pick<
+    WorkspacesRepository,
+    "findById" | "countMembers" | "markPlanChangeRequestSent"
+  >;
   private readonly users: Pick<UsersRepository, "loadAccountProfile">;
   private readonly emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
   private readonly salesEmail: string;
+  private readonly salesEmailDeliverable: boolean;
   private readonly deploymentMode: DeploymentMode;
+  private readonly publicAppBaseUrl: string;
 
   constructor(deps: {
     db: QueryExecutor;
-    workspaces: Pick<WorkspacesRepository, "findById">;
+    workspaces: Pick<
+      WorkspacesRepository,
+      "findById" | "countMembers" | "markPlanChangeRequestSent"
+    >;
     users: Pick<UsersRepository, "loadAccountProfile">;
     emailTemplates: Pick<EmailTemplateService, "sendPlanChangeRequest">;
     salesEmail: string;
+    /**
+     * When false (`EMAIL_PROVIDER=logger` or incomplete transport config),
+     * submit is rejected and clients should use mailto instead.
+     */
+    salesEmailDeliverable?: boolean;
     deploymentMode: DeploymentMode;
+    publicAppBaseUrl?: string;
   }) {
     this.db = deps.db;
     this.workspaces = deps.workspaces;
     this.users = deps.users;
     this.emailTemplates = deps.emailTemplates;
     this.salesEmail = deps.salesEmail.trim();
+    this.salesEmailDeliverable = deps.salesEmailDeliverable ?? true;
     this.deploymentMode = deps.deploymentMode;
+    this.publicAppBaseUrl = (deps.publicAppBaseUrl ?? "").trim().replace(/\/$/, "");
+  }
+
+  async getStatus(input: {
+    workspaceId: string;
+    actorUserId: string;
+  }): Promise<{
+    submitted: boolean;
+    sentAt: string | null;
+    salesEmailDeliverable: boolean;
+    salesEmail: string;
+  }> {
+    try {
+      await assertWorkspacePermission(
+        this.db,
+        input.workspaceId,
+        input.actorUserId,
+        "billing",
+        "get",
+      );
+    } catch {
+      throw new PlanChangeRequestServiceError("ACCESS_DENIED", 403, "access denied");
+    }
+
+    const workspace = await this.workspaces.findById(input.workspaceId);
+    if (!workspace) {
+      throw new PlanChangeRequestServiceError(
+        "WORKSPACE_NOT_FOUND",
+        404,
+        "workspace not found",
+      );
+    }
+
+    const salesEmailDeliverable = this.isSalesEmailDeliverable();
+    // Already-sent / no-resend only applies when outbound email is deliverable (real SMTP).
+    // Logger / mailto path always reports not submitted so clients keep showing mailto.
+    const submitted =
+      salesEmailDeliverable && workspace.planChangeRequestSentAt != null;
+    return {
+      submitted,
+      sentAt: submitted ? workspace.planChangeRequestSentAt : null,
+      salesEmailDeliverable,
+      salesEmail: this.salesEmail,
+    };
+  }
+
+  private isSalesEmailDeliverable(): boolean {
+    return Boolean(this.salesEmail) && this.salesEmailDeliverable;
   }
 
   async submit(input: PlanChangeRequestInput): Promise<{ submitted: true }> {
-    if (!this.salesEmail) {
+    if (!this.isSalesEmailDeliverable()) {
       throw new PlanChangeRequestServiceError(
         "EMAIL_NOT_CONFIGURED",
         503,
-        "sales email is not configured",
+        this.salesEmail
+          ? "outbound email is not deliverable; use mailto"
+          : "sales email is not configured",
       );
     }
 
@@ -108,14 +178,15 @@ export class PlanChangeRequestService {
 
     const locale =
       input.locale === "ru" || input.locale === "en" ? input.locale : "en";
-    const region =
-      input.region && /^[A-Z]{2}$/.test(input.region) ? input.region : null;
-    const workspaceMemberCount = input.workspaceMemberCount;
-    if (
-      !Number.isInteger(workspaceMemberCount) ||
-      workspaceMemberCount < 1 ||
-      !Number.isFinite(workspaceMemberCount)
-    ) {
+
+    const rawMemberCount = input.workspaceMemberCount;
+    const clientMemberCountValid =
+      typeof rawMemberCount === "number" &&
+      Number.isInteger(rawMemberCount) &&
+      Number.isSafeInteger(rawMemberCount) &&
+      rawMemberCount >= 1;
+
+    if (this.deploymentMode !== "saas" && !clientMemberCountValid) {
       throw new PlanChangeRequestServiceError(
         "INVALID_REQUEST",
         400,
@@ -144,8 +215,16 @@ export class PlanChangeRequestService {
       );
     }
 
+    // Re-send is allowed: each successful submit updates `plan_change_request_sent_at`
+    // so the UI can show the latest datetime and “Send again”.
+
     const currentPlanTier = normalizePlanTier(workspace.planTier);
-    if (!canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)) {
+    // Self-hosted license purchase is not a SaaS catalog upgrade: Core FREE UI ignores DB
+    // `plan_tier` (modules gate). Skip the ladder so ENTERPRISE→ENTERPRISE license requests work.
+    if (
+      this.deploymentMode === "saas" &&
+      !canRequestPlanUpgrade(currentPlanTier, requestedPlanTier)
+    ) {
       throw new PlanChangeRequestServiceError(
         "PLAN_DOWNGRADE_FORBIDDEN",
         400,
@@ -154,6 +233,18 @@ export class PlanChangeRequestService {
     }
 
     const profile = await this.users.loadAccountProfile(input.actorUserId);
+    const regionFromProfile =
+      profile?.billingRegion && /^[A-Z]{2}$/.test(profile.billingRegion)
+        ? profile.billingRegion
+        : null;
+    const regionFromInput =
+      input.region && /^[A-Z]{2}$/.test(input.region) ? input.region : null;
+    const region = regionFromProfile ?? regionFromInput;
+
+    const workspaceMemberCount = clientMemberCountValid
+      ? (rawMemberCount as number)
+      : await this.workspaces.countMembers(input.workspaceId);
+    const workspaceUrl = this.publicAppBaseUrl;
 
     try {
       await this.emailTemplates.sendPlanChangeRequest({
@@ -165,6 +256,7 @@ export class PlanChangeRequestService {
         variables: {
           workspaceId: workspace.id,
           workspaceName: workspace.name,
+          workspaceUrl,
           currentPlanTier,
           requestedPlanTier,
           contactEmail,
@@ -183,6 +275,8 @@ export class PlanChangeRequestService {
         error instanceof Error ? error.message : "email send failed",
       );
     }
+
+    await this.workspaces.markPlanChangeRequestSent(input.workspaceId);
 
     return { submitted: true };
   }
