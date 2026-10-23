@@ -75,10 +75,11 @@ The **database schema is compatible**: enterprise only adds new tables.
 
 Core release policy for cryptography:
 
-- all production encrypted write paths are `crypto_version=v2` only
+- vault items require crypto profile `v2` (`qday_default`) for read and write in every environment
+- crypto profile `v1` is forbidden for vault items; there is no migration of existing profile `v1` payloads
 - no silent fallback to weaker profiles is allowed
 - no legacy client-data obligations are part of the first production release
-- `v1` is allowed only for explicit dev/test fixtures
+- `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow the allowlist
 - enterprise extensions cannot override this policy
 
 Release gates and readiness checklist are defined in `docs/release_policy_qday.md`.

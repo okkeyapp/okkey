@@ -14,6 +14,18 @@ import { getCryptoConfig } from "./config/index.js";
 const VAULT_ITEM_AAD = new TextEncoder().encode("okkey-vault-item-payload-v1");
 const NONCE_LEN = 24;
 
+function assertVaultItemQdayProfile(
+  profileVersion: number,
+  direction: "read" | "write",
+): void {
+  const config = getCryptoConfig(profileVersion);
+  if (config.runtimeMode !== "qday_default") {
+    throw new CryptoSdkError(
+      "UNSUPPORTED_ALGORITHM",
+      `vault item ${direction} path requires qday profile, got v${config.version}`,
+    );
+  }
+}
 
 export async function encryptVaultItemPayload(
   vaultKey: Uint8Array,
@@ -21,13 +33,7 @@ export async function encryptVaultItemPayload(
   profileVersion = 2,
 ): Promise<Uint8Array> {
   await ensureWasm();
-  const config = getCryptoConfig(profileVersion);
-  if (config.runtimeMode !== "qday_default") {
-    throw new CryptoSdkError(
-      "UNSUPPORTED_ALGORITHM",
-      `vault item write path requires qday profile, got v${config.version}`,
-    );
-  }
+  assertVaultItemQdayProfile(profileVersion, "write");
   const nonce = random_bytes(NONCE_LEN);
   const ciphertext = aead_encrypt(
     "xchacha20-poly1305",
@@ -48,7 +54,7 @@ export async function decryptVaultItemPayload(
   profileVersion = 2,
 ): Promise<Uint8Array> {
   await ensureWasm();
-  getCryptoConfig(profileVersion);
+  assertVaultItemQdayProfile(profileVersion, "read");
   if (blob.length <= NONCE_LEN) {
     throw new Error("invalid vault item ciphertext: too short");
   }

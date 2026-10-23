@@ -236,7 +236,7 @@ Okkey cryptography rules:
 For Q-Day readiness in Core first production release, the crypto layer follows these rules:
 
 1. Every new encrypted artifact carries explicit `crypto_version` and `algorithm` metadata.
-2. Production write paths are `v2` only; `v1` is allowed only for explicit dev/test fixtures.
+2. Vault item reads and writes are `v2` only in every environment. Crypto profile `v1` is forbidden for vault items.
 3. Sharing envelopes move to hybrid mode (ECC + PQ) before any pure-PQ cutover.
 4. Capability detection per user/device must not introduce silent downgrade or legacy fallback in production.
 5. Migration and key rotation are event-log-safe and idempotent.
@@ -254,8 +254,7 @@ See also: `docs/architecture/08_security_model.md` (Downgrade threats).
 
 Environment baseline policy for new writes:
 
-- `dev`: legacy `v1` may be used for fixtures/tests.
-- `stage` and `production`: only `v2` is accepted for new encrypted write paths.
+- `dev`, `stage`, and `production`: vault items require `v2`. Crypto profile `v1` is forbidden for vault item reads and writes. `CRYPTO_ALLOWED_PROFILE_VERSIONS` can only narrow the allowlist.
 
 ---
 

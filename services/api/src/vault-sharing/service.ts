@@ -165,7 +165,7 @@ export class VaultSharingService {
     this.db = deps.db;
     this.vaults = deps.vaults;
     this.config = {
-      allowedCryptoProfileVersions: [1, 2],
+      allowedCryptoProfileVersions: [2],
       deployEnv: "dev",
       cryptoRolloutMode: "compat",
       cryptoRolloutEnabled: true,
