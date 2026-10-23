@@ -121,6 +121,8 @@ services:
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Okkey}
       WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
       OKKEY_DEPLOYMENT_MODE: self_hosted
+      # 0 = ignore X-Forwarded-For (TCP peer). Set 1 when api sits behind deploy/docker/proxy nginx.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
       FAVICON_PROVIDER: ${FAVICON_PROVIDER:-direct}
     ports:

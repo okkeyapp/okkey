@@ -129,6 +129,22 @@ function createService(overrides?: {
       };
       return wrap;
     },
+    insertWrapIfAbsent: async (
+      userId: string,
+      encryptedBlob: typeof wrap extends null ? never : NonNullable<typeof wrap>["encryptedBlob"],
+    ) => {
+      if (wrap?.userId === userId) {
+        return null;
+      }
+      wrap = {
+        userId,
+        encryptedBlob,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        rotatedAt: null,
+        exportedAt: null,
+      };
+      return wrap;
+    },
     markExported: async (userId: string) => {
       if (!wrap || wrap.userId !== userId) {
         return null;

@@ -94,6 +94,9 @@ export default function AuthRegistrationPage() {
   const [recoveryExported, setRecoveryExported] = useState(false);
   const [recoveryCopied, setRecoveryCopied] = useState(false);
   const recoveryCopyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Dedupes Copy/Download ack; bootstrap token is revoked after the first success. */
+  const recoveryAckedRef = useRef(false);
+  const recoveryAckInFlightRef = useRef<Promise<void> | null>(null);
   /** Held only until recovery enroll succeeds; wiped on success or unmount. */
   const vaultKeyPendingEnrollRef = useRef<Uint8Array | null>(null);
   const [postRegRedirect, setPostRegRedirect] = useState<string | null>(null);
@@ -306,12 +309,27 @@ export default function AuthRegistrationPage() {
   }
 
   async function ackRecoveryKeyExport(): Promise<void> {
+    if (recoveryAckedRef.current || recoveryExported) {
+      return;
+    }
+    if (recoveryAckInFlightRef.current) {
+      return recoveryAckInFlightRef.current;
+    }
     const token = postRegAccessToken ?? accessToken;
     if (!token) {
       throw new Error("missing access token for recovery key export ack");
     }
-    const core = createAuthenticatedCoreClient(token);
-    await core.ackAccountRecoveryKeyExport();
+    const run = (async () => {
+      const core = createAuthenticatedCoreClient(token);
+      await core.ackAccountRecoveryKeyExport();
+      recoveryAckedRef.current = true;
+    })();
+    recoveryAckInFlightRef.current = run;
+    try {
+      await run;
+    } finally {
+      recoveryAckInFlightRef.current = null;
+    }
   }
 
   async function handleRecoveryCopy() {

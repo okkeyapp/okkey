@@ -410,12 +410,11 @@ export function loadConfig(): ApiConfig {
     ),
     authRateLimitRegisterCompletePerIp: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_IP,
-      // Integration suites share 127.0.0.1; do not weaken production defaults.
-      nodeEnv === "test" ? 100_000 : 10,
+      10,
     ),
     authRateLimitRegisterCompletePerEmail: parsePositiveInt(
       process.env.AUTH_RATE_LIMIT_REGISTER_COMPLETE_PER_EMAIL,
-      nodeEnv === "test" ? 100_000 : 5,
+      5,
     ),
     registrationAuthStateTtlSeconds: parsePositiveInt(
       process.env.REGISTRATION_AUTH_STATE_TTL_SECONDS,

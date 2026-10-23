@@ -152,6 +152,24 @@ export class AccountRecoveryRepository {
     return mapWrap(rows[0]!);
   }
 
+  /** First-enroll only. Concurrent losers get `null` (no rotate / no overwrite). */
+  async insertWrapIfAbsent(
+    userId: string,
+    encryptedBlob: EncryptedBlobDto,
+  ): Promise<RecoveryWrapRecord | null> {
+    const rows = await this.db.query<WrapRow>(
+      `
+        INSERT INTO user_vault_recovery_wrap (user_id, encrypted_blob, rotated_at, exported_at)
+        VALUES ($1::bigint, $2::jsonb, NULL, NULL)
+        ON CONFLICT (user_id) DO NOTHING
+        RETURNING user_id, encrypted_blob, created_at, rotated_at, exported_at
+      `,
+      [userId, JSON.stringify(encryptedBlob)],
+    );
+    const row = rows[0];
+    return row ? mapWrap(row) : null;
+  }
+
   async markExported(userId: string): Promise<RecoveryWrapRecord | null> {
     const rows = await this.db.query<WrapRow>(
       `

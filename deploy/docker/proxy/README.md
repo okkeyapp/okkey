@@ -63,6 +63,8 @@ WEBAUTHN_ORIGINS=https://app.example.com
 WEBAUTHN_RP_ID=example.com
 OKKEY_WEB_HOST=app.example.com
 OKKEY_API_HOST=api.example.com
+# nginx appends one X-Forwarded-For hop; API must trust it for per-IP rate limits
+TRUSTED_PROXY_HOPS=1
 ```
 
 From a **git checkout** of this repo (recommended for `--build`):

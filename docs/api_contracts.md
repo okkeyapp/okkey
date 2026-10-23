@@ -25,7 +25,7 @@ Wire-aligned DTOs and the error body type live in `@okkey/types` (e.g. `CoreApiE
 | Content-Type | Request bodies: `application/json`. Responses: JSON unless noted. |
 | Identifiers | UUIDs as lowercase string (8-4-4-4-12), unless otherwise specified. |
 | Time | ISO-8601 UTC with millisecond precision where emitted by the server, e.g. `2026-01-01T12:05:00.000Z`. |
-| Client IP (rate limits) | From `X-Forwarded-For` using `TRUSTED_PROXY_HOPS` (default `0` = leftmost / client-supplied first hop). Behind nginx/ingress set hops so the edge-appended address is used; otherwise many clients share one bucket. |
+| Client IP (rate limits) | `TRUSTED_PROXY_HOPS` (default `0`): **ignore** `X-Forwarded-For` and use the TCP peer (`socket.remoteAddress`). Set hops ≥ 1 only behind a trusted reverse proxy so the edge-appended client address is used. |
 | Authentication (Core v1) | Prefer `Authorization: Bearer <access_token>` from `POST /auth/session/bootstrap` (after email confirm when 2FA is off) or `POST /auth/two-factor/verify` (when 2FA is on). `X-User-Id` remains a **non-production fallback** when enabled by environment (off by default in `production`). |
 | Device approval | `POST /devices/:deviceId/approve` and `POST /devices/:deviceId/reject` additionally require `X-Device-Id: <trusted approver device uuid>`. |
 
@@ -412,6 +412,42 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 **Idempotency:** Repeating the same `auth_state_id` after success returns **`201`** with **public ids only** (no bearer) while Redis still holds `registration:result:{authStateId}` (`REGISTRATION_RESULT_TTL_SECONDS`, default 7 days). Auth state is deleted after the first success. The bootstrap token is **never** stored in that cache.
 
 **Client helper:** `@okkey/crypto` exports `buildRegistrationCryptoArtifacts` and `registrationArtifactsToWire` (WASM-only primitives).
+
+### `POST /account/recovery/key/enroll`
+
+Stores the first recovery-key wrap for the authenticated user (or for a `registration_recovery` bootstrap Bearer). Ciphertext only — the server never sees the recovery secret.
+
+**Auth:** `Authorization: Bearer <access_token>` — full session **or** `scope: registration_recovery` from `POST /auth/register/complete`.
+
+**Request body:** `{ "encryptedBlob": EncryptedBlob }` (`encrypted_blob` accepted as an alias). Wrap `meta` must identify a vault-key recovery wrap (`entity: vault_key_recovery_wrap`, `key_scope: account`).
+
+**Response `200`:** `{ key: { enrolled, createdAt, rotatedAt, exportedAt }, settings: { keyEnabled, devicesEnabled, contactsEnabled } }`.
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing/invalid Bearer |
+| `RECOVERY_BAD_REQUEST` | 400 | Invalid JSON / missing blob / invalid wrap meta |
+| `RECOVERY_ROTATE_FORBIDDEN` | 403 | Bootstrap scope (or `forbidRotate`) and a wrap already exists — first enroll only; concurrent losers of the atomic insert also receive this code |
+| `RECOVERY_PLAN_REQUIRED` | 403 | Plan does not allow recovery key (should not apply to default Free) |
+
+With `registration_recovery`, enroll is **atomic insert-if-absent** (`ON CONFLICT DO NOTHING`). Rotation requires a full session and `POST /account/recovery/key/rotate`.
+
+### `POST /account/recovery/key/ack-export`
+
+Marks the recovery key as exported (copy / PDF). Idempotent for a full session once `exportedAt` is set.
+
+**Auth:** Same as enroll (full session or `registration_recovery`).
+
+**Request body:** empty object `{}`.
+
+**Response `200`:** Same aggregate shape as `GET /account/recovery` (status after ack).
+
+| `error` | HTTP | When |
+|---------|------|------|
+| `AUTH_REQUIRED` | 401 | Missing/invalid Bearer (including a second ack with a bootstrap token that was already revoked) |
+| `RECOVERY_KEY_NOT_ENROLLED` | 404 | No wrap enrolled yet |
+
+**Bootstrap revoke:** On success with `scope: registration_recovery`, the server **revokes** that access token. Clients must not re-ack with the same bootstrap Bearer (treat a local “already exported” flag as success). Full sessions may ack again without revoke.
 
 ---
 

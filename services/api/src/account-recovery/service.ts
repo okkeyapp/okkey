@@ -340,7 +340,22 @@ export class AccountRecoveryService {
         "recovery key rotation is not allowed for this session",
       );
     }
-    const wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate);
+
+    let wrap: Awaited<ReturnType<AccountRecoveryRepository["upsertWrap"]>>;
+    if (options?.forbidRotate) {
+      // Atomic first-enroll: concurrent losers hit ON CONFLICT DO NOTHING → forbidden.
+      const inserted = await this.recovery.insertWrapIfAbsent(userId, encryptedBlob);
+      if (!inserted) {
+        throw new AccountRecoveryError(
+          "RECOVERY_ROTATE_FORBIDDEN",
+          403,
+          "recovery key rotation is not allowed for this session",
+        );
+      }
+      wrap = inserted;
+    } else {
+      wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate);
+    }
 
     const settingsRow = await this.recovery.getSettings(userId);
     const settings = settingsRow
