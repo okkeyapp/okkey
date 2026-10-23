@@ -447,6 +447,7 @@ export {
 export { planTierLabel } from "./workspace/plan-tier-label.js";
 export {
   SettingsRow,
+  SettingsFieldRow,
   SettingsSectionDivider,
   SettingsSectionHeading,
 } from "./components/settings/SettingsRows.js";

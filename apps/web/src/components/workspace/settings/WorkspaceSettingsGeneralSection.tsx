@@ -28,6 +28,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SettingsFieldRow,
   Switch,
 } from "@okkey/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -535,49 +536,51 @@ export default function WorkspaceSettingsGeneralSection({
             </p>
           </div>
           <div className="flex flex-col">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label htmlFor="deleted-items-retention" className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.deletedItemsRetention.label")}
-                </label>
-                <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.deletedItemsRetention.description")}</p>
-              </div>
-              <Select
-                value={String(deletedItemsRetentionDays)}
-                disabled={!canEdit}
-                onValueChange={(value) => void handleRetentionChange(Number(value))}
-              >
-                <SelectTrigger id="deleted-items-retention" className="h-9 w-full shrink-0 sm:w-[150px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {retentionDayOptions.map((days) => {
-                    const labelKey = DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS[days as keyof typeof DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS];
-                    return (
-                      <SelectItem key={days} value={String(days)}>
-                        {labelKey ? t(labelKey) : `${days}`}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
+            <SettingsFieldRow
+              control={
+                <Select
+                  value={String(deletedItemsRetentionDays)}
+                  disabled={!canEdit}
+                  onValueChange={(value) => void handleRetentionChange(Number(value))}
+                >
+                  <SelectTrigger id="deleted-items-retention" className="h-9 w-full shrink-0 sm:w-[150px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {retentionDayOptions.map((days) => {
+                      const labelKey = DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS[days as keyof typeof DELETED_ITEMS_RETENTION_OPTION_LABEL_KEYS];
+                      return (
+                        <SelectItem key={days} value={String(days)}>
+                          {labelKey ? t(labelKey) : `${days}`}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              }
+            >
+              <label htmlFor="deleted-items-retention" className="text-sm font-medium text-foreground">
+                {t("web.workspaceSettings.deletedItemsRetention.label")}
+              </label>
+              <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.deletedItemsRetention.description")}</p>
+            </SettingsFieldRow>
 
             <div className="my-4 border-t border-border" aria-hidden />
 
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-medium text-foreground">{t("web.workspaceSettings.filesInItems.label")}</p>
-                <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.filesInItems.description")}</p>
-              </div>
-              <Switch
-                size="lg"
-                checked={filesInItemsEnabled}
-                disabled={!canEdit}
-                onCheckedChange={(checked) => void handleFilesInItemsEnabledChange(checked)}
-                aria-label={t("web.workspaceSettings.filesInItems.label")}
-              />
-            </div>
+            <SettingsFieldRow
+              control={
+                <Switch
+                  size="lg"
+                  checked={filesInItemsEnabled}
+                  disabled={!canEdit}
+                  onCheckedChange={(checked) => void handleFilesInItemsEnabledChange(checked)}
+                  aria-label={t("web.workspaceSettings.filesInItems.label")}
+                />
+              }
+            >
+              <p className="text-sm font-medium text-foreground">{t("web.workspaceSettings.filesInItems.label")}</p>
+              <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.filesInItems.description")}</p>
+            </SettingsFieldRow>
 
             {filesInItemsEnabled ? (
               <>
@@ -602,25 +605,26 @@ export default function WorkspaceSettingsGeneralSection({
 
                 <div className="my-4 border-t border-border" aria-hidden />
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <label htmlFor="max-file-size-mb" className="text-sm font-medium text-foreground">
-                      {t("web.workspaceSettings.maxFileSizeMb.label")}
-                    </label>
-                    <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.maxFileSizeMb.description")}</p>
-                  </div>
-                  <Input
-                    id="max-file-size-mb"
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    className="w-full shrink-0 sm:w-[150px]"
-                    value={maxFileSizeMbInput}
-                    disabled={!canEdit}
-                    onChange={(event) => setMaxFileSizeMbInput(normalizeMaxFileSizeMbInput(event.target.value))}
-                    onBlur={() => void handleMaxFileSizeMbBlur()}
-                  />
-                </div>
+                <SettingsFieldRow
+                  control={
+                    <Input
+                      id="max-file-size-mb"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="w-full shrink-0 sm:w-[150px]"
+                      value={maxFileSizeMbInput}
+                      disabled={!canEdit}
+                      onChange={(event) => setMaxFileSizeMbInput(normalizeMaxFileSizeMbInput(event.target.value))}
+                      onBlur={() => void handleMaxFileSizeMbBlur()}
+                    />
+                  }
+                >
+                  <label htmlFor="max-file-size-mb" className="text-sm font-medium text-foreground">
+                    {t("web.workspaceSettings.maxFileSizeMb.label")}
+                  </label>
+                  <p className="text-sm text-muted-foreground">{t("web.workspaceSettings.maxFileSizeMb.description")}</p>
+                </SettingsFieldRow>
               </>
             ) : null}
           </div>
@@ -638,33 +642,34 @@ export default function WorkspaceSettingsGeneralSection({
             </p>
           </div>
           <div className="flex flex-col">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label htmlFor="capsule-allow-mode" className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.allow.label")}
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.allow.description")}
-                </p>
-              </div>
-              <Select
-                value={capsulePolicies.allowMode}
-                disabled={!canEdit}
-                onValueChange={(value) => void handleCapsuleAllowModeChange(value as CapsuleAllowMode)}
-              >
-                <SelectTrigger id="capsule-allow-mode" className="h-9 w-full shrink-0 sm:w-[150px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("web.workspaceSettings.capsules.allow.none")}</SelectItem>
-                  <SelectItem value="all">{t("web.workspaceSettings.capsules.allow.all")}</SelectItem>
-                  <SelectItem value="selected">{t("web.workspaceSettings.capsules.allow.selected")}</SelectItem>
-                  <SelectItem value="all_except">
-                    {t("web.workspaceSettings.capsules.allow.allExcept")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <SettingsFieldRow
+              control={
+                <Select
+                  value={capsulePolicies.allowMode}
+                  disabled={!canEdit}
+                  onValueChange={(value) => void handleCapsuleAllowModeChange(value as CapsuleAllowMode)}
+                >
+                  <SelectTrigger id="capsule-allow-mode" className="h-9 w-full shrink-0 sm:w-[150px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("web.workspaceSettings.capsules.allow.none")}</SelectItem>
+                    <SelectItem value="all">{t("web.workspaceSettings.capsules.allow.all")}</SelectItem>
+                    <SelectItem value="selected">{t("web.workspaceSettings.capsules.allow.selected")}</SelectItem>
+                    <SelectItem value="all_except">
+                      {t("web.workspaceSettings.capsules.allow.allExcept")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              }
+            >
+              <label htmlFor="capsule-allow-mode" className="text-sm font-medium text-foreground">
+                {t("web.workspaceSettings.capsules.allow.label")}
+              </label>
+              <p className="text-sm text-muted-foreground">
+                {t("web.workspaceSettings.capsules.allow.description")}
+              </p>
+            </SettingsFieldRow>
 
             {showCapsuleMemberPicker ? (
               <div className="mt-4">
@@ -703,64 +708,66 @@ export default function WorkspaceSettingsGeneralSection({
 
             <div className="my-4 border-t border-border" aria-hidden />
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label htmlFor="capsule-allowed-types" className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.allowedTypes.label")}
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.allowedTypes.description")}
-                </p>
-              </div>
-              <MultiSelect
-                value={capsulePolicies.allowedCapsuleTypes}
-                onValueChange={(value) => void handleAllowedCapsuleTypesChange(value)}
-                placeholder={t("web.workspaceSettings.capsules.allowedTypes.placeholder")}
-                disabled={!canEdit}
-                displayMode="summary"
-                selectionSummaryText={
-                  capsulePolicies.allowedCapsuleTypes.length === ALL_CAPSULE_TYPES.length
-                    ? t("web.workspaceSettings.capsules.allowedTypes.all")
-                    : String(capsulePolicies.allowedCapsuleTypes.length)
-                }
-              >
-                <MultiSelectTrigger
-                  id="capsule-allowed-types"
-                  className="!h-9 min-h-9 w-full shrink-0 font-normal sm:w-[150px]"
-                />
-                <MultiSelectContent className="min-w-[min(100vw-2rem,16rem)]">
-                  {ALL_CAPSULE_TYPES.map((type) => (
-                    <MultiSelectItem key={type} value={type} chipLabel={t(CAPSULE_TYPE_LABEL_KEYS[type])}>
-                      {t(CAPSULE_TYPE_LABEL_KEYS[type])}
-                    </MultiSelectItem>
-                  ))}
-                </MultiSelectContent>
-              </MultiSelect>
-            </div>
+            <SettingsFieldRow
+              control={
+                <MultiSelect
+                  value={capsulePolicies.allowedCapsuleTypes}
+                  onValueChange={(value) => void handleAllowedCapsuleTypesChange(value)}
+                  placeholder={t("web.workspaceSettings.capsules.allowedTypes.placeholder")}
+                  disabled={!canEdit}
+                  displayMode="summary"
+                  selectionSummaryText={
+                    capsulePolicies.allowedCapsuleTypes.length === ALL_CAPSULE_TYPES.length
+                      ? t("web.workspaceSettings.capsules.allowedTypes.all")
+                      : String(capsulePolicies.allowedCapsuleTypes.length)
+                  }
+                >
+                  <MultiSelectTrigger
+                    id="capsule-allowed-types"
+                    className="!h-9 min-h-9 w-full shrink-0 font-normal sm:w-[150px]"
+                  />
+                  <MultiSelectContent className="min-w-[min(100vw-2rem,16rem)]">
+                    {ALL_CAPSULE_TYPES.map((type) => (
+                      <MultiSelectItem key={type} value={type} chipLabel={t(CAPSULE_TYPE_LABEL_KEYS[type])}>
+                        {t(CAPSULE_TYPE_LABEL_KEYS[type])}
+                      </MultiSelectItem>
+                    ))}
+                  </MultiSelectContent>
+                </MultiSelect>
+              }
+            >
+              <label htmlFor="capsule-allowed-types" className="text-sm font-medium text-foreground">
+                {t("web.workspaceSettings.capsules.allowedTypes.label")}
+              </label>
+              <p className="text-sm text-muted-foreground">
+                {t("web.workspaceSettings.capsules.allowedTypes.description")}
+              </p>
+            </SettingsFieldRow>
 
             <div className="my-4 border-t border-border" aria-hidden />
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label htmlFor="capsule-force-max-views" className="text-sm font-medium text-foreground">
-                  {t("web.workspaceSettings.capsules.forceMaxViews.label")}
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  {t("web.workspaceSettings.capsules.forceMaxViews.description")}
-                </p>
-              </div>
-              <Input
-                id="capsule-force-max-views"
-                type="number"
-                min={0}
-                inputMode="numeric"
-                className="w-full shrink-0 sm:w-[150px]"
-                value={forceMaxViewsInput}
-                disabled={!canEdit}
-                onChange={(event) => setForceMaxViewsInput(event.target.value.replace(/[^\d]/g, ""))}
-                onBlur={() => void handleForceMaxViewsBlur()}
-              />
-            </div>
+            <SettingsFieldRow
+              control={
+                <Input
+                  id="capsule-force-max-views"
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  className="w-full shrink-0 sm:w-[150px]"
+                  value={forceMaxViewsInput}
+                  disabled={!canEdit}
+                  onChange={(event) => setForceMaxViewsInput(event.target.value.replace(/[^\d]/g, ""))}
+                  onBlur={() => void handleForceMaxViewsBlur()}
+                />
+              }
+            >
+              <label htmlFor="capsule-force-max-views" className="text-sm font-medium text-foreground">
+                {t("web.workspaceSettings.capsules.forceMaxViews.label")}
+              </label>
+              <p className="text-sm text-muted-foreground">
+                {t("web.workspaceSettings.capsules.forceMaxViews.description")}
+              </p>
+            </SettingsFieldRow>
 
             {showCapsuleAccessSettings && CapsulesAdvancedPoliciesSection ? (
               <CapsulesAdvancedPoliciesSection

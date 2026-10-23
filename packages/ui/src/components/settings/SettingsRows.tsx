@@ -1,5 +1,6 @@
 /**
- * Shared layout helpers for account settings sections (General, Vault, …).
+ * Shared layout helpers for account settings sections (General, Vault, …)
+ * and workspace settings field rows (Capsules, Items, …).
  */
 import type { ReactNode } from "react";
 
@@ -41,6 +42,41 @@ export function SettingsRow({
         >
           {children}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Workspace settings label + control row.
+ * Vertically centers the right-hand control against the label/description block.
+ */
+export function SettingsFieldRow({
+  children,
+  control,
+  className,
+  controlClassName,
+}: {
+  children: ReactNode;
+  control: ReactNode;
+  className?: string;
+  controlClassName?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+        className,
+      )}
+    >
+      <div className="min-w-0 flex-1 space-y-1">{children}</div>
+      <div
+        className={cn(
+          "flex w-full shrink-0 items-center sm:w-auto sm:justify-end",
+          controlClassName,
+        )}
+      >
+        {control}
       </div>
     </div>
   );
