@@ -1093,6 +1093,11 @@ export type OkkeyAppSidebarProps = {
   /** When set, footer Documentation / Help use these strings (e.g. i18n); otherwise English gallery labels. */
   footerPlainLinkLabels?: { documentation: string; help: string };
   /**
+   * Optional build/version line above the account footer (host supplies i18n + fetch).
+   * Shown when the sidebar is expanded (or mobile drawer open); omitted when collapsed.
+   */
+  footerVersion?: React.ReactNode;
+  /**
    * When false, hide Documentation / Help footer links entirely (e.g. extension popup).
    * Default true for gallery / web.
    */
@@ -1345,6 +1350,7 @@ function OkkeyAppSidebarInner({
   folderEmptyLabel,
   accountMenu,
   footerPlainLinkLabels,
+  footerVersion,
   showFooterPlainLinks = true,
   vaultHeaderPlusAriaLabel = "Add vault",
   folderHeaderPlusAriaLabel = "Add folder",
@@ -1372,6 +1378,7 @@ function OkkeyAppSidebarInner({
   | "folderEmptyLabel"
   | "accountMenu"
   | "footerPlainLinkLabels"
+  | "footerVersion"
   | "showFooterPlainLinks"
   | "vaultHeaderPlusAriaLabel"
   | "folderHeaderPlusAriaLabel"
@@ -1663,6 +1670,17 @@ function OkkeyAppSidebarInner({
             ) : (
               <OkkeySidebarPlainLinksMenu items={footerPlainItems} />
             )
+          ) : null}
+          {showExpanded && footerVersion ? (
+            <div
+              data-testid="sidebar-instance-version"
+              className={cn(
+                "px-2 text-xs leading-4 text-muted-foreground",
+                showFooterPlain ? "pt-2" : "pt-0",
+              )}
+            >
+              {footerVersion}
+            </div>
           ) : null}
         </div>
       </SidebarContent>

@@ -60,6 +60,35 @@ Malformed route parameters (missing `workspaceId` / `vaultId` in path) may retur
 
 ---
 
+## System (liveness / version)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET` | `/health` | No | Liveness |
+| `GET` | `/ready` | No | Readiness (deps) |
+| `GET` | `/version` | No | Product build/version for UI (self-host sidebar) |
+
+### `GET /version`
+
+Returns the running Core build string and, when enterprise modules are loaded, the enterprise sibling version. Resolution order for Core: `OKKEY_VERSION` → `APP_VERSION` → `OKKEY_IMAGE_TAG` → root `package.json` → `"unknown"`. Enterprise: `OKKEY_ENTERPRISE_VERSION` → sibling `package.json`, else `null` when modules are off.
+
+Example `200`:
+
+```json
+{
+  "okkey": "1.0.0",
+  "enterprise": "1.0.0-beta.1",
+  "deploymentMode": "self_hosted",
+  "enterpriseModulesEnabled": true,
+  "requestId": "req_01HZZZZ",
+  "time": "2026-10-23T16:00:00.000Z"
+}
+```
+
+Orthogonal to licensing: clients may call this with a missing/expired license.
+
+---
+
 ## Auth (email challenge)
 
 Flow: **start** → (optional **resend**) → **confirm** → receive `authStateId` and `nextStep`.

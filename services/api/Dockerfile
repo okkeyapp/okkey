@@ -52,6 +52,8 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 WORKDIR /app
+ARG OKKEY_VERSION=
+ENV OKKEY_VERSION=${OKKEY_VERSION}
 ENV NODE_ENV=production
 ENV DEPLOY_ENV=prod
 

@@ -107,6 +107,7 @@ import {
 } from "../routes/paths";
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
+import { formatInstanceVersionLabel, useInstanceVersion } from "./useInstanceVersion";
 
 function SharedVaultMembersIcon({ className }: { className?: string }) {
   return (
@@ -189,6 +190,10 @@ const ContactsShareAutoEnrollController = accountRecoveryModule.ContactsShareAut
 
 export default function WorkspaceRoutesLayout() {
   const { t } = useLocale();
+  const instanceVersion = useInstanceVersion();
+  const footerVersionLabel = instanceVersion
+    ? formatInstanceVersionLabel(instanceVersion, t)
+    : null;
   const { userId, profile, logout, passwordShareC, vaultKey, vaultUnlocked } = useAuthVault();
   const core = useAuthenticatedCoreClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -900,6 +905,7 @@ export default function WorkspaceRoutesLayout() {
                   documentation: t("web.nav.documentation"),
                   help: t("web.nav.help"),
                 }}
+                footerVersion={footerVersionLabel}
                 openFoldersSettingsPopup={openFoldersSettingsPopup}
                 openNewVaultPopup={openNewVaultPopup}
                 core={core}
@@ -944,6 +950,7 @@ type WorkspaceShellWithItemsProps = {
   folderTreeForItems: OkkeySidebarFolderTreeNode[];
   accountMenu: OkkeyAppSidebarAccountMenu | undefined;
   footerPlainLinkLabels: { documentation: string; help: string };
+  footerVersion: string | null;
   openFoldersSettingsPopup: () => void;
   openNewVaultPopup: (event: PointerEvent<HTMLButtonElement>) => void;
   core: ReturnType<typeof useAuthenticatedCoreClient>;
@@ -981,6 +988,7 @@ function WorkspaceShellWithItems({
   folderTreeForItems,
   accountMenu,
   footerPlainLinkLabels,
+  footerVersion,
   openFoldersSettingsPopup,
   openNewVaultPopup,
   core,
@@ -1113,6 +1121,7 @@ function WorkspaceShellWithItems({
             folderEmptyLabel={t("web.nav.foldersEmpty")}
             accountMenu={accountMenu}
             footerPlainLinkLabels={footerPlainLinkLabels}
+            footerVersion={footerVersion}
             vaultHeaderPlusAriaLabel={t("web.nav.createVault")}
             folderHeaderPlusAriaLabel={t("web.nav.folderSettings")}
             showVaultHeaderPlus={canShowVaultHeaderPlus}

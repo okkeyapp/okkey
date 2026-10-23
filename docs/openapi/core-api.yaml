@@ -970,6 +970,47 @@ paths:
         "503":
           description: Not ready
 
+  /version:
+    get:
+      tags: [System]
+      summary: Instance build / product version
+      description: >
+        Public (unauthenticated) build metadata for the running API process.
+        Used by self-host web sidebar. Orthogonal to licensing — available even when
+        a license is missing or expired. `enterprise` is null when modules are off.
+      responses:
+        "200":
+          description: Version payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - okkey
+                  - enterprise
+                  - deploymentMode
+                  - enterpriseModulesEnabled
+                  - requestId
+                  - time
+                properties:
+                  okkey:
+                    type: string
+                    description: Core product SemVer or image tag
+                  enterprise:
+                    type: string
+                    nullable: true
+                    description: Enterprise sibling version when modules are loaded
+                  deploymentMode:
+                    type: string
+                    enum: [self_hosted, saas]
+                  enterpriseModulesEnabled:
+                    type: boolean
+                  requestId:
+                    type: string
+                  time:
+                    type: string
+                    format: date-time
+
   /auth/email/start:
     post:
       tags: [Auth]

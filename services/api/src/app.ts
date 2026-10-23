@@ -22,6 +22,7 @@ import {
 } from "./routes/auth-extension.ts";
 import type { ExtensionAuthService } from "./extension-auth/service.ts";
 import { healthRouteHandler } from "./routes/health.ts";
+import { createVersionRouteHandler } from "./routes/version.ts";
 import { createReadyRouteHandler } from "./routes/ready.ts";
 import {
   createApproveDeviceRoute,
@@ -262,6 +263,7 @@ export function createApiApp(
 
   app.route("GET", "/health", healthRouteHandler);
   app.route("GET", "/ready", createReadyRouteHandler(readyCheck));
+  app.route("GET", "/version", createVersionRouteHandler(config));
   if (deps.authService) {
     app.route(
       "POST",

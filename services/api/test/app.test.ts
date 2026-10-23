@@ -77,6 +77,33 @@ test("GET /health returns 200 and ok status payload", async () => {
   assert.equal(payload.service, "okkey-api");
 });
 
+test("GET /version returns build/version payload", async () => {
+  const previous = process.env.OKKEY_VERSION;
+  process.env.OKKEY_VERSION = "test-version-1";
+  try {
+    const { res } = await dispatch("GET", "/version");
+    assert.equal(res.statusCode, 200);
+    const payload = JSON.parse(res.body) as {
+      okkey: string;
+      enterprise: string | null;
+      deploymentMode: string;
+      enterpriseModulesEnabled: boolean;
+      requestId: string;
+    };
+    assert.equal(payload.okkey, "test-version-1");
+    assert.equal(payload.enterprise, null);
+    assert.equal(payload.deploymentMode, "self_hosted");
+    assert.equal(payload.enterpriseModulesEnabled, false);
+    assert.ok(payload.requestId);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OKKEY_VERSION;
+    } else {
+      process.env.OKKEY_VERSION = previous;
+    }
+  }
+});
+
 test("unknown route returns 404", async () => {
   const { res } = await dispatch("GET", "/missing");
   assert.equal(res.statusCode, 404);

@@ -25,6 +25,8 @@
   "web.nav.folderSettings": "Folder settings",
   "web.nav.documentation": "Documentation",
   "web.nav.help": "Help",
+  "web.nav.version": "Version {version}",
+  "web.nav.versionWithEnterprise": "Version {version} · Enterprise {enterprise}",
   "web.accountMenu.settings": "My settings",
   "web.accountMenu.deviceSettings": "Device settings",
   "web.accountMenu.logout": "Log out",

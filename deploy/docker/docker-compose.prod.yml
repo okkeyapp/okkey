@@ -121,6 +121,10 @@ services:
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Okkey}
       WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS}
       OKKEY_DEPLOYMENT_MODE: self_hosted
+      # Product version for GET /version + sidebar (OKKEY_VERSION → OKKEY_IMAGE_TAG → package.json).
+      OKKEY_VERSION: ${OKKEY_VERSION:-}
+      OKKEY_IMAGE_TAG: ${OKKEY_IMAGE_TAG:-dev}
+      OKKEY_ENTERPRISE_VERSION: ${OKKEY_ENTERPRISE_VERSION:-}
       GEOIP_ENABLED: ${GEOIP_ENABLED:-false}
       FAVICON_PROVIDER: ${FAVICON_PROVIDER:-direct}
     ports:

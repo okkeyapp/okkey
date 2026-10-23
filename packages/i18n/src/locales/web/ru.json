@@ -25,6 +25,8 @@
   "web.nav.folderSettings": "Настройки папок",
   "web.nav.documentation": "Документация",
   "web.nav.help": "Помощь",
+  "web.nav.version": "Версия {version}",
+  "web.nav.versionWithEnterprise": "Версия {version} · Enterprise {enterprise}",
   "web.accountMenu.settings": "Мои настройки",
   "web.accountMenu.deviceSettings": "Настройки устройства",
   "web.accountMenu.logout": "Выйти",
