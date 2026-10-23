@@ -1681,7 +1681,7 @@ function OkkeyAppSidebarInner({
         {showExpanded && footerVersion ? (
           <div
             data-testid="sidebar-instance-version"
-            className="px-2 pb-1 text-xs leading-4 text-muted-foreground"
+            className="pb-1 text-xs leading-4"
           >
             {footerVersion}
           </div>

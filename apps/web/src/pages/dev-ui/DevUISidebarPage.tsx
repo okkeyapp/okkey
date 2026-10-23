@@ -47,16 +47,16 @@ export default function DevUISidebarPage() {
                 <button
                   type="button"
                   data-testid="sidebar-updates-plaque"
-                  className="flex w-full flex-col gap-0.5 rounded-lg bg-[rgba(0,0,0,0.05)] px-2 py-2 text-left dark:bg-[rgba(255,255,255,0.08)]"
+                  className="flex w-full flex-col gap-0.5 rounded-lg bg-[rgba(0,0,0,0.05)] px-2 py-2 text-left outline-none focus:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] focus-visible:shadow-[0_0_0_2px_hsl(var(--accent)_/_0.4)] dark:bg-[rgba(255,255,255,0.08)]"
                 >
                   <span
-                    className="truncate text-xs leading-4 text-muted-foreground"
+                    className="truncate text-xs leading-4 text-foreground"
                     data-testid="sidebar-instance-version-label"
                   >
                     Okkey v1.0.0-betta.3
                   </span>
                   <span
-                    className="truncate text-xs font-medium leading-4 text-primary underline"
+                    className="truncate text-xs font-medium leading-4 text-muted-foreground"
                     data-testid="sidebar-update-notice"
                   >
                     Update available
