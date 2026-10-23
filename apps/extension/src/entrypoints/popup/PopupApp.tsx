@@ -82,7 +82,7 @@ import {
   resolveExtensionIdleLockMs,
   vaultIdleLockMsFromServerSeconds,
 } from "../../lib/extensionVaultSession";
-import { clearPinFailures, isPinLocked, recordPinFailure } from "../../lib/pinRateLimit";
+import { clearPinFailures, isPinLocked, PIN_LENGTH, recordPinFailure } from "../../lib/pinRateLimit";
 import {
   WEB_BASE_URL_UNREACHABLE_ERROR,
   probeWebBaseUrl,
@@ -115,8 +115,6 @@ type UnlockMode = "pin" | "master";
  * SaaS / Self-hosted tabs without rewriting the sign-in flow.
  */
 const ENABLE_SAAS_SIGNIN = false;
-
-const PIN_LENGTH = 6;
 
 const pinCellClassName =
   "h-[54px] w-full min-w-0 p-0 text-center text-lg font-semibold tabular-nums";

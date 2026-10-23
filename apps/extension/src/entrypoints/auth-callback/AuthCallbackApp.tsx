@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { Toaster } from "../../components/toaster";
 import { exchangeExtensionAuthCode } from "../../lib/api";
+import { completeExtensionAuthCallback } from "../../lib/authCallbackFlow";
 import { readStoredExtensionLocale } from "../../lib/locale";
 import {
   clearPkcePending,
@@ -38,32 +39,32 @@ export function AuthCallbackApp() {
     async function run(): Promise<void> {
       try {
         const params = new URLSearchParams(window.location.search);
-        const code = params.get("code")?.trim() ?? "";
-        const state = params.get("state")?.trim() ?? "";
-        if (!code || !state) {
-          throw new Error(t("extension.authCallback.errorMissingCode"));
-        }
-        const pending = await readPkcePending();
-        if (!pending) {
-          throw new Error(t("extension.authCallback.errorNoPending"));
-        }
-        if (pending.state !== state) {
-          throw new Error(t("extension.authCallback.errorStateMismatch"));
-        }
-
-        const session = await exchangeExtensionAuthCode({
-          apiBaseUrl: pending.apiBaseUrl,
-          redirectUri: pending.redirectUri,
+        const code = params.get("code") ?? "";
+        const state = params.get("state") ?? "";
+        const result = await completeExtensionAuthCallback({
           code,
-          codeVerifier: pending.codeVerifier,
+          state,
+          readPending: readPkcePending,
+          exchange: (pending, authCode) =>
+            exchangeExtensionAuthCode({
+              apiBaseUrl: pending.apiBaseUrl,
+              redirectUri: pending.redirectUri,
+              code: authCode,
+              codeVerifier: pending.codeVerifier,
+            }),
+          persistSession: async (session, pending) => {
+            await writeSession(session);
+            await writeProfile({
+              webBaseUrl: pending.webBaseUrl,
+              apiBaseUrl: pending.apiBaseUrl,
+              updatedAt: Date.now(),
+            });
+            await clearPkcePending();
+          },
         });
-        await writeSession(session);
-        await writeProfile({
-          webBaseUrl: pending.webBaseUrl,
-          apiBaseUrl: pending.apiBaseUrl,
-          updatedAt: Date.now(),
-        });
-        await clearPkcePending();
+        if (!result.ok) {
+          throw new Error(t(result.errorKey));
+        }
 
         if (!cancelled) {
           const signedIn = t("extension.authCallback.signedIn");
