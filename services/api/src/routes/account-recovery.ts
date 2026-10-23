@@ -11,6 +11,12 @@ import {
   extractTrustedContactInviteEmails,
 } from "../account-recovery/service.ts";
 import { getHeader, json, readJsonBody, type RouteHandler } from "../http.ts";
+import type { ResolveAuthenticatedSession } from "./auth-context.ts";
+import {
+  bearerTokenFromRequest,
+  SESSION_SCOPE_REGISTRATION_RECOVERY,
+} from "./auth-context.ts";
+import type { SessionService } from "../session/service.ts";
 
 function errorPayload(
   code: string,
@@ -112,10 +118,15 @@ export function createAccountRecoverySettingsPatchRoute(
 export function createAccountRecoveryKeyEnrollRoute(
   service: AccountRecoveryService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  resolveSession?: ResolveAuthenticatedSession,
 ): RouteHandler {
   return async (ctx) => {
     try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      const session = resolveSession ? await resolveSession(ctx.req) : null;
+      let userId: string | null = session?.userId ?? null;
+      if (!userId) {
+        userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      }
       if (!userId) {
         return;
       }
@@ -137,7 +148,11 @@ export function createAccountRecoveryKeyEnrollRoute(
         );
         return;
       }
-      const result = await service.enrollKey(userId, encryptedBlob, { rotate: false });
+      const forbidRotate = session?.scope === SESSION_SCOPE_REGISTRATION_RECOVERY;
+      const result = await service.enrollKey(userId, encryptedBlob, {
+        rotate: false,
+        forbidRotate,
+      });
       json(ctx.res, 200, result);
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);
@@ -184,14 +199,34 @@ export function createAccountRecoveryKeyRotateRoute(
 export function createAccountRecoveryKeyAckExportRoute(
   service: AccountRecoveryService,
   resolveUserId: (req: IncomingMessage) => Promise<string | null>,
+  options?: {
+    resolveSession?: ResolveAuthenticatedSession;
+    sessionService?: Pick<SessionService, "revokeAccessToken">;
+  },
 ): RouteHandler {
   return async (ctx) => {
     try {
-      const userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      const session = options?.resolveSession
+        ? await options.resolveSession(ctx.req)
+        : null;
+      let userId: string | null = session?.userId ?? null;
+      if (!userId) {
+        userId = await requireUserId(resolveUserId, ctx.req, ctx.requestId, ctx.res);
+      }
       if (!userId) {
         return;
       }
       const status = await service.ackKeyExport(userId);
+      // One-shot bootstrap: revoke registration_recovery token after successful ack.
+      if (
+        session?.scope === SESSION_SCOPE_REGISTRATION_RECOVERY &&
+        options?.sessionService
+      ) {
+        const token = bearerTokenFromRequest(ctx.req);
+        if (token) {
+          await options.sessionService.revokeAccessToken(token);
+        }
+      }
       json(ctx.res, 200, status);
     } catch (error) {
       handleRecoveryError(ctx.requestId, ctx.res, error);

@@ -32,6 +32,8 @@ export interface ResolvedAccessToken {
   deviceId: string | null;
   /** `null` = full session. */
   scope: string | null;
+  /** Present so callers can revoke the exact session (e.g. after recovery ack). */
+  tokenHash: string;
 }
 
 export interface SessionServiceDeps {
@@ -96,6 +98,15 @@ export class SessionService {
       userId: row.userId,
       deviceId: row.deviceId,
       scope: isFullSessionScope(row.scope) ? null : row.scope,
+      tokenHash: this.hashAccessToken(trimmed),
     };
+  }
+
+  async revokeAccessToken(token: string): Promise<boolean> {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      return false;
+    }
+    return this.sessions.deleteByTokenHash(this.hashAccessToken(trimmed));
   }
 }

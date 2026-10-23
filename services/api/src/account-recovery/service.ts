@@ -327,12 +327,19 @@ export class AccountRecoveryService {
   async enrollKey(
     userId: string,
     encryptedBlob: EncryptedBlobDto,
-    options?: { rotate?: boolean },
+    options?: { rotate?: boolean; forbidRotate?: boolean },
   ): Promise<AccountRecoveryKeyEnrollResponseDto> {
     this.assertValidRecoveryWrap(encryptedBlob);
     const entitlements = await this.resolveEntitlements(userId);
     const existing = await this.recovery.getWrap(userId);
     const rotate = Boolean(options?.rotate) || Boolean(existing);
+    if (options?.forbidRotate && rotate) {
+      throw new AccountRecoveryError(
+        "RECOVERY_ROTATE_FORBIDDEN",
+        403,
+        "recovery key rotation is not allowed for this session",
+      );
+    }
     const wrap = await this.recovery.upsertWrap(userId, encryptedBlob, rotate);
 
     const settingsRow = await this.recovery.getSettings(userId);

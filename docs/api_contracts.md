@@ -25,7 +25,7 @@ Wire-aligned DTOs and the error body type live in `@okkey/types` (e.g. `CoreApiE
 | Content-Type | Request bodies: `application/json`. Responses: JSON unless noted. |
 | Identifiers | UUIDs as lowercase string (8-4-4-4-12), unless otherwise specified. |
 | Time | ISO-8601 UTC with millisecond precision where emitted by the server, e.g. `2026-01-01T12:05:00.000Z`. |
-| Client IP (rate limits) | First hop in `X-Forwarded-For` when present; otherwise internal logic may treat IP as `unknown`. |
+| Client IP (rate limits) | From `X-Forwarded-For` using `TRUSTED_PROXY_HOPS` (default `0` = leftmost / client-supplied first hop). Behind nginx/ingress set hops so the edge-appended address is used; otherwise many clients share one bucket. |
 | Authentication (Core v1) | Prefer `Authorization: Bearer <access_token>` from `POST /auth/session/bootstrap` (after email confirm when 2FA is off) or `POST /auth/two-factor/verify` (when 2FA is on). `X-User-Id` remains a **non-production fallback** when enabled by environment (off by default in `production`). |
 | Device approval | `POST /devices/:deviceId/approve` and `POST /devices/:deviceId/reject` additionally require `X-Device-Id: <trusted approver device uuid>`. |
 
@@ -364,7 +364,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
-| `auth_state_id` | string | Yes | From `POST /auth/email/confirm` (opaque 128-bit CSPRNG hex; not a snowflake). |
+| `auth_state_id` | string | Yes | From `POST /auth/email/confirm` (128-bit CSPRNG hex). Legacy decimal snowflake ids are still accepted for in-flight clients. Non-string values are rejected with `400`. |
 | `user_public_key` | string | Yes | Base64 of **32** raw Ed25519 public key bytes. |
 | `user_public_pq_key` | string | Yes | Base64 of **1184** raw ML-KEM-768 encapsulation key bytes. |
 | `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **2473** bytes (XChaCha20-Poly1305 over hybrid identity bundle). |
@@ -391,9 +391,9 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 | `access_token` | string | Optional. Short-lived bootstrap Bearer (`scope: registration_recovery`) for account recovery key enroll + export ack only. Present on **first** success; omitted on idempotent replay. |
 | `expires_at` | string | ISO timestamp; with `access_token`. Default TTL `REGISTRATION_BOOTSTRAP_SESSION_TTL_SECONDS` (900s). |
 | `token_type` | `"Bearer"` | With `access_token`. |
-| `scope` | `"registration_recovery"` | With `access_token`. Does **not** authorize vault unlock, devices, profile, or other APIs. Full session requires the normal email login flow. |
+| `scope` | `"registration_recovery"` | With `access_token`. Does **not** authorize vault unlock, devices, profile, or other APIs. Full session requires the normal email login flow. Enroll with this scope cannot rotate an existing recovery key; successful export ack revokes the bootstrap token. |
 
-Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**. Bootstrap session (when issued) is bound to that `device_id`.
+Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**. Bootstrap session (when issued) stores that `device_id` on the session row; requests with this scope require the binding to be present.
 
 **Errors:**
 

@@ -27,3 +27,7 @@ test("sessionScopeAllowed accepts full vs registration_recovery", () => {
   );
   assert.equal(sessionScopeAllowed(null, REGISTRATION_RECOVERY_ALLOWED_SCOPES), true);
 });
+
+test("registration_recovery is denied on full-session-only allowlists", () => {
+  assert.equal(sessionScopeAllowed(SESSION_SCOPE_REGISTRATION_RECOVERY, [null]), false);
+});

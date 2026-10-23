@@ -226,9 +226,7 @@ export class RegistrationService {
       );
     }
 
-    // IP budget first (no auth-state dependency), then idempotent cache, then email budget.
-    await this.consumeRegisterCompleteRateLimits(input.requestIp, null);
-
+    // Idempotent replay first (no rate-limit burn). Then auth-state / budgets.
     const cached = await this.redis.get(registrationResultRedisKey(input.authStateId));
     if (cached) {
       const ids = this.parseCachedIds(cached);
@@ -247,13 +245,15 @@ export class RegistrationService {
 
     const authState = await this.authService.readAuthState(input.authStateId);
     if (!authState) {
+      // Budget failed lookups by IP so missing/expired ids cannot be probed cheaply.
+      await this.consumeRegisterCompleteRateLimits(input.requestIp, null);
       throw new RegistrationError(
         "AUTH_CHALLENGE_EXPIRED",
         410,
         "auth state expired or missing",
       );
     }
-    await this.consumeRegisterCompleteRateLimits(null, authState.email);
+    await this.consumeRegisterCompleteRateLimits(input.requestIp, authState.email);
     if (authState.userId !== null) {
       throw new RegistrationError(
         "AUTH_CHALLENGE_INVALID",

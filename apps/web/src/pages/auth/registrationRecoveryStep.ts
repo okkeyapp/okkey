@@ -1,7 +1,7 @@
 /**
- * Post-signup recovery export must stay on `/account/new` after
- * `completeRegistration` clears `registrationAuthStateId` and while enroll runs
- * (or stays on `enrollFailed` until retry succeeds).
+ * Post-signup recovery export stays on `/account/new` while enroll / export run.
+ * Keep `registrationAuthStateId` until finishRegistration so AuthSessionGate and
+ * guestEntryPaths still treat this path as an allowed guest entry.
  */
 export type RegistrationStep = "form" | "enrolling" | "enrollFailed" | "recoveryKey";
 

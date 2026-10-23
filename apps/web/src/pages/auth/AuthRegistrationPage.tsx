@@ -214,12 +214,11 @@ export default function AuthRegistrationPage() {
       }
       // Bootstrap token is scoped to recovery enroll/ack only — do not persist as a
       // full Bearer session. Full session requires the normal email login flow.
-      // Enter post-signup recovery before clearing registrationAuthStateId so the
-      // redirect effect cannot race with async enroll and skip the export screen.
+      // Keep registrationAuthStateId until finishRegistration so AuthSessionGate /
+      // guestEntryPaths still allow /account/new during enroll + recovery export.
       setStep("enrolling");
       setPostRegAccessToken(reg.access_token);
       finalizePendingVaultBundle(reg.user_id);
-      setRegistrationAuthStateId(null);
       clearEmailLoginFlow();
 
       updateLocalProfile({
@@ -363,6 +362,7 @@ export default function AuthRegistrationPage() {
         return;
       }
       setPostRegAccessToken(null);
+      setRegistrationAuthStateId(null);
       const target = postRegRedirect ?? AUTH_EMAIL_PATH;
       setRecoverySecret(null);
       navigate(target, { replace: true });

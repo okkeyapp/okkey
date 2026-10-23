@@ -301,6 +301,22 @@ test("getStatus PREMIUM defaults devicesEnabled off until explicitly enabled", a
   assert.equal(status.settings.devicesEnabled, false);
 });
 
+test("enrollKey forbidRotate rejects when a wrap already exists", async () => {
+  const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
+  const blob = {
+    crypto_version: 2,
+    algorithm: "xchacha20-poly1305",
+    payload: "abc",
+    meta: { entity: "vault_key_recovery_wrap", key_scope: "account" },
+  };
+  await service.enrollKey("u1", blob, { forbidRotate: true });
+  await assert.rejects(
+    () => service.enrollKey("u1", { ...blob, payload: "def" }, { forbidRotate: true }),
+    (err: unknown) =>
+      err instanceof AccountRecoveryError && err.code === "RECOVERY_ROTATE_FORBIDDEN",
+  );
+});
+
 test("enrollKey persists wrap and enables key settings", async () => {
   const service = createService({ workspaces: [{ planTier: "PREMIUM" }] });
   assert.equal(await service.hasEnrolledRecoveryKey("u1"), false);

@@ -3034,6 +3034,18 @@ export class SessionsRepository {
         }
       : null;
   }
+
+  async deleteByTokenHash(tokenHash: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      `
+        DELETE FROM sessions
+        WHERE token_hash = $1
+        RETURNING id
+      `,
+      [tokenHash],
+    );
+    return Boolean(rows[0]);
+  }
 }
 
 function mapUser(
