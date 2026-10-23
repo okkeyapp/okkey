@@ -66,6 +66,8 @@ function devicesErrorMessage(
         return t("web.settingsPopup.devices.error.accessDenied");
       case "DEVICE_APPROVAL_EXPIRED":
         return t("web.settingsPopup.devices.error.expired");
+      case "DEVICE_REVOKE_CURRENT_FORBIDDEN":
+        return t("web.settingsPopup.devices.error.revokeCurrentForbidden");
       default:
         return t("web.settingsPopup.devices.error.generic");
     }
@@ -342,7 +344,9 @@ export default function SettingsDevicesContent({ t }: SettingsDevicesContentProp
     }
     setBusyId(deviceId);
     try {
-      await core.revokeDevice(deviceId, "revoked from settings");
+      await core.revokeDevice(deviceId, "revoked from settings", {
+        callerDeviceId: currentDeviceId ?? sessionDeviceId ?? undefined,
+      });
       patchDevicesCache({
         devices: devices.filter((item) => item.device_id !== deviceId),
       });

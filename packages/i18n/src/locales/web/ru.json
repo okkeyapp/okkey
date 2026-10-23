@@ -335,6 +335,7 @@
   "web.settingsPopup.devices.error.notFound": "Устройство не найдено.",
   "web.settingsPopup.devices.error.accessDenied": "Для подтверждения нужно доверенное устройство.",
   "web.settingsPopup.devices.error.expired": "Срок запроса на подтверждение истёк.",
+  "web.settingsPopup.devices.error.revokeCurrentForbidden": "Нельзя отозвать устройство, с которого вы сейчас работаете.",
   "web.settingsPopup.securityScore.title": "Защищённость аккаунта",
   "web.settingsPopup.securityScore.level.excellent": "Отличный уровень защиты",
   "web.settingsPopup.securityScore.level.good": "Хороший уровень защиты",
