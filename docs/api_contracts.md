@@ -184,7 +184,7 @@ Validates the code and returns an auth state handle for the next onboarding step
 
 | Field | Type | Description |
 |--------|------|-------------|
-| `authStateId` | string | Opaque; used by future registration/device flows. |
+| `authStateId` | string | Opaque 128-bit CSPRNG hex; used by registration / device / 2FA flows. |
 | `userExists` | boolean | Whether a user row exists for this email. |
 | `nextStep` | string | `"registration"` if new user; `"two_factor"` if existing user with 2FA enabled; otherwise `"device_check"`. |
 
@@ -364,7 +364,7 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 
 | Field | Type | Required | Notes |
 |--------|------|----------|--------|
-| `auth_state_id` | string | Yes | From `POST /auth/email/confirm`. |
+| `auth_state_id` | string | Yes | From `POST /auth/email/confirm` (opaque 128-bit CSPRNG hex; not a snowflake). |
 | `user_public_key` | string | Yes | Base64 of **32** raw Ed25519 public key bytes. |
 | `user_public_pq_key` | string | Yes | Base64 of **1184** raw ML-KEM-768 encapsulation key bytes. |
 | `encrypted_private_key` | object (`EncryptedBlob`) | Yes | Versioned encrypted envelope. Required keys: `crypto_version`, `algorithm`, `payload`, `meta`. Min decoded payload length **2473** bytes (XChaCha20-Poly1305 over hybrid identity bundle). |
@@ -381,15 +381,19 @@ Completes **new user** onboarding after email confirm. Accepts only server-side 
 
 **Response `201`:**
 
-| Field | Type |
-|--------|------|
-| `user_id` | uuid string |
-| `workspace_id` | uuid string |
-| `vault_id` | uuid string |
-| `device_id` | uuid string |
-| `device_status` | `"trusted"` |
+| Field | Type | Notes |
+|--------|------|--------|
+| `user_id` | string | |
+| `workspace_id` | string | |
+| `vault_id` | string | |
+| `device_id` | string | |
+| `device_status` | `"trusted"` | |
+| `access_token` | string | Optional. Short-lived bootstrap Bearer (`scope: registration_recovery`) for account recovery key enroll + export ack only. Present on **first** success; omitted on idempotent replay. |
+| `expires_at` | string | ISO timestamp; with `access_token`. Default TTL `REGISTRATION_BOOTSTRAP_SESSION_TTL_SECONDS` (900s). |
+| `token_type` | `"Bearer"` | With `access_token`. |
+| `scope` | `"registration_recovery"` | With `access_token`. Does **not** authorize vault unlock, devices, profile, or other APIs. Full session requires the normal email login flow. |
 
-Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**.
+Side effects (single DB transaction): insert user (with KDF columns), default workspace (name from `personal_workspace_name` or **`Personal`**), personal vault with the **same** name, first device with status **trusted**. Bootstrap session (when issued) is bound to that `device_id`.
 
 **Errors:**
 
@@ -403,8 +407,9 @@ Side effects (single DB transaction): insert user (with KDF columns), default wo
 | `AUTH_CHALLENGE_INVALID` | 400 | Auth state not eligible (e.g. `userId` already set). |
 | `REGISTRATION_ALREADY_COMPLETED` | 409 | User row already exists for email. |
 | `REGISTRATION_CONFLICT` | 409 | Unique constraint (race / duplicate). |
+| `AUTH_RATE_LIMITED` | 429 | Per-IP / per-email register-complete budget exceeded. |
 
-**Idempotency:** Repeating the same `auth_state_id` after success returns **`201`** with the **same** JSON body while Redis still holds `registration:result:{authStateId}` (`REGISTRATION_RESULT_TTL_SECONDS`, default 7 days). Auth state is deleted after the first success.
+**Idempotency:** Repeating the same `auth_state_id` after success returns **`201`** with **public ids only** (no bearer) while Redis still holds `registration:result:{authStateId}` (`REGISTRATION_RESULT_TTL_SECONDS`, default 7 days). Auth state is deleted after the first success. The bootstrap token is **never** stored in that cache.
 
 **Client helper:** `@okkey/crypto` exports `buildRegistrationCryptoArtifacts` and `registrationArtifactsToWire` (WASM-only primitives).
 

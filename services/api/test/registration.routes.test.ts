@@ -82,6 +82,7 @@ function createRegistrationStub(
         accessToken: "tok-reg-1",
         expiresAt: "2099-01-01T00:00:00.000Z",
         tokenType: "Bearer" as const,
+        scope: "registration_recovery" as const,
       };
     },
   } as unknown as RegistrationService;
@@ -154,6 +155,7 @@ const REGISTER_SUCCESS_KEYS = new Set([
   "access_token",
   "expires_at",
   "token_type",
+  "scope",
 ]);
 
 test("POST /auth/register/complete success exposes only public ids (no ciphertext shares)", async () => {

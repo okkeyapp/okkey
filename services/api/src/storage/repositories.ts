@@ -2972,15 +2972,24 @@ export class SessionsRepository {
     userId: string;
     tokenHash: string;
     expiresAtIso: string;
+    deviceId?: string | null;
+    scope?: string | null;
   }): Promise<{ id: string }> {
     const id = generateEntityId();
     const rows = await this.db.query<{ id: string }>(
       `
-        INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at)
-        VALUES ($1, $2, NULL, $3, $4::timestamptz)
+        INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at, scope)
+        VALUES ($1, $2, $3, $4, $5::timestamptz, $6)
         RETURNING id
       `,
-      [id, input.userId, input.tokenHash, input.expiresAtIso],
+      [
+        id,
+        input.userId,
+        input.deviceId ?? null,
+        input.tokenHash,
+        input.expiresAtIso,
+        input.scope ?? null,
+      ],
     );
     const row = rows[0];
     if (!row) {
@@ -3000,10 +3009,15 @@ export class SessionsRepository {
   async findValidByTokenHash(
     tokenHash: string,
     nowIso: string,
-  ): Promise<{ id: string; userId: string } | null> {
-    const rows = await this.db.query<{ id: string; user_id: string }>(
+  ): Promise<{ id: string; userId: string; deviceId: string | null; scope: string | null } | null> {
+    const rows = await this.db.query<{
+      id: string;
+      user_id: string;
+      device_id: string | null;
+      scope: string | null;
+    }>(
       `
-        SELECT id, user_id
+        SELECT id, user_id, device_id, scope
         FROM sessions
         WHERE token_hash = $1 AND expires_at > $2::timestamptz
         LIMIT 1
@@ -3011,7 +3025,14 @@ export class SessionsRepository {
       [tokenHash, nowIso],
     );
     const row = rows[0];
-    return row ? { id: row.id, userId: row.user_id } : null;
+    return row
+      ? {
+          id: row.id,
+          userId: row.user_id,
+          deviceId: row.device_id,
+          scope: row.scope,
+        }
+      : null;
   }
 }
 

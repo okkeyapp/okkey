@@ -19,6 +19,7 @@ import {
   startCryptoOperationTimer,
 } from "../observability/crypto-rollout.ts";
 import type { SessionService } from "../session/service.ts";
+import { SESSION_SCOPE_REGISTRATION_RECOVERY } from "../session/scopes.ts";
 import type { PostgresDatabase } from "../storage/postgres.ts";
 import type { UsersRepository } from "../storage/repositories.ts";
 import { insertRegistrationBundle } from "./repository.ts";
@@ -78,15 +79,27 @@ export interface RegisterCompleteInput {
   lastName?: string | null;
 }
 
+/** Public ids always returned; bootstrap token only on first successful completion. */
 export interface RegisterCompleteResult {
   userId: string;
   workspaceId: string;
   vaultId: string;
   deviceId: string;
   deviceStatus: "trusted";
-  accessToken: string;
-  expiresAt: string;
-  tokenType: "Bearer";
+  accessToken?: string;
+  expiresAt?: string;
+  tokenType?: "Bearer";
+  /** Present when `accessToken` is issued; always `registration_recovery`. */
+  scope?: typeof SESSION_SCOPE_REGISTRATION_RECOVERY;
+}
+
+/** Cached idempotency payload — never includes bearer material. */
+interface RegisterCompleteCachedIds {
+  userId: string;
+  workspaceId: string;
+  vaultId: string;
+  deviceId: string;
+  deviceStatus: "trusted";
 }
 
 export interface RegistrationServiceDeps {
@@ -97,6 +110,8 @@ export interface RegistrationServiceDeps {
     get(key: string): Promise<string | null>;
     setWithTtl(key: string, value: string, ttlSeconds: number): Promise<void>;
     del(key: string): Promise<number>;
+    incr(key: string): Promise<number>;
+    expire(key: string, seconds: number): Promise<boolean>;
   };
   sessionService: Pick<SessionService, "createSession">;
   config: ApiConfig;
@@ -129,29 +144,62 @@ export class RegistrationService {
     this.log = deps.log;
   }
 
-  /** Idempotent cache may omit session fields (older entries); mint a session when missing. */
-  private async ensureSessionOnRegisterResult(
-    base: Omit<RegisterCompleteResult, "accessToken" | "expiresAt" | "tokenType"> &
-      Partial<Pick<RegisterCompleteResult, "accessToken" | "expiresAt" | "tokenType">>,
-  ): Promise<RegisterCompleteResult> {
-    if (
-      base.accessToken &&
-      base.expiresAt &&
-      base.tokenType === "Bearer"
-    ) {
-      return base as RegisterCompleteResult;
+  private async consumeRateLimit(
+    key: string,
+    limit: number,
+    windowSeconds: number,
+  ): Promise<void> {
+    const count = await this.redis.incr(key);
+    if (count === 1) {
+      await this.redis.expire(key, windowSeconds);
     }
-    const session = await this.sessionService.createSession(base.userId);
-    return {
-      userId: base.userId,
-      workspaceId: base.workspaceId,
-      vaultId: base.vaultId,
-      deviceId: base.deviceId,
-      deviceStatus: base.deviceStatus,
-      accessToken: session.accessToken,
-      expiresAt: session.expiresAt,
-      tokenType: "Bearer",
-    };
+    if (count > limit) {
+      throw new RegistrationError("AUTH_RATE_LIMITED", 429, "rate limited");
+    }
+  }
+
+  private async consumeRegisterCompleteRateLimits(
+    requestIp: string | null,
+    email: string | null,
+  ): Promise<void> {
+    if (requestIp) {
+      await this.consumeRateLimit(
+        `auth:rate:register-complete:ip:${requestIp}`,
+        this.config.authRateLimitRegisterCompletePerIp,
+        this.config.authRateLimitWindowSeconds,
+      );
+    }
+    if (email) {
+      await this.consumeRateLimit(
+        `auth:rate:register-complete:email:${email}`,
+        this.config.authRateLimitRegisterCompletePerEmail,
+        this.config.authRateLimitWindowSeconds,
+      );
+    }
+  }
+
+  private parseCachedIds(raw: string): RegisterCompleteCachedIds | null {
+    try {
+      const parsed = JSON.parse(raw) as Partial<RegisterCompleteCachedIds>;
+      if (
+        parsed.userId &&
+        parsed.workspaceId &&
+        parsed.vaultId &&
+        parsed.deviceId &&
+        parsed.deviceStatus === "trusted"
+      ) {
+        return {
+          userId: parsed.userId,
+          workspaceId: parsed.workspaceId,
+          vaultId: parsed.vaultId,
+          deviceId: parsed.deviceId,
+          deviceStatus: "trusted",
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
   }
 
   async completeRegistration(input: RegisterCompleteInput): Promise<RegisterCompleteResult> {
@@ -177,28 +225,23 @@ export class RegistrationService {
         rolloutGateViolation.details,
       );
     }
+
+    // IP budget first (no auth-state dependency), then idempotent cache, then email budget.
+    await this.consumeRegisterCompleteRateLimits(input.requestIp, null);
+
     const cached = await this.redis.get(registrationResultRedisKey(input.authStateId));
     if (cached) {
-      try {
-        const parsed = JSON.parse(cached) as RegisterCompleteResult;
-        if (
-          parsed.userId &&
-          parsed.workspaceId &&
-          parsed.vaultId &&
-          parsed.deviceId &&
-          parsed.deviceStatus === "trusted"
-        ) {
-          recordCryptoOperationOutcome(this.log, {
-            operation: "registration.complete",
-            deployEnv: this.config.deployEnv,
-            rolloutMode: this.config.cryptoRolloutMode,
-            outcome: "success",
-          });
-          stopTimer();
-          return await this.ensureSessionOnRegisterResult(parsed);
-        }
-      } catch {
-        /* fall through */
+      const ids = this.parseCachedIds(cached);
+      if (ids) {
+        recordCryptoOperationOutcome(this.log, {
+          operation: "registration.complete",
+          deployEnv: this.config.deployEnv,
+          rolloutMode: this.config.cryptoRolloutMode,
+          outcome: "success",
+        });
+        stopTimer();
+        // Idempotent replay: public ids only — never re-mint or return a bearer.
+        return ids;
       }
     }
 
@@ -210,6 +253,7 @@ export class RegistrationService {
         "auth state expired or missing",
       );
     }
+    await this.consumeRegisterCompleteRateLimits(null, authState.email);
     if (authState.userId !== null) {
       throw new RegistrationError(
         "AUTH_CHALLENGE_INVALID",
@@ -262,24 +306,36 @@ export class RegistrationService {
         });
       });
 
-      const session = await this.sessionService.createSession(bundle.userId);
-      const result: RegisterCompleteResult = {
+      const session = await this.sessionService.createSession(bundle.userId, {
+        ttlSeconds: this.config.registrationBootstrapSessionTtlSeconds,
+        scope: SESSION_SCOPE_REGISTRATION_RECOVERY,
+        deviceId: bundle.deviceId,
+      });
+
+      const cachedIds: RegisterCompleteCachedIds = {
         userId: bundle.userId,
         workspaceId: bundle.workspaceId,
         vaultId: bundle.vaultId,
         deviceId: bundle.deviceId,
         deviceStatus: "trusted",
-        accessToken: session.accessToken,
-        expiresAt: session.expiresAt,
-        tokenType: "Bearer",
       };
 
+      // Persist public ids only — never cache the bootstrap bearer.
       await this.redis.setWithTtl(
         registrationResultRedisKey(input.authStateId),
-        JSON.stringify(result),
+        JSON.stringify(cachedIds),
         this.config.registrationResultTtlSeconds,
       );
       await this.authService.removeAuthState(input.authStateId);
+
+      this.log?.info("registration.complete", {
+        event: "registration_bootstrap_session_minted",
+        user_id: bundle.userId,
+        device_id: bundle.deviceId,
+        scope: SESSION_SCOPE_REGISTRATION_RECOVERY,
+        expires_at: session.expiresAt,
+        request_ip: input.requestIp,
+      });
 
       recordCryptoOperationOutcome(this.log, {
         operation: "registration.complete",
@@ -287,7 +343,14 @@ export class RegistrationService {
         rolloutMode: this.config.cryptoRolloutMode,
         outcome: "success",
       });
-      return result;
+
+      return {
+        ...cachedIds,
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt,
+        tokenType: "Bearer",
+        scope: SESSION_SCOPE_REGISTRATION_RECOVERY,
+      };
     } catch (error) {
       recordCryptoOperationOutcome(this.log, {
         operation: "registration.complete",

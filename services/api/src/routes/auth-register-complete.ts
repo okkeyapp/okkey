@@ -307,16 +307,21 @@ export function createRegisterCompleteRoute(
         lastName: lastNameForDb,
       });
 
-      json(ctx.res, 201, {
+      const bodyOut: Record<string, unknown> = {
         user_id: result.userId,
         workspace_id: result.workspaceId,
         vault_id: result.vaultId,
         device_id: result.deviceId,
         device_status: result.deviceStatus,
-        access_token: result.accessToken,
-        expires_at: result.expiresAt,
-        token_type: result.tokenType,
-      });
+      };
+      // Bootstrap bearer only on first success (idempotent replay omits it).
+      if (result.accessToken && result.expiresAt && result.tokenType && result.scope) {
+        bodyOut.access_token = result.accessToken;
+        bodyOut.expires_at = result.expiresAt;
+        bodyOut.token_type = result.tokenType;
+        bodyOut.scope = result.scope;
+      }
+      json(ctx.res, 201, bodyOut);
     } catch (error) {
       handleRegistrationError(ctx.requestId, ctx.res, error);
     }

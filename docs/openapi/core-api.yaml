@@ -233,7 +233,7 @@ components:
       properties:
         auth_state_id:
           type: string
-          pattern: '^d{10,20}
+          description: Opaque auth state id from email confirm (128-bit CSPRNG hex)
 
         user_public_key:
           type: string
@@ -314,6 +314,18 @@ components:
         device_status:
           type: string
           enum: [trusted]
+        access_token:
+          type: string
+          description: Short-lived bootstrap Bearer for recovery key enroll/ack; omitted on idempotent replay
+        expires_at:
+          type: string
+          format: date-time
+        token_type:
+          type: string
+          enum: [Bearer]
+        scope:
+          type: string
+          enum: [registration_recovery]
 
     Vault:
       type: object

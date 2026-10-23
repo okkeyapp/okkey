@@ -41,7 +41,6 @@ vi.mock("../../auth/AuthVaultContext", () => ({
     saveVaultBundle: vi.fn(),
     updateLocalProfile: vi.fn(),
     setRegistrationAuthStateId: vi.fn(),
-    applyAccessTokenResponse: vi.fn(),
     clearEmailLoginFlow: vi.fn(),
     logout: vi.fn(),
     accessToken: null,

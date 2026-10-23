@@ -1,8 +1,13 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { generateEntityId } from "../entity-id.ts";
 import type { ApiConfig } from "../config.ts";
 import type { EmailTemplateService } from "../email/service.ts";
 import type { UserRecord, UsersRepository } from "../storage/repositories.ts";
+
+/** 128-bit CSPRNG hex id for intermediate auth states (not a snowflake entity id). */
+export function generateAuthStateId(): string {
+  return randomBytes(16).toString("hex");
+}
 
 interface AuthChallenge {
   id: string;
@@ -60,7 +65,10 @@ export interface AuthServiceDeps {
   config: ApiConfig;
   now?: () => Date;
   generateCode?: () => string;
+  /** Challenge / other snowflake ids. */
   generateId?: () => string;
+  /** Intermediate auth_state_id (defaults to 128-bit CSPRNG hex). */
+  generateAuthStateId?: () => string;
 }
 
 export interface EmailStartInput {
@@ -154,6 +162,7 @@ export class AuthService {
   private readonly now: () => Date;
   private readonly generateCode: () => string;
   private readonly generateId: () => string;
+  private readonly generateAuthStateIdFn: () => string;
 
   constructor(deps: AuthServiceDeps) {
     this.redis = deps.redis;
@@ -163,6 +172,7 @@ export class AuthService {
     this.now = deps.now ?? (() => new Date());
     this.generateCode = deps.generateCode ?? createCode;
     this.generateId = deps.generateId ?? generateEntityId;
+    this.generateAuthStateIdFn = deps.generateAuthStateId ?? generateAuthStateId;
   }
 
   async startEmailLogin(input: EmailStartInput): Promise<EmailStartResult> {
@@ -387,7 +397,7 @@ export class AuthService {
 
     const pendingTwoFactor = await this.users.isTwoFactorEnabled(existingUser.id);
     const authState: AuthStatePayload = {
-      id: this.generateId(),
+      id: this.generateAuthStateIdFn(),
       email: challenge.email,
       userId: existingUser.id,
       createdAt: this.now().toISOString(),
@@ -436,7 +446,7 @@ export class AuthService {
   /** Mint Redis auth state for registration (email already trusted — OTP confirm or first-run). */
   private async createRegistrationAuthState(email: string): Promise<string> {
     const authState: AuthStatePayload = {
-      id: this.generateId(),
+      id: this.generateAuthStateIdFn(),
       email,
       userId: null,
       createdAt: this.now().toISOString(),
@@ -459,7 +469,7 @@ export class AuthService {
     pendingTwoFactor: boolean;
   }): Promise<{ authStateId: string; nextStep: "device_check" | "two_factor" }> {
     const authState: AuthStatePayload = {
-      id: this.generateId(),
+      id: this.generateAuthStateIdFn(),
       email: params.email,
       userId: params.userId,
       createdAt: this.now().toISOString(),

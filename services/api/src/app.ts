@@ -14,6 +14,7 @@ import {
   createAuthEmailStartRoute,
 } from "./routes/auth-email.ts";
 import { createResolveAuthenticatedUserId } from "./routes/auth-context.ts";
+import { REGISTRATION_RECOVERY_ALLOWED_SCOPES } from "./session/scopes.ts";
 import { createRegisterCompleteRoute } from "./routes/auth-register-complete.ts";
 import { createAuthSessionBootstrapRoute } from "./routes/auth-session.ts";
 import {
@@ -254,6 +255,15 @@ export function createApiApp(
           const header = getHeader(req, "x-user-id");
           return header?.trim() ?? null;
         };
+  /** Full session or post-register recovery bootstrap (enroll + ack-export only). */
+  const resolveUserIdForRegistrationRecovery: (req: IncomingMessage) => Promise<string | null> =
+    deps.sessionService !== undefined
+      ? createResolveAuthenticatedUserId(
+          config,
+          deps.sessionService,
+          REGISTRATION_RECOVERY_ALLOWED_SCOPES,
+        )
+      : resolveUserId;
 
   const gateVaultUse = (handler: RouteHandler): RouteHandler =>
     deps.accountRecoveryService
@@ -750,7 +760,10 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/recovery/key/enroll",
-      createAccountRecoveryKeyEnrollRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyEnrollRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRegistrationRecovery,
+      ),
     );
     app.route(
       "POST",
@@ -760,7 +773,10 @@ export function createApiApp(
     app.route(
       "POST",
       "/account/recovery/key/ack-export",
-      createAccountRecoveryKeyAckExportRoute(deps.accountRecoveryService, resolveUserId),
+      createAccountRecoveryKeyAckExportRoute(
+        deps.accountRecoveryService,
+        resolveUserIdForRegistrationRecovery,
+      ),
     );
     app.route(
       "GET",
