@@ -118,6 +118,10 @@ import {
 import { webDisplayPlanTier } from "./planEntitlements";
 import { planTierLabel } from "./planTierLabel";
 import { formatInstanceVersionLabel, useInstanceVersion } from "./useInstanceVersion";
+import {
+  dismissAvailableUpdates,
+  isUpdateNoticeDismissed,
+} from "./updateDismissStorage";
 import { formatAvailableUpdatesSummary, useUpdateCheck } from "./useUpdateCheck";
 
 function SharedVaultMembersIcon({ className }: { className?: string }) {
@@ -205,10 +209,19 @@ export default function WorkspaceRoutesLayout() {
   const updateCheck = useUpdateCheck();
   const updateFromToSummary = updateCheck ? formatAvailableUpdatesSummary(updateCheck) : null;
   const [updatesPopupOpen, setUpdatesPopupOpen] = useState(false);
+  const [updatesDismissed, setUpdatesDismissed] = useState(false);
+  useEffect(() => {
+    if (!updateCheck || !updateFromToSummary) {
+      setUpdatesDismissed(false);
+      return;
+    }
+    setUpdatesDismissed(isUpdateNoticeDismissed(updateCheck));
+  }, [updateCheck, updateFromToSummary]);
+  const showUpdateNotice = Boolean(updateFromToSummary) && !updatesDismissed;
   const footerVersionNode = instanceVersion ? (
     <div className="flex flex-col gap-1" data-testid="sidebar-instance-version-label">
       <span>{formatInstanceVersionLabel(instanceVersion, t)}</span>
-      {updateFromToSummary ? (
+      {showUpdateNotice ? (
         <>
           <span className="sr-only" data-testid="sidebar-update-from-to">
             {updateFromToSummary}
@@ -845,12 +858,17 @@ export default function WorkspaceRoutesLayout() {
 
   return (
     <SectionReauthProvider>
-      {updateCheck && updateFromToSummary ? (
+      {updateCheck && showUpdateNotice ? (
         <SystemUpdatesPopup
           open={updatesPopupOpen}
           info={updateCheck}
           t={t}
           onClose={() => setUpdatesPopupOpen(false)}
+          onIgnore={() => {
+            dismissAvailableUpdates(updateCheck);
+            setUpdatesDismissed(true);
+            setUpdatesPopupOpen(false);
+          }}
           onUpdate={() => {
             // Apply flow lands in u5; shell closes for now.
             setUpdatesPopupOpen(false);

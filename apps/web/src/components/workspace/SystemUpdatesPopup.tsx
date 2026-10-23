@@ -7,7 +7,10 @@ type SystemUpdatesPopupProps = {
   open: boolean;
   info: UpdateCheckInfo;
   t: (messageKey: string, values?: WebMessageValues) => string;
+  /** Close without dismiss (X / overlay). */
   onClose: () => void;
+  /** Ignore: dismiss notice until next target version. */
+  onIgnore: () => void;
   /** Stub until apply flow (u5); host may no-op or close. */
   onUpdate: () => void;
 };
@@ -30,6 +33,7 @@ export default function SystemUpdatesPopup({
   info,
   t,
   onClose,
+  onIgnore,
   onUpdate,
 }: SystemUpdatesPopupProps) {
   if (!open) {
@@ -51,7 +55,7 @@ export default function SystemUpdatesPopup({
             type="button"
             variant="outline"
             data-testid="system-updates-ignore"
-            onClick={onClose}
+            onClick={onIgnore}
           >
             {t("web.updatesPopup.ignore")}
           </Button>

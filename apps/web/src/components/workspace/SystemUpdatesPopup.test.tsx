@@ -17,6 +17,7 @@ const info: UpdateCheckInfo = {
 describe("SystemUpdatesPopup", () => {
   it("renders from→to rows and wires Ignore / Update", () => {
     const onClose = vi.fn();
+    const onIgnore = vi.fn();
     const onUpdate = vi.fn();
     render(
       <SystemUpdatesPopup
@@ -29,6 +30,7 @@ describe("SystemUpdatesPopup", () => {
           return key;
         }}
         onClose={onClose}
+        onIgnore={onIgnore}
         onUpdate={onUpdate}
       />,
     );
@@ -41,7 +43,8 @@ describe("SystemUpdatesPopup", () => {
     );
 
     fireEvent.click(screen.getByTestId("system-updates-ignore"));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onIgnore).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("system-updates-update"));
     expect(onUpdate).toHaveBeenCalledTimes(1);
@@ -54,6 +57,7 @@ describe("SystemUpdatesPopup", () => {
         info={info}
         t={(key) => key}
         onClose={vi.fn()}
+        onIgnore={vi.fn()}
         onUpdate={vi.fn()}
       />,
     );
