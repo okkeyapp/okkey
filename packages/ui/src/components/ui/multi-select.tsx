@@ -551,7 +551,8 @@ const MultiSelectItem = React.forwardRef<HTMLDivElement, MultiSelectItemProps>(
         className={cn(
           "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-foreground outline-none normal-case",
           "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-          selected ? "bg-secondary/60 hover:bg-secondary hover:text-foreground" : "hover:bg-secondary hover:text-foreground",
+          /* Selected state is the checkmark only (same as /capsules column picker) — no filled row. */
+          "hover:bg-secondary hover:text-foreground",
           /* `hidden` attr loses to Tailwind `flex`; use important so filter actually hides rows */
           !matches && "!hidden",
           className,
